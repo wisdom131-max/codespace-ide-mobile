@@ -3,7 +3,7 @@
     "name": "CodeSpace IDE",
     "slug": "codespaceside",
     "version": "1.0.0",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
@@ -35,7 +35,10 @@
               "host": "auth"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -63,8 +66,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "codespaceside-v1"
+        "projectId": "61b2f351-7603-4d95-9555-3ec69df3431c"
       }
-    }
+    },
+    "owner": "wi123sdom"
   }
 }
