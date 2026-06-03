@@ -5,25 +5,32 @@ import { Colors } from '../theme/colors';
 import useStore from '../hooks/useStore';
 
 const ITEMS = [
-  { id: 'explorer',    icon: 'file-multiple-outline',   label: 'Explorer' },
-  { id: 'search',      icon: 'magnify',                  label: 'Search' },
-  { id: 'git',         icon: 'source-branch',            label: 'Source Control' },
-  { id: 'codespace',   icon: 'cloud-outline',            label: 'Codespaces' },
-  { id: 'extensions',  icon: 'puzzle-outline',           label: 'Extensions' },
+  { id: 'explorer',   icon: 'file-multiple-outline',  label: 'Explorer' },
+  { id: 'search',     icon: 'magnify',                 label: 'Search' },
+  { id: 'git',        icon: 'source-branch',           label: 'Source Control' },
+  { id: 'codespace',  icon: 'cloud-outline',           label: 'Codespaces' },
+  { id: 'extensions', icon: 'puzzle-outline',          label: 'Extensions' },
 ];
 
 const BOTTOM = [
-  { id: 'settings', icon: 'cog-outline', label: 'Settings' },
-  { id: 'account',  icon: 'account-circle-outline', label: 'Account' },
+  { id: 'palette',  icon: 'chevron-right',           label: 'Command Palette' },
+  { id: 'settings', icon: 'cog-outline',             label: 'Settings' },
+  { id: 'account',  icon: 'account-circle-outline',  label: 'Account' },
 ];
 
-export default function ActivityBar({ navigation }) {
-  const { sidebarTab, setSidebarTab, gitChanges } = useStore();
+export default function ActivityBar({ navigation, onPalette }) {
+  const { sidebarTab, setSidebarTab, toggleSidebar, sidebarVisible, gitChanges } = useStore();
 
   const handlePress = (id) => {
     if (id === 'settings') { navigation.navigate('Settings'); return; }
     if (id === 'account')  { navigation.navigate('Profile');  return; }
-    setSidebarTab(id);
+    if (id === 'palette')  { onPalette?.(); return; }
+    // Toggle sidebar if tapping the already-active tab
+    if (sidebarTab === id && sidebarVisible) {
+      toggleSidebar();
+    } else {
+      setSidebarTab(id);
+    }
   };
 
   return (
@@ -32,13 +39,13 @@ export default function ActivityBar({ navigation }) {
         {ITEMS.map((item) => (
           <TouchableOpacity
             key={item.id}
-            style={[styles.item, sidebarTab === item.id && styles.itemActive]}
+            style={[styles.item, sidebarTab === item.id && sidebarVisible && styles.itemActive]}
             onPress={() => handlePress(item.id)}
           >
             <MaterialCommunityIcons
               name={item.icon}
               size={24}
-              color={sidebarTab === item.id ? Colors.text_active : Colors.text_secondary}
+              color={sidebarTab === item.id && sidebarVisible ? Colors.text_active : Colors.text_secondary}
             />
             {item.id === 'git' && gitChanges.length > 0 && (
               <View style={styles.badge}>
