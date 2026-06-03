@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "CodeSpace IDE",
-    "slug": "codespaceside",
+    "slug": "codespace-ide-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -66,7 +66,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "61b2f351-7603-4d95-9555-3ec69df3431c"
+        "projectId": "2ca3a4e9-ac7b-45b4-8a8a-c1509fee7bf4"
       }
     },
     "owner": "wi123sdom"
