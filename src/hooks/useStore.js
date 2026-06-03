@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { applyTheme } from '../theme/colors';
 
 export const useStore = create((set, get) => ({
   // ─── Auth ────────────────────────────────────────────────
@@ -18,10 +19,10 @@ export const useStore = create((set, get) => ({
   // ─── Open Files (Tabs) ──────────────────────────────────
   openFiles: [],
   activeFile: null,
-  fileContents: {}, // { path: { content, sha, isDirty } }
+  fileContents: {},
 
   openFile: (file) => {
-    const { openFiles, fileContents } = get();
+    const { openFiles } = get();
     const exists = openFiles.find((f) => f.path === file.path);
     if (!exists) {
       set({ openFiles: [...openFiles, file], activeFile: file });
@@ -65,9 +66,9 @@ export const useStore = create((set, get) => ({
 
   // ─── UI State ────────────────────────────────────────────
   sidebarVisible: true,
-  sidebarTab: 'explorer', // 'explorer' | 'search' | 'git' | 'extensions' | 'debug'
+  sidebarTab: 'explorer',
   panelVisible: false,
-  panelTab: 'terminal', // 'terminal' | 'output' | 'problems'
+  panelTab: 'terminal',
   activityBarVisible: true,
 
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
@@ -76,10 +77,13 @@ export const useStore = create((set, get) => ({
   setPanelTab: (tab) => set({ panelTab: tab, panelVisible: true }),
 
   // ─── Theme ──────────────────────────────────────────────
-  theme: 'dark', // 'dark' | 'light' | 'highContrast'
+  theme: 'light',
   fontSize: 14,
   fontFamily: 'monospace',
-  setTheme: (theme) => set({ theme }),
+  setTheme: (themeName) => {
+    applyTheme(themeName);
+    set({ theme: themeName });
+  },
   setFontSize: (size) => set({ fontSize: size }),
 
   // ─── Search ─────────────────────────────────────────────
@@ -103,7 +107,31 @@ export const useStore = create((set, get) => ({
 
   // ─── Extensions ─────────────────────────────────────────
   installedExtensions: [],
-  setInstalledExtensions: (exts) => set({ installedExtensions: exts }),
+  installExtension: (ext) => {
+    const { installedExtensions, setTheme } = get();
+    const already = installedExtensions.find(e => e.id === ext.id);
+    if (!already) {
+      set({ installedExtensions: [...installedExtensions, { ...ext, installed: true }] });
+      // If it's a theme extension, apply it
+      if (ext.themeKey) setTheme(ext.themeKey);
+    }
+  },
+  uninstallExtension: (id) => {
+    set((s) => ({ installedExtensions: s.installedExtensions.filter(e => e.id !== id) }));
+  },
+
+  // ─── AI Chat ────────────────────────────────────────────
+  aiProvider: 'copilot', // 'copilot' | 'claude' | 'openai' | 'gemini' | 'deepseek'
+  aiApiKeys: {},
+  chatHistory: [],
+  setAiProvider: (provider) => set({ aiProvider: provider }),
+  setAiApiKey: (provider, key) => set((s) => ({
+    aiApiKeys: { ...s.aiApiKeys, [provider]: key }
+  })),
+  addChatMessage: (msg) => set((s) => ({
+    chatHistory: [...s.chatHistory, { ...msg, id: Date.now() }]
+  })),
+  clearChat: () => set({ chatHistory: [] }),
 }));
 
 export default useStore;
