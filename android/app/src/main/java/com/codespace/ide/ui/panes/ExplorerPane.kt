@@ -116,6 +116,31 @@ fun ExplorerSidePanel(
         }
     }
 
+    // Create Document launcher — opens Android file picker to create a new file
+    var pendingFileName by remember { mutableStateOf("") }
+    val createFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("*/*")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                // Write empty content to create the file
+                context.contentResolver.openOutputStream(uri)?.use { it.write(byteArrayOf()) }
+                // Get the real path to open in editor
+                val realPath = uri.path?.let { p ->
+                    val split = p.split(":")
+                    if (split.size >= 2) {
+                        val rel = split[1]
+                        "/storage/emulated/0/$rel"
+                    } else null
+                }
+                // Try to open via real path, fallback to uri string
+                val pathToOpen = realPath ?: uri.toString()
+                onOpenFile(pathToOpen)
+                refresh++
+            } catch (e: Exception) { /* ignore */ }
+        }
+    }
+
     fun buildNodes(dir: File, depth: Int): List<FsNode> {
         val nodes = mutableListOf<FsNode>()
         val isExp = expanded[dir.absolutePath] ?: false
@@ -379,15 +404,11 @@ fun ExplorerSidePanel(
             confirmButton = {
                 Button(onClick = {
                     if (nameInput.isNotBlank()) {
-                        val dir = contextFile?.let {
-                            if (it.isDirectory) it else it.parentFile
-                        } ?: workspaceRoot ?: return@Button
-                        val newFile = File(dir, nameInput)
-                        newFile.createNewFile()
-                        refresh++
-                        onOpenFile(newFile.absolutePath)
+                        pendingFileName = nameInput
+                        showNewFile = false
+                        createFileLauncher.launch(nameInput)
+                        nameInput = ""
                     }
-                    showNewFile = false; nameInput = ""
                 }) { Text("Create") }
             },
             dismissButton = {
