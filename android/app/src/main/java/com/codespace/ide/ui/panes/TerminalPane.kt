@@ -266,36 +266,47 @@ fun TerminalPane() {
             }
         }
 
-        // ── Output area + input row ──────────────────────────────────────────────
-        // Tapping anywhere in the output scrolls and re-focuses the input field
+        // ── Output area with inline input ───────────────────────────────────────
         if (activeSession != null) {
-            Column(
-                Modifier
+            val shortDir = activeSession.workingDir
+                .replace("/storage/emulated/0", "~")
+                .replace("/data/data/com.termux/files/home", "~")
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
                     .fillMaxSize()
-                    // IMPORTANT: tapping the output area focuses the text field
-                    // so the keyboard pops up reliably — even after switching tabs
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .clickable(indication = null, interactionSource = remember {
                         androidx.compose.foundation.interaction.MutableInteractionSource()
                     }) {
                         focusRequester.requestFocus()
                         keyboardController?.show()
-                    }
+                    },
             ) {
-                // Scrollable output
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    items(activeSession.lines) { line ->
+                items(activeSession.lines) { line ->
+                    if (line.startsWith("PROMPT:")) {
+                        val parts = line.removePrefix("PROMPT:").split("||")
+                        Row(Modifier.padding(vertical = 1.dp)) {
+                            Text("user", color = Color(0xFF50FA7B), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                            Text("@codespace", color = Color(0xFF8BE9FD), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                            Text(":", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                            Text(parts.getOrElse(0) { "~" }, color = Color(0xFF89B4FA), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                            if (parts.size > 1) {
+                                Text(" (", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                                Text(parts[1], color = Color(0xFFFFB86C), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                                Text(")", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                            }
+                            Text(" $ ", color = Color(0xFFF8F8F2), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        }
+                    } else {
                         Text(
                             line,
                             color = when {
                                 line.startsWith("$") -> Color(0xFF89B4FA)
                                 line.startsWith("Error") -> Color(0xFFF38BA8)
                                 line.startsWith("->") -> Color(0xFFA6E3A1)
+                                line.startsWith("Done") -> Color(0xFFA6E3A1)
                                 else -> Color(0xFFCDD6F4)
                             },
                             fontFamily = FontFamily.Monospace,
@@ -305,51 +316,40 @@ fun TerminalPane() {
                     }
                 }
 
-                // ── Input row ────────────────────────────────────────────────────
-                // Prompt + BasicTextField. Tapping this row also requests focus.
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF252526))
-                        .clickable(indication = null, interactionSource = remember {
-                            androidx.compose.foundation.interaction.MutableInteractionSource()
-                        }) {
-                            focusRequester.requestFocus()
-                            keyboardController?.show()
-                        }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Text(
-                        "❯ ",
-                        color = Color(0xFF4EC994),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(top = 2.dp, end = 4.dp),
-                    )
-                    BasicTextField(
-                        value = input,
-                        onValueChange = { newValue ->
-                            // Enter key submits command
-                            if (newValue.endsWith("\n")) {
-                                runCommand(newValue.trimEnd('\n'))
-                                input = ""
-                            } else {
-                                input = newValue
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(focusRequester),
-                        textStyle = TextStyle(
-                            color = Color(0xFFCDD6F4),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                        ),
-                        cursorBrush = SolidColor(Color(0xFF89B4FA)),
-                        maxLines = 6,
-                    )
+                // Inline input as last item in the list
+                item {
+                    Row(
+                        Modifier.padding(vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("user", color = Color(0xFF50FA7B), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        Text("@codespace", color = Color(0xFF8BE9FD), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        Text(":", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        Text(shortDir, color = Color(0xFF89B4FA), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        Text(" $ ", color = Color(0xFFF8F8F2), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        BasicTextField(
+                            value = input,
+                            onValueChange = { newValue ->
+                                if (newValue.endsWith("\n")) {
+                                    runCommand(newValue.trimEnd('\n'))
+                                    input = ""
+                                } else {
+                                    input = newValue
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequester),
+                            textStyle = TextStyle(
+                                color = Color(0xFFCDD6F4),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 13.sp,
+                                lineHeight = 20.sp,
+                            ),
+                            cursorBrush = SolidColor(Color(0xFF89B4FA)),
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
