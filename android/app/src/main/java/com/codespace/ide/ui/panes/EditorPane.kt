@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -74,6 +75,41 @@ fun EditorPane(
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
+
+    // Unsaved changes warning
+    var showUnsavedDialog by remember { mutableStateOf(false) }
+    val hasDirtyTabs = tabs.any { it.isDirty }
+
+    BackHandler(enabled = hasDirtyTabs) {
+        showUnsavedDialog = true
+    }
+
+    if (showUnsavedDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showUnsavedDialog = false },
+            title = { androidx.compose.material3.Text("Unsaved Changes") },
+            text = { androidx.compose.material3.Text("You have unsaved changes. Save before leaving?") },
+            confirmButton = {
+                androidx.compose.material3.Button(onClick = {
+                    // Save all dirty tabs
+                    tabs.forEachIndexed { idx, tab ->
+                        if (tab.isDirty && tab.path.startsWith("/")) {
+                            try {
+                                java.io.File(tab.path).writeText(tab.content)
+                                tabs[idx] = tab.copy(isDirty = false)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    showUnsavedDialog = false
+                }) { androidx.compose.material3.Text("Yes, Save") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showUnsavedDialog = false
+                }) { androidx.compose.material3.Text("No") }
+            },
+        )
+    }
 
     // Wire up keyboard toolbar insert callback
     LaunchedEffect(onInsertRequest) {

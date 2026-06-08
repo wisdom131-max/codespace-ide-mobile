@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -47,7 +48,13 @@ fun CodeEditor(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalEditorColors.current
-    var value by remember(content) { mutableStateOf(TextFieldValue(content)) }
+    // Keep cursor position — only reset when file changes externally
+    var value by remember { mutableStateOf(TextFieldValue(content)) }
+    LaunchedEffect(content) {
+        if (content != value.text) {
+            value = TextFieldValue(content)
+        }
+    }
     val vScroll = rememberScrollState()
     val hScroll = rememberScrollState()
 

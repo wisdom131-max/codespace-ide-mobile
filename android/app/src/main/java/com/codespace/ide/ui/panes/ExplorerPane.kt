@@ -125,7 +125,7 @@ fun ExplorerSidePanel(
             try {
                 // Write empty content to create the file
                 context.contentResolver.openOutputStream(uri)?.use { it.write(byteArrayOf()) }
-                // Get the real path to open in editor
+                // Get the real path
                 val realPath = uri.path?.let { p ->
                     val split = p.split(":")
                     if (split.size >= 2) {
@@ -133,10 +133,9 @@ fun ExplorerSidePanel(
                         "/storage/emulated/0/$rel"
                     } else null
                 }
-                // Try to open via real path, fallback to uri string
                 val pathToOpen = realPath ?: uri.toString()
-                onOpenFile(pathToOpen)
                 refresh++
+                onOpenFile(pathToOpen)
             } catch (e: Exception) { /* ignore */ }
         }
     }
