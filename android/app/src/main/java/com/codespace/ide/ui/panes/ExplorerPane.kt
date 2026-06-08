@@ -157,8 +157,8 @@ fun ExplorerSidePanel(
         nodes.add(FsNode(dir, depth, isExp))
         if (isExp) {
             val children = dir.listFiles()
-                ?.filter { !it.name.startsWith(".") }
-                ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name })
+                ?.filter { !it.name.trimEnd().startsWith(".") }
+                ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() })
                 ?: emptyList()
             children.forEach { child ->
                 if (child.isDirectory) nodes.addAll(buildNodes(child, depth + 1))
@@ -172,8 +172,8 @@ fun ExplorerSidePanel(
         val root = workspaceRoot ?: return@remember emptyList()
         if (!root.exists()) return@remember emptyList()
         val children = root.listFiles()
-            ?.filter { !it.name.startsWith(".") }
-            ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name })
+            ?.filter { !it.name.trimEnd().startsWith(".") }
+            ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() })
             ?: emptyList()
         children.flatMap { f ->
             if (f.isDirectory) buildNodes(f, 0)
