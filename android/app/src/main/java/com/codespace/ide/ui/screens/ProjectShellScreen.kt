@@ -871,13 +871,13 @@ fun ProjectShellScreen(
                         placeholder = { Text("> Type command…", fontSize = 14.sp) },
                         singleLine = true, modifier = Modifier.fillMaxWidth().padding(8.dp))
                     HorizontalDivider(color = DividerColor)
-                    val allCmds = listOf(
+                    val allCmds by remember(commandQuery) { derivedStateOf { listOf(
                         "Explorer","Search","Source Control","Run & Debug","Extensions",
                         "Terminal","Problems","Output","Toggle Sidebar","Toggle AI Panel",
                         "New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About CodeSpace IDE",
-                    ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) }
+                    ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                         items(allCmds) { cmd ->
                             val idx = allCmds.indexOf(cmd)
