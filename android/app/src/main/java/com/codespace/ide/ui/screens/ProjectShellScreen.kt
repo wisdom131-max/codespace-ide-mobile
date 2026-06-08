@@ -878,11 +878,13 @@ fun ProjectShellScreen(
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About CodeSpace IDE",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) }
-                    allCmds.take(10).forEachIndexed { idx, cmd ->
-                        Row(Modifier.fillMaxWidth().background(if (idx == 0) CmdSelectedBg else Color.Transparent)
-                            .clickable { handleMenuAction(cmd); showCommandPalette = false; commandQuery = "" }
-                            .padding(horizontal = 16.dp, vertical = 10.dp)) {
-                            Text(cmd, fontSize = 13.sp, color = if (idx == 0) CmdSelectedText else MenuText, modifier = Modifier.weight(1f))
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                        itemsIndexed(allCmds) { idx, cmd ->
+                            Row(Modifier.fillMaxWidth().background(if (idx == 0) CmdSelectedBg else Color.Transparent)
+                                .clickable { handleMenuAction(cmd); showCommandPalette = false; commandQuery = "" }
+                                .padding(horizontal = 16.dp, vertical = 10.dp)) {
+                                Text(cmd, fontSize = 13.sp, color = if (idx == 0) CmdSelectedText else MenuText, modifier = Modifier.weight(1f))
+                            }
                         }
                     }
                     Spacer(Modifier.height(4.dp))
