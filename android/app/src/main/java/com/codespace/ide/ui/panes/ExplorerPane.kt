@@ -285,7 +285,7 @@ fun ExplorerSidePanel(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
-                items(nodes, key = { it.file.absolutePath }) { node ->
+                items(nodes) { node ->
                     val isSelected = selected == node.file.absolutePath
                     Row(
                         Modifier
