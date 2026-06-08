@@ -142,6 +142,8 @@ fun TerminalPane() {
         val session = sessions.firstOrNull { it.id == activeId } ?: return
         val trimmed = cmd.trim()
         if (trimmed.isBlank()) return
+        val shortDir = session.workingDir.replace("/storage/emulated/0", "~").replace("/data/data/com.termux/files/home", "~")
+        session.lines.add("PROMPT:$shortDir")
         session.lines.add("$ $trimmed")
         val sessionIdx = sessions.indexOfFirst { it.id == activeId }
 
