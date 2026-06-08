@@ -123,19 +123,30 @@ fun ExplorerSidePanel(
     ) { uri: Uri? ->
         if (uri != null) {
             try {
-                // Write empty content to create the file
+                // Write empty content to the SAF uri
                 context.contentResolver.openOutputStream(uri)?.use { it.write(byteArrayOf()) }
-                // Get the real path
-                val realPath = uri.path?.let { p ->
-                    val split = p.split(":")
-                    if (split.size >= 2) {
-                        val rel = split[1]
-                        "/storage/emulated/0/$rel"
-                    } else null
+                // Also create the file directly in the workspace so explorer shows it
+                val targetDir = contextFile?.let {
+                    if (it.isDirectory) it else it.parentFile
+                } ?: workspaceRoot
+                if (targetDir != null && pendingFileName.isNotBlank()) {
+                    val localFile = java.io.File(targetDir, pendingFileName)
+                    try {
+                        if (!localFile.exists()) localFile.createNewFile()
+                        refresh++
+                        onOpenFile(localFile.absolutePath)
+                    } catch (e: Exception) {
+                        // fallback to SAF uri path
+                        val realPath = uri.path?.let { p ->
+                            val split = p.split(":")
+                            if (split.size >= 2) "/storage/emulated/0/${split[1]}" else null
+                        }
+                        refresh++
+                        onOpenFile(realPath ?: uri.toString())
+                    }
+                } else {
+                    refresh++
                 }
-                val pathToOpen = realPath ?: uri.toString()
-                refresh++
-                onOpenFile(pathToOpen)
             } catch (e: Exception) { /* ignore */ }
         }
     }
