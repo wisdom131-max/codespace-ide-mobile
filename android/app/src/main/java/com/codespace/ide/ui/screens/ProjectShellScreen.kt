@@ -879,7 +879,8 @@ fun ProjectShellScreen(
                         "Keyboard Shortcuts","About CodeSpace IDE",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) }
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
-                        itemsIndexed(allCmds) { idx, cmd ->
+                        items(allCmds) { cmd ->
+                            val idx = allCmds.indexOf(cmd)
                             Row(Modifier.fillMaxWidth().background(if (idx == 0) CmdSelectedBg else Color.Transparent)
                                 .clickable { handleMenuAction(cmd); showCommandPalette = false; commandQuery = "" }
                                 .padding(horizontal = 16.dp, vertical = 10.dp)) {
