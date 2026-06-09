@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.panes
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -134,7 +135,6 @@ fun EditorPane(
             text = { androidx.compose.material3.Text("You have unsaved changes. Save before leaving?") },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
-                    // Save all dirty tabs
                     tabs.forEachIndexed { idx, tab ->
                         if (tab.isDirty && tab.path.startsWith("/")) {
                             try {
@@ -144,6 +144,7 @@ fun EditorPane(
                         }
                     }
                     showUnsavedDialog = false
+                    Toast.makeText(context, "Saved ✓", Toast.LENGTH_SHORT).show()
                 }) { androidx.compose.material3.Text("Yes, Save") }
             },
             dismissButton = {

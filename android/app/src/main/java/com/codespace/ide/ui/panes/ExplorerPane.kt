@@ -536,9 +536,16 @@ private fun fileIcon(name: String) = when {
 @Composable fun SearchPanel() {
     var searchQuery  by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
     Column(Modifier.fillMaxSize().padding(8.dp)) {
         OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it },
-            label = { Text("Search") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            label = { Text("Search") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester))
         OutlinedTextField(value = replaceQuery, onValueChange = { replaceQuery = it },
             label = { Text("Replace") }, singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
