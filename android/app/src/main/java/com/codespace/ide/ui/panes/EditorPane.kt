@@ -310,7 +310,7 @@ fun EditorPane(
                         painter = androidx.compose.ui.res.painterResource(id = R.drawable.vncode_watermark),
                         contentDescription = null,
                         alpha = 0.18f,
-                        modifier = Modifier.size(260.dp),
+                        modifier = Modifier.fillMaxWidth(0.75f),
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
