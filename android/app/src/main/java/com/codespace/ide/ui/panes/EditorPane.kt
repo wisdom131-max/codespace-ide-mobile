@@ -25,6 +25,7 @@ import com.codespace.ide.domain.EditorTab
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.CodeEditor
 import java.io.File
+import com.codespace.ide.R
 
 private const val PREFS_SESSION = "editor_session"
 private const val KEY_OPEN_PATHS = "open_paths"
@@ -304,13 +305,21 @@ fun EditorPane(
             }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "</>\nCodeSpace IDE",
-                    fontSize = 48.sp,
-                    color = Color(0xFFE0E0E0),
-                    fontWeight = FontWeight.Light,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
+                Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.vncode_watermark),
+                        contentDescription = null,
+                        alpha = 0.18f,
+                        modifier = Modifier.size(260.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Open Explorer → tap a file to start",
+                        fontSize = 13.sp,
+                        color = Color(0xFFBBBBBB),
+                        fontWeight = FontWeight.Light,
+                    )
+                }
             }
         }
     }
