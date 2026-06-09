@@ -237,6 +237,7 @@ fun EditorPane(
                     )
                 }
             } else {
+                key(active.id) {
                 CodeEditor(
                     content = active.content,
                     language = active.language,
