@@ -1,8 +1,20 @@
-import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Res, UseGuards 
+  @Post('mcp/tools')
+  getTools() {
+    return { tools: MCP_TOOLS };
+  }
+
+  @Post('mcp/execute')
+  async executeTool(@Body() body: { tool: string; params: Record<string, string> }) {
+    const result = await this.mcp.executeTool(body.tool, body.params);
+    return { result };
+  }
+} from '@nestjs/common';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AiService, ProviderId } from './ai.service';
+import { McpService, MCP_TOOLS } from './mcp.service';
 
 interface ChatBody {
   provider: ProviderId;
@@ -17,7 +29,7 @@ interface ChatBody {
 @UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {
-  constructor(private readonly ai: AiService) {}
+  constructor(private readonly ai: AiService, private readonly mcp: McpService) {}
 
   @Post('chat')
   async chat(@Body() body: ChatBody, @Res() res: Response) {
