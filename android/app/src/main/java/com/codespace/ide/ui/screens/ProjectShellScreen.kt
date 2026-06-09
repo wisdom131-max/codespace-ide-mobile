@@ -407,7 +407,7 @@ fun ProjectShellScreen(
 
             // ── Top Bar (VS Code style)
             Row(
-                Modifier.fillMaxWidth().height(36.dp).background(Color(0xFFF8F8F8))
+                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
                     .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -445,24 +445,7 @@ fun ProjectShellScreen(
                 Spacer(Modifier.width(8.dp))
             }
 
-            // ── Menu Bar
-            Row(
-                Modifier.fillMaxWidth().height(28.dp).background(BgColor)
-                    .border(1.dp, DividerColor, RoundedCornerShape(0.dp))
-                    .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Spacer(Modifier.width(4.dp))
-                MENU_BAR.forEach { menu ->
-                    val isOpen = openMenuBar == menu.label
-                    Box(
-                        Modifier.background(if (isOpen) Color(0xFFE8E8E8) else Color.Transparent, RoundedCornerShape(3.dp))
-                            .clickable { openMenuBar = if (openMenuBar == menu.label) null else menu.label }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) { Text(menu.label, fontSize = 12.sp, color = MenuText) }
-                }
-                Spacer(Modifier.width(4.dp))
-            }
+            // Menu bar removed — all actions accessible via command palette
 
             // ── Main body
             Row(Modifier.weight(1f).fillMaxWidth()) {
