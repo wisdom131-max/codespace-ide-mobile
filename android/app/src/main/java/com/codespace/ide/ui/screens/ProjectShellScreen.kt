@@ -630,9 +630,13 @@ fun ProjectShellScreen(
                         } else {
                             Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.Code, null, tint = Color(0xFFDDDDDD), modifier = Modifier.size(64.dp))
+                                    androidx.compose.foundation.Image(
+                                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.vncode_watermark),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxWidth(0.8f),
+                                    )
                                     Spacer(Modifier.height(16.dp))
-                                    Text("CodeSpace IDE", fontSize = 28.sp, color = Color(0xFFDDDDDD), fontWeight = FontWeight.Light)
+                                    Text("Visual Node Code", fontSize = 22.sp, color = Color(0xFFAAAAAA), fontWeight = FontWeight.Light)
                                     Spacer(Modifier.height(8.dp))
                                     Text("Open Explorer → tap a file to start", fontSize = 13.sp, color = Color(0xFFCCCCCC))
                                     Spacer(Modifier.height(24.dp))
