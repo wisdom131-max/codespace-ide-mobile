@@ -14,11 +14,11 @@ class AiRegistry @Inject constructor(
     private val client: OkHttpClient,
 ) {
     fun create(id: AiProviderId, config: ProviderConfig): AiProvider = when (id) {
-        AiProviderId.OPENAI -> OpenAiProvider(config, client)
-        AiProviderId.CLAUDE -> ClaudeProvider(config, client)
-        AiProviderId.GEMINI -> GeminiProvider(config, client)
-        AiProviderId.DEEPSEEK -> DeepSeekProvider(config, client)
-        AiProviderId.OLLAMA -> OllamaProvider(config, client)
-        AiProviderId.OPENROUTER -> OpenRouterProvider(config, client)
+        AiProviderId.OPENAI -> GitHubCopilotProvider(config, client)
+        AiProviderId.CLAUDE -> GitHubCopilotProvider(config, client)
+        AiProviderId.GEMINI -> GitHubCopilotProvider(config, client)
+        AiProviderId.DEEPSEEK -> GitHubCopilotProvider(config, client)
+        AiProviderId.OLLAMA -> NemotronProvider(config, client)
+        AiProviderId.OPENROUTER -> QwenProvider(config, client)
     }
 }
