@@ -413,12 +413,18 @@ fun ExplorerSidePanel(
             confirmButton = {
                 Button(onClick = {
                     if (nameInput.isNotBlank()) {
-                        pendingFileName = nameInput
-                        pendingTargetDir = contextFile?.let {
+                        val targetDir = contextFile?.let {
                             if (it.isDirectory) it else it.parentFile
                         } ?: workspaceRoot
+                        if (targetDir != null) {
+                            val newFile = java.io.File(targetDir, nameInput)
+                            try {
+                                newFile.createNewFile()
+                                refresh++
+                                onOpenFile(newFile.absolutePath)
+                            } catch (_: Exception) {}
+                        }
                         showNewFile = false
-                        createFileLauncher.launch(nameInput)
                         nameInput = ""
                     }
                 }) { Text("Create") }
