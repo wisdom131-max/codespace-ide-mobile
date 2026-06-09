@@ -662,15 +662,19 @@ fun ProjectShellScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Spacer(Modifier.width(4.dp))
+                            val isDarkToolbar = KeyboardToolbarBg.red < 0.5f
+                            val keyBg = if (isDarkToolbar) Color(0xFF3A3A3A) else Color(0xFFFFFFFF)
+                            val keyText = if (isDarkToolbar) Color(0xFFEEEEEE) else Color(0xFF333333)
+                            val keyBorder = if (isDarkToolbar) Color(0xFF555555) else DividerColor
                             SPECIAL_KEYS.forEach { key ->
                                 Box(
                                     Modifier.height(32.dp).defaultMinSize(minWidth = 36.dp)
-                                        .background(Color.White, RoundedCornerShape(4.dp))
-                                        .border(1.dp, DividerColor, RoundedCornerShape(4.dp))
+                                        .background(keyBg, RoundedCornerShape(4.dp))
+                                        .border(1.dp, keyBorder, RoundedCornerShape(4.dp))
                                         .clickable { keyboardInsert?.invoke(key) }
                                         .padding(horizontal = 8.dp),
                                     contentAlignment = Alignment.Center,
-                                ) { Text(key, fontSize = 13.sp, color = TabText, fontFamily = FontFamily.Monospace) }
+                                ) { Text(key, fontSize = 13.sp, color = keyText, fontFamily = FontFamily.Monospace) }
                                 Spacer(Modifier.width(4.dp))
                             }
                         }
