@@ -858,16 +858,23 @@ fun ProjectShellScreen(
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable { showCommandPalette = false; commandQuery = "" }, contentAlignment = Alignment.TopCenter) {
                 Column(Modifier.padding(top = 80.dp).fillMaxWidth(0.95f).background(MenuBg, RoundedCornerShape(8.dp)).border(1.dp, MenuBorder, RoundedCornerShape(8.dp)).clickable(enabled = false) {}) {
                     Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                        listOf("Commands", "Files", "Settings", "Symbols").forEach { tab ->
+                        listOf("Commands", "Files").forEach { tab ->
                             val isA = commandTab == tab
                             Box(Modifier.clickable { commandTab = tab }.background(if (isA) Color(0xFF0060C0) else Color.Transparent, RoundedCornerShape(4.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
                                 Text(tab, fontSize = 13.sp, color = if (isA) Color.White else TabTextInactive)
                             }
                         }
                     }
+                    val cmdFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                    val cmdKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                    LaunchedEffect(Unit) {
+                        cmdFocusRequester.requestFocus()
+                        cmdKeyboard?.show()
+                    }
                     OutlinedTextField(value = commandQuery, onValueChange = { commandQuery = it },
                         placeholder = { Text("> Type command…", fontSize = 14.sp) },
-                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(8.dp))
+                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(8.dp)
+                            .focusRequester(cmdFocusRequester))
                     HorizontalDivider(color = DividerColor)
                     val allCmds by remember(commandQuery) { derivedStateOf { listOf(
                         "Explorer","Search","Source Control","Run & Debug","Extensions",
