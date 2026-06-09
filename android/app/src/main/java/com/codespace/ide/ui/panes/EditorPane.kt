@@ -25,6 +25,27 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.CodeEditor
 import java.io.File
 
+private const val PREFS_SESSION = "editor_session"
+private const val KEY_OPEN_PATHS = "open_paths"
+private const val KEY_ACTIVE_PATH = "active_path"
+
+private fun saveSession(context: Context, tabs: List<EditorTab>, activeId: String?) {
+    val paths = tabs.filter { it.path.startsWith("/") }.joinToString("|") { it.path }
+    val activePath = tabs.firstOrNull { it.id == activeId }?.path ?: ""
+    context.getSharedPreferences(PREFS_SESSION, Context.MODE_PRIVATE).edit()
+        .putString(KEY_OPEN_PATHS, paths)
+        .putString(KEY_ACTIVE_PATH, activePath)
+        .apply()
+}
+
+private fun loadSession(context: Context): Pair<List<String>, String?> {
+    val prefs = context.getSharedPreferences(PREFS_SESSION, Context.MODE_PRIVATE)
+    val paths = prefs.getString(KEY_OPEN_PATHS, "")
+        ?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
+    val activePath = prefs.getString(KEY_ACTIVE_PATH, null)
+    return Pair(paths, activePath)
+}
+
 private val TabBarBg = Color(0xFFECECEC)
 private val TabActiveBg = Color(0xFFFFFFFF)
 private val TabInactiveBg = Color(0xFFECECEC)
@@ -75,6 +96,27 @@ fun EditorPane(
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
+
+    // Restore session on first launch
+    LaunchedEffect(Unit) {
+        if (tabs.isEmpty()) {
+            val (paths, activePath) = loadSession(context)
+            paths.forEach { path ->
+                val file = File(path)
+                if (file.exists()) {
+                    val tab = EditorTab(
+                        path = path,
+                        name = file.name,
+                        content = loadFileContent(path),
+                        language = detectLanguage(file.name),
+                        isDirty = false,
+                    )
+                    tabs.add(tab)
+                }
+            }
+            activeId = tabs.firstOrNull { it.path == activePath }?.id ?: tabs.firstOrNull()?.id
+        }
+    }
 
     // Unsaved changes warning
     var showUnsavedDialog by remember { mutableStateOf(false) }
@@ -145,6 +187,11 @@ fun EditorPane(
             }
             onFileOpened?.invoke()
         }
+    }
+
+    // Save session whenever tabs or activeId changes
+    LaunchedEffect(tabs.toList(), activeId) {
+        saveSession(context, tabs, activeId)
     }
 
     // No sample tabs — editor starts empty, waiting for Explorer
