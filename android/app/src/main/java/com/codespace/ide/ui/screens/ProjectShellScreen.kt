@@ -639,22 +639,7 @@ fun ProjectShellScreen(
                                     Text("Visual Node Code", fontSize = 22.sp, color = Color(0xFFAAAAAA), fontWeight = FontWeight.Light)
                                     Spacer(Modifier.height(8.dp))
                                     Text("Open Explorer → tap a file to start", fontSize = 13.sp, color = Color(0xFFCCCCCC))
-                                    Spacer(Modifier.height(24.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        listOf("Explorer" to Icons.Default.Description, "Terminal" to Icons.Default.Computer, "AI Chat" to Icons.Default.AutoAwesome).forEach { (lbl, ico) ->
-                                            OutlinedButton(onClick = {
-                                                when (lbl) {
-                                                    "Explorer" -> activePanel = SidePanel.EXPLORER
-                                                    "Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
-                                                    "AI Chat"  -> showAiPanel = true
-                                                }
-                                            }) {
-                                                Icon(ico, null, modifier = Modifier.size(16.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(lbl, fontSize = 12.sp)
-                                            }
-                                        }
-                                    }
+
                                 }
                             }
                         }
