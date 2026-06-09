@@ -401,25 +401,36 @@ fun ProjectShellScreen(
         Modifier.fillMaxSize().background(BgColor)
             .onGloballyPositioned { totalWidth = it.size.width.toFloat(); totalHeight = it.size.height.toFloat() }
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(top = with(androidx.compose.ui.platform.LocalDensity.current) {
+            androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(this).toDp()
+        })) {
 
-            // ── Top Bar
+            // ── Top Bar (VS Code style)
             Row(
                 Modifier.fillMaxWidth().height(36.dp).background(Color(0xFFF8F8F8))
                     .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Left: back button
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive,
                     modifier = Modifier.size(20.dp).clickable { onBack() })
-                Spacer(Modifier.width(6.dp))
-                Icon(Icons.Default.Code, null, tint = ActivityBarIconActive, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(projectId.ifBlank { "CodeSpace" }, fontSize = 13.sp, color = TabText,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Icon(Icons.Default.Search, null, tint = TabTextInactive,
-                    modifier = Modifier.size(20.dp).clickable { showCommandPalette = true })
-                Spacer(Modifier.width(8.dp))
+                // Center: Workspace title (clickable opens command palette)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Row(
+                        Modifier
+                            .background(Color(0xFFECECEC), RoundedCornerShape(4.dp))
+                            .clickable { showCommandPalette = true }
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(Icons.Default.Search, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Workspace", fontSize = 13.sp, color = TabTextInactive, maxLines = 1)
+                    }
+                }
+                // Right: action icons
                 Icon(Icons.Default.Computer, null, tint = TabTextInactive,
                     modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL })
                 Spacer(Modifier.width(8.dp))
