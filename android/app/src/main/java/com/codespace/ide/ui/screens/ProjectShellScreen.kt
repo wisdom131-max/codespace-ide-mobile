@@ -690,7 +690,7 @@ fun ProjectShellScreen(
                                 }
                         )
                         Row(
-                            Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(36.dp).padding(horizontal = 8.dp),
+                            Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(28.dp).padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             BottomTab.entries.forEach { tab ->
@@ -702,7 +702,7 @@ fun ProjectShellScreen(
                                         .padding(horizontal = 10.dp, vertical = 4.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Text(tab.name, fontSize = 12.sp,
+                                    Text(tab.name, fontSize = 11.sp,
                                         color = if (isActive) Color(0xFF007ACC) else Color(0xFF717171),
                                         fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal)
                                 }

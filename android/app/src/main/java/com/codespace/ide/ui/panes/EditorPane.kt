@@ -204,7 +204,7 @@ fun EditorPane(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(35.dp)
+                    .height(28.dp)
                     .background(TabBarBg)
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.Bottom,
@@ -217,12 +217,12 @@ fun EditorPane(
                             .background(if (isActive) TabActiveBg else TabInactiveBg)
                     ) {
                         Row(
-                            Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 (if (tab.isDirty) "● " else "") + tab.name,
-                                fontSize = 13.sp,
+                                fontSize = 11.sp,
                                 color = if (isActive) TabText else TabTextInactive,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -247,7 +247,7 @@ fun EditorPane(
                         }
                         if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(TabActiveIndicator))
                     }
-                    Box(Modifier.width(1.dp).height(35.dp).background(DividerColor))
+                    Box(Modifier.width(1.dp).height(28.dp).background(DividerColor))
                 }
                 // Split view button
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
