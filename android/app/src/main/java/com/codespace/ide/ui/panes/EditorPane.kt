@@ -238,19 +238,20 @@ fun EditorPane(
                 }
             } else {
                 key(active.id) {
-                CodeEditor(
-                    content = active.content,
-                    language = active.language,
-                    fontSize = fontSize,
-                    onContentChange = { newText ->
-                        val idx = tabs.indexOfFirst { it.id == active.id }
-                        if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
-                        if (active.path.startsWith("/")) {
-                            try { File(active.path).writeText(newText) } catch (_: Exception) {}
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                    CodeEditor(
+                        content = active.content,
+                        language = active.language,
+                        fontSize = fontSize,
+                        onContentChange = { newText ->
+                            val idx = tabs.indexOfFirst { it.id == active.id }
+                            if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
+                            if (active.path.startsWith("/")) {
+                                try { File(active.path).writeText(newText) } catch (_: Exception) {}
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
