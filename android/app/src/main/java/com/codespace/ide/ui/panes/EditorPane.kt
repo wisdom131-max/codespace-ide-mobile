@@ -105,6 +105,7 @@ fun EditorPane(
                 val file = File(path)
                 if (file.exists()) {
                     val tab = EditorTab(
+                        id = java.util.UUID.randomUUID().toString(),
                         path = path,
                         name = file.name,
                         content = loadFileContent(path),
