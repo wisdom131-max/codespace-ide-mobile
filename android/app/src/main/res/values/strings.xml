@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">CodeSpace IDE</string>
+    <string name="app_name">Visual Node Code</string>
     <string name="tab_explorer">Explorer</string>
     <string name="tab_editor">Editor</string>
     <string name="tab_terminal">Terminal</string>

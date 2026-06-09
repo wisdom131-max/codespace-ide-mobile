@@ -291,7 +291,7 @@ private val MENU_BAR = listOf(
     MenuBarItem("Help", listOf(
         MenuAction("Documentation"), MenuAction("Keyboard Shortcuts"),
         MenuAction("Release Notes"), MenuAction("",divider=true),
-        MenuAction("About CodeSpace IDE"),
+        MenuAction("About Visual Node Code"),
     )),
 )
 
@@ -389,7 +389,7 @@ fun ProjectShellScreen(
             "Zoom In"            -> editorFontSize = (editorFontSize + 1).coerceAtMost(24)
             "Zoom Out"           -> editorFontSize = (editorFontSize - 1).coerceAtLeast(8)
             "Exit"               -> onBack()
-            "About CodeSpace IDE"-> showNotification("CodeSpace IDE — VS Code for mobile", "info")
+            "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
             "Run Program", "Start Debugging" -> {
                 showBottomPanel = true; activeBottomTab = BottomTab.DEBUG
                 showNotification("Starting debug session…", "info")
@@ -872,7 +872,7 @@ fun ProjectShellScreen(
                         "Terminal","Problems","Output","Toggle Sidebar","Toggle AI Panel",
                         "New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
-                        "Keyboard Shortcuts","About CodeSpace IDE",
+                        "Keyboard Shortcuts","About Visual Node Code",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                         items(allCmds) { cmd ->
@@ -961,7 +961,7 @@ fun ProjectShellScreen(
 }
 
 @Composable private fun OutputPanel() {
-    val logs = remember { mutableStateListOf("[info]  CodeSpace IDE started","[info]  Gradle build started","[info]  BUILD SUCCESSFUL","[info]  APK: app-prod-arm64-v8a-debug.apk") }
+    val logs = remember { mutableStateListOf("[info]  Visual Node Code started","[info]  Gradle build started","[info]  BUILD SUCCESSFUL","[info]  APK: app-prod-arm64-v8a-debug.apk") }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("OUTPUT", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))

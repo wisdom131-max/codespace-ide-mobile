@@ -50,9 +50,9 @@ fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("CodeSpace IDE", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("Visual Node Code", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Mobile IDE for Android",
+            "The Mobile IDE for Android",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

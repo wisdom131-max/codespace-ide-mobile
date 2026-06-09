@@ -35,7 +35,7 @@ object PromptBuilder {
     }
 
     fun systemPrompt(context: AiContext): String = buildString {
-        appendLine("You are CodeSpace AI, an expert pair programmer inside a mobile IDE.")
+        appendLine("You are VN Code AI, an expert pair programmer inside a mobile IDE.")
         appendLine("Be concise. Prefer code. Respect the user's language and conventions.")
         if (context.openFiles.isNotEmpty()) {
             appendLine("Open files: ${context.openFiles.joinToString()}")

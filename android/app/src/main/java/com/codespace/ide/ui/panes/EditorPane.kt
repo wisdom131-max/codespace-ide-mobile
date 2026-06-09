@@ -326,7 +326,7 @@ fun EditorPane(
 }
 
 private val SAMPLE_TS = """
-// CodeSpace IDE — TypeScript sample
+// Visual Node Code — TypeScript sample
 interface User {
   id: string;
   name: string;
@@ -341,7 +341,7 @@ greet({ id: "1", name: "Ada" }).then(console.log);
 """.trimIndent()
 
 private val SAMPLE_PY = """
-# CodeSpace IDE — Python sample
+# Visual Node Code — Python sample
 def fibonacci(n: int) -> list[int]:
     seq = [0, 1]
     while len(seq) < n:
