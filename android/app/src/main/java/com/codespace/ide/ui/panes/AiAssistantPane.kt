@@ -1,42 +1,24 @@
 package com.codespace.ide.ui.panes
 
 import android.content.Context
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.codespace.ide.data.SecureTokenStore
-import com.codespace.ide.domain.AiAction
 import com.codespace.ide.domain.ChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -47,9 +29,16 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 private const val PREFS_NAME = "ai_chat_history"
 private const val KEY_HISTORY = "chat_history"
+private const val CODESPACE_URL = "https://turbo-system-xrw4697pr99x3rjj-11434.app.github.dev"
+
+private val httpClient = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .readTimeout(60, TimeUnit.SECONDS)
+    .build()
 
 private fun saveHistory(context: Context, messages: List<ChatMessage>) {
     val arr = JSONArray()
@@ -70,141 +59,87 @@ private fun loadHistory(context: Context): List<ChatMessage> {
     } catch (e: Exception) { emptyList() }
 }
 
+private suspend fun callCodespaceModel(
+    model: String,
+    messages: List<ChatMessage>,
+): String {
+    val messagesJson = JSONArray()
+    messages.forEach { m ->
+        messagesJson.put(JSONObject().put("role", m.role).put("content", m.content))
+    }
+    val body = JSONObject()
+        .put("model", model)
+        .put("messages", messagesJson)
+        .toString()
+    val request = Request.Builder()
+        .url("$CODESPACE_URL/v1/chat/completions")
+        .header("Content-Type", "application/json")
+        .post(body.toRequestBody("application/json".toMediaType()))
+        .build()
+    val response = withContext(Dispatchers.IO) { httpClient.newCall(request).execute() }
+    if (!response.isSuccessful) throw Exception("Codespace returned ${response.code}. Make sure Ollama is running.")
+    val json = JSONObject(response.body?.string() ?: "")
+    return json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+}
+
+private suspend fun callCopilot(apiKey: String, messages: List<ChatMessage>): String {
+    val messagesJson = JSONArray()
+    messages.forEach { m ->
+        messagesJson.put(JSONObject().put("role", m.role).put("content", m.content))
+    }
+    val body = JSONObject()
+        .put("model", "gpt-4o")
+        .put("messages", messagesJson)
+        .toString()
+    val request = Request.Builder()
+        .url("https://api.githubcopilot.com/chat/completions")
+        .header("Authorization", "Bearer $apiKey")
+        .header("Content-Type", "application/json")
+        .header("Editor-Version", "vscode/1.85.0")
+        .header("Copilot-Integration-Id", "vscode-chat")
+        .post(body.toRequestBody("application/json".toMediaType()))
+        .build()
+    val response = withContext(Dispatchers.IO) { httpClient.newCall(request).execute() }
+    if (!response.isSuccessful) throw Exception("GitHub Copilot error (${response.code}). Check your GitHub token.")
+    val json = JSONObject(response.body?.string() ?: "")
+    return json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+}
+
 @Composable
 fun AiAssistantPane(tokenStore: SecureTokenStore) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
+    var selectedModel by remember { mutableStateOf("nemotron-mini") }
+    val models = listOf("nemotron-mini", "qwen2.5-coder:1.5b", "copilot")
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
     val messages = remember {
         val saved = loadHistory(context)
         mutableStateListOf<ChatMessage>().apply {
-            if (saved.isEmpty()) {
-                add(ChatMessage("assistant", "Hi! Ask me anything about your code!"))
-            } else {
-                addAll(saved)
-            }
+            if (saved.isEmpty()) add(ChatMessage("assistant", "Hi! I am VN Code AI. Select a model above and ask me anything!"))
+            else addAll(saved)
         }
     }
-    val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
 
     suspend fun sendMessage(userMessage: String) {
         if (userMessage.isBlank()) return
         messages.add(ChatMessage("user", userMessage))
         loading = true
         input = ""
-
         try {
-            val providerList = listOf("OPENROUTER","OPENAI","CLAUDE","GEMINI","DEEPSEEK","OLLAMA")
-            var apiKey = ""
-            var activeProvider = "OPENROUTER"
-            for (p in providerList) {
-                val k = tokenStore.aiKey(p)
-                if (!k.isNullOrBlank()) {
-                    apiKey = k
-                    activeProvider = p
-                    break
+            val reply = when (selectedModel) {
+                "copilot" -> {
+                    val key = tokenStore.aiKey("OPENAI") ?: tokenStore.aiKey("OPENROUTER") ?: ""
+                    if (key.isBlank()) throw Exception("No GitHub token found. Go to Settings and add your GitHub token.")
+                    callCopilot(key, messages.toList())
                 }
+                else -> callCodespaceModel(selectedModel, messages.toList())
             }
-
-            if (apiKey.isBlank()) {
-                messages.add(ChatMessage("assistant", "⚠️ No API key found. Go to Settings → enter your OpenRouter key → tap Save API Keys."))
-                saveHistory(context, messages)
-                loading = false
-                return
-            }
-
-            val model = when (activeProvider) {
-                "CLAUDE" -> "claude-haiku-4-5-20251001"
-                "OPENAI" -> "gpt-4o-mini"
-                "GEMINI" -> "gemini-2.0-flash"
-                "DEEPSEEK" -> "deepseek-chat"
-                else -> "mistralai/mistral-7b-instruct:free"
-            }
-
-            // Build request body — Gemini uses "contents"/"parts", others use "messages"
-            val body: String
-            if (activeProvider == "GEMINI") {
-                val contentsJson = JSONArray()
-                messages.filter { it.role == "user" || it.role == "model" }.forEach { m ->
-                    val role = if (m.role == "assistant") "model" else m.role
-                    val partsArr = JSONArray().put(JSONObject().put("text", m.content))
-                    contentsJson.put(JSONObject().put("role", role).put("parts", partsArr))
-                }
-                body = JSONObject().put("contents", contentsJson).toString()
-            } else {
-                val messagesJson = JSONArray()
-                messages.filter { it.role == "user" || messages.indexOf(it) > 0 }.forEach { m ->
-                    messagesJson.put(JSONObject().put("role", m.role).put("content", m.content))
-                }
-                body = JSONObject()
-                    .put("model", model)
-                    .put("messages", messagesJson)
-                    .toString()
-            }
-
-            val reqBuilder = Request.Builder()
-                .header("Content-Type", "application/json")
-
-            when (activeProvider) {
-                "CLAUDE" -> {
-                    reqBuilder.url("https://api.anthropic.com/v1/messages")
-                    reqBuilder.header("x-api-key", apiKey)
-                    reqBuilder.header("anthropic-version", "2023-06-01")
-                }
-                "GEMINI" -> {
-                    reqBuilder.url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey")
-                }
-                else -> {
-                    val url = if (activeProvider == "OPENROUTER")
-                        "https://openrouter.ai/api/v1/chat/completions"
-                    else "https://api.openai.com/v1/chat/completions"
-                    reqBuilder.url(url)
-                    reqBuilder.header("Authorization", "Bearer $apiKey")
-                    if (activeProvider == "OPENROUTER")
-                        reqBuilder.header("HTTP-Referer", "https://codespace-ide.app")
-                }
-            }
-
-            reqBuilder.post(body.toRequestBody("application/json".toMediaType()))
-
-            val response = withContext(Dispatchers.IO) {
-                OkHttpClient().newCall(reqBuilder.build()).execute()
-            }
-
-            val responseBody = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                messages.add(ChatMessage("assistant", "❌ HTTP ${response.code}: $responseBody"))
-                saveHistory(context, messages)
-                loading = false
-                return
-            }
-
-            val json = JSONObject(responseBody)
-
-            if (json.has("error")) {
-                val errMsg = json.getJSONObject("error").optString("message", responseBody)
-                messages.add(ChatMessage("assistant", "❌ API Error: $errMsg"))
-                saveHistory(context, messages)
-                loading = false
-                return
-            }
-
-            val content = when {
-                json.has("choices") -> json.getJSONArray("choices")
-                    .getJSONObject(0).getJSONObject("message").getString("content")
-                json.has("candidates") -> json.getJSONArray("candidates")
-                    .getJSONObject(0).getJSONObject("content")
-                    .getJSONArray("parts").getJSONObject(0).getString("text")
-                json.has("content") -> json.getJSONArray("content")
-                    .getJSONObject(0).getString("text")
-                else -> "Unexpected response: $responseBody"
-            }
-
-            messages.add(ChatMessage("assistant", content))
+            messages.add(ChatMessage("assistant", reply))
         } catch (e: Exception) {
-            messages.add(ChatMessage("assistant", "❌ Error: ${e.message}"))
+            messages.add(ChatMessage("assistant", "⚠️ ${e.message}"))
         } finally {
             saveHistory(context, messages)
             loading = false
@@ -216,30 +151,41 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
     }
 
     Column(Modifier.fillMaxSize()) {
+        // Model selector
         Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            AiAction.entries.forEach { action ->
-                AssistChip(
-                    onClick = {
-                        scope.launch {
-                            sendMessage(action.name.lowercase().replaceFirstChar { it.uppercase() } + " the selected code")
-                        }
-                    },
-                    label = { Text(action.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                )
+            models.forEach { model ->
+                val isSelected = model == selectedModel
+                Box(
+                    Modifier
+                        .background(
+                            if (isSelected) Color(0xFF007ACC) else Color(0xFFEEEEEE),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .clickable(onClick = { selectedModel = model })
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        model,
+                        fontSize = 12.sp,
+                        color = if (isSelected) Color.White else Color(0xFF333333),
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
             }
         }
 
+        HorizontalDivider()
+
+        // Messages
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item { Spacer(Modifier.height(4.dp)) }
             items(messages) { msg ->
                 val isUser = msg.role == "user"
                 Row(
@@ -248,14 +194,14 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                 ) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isUser) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant,
+                        color = if (isUser) Color(0xFF007ACC) else Color(0xFFF0F0F0),
+                        modifier = Modifier.widthIn(max = 280.dp),
                     ) {
                         Text(
                             msg.content,
                             Modifier.padding(12.dp),
-                            color = if (isUser) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            color = if (isUser) Color.White else Color(0xFF1A1A1A),
                         )
                     }
                 }
@@ -263,12 +209,14 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
             if (loading) {
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                        CircularProgressIndicator(Modifier.padding(8.dp))
+                        CircularProgressIndicator(Modifier.padding(8.dp).size(24.dp), strokeWidth = 2.dp)
                     }
                 }
             }
+            item { Spacer(Modifier.height(4.dp)) }
         }
 
+        // Input
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -277,16 +225,16 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Ask about your project…") },
+                placeholder = { Text("Ask VN Code AI…", fontSize = 13.sp) },
                 enabled = !loading,
+                maxLines = 4,
             )
             IconButton(
                 onClick = { scope.launch { sendMessage(input) } },
                 enabled = !loading && input.isNotBlank(),
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Send")
+                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color(0xFF007ACC))
             }
         }
     }
 }
-
