@@ -118,6 +118,7 @@ fun ExplorerSidePanel(
 
     // Create Document launcher — opens Android file picker to create a new file
     var pendingFileName by remember { mutableStateOf("") }
+    var pendingTargetDir by remember { mutableStateOf<java.io.File?>(null) }
     val createFileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("*/*")
     ) { uri: Uri? ->
@@ -125,10 +126,8 @@ fun ExplorerSidePanel(
             try {
                 // Write empty content to the SAF uri
                 context.contentResolver.openOutputStream(uri)?.use { it.write(byteArrayOf()) }
-                // Also create the file directly in the workspace so explorer shows it
-                val targetDir = contextFile?.let {
-                    if (it.isDirectory) it else it.parentFile
-                } ?: workspaceRoot
+                // Use the captured target dir
+                val targetDir = pendingTargetDir ?: workspaceRoot
                 if (targetDir != null && pendingFileName.isNotBlank()) {
                     val localFile = java.io.File(targetDir, pendingFileName)
                     try {
@@ -415,6 +414,9 @@ fun ExplorerSidePanel(
                 Button(onClick = {
                     if (nameInput.isNotBlank()) {
                         pendingFileName = nameInput
+                        pendingTargetDir = contextFile?.let {
+                            if (it.isDirectory) it else it.parentFile
+                        } ?: workspaceRoot
                         showNewFile = false
                         createFileLauncher.launch(nameInput)
                         nameInput = ""
