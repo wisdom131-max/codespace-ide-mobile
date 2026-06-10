@@ -169,7 +169,9 @@ fun TerminalPane() {
                         else -> {
                             val termuxPrefix = "/data/data/com.termux/files/usr"
                             val termuxHome = "/data/data/com.termux/files/home"
-                            val pb = ProcessBuilder("sh", "-c", trimmed)
+                            val termuxBash = "$termuxPrefix/bin/bash"
+                            val shell = if (java.io.File(termuxBash).exists()) termuxBash else "sh"
+                            val pb = ProcessBuilder(shell, "-c", trimmed)
                                 .directory(workingDir)
                                 .redirectErrorStream(true)
                             pb.environment().apply {
@@ -177,14 +179,21 @@ fun TerminalPane() {
                                 put("HOME", termuxHome)
                                 put("TMPDIR", "$termuxPrefix/tmp")
                                 put("LANG", "en_US.UTF-8")
-                                put("PATH", "$termuxPrefix/bin:$termuxPrefix/bin/applets:/system/bin:/system/xbin")
+                                put("PATH", "$termuxPrefix/bin:$termuxPrefix/bin/applets:$termuxPrefix/bin/python3:/system/bin:/system/xbin")
                                 put("LD_LIBRARY_PATH", "$termuxPrefix/lib")
+                                put("SHELL", shell)
+                                put("TERM", "xterm-256color")
+                                put("PWD", workingDir.absolutePath)
                             }
                             val process = pb.start()
                             val reader = BufferedReader(InputStreamReader(process.inputStream))
                             val output = mutableListOf<String>()
                             var line: String?
-                            while (reader.readLine().also { line = it } != null) output.add(line!!)
+                            while (reader.readLine().also { line = it } != null) {
+                                // Strip ANSI color codes for clean display
+                                val clean = line!!.replace(Regex("\x1B\[[0-9;]*[mGKHF]"), "")
+                                if (clean.isNotBlank()) output.add(clean)
+                            }
                             process.waitFor()
                             if (output.isEmpty()) listOf("Done") else output
                         }
