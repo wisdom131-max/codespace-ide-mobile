@@ -1,15 +1,4 @@
-import { Body, Controller, Post, Res, UseGuards 
-  @Post('mcp/tools')
-  getTools() {
-    return { tools: MCP_TOOLS };
-  }
-
-  @Post('mcp/execute')
-  async executeTool(@Body() body: { tool: string; params: Record<string, string> }) {
-    const result = await this.mcp.executeTool(body.tool, body.params);
-    return { result };
-  }
-} from '@nestjs/common';
+import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -46,5 +35,16 @@ export class AiController {
     } finally {
       res.end();
     }
+  }
+
+  @Post('mcp/tools')
+  getTools() {
+    return { tools: MCP_TOOLS };
+  }
+
+  @Post('mcp/execute')
+  async executeTool(@Body() body: { tool: string; params: Record<string, string> }) {
+    const result = await this.mcp.executeTool(body.tool, body.params);
+    return { result };
   }
 }
