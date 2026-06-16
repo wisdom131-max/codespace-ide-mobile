@@ -1,15 +1,11 @@
 package com.codespace.ide.ui.panes
 
 import android.content.Context
+import android.view.ViewGroup
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -18,198 +14,99 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
+import androidx.compose.ui.viewinterop.AndroidView
+import com.termux.terminal.TerminalEmulator
+import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
+import com.termux.view.TerminalView
+import com.termux.view.TerminalViewClient
 
-private const val TERMINAL_PREFS = "terminal_history"
-
-data class TerminalSession(
+private data class PtySession(
     val id: String,
     val name: String,
-    val lines: MutableList<String> = mutableListOf("CodeSpace Terminal — type a command and press Enter"),
-    var workingDir: String = "/storage/emulated/0",
+    val session: TerminalSession,
 )
 
-fun saveTerminals(context: Context, sessions: List<TerminalSession>, activeId: String) {
-    val arr = JSONArray()
-    sessions.forEach { s ->
-        val linesArr = JSONArray()
-        s.lines.forEach { linesArr.put(it) }
-        arr.put(
-            JSONObject()
-                .put("id", s.id)
-                .put("name", s.name)
-                .put("lines", linesArr)
-                .put("workingDir", s.workingDir)
-        )
-    }
-    context.getSharedPreferences(TERMINAL_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString("sessions", arr.toString())
-        .putString("activeId", activeId)
-        .apply()
-}
-
-fun loadTerminals(context: Context): Pair<List<TerminalSession>, String> {
-    val prefs = context.getSharedPreferences(TERMINAL_PREFS, Context.MODE_PRIVATE)
-    val str = prefs.getString("sessions", null)
-    val activeId = prefs.getString("activeId", "1") ?: "1"
-    if (str == null) return Pair(listOf(TerminalSession("1", "bash")), "1")
-    return try {
-        val arr = JSONArray(str)
-        val sessions = (0 until arr.length()).map {
-            val obj = arr.getJSONObject(it)
-            val linesArr = obj.getJSONArray("lines")
-            val lines = (0 until linesArr.length()).map { i -> linesArr.getString(i) }.toMutableList()
-            TerminalSession(
-                id = obj.getString("id"),
-                name = obj.getString("name"),
-                lines = lines,
-                workingDir = obj.getString("workingDir"),
-            )
+private fun createTermuxSession(context: Context, name: String): TerminalSession {
+    val termuxPrefix = "/data/data/com.termux/files/usr"
+    val termuxHome = "/data/data/com.termux/files/home"
+    val shell = "$termuxPrefix/bin/bash"
+    val env = arrayOf(
+        "TERM=xterm-256color",
+        "PREFIX=$termuxPrefix",
+        "HOME=$termuxHome",
+        "TMPDIR=$termuxPrefix/tmp",
+        "LANG=en_US.UTF-8",
+        "PATH=$termuxPrefix/bin:$termuxPrefix/bin/applets:/system/bin:/system/xbin",
+        "LD_LIBRARY_PATH=$termuxPrefix/lib",
+        "SHELL=$shell",
+        "COLORTERM=truecolor",
+    )
+    return TerminalSession(
+        shell,
+        termuxHome,
+        arrayOf(),
+        env,
+        TerminalEmulator.DEFAULT_TERMINAL_TRANSCRIPT_ROWS,
+        object : TerminalSessionClient {
+            override fun onTextChanged(changedSession: TerminalSession) {}
+            override fun onTitleChanged(changedSession: TerminalSession) {}
+            override fun onSessionFinished(finishedSession: TerminalSession) {}
+            override fun onCopyTextToClipboard(session: TerminalSession, text: String) {}
+            override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+            override fun onBell(session: TerminalSession) {}
+            override fun onColorsChanged(session: TerminalSession) {}
+            override fun onTerminalCursorStateChange(state: Boolean) {}
+            override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
+            override fun logError(tag: String, message: String) {}
+            override fun logWarn(tag: String, message: String) {}
+            override fun logInfo(tag: String, message: String) {}
+            override fun logDebug(tag: String, message: String) {}
+            override fun logVerbose(tag: String, message: String) {}
+            override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {}
+            override fun logStackTrace(tag: String, e: Exception) {}
         }
-        Pair(sessions, activeId)
-    } catch (e: Exception) {
-        Pair(listOf(TerminalSession("1", "bash")), "1")
-    }
+    )
 }
 
 @Composable
 fun TerminalPane() {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val keyboardController = LocalSoftwareKeyboardController.current
-
-    val (savedSessions, savedActiveId) = remember { loadTerminals(context) }
-    val sessions = remember { mutableStateListOf(*savedSessions.toTypedArray()) }
-    var activeId by remember { mutableStateOf(savedActiveId) }
-    var input by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
-    val focusRequester = remember { FocusRequester() }
     var showTerminalMenu by remember { mutableStateOf(false) }
 
-    val activeSession = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
-
-    // Auto-scroll to bottom when new output arrives
-    LaunchedEffect(activeSession?.lines?.size) {
-        val size = activeSession?.lines?.size ?: 0
-        if (size > 0) listState.animateScrollToItem(size - 1)
+    val sessions = remember {
+        mutableStateListOf(
+            PtySession("1", "bash", createTermuxSession(context, "bash"))
+        )
     }
-
-    fun saveAll() = saveTerminals(context, sessions, activeId)
+    var activeId by remember { mutableStateOf("1") }
+    val activeSession = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
 
     fun addTerminal() {
         val newId = System.currentTimeMillis().toString()
         val num = sessions.size + 1
-        sessions.add(TerminalSession(newId, "bash $num"))
+        sessions.add(PtySession(newId, "bash $num", createTermuxSession(context, "bash $num")))
         activeId = newId
-        saveAll()
     }
 
     fun closeTerminal(id: String) {
         if (sessions.size <= 1) return
         val idx = sessions.indexOfFirst { it.id == id }
+        sessions[idx].session.finishIfRunning()
         sessions.removeAt(idx)
         if (activeId == id) activeId = sessions.getOrNull(idx - 1)?.id ?: sessions.first().id
-        saveAll()
-    }
-
-    fun clearTerminal() {
-        val session = sessions.firstOrNull { it.id == activeId } ?: return
-        session.lines.clear()
-        saveAll()
-    }
-
-    fun runCommand(cmd: String) {
-        val session = sessions.firstOrNull { it.id == activeId } ?: return
-        val trimmed = cmd.trim()
-        if (trimmed.isBlank()) return
-        val shortDir = session.workingDir.replace("/storage/emulated/0", "~").replace("/data/data/com.termux/files/home", "~")
-        session.lines.add("PROMPT:$shortDir")
-        session.lines.add("$ $trimmed")
-        val sessionIdx = sessions.indexOfFirst { it.id == activeId }
-
-        scope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    val workingDir = File(session.workingDir)
-                    when {
-                        trimmed.startsWith("cd ") -> {
-                            val newPath = trimmed.substring(3).trim()
-                            val newDir = if (newPath.startsWith("/")) File(newPath) else File(workingDir, newPath)
-                            if (newDir.exists() && newDir.isDirectory) {
-                                sessions[sessionIdx] = session.copy(workingDir = newDir.absolutePath)
-                                listOf("-> ${newDir.absolutePath}")
-                            } else listOf("cd: no such directory: $newPath")
-                        }
-                        trimmed == "clear" -> { session.lines.clear(); listOf() }
-                        trimmed == "ls" -> workingDir.listFiles()
-                            ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name })
-                            ?.map { if (it.isDirectory) "${it.name}/" else it.name }
-                            ?: listOf("Permission denied")
-                        trimmed == "pwd" -> listOf(workingDir.absolutePath)
-                        else -> {
-                            val termuxPrefix = "/data/data/com.termux/files/usr"
-                            val termuxHome = "/data/data/com.termux/files/home"
-                            val termuxBash = "$termuxPrefix/bin/bash"
-                            val shell = if (java.io.File(termuxBash).exists()) termuxBash else "sh"
-                            val pb = ProcessBuilder(shell, "-c", trimmed)
-                                .directory(workingDir)
-                                .redirectErrorStream(true)
-                            pb.environment().apply {
-                                put("PREFIX", termuxPrefix)
-                                put("HOME", termuxHome)
-                                put("TMPDIR", "$termuxPrefix/tmp")
-                                put("LANG", "en_US.UTF-8")
-                                put("PATH", "$termuxPrefix/bin:$termuxPrefix/bin/applets:$termuxPrefix/bin/python3:/system/bin:/system/xbin")
-                                put("LD_LIBRARY_PATH", "$termuxPrefix/lib")
-                                put("SHELL", shell)
-                                put("TERM", "xterm-256color")
-                                put("PWD", workingDir.absolutePath)
-                            }
-                            val process = pb.start()
-                            val reader = BufferedReader(InputStreamReader(process.inputStream))
-                            val output = mutableListOf<String>()
-                            var line: String?
-                            while (reader.readLine().also { line = it } != null) {
-                                // Strip ANSI color codes for clean display
-                                val clean = line!!.replace(Regex("\x1B\[[0-9;]*[mGKHF]"), "")
-                                if (clean.isNotBlank()) output.add(clean)
-                            }
-                            process.waitFor()
-                            if (output.isEmpty()) listOf("Done") else output
-                        }
-                    }
-                }
-                session.lines.addAll(result)
-            } catch (e: Exception) {
-                session.lines.add("Error: ${e.message}")
-            }
-            saveAll()
-        }
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
 
-        // ── Internal tab bar: bash session tabs + "+" + "⋮" ────────────────────
+        // Tab bar
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF252526)),
             verticalAlignment = Alignment.CenterVertically,
@@ -223,7 +120,7 @@ fun TerminalPane() {
                     Row(
                         Modifier
                             .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
-                            .clickable { activeId = session.id; saveAll() }
+                            .clickable { activeId = session.id }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -236,24 +133,21 @@ fun TerminalPane() {
                         )
                         if (sessions.size > 1) {
                             Icon(
-                                Icons.Default.Close, contentDescription = "Close",
+                                Icons.Default.Close, null,
                                 tint = Color(0xFF969696),
-                                modifier = Modifier
-                                    .padding(start = 4.dp)
-                                    .clickable { closeTerminal(session.id) }
-                                    .padding(2.dp),
+                                modifier = Modifier.padding(start = 4.dp)
+                                    .clickable { closeTerminal(session.id) }.padding(2.dp),
                             )
                         }
                     }
                 }
             }
             IconButton(onClick = { addTerminal() }) {
-                Icon(Icons.Default.Add, contentDescription = "New terminal", tint = Color(0xFF969696))
+                Icon(Icons.Default.Add, null, tint = Color(0xFF969696))
             }
-            // Internal ⋮ menu (Clear, Kill, etc.)
             Box {
                 IconButton(onClick = { showTerminalMenu = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color(0xFF969696))
+                    Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696))
                 }
                 DropdownMenu(
                     expanded = showTerminalMenu,
@@ -262,7 +156,6 @@ fun TerminalPane() {
                     modifier = Modifier.background(Color(0xFF2D2D2D)),
                 ) {
                     listOf(
-                        "Clear Terminal" to { clearTerminal() },
                         "New Terminal" to { addTerminal() },
                         "Kill Terminal" to { if (sessions.size > 1) closeTerminal(activeId) },
                     ).forEach { (label, action) ->
@@ -275,91 +168,53 @@ fun TerminalPane() {
             }
         }
 
-        // ── Output area with inline input ───────────────────────────────────────
+        // PTY Terminal View
         if (activeSession != null) {
-            val shortDir = activeSession.workingDir
-                .replace("/storage/emulated/0", "~")
-                .replace("/data/data/com.termux/files/home", "~")
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .clickable(indication = null, interactionSource = remember {
-                        androidx.compose.foundation.interaction.MutableInteractionSource()
-                    }) {
-                        focusRequester.requestFocus()
-                        keyboardController?.show()
-                    },
-            ) {
-                items(activeSession.lines) { line ->
-                    if (line.startsWith("PROMPT:")) {
-                        val parts = line.removePrefix("PROMPT:").split("||")
-                        Row(Modifier.padding(vertical = 1.dp)) {
-                            Text("user", color = Color(0xFF50FA7B), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                            Text("@codespace", color = Color(0xFF8BE9FD), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                            Text(":", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                            Text(parts.getOrElse(0) { "~" }, color = Color(0xFF89B4FA), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                            if (parts.size > 1) {
-                                Text(" (", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                                Text(parts[1], color = Color(0xFFFFB86C), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                                Text(")", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                            }
-                            Text(" $ ", color = Color(0xFFF8F8F2), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                        }
-                    } else {
-                        Text(
-                            line,
-                            color = when {
-                                line.startsWith("$") -> Color(0xFF89B4FA)
-                                line.startsWith("Error") -> Color(0xFFF38BA8)
-                                line.startsWith("->") -> Color(0xFFA6E3A1)
-                                line.startsWith("Done") -> Color(0xFFA6E3A1)
-                                else -> Color(0xFFCDD6F4)
-                            },
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(vertical = 1.dp),
-                        )
-                    }
-                }
-
-                // Inline input as last item in the list
-                item {
-                    Row(
-                        Modifier.padding(vertical = 1.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("user", color = Color(0xFF50FA7B), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                        Text("@codespace", color = Color(0xFF8BE9FD), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                        Text(":", color = Color(0xFFCDD6F4), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                        Text(shortDir, color = Color(0xFF89B4FA), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                        Text(" $ ", color = Color(0xFFF8F8F2), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                        BasicTextField(
-                            value = input,
-                            onValueChange = { newValue ->
-                                if (newValue.endsWith("\n")) {
-                                    runCommand(newValue.trimEnd('\n'))
-                                    input = ""
-                                } else {
-                                    input = newValue
+            key(activeSession.id) {
+                AndroidView(
+                    factory = { ctx ->
+                        TerminalView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                            attachSession(activeSession.session)
+                            setTerminalViewClient(object : TerminalViewClient {
+                                override fun logError(tag: String, message: String) {}
+                                override fun logWarn(tag: String, message: String) {}
+                                override fun logInfo(tag: String, message: String) {}
+                                override fun logDebug(tag: String, message: String) {}
+                                override fun logVerbose(tag: String, message: String) {}
+                                override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {}
+                                override fun logStackTrace(tag: String, e: Exception) {}
+                                override fun onScroll(e: android.view.MotionEvent, distanceX: Float, distanceY: Float): Boolean = false
+                                override fun onScale(scale: Float): Float = scale
+                                override fun onSingleTapUp(e: android.view.MotionEvent): Boolean {
+                                    requestFocus()
+                                    return true
                                 }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .focusRequester(focusRequester),
-                            textStyle = TextStyle(
-                                color = Color(0xFFCDD6F4),
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                                lineHeight = 20.sp,
-                            ),
-                            cursorBrush = SolidColor(Color(0xFF89B4FA)),
-                            maxLines = 1,
-                        )
+                                override fun shouldBackButtonCauseSingleEscape(): Boolean = false
+                                override fun isTerminalViewSelected(): Boolean = true
+                                override fun copyModeChanged(copyMode: Boolean) {}
+                                override fun onKeyDown(keyCode: Int, e: android.view.KeyEvent, session: TerminalSession): Boolean = false
+                                override fun onKeyUp(keyCode: Int, e: android.view.KeyEvent): Boolean = false
+                                override fun onLongPress(e: android.view.MotionEvent): Boolean = false
+                                override fun readControlKey(): Boolean = false
+                                override fun readAltKey(): Boolean = false
+                                override fun readShiftKey(): Boolean = false
+                                override fun readFnKey(): Boolean = false
+                                override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
+                                override fun onEmulatorSet() {}
+                            })
+                            setTextSize(13)
+                            keepScreenOn = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    update = { view ->
+                        view.attachSession(activeSession.session)
                     }
-                }
+                )
             }
         }
     }
