@@ -167,7 +167,6 @@ dependencies {
     implementation("com.hierynomus:sshj:0.38.0")
 
     // Termux terminal PTY
-    implementation("com.github.termux:termux-view:0.118.0")
 
     // Tests
     testImplementation("junit:junit:4.13.2")
