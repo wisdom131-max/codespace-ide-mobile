@@ -272,7 +272,7 @@ private val MENU_BAR = listOf(
         MenuAction("",divider=true),
         MenuAction("Terminal","Ctrl+`"), MenuAction("Problems","Ctrl+Shift+M"),
         MenuAction("Output"), MenuAction("",divider=true),
-        MenuAction("Toggle Sidebar","Ctrl+B"), MenuAction("Toggle AI Panel"),
+        MenuAction("Toggle Sidebar","Ctrl+B"), MenuAction(),
         MenuAction("Zoom In"), MenuAction("Zoom Out"),
     )),
     MenuBarItem("Go", listOf(
@@ -376,7 +376,7 @@ fun ProjectShellScreen(
             "Run & Debug"        -> activePanel = SidePanel.RUN
             "Extensions"         -> activePanel = SidePanel.EXTENSIONS
             "Toggle Sidebar"     -> activePanel = if (activePanel == null) SidePanel.EXPLORER else null
-            "Toggle AI Panel"    -> showAiPanel = !showAiPanel
+                -> showAiPanel = !showAiPanel
             "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
             "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
@@ -439,10 +439,7 @@ fun ProjectShellScreen(
                 Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50),
                     modifier = Modifier.size(20.dp).clickable { handleMenuAction("Run Program") })
                 Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.AutoAwesome, null,
-                    tint = if (showAiPanel) ActivityBarIconActive else TabTextInactive,
-                    modifier = Modifier.size(20.dp).clickable { showAiPanel = !showAiPanel })
-                Spacer(Modifier.width(8.dp))
+
                 Icon(Icons.Default.Notifications, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
             }
@@ -479,9 +476,7 @@ fun ProjectShellScreen(
                         Icon(Icons.Default.MoreHoriz, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
                     }
                     Spacer(Modifier.weight(1f))
-                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showAiPanel = !showAiPanel }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.AutoAwesome, null, tint = if (showAiPanel) ActivityBarIconActive else ActivityBarIcon, modifier = Modifier.size(24.dp))
-                    }
+
                     Box(Modifier.fillMaxWidth().height(48.dp).clickable { showPersonMenu = true }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Person, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
                     }
@@ -731,27 +726,6 @@ fun ProjectShellScreen(
 
                 } // end editor Column
 
-                // AI Panel
-                if (showAiPanel) {
-                    val aw = with(density) { aiPanelWidth.toDp() }.coerceIn(200.dp, 500.dp)
-                    Box(Modifier.width(4.dp).fillMaxHeight().background(DividerColor)
-                        .pointerInput(Unit) {
-                            detectDragGestures { _, dragAmount ->
-                                aiPanelWidth = (aiPanelWidth - dragAmount.x).coerceIn(150f, totalWidth * 0.5f)
-                            }
-                        })
-                    Column(Modifier.width(aw).fillMaxHeight().background(BgColor)) {
-                        Row(Modifier.fillMaxWidth().background(TabBarBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, null, tint = ActivityBarIconActive, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("AI CHAT", fontSize = 11.sp, color = SectionHeaderText, modifier = Modifier.weight(1f))
-                            Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                                modifier = Modifier.size(16.dp).clickable { showAiPanel = false })
-                        }
-                        HorizontalDivider(color = DividerColor)
-                        AiAssistantPane(tokenStore = tokenStore)
-                    }
-                }
 
             } // end main Row
 
@@ -869,8 +843,7 @@ fun ProjectShellScreen(
                     HorizontalDivider(color = DividerColor)
                     val allCmds by remember(commandQuery) { derivedStateOf { listOf(
                         "Explorer","Search","Source Control","Run & Debug","Extensions",
-                        "Terminal","Problems","Output","Toggle Sidebar","Toggle AI Panel",
-                        "New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
+                        "Terminal","Problems","Output","Toggle Sidebar",                        "New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About Visual Node Code",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
