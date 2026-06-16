@@ -329,7 +329,8 @@ fun ProjectShellScreen(
     val KeyboardToolbarBg = t.KeyboardToolbarBg
     var activePanel        by remember { mutableStateOf<SidePanel?>(null) }
     var showBottomPanel    by remember { mutableStateOf(true) }
-    var showAiPanel        by remember { mutableStateOf(false) }
+    var showSplitTerminal  by remember { mutableStateOf(false) }
+    var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
 
     var activeBottomTab    by remember { mutableStateOf(BottomTab.TERMINAL) }
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
@@ -376,7 +377,6 @@ fun ProjectShellScreen(
             "Run & Debug"        -> activePanel = SidePanel.RUN
             "Extensions"         -> activePanel = SidePanel.EXTENSIONS
             "Toggle Sidebar"     -> activePanel = if (activePanel == null) SidePanel.EXPLORER else null
-                -> showAiPanel = !showAiPanel
             "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
             "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
@@ -726,6 +726,42 @@ fun ProjectShellScreen(
 
                 } // end editor Column
 
+                // Split Terminal Panel
+                if (showSplitTerminal) {
+                    val density = androidx.compose.ui.platform.LocalDensity.current
+                    Box(
+                        Modifier
+                            .width(with(density) { splitTerminalWidth.toDp() })
+                            .fillMaxHeight()
+                    ) {
+                        Column(Modifier.fillMaxSize()) {
+                            // Drag handle
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .background(DividerColor)
+                                    .pointerInput(Unit) {
+                                        detectHorizontalDragGestures { _, dragAmount ->
+                                            splitTerminalWidth = (splitTerminalWidth - dragAmount)
+                                                .coerceIn(200f, 600f)
+                                        }
+                                    }
+                            )
+                            // Header
+                            Row(
+                                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFF252526)).padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("TERMINAL 2", fontSize = 11.sp, color = Color(0xFF969696), modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
+                                    modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
+                            }
+                            HorizontalDivider(color = DividerColor)
+                            TerminalPane()
+                        }
+                    }
+                }
 
             } // end main Row
 
