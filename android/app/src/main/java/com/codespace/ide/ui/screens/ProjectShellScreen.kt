@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -272,7 +273,7 @@ private val MENU_BAR = listOf(
         MenuAction("",divider=true),
         MenuAction("Terminal","Ctrl+`"), MenuAction("Problems","Ctrl+Shift+M"),
         MenuAction("Output"), MenuAction("",divider=true),
-        MenuAction("Toggle Sidebar","Ctrl+B"), MenuAction(),
+        MenuAction("Toggle Sidebar","Ctrl+B"),
         MenuAction("Zoom In"), MenuAction("Zoom Out"),
     )),
     MenuBarItem("Go", listOf(
