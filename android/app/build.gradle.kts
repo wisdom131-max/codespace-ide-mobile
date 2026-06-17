@@ -27,7 +27,24 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags += ""
+            }
+        }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    ndkVersion = "26.1.10909125"
 
     signingConfigs {
         create("release") {
@@ -112,8 +129,6 @@ android {
 }
 
 dependencies {
-    implementation("com.termux:terminal-emulator:v0.118.3")
-    implementation("com.termux:terminal-view:v0.118.3")
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
 
@@ -169,8 +184,6 @@ dependencies {
     implementation("com.hierynomus:sshj:0.38.0")
 
     // Termux terminal PTY
-    implementation("com.termux:terminal-emulator:v0.118.3")
-    implementation("com.termux:terminal-view:v0.118.3")
 
     // Tests
     testImplementation("junit:junit:4.13.2")
