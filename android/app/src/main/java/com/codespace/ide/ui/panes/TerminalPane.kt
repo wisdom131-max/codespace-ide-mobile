@@ -3,6 +3,7 @@ package com.codespace.ide.ui.panes
 import android.content.Context
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
@@ -28,16 +28,11 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 
-private data class PtySession(
-    val id: String,
-    val name: String,
-    val session: TerminalSession,
-)
-
-private fun createTermuxSession(context: Context, name: String): TerminalSession {
+private fun createTermuxSession(): TerminalSession {
     val termuxPrefix = "/data/data/com.termux/files/usr"
     val termuxHome = "/data/data/com.termux/files/home"
-    val shell = "$termuxPrefix/bin/bash"
+    val shell = if (java.io.File("$termuxPrefix/bin/bash").exists())
+        "$termuxPrefix/bin/bash" else "/system/bin/sh"
     val env = arrayOf(
         "TERM=xterm-256color",
         "PREFIX=$termuxPrefix",
@@ -76,27 +71,22 @@ private fun createTermuxSession(context: Context, name: String): TerminalSession
     )
 }
 
+private data class PtySession(val id: String, val name: String, val session: TerminalSession)
+
 @Composable
 fun TerminalPane() {
-    val context = LocalContext.current
-    var showTerminalMenu by remember { mutableStateOf(false) }
-
-    val sessions = remember {
-        mutableStateListOf(
-            PtySession("1", "bash", createTermuxSession(context, "bash"))
-        )
-    }
+    var showMenu by remember { mutableStateOf(false) }
+    val sessions = remember { mutableStateListOf(PtySession("1", "bash", createTermuxSession())) }
     var activeId by remember { mutableStateOf("1") }
-    val activeSession = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
+    val active = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
 
-    fun addTerminal() {
-        val newId = System.currentTimeMillis().toString()
-        val num = sessions.size + 1
-        sessions.add(PtySession(newId, "bash $num", createTermuxSession(context, "bash $num")))
-        activeId = newId
+    fun addSession() {
+        val id = System.currentTimeMillis().toString()
+        sessions.add(PtySession(id, "bash ${sessions.size + 1}", createTermuxSession()))
+        activeId = id
     }
 
-    fun closeTerminal(id: String) {
+    fun closeSession(id: String) {
         if (sessions.size <= 1) return
         val idx = sessions.indexOfFirst { it.id == id }
         sessions[idx].session.finishIfRunning()
@@ -106,79 +96,47 @@ fun TerminalPane() {
 
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
 
-        // Tab bar
-        Row(
-            Modifier.fillMaxWidth().background(Color(0xFF252526)),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                sessions.forEach { session ->
-                    val isActive = session.id == activeId
+        Row(Modifier.fillMaxWidth().background(Color(0xFF252526)), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                sessions.forEach { s ->
+                    val isActive = s.id == activeId
                     Row(
-                        Modifier
-                            .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
-                            .clickable { activeId = session.id }
+                        Modifier.background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
+                            .clickable { activeId = s.id }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(
-                            session.name,
-                            color = if (isActive) Color.White else Color(0xFF969696),
-                            fontSize = 13.sp,
-                            fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
-                        )
+                        Text(s.name, color = if (isActive) Color.White else Color(0xFF969696),
+                            fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
                         if (sessions.size > 1) {
-                            Icon(
-                                Icons.Default.Close, null,
-                                tint = Color(0xFF969696),
-                                modifier = Modifier.padding(start = 4.dp)
-                                    .clickable { closeTerminal(session.id) }.padding(2.dp),
-                            )
+                            Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
+                                modifier = Modifier.padding(start = 4.dp).clickable { closeSession(s.id) }.padding(2.dp))
                         }
                     }
                 }
             }
-            IconButton(onClick = { addTerminal() }) {
-                Icon(Icons.Default.Add, null, tint = Color(0xFF969696))
-            }
+            IconButton(onClick = { addSession() }) { Icon(Icons.Default.Add, null, tint = Color(0xFF969696)) }
             Box {
-                IconButton(onClick = { showTerminalMenu = true }) {
-                    Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696))
-                }
-                DropdownMenu(
-                    expanded = showTerminalMenu,
-                    onDismissRequest = { showTerminalMenu = false },
-                    offset = DpOffset(0.dp, 4.dp),
-                    modifier = Modifier.background(Color(0xFF2D2D2D)),
-                ) {
-                    listOf(
-                        "New Terminal" to { addTerminal() },
-                        "Kill Terminal" to { if (sessions.size > 1) closeTerminal(activeId) },
-                    ).forEach { (label, action) ->
-                        DropdownMenuItem(
-                            text = { Text(label, color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                            onClick = { showTerminalMenu = false; action() },
-                        )
-                    }
+                IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696)) }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
+                    offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
+                    DropdownMenuItem(text = { Text("New Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; addSession() })
+                    DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; if (sessions.size > 1) closeSession(activeId) })
                 }
             }
         }
 
-        // PTY Terminal View
-        if (activeSession != null) {
-            key(activeSession.id) {
+        if (active != null) {
+            key(active.id) {
                 AndroidView(
                     factory = { ctx ->
                         TerminalView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                            )
-                            attachSession(activeSession.session)
+                            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                            attachSession(active.session)
+                            setTextSize(13)
                             setTerminalViewClient(object : TerminalViewClient {
                                 override fun logError(tag: String, message: String) {}
                                 override fun logWarn(tag: String, message: String) {}
@@ -189,10 +147,7 @@ fun TerminalPane() {
                                 override fun logStackTrace(tag: String, e: Exception) {}
                                 override fun onScroll(e: android.view.MotionEvent, distanceX: Float, distanceY: Float): Boolean = false
                                 override fun onScale(scale: Float): Float = scale
-                                override fun onSingleTapUp(e: android.view.MotionEvent): Boolean {
-                                    requestFocus()
-                                    return true
-                                }
+                                override fun onSingleTapUp(e: android.view.MotionEvent): Boolean { requestFocus(); return true }
                                 override fun shouldBackButtonCauseSingleEscape(): Boolean = false
                                 override fun isTerminalViewSelected(): Boolean = true
                                 override fun copyModeChanged(copyMode: Boolean) {}
@@ -206,14 +161,13 @@ fun TerminalPane() {
                                 override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
                                 override fun onEmulatorSet() {}
                             })
-                            setTextSize(13)
                             keepScreenOn = true
+                            requestFocus()
                         }
                     },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { view ->
-                        view.attachSession(activeSession.session)
-                    }
+                    modifier = Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember {
+                        androidx.compose.foundation.interaction.MutableInteractionSource()
+                    }) {},
                 )
             }
         }

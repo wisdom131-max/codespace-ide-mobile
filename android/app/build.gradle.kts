@@ -112,6 +112,8 @@ android {
 }
 
 dependencies {
+    implementation("com.termux:terminal-emulator:v0.118.3")
+    implementation("com.termux:terminal-view:v0.118.3")
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
 
@@ -167,6 +169,8 @@ dependencies {
     implementation("com.hierynomus:sshj:0.38.0")
 
     // Termux terminal PTY
+    implementation("com.termux:terminal-emulator:v0.118.3")
+    implementation("com.termux:terminal-view:v0.118.3")
 
     // Tests
     testImplementation("junit:junit:4.13.2")
@@ -178,3 +182,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
