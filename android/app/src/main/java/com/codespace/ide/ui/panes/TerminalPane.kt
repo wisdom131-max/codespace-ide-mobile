@@ -1,15 +1,15 @@
 package com.codespace.ide.ui.panes
 
 import android.content.Context
+import android.graphics.Typeface
+import android.util.Log
+import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -18,216 +18,185 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.codespace.ide.terminal.PtySession
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import androidx.compose.ui.viewinterop.AndroidView
+import com.codespace.ide.terminal.BusyboxInstaller
+import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
+import com.termux.view.TerminalView
+import com.termux.view.TerminalViewClient
 
-private val ANSI_REGEX = Regex("\\x1B\\[[0-9;]*[a-zA-Z]|\\x1B\\([AB]|\\r")
+private class SimpleTerminalSessionClient : TerminalSessionClient {
+    var onTextChanged: (() -> Unit)? = null
+    override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
+    override fun onTitleChanged(changedSession: TerminalSession) {}
+    override fun onSessionFinished(finishedSession: TerminalSession) {}
+    override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {}
+    override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+    override fun onBell(session: TerminalSession) {}
+    override fun onColorsChanged(session: TerminalSession) {}
+    override fun onTerminalCursorStateChange(state: Boolean) {}
+    override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
+    override fun getTerminalCursorStyle(): Int? = null
+    override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
+    override fun logWarn(tag: String?, message: String?) { Log.w(tag, message ?: "") }
+    override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
+    override fun logDebug(tag: String?, message: String?) { Log.d(tag, message ?: "") }
+    override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message ?: "") }
+    override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) { Log.e(tag, message, e) }
+    override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag, "", e) }
+}
 
-private data class TermSession(
-    val id: String,
-    val name: String,
-    val lines: MutableList<String>,
-    val pty: PtySession,
-)
+private class SimpleTerminalViewClient : TerminalViewClient {
+    var terminalView: TerminalView? = null
+    override fun onScale(scale: Float): Float = scale
+    override fun onSingleTapUp(e: MotionEvent?) {
+        terminalView?.let { v ->
+            v.requestFocus()
+            val imm = v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(v, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+    override fun shouldBackButtonBeMappedToEscape(): Boolean = false
+    override fun shouldEnforceCharBasedInput(): Boolean = true
+    override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
+    override fun isTerminalViewSelected(): Boolean = true
+    override fun copyModeChanged(copyMode: Boolean) {}
+    override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean = false
+    override fun onKeyUp(keyCode: Int, e: KeyEvent?): Boolean = false
+    override fun onLongPress(e: MotionEvent?): Boolean = false
+    override fun readControlKey(): Boolean = false
+    override fun readAltKey(): Boolean = false
+    override fun readShiftKey(): Boolean = false
+    override fun readFnKey(): Boolean = false
+    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean = false
+    override fun onEmulatorSet() {}
+    override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
+    override fun logWarn(tag: String?, message: String?) { Log.w(tag, message ?: "") }
+    override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
+    override fun logDebug(tag: String?, message: String?) { Log.d(tag, message ?: "") }
+    override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message ?: "") }
+    override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) { Log.e(tag, message, e) }
+    override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag, "", e) }
+}
 
-private fun newPty(): PtySession {
-    val termuxPrefix = "/data/data/com.termux/files/usr"
-    val termuxHome = "/data/data/com.termux/files/home"
-    val shell = if (java.io.File("$termuxPrefix/bin/bash").exists())
-        "$termuxPrefix/bin/bash" else "/system/bin/sh"
+private data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
 
-    val env = arrayOf(
-        "TERM=xterm-256color",
-        "PREFIX=$termuxPrefix",
-        "HOME=$termuxHome",
-        "TMPDIR=$termuxPrefix/tmp",
-        "LANG=en_US.UTF-8",
-        "PATH=$termuxPrefix/bin:$termuxPrefix/bin/applets:/system/bin:/system/xbin",
-        "LD_LIBRARY_PATH=$termuxPrefix/lib",
-        "SHELL=$shell",
-        "COLORTERM=truecolor",
-        "PS1=user@vncode:\\w\$ ",
+private fun createTerminalSession(context: Context): Pair<TerminalSession, SimpleTerminalSessionClient> {
+    val env = BusyboxInstaller.environmentFor(context)
+    val shell = env["SHELL"] ?: "/system/bin/sh"
+    val home = env["HOME"] ?: context.filesDir.absolutePath
+    val client = SimpleTerminalSessionClient()
+    val envArray = env.map { (k, v) -> "$k=$v" }.toTypedArray()
+    val session = TerminalSession(
+        shell,
+        home,
+        arrayOf("bash", "--login"),
+        envArray,
+        4000,
+        client
     )
-
-    return PtySession(
-        shellPath = shell,
-        workingDir = termuxHome,
-        args = arrayOf(shell, "-i"),
-        envVars = env,
-        rows = 30,
-        cols = 90,
-    )
+    return Pair(session, client)
 }
 
 @Composable
 fun TerminalPane() {
-    val scope = rememberCoroutineScope()
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val focusRequester = remember { FocusRequester() }
-    var input by remember { mutableStateOf("") }
+    val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
 
-    val sessions = remember {
-        mutableStateListOf(TermSession("1", "bash", mutableListOf(), newPty()))
+    val tabs = remember {
+        val (session, client) = createTerminalSession(context)
+        mutableStateListOf(TabSession("1", "bash", session, client))
     }
     var activeId by remember { mutableStateOf("1") }
-    val active = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
+    val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
 
-    LaunchedEffect(activeId) {
-        val session = sessions.firstOrNull { it.id == activeId } ?: return@LaunchedEffect
-        withContext(Dispatchers.IO) {
-            val reader = BufferedReader(InputStreamReader(session.pty.inputStream))
-            val buffer = CharArray(4096)
-            try {
-                while (true) {
-                    val read = reader.read(buffer)
-                    if (read <= 0) break
-                    val chunk = String(buffer, 0, read)
-                    val clean = chunk.replace(ANSI_REGEX, "")
-                    if (clean.isNotEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            val newLines = clean.split("\n")
-                            newLines.forEachIndexed { idx, part ->
-                                if (idx == 0 && session.lines.isNotEmpty()) {
-                                    session.lines[session.lines.size - 1] =
-                                        session.lines.last() + part
-                                } else {
-                                    session.lines.add(part)
-                                }
-                            }
-                            if (session.lines.size > 1000) {
-                                repeat(session.lines.size - 1000) { session.lines.removeAt(0) }
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-        }
+    DisposableEffect(activeId) {
+        val tab = tabs.firstOrNull { it.id == activeId }
+        tab?.client?.onTextChanged = { }
+        onDispose { tab?.client?.onTextChanged = null }
     }
 
-    LaunchedEffect(active?.lines?.size) {
-        val size = active?.lines?.size ?: 0
-        if (size > 0) listState.animateScrollToItem(size - 1)
-    }
-
-    fun addSession() {
+    fun addTab() {
         val id = System.currentTimeMillis().toString()
-        sessions.add(TermSession(id, "bash ${sessions.size + 1}", mutableListOf(), newPty()))
+        val (session, client) = createTerminalSession(context)
+        tabs.add(TabSession(id, "bash ${tabs.size + 1}", session, client))
         activeId = id
     }
 
-    fun closeSession(id: String) {
-        if (sessions.size <= 1) return
-        val idx = sessions.indexOfFirst { it.id == id }
-        sessions[idx].pty.destroy()
-        sessions.removeAt(idx)
-        if (activeId == id) activeId = sessions.getOrNull(idx - 1)?.id ?: sessions.first().id
-    }
-
-    fun sendInput(text: String) {
-        val session = sessions.firstOrNull { it.id == activeId } ?: return
-        scope.launch(Dispatchers.IO) { session.pty.write(text) }
+    fun closeTab(id: String) {
+        if (tabs.size <= 1) return
+        val idx = tabs.indexOfFirst { it.id == id }
+        tabs[idx].session.finishIfRunning()
+        tabs.removeAt(idx)
+        if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
-
         Row(Modifier.fillMaxWidth().background(Color(0xFF252526)), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                sessions.forEach { s ->
-                    val isActive = s.id == activeId
+                tabs.forEach { tab ->
+                    val isActive = tab.id == activeId
                     Row(
-                        Modifier.background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
-                            .clickable { activeId = s.id }
+                        Modifier
+                            .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
+                            .clickable { activeId = tab.id }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(s.name, color = if (isActive) Color.White else Color(0xFF969696),
+                        Text(tab.name, color = if (isActive) Color.White else Color(0xFF969696),
                             fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
-                        if (sessions.size > 1) {
+                        if (tabs.size > 1) {
                             Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
-                                modifier = Modifier.padding(start = 4.dp).clickable { closeSession(s.id) }.padding(2.dp))
+                                modifier = Modifier.padding(start = 4.dp).clickable { closeTab(tab.id) }.padding(2.dp))
                         }
                     }
                 }
             }
-            IconButton(onClick = { addSession() }) { Icon(Icons.Default.Add, null, tint = Color(0xFF969696)) }
+            IconButton(onClick = { addTab() }) { Icon(Icons.Default.Add, null, tint = Color(0xFF969696)) }
             Box {
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696)) }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
                     offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
                     DropdownMenuItem(text = { Text("New Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; addSession() })
+                        onClick = { showMenu = false; addTab() })
                     DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; if (sessions.size > 1) closeSession(activeId) })
+                        onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
             }
         }
 
         if (active != null) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .clickable(indication = null, interactionSource = remember {
-                        androidx.compose.foundation.interaction.MutableInteractionSource()
-                    }) {
-                        focusRequester.requestFocus()
-                        keyboardController?.show()
+            key(active.id) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        TerminalView(ctx, null).apply {
+                            val viewClient = SimpleTerminalViewClient()
+                            viewClient.terminalView = this
+                            setTerminalViewClient(viewClient)
+                            setTextSize(13)
+                            setTypeface(Typeface.MONOSPACE)
+                            attachSession(active.session)
+                            active.client.onTextChanged = { onScreenUpdated() }
+                            isFocusable = true
+                            isFocusableInTouchMode = true
+                            requestFocus()
+                        }
                     },
-            ) {
-                items(active.lines.size) { idx ->
-                    Text(
-                        active.lines[idx],
-                        color = Color(0xFFCDD6F4),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 1.dp),
-                    )
-                }
-                item {
-                    Row(Modifier.padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                        BasicTextField(
-                            value = input,
-                            onValueChange = { newVal ->
-                                if (newVal.length > input.length) {
-                                    val added = newVal.substring(input.length)
-                                    sendInput(added)
-                                } else if (newVal.length < input.length) {
-                                    sendInput("\u007F") // backspace
-                                }
-                                input = newVal
-                                if (newVal.endsWith("\n")) input = ""
-                            },
-                            modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                            textStyle = TextStyle(
-                                color = Color(0xFFCDD6F4),
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                            ),
-                            cursorBrush = SolidColor(Color(0xFF89B4FA)),
-                            maxLines = 1,
-                        )
+                    update = { view ->
+                        if (view.mTermSession != active.session) {
+                            view.attachSession(active.session)
+                            active.client.onTextChanged = { view.onScreenUpdated() }
+                        }
                     }
-                }
+                )
             }
         }
     }
