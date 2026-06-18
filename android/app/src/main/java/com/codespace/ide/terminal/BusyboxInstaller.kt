@@ -94,6 +94,8 @@ object BusyboxInstaller {
             "LANG" to "en_US.UTF-8",
             "TERM" to "xterm-256color",
             "SHELL" to "${prefix.absolutePath}/bin/bash",
+            "PROOT_BIN" to "${context.applicationInfo.nativeLibraryDir}/libproot.so",
+            "PROOT_TMP_DIR" to context.cacheDir.absolutePath,
 
         )
     }
