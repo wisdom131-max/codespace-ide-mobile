@@ -12,7 +12,7 @@ object BusyboxInstaller {
 
     fun binDir(context: Context): File = File(prefixDir(context), "bin")
 
-    fun prefixDir(context: Context): File = File(context.filesDir, "usr")
+    fun prefixDir(context: Context): File = context.filesDir
 
     fun installIfNeeded(context: Context) {
         val prefix = prefixDir(context)
