@@ -38,8 +38,22 @@ private class SimpleTerminalSessionClient : TerminalSessionClient {
     override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
     override fun onTitleChanged(changedSession: TerminalSession) {}
     override fun onSessionFinished(finishedSession: TerminalSession) {}
-    override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {}
-    override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+    var appContext: Context? = null
+    override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
+        if (text == null) return
+        val ctx = appContext ?: return
+        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
+    }
+    override fun onPasteTextFromClipboard(session: TerminalSession?) {
+        val ctx = appContext ?: return
+        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = cm.primaryClip
+        if (clip != null && clip.itemCount > 0) {
+            val pasteText = clip.getItemAt(0).coerceToText(ctx)?.toString()
+            if (pasteText != null) session?.write(pasteText)
+        }
+    }
     override fun onBell(session: TerminalSession) {}
     override fun onColorsChanged(session: TerminalSession) {}
     override fun onTerminalCursorStateChange(state: Boolean) {}
@@ -94,6 +108,7 @@ private fun createTerminalSession(context: Context): Pair<TerminalSession, Simpl
     val shell = env["SHELL"]?.let { if (java.io.File(it).exists()) it else "/system/bin/sh" } ?: "/system/bin/sh"
     val home = env["HOME"] ?: context.filesDir.absolutePath
     val client = SimpleTerminalSessionClient()
+    client.appContext = context.applicationContext
     val envArray = env.map { (k, v) -> "$k=$v" }.toTypedArray()
     val session = TerminalSession(shell, home, arrayOf(shell.substringAfterLast("/"), "--login"), envArray, 4000, client)
     return Pair(session, client)
