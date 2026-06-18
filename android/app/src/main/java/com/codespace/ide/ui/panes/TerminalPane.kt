@@ -196,17 +196,15 @@ fun TerminalPane() {
                             setTerminalViewClient(viewClient)
                             setTextSize(13)
                             setTypeface(Typeface.MONOSPACE)
-                            attachSession(active.session)
-                            active.client.onTextChanged = { onScreenUpdated() }
                             isFocusable = true
                             isFocusableInTouchMode = true
-                            requestFocus()
                         }
                     },
                     update = { view ->
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
                             active.client.onTextChanged = { view.onScreenUpdated() }
+                            view.requestFocus()
                         }
                     }
                 )
