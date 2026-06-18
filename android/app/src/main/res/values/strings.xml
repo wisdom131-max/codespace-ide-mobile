@@ -8,4 +8,7 @@
     <string name="action_commit">Commit</string>
     <string name="action_push">Push</string>
     <string name="action_pull">Pull</string>
+    <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
+    <string name="text_selection_more">More</string>
 </resources>
