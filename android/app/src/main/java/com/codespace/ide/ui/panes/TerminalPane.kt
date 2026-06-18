@@ -30,6 +30,8 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private class SimpleTerminalSessionClient : TerminalSessionClient {
     var onTextChanged: (() -> Unit)? = null
@@ -93,21 +95,32 @@ private fun createTerminalSession(context: Context): Pair<TerminalSession, Simpl
     val home = env["HOME"] ?: context.filesDir.absolutePath
     val client = SimpleTerminalSessionClient()
     val envArray = env.map { (k, v) -> "$k=$v" }.toTypedArray()
-    val session = TerminalSession(
-        shell,
-        home,
-        arrayOf("bash", "--login"),
-        envArray,
-        4000,
-        client
-    )
+    val session = TerminalSession(shell, home, arrayOf(shell.substringAfterLast("/"), "--login"), envArray, 4000, client)
     return Pair(session, client)
 }
 
 @Composable
 fun TerminalPane() {
     val context = LocalContext.current
+    var bootstrapReady by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            BusyboxInstaller.installIfNeeded(context)
+        }
+        bootstrapReady = true
+    }
+
+    if (!bootstrapReady) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator(color = Color(0xFF89B4FA))
+                Text("Setting up terminal...", color = Color(0xFF969696), fontSize = 13.sp)
+            }
+        }
+        return
+    }
 
     val tabs = remember {
         val (session, client) = createTerminalSession(context)
