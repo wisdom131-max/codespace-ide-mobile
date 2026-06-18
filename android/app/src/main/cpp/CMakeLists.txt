@@ -4,4 +4,4 @@ project("ptynative")
 add_library(ptynative SHARED pty_native.c)
 
 find_library(log-lib log)
-target_link_libraries(ptynative ${log-lib})
+target_link_libraries(ptynative ${log-lib} util)

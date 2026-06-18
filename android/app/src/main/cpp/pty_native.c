@@ -60,7 +60,7 @@ Java_com_codespace_ide_terminal_NativePty_setWindowSize(
     JNIEnv *env, jclass clazz, jint fd, jint rows, jint cols)
 {
     struct winsize sz = { .ws_row = rows, .ws_col = cols };
-    ioctl(procFd, TIOCSWINSZ, &sz);
+    ioctl(fd, TIOCSWINSZ, &sz);
 }
 
 JNIEXPORT jint JNICALL
@@ -123,7 +123,7 @@ Java_com_termux_terminal_JNI_setPtyWindowSize(
     JNIEnv *env, jclass clazz, jint fd, jint rows, jint cols, jint cellWidthPixels, jint cellHeightPixels)
 {
     struct winsize sz = { .ws_row = rows, .ws_col = cols };
-    ioctl(procFd, TIOCSWINSZ, &sz);
+    ioctl(fd, TIOCSWINSZ, &sz);
 }
 
 JNIEXPORT jint JNICALL
