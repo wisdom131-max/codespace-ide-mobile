@@ -95,6 +95,7 @@ object BusyboxInstaller {
             "TERM" to "xterm-256color",
             "SHELL" to "${prefix.absolutePath}/bin/bash",
             "PROOT_BIN" to "${context.applicationInfo.nativeLibraryDir}/libproot.so",
+            "NATIVE_LIB_DIR" to context.applicationInfo.nativeLibraryDir,
             "PROOT_TMP_DIR" to context.cacheDir.absolutePath,
 
         )
