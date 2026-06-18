@@ -94,7 +94,7 @@ object BusyboxInstaller {
             "LANG" to "en_US.UTF-8",
             "TERM" to "xterm-256color",
             "SHELL" to "${prefix.absolutePath}/bin/bash",
-            "LD_PRELOAD" to "${prefix.absolutePath}/lib/libtermux-exec.so"
+            "LD_PRELOAD" to "${context.applicationInfo.nativeLibraryDir}/libtermux-exec.so"
         )
     }
 }
