@@ -13,6 +13,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.ui.CodeSpaceApp
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
                 ActivityCompat.requestPermissions(this, notGranted.toTypedArray(), 1001)
             }
         }
+        Thread { BusyboxInstaller.installIfNeeded(applicationContext) }.apply { isDaemon = true; start() }
         setContent {
             CodeSpaceApp(tokenStore = tokenStore)
         }

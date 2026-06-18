@@ -88,7 +88,6 @@ private class SimpleTerminalViewClient : TerminalViewClient {
 private data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
 
 private fun createTerminalSession(context: Context): Pair<TerminalSession, SimpleTerminalSessionClient> {
-    BusyboxInstaller.installIfNeeded(context)
     val env = BusyboxInstaller.environmentFor(context)
     val shell = env["SHELL"]?.let { if (java.io.File(it).exists()) it else "/system/bin/sh" } ?: "/system/bin/sh"
     val home = env["HOME"] ?: context.filesDir.absolutePath
