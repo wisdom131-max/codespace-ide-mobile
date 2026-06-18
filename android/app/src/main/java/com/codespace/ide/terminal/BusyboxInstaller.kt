@@ -24,6 +24,7 @@ object BusyboxInstaller {
         }
 
         Log.d(TAG, "Installing bootstrap to ${prefix.absolutePath}")
+        try {
         prefix.deleteRecursively()
         prefix.mkdirs()
 
@@ -76,6 +77,9 @@ object BusyboxInstaller {
 
         versionFile.writeText(VERSION)
         Log.d(TAG, "Bootstrap installed successfully. bash=${File(binDir(context), "bash").exists()}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Bootstrap installation failed: ${e.message}", e)
+        }
     }
 
     fun environmentFor(context: Context): Map<String, String> {
