@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.terminal.ProotInstaller
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -103,12 +104,19 @@ private class SimpleTerminalViewClient : TerminalViewClient {
 
 private data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
 
-private fun createTerminalSession(context: Context): Pair<TerminalSession, SimpleTerminalSessionClient> {
+private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
+    val client = SimpleTerminalSessionClient()
+    client.appContext = context.applicationContext
+
+    if (isUbuntu) {
+        val (proot, args) = ProotInstaller.launchArgs(context)
+        val session = TerminalSession(proot, "/", args, arrayOf("TERM=xterm-256color"), 4000, client)
+        return Pair(session, client)
+    }
+
     val env = BusyboxInstaller.environmentFor(context)
     val shell = env["SHELL"]?.let { if (java.io.File(it).exists()) it else "/system/bin/sh" } ?: "/system/bin/sh"
     val home = env["HOME"] ?: context.filesDir.absolutePath
-    val client = SimpleTerminalSessionClient()
-    client.appContext = context.applicationContext
     val envArray = env.map { (k, v) -> "$k=$v" }.toTypedArray()
     val session = TerminalSession(shell, home, arrayOf(shell.substringAfterLast("/"), "--login"), envArray, 4000, client)
     return Pair(session, client)
@@ -157,6 +165,21 @@ fun TerminalPane() {
         activeId = id
     }
 
+    fun addUbuntuTab() {
+        val ctx = context
+        Thread {
+            if (!ProotInstaller.isInstalled(ctx)) {
+                ProotInstaller.install(ctx)
+            }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                val id = System.currentTimeMillis().toString()
+                val (session, client) = createTerminalSession(ctx, isUbuntu = true)
+                tabs.add(TabSession(id, "ubuntu", session, client))
+                activeId = id
+            }
+        }.apply { isDaemon = true; start() }
+    }
+
     fun closeTab(id: String) {
         if (tabs.size <= 1) return
         val idx = tabs.indexOfFirst { it.id == id }
@@ -194,6 +217,8 @@ fun TerminalPane() {
                     offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
                     DropdownMenuItem(text = { Text("New Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; addTab() })
+                    DropdownMenuItem(text = { Text("Open Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; addUbuntuTab() })
                     DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
