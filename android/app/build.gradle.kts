@@ -160,6 +160,10 @@ dependencies {
     // AndroidX annotation
     implementation("androidx.annotation:annotation:1.8.0")
 
+    // Tar/XZ extraction for Ubuntu rootfs
+    implementation("org.apache.commons:commons-compress:1.26.0")
+    implementation("org.tukaani:xz:1.9")
+
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
