@@ -44,17 +44,12 @@ jobs:
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
-          echo "--- proot src contents ---"
-          find /tmp/proot-src -name "*.c" | head -30
-          find /tmp/proot-src -name "talloc*" | head -10
-          TALLOC=$(find /tmp/proot-src -name "talloc.c" | head -1)
-          if [ -n "$TALLOC" ]; then
-            $CC -c "$TALLOC" -o /tmp/talloc.o
-            $AR rcs /tmp/libtalloc.a /tmp/talloc.o
-          else
-            echo "talloc.c not found in proot source"
-            exit 1
-          fi
+          curl -L "https://www.samba.org/ftp/talloc/talloc-2.4.1.tar.gz" -o /tmp/talloc.tar.gz
+          mkdir -p /tmp/talloc-src
+          tar xzf /tmp/talloc.tar.gz -C /tmp/talloc-src --strip-components=1
+          cd /tmp/talloc-src
+          $CC -c talloc.c -I. -DHAVE_LIBREPLACE=0 -DTALLOC_BUILD_VERSION_MAJOR=2 -DTALLOC_BUILD_VERSION_MINOR=4 -DTALLOC_BUILD_VERSION_RELEASE=1 -o /tmp/talloc.o
+          $AR rcs /tmp/libtalloc.a /tmp/talloc.o
 
       - name: Build static proot
         run: |
