@@ -43,6 +43,8 @@ object ProotInstaller {
             rootfs.deleteRecursively()
             rootfs.mkdirs()
 
+            var filesWritten = 0
+            var totalBytes = 0L
             XZCompressorInputStream(tarXzFile.inputStream()).use { xz ->
                 TarArchiveInputStream(xz).use { tar ->
                     var entry = tar.nextTarEntry
@@ -59,12 +61,19 @@ object ProotInstaller {
                             } else {
                                 outFile.parentFile?.mkdirs()
                                 try {
+                                    var entryBytes = 0L
                                     outFile.outputStream().use { out ->
                                         val buffer = ByteArray(8192)
                                         var read: Int
                                         while (tar.read(buffer).also { read = it } != -1) {
                                             out.write(buffer, 0, read)
+                                            entryBytes += read
                                         }
+                                    }
+                                    filesWritten++
+                                    totalBytes += entryBytes
+                                    if (filesWritten <= 5 || entryBytes == 0L) {
+                                        Log.d(TAG, "Wrote ${entry.name} -> ${outFile.path} ($entryBytes bytes, entry.size=${entry.size})")
                                     }
                                     // Preserve executable bit from tar entry mode, and always
                                     // mark anything in bin/ or lib/ executable as a safety net
@@ -86,8 +95,8 @@ object ProotInstaller {
 
             tarXzFile.delete()
             versionFile.writeText(VERSION)
-            onProgress("Ubuntu rootfs ready")
-            Log.d(TAG, "Ubuntu rootfs installed. bash exists=${File(rootfs, "bin/bash").exists()}")
+            onProgress("Ubuntu rootfs ready: $filesWritten files, $totalBytes bytes")
+            Log.d(TAG, "Ubuntu rootfs installed. filesWritten=$filesWritten totalBytes=$totalBytes bash exists=${File(rootfs, "bin/bash").exists()}")
         } catch (e: Exception) {
             Log.e(TAG, "Ubuntu rootfs install failed: ${e.message}", e)
             onProgress("Failed: ${e.message}")

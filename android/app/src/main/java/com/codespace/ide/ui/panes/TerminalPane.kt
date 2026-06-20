@@ -169,7 +169,11 @@ fun TerminalPane() {
         val ctx = context
         Thread {
             if (!ProotInstaller.isInstalled(ctx)) {
-                ProotInstaller.install(ctx)
+                ProotInstaller.install(ctx) { msg ->
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
             }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 val id = System.currentTimeMillis().toString()
