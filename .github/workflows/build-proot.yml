@@ -15,50 +15,101 @@ jobs:
       matrix:
         include:
           - abi: arm64-v8a
-            arch: aarch64
-            target: aarch64-linux-musl
+            target: aarch64-linux-android
           - abi: armeabi-v7a
-            arch: arm
-            target: armv7l-linux-musleabihf
+            target: armv7a-linux-androideabi
           - abi: x86_64
-            arch: x86_64
-            target: x86_64-linux-musl
+            target: x86_64-linux-android
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install musl cross compiler
-        run: |
-          sudo apt-get install -y musl-tools wget
-          wget -q https://musl.cc/${{ matrix.target }}-cross.tgz -O /tmp/musl.tgz
-          tar xzf /tmp/musl.tgz -C /tmp/
+      - name: Set up NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: true
 
-      - name: Build talloc static
+      - name: Clone proot
         run: |
-          export CC=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-gcc
-          export AR=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-ar
-          curl -L "https://www.samba.org/ftp/talloc/talloc-2.4.1.tar.gz" -o /tmp/talloc.tar.gz
-          mkdir -p /tmp/talloc-build
-          tar xzf /tmp/talloc.tar.gz -C /tmp/talloc-build --strip-components=1
-          cd /tmp/talloc-build
-          ./configure --cross-compile --cross-answers=/dev/null CC="$CC" AR="$AR" --disable-python 2>/dev/null || true
-          $CC -c talloc.c -DHAVE_LIBREPLACE=0 -include stdint.h -o /tmp/talloc.o 2>/dev/null ||           $CC -c talloc.c -o /tmp/talloc.o || true
-          $AR rcs /tmp/libtalloc.a /tmp/talloc.o
-
-      - name: Build static proot
-        run: |
-          export CC=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-gcc
-          export AR=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-ar
-          export RANLIB=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-ranlib
           git clone --depth=1 https://github.com/termux/proot.git /tmp/proot-src
           cd /tmp/proot-src
           git submodule update --init --recursive
+
+      - name: Write talloc implementation
+        run: |
+          cat > /tmp/proot-src/src/talloc.h << 'HEOF'
+#pragma once
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
+typedef void TALLOC_CTX;
+#define talloc_new(ctx) malloc(1)
+#define talloc(ctx, type) ((type*)calloc(1, sizeof(type)))
+#define talloc_zero(ctx, type) ((type*)calloc(1, sizeof(type)))
+#define talloc_array(ctx, type, n) ((type*)calloc((n), sizeof(type)))
+#define talloc_zero_array(ctx, type, n) ((type*)calloc((n), sizeof(type)))
+#define talloc_size(ctx, size) malloc(size)
+#define talloc_zero_size(ctx, size) calloc(1, size)
+#define talloc_free(ptr) (free(ptr), 0)
+#define talloc_steal(ctx, ptr) (ptr)
+#define talloc_get_size(ptr) (0)
+#define talloc_set_destructor(ptr, fn)
+#define talloc_report_full(ptr, f)
+#define talloc_enable_leak_report()
+#define talloc_set_name_const(ptr, name) (ptr)
+#define talloc_named_const(ctx, size, name) malloc(size)
+#define _talloc_zero(ctx, size, name) calloc(1, size)
+#define talloc_get_name(ptr) ""
+#define talloc_realloc(ctx, ptr, type, n) ((type*)realloc((ptr), (n)*sizeof(type)))
+#define talloc_realloc_size(ctx, ptr, size) realloc((ptr), (size))
+#define talloc_parent(ptr) (NULL)
+#define talloc_reference(ctx, ptr) (ptr)
+#define talloc_unlink(ctx, ptr) (0)
+static inline char *talloc_strdup(const void *ctx, const char *str) {
+    return str ? strdup(str) : NULL;
+}
+static inline char *talloc_strndup(const void *ctx, const char *str, size_t n) {
+    if (!str) return NULL;
+    char *r = (char*)malloc(n+1);
+    if (r) { strncpy(r, str, n); r[n] = 0; }
+    return r;
+}
+static inline char *talloc_asprintf(const void *ctx, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int n = vsnprintf(NULL, 0, fmt, ap); va_end(ap);
+    if (n < 0) return NULL;
+    char *r = (char*)malloc(n+1);
+    if (r) { va_start(ap, fmt); vsnprintf(r, n+1, fmt, ap); va_end(ap); }
+    return r;
+}
+static inline char *talloc_asprintf_append(char *str, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int n = vsnprintf(NULL, 0, fmt, ap); va_end(ap);
+    size_t l = str ? strlen(str) : 0;
+    char *r = (char*)realloc(str, l+n+1);
+    if (r) { va_start(ap, fmt); vsnprintf(r+l, n+1, fmt, ap); va_end(ap); }
+    return r;
+}
+#define talloc_strndup_append(str, s, n) talloc_asprintf_append(str, "%.*s", (int)(n), (s))
+HEOF
+          echo "talloc.h written"
+
+      - name: Build static proot
+        run: |
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
+          export AR=$TOOLCHAIN/bin/llvm-ar
+          export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+          cd /tmp/proot-src
           make -C src proot \
             CC="$CC" AR="$AR" RANLIB="$RANLIB" \
             LDFLAGS="-static" \
-            TALLOC_CFLAGS="-I/tmp/talloc-build" \
-            TALLOC_LIBS="/tmp/libtalloc.a"
-          find /tmp/proot-src -name "proot" -type f | head -3
+            TALLOC_CFLAGS="-I/tmp/proot-src/src" \
+            TALLOC_LIBS="" \
+            2>&1 | tail -30
+          find /tmp/proot-src/src -name "proot" -type f | head -3
 
       - name: Copy binary
         run: |
