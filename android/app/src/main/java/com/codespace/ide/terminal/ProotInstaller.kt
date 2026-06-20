@@ -104,7 +104,7 @@ object ProotInstaller {
             tarXzFile.delete()
             versionFile.writeText(VERSION)
             onProgress("Ubuntu rootfs ready: $filesWritten files, $totalBytes bytes")
-            Log.d(TAG, "Ubuntu rootfs installed. filesWritten=$filesWritten totalBytes=$totalBytes bash exists=${File(rootfs, "bin/bash").exists()}")
+            Log.d(TAG, "Ubuntu rootfs installed. filesWritten=$filesWritten totalBytes=$totalBytes bash exists=${File(rootfs, "usr/bin/bash").exists()}")
         } catch (e: Exception) {
             Log.e(TAG, "Ubuntu rootfs install failed: ${e.message}", e)
             onProgress("Failed: ${e.message}")
