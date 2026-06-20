@@ -39,20 +39,14 @@ jobs:
           cd /tmp/proot-src
           git submodule update --init --recursive
 
-      - name: Download talloc
+      - name: Build talloc from proot bundled source
         run: |
-          mkdir -p /tmp/talloc-src
-          curl -L "https://www.samba.org/ftp/talloc/talloc-2.4.1.tar.gz" -o /tmp/talloc.tar.gz
-          tar xzf /tmp/talloc.tar.gz -C /tmp/talloc-src --strip-components=1
-
-      - name: Build talloc static lib
-        run: |
-          cd /tmp/talloc-src
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
-          $CC -c talloc.c -o talloc.o
-          $AR rcs libtalloc.a talloc.o
+          cd /tmp/proot-src
+          $CC -c src/talloc.c -o /tmp/talloc.o
+          $AR rcs /tmp/libtalloc.a /tmp/talloc.o
 
       - name: Build static proot
         run: |
