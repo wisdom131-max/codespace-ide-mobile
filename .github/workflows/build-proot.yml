@@ -19,7 +19,7 @@ jobs:
             target: aarch64-linux-musl
           - abi: armeabi-v7a
             arch: arm
-            target: arm-linux-musleabi
+            target: armv7l-linux-musleabihf
           - abi: x86_64
             arch: x86_64
             target: x86_64-linux-musl
