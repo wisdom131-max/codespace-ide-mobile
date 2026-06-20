@@ -1,0 +1,81 @@
+name: Build Static Proot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 1 * *"
+
+jobs:
+  build-proot:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - abi: arm64-v8a
+            target: aarch64-linux-android
+            ndk_arch: aarch64
+          - abi: armeabi-v7a
+            target: armv7a-linux-androideabi
+            ndk_arch: arm
+          - abi: x86_64
+            target: x86_64-linux-android
+            ndk_arch: x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: true
+
+      - name: Install build deps
+        run: sudo apt-get install -y autoconf automake libtool pkg-config python3
+
+      - name: Clone Termux proot source
+        run: |
+          git clone --depth=1 https://github.com/termux/proot.git /tmp/proot-src
+          cd /tmp/proot-src
+          git submodule update --init --recursive
+
+      - name: Clone talloc dependency
+        run: |
+          git clone --depth=1 https://github.com/termux/talloc.git /tmp/talloc-src
+
+      - name: Build talloc static lib
+        run: |
+          cd /tmp/talloc-src
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
+          export AR=$TOOLCHAIN/bin/llvm-ar
+          $CC -c talloc.c -o talloc.o
+          $AR rcs libtalloc.a talloc.o
+
+      - name: Build static proot
+        run: |
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
+          export AR=$TOOLCHAIN/bin/llvm-ar
+          export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+          cd /tmp/proot-src
+          make -C src proot \
+            CC="$CC" AR="$AR" RANLIB="$RANLIB" \
+            LDFLAGS="-static" \
+            TALLOC_CFLAGS="-I/tmp/talloc-src" \
+            TALLOC_LIBS="/tmp/talloc-src/libtalloc.a"
+
+      - name: Copy binary to jniLibs
+        run: |
+          BINARY=$(find /tmp/proot-src -name "proot" -type f | head -1)
+          if [ -z "$BINARY" ]; then echo "BUILD FAILED"; exit 1; fi
+          cp "$BINARY" android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
+          file android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
+
+      - name: Commit binary
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
+          git diff --cached --quiet || git commit -m "ci: update static proot for ${{ matrix.abi }}"
+          git push
