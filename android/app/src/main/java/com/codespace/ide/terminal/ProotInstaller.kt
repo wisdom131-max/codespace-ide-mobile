@@ -17,7 +17,7 @@ object ProotInstaller {
     fun isInstalled(context: Context): Boolean {
         val versionFile = File(context.filesDir, ".ubuntu_version")
         return versionFile.exists() && versionFile.readText().trim() == VERSION &&
-            File(rootfsDir(context), "bin/bash").exists()
+            File(rootfsDir(context), "usr/bin/bash").exists()
     }
 
     fun install(context: Context, onProgress: (String) -> Unit = {}) {
@@ -58,6 +58,14 @@ object ProotInstaller {
                             })
                             if (entry.isDirectory) {
                                 outFile.mkdirs()
+                            } else if (entry.isSymbolicLink) {
+                                try {
+                                    val target = entry.linkName
+                                    val process = Runtime.getRuntime().exec(arrayOf("ln", "-sf", target, outFile.absolutePath))
+                                    process.waitFor()
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Symlink failed ${entry.name}: ${e.message}")
+                                }
                             } else {
                                 outFile.parentFile?.mkdirs()
                                 try {
@@ -109,6 +117,7 @@ object ProotInstaller {
         val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val args = arrayOf(
             proot,
+            "--link2symlink",
             "-S", rootfs,
             "/usr/bin/bash", "--login"
         )
