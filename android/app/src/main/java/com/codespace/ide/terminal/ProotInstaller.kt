@@ -94,16 +94,7 @@ object ProotInstaller {
         val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val args = arrayOf(
             proot,
-            "-0",
-            "-r", rootfs,
-            "-b", "/dev",
-            "-b", "/proc",
-            "-b", "/sys",
-            "-w", "/root",
-            "/usr/bin/env", "-i",
-            "HOME=/root",
-            "TERM=xterm-256color",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "-S", rootfs,
             "/bin/bash", "--login"
         )
         val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir", "PROOT_NO_SECCOMP=1")
