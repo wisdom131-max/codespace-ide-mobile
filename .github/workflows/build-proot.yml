@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "0 0 1 * *"
 
+permissions:
+  contents: write
+
 jobs:
   build-proot:
     runs-on: ubuntu-latest
@@ -55,4 +58,4 @@ jobs:
           git config user.email "actions@github.com"
           git add android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
           git diff --cached --quiet || git commit -m "ci: update proot for ${{ matrix.abi }}"
-          git push
+          git push https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
