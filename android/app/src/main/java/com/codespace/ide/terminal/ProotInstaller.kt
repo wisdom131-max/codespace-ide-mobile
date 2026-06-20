@@ -110,7 +110,7 @@ object ProotInstaller {
         val args = arrayOf(
             proot,
             "-S", rootfs,
-            "/bin/bash", "--login"
+            "/usr/bin/bash", "--login"
         )
         val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir", "PROOT_NO_SECCOMP=1")
         return Triple(proot, args, envVars)
