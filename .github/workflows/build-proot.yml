@@ -63,6 +63,31 @@ jobs:
           EOF
           $CC -c /tmp/talloc_stub.c -o /tmp/talloc.o
           $AR rcs /tmp/libtalloc.a /tmp/talloc.o
+          # Create talloc.h for proot to include
+          cat > /tmp/talloc.h << 'HEOF'
+          #pragma once
+          #include <stdlib.h>
+          #include <string.h>
+          #define talloc(ctx, type) ((type*)malloc(sizeof(type)))
+          #define talloc_zero(ctx, type) ((type*)calloc(1, sizeof(type)))
+          #define talloc_array(ctx, type, n) ((type*)malloc(sizeof(type)*(n)))
+          #define talloc_zero_array(ctx, type, n) ((type*)calloc(n, sizeof(type)))
+          #define talloc_size(ctx, size) malloc(size)
+          #define talloc_free(ptr) (free(ptr), 0)
+          #define talloc_steal(ctx, ptr) (ptr)
+          #define talloc_get_size(ptr) (0)
+          #define talloc_strdup(ctx, str) ((str) ? strdup(str) : NULL)
+          #define talloc_asprintf(ctx, ...) NULL
+          #define talloc_set_destructor(ptr, fn)
+          #define talloc_new(ctx) malloc(1)
+          #define TALLOC_CTX void
+          void *talloc_named_const(const void *ctx, size_t size, const char *name);
+          void *_talloc_zero(const void *ctx, size_t size, const char *name);
+          int talloc_free(void *ptr);
+          char *talloc_strdup(const void *ctx, const char *str);
+          HEOF
+          mkdir -p /tmp/proot-src/src
+          cp /tmp/talloc.h /tmp/proot-src/src/talloc.h
 
       - name: Build static proot
         run: |
