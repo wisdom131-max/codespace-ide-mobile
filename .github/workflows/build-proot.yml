@@ -44,11 +44,24 @@ jobs:
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
-          curl -L "https://www.samba.org/ftp/talloc/talloc-2.4.1.tar.gz" -o /tmp/talloc.tar.gz
-          mkdir -p /tmp/talloc-src
-          tar xzf /tmp/talloc.tar.gz -C /tmp/talloc-src --strip-components=1
-          cd /tmp/talloc-src
-          $CC -c talloc.c -I. -DHAVE_LIBREPLACE=0 -DTALLOC_BUILD_VERSION_MAJOR=2 -DTALLOC_BUILD_VERSION_MINOR=4 -DTALLOC_BUILD_VERSION_RELEASE=1 -o /tmp/talloc.o
+          # Write minimal talloc stub - proot only needs memory allocation
+          cat > /tmp/talloc_stub.c << 'EOF'
+          #include <stdlib.h>
+          #include <string.h>
+          void *talloc_named_const(const void *ctx, size_t size, const char *name) { return malloc(size); }
+          void *_talloc_zero(const void *ctx, size_t size, const char *name) { return calloc(1, size); }
+          void *talloc_steal_fn(const void *ctx, const void *ptr) { return (void*)ptr; }
+          int talloc_free(void *ptr) { free(ptr); return 0; }
+          void *talloc_parent(const void *ptr) { return NULL; }
+          size_t talloc_get_size(const void *ptr) { return 0; }
+          void *talloc_realloc_fn(const void *ctx, void *ptr, size_t size) { return realloc(ptr, size); }
+          char *talloc_strdup(const void *ctx, const char *str) { return str ? strdup(str) : NULL; }
+          char *talloc_asprintf(const void *ctx, const char *fmt, ...) { return NULL; }
+          void talloc_set_destructor(const void *ptr, void *destructor) {}
+          void talloc_report_full(const void *ptr, void *f) {}
+          void *talloc_new(const void *ctx) { return malloc(1); }
+          EOF
+          $CC -c /tmp/talloc_stub.c -o /tmp/talloc.o
           $AR rcs /tmp/libtalloc.a /tmp/talloc.o
 
       - name: Build static proot
