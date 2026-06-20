@@ -106,7 +106,7 @@ object ProotInstaller {
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "/bin/bash", "--login"
         )
-        val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir")
+        val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir", "PROOT_NO_SECCOMP=1")
         return Triple(proot, args, envVars)
     }
 }
