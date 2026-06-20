@@ -61,8 +61,12 @@ object ProotInstaller {
                             } else if (entry.isSymbolicLink) {
                                 try {
                                     val target = entry.linkName
-                                    val process = Runtime.getRuntime().exec(arrayOf("ln", "-sf", target, outFile.absolutePath))
-                                    process.waitFor()
+                                    val linkPath = outFile.toPath()
+                                    val targetPath = java.nio.file.Paths.get(target)
+                                    if (java.nio.file.Files.exists(linkPath)) {
+                                        java.nio.file.Files.delete(linkPath)
+                                    }
+                                    java.nio.file.Files.createSymbolicLink(linkPath, targetPath)
                                 } catch (e: Exception) {
                                     Log.w(TAG, "Symlink failed ${entry.name}: ${e.message}")
                                 }
