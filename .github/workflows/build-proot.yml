@@ -39,9 +39,11 @@ jobs:
           cd /tmp/proot-src
           git submodule update --init --recursive
 
-      - name: Clone talloc dependency
+      - name: Download talloc
         run: |
-          git clone --depth=1 https://x-access-token:${{ github.token }}@github.com/termux/talloc.git /tmp/talloc-src
+          mkdir -p /tmp/talloc-src
+          curl -L "https://www.samba.org/ftp/talloc/talloc-2.4.1.tar.gz" -o /tmp/talloc.tar.gz
+          tar xzf /tmp/talloc.tar.gz -C /tmp/talloc-src --strip-components=1
 
       - name: Build talloc static lib
         run: |
