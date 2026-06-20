@@ -37,8 +37,15 @@ jobs:
           BINARY=$(find /tmp/data -name "proot" -type f | head -1)
           if [ -z "$BINARY" ]; then echo "proot not found"; exit 1; fi
           file "$BINARY"
-          patchelf --set-interpreter /system/bin/linker64 "$BINARY" 2>/dev/null || true
+          ABI="${{ matrix.abi }}"
+          if [ "$ABI" = "armeabi-v7a" ]; then
+            LINKER="/system/bin/linker"
+          else
+            LINKER="/system/bin/linker64"
+          fi
+          patchelf --set-interpreter "$LINKER" "$BINARY" 2>/dev/null || true
           patchelf --remove-rpath "$BINARY" 2>/dev/null || true
+          mkdir -p android/app/src/main/jniLibs/${{ matrix.abi }}
           cp "$BINARY" android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
           file android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
 
