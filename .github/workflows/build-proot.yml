@@ -41,7 +41,7 @@ jobs:
 
       - name: Clone talloc dependency
         run: |
-          git clone --depth=1 https://github.com/termux/talloc.git /tmp/talloc-src
+          git clone --depth=1 https://x-access-token:${{ github.token }}@github.com/termux/talloc.git /tmp/talloc-src
 
       - name: Build talloc static lib
         run: |
