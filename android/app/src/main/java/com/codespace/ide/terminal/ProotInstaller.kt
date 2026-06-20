@@ -60,6 +60,14 @@ object ProotInstaller {
                                 outFile.parentFile?.mkdirs()
                                 try {
                                     outFile.outputStream().use { out -> tar.copyTo(out) }
+                                    // Preserve executable bit from tar entry mode, and always
+                                    // mark anything in bin/ or lib/ executable as a safety net
+                                    val mode = entry.mode
+                                    val isExecBit = (mode and 0b001_000_000) != 0 || (mode and 0b000_001_000) != 0 || (mode and 0b000_000_001) != 0
+                                    if (isExecBit || outFile.path.contains("/bin/") || outFile.path.contains("/lib/") || outFile.path.contains("/sbin/")) {
+                                        outFile.setExecutable(true, false)
+                                    }
+                                    outFile.setReadable(true, false)
                                 } catch (e: Exception) {
                                     Log.w(TAG, "Skipped ${entry.name}: ${e.message}")
                                 }
