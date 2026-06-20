@@ -109,8 +109,8 @@ private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): 
     client.appContext = context.applicationContext
 
     if (isUbuntu) {
-        val (proot, args) = ProotInstaller.launchArgs(context)
-        val session = TerminalSession(proot, "/", args, arrayOf("TERM=xterm-256color"), 4000, client)
+        val (proot, args, envVars) = ProotInstaller.launchArgs(context)
+        val session = TerminalSession(proot, "/", args, envVars, 4000, client)
         return Pair(session, client)
     }
 

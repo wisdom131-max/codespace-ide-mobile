@@ -80,9 +80,10 @@ object ProotInstaller {
         }
     }
 
-    fun launchArgs(context: Context): Pair<String, Array<String>> {
+    fun launchArgs(context: Context): Triple<String, Array<String>, Array<String>> {
         val proot = "${context.applicationInfo.nativeLibraryDir}/libproot.so"
         val rootfs = rootfsDir(context).absolutePath
+        val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val args = arrayOf(
             proot,
             "-0",
@@ -97,6 +98,7 @@ object ProotInstaller {
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "/bin/bash", "--login"
         )
-        return Pair(proot, args)
+        val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir")
+        return Triple(proot, args, envVars)
     }
 }
