@@ -16,47 +16,63 @@ jobs:
         include:
           - abi: arm64-v8a
             arch: aarch64
+            target: aarch64-linux-musl
           - abi: armeabi-v7a
             arch: arm
+            target: arm-linux-musleabi
           - abi: x86_64
             arch: x86_64
+            target: x86_64-linux-musl
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install patchelf
-        run: sudo apt-get install -y patchelf
-
-      - name: Download and extract Termux proot
+      - name: Install musl cross compiler
         run: |
-          curl -L "https://packages.termux.dev/apt/termux-main/pool/main/p/proot/proot_5.1.107.80_${{ matrix.arch }}.deb" -o /tmp/proot.deb
-          cd /tmp
-          ar x proot.deb || true
-          tar xf data.tar.xz 2>/dev/null || tar xf data.tar.gz 2>/dev/null || true
-          find /tmp -name "proot" -type f | head -5
+          sudo apt-get install -y musl-tools wget
+          wget -q https://musl.cc/${{ matrix.target }}-cross.tgz -O /tmp/musl.tgz
+          tar xzf /tmp/musl.tgz -C /tmp/
 
-      - name: Patch and copy proot
+      - name: Build talloc static
         run: |
-          BINARY=$(find /tmp/data -name "proot" -type f | head -1)
-          if [ -z "$BINARY" ]; then echo "proot not found"; exit 1; fi
+          export CC=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-gcc
+          export AR=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-ar
+          curl -L "https://www.samba.org/ftp/talloc/talloc-2.4.1.tar.gz" -o /tmp/talloc.tar.gz
+          mkdir -p /tmp/talloc-build
+          tar xzf /tmp/talloc.tar.gz -C /tmp/talloc-build --strip-components=1
+          cd /tmp/talloc-build
+          ./configure --cross-compile --cross-answers=/dev/null CC="$CC" AR="$AR" --disable-python 2>/dev/null || true
+          $CC -c talloc.c -DHAVE_LIBREPLACE=0 -include stdint.h -o /tmp/talloc.o 2>/dev/null ||           $CC -c talloc.c -o /tmp/talloc.o || true
+          $AR rcs /tmp/libtalloc.a /tmp/talloc.o
+
+      - name: Build static proot
+        run: |
+          export CC=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-gcc
+          export AR=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-ar
+          export RANLIB=/tmp/${{ matrix.target }}-cross/bin/${{ matrix.target }}-ranlib
+          git clone --depth=1 https://github.com/termux/proot.git /tmp/proot-src
+          cd /tmp/proot-src
+          git submodule update --init --recursive
+          make -C src proot \
+            CC="$CC" AR="$AR" RANLIB="$RANLIB" \
+            LDFLAGS="-static" \
+            TALLOC_CFLAGS="-I/tmp/talloc-build" \
+            TALLOC_LIBS="/tmp/libtalloc.a"
+          find /tmp/proot-src -name "proot" -type f | head -3
+
+      - name: Copy binary
+        run: |
+          BINARY=$(find /tmp/proot-src/src -name "proot" -type f | head -1)
+          if [ -z "$BINARY" ]; then echo "BUILD FAILED"; exit 1; fi
           file "$BINARY"
-          ABI="${{ matrix.abi }}"
-          if [ "$ABI" = "armeabi-v7a" ]; then
-            LINKER="/system/bin/linker"
-          else
-            LINKER="/system/bin/linker64"
-          fi
-          patchelf --set-interpreter "$LINKER" "$BINARY" 2>/dev/null || true
-          patchelf --remove-rpath "$BINARY" 2>/dev/null || true
           mkdir -p android/app/src/main/jniLibs/${{ matrix.abi }}
           cp "$BINARY" android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
-          file android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
 
       - name: Commit binary
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
-          git diff --cached --quiet || git commit -m "ci: update proot for ${{ matrix.abi }}"
+          git diff --cached --quiet || git commit -m "ci: update static proot for ${{ matrix.abi }}"
           git pull --rebase https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git main
           git push https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
