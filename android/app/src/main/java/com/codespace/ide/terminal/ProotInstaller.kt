@@ -59,7 +59,13 @@ object ProotInstaller {
                             } else {
                                 outFile.parentFile?.mkdirs()
                                 try {
-                                    outFile.outputStream().use { out -> tar.copyTo(out) }
+                                    outFile.outputStream().use { out ->
+                                        val buffer = ByteArray(8192)
+                                        var read: Int
+                                        while (tar.read(buffer).also { read = it } != -1) {
+                                            out.write(buffer, 0, read)
+                                        }
+                                    }
                                     // Preserve executable bit from tar entry mode, and always
                                     // mark anything in bin/ or lib/ executable as a safety net
                                     val mode = entry.mode
