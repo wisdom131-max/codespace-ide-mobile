@@ -39,14 +39,22 @@ jobs:
           cd /tmp/proot-src
           git submodule update --init --recursive
 
-      - name: Build talloc from proot bundled source
+      - name: Build talloc
         run: |
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
-          cd /tmp/proot-src
-          $CC -c src/talloc.c -o /tmp/talloc.o
-          $AR rcs /tmp/libtalloc.a /tmp/talloc.o
+          echo "--- proot src contents ---"
+          find /tmp/proot-src -name "*.c" | head -30
+          find /tmp/proot-src -name "talloc*" | head -10
+          TALLOC=$(find /tmp/proot-src -name "talloc.c" | head -1)
+          if [ -n "$TALLOC" ]; then
+            $CC -c "$TALLOC" -o /tmp/talloc.o
+            $AR rcs /tmp/libtalloc.a /tmp/talloc.o
+          else
+            echo "talloc.c not found in proot source"
+            exit 1
+          fi
 
       - name: Build static proot
         run: |
