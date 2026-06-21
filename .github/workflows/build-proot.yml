@@ -47,15 +47,14 @@ jobs:
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}24-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
           export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+          export STRIP=$TOOLCHAIN/bin/llvm-strip
+          export OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
           cd /tmp/proot-src/src
-          CFLAGS="-I. -I.. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration"
-          SRCS=$(find . ./execve ./extension ./path ./ptrace ./syscall ./tracee -name "*.c" 2>/dev/null | grep -v loader | grep -v test)
-          OBJS=""
-          for src in $SRCS; do
-            obj="${src%.c}.o"
-            $CC -c $src -o $obj $CFLAGS && OBJS="$OBJS $obj" || echo "FAILED: $src"
-          done
-          $CC -static -o proot $OBJS 2>&1
+          # Patch Makefile to skip loader build
+          sed -i "s/proot: loader proot.o/proot: proot.o/g" GNUmakefile || true
+          sed -i "/^loader:/,/^[a-z]/{ /^loader:/d; /^	/d }" GNUmakefile || true
+          sed -i "s/loader-wrapped.o//g" GNUmakefile || true
+          make proot             CC="$CC" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" OBJCOPY="$OBJCOPY"             LDFLAGS="-static"             TALLOC_CFLAGS="-I/tmp/proot-src/src"             TALLOC_LIBS=""             CFLAGS="-Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration"             2>&1 | tail -30
           ls -la proot 2>/dev/null || echo "proot binary not found"
 
       - name: Copy binary
