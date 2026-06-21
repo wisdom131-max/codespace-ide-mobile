@@ -163,15 +163,8 @@ jobs:
           $CC -c /tmp/talloc.c -o /tmp/talloc.o $CF
 
           # Compile all proot sources except loader and check files
-          # Use Termux's real libtalloc for correct TLS alignment
-          TALLOC_LIB=$(find /tmp/talloc-deb -name "libtalloc.a" | head -1)
-          if [ -z "$TALLOC_LIB" ]; then
-            echo "libtalloc.a not found, using stub"
-            OBJS="/tmp/talloc.o"
-          else
-            echo "Using Termux libtalloc: $TALLOC_LIB"
-            OBJS="$TALLOC_LIB"
-          fi
+          # Use talloc stub (Termux only ships .so not .a)
+          OBJS="/tmp/talloc.o"
           for src in $(find . -name "*.c" | grep -v "/loader/" | grep -v "check_" | grep -v "talloc" | sort); do
             obj="${src%.c}.o"
             mkdir -p "$(dirname $obj)"
@@ -187,7 +180,8 @@ jobs:
           fi
 
           # Link final proot binary
-          $CC -static -Wl,-z,max-page-size=16384 -o proot $OBJS \
+          TALLOC_SO_DIR=$(dirname $(find /tmp/talloc-deb -name "libtalloc.so" | head -1) || echo "")
+          $CC -Wl,-z,max-page-size=16384 -o proot $OBJS -L"$TALLOC_SO_DIR" -ltalloc \
             -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 2>&1 | head -50
 
           ls -la proot 2>/dev/null || echo "proot binary not found"
@@ -200,6 +194,11 @@ jobs:
           file "$BINARY"
           mkdir -p android/app/src/main/jniLibs/${{ matrix.abi }}
           cp "$BINARY" android/app/src/main/jniLibs/${{ matrix.abi }}/libproot.so
+          TALLOC_SO=$(find /tmp/talloc-deb -name "libtalloc.so" | head -1)
+          if [ -n "$TALLOC_SO" ]; then
+            cp "$TALLOC_SO" android/app/src/main/jniLibs/${{ matrix.abi }}/libtalloc.so
+            echo "Copied libtalloc.so"
+          fi
 
       - name: Commit binary
         run: |
