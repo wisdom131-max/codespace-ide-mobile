@@ -129,7 +129,7 @@ jobs:
 
           make build.h CC="$CC" TALLOC_CFLAGS="-I/tmp/proot-src/src" TALLOC_LIBS="" 2>/dev/null || true
 
-          CF="-I. -I.. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration -Wno-deprecated-declarations"
+          CF="-I. -I.. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -fno-emulated-tls -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration -Wno-deprecated-declarations"
 
           # Compile talloc
           cat > /tmp/talloc.c << 'TALLOC'
@@ -169,7 +169,7 @@ jobs:
 
           # Link final proot binary
           $CC -static -o proot $OBJS \
-            -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 -Wl,--tls-size=64 2>&1 | head -50
+            -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 2>&1 | head -50
 
           ls -la proot 2>/dev/null || echo "proot binary not found"
           file proot 2>/dev/null || true
