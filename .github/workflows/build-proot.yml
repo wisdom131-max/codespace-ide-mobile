@@ -141,6 +141,8 @@ jobs:
           done
 
           CF="-I. -I.. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -fno-emulated-tls -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration -Wno-deprecated-declarations"
+          # Force 64-byte TLS alignment for Android 14 Bionic
+          echo 'SECTIONS { .tls ALIGN(64) : { *(.tls .tls.*) } }' > /tmp/tls-align.ld
 
           # Compile talloc
           cat > /tmp/talloc.c << 'TALLOC'
@@ -181,7 +183,7 @@ jobs:
 
           # Link final proot binary
           TALLOC_SO_DIR=$(dirname $(find /tmp/talloc-deb -name "libtalloc.so" | head -1) || echo "")
-          $CC -Wl,-z,max-page-size=16384 -o proot $OBJS -L"$TALLOC_SO_DIR" -ltalloc \
+          $CC -Wl,-z,max-page-size=16384 -Wl,--script=/tmp/tls-align.ld -o proot $OBJS -L"$TALLOC_SO_DIR" -ltalloc \
             -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 2>&1 | head -50
 
           ls -la proot 2>/dev/null || echo "proot binary not found"
