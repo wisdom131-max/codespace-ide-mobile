@@ -39,30 +39,26 @@ jobs:
           cp android/app/src/main/cpp/talloc/talloc.h /tmp/proot-src/src/talloc.h
           echo talloc.h copied
 
-          echo "talloc.h written"
-
       - name: Build static proot
         run: |
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}24-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
           export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
-          export STRIP=$TOOLCHAIN/bin/llvm-strip
-          export OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
           cd /tmp/proot-src/src
-          # Patch Makefile to skip loader build
-          sed -i "s/proot: loader proot.o/proot: proot.o/g" GNUmakefile || true
-          sed -i "/^loader:/,/^[a-z]/{ /^loader:/d; /^	/d }" GNUmakefile || true
-          sed -i "s/loader-wrapped.o//g" GNUmakefile || true
-          make proot             CC="$CC" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" OBJCOPY="$OBJCOPY"             LDFLAGS="-static"             TALLOC_CFLAGS="-I/tmp/proot-src/src"             TALLOC_LIBS=""             CFLAGS="-Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration"             2>&1 | tail -30
+          make build.h CC="$CC" TALLOC_CFLAGS="-I/tmp/proot-src/src" TALLOC_LIBS="" 2>/dev/null || true
+          CF="-I. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration -Wno-deprecated-declarations"
+          OBJS=""
+          for src in $(find . -name "*.c" | grep -v "/loader" | grep -v "check_" | sort); do
+            obj="${src%.c}.o"
+            $CC -c "$src" -o "$obj" $CF 2>/dev/null && OBJS="$OBJS $obj"
+          done
+          $CC -static -o proot $OBJS 2>&1 | head -30
           ls -la proot 2>/dev/null || echo "proot binary not found"
 
       - name: Copy binary
         run: |
-          echo "--- finding proot binary ---"
-          find /tmp/proot-src -name "proot" -type f 2>/dev/null
-          find /tmp/proot-src -name "proot*" -type f 2>/dev/null
-          BINARY=$(find /tmp/proot-src -name "proot" -type f | head -1)
+          BINARY=$(find /tmp/proot-src/src -name "proot" -type f | head -1)
           if [ -z "$BINARY" ]; then echo "BUILD FAILED"; exit 1; fi
           file "$BINARY"
           mkdir -p android/app/src/main/jniLibs/${{ matrix.abi }}
