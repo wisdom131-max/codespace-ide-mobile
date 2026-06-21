@@ -169,7 +169,7 @@ jobs:
 
           # Link final proot binary
           $CC -static -o proot $OBJS \
-            -Wl,-z,noexecstack 2>&1 | head -50
+            -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 -Wl,--tls-size=64 2>&1 | head -50
 
           ls -la proot 2>/dev/null || echo "proot binary not found"
           file proot 2>/dev/null || true
