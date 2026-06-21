@@ -96,15 +96,17 @@ jobs:
           fi
 
           # Embed loader into object file using objcopy
+          if [[ "${{ matrix.target }}" == *"aarch64"* ]]; then
+            OBJCOPY_TARGET="elf64-littleaarch64"
+            OBJCOPY_ARCH="aarch64"
+          else
+            OBJCOPY_TARGET="elf64-x86-64"
+            OBJCOPY_ARCH="i386:x86-64"
+          fi
           $OBJCOPY \
             --input-target=binary \
-            --output-target=elf64-littleaarch64 \
-            --binary-architecture=aarch64 \
-            loader.exe loader/loader-wrapped.o 2>&1 || \
-          $OBJCOPY \
-            --input-target=binary \
-            --output-target=elf64-x86-64 \
-            --binary-architecture=i386:x86-64 \
+            --output-target=$OBJCOPY_TARGET \
+            --binary-architecture=$OBJCOPY_ARCH \
             loader.exe loader/loader-wrapped.o 2>&1 || true
 
           echo "Loader embedding done"
