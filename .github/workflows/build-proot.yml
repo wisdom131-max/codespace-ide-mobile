@@ -50,7 +50,7 @@ jobs:
           cd /tmp/proot-src/src
           STRIP=$TOOLCHAIN/bin/llvm-strip
           OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
-          make proot CC="$CC" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" OBJCOPY="$OBJCOPY" LOADER_LDFLAGS="" HAS_LOADER_AS_BINARY=0 LDFLAGS="-static" TALLOC_CFLAGS="-I/tmp/proot-src/src" TALLOC_LIBS="" CFLAGS="-Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration" V=1 2>&1 | tail -50
+          make proot CC="$CC" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" OBJCOPY="$OBJCOPY" LDFLAGS="-static" LOADER_LDFLAGS="-shared" HAS_LOADER_AS_BINARY=0 LDFLAGS="-static" TALLOC_CFLAGS="-I/tmp/proot-src/src" TALLOC_LIBS="" CFLAGS="-Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration" V=1 2>&1 | tail -50
 
       - name: Copy binary
         run: |
