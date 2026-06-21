@@ -60,7 +60,10 @@ jobs:
 
       - name: Copy binary
         run: |
-          BINARY=$(find /tmp/proot-src/src -name "proot" -type f | head -1)
+          echo "--- finding proot binary ---"
+          find /tmp/proot-src -name "proot" -type f 2>/dev/null
+          find /tmp/proot-src -name "proot*" -type f 2>/dev/null
+          BINARY=$(find /tmp/proot-src -name "proot" -type f | head -1)
           if [ -z "$BINARY" ]; then echo "BUILD FAILED"; exit 1; fi
           file "$BINARY"
           mkdir -p android/app/src/main/jniLibs/${{ matrix.abi }}
