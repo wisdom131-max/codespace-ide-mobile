@@ -46,7 +46,7 @@ jobs:
       - name: Build static proot
         run: |
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
-          export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
+          export CC=$TOOLCHAIN/bin/${{ matrix.target }}24-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
           export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
           cd /tmp/proot-src/src
