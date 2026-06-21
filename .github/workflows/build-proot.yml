@@ -49,14 +49,8 @@ jobs:
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}21-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
           export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
-          cd /tmp/proot-src
-          make -C src proot \
-            CC="$CC" AR="$AR" RANLIB="$RANLIB" \
-            LDFLAGS="-static" \
-            TALLOC_CFLAGS="-I/tmp/proot-src/src" \
-            TALLOC_LIBS="" \
-            2>&1 | tail -30
-          find /tmp/proot-src/src -name "proot" -type f | head -3
+          cd /tmp/proot-src/src
+          make proot             CC="$CC" AR="$AR" RANLIB="$RANLIB"             LDFLAGS="-static"             TALLOC_CFLAGS="-I/tmp/proot-src/src"             TALLOC_LIBS=""             V=1 2>&1 | tail -50
 
       - name: Copy binary
         run: |
