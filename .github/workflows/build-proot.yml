@@ -45,10 +45,21 @@ jobs:
           cd /tmp/proot-src
           git submodule update --init --recursive
 
-      - name: Copy talloc implementation
+      - name: Get Termux libtalloc
         run: |
+          ABI="${{ matrix.abi }}"
+          if [ "$ABI" = "arm64-v8a" ]; then ARCH="aarch64"; fi
+          if [ "$ABI" = "x86_64" ]; then ARCH="x86_64"; fi
+          curl -L "https://packages.termux.dev/apt/termux-main/pool/main/libt/libtalloc/libtalloc_2.4.1-2_${ARCH}.deb" -o /tmp/libtalloc.deb
+          cd /tmp && ar x libtalloc.deb && tar xf data.tar.xz 2>/dev/null || tar xf data.tar.gz 2>/dev/null || true
+          find /tmp/data -name "libtalloc*" | head -10
+          find /tmp/data -name "talloc.h" | head -5
+          # Also get talloc dev headers
+          curl -L "https://packages.termux.dev/apt/termux-main/pool/main/libt/libtalloc/libtalloc-dev_2.4.1-2_${ARCH}.deb" -o /tmp/libtalloc-dev.deb
+          cd /tmp && ar x libtalloc-dev.deb && tar xf data.tar.xz 2>/dev/null || true
+          find /tmp/data -name "talloc.h" | head -5
           cp $GITHUB_WORKSPACE/android/app/src/main/cpp/talloc/talloc.h /tmp/proot-src/src/talloc.h
-          echo "talloc.h copied"
+          echo "done"
 
       - name: Build loader
         run: |
@@ -157,7 +168,15 @@ jobs:
           $CC -c /tmp/talloc.c -o /tmp/talloc.o $CF
 
           # Compile all proot sources except loader and check files
-          OBJS="/tmp/talloc.o"
+          # Use Termux's real libtalloc for correct TLS alignment
+          TALLOC_LIB=$(find /tmp/data -name "libtalloc.a" | head -1)
+          if [ -z "$TALLOC_LIB" ]; then
+            echo "libtalloc.a not found, using stub"
+            OBJS="/tmp/talloc.o"
+          else
+            echo "Using Termux libtalloc: $TALLOC_LIB"
+            OBJS="$TALLOC_LIB"
+          fi
           for src in $(find . -name "*.c" | grep -v "/loader/" | grep -v "check_" | grep -v "talloc" | sort); do
             obj="${src%.c}.o"
             mkdir -p "$(dirname $obj)"
@@ -173,7 +192,7 @@ jobs:
           fi
 
           # Link final proot binary
-          $CC -static -Wl,-z,max-page-size=16384 -Wl,-z,tls-segment-size=64 -o proot $OBJS \
+          $CC -static -Wl,-z,max-page-size=16384 -Wl,--tls-size=256 -o proot $OBJS \
             -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 2>&1 | head -50
 
           ls -la proot 2>/dev/null || echo "proot binary not found"
