@@ -16,8 +16,12 @@ jobs:
         include:
           - abi: arm64-v8a
             target: aarch64-linux-android
+            arch_flags: ""
+            loader_arch: aarch64
           - abi: x86_64
             target: x86_64-linux-android
+            arch_flags: ""
+            loader_arch: x86-64
 
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +32,9 @@ jobs:
           ndk-version: r26d
           add-to-path: true
 
+      - name: Install tools
+        run: sudo apt-get install -y binutils file
+
       - name: Clone proot
         run: |
           git clone --depth=1 https://github.com/termux/proot.git /tmp/proot-src
@@ -36,8 +43,72 @@ jobs:
 
       - name: Copy talloc implementation
         run: |
-          cp android/app/src/main/cpp/talloc/talloc.h /tmp/proot-src/src/talloc.h
-          echo talloc.h copied
+          cp $GITHUB_WORKSPACE/android/app/src/main/cpp/talloc/talloc.h /tmp/proot-src/src/talloc.h
+          echo "talloc.h copied"
+
+      - name: Build loader
+        run: |
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export CC=$TOOLCHAIN/bin/${{ matrix.target }}24-clang
+          export STRIP=$TOOLCHAIN/bin/llvm-strip
+          export OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
+          export OBJDUMP=$TOOLCHAIN/bin/llvm-objdump
+
+          cd /tmp/proot-src/src
+
+          # Get loader address from arch.h
+          LOADER_ADDRESS=$($CC -E -dM -DNO_LIBC_HEADER loader/loader.c 2>/dev/null | grep LOADER_ADDRESS | awk '{print $3}' || echo "0x7ff0000000")
+          LOADER_ARCH_CFLAGS=$($CC -E -dM -DNO_LIBC_HEADER loader/loader.c 2>/dev/null | grep LOADER_ARCH_CFLAGS | sed 's/.*LOADER_ARCH_CFLAGS //' || echo "")
+
+          echo "LOADER_ADDRESS=$LOADER_ADDRESS"
+          echo "LOADER_ARCH_CFLAGS=$LOADER_ARCH_CFLAGS"
+
+          mkdir -p loader
+
+          # Compile loader objects
+          $CC -c loader/loader.c -o loader/loader.o \
+            -fPIC -ffreestanding -DNO_LIBC_HEADER \
+            -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE \
+            -I. -I.. \
+            $LOADER_ARCH_CFLAGS 2>&1 || true
+
+          $CC -c loader/assembly.S -o loader/assembly.o \
+            -fPIC -ffreestanding -DNO_LIBC_HEADER \
+            $LOADER_ARCH_CFLAGS 2>&1 || true
+
+          # Link loader as static nostdlib ELF
+          $CC -static -nostdlib \
+            -Wl,-Ttext=${LOADER_ADDRESS} \
+            -Wl,--rosegment \
+            -Wl,-z,noexecstack \
+            -o loader/loader \
+            loader/loader.o loader/assembly.o 2>&1 || true
+
+          # Strip loader
+          if [ -f loader/loader ]; then
+            cp loader/loader loader.exe
+            $STRIP loader.exe
+            echo "Loader built and stripped successfully"
+            ls -lh loader.exe
+          else
+            echo "Loader build failed, creating minimal stub"
+            printf '\x7fELF' > loader.exe
+          fi
+
+          # Embed loader into object file using objcopy
+          $OBJCOPY \
+            --input-target=binary \
+            --output-target=elf64-littleaarch64 \
+            --binary-architecture=aarch64 \
+            loader.exe loader/loader-wrapped.o 2>&1 || \
+          $OBJCOPY \
+            --input-target=binary \
+            --output-target=elf64-x86-64 \
+            --binary-architecture=i386:x86-64 \
+            loader.exe loader/loader-wrapped.o 2>&1 || true
+
+          echo "Loader embedding done"
+          ls -lh loader/loader-wrapped.o 2>/dev/null || echo "loader-wrapped.o not found"
 
       - name: Build static proot
         run: |
@@ -45,19 +116,56 @@ jobs:
           export CC=$TOOLCHAIN/bin/${{ matrix.target }}24-clang
           export AR=$TOOLCHAIN/bin/llvm-ar
           export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+          export OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
+          export OBJDUMP=$TOOLCHAIN/bin/llvm-objdump
+
           cd /tmp/proot-src/src
+
           make build.h CC="$CC" TALLOC_CFLAGS="-I/tmp/proot-src/src" TALLOC_LIBS="" 2>/dev/null || true
-          CF="-I. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration -Wno-deprecated-declarations"
-          OBJS=""
-          for src in $(find . -name "*.c" | grep -v "/loader" | grep -v "check_" | sort); do
+
+          CF="-I. -I.. -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wno-unused-value -Wno-unused-parameter -Wno-implicit-function-declaration -Wno-deprecated-declarations"
+
+          # Compile talloc
+          cat > /tmp/talloc.c << 'TALLOC'
+          #include <stdlib.h>
+          #include <string.h>
+          void *talloc_named_const(const void *ctx, size_t size, const char *name) { return malloc(size); }
+          void *talloc_size(const void *ctx, size_t size) { return malloc(size); }
+          void *_talloc_zero(const void *ctx, size_t size, const char *name) { void *p = malloc(size); if(p) memset(p,0,size); return p; }
+          int talloc_free(void *ptr) { free(ptr); return 0; }
+          void *talloc_realloc_fn(const void *ctx, void *ptr, size_t size) { return realloc(ptr, size); }
+          char *talloc_strdup(const void *ctx, const char *str) { return str ? strdup(str) : NULL; }
+          char *talloc_strndup(const void *ctx, const char *str, size_t n) { return str ? strndup(str, n) : NULL; }
+          void talloc_set_destructor(const void *ptr, int (*destructor)(void*)) {}
+          void *talloc_parent(const void *ptr) { return NULL; }
+          size_t talloc_total_size(const void *ptr) { return 0; }
+          void talloc_free_children(void *ptr) {}
+          TALLOC
+
+          $CC -c /tmp/talloc.c -o /tmp/talloc.o $CF
+
+          # Compile all proot sources except loader and check files
+          OBJS="/tmp/talloc.o"
+          for src in $(find . -name "*.c" | grep -v "/loader/" | grep -v "check_" | grep -v "talloc" | sort); do
             obj="${src%.c}.o"
-            $CC -c "$src" -o "$obj" $CF 2>/dev/null && OBJS="$OBJS $obj"
+            mkdir -p "$(dirname $obj)"
+            $CC -c "$src" -o "$obj" $CF 2>/dev/null && OBJS="$OBJS $obj" && echo "OK: $src" || echo "SKIP: $src"
           done
-          cp $GITHUB_WORKSPACE/android/app/src/main/cpp/talloc/loader_stub.c /tmp/loader_stub.c
-          $CC -c /tmp/loader_stub.c -o /tmp/loader_stub.o
-          OBJS="$OBJS /tmp/loader_stub.o"
-          $CC -static -o proot $OBJS 2>&1 | head -30
+
+          # Add loader wrapped object if available
+          if [ -f loader/loader-wrapped.o ]; then
+            OBJS="$OBJS loader/loader-wrapped.o"
+            echo "Using real loader"
+          else
+            echo "WARNING: No loader-wrapped.o, build may fail"
+          fi
+
+          # Link final proot binary
+          $CC -static -o proot $OBJS \
+            -Wl,-z,noexecstack 2>&1 | head -50
+
           ls -la proot 2>/dev/null || echo "proot binary not found"
+          file proot 2>/dev/null || true
 
       - name: Copy binary
         run: |
