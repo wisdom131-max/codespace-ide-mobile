@@ -72,3 +72,7 @@ static inline char *talloc_asprintf_append(char *str, const char *fmt, ...) {
 #define talloc_vasprintf(ctx, fmt, ap) (NULL)
 #define talloc_strndup_append_buffer(str, s, n) talloc_asprintf_append(str, "%.*s", (int)(n), (s))
 #define talloc_asprintf_append_buffer(str, ...) talloc_asprintf_append(str, __VA_ARGS__)
+#define talloc_memdup(ctx, ptr, size) memcpy(malloc(size), ptr, size)
+#define talloc_report_depth_cb(ctx, depth, max, cb, priv)
+#define talloc_report_depth_file(ctx, depth, max, f)
+#define talloc_print_ptr(f, ptr)
