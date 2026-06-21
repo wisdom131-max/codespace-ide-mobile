@@ -168,7 +168,7 @@ jobs:
           fi
 
           # Link final proot binary
-          $CC -static -Wl,-z,max-page-size=16384 -o proot $OBJS \
+          $CC -static -Wl,-z,max-page-size=16384 -Wl,-z,tls-segment-size=64 -o proot $OBJS \
             -Wl,-z,noexecstack -Wl,-z,max-page-size=16384 2>&1 | head -50
 
           ls -la proot 2>/dev/null || echo "proot binary not found"
