@@ -53,12 +53,7 @@ jobs:
             obj="${src%.c}.o"
             $CC -c "$src" -o "$obj" $CF 2>/dev/null && OBJS="$OBJS $obj"
           done
-          # Create stub for loader symbols
-          cat > /tmp/loader_stub.c << 'CEOF'
-char _binary_loader_exe_start[1] = {0};
-char _binary_loader_exe_end[1] = {0};
-unsigned long offset_to_pokedata_workaround = 0;
-CEOF
+          cp android/app/src/main/cpp/talloc/loader_stub.c /tmp/loader_stub.c
           $CC -c /tmp/loader_stub.c -o /tmp/loader_stub.o
           OBJS="$OBJS /tmp/loader_stub.o"
           $CC -static -o proot $OBJS 2>&1 | head -30
