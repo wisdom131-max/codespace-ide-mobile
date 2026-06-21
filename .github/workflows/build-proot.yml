@@ -187,6 +187,12 @@ jobs:
           ls -la proot 2>/dev/null || echo "proot binary not found"
           file proot 2>/dev/null || true
           $TOOLCHAIN/bin/llvm-readelf -S proot 2>/dev/null | grep -i "tls\|TLS" || echo "no TLS section found"
+          # Find which object has TLS
+          for obj in $OBJS; do
+            if $TOOLCHAIN/bin/llvm-readelf -S "$obj" 2>/dev/null | grep -q "TLS"; then
+              echo "TLS in: $obj"
+            fi
+          done
 
       - name: Copy binary
         run: |
