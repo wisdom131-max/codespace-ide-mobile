@@ -58,3 +58,4 @@ static inline char *talloc_asprintf_append(char *str, const char *fmt, ...) {
 #define talloc_vasprintf(ctx, fmt, ap) (NULL)
 #define talloc_array_ptrtype(ctx, ptr, n) (__typeof__(ptr))calloc(n, sizeof(*(ptr)))
 #define talloc_ptrtype(ctx, ptr) (__typeof__(ptr))malloc(sizeof(*(ptr)))
+#define talloc_reference_count(ptr) (0)
