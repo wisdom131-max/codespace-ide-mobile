@@ -52,3 +52,9 @@ static inline char *talloc_asprintf_append(char *str, const char *fmt, ...) {
     return r;
 }
 #define talloc_strndup_append(str, s, n) talloc_asprintf_append(str, "%.*s", (int)(n), (s))
+#define talloc_array_length(arr) (0)
+#define talloc_autofree_context() (NULL)
+#define talloc_reparent(old_ctx, new_ctx, ptr) (ptr)
+#define talloc_vasprintf(ctx, fmt, ap) (NULL)
+#define talloc_array_ptrtype(ctx, ptr, n) (__typeof__(ptr))calloc(n, sizeof(*(ptr)))
+#define talloc_ptrtype(ctx, ptr) (__typeof__(ptr))malloc(sizeof(*(ptr)))
