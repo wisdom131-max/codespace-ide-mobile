@@ -247,7 +247,7 @@ fun TerminalPane() {
                     update = { view ->
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
-                            active.client.onTextChanged = { view.onScreenUpdated(); view.post { view.fullScroll(android.view.View.FOCUS_DOWN) } }
+                            active.client.onTextChanged = { view.post { view.onScreenUpdated() } }
                             view.requestFocus()
                         }
                     }
