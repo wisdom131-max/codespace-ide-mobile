@@ -199,6 +199,7 @@ jobs:
       - name: Fix TLS alignment with termux-elf-cleaner
         run: |
           # Download and build termux-elf-cleaner
+          rm -rf /tmp/elf-cleaner-${{ matrix.abi }}
           git clone --depth=1 https://github.com/termux/termux-elf-cleaner.git /tmp/elf-cleaner-${{ matrix.abi }}
           cd /tmp/elf-cleaner-${{ matrix.abi }}
           cmake . -DCMAKE_BUILD_TYPE=Release
@@ -215,6 +216,7 @@ jobs:
       - name: Fix TLS alignment with termux-elf-cleaner
         run: |
           # Download and build termux-elf-cleaner
+          rm -rf /tmp/elf-cleaner-${{ matrix.abi }}
           git clone --depth=1 https://github.com/termux/termux-elf-cleaner.git /tmp/elf-cleaner-${{ matrix.abi }}
           cd /tmp/elf-cleaner-${{ matrix.abi }}
           cmake . -DCMAKE_BUILD_TYPE=Release
