@@ -8,6 +8,9 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 
 object ProotInstaller {
+    init {
+        try { System.loadLibrary("talloc") } catch (_: Throwable) {}
+    }
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL = "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
     private const val VERSION = "ubuntu-questing-v4.30.1"
