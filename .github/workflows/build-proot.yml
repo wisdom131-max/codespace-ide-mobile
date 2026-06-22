@@ -212,6 +212,22 @@ jobs:
             file "$BINARY"
           fi
 
+      - name: Fix TLS alignment with termux-elf-cleaner
+        run: |
+          # Download and build termux-elf-cleaner
+          git clone --depth=1 https://github.com/termux/termux-elf-cleaner.git /tmp/elf-cleaner
+          cd /tmp/elf-cleaner
+          cmake . -DCMAKE_BUILD_TYPE=Release
+          make -j2
+          ls -la termux-elf-cleaner
+          # Apply to proot binary
+          BINARY=$(find /tmp/proot-src/src -name "proot" -type f | head -1)
+          if [ -n "$BINARY" ]; then
+            ./termux-elf-cleaner "$BINARY"
+            echo "ELF cleaned"
+            file "$BINARY"
+          fi
+
       - name: Copy binary
         run: |
           BINARY=$(find /tmp/proot-src/src -name "proot" -type f | head -1)
