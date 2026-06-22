@@ -126,7 +126,7 @@ object ProotInstaller {
             "/usr/bin/bash", "--login"
         )
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir", "PROOT_NO_SECCOMP=1", "LD_LIBRARY_PATH=$nativeLibDir", "PROOT_VERBOSE=1")
+        val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir", "PROOT_NO_SECCOMP=1", "LD_LIBRARY_PATH=$nativeLibDir")
         return Triple(proot, args, envVars)
     }
 }
