@@ -24,11 +24,25 @@ import java.io.OutputStreamWriter
 class TerminalSession(
     private val workingDir: String,
     private val shell: String = "/system/bin/sh",
+    private val backendUrl: String? = null,
 ) {
     private var process: Process? = null
     private var writer: OutputStreamWriter? = null
+    private var remoteSession: RemoteTerminalSession? = null
 
-    fun start(): Flow<String> = callbackFlow {
+    val isRemote: Boolean
+        get() = remoteSession != null
+
+    fun start(): Flow<String> {
+        backendUrl?.takeIf { RemoteTerminalSession.isReachable(it) }?.let { url ->
+            remoteSession = RemoteTerminalSession(url)
+            return remoteSession!!.start()
+        }
+        remoteSession = null
+        return startLocal()
+    }
+
+    private fun startLocal(): Flow<String> = callbackFlow {
         val pb = ProcessBuilder(shell)
             .directory(java.io.File(workingDir))
             .redirectErrorStream(true)
@@ -46,7 +60,7 @@ class TerminalSession(
                     read = reader.read(buf)
                 }
             } catch (_: Throwable) { /* closed */ }
-            trySend("\n[process exited ${runCatching { proc.exitValue() }.getOrDefault("?")}]\n")
+            trySend("\n[process exited ${runCatching { proc.exitValue() }.getOrDefault("?")} ]\n")
         }.apply { start() }
 
         awaitClose {
@@ -56,14 +70,22 @@ class TerminalSession(
     }.flowOn(Dispatchers.IO)
 
     fun send(input: String) {
-        writer?.apply {
-            write(input)
-            flush()
-        }
+        remoteSession?.send(input)
+            ?: writer?.apply {
+                write(input)
+                flush()
+            }
+    }
+
+    fun resize(cols: Int, rows: Int) {
+        remoteSession?.resize(cols, rows)
     }
 
     fun stop() {
-        runCatching { writer?.close() }
-        runCatching { process?.destroy() }
+        remoteSession?.close()
+        if (remoteSession == null) {
+            runCatching { writer?.close() }
+            runCatching { process?.destroy() }
+        }
     }
 }
