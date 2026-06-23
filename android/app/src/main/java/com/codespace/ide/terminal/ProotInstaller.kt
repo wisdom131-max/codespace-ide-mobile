@@ -10,6 +10,7 @@ import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 object ProotInstaller {
     init {
         try { System.loadLibrary("talloc") } catch (_: Throwable) {}
+        try { System.loadLibrary("android-shmem") } catch (_: Throwable) {}
     }
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL = "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
@@ -122,14 +123,30 @@ object ProotInstaller {
         val proot = "${context.applicationInfo.nativeLibraryDir}/libproot.so"
         val rootfs = rootfsDir(context).absolutePath
         val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
+        val nativeLibDir = context.applicationInfo.nativeLibraryDir
+
+        // Extract proot loader from assets to a executable location
+        val loaderFile = File(context.filesDir, "proot-loader")
+        if (!loaderFile.exists()) {
+            context.assets.open("loader").use { input ->
+                loaderFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            loaderFile.setExecutable(true, false)
+        }
+
         val args = arrayOf(
             proot,
             "--link2symlink",
             "-S", rootfs,
             "/usr/bin/bash", "--login"
         )
-        val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        val envVars = arrayOf("PROOT_TMP_DIR=$tmpDir", "TMPDIR=$tmpDir", "PROOT_NO_SECCOMP=1", "LD_LIBRARY_PATH=$nativeLibDir")
+        val envVars = arrayOf(
+            "PROOT_TMP_DIR=$tmpDir",
+            "TMPDIR=$tmpDir",
+            "PROOT_NO_SECCOMP=1",
+            "LD_LIBRARY_PATH=$nativeLibDir",
+            "PROOT_LOADER=${loaderFile.absolutePath}"
+        )
         return Triple(proot, args, envVars)
     }
 }
