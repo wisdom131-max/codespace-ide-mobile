@@ -120,7 +120,6 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
-            keepDebugSymbols += setOf("**/libtalloc.so")
         }
         resources {
             excludes += setOf(
