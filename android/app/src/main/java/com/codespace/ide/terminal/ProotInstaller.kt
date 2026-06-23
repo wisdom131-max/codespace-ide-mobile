@@ -11,6 +11,7 @@ object ProotInstaller {
     init {
         try { System.loadLibrary("talloc") } catch (_: Throwable) {}
         try { System.loadLibrary("android-shmem") } catch (_: Throwable) {}
+        try { System.loadLibrary("proot-loader") } catch (_: Throwable) {}
     }
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL = "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
@@ -126,13 +127,7 @@ object ProotInstaller {
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
 
         // Extract proot loader from assets to a executable location
-        val loaderFile = File(context.filesDir, "proot-loader")
-        if (!loaderFile.exists()) {
-            context.assets.open("loader").use { input ->
-                loaderFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            loaderFile.setExecutable(true, false)
-        }
+        val loaderFile = File(nativeLibDir, "libproot-loader.so")
 
         val args = arrayOf(
             proot,
