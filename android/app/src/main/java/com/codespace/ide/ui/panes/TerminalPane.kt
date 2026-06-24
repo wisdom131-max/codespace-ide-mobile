@@ -242,6 +242,9 @@ internal fun TerminalPane(
         activeId = id
         progressSession.write("\r\n[Ubuntu] Checking installation...\r\n")
         Thread {
+            // Ensure Termux proot binaries are extracted from assets
+            progressSession.write("[Ubuntu] Preparing proot runtime...\r\n")
+            ProotInstaller.ensureBinaries(ctx)
             if (!ProotInstaller.isInstalled(ctx)) {
                 progressSession.write("[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
                 progressSession.write("[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
