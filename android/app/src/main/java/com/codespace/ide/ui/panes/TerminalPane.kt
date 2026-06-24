@@ -41,6 +41,12 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.input.pointer.pointerInput
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
+
 
 private class SimpleTerminalSessionClient : TerminalSessionClient {
     var onTextChanged: (() -> Unit)? = null
@@ -134,23 +140,59 @@ private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): 
     return Pair(session, client)
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared terminal state — lifted up so TerminalPane and SplitTerminalPanel
+// can both read the same sessions and active tab.
+// ─────────────────────────────────────────────────────────────────────────────
+class TerminalState(
+    val tabs: androidx.compose.runtime.snapshots.SnapshotStateList<TabSession>,
+    initialActiveId: String,
+) {
+    var activeId by androidx.compose.runtime.mutableStateOf(initialActiveId)
+    var pinnedId by androidx.compose.runtime.mutableStateOf<String?>(null)  // pinned mirror session
+
+    val active: TabSession? get() = tabs.firstOrNull { it.id == activeId }
+    val pinned: TabSession? get() = tabs.firstOrNull { it.id == (pinnedId ?: activeId) }
+}
+
+@androidx.compose.runtime.Composable
+fun rememberTerminalState(context: android.content.Context): TerminalState {
+    return androidx.compose.runtime.remember {
+        val terminalMode = TerminalModeManager(context)
+        val deviceCompat = DeviceCompatibility(context)
+        val (session, client) = createTerminalSession(context)
+        val defaultName = when (terminalMode.currentMode()) {
+            TerminalModeManager.MODE_UBUNTU -> "ubuntu"
+            TerminalModeManager.MODE_OFFLINE -> "offline"
+            else -> if (deviceCompat.shouldUseOfflineOnly()) "offline" else "ollama"
+        }
+        val tabs = androidx.compose.runtime.mutableStateListOf(TabSession("1", defaultName, session, client))
+        TerminalState(tabs, "1")
+    }
+}
+
+
 @Composable
 fun TerminalPane(
     initialCommand: String? = null,
     onCommandConsumed: () -> Unit = {},
+    externalState: TerminalState? = null,          // if provided, uses shared state
 ) {
-    val context = LocalContext.current
+    val context      = LocalContext.current
     val deviceCompat = remember { DeviceCompatibility(context) }
     val terminalMode = remember { TerminalModeManager(context) }
     var bootstrapReady by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
-    var renameTargetId by remember { mutableStateOf<String?>(null) }
-    var renameValue by remember { mutableStateOf("") }
+    var showMenu        by remember { mutableStateOf(false) }
+    var renameTargetId  by remember { mutableStateOf<String?>(null) }
+    var renameValue     by remember { mutableStateOf("") }
+
+    // Use shared state if provided, otherwise own state
+    val sharedState = externalState ?: rememberTerminalState(context)
+    val tabs = sharedState.tabs
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            BusyboxInstaller.installIfNeeded(context)
-        }
+        withContext(Dispatchers.IO) { BusyboxInstaller.installIfNeeded(context) }
         bootstrapReady = true
     }
 
@@ -164,16 +206,12 @@ fun TerminalPane(
         return
     }
 
-    val tabs = remember {
-        val (session, client) = createTerminalSession(context)
-        val defaultName = when (terminalMode.currentMode()) {
-            TerminalModeManager.MODE_UBUNTU -> "ubuntu"
-            TerminalModeManager.MODE_OFFLINE -> "offline"
-            else -> if (deviceCompat.shouldUseOfflineOnly()) "offline" else "ollama"
-        }
-        mutableStateListOf(TabSession("1", defaultName, session, client))
-    }
-    var activeId by remember { mutableStateOf("1") }
+    var activeId by remember { androidx.compose.runtime.mutableStateOf(sharedState.activeId) }
+    // Keep sharedState.activeId in sync with local activeId
+    LaunchedEffect(activeId) { sharedState.activeId = activeId }
+    // Also sync from external state changes (split panel switching tabs)
+    LaunchedEffect(sharedState.activeId) { if (sharedState.activeId != activeId) activeId = sharedState.activeId }
+
     val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
 
     DisposableEffect(activeId) {
@@ -192,9 +230,7 @@ fun TerminalPane(
     fun renameTab(id: String, newName: String) {
         val trimmed = newName.trim().ifBlank { "bash" }
         val idx = tabs.indexOfFirst { it.id == id }
-        if (idx >= 0) {
-            tabs[idx] = tabs[idx].copy(name = trimmed)
-        }
+        if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
 
     fun addUbuntuTab() {
@@ -231,6 +267,7 @@ fun TerminalPane(
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
+        // Tab bar
         Row(Modifier.fillMaxWidth().background(Color(0xFF252526)), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 tabs.forEach { tab ->
@@ -247,8 +284,7 @@ fun TerminalPane(
                             fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
                         Text("✎", color = Color(0xFF969696), fontSize = 11.sp,
                             modifier = Modifier.padding(start = 4.dp).clickable {
-                                renameTargetId = tab.id
-                                renameValue = tab.name
+                                renameTargetId = tab.id; renameValue = tab.name
                             }.padding(2.dp))
                         if (tabs.size > 1) {
                             Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
@@ -270,33 +306,28 @@ fun TerminalPane(
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("Set default: Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("Open Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; addUbuntuTab() })
+                    if (!deviceCompat.shouldUseOfflineOnly()) {
+                        DropdownMenuItem(text = { Text("Open Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                            onClick = { showMenu = false; addUbuntuTab() })
+                    }
                     DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
             }
         }
 
+        // Rename dialog
         if (renameTargetId != null) {
             AlertDialog(
                 onDismissRequest = { renameTargetId = null; renameValue = "" },
                 title = { Text("Rename terminal") },
                 text = {
-                    OutlinedTextField(
-                        value = renameValue,
-                        onValueChange = { renameValue = it },
-                        label = { Text("Terminal name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    OutlinedTextField(value = renameValue, onValueChange = { renameValue = it },
+                        label = { Text("Terminal name") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth())
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        renameTargetId?.let { renameTab(it, renameValue) }
-                        renameTargetId = null
-                        renameValue = ""
-                    }) { Text("Save") }
+                    TextButton(onClick = { renameTargetId?.let { renameTab(it, renameValue) }; renameTargetId = null; renameValue = "" }) { Text("Save") }
                 },
                 dismissButton = {
                     TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
@@ -304,6 +335,7 @@ fun TerminalPane(
             )
         }
 
+        // Terminal view
         if (active != null) {
             key(active.id) {
                 AndroidView(
@@ -314,7 +346,7 @@ fun TerminalPane(
                             viewClient.terminalView = this
                             setTerminalViewClient(viewClient)
                             setTextSize(13)
-                            setTypeface(Typeface.MONOSPACE)
+                            setTypeface(android.graphics.Typeface.MONOSPACE)
                             isFocusable = true
                             isFocusableInTouchMode = true
                         }
@@ -335,58 +367,130 @@ fun TerminalPane(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SplitTerminalPanel — replaces the AI tab
-// Two real full terminals side-by-side. Drag the center divider to resize.
-// Tap the pin (circle on divider) to lock the ratio. Each side has full tab
-// support so you can e.g. run Ubuntu on the left and bash on the right.
-// Any AI running in Ubuntu (Ollama, llama.cpp, etc.) automatically gets the
-// MCP env vars injected by BusyboxInstaller, so it can read/write project files.
+//
+// Shows the SAME terminal sessions as the main TerminalPane.
+// • By default mirrors whatever tab is currently active in the main pane
+// • Tap 📌 to pin it — it stays on that session even if you switch in the main pane
+// • Tap ◀ / ▶ arrows to manually pick which tab to show on the right
+// • The pinned session is fully interactive (same PTY, real input/output)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun SplitTerminalPanel() {
-    val context  = LocalContext.current
-    var ratio    by remember { mutableFloatStateOf(0.5f) }
-    var isPinned by remember { mutableStateOf(false) }
+fun SplitTerminalPanel(sharedState: TerminalState) {
+    val tabs     = sharedState.tabs
+    var isPinned by remember { mutableStateOf(sharedState.pinnedId != null) }
 
-    Row(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
+    // Which session to show in the mirror
+    var mirrorId by remember {
+        mutableStateOf(sharedState.pinnedId ?: sharedState.activeId)
+    }
 
-        // Left terminal
-        Box(Modifier.fillMaxHeight().weight(ratio.coerceIn(0.2f, 0.8f))) {
-            TerminalPane()
-        }
+    // Auto-follow active tab unless pinned
+    LaunchedEffect(sharedState.activeId) {
+        if (!isPinned) mirrorId = sharedState.activeId
+    }
 
-        // Resize divider + pin button
-        Box(
-            Modifier
-                .fillMaxHeight()
-                .width(6.dp)
-                .background(if (isPinned) Color(0xFF007ACC) else Color(0xFF3C3C3C))
-                .pointerInput(isPinned) {
-                    if (!isPinned) {
-                        detectHorizontalDragGestures { _, drag ->
-                            ratio = (ratio + drag / 900f).coerceIn(0.2f, 0.8f)
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center,
+    val mirrorTab = tabs.firstOrNull { it.id == mirrorId } ?: tabs.firstOrNull()
+
+    // Pin state persisted into sharedState
+    LaunchedEffect(isPinned, mirrorId) {
+        sharedState.pinnedId = if (isPinned) mirrorId else null
+    }
+
+    fun prevTab() {
+        val idx = tabs.indexOfFirst { it.id == mirrorId }
+        if (idx > 0) mirrorId = tabs[idx - 1].id else mirrorId = tabs.last().id
+        isPinned = true
+    }
+
+    fun nextTab() {
+        val idx = tabs.indexOfFirst { it.id == mirrorId }
+        mirrorId = if (idx < tabs.size - 1) tabs[idx + 1].id else tabs.first().id
+        isPinned = true
+    }
+
+    Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
+
+        // Header bar
+        Row(
+            Modifier.fillMaxWidth().height(32.dp).background(Color(0xFF252526)).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // Tab navigator arrows
+            Text("◀", color = if (tabs.size > 1) Color(0xFF969696) else Color(0xFF444444),
+                fontSize = 13.sp, modifier = Modifier.clickable(enabled = tabs.size > 1) { prevTab() }.padding(4.dp))
+
+            // Tab chips — tap to switch mirror target
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                tabs.forEach { tab ->
+                    val isShown = tab.id == mirrorId
+                    Box(
+                        Modifier
+                            .background(if (isShown) Color(0xFF007ACC) else Color(0xFF3A3A3A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .clickable { mirrorId = tab.id; isPinned = true }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    ) {
+                        Text(tab.name,
+                            color = if (isShown) Color.White else Color(0xFF969696),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+            }
+
+            Text("▶", color = if (tabs.size > 1) Color(0xFF969696) else Color(0xFF444444),
+                fontSize = 13.sp, modifier = Modifier.clickable(enabled = tabs.size > 1) { nextTab() }.padding(4.dp))
+
+            // Pin button
             Box(
                 Modifier
-                    .size(22.dp)
-                    .background(
-                        if (isPinned) Color(0xFF007ACC) else Color(0xFF555555),
-                        CircleShape
-                    )
-                    .clickable { isPinned = !isPinned },
+                    .size(26.dp)
+                    .background(if (isPinned) Color(0xFF007ACC) else Color(0xFF3A3A3A), CircleShape)
+                    .clickable { isPinned = !isPinned; if (!isPinned) mirrorId = sharedState.activeId },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(if (isPinned) "||" else "||", color = Color.White, fontSize = 8.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text("📌", fontSize = 11.sp)
             }
         }
 
-        // Right terminal
-        Box(Modifier.fillMaxHeight().weight((1f - ratio).coerceIn(0.2f, 0.8f))) {
-            TerminalPane()
+        // Mirrored terminal — points at exactly the same TerminalSession
+        if (mirrorTab != null) {
+            key(mirrorTab.id) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        TerminalView(ctx, null).apply {
+                            val viewClient = SimpleTerminalViewClient()
+                            viewClient.terminalView = this
+                            setTerminalViewClient(viewClient)
+                            setTextSize(13)
+                            setTypeface(android.graphics.Typeface.MONOSPACE)
+                            isFocusable = true
+                            isFocusableInTouchMode = true
+                        }
+                    },
+                    update = { view ->
+                        if (view.mTermSession != mirrorTab.session) {
+                            view.attachSession(mirrorTab.session)
+                            // Second observer on the same client — updates both views
+                            val existing = mirrorTab.client.onTextChanged
+                            mirrorTab.client.onTextChanged = {
+                                existing?.invoke()
+                                view.post { view.onScreenUpdated() }
+                            }
+                            view.requestFocus()
+                        }
+                    }
+                )
+            }
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No terminal open — open a terminal tab first",
+                    color = Color(0xFF969696), fontSize = 13.sp)
+            }
         }
     }
 }
+
