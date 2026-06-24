@@ -306,8 +306,17 @@ internal fun TerminalPane(
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("Set default: Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("Open Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("New Ubuntu Tab", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = { showMenu = false; addUbuntuTab() })
+                    DropdownMenuItem(text = { Text("Run Ollama in Ubuntu", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            addUbuntuTab()
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                val ubuntuTab = tabs.lastOrNull()
+                                ubuntuTab?.session?.write("ollama serve &\nclear\necho \"Ollama running on :11434 — try: ollama run llama3\"\n")
+                            }, 3000)
+                        })
                     DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
