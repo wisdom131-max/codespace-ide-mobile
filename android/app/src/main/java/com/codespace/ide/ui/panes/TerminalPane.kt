@@ -174,7 +174,7 @@ internal fun rememberTerminalState(context: android.content.Context): TerminalSt
 
 
 @Composable
-fun TerminalPane(
+internal fun TerminalPane(
     initialCommand: String? = null,
     onCommandConsumed: () -> Unit = {},
     externalState: TerminalState? = null,          // if provided, uses shared state
@@ -375,7 +375,7 @@ fun TerminalPane(
 // • The pinned session is fully interactive (same PTY, real input/output)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun SplitTerminalPanel(sharedState: TerminalState) {
+internal fun SplitTerminalPanel(sharedState: TerminalState) {
     val tabs     = sharedState.tabs
     var isPinned by remember { mutableStateOf(sharedState.pinnedId != null) }
 
