@@ -235,18 +235,33 @@ internal fun TerminalPane(
 
     fun addUbuntuTab() {
         val ctx = context
+        // Create the tab immediately with a shell session so we can write progress to it
+        val id = System.currentTimeMillis().toString()
+        val (progressSession, progressClient) = createTerminalSession(ctx, isUbuntu = false)
+        tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
+        activeId = id
+        progressSession.write("\r\n[Ubuntu] Checking installation...\r\n")
         Thread {
             if (!ProotInstaller.isInstalled(ctx)) {
+                progressSession.write("[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
+                progressSession.write("[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
                 ProotInstaller.install(ctx) { msg ->
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
-                    }
+                    progressSession.write("  $msg\r\n")
                 }
+                progressSession.write("\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
+            } else {
+                progressSession.write("[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
             }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                val id = System.currentTimeMillis().toString()
+                // Replace the progress tab with real Ubuntu proot session
+                val idx = tabs.indexOfFirst { it.id == id }
+                progressSession.finishIfRunning()
                 val (session, client) = createTerminalSession(ctx, isUbuntu = true)
-                tabs.add(TabSession(id, "ubuntu", session, client))
+                if (idx >= 0) {
+                    tabs[idx] = TabSession(id, "Ubuntu", session, client)
+                } else {
+                    tabs.add(TabSession(id, "Ubuntu", session, client))
+                }
                 activeId = id
             }
         }.apply { isDaemon = true; start() }
@@ -298,17 +313,17 @@ internal fun TerminalPane(
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696)) }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
                     offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
-                    DropdownMenuItem(text = { Text("New Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("+ New Bash Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; addTab() })
-                    DropdownMenuItem(text = { Text("Setup Offline Shell", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("Set default: Ollama / Offline", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("Default: Offline Mode (no Ubuntu)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("Set default: Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("Default: Ubuntu Mode", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("New Ubuntu Tab", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("🐧 Open Ubuntu Linux", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = { showMenu = false; addUbuntuTab() })
-                    DropdownMenuItem(text = { Text("Run Ollama in Ubuntu", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("🤖 Run Ollama AI (in Ubuntu)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             addUbuntuTab()
@@ -317,7 +332,7 @@ internal fun TerminalPane(
                                 ubuntuTab?.session?.write("ollama serve &\nclear\necho \"Ollama running on :11434 — try: ollama run llama3\"\n")
                             }, 3000)
                         })
-                    DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(text = { Text("✕ Close This Tab", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
             }
@@ -500,4 +515,5 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
 
