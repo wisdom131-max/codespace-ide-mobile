@@ -48,7 +48,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 
 
-private class SimpleTerminalSessionClient : TerminalSessionClient {
+internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var onTextChanged: (() -> Unit)? = null
     override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
     override fun onTitleChanged(changedSession: TerminalSession) {}
@@ -83,7 +83,7 @@ private class SimpleTerminalSessionClient : TerminalSessionClient {
     override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag, "", e) }
 }
 
-private class SimpleTerminalViewClient : TerminalViewClient {
+internal class SimpleTerminalViewClient : TerminalViewClient {
     var terminalView: TerminalView? = null
     override fun onScale(scale: Float): Float = scale
     override fun onSingleTapUp(e: MotionEvent?) {
@@ -118,7 +118,7 @@ private class SimpleTerminalViewClient : TerminalViewClient {
 
 internal data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
 
-private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
+internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
     val client = SimpleTerminalSessionClient()
     client.appContext = context.applicationContext
 
@@ -145,7 +145,7 @@ private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): 
 // Shared terminal state — lifted up so TerminalPane and SplitTerminalPanel
 // can both read the same sessions and active tab.
 // ─────────────────────────────────────────────────────────────────────────────
-class TerminalState(
+internal class TerminalState(
     val tabs: androidx.compose.runtime.snapshots.SnapshotStateList<TabSession>,
     initialActiveId: String,
 ) {
@@ -157,7 +157,7 @@ class TerminalState(
 }
 
 @androidx.compose.runtime.Composable
-fun rememberTerminalState(context: android.content.Context): TerminalState {
+internal fun rememberTerminalState(context: android.content.Context): TerminalState {
     return androidx.compose.runtime.remember {
         val terminalMode = TerminalModeManager(context)
         val deviceCompat = DeviceCompatibility(context)
