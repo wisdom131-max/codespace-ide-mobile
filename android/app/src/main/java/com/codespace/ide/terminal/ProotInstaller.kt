@@ -121,27 +121,48 @@ object ProotInstaller {
     }
 
     fun launchArgs(context: Context): Triple<String, Array<String>, Array<String>> {
-        val proot = "${context.applicationInfo.nativeLibraryDir}/libproot.so"
-        val rootfs = rootfsDir(context).absolutePath
-        val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
+        val proot    = "$nativeLibDir/libproot.so"
+        val loader   = "$nativeLibDir/libproot-loader.so"
+        val rootfs   = rootfsDir(context).absolutePath
+        val tmpDir   = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
+        val homeDir  = File(rootfs, "root").apply { mkdirs() }.absolutePath
 
-        // Extract proot loader from assets to a executable location
-        val loaderFile = File(nativeLibDir, "libproot-loader.so")
+        // Ensure the loader .so is executable (Android sometimes strips exec bit)
+        val loaderFile = File(loader)
+        if (loaderFile.exists()) loaderFile.setExecutable(true, false)
 
+        // Bind /proc and inject Ollama env so `ollama serve` works inside Ubuntu
         val args = arrayOf(
-            proot,
             "--link2symlink",
+            "--kill-on-exit",
             "-S", rootfs,
-            "/usr/bin/bash", "--login"
+            "-b", "/proc:/proc",
+            "-b", "/dev:/dev",
+            "-b", "/sys:/sys",
+            "-b", "${context.filesDir.absolutePath}:/host-files",
+            "-w", "/root",
+            "/usr/bin/env",
+            "-i",
+            "HOME=/root",
+            "TERM=xterm-256color",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG=en_US.UTF-8",
+            "OLLAMA_HOST=0.0.0.0:11434",
+            "OLLAMA_MODELS=/root/.ollama/models",
+            "OLLAMA_KEEP_ALIVE=30m",
+            "/bin/bash", "--login"
         )
+
         val envVars = arrayOf(
+            "PROOT_LOADER=$loader",
             "PROOT_TMP_DIR=$tmpDir",
             "TMPDIR=$tmpDir",
             "PROOT_NO_SECCOMP=1",
             "LD_LIBRARY_PATH=$nativeLibDir",
-            "PROOT_LOADER=${loaderFile.absolutePath}"
+            "HOME=${context.filesDir.absolutePath}"
         )
+
         return Triple(proot, args, envVars)
     }
 }
