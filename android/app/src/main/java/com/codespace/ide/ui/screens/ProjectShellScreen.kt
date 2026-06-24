@@ -241,7 +241,7 @@ private fun ideColors(themeName: String): IdeColors {
 }
 
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS }
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, AI }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -419,7 +419,7 @@ fun ProjectShellScreen(
             "Extensions"         -> activePanel = SidePanel.EXTENSIONS
             "Toggle Sidebar"     -> activePanel = if (activePanel == null) SidePanel.EXPLORER else null
             "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
-            "AI Assistant"       -> { showBottomPanel = true; activeBottomTab = BottomTab.AI }
+            "Split Terminal"     -> { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT }
             "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
             "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
@@ -504,10 +504,10 @@ fun ProjectShellScreen(
                     modifier = Modifier.size(20.dp).clickable { handleMenuAction("Run Program") })
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Bolt, null, tint = Color(0xFF007ACC),
-                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("AI Assistant") })
+                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("Split Terminal") })
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFF7C4DFF),
-                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("AI Assistant") })
+                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("Split Terminal") })
                 Spacer(Modifier.width(8.dp))
 
                 Icon(Icons.Default.Notifications, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
@@ -645,7 +645,7 @@ fun ProjectShellScreen(
                         Modifier.fillMaxWidth().background(Color(0xFFF8FAFC)).padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        listOf("Run" to "Run Program", "Debug" to "Start Debugging", "Terminal" to "Terminal", "AI" to "AI Assistant").forEach { (label, action) ->
+                        listOf("Run" to "Run Program", "Debug" to "Start Debugging", "Terminal" to "Terminal", "Split" to "Split Terminal").forEach { (label, action) ->
                             OutlinedButton(
                                 onClick = { handleMenuAction(action) },
                                 modifier = Modifier.height(30.dp),
@@ -831,7 +831,7 @@ fun ProjectShellScreen(
                                     },
                                 )
                                 BottomTab.PORTS    -> PortsPanel()
-                                BottomTab.AI       -> AiAssistantPane(tokenStore)
+                                BottomTab.SPLIT    -> SplitTerminalPanel()
                             }
                         }
                     }
@@ -991,7 +991,7 @@ fun ProjectShellScreen(
                     HorizontalDivider(color = DividerColor)
                     val allCmds by remember(commandQuery) { derivedStateOf { listOf(
                         "Explorer","Search","Source Control","Run & Debug","Extensions",
-                        "Terminal","AI Assistant","Problems","Output","Toggle Sidebar","New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
+                        "Terminal","Split Terminal","Problems","Output","Toggle Sidebar","New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About Visual Node Code",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
@@ -1084,11 +1084,11 @@ fun ProjectShellScreen(
         }
 
         // Simple overlay menus
-        if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline","AI Assistant").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline","Split Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showPersonMenu) { Box(Modifier.fillMaxSize().clickable { showPersonMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 110.dp, start = 4.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Sign in with GitHub","Sign in with Microsoft","Manage Accounts").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showPersonMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showGearMenu) { Box(Modifier.fillMaxSize().clickable { showGearMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp, start = 4.dp).width(280.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Settings","Color Theme","Terminal Theme","Setup Shell Profile","Setup Offline Shell","Install Offline Essentials","Backup Shell Profile","Restore Shell Profile","Keyboard Shortcuts","Extensions").forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "Color Theme" -> { showColorTheme = true; showGearMenu = false }; "Terminal Theme" -> { showTerminalThemePicker = true; showGearMenu = false }; "Setup Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; "Setup Offline Shell" -> { handleMenuAction(item); showGearMenu = false }; "Install Offline Essentials" -> { handleMenuAction(item); showGearMenu = false }; "Backup Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; "Restore Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; else -> showGearMenu = false } }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showRunMenu) { Box(Modifier.fillMaxSize().clickable { showRunMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run Program","Start Debugging","Stop","Restart").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showRunMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
-        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.AI -> listOf("Clear AI Chat","New AI Session") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
 
 
