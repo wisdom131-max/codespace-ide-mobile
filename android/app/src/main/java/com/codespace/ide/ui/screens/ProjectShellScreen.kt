@@ -505,11 +505,8 @@ fun ProjectShellScreen(
                 Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50),
                     modifier = Modifier.size(20.dp).clickable { handleMenuAction("Run Program") })
                 Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.Bolt, null, tint = Color(0xFF007ACC),
-                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("Split Terminal") })
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFF7C4DFF),
-                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("Split Terminal") })
+                Icon(Icons.Default.VerticalSplit, null, tint = Color(0xFF007ACC),
+                    modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT })
                 Spacer(Modifier.width(8.dp))
 
                 Icon(Icons.Default.Notifications, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
