@@ -66,6 +66,7 @@ data class FsNode(
 fun ExplorerSidePanel(
     onOpenFile: (String) -> Unit,
     onMoreMenu: () -> Unit,
+    onOpenInTerminal: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -355,6 +356,7 @@ fun ExplorerSidePanel(
                         "Rename"          to Icons.Default.Edit,
                         "Delete"          to Icons.Default.Delete,
                         "Copy Path"       to Icons.Default.ContentCopy,
+                        "Open in Terminal" to Icons.Default.Computer,
                         "New File Here"   to Icons.Default.Add,
                         "New Folder Here" to Icons.Default.CreateNewFolder,
                     ).forEach { (label, icon) ->
@@ -381,6 +383,7 @@ fun ExplorerSidePanel(
                                             clipboard.setPrimaryClip(
                                                 android.content.ClipData.newPlainText("path", f.absolutePath))
                                         }
+                                        "Open in Terminal" -> onOpenInTerminal(if (f.isDirectory) f.absolutePath else f.parent ?: f.absolutePath)
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
