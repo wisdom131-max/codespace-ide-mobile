@@ -116,7 +116,7 @@ private class SimpleTerminalViewClient : TerminalViewClient {
     override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag, "", e) }
 }
 
-private data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
+internal data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
 
 private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
     val client = SimpleTerminalSessionClient()
