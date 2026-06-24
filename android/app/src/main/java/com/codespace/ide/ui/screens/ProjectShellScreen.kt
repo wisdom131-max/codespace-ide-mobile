@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +35,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.data.SessionStateStore
+import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.terminal.TerminalEnhancementManager
 import com.codespace.ide.ui.panes.*
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
@@ -236,7 +240,7 @@ private fun ideColors(themeName: String): IdeColors {
 }
 
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS }
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, AI }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -305,7 +309,9 @@ fun ProjectShellScreen(
     onToggleTheme: () -> Unit,
     onBack: () -> Unit,
     tokenStore: SecureTokenStore,
+    sessionStateStore: SessionStateStore,
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
@@ -328,12 +334,13 @@ fun ProjectShellScreen(
     val CmdSelectedBg = t.CmdSelectedBg
     val CmdSelectedText = t.CmdSelectedText
     val KeyboardToolbarBg = t.KeyboardToolbarBg
-    var activePanel        by remember { mutableStateOf<SidePanel?>(null) }
-    var showBottomPanel    by remember { mutableStateOf(true) }
+    val restoredState = remember(projectId) { sessionStateStore.loadShellState(projectId) }
+    var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
+    var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
     var showSplitTerminal  by remember { mutableStateOf(false) }
     var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
 
-    var activeBottomTab    by remember { mutableStateOf(BottomTab.TERMINAL) }
+    var activeBottomTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
@@ -348,6 +355,7 @@ fun ProjectShellScreen(
     var showReplaceRow     by remember { mutableStateOf(false) }
     var showMoreMenu       by remember { mutableStateOf(false) }
     var showPersonMenu     by remember { mutableStateOf(false) }
+    var terminalCommandToRun by remember { mutableStateOf<String?>(null) }
     var showGearMenu       by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
     var showPanelMenu      by remember { mutableStateOf(false) }
@@ -356,12 +364,43 @@ fun ProjectShellScreen(
     var commandTab         by remember { mutableStateOf("Commands") }
     var notificationMsg    by remember { mutableStateOf<String?>(null) }
     var notificationType   by remember { mutableStateOf("info") }
+    val terminalEnhancements = remember { TerminalEnhancementManager(context) }
+    var terminalTheme by remember { mutableStateOf(terminalEnhancements.currentTheme()) }
+    var showTerminalThemePicker by remember { mutableStateOf(false) }
+    val debugInput = remember { mutableStateOf("") }
+    val debugMessages = remember { mutableStateListOf("Debugger ready. Press Run to start.") }
     var cursorLine         by remember { mutableStateOf(1) }
     var cursorCol          by remember { mutableStateOf(1) }
-    var editorFontSize     by remember { mutableStateOf(13) }
-    val editorTabs         = remember { mutableStateListOf<String>() }
-    var activeEditorTab    by remember { mutableStateOf<String?>(null) }
+    var editorFontSize     by remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }
+    val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
+    var activeEditorTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }
     var keyboardInsert     by remember { mutableStateOf<((String) -> Unit)?>(null) }
+
+    LaunchedEffect(projectId, restoredState) {
+        if (editorTabs.isEmpty() && restoredState?.openFilePaths?.isNotEmpty() == true) {
+            restoredState.openFilePaths.forEach { path ->
+                if (path.isNotBlank() && !editorTabs.contains(path)) {
+                    editorTabs.add(path)
+                }
+            }
+            if (activeEditorTab == null) {
+                activeEditorTab = restoredState.activeFilePath ?: restoredState.openFilePaths.firstOrNull()
+            }
+        }
+    }
+
+    LaunchedEffect(projectId, activePanel, activeBottomTab, showBottomPanel, activeEditorTab, editorFontSize) {
+        val state = SessionStateStore.ShellState(
+            projectId = projectId,
+            activePanel = activePanel?.name,
+            bottomTab = activeBottomTab.name,
+            showBottomPanel = showBottomPanel,
+            activeFilePath = activeEditorTab,
+            openFilePaths = editorTabs.toList(),
+            editorFontSize = editorFontSize,
+        )
+        sessionStateStore.saveShellState(projectId, state)
+    }
 
     LaunchedEffect(notificationMsg) {
         if (notificationMsg != null) { kotlinx.coroutines.delay(3000); notificationMsg = null }
@@ -379,6 +418,7 @@ fun ProjectShellScreen(
             "Extensions"         -> activePanel = SidePanel.EXTENSIONS
             "Toggle Sidebar"     -> activePanel = if (activePanel == null) SidePanel.EXPLORER else null
             "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
+            "AI Assistant"       -> { showBottomPanel = true; activeBottomTab = BottomTab.AI }
             "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
             "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
@@ -393,7 +433,29 @@ fun ProjectShellScreen(
             "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
             "Run Program", "Start Debugging" -> {
                 showBottomPanel = true; activeBottomTab = BottomTab.DEBUG
+                debugMessages.add("[debug] Launching session...")
                 showNotification("Starting debug session…", "info")
+            }
+            "Terminal Theme" -> { showTerminalThemePicker = true }
+            "Setup Shell Profile" -> {
+                terminalEnhancements.ensureProfile()
+                showNotification("Shell profile installed", "success")
+            }
+            "Setup Offline Shell" -> {
+                BusyboxInstaller.ensureOfflineShell(context)
+                showNotification("Offline shell ready", "success")
+            }
+            "Install Offline Essentials" -> {
+                BusyboxInstaller.installEssentials(context)
+                showNotification("Offline essentials staged", "success")
+            }
+            "Backup Shell Profile" -> {
+                terminalEnhancements.backupProfile()
+                showNotification("Shell profile backed up", "success")
+            }
+            "Restore Shell Profile" -> {
+                terminalEnhancements.restoreProfile()
+                showNotification("Shell profile restored", "success")
             }
             "Save" -> showNotification("File saved ✓", "success")
             else   -> {}
@@ -439,6 +501,12 @@ fun ProjectShellScreen(
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50),
                     modifier = Modifier.size(20.dp).clickable { handleMenuAction("Run Program") })
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.Bolt, null, tint = Color(0xFF007ACC),
+                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("AI Assistant") })
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFF7C4DFF),
+                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("AI Assistant") })
                 Spacer(Modifier.width(8.dp))
 
                 Icon(Icons.Default.Notifications, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
@@ -500,6 +568,12 @@ fun ProjectShellScreen(
                                     showNotification("Opened ${path.substringAfterLast("/")}", "success")
                                 },
                                 onMoreMenu = { showExplorerMore = true },
+                                onOpenInTerminal = { path ->
+                                    showBottomPanel = true
+                                    activeBottomTab = BottomTab.TERMINAL
+                                    terminalCommandToRun = "cd \"$path\"\r"
+                                    showNotification("Opened terminal at workspace path", "success")
+                                },
                             )
                             SidePanel.SEARCH     -> SearchPanel()
                             SidePanel.GIT        -> GitSidePanel()
@@ -563,6 +637,29 @@ fun ProjectShellScreen(
                             }
                         }
                         HorizontalDivider(color = DividerColor)
+                    }
+
+                    // Quick actions
+                    Row(
+                        Modifier.fillMaxWidth().background(Color(0xFFF8FAFC)).padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        listOf("Run" to "Run Program", "Debug" to "Start Debugging", "Terminal" to "Terminal", "AI" to "AI Assistant").forEach { (label, action) ->
+                            OutlinedButton(
+                                onClick = { handleMenuAction(action) },
+                                modifier = Modifier.height(30.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            ) { Text(label, fontSize = 11.sp) }
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            if (activeEditorTab != null) "${activeEditorTab!!.substringAfterLast('/')} • workspace ready" else "workspace ready",
+                            fontSize = 11.sp,
+                            color = TabTextInactive,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
 
                     // Find & Replace bar
@@ -716,11 +813,24 @@ fun ProjectShellScreen(
                         val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(60.dp, 600.dp)
                         Box(Modifier.fillMaxWidth().height(bh).background(PanelBg)) {
                             when (activeBottomTab) {
-                                BottomTab.TERMINAL -> TerminalPane()
+                                BottomTab.TERMINAL -> TerminalPane(
+                                    initialCommand = terminalCommandToRun,
+                                    onCommandConsumed = { terminalCommandToRun = null },
+                                )
                                 BottomTab.PROBLEMS -> ProblemsPanel()
                                 BottomTab.OUTPUT   -> OutputPanel()
-                                BottomTab.DEBUG    -> DebugConsolePanel()
+                                BottomTab.DEBUG    -> DebugConsolePanel(
+                                    messages = debugMessages,
+                                    input = debugInput,
+                                    onSend = { text ->
+                                        if (text.isNotBlank()) {
+                                            debugMessages.add("> $text")
+                                            debugInput = ""
+                                        }
+                                    },
+                                )
                                 BottomTab.PORTS    -> PortsPanel()
+                                BottomTab.AI       -> AiAssistantPane(tokenStore)
                             }
                         }
                     }
@@ -880,7 +990,7 @@ fun ProjectShellScreen(
                     HorizontalDivider(color = DividerColor)
                     val allCmds by remember(commandQuery) { derivedStateOf { listOf(
                         "Explorer","Search","Source Control","Run & Debug","Extensions",
-                        "Terminal","Problems","Output","Toggle Sidebar",                        "New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
+                        "Terminal","AI Assistant","Problems","Output","Toggle Sidebar","New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About Visual Node Code",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
@@ -945,10 +1055,37 @@ fun ProjectShellScreen(
             }
         }
 
+        if (showTerminalThemePicker) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).clickable { showTerminalThemePicker = false }, contentAlignment = Alignment.TopCenter) {
+                Column(Modifier.padding(top = 96.dp).fillMaxWidth(0.9f).background(MenuBg, RoundedCornerShape(8.dp)).border(1.dp, MenuBorder, RoundedCornerShape(8.dp)).clickable(enabled = false) {}) {
+                    Text("Terminal Theme", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(16.dp))
+                    HorizontalDivider(color = DividerColor)
+                    listOf("Dark", "Light", "Dracula", "Monokai", "Tokyo Night").forEach { theme ->
+                        val selected = theme == terminalTheme
+                        Row(
+                            Modifier.fillMaxWidth().background(if (selected) Color(0xFF0060C0).copy(alpha = 0.15f) else Color.Transparent)
+                                .clickable {
+                                    terminalTheme = theme
+                                    terminalEnhancements.setTheme(theme)
+                                    showTerminalThemePicker = false
+                                    showNotification("Terminal theme set", "success")
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(theme, fontSize = 13.sp, color = if (selected) Color(0xFF0060C0) else MenuText)
+                            if (selected) Icon(Icons.Default.Check, null, tint = Color(0xFF0060C0), modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+
         // Simple overlay menus
-        if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline","AI Assistant").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showPersonMenu) { Box(Modifier.fillMaxSize().clickable { showPersonMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 110.dp, start = 4.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Sign in with GitHub","Sign in with Microsoft","Manage Accounts").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showPersonMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
-        if (showGearMenu) { Box(Modifier.fillMaxSize().clickable { showGearMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp, start = 4.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Settings","Color Theme","Keyboard Shortcuts","Extensions").forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "Color Theme" -> { showColorTheme = true; showGearMenu = false }; else -> showGearMenu = false } }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showGearMenu) { Box(Modifier.fillMaxSize().clickable { showGearMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp, start = 4.dp).width(280.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Settings","Color Theme","Terminal Theme","Setup Shell Profile","Setup Offline Shell","Install Offline Essentials","Backup Shell Profile","Restore Shell Profile","Keyboard Shortcuts","Extensions").forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "Color Theme" -> { showColorTheme = true; showGearMenu = false }; "Terminal Theme" -> { showTerminalThemePicker = true; showGearMenu = false }; "Setup Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; "Setup Offline Shell" -> { handleMenuAction(item); showGearMenu = false }; "Install Offline Essentials" -> { handleMenuAction(item); showGearMenu = false }; "Backup Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; "Restore Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; else -> showGearMenu = false } }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showRunMenu) { Box(Modifier.fillMaxSize().clickable { showRunMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run Program","Start Debugging","Stop","Restart").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showRunMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
@@ -984,13 +1121,17 @@ fun ProjectShellScreen(
     }
 }
 
-@Composable private fun DebugConsolePanel() {
-    val messages = remember { mutableStateListOf("Debugger ready. Press Run to start.") }
-    var input by remember { mutableStateOf("") }
+@Composable private fun DebugConsolePanel(
+    messages: SnapshotStateList<String>,
+    input: MutableState<String>,
+    onSend: (String) -> Unit,
+) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("DEBUG CONSOLE", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { messages.clear() })
+            Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp).clickable { messages.add("[debug] Run request queued") })
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { messages.clear(); messages.add("Debugger ready. Press Run to start.") })
         }
         HorizontalDivider(color = Color(0xFFE0E0E0))
         LazyColumn(Modifier.weight(1f).padding(8.dp)) {
@@ -999,8 +1140,8 @@ fun ProjectShellScreen(
         HorizontalDivider(color = Color(0xFFE0E0E0))
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(">", fontSize = 13.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 8.dp))
-            androidx.compose.foundation.text.BasicTextField(value = input, onValueChange = { input = it }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF333333)), modifier = Modifier.weight(1f), singleLine = true)
-            Icon(Icons.Default.Send, null, tint = Color(0xFF007ACC), modifier = Modifier.size(18.dp).clickable { if (input.isNotBlank()) { messages.add("> $input"); input = "" } })
+            androidx.compose.foundation.text.BasicTextField(value = input.value, onValueChange = { input.value = it }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF333333)), modifier = Modifier.weight(1f), singleLine = true)
+            Icon(Icons.Default.Send, null, tint = Color(0xFF007ACC), modifier = Modifier.size(18.dp).clickable { onSend(input.value) })
             Spacer(Modifier.width(8.dp))
         }
     }

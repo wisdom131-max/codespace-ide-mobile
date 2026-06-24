@@ -26,7 +26,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.terminal.DeviceCompatibility
+import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.terminal.TerminalModeManager
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -118,15 +121,26 @@ private fun createTerminalSession(context: Context, isUbuntu: Boolean = false): 
     val shell = env["SHELL"]?.let { if (java.io.File(it).exists()) it else "/system/bin/sh" } ?: "/system/bin/sh"
     val home = env["HOME"] ?: context.filesDir.absolutePath
     val envArray = env.map { (k, v) -> "$k=$v" }.toTypedArray()
-    val session = TerminalSession(shell, home, arrayOf(shell.substringAfterLast("/"), "--login"), envArray, 4000, client)
+    val args = when {
+        shell.contains("bash") -> arrayOf("--login", "-i")
+        else -> arrayOf("--login")
+    }
+    val session = TerminalSession(shell, home, args, envArray, 4000, client)
     return Pair(session, client)
 }
 
 @Composable
-fun TerminalPane() {
+fun TerminalPane(
+    initialCommand: String? = null,
+    onCommandConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
+    val deviceCompat = remember { DeviceCompatibility(context) }
+    val terminalMode = remember { TerminalModeManager(context) }
     var bootstrapReady by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var renameTargetId by remember { mutableStateOf<String?>(null) }
+    var renameValue by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -147,7 +161,12 @@ fun TerminalPane() {
 
     val tabs = remember {
         val (session, client) = createTerminalSession(context)
-        mutableStateListOf(TabSession("1", "bash", session, client))
+        val defaultName = when (terminalMode.currentMode()) {
+            TerminalModeManager.MODE_UBUNTU -> "ubuntu"
+            TerminalModeManager.MODE_OFFLINE -> "offline"
+            else -> if (deviceCompat.shouldUseOfflineOnly()) "offline" else "ollama"
+        }
+        mutableStateListOf(TabSession("1", defaultName, session, client))
     }
     var activeId by remember { mutableStateOf("1") }
     val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
@@ -163,6 +182,14 @@ fun TerminalPane() {
         val (session, client) = createTerminalSession(context)
         tabs.add(TabSession(id, "bash ${tabs.size + 1}", session, client))
         activeId = id
+    }
+
+    fun renameTab(id: String, newName: String) {
+        val trimmed = newName.trim().ifBlank { "bash" }
+        val idx = tabs.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            tabs[idx] = tabs[idx].copy(name = trimmed)
+        }
     }
 
     fun addUbuntuTab() {
@@ -192,6 +219,12 @@ fun TerminalPane() {
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
     }
 
+    LaunchedEffect(initialCommand, active?.id) {
+        val command = initialCommand ?: return@LaunchedEffect
+        active?.session?.write(command)
+        onCommandConsumed()
+    }
+
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
         Row(Modifier.fillMaxWidth().background(Color(0xFF252526)), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
@@ -207,6 +240,11 @@ fun TerminalPane() {
                     ) {
                         Text(tab.name, color = if (isActive) Color.White else Color(0xFF969696),
                             fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
+                        Icon(Icons.Default.Edit, null, tint = Color(0xFF969696),
+                            modifier = Modifier.padding(start = 4.dp).clickable {
+                                renameTargetId = tab.id
+                                renameValue = tab.name
+                            }.padding(2.dp))
                         if (tabs.size > 1) {
                             Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
                                 modifier = Modifier.padding(start = 4.dp).clickable { closeTab(tab.id) }.padding(2.dp))
@@ -221,12 +259,46 @@ fun TerminalPane() {
                     offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
                     DropdownMenuItem(text = { Text("New Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; addTab() })
-                    DropdownMenuItem(text = { Text("Open Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; addUbuntuTab() })
+                    DropdownMenuItem(text = { Text("Setup Offline Shell", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
+                    DropdownMenuItem(text = { Text("Set default: Ollama / Offline", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
+                    DropdownMenuItem(text = { Text("Set default: Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
+                    if (!deviceCompat.shouldUseOfflineOnly()) {
+                        DropdownMenuItem(text = { Text("Open Ubuntu", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                            onClick = { showMenu = false; addUbuntuTab() })
+                    }
                     DropdownMenuItem(text = { Text("Kill Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
             }
+        }
+
+        if (renameTargetId != null) {
+            AlertDialog(
+                onDismissRequest = { renameTargetId = null; renameValue = "" },
+                title = { Text("Rename terminal") },
+                text = {
+                    OutlinedTextField(
+                        value = renameValue,
+                        onValueChange = { renameValue = it },
+                        label = { Text("Terminal name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        renameTargetId?.let { renameTab(it, renameValue) }
+                        renameTargetId = null
+                        renameValue = ""
+                    }) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
+                },
+            )
         }
 
         if (active != null) {
