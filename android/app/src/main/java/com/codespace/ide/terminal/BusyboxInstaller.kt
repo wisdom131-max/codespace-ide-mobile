@@ -33,6 +33,7 @@ object BusyboxInstaller {
         bashrc.writeText(profile)
         OllamaSetup(context).installProfile()
         File(home, ".bash_profile").writeText("if [ -f ~/.bashrc ]; then . ~/.bashrc; fi\n")
+        File(home, ".inputrc").writeText("set completion-ignore-case on\nset show-all-if-ambiguous on\n\"\\\\e[A\": history-search-backward\n\"\\\\e[B\": history-search-forward\n")
         return offlineShellPath(context)
     }
 
@@ -64,26 +65,84 @@ object BusyboxInstaller {
     }
 
     private fun buildOfflineProfile(context: Context): String = buildString {
-        appendLine("# VN Code offline shell profile")
+        val home = File(context.filesDir, "home").absolutePath
+        val bin  = binDir(context).absolutePath
+        val prefs = context.getSharedPreferences("vncode_prefs", android.content.Context.MODE_PRIVATE)
+        val backendUrl = prefs.getString("backend_url", "") ?: ""
+
+        appendLine("# VN Code shell profile")
         appendLine("export VN_CODE_OFFLINE=1")
-        appendLine("export PATH=${binDir(context).absolutePath}:\$PATH")
-        appendLine("export HOME=${File(context.filesDir, "home").absolutePath}")
+        appendLine("export PATH=$bin:\$PATH")
+        appendLine("export HOME=$home")
         appendLine("export TERM=xterm-256color")
+        appendLine("export HISTSIZE=5000")
+        appendLine("export HISTFILESIZE=10000")
+        appendLine("export HISTCONTROL=ignoredups:erasedups")
+        appendLine("export MCP_SERVER_URL='$backendUrl'")
+
+        // Aliases
         appendLine("alias ll='ls -la'")
         appendLine("alias la='ls -A'")
+        appendLine("alias l='ls -CF'")
         appendLine("alias gs='git status'")
         appendLine("alias ga='git add'")
+        appendLine("alias gaa='git add -A'")
         appendLine("alias gc='git commit'")
+        appendLine("alias gcm='git commit -m'")
         appendLine("alias gp='git push'")
+        appendLine("alias gl='git log --oneline --graph --decorate --all -20'")
+        appendLine("alias gd='git diff'")
+        appendLine("alias gb='git branch'")
+        appendLine("alias gco='git checkout'")
         appendLine("alias ..='cd ..'")
+        appendLine("alias ...='cd ../..'")
         appendLine("alias c='clear'")
-        appendLine("alias pkg='${binDir(context).absolutePath}/pkg'")
-        appendLine("alias apt='${binDir(context).absolutePath}/apt'")
-        appendLine("alias apt-get='${binDir(context).absolutePath}/apt-get'")
-        appendLine("help() { echo 'VN Code offline shell'; echo 'pkg install <pkg>'; echo 'pkg list'; echo 'pkg search'; echo 'pkg update'; }")
-        appendLine("PS1='\\u@vncode:\\w\\$ '")
-    }
+        appendLine("alias cls='clear'")
+        appendLine("alias pkg='$bin/pkg'")
+        appendLine("alias apt='$bin/apt'")
+        appendLine("alias apt-get='$bin/apt-get'")
+        appendLine("alias grep='grep --color=auto'")
+        appendLine("alias vi='vim'")
 
+        // Code snippets
+        appendLine("snip() {")
+        appendLine("  case \"\$1\" in")
+        appendLine("    kt-main) printf 'fun main() {\\n    println(\"Hello, World!\")\\n}\\n' > main.kt; echo 'Created main.kt' ;;")
+        appendLine("    py-main) printf 'def main():\\n    print(\"Hello!\")\\n\\nif __name__ == \"__main__\":\\n    main()\\n' > main.py; echo 'Created main.py' ;;")
+        appendLine("    ts-main) printf 'const main = (): void => {\\n  console.log(\"Hello!\");\\n};\\nmain();\\n' > index.ts; echo 'Created index.ts' ;;")
+        appendLine("    sh-main) printf '#!/usr/bin/env bash\\nset -euo pipefail\\nmain() {\\n  echo \"Hello!\"\\n}\\nmain \"\$@\"\\n' > main.sh; chmod +x main.sh; echo 'Created main.sh' ;;")
+        appendLine("    *) echo 'snip <kt-main|py-main|ts-main|sh-main>' ;;")
+        appendLine("  esac")
+        appendLine("}")
+
+        // MCP tools (curl to backend)
+        appendLine("mcp() {")
+        appendLine("  [ -z \"\$MCP_SERVER_URL\" ] && { echo '[mcp] Set backend_url in Settings'; return 1; }")
+        appendLine("  local tool=\$1; shift; local params='{}'")
+        appendLine("  case \"\$tool\" in")
+        appendLine("    read_file)    params=\"{\\\"path\\\":\\\"\$1\\\"}\" ;;")
+        appendLine("    write_file)   params=\"{\\\"path\\\":\\\"\$1\\\",\\\"content\\\":\\\"\$2\\\"}\" ;;")
+        appendLine("    list_dir)     params=\"{\\\"path\\\":\\\"\${1:-.}\\\"}\" ;;")
+        appendLine("    search_files) params=\"{\\\"query\\\":\\\"\$1\\\",\\\"dir\\\":\\\"\${2:-.}\\\"}\" ;;")
+        appendLine("    run_command)  params=\"{\\\"command\\\":\\\"\$1\\\"}\" ;;")
+        appendLine("  esac")
+        appendLine("  curl -s -X POST \"\${MCP_SERVER_URL}/ai/mcp/execute\" -H 'Content-Type: application/json' -d \"{\\\"tool\\\":\\\"\$tool\\\",\\\"params\\\":\$params}\" | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"result\",\"\"))' 2>/dev/null || echo '[mcp] unreachable'")
+        appendLine("}")
+        appendLine("alias mcp_read='mcp read_file'")
+        appendLine("alias mcp_write='mcp write_file'")
+        appendLine("alias mcp_run='mcp run_command'")
+        appendLine("alias mcp_ls='mcp list_dir'")
+        appendLine("alias mcp_grep='mcp search_files'")
+
+        appendLine("help() {")
+        appendLine("  echo 'VN Code Shell:'")
+        appendLine("  echo '  pkg install/list/search    offline packages'")
+        appendLine("  echo '  snip kt-main|py-main|...   boilerplate'")
+        appendLine("  echo '  gs/ga/gaa/gc/gcm/gp/gl     git shortcuts'")
+        appendLine("  echo '  mcp_read/write/run/ls/grep  MCP file tools'")
+        appendLine("}")
+        appendLine("PS1='\\[\\033[0;32m\\]\\u@vncode\\[\\033[0m\\]:\\[\\033[0;34m\\]\\w\\[\\033[0m\\]\\\$ '")
+    }
     private fun buildOfflinePackageScript(context: Context): String = buildString {
         val stateDir = File(context.filesDir, "offline_state")
         val dbFile = File(stateDir, "packages.txt")
