@@ -30,6 +30,8 @@ import com.codespace.ide.terminal.DeviceCompatibility
 import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.TerminalModeManager
+import com.codespace.ide.terminal.SshProfileStore
+import com.codespace.ide.terminal.TextExpansionStore
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -337,6 +339,13 @@ internal fun TerminalPane(
                         })
                     DropdownMenuItem(text = { Text("✕ Close This Tab", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
+                    HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
+                    DropdownMenuItem(text = { Text("🔑 SSH Manager", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; showSshManager = true })
+                    DropdownMenuItem(text = { Text("⚡ Text Expansions", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; showTextExpansions = true })
+                    DropdownMenuItem(text = { Text(if (showExtraKeys) "▲ Hide Extra Keys" else "▼ Show Extra Keys", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; showExtraKeys = !showExtraKeys })
                 }
             }
         }
@@ -358,6 +367,68 @@ internal fun TerminalPane(
                     TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
                 },
             )
+        }
+
+        // Extra keys bar (ESC, TAB, arrows, Ctrl, special chars)
+        if (showExtraKeys) {
+            val extraKeys = listOf(
+                "ESC" to "\u001B",
+                "TAB" to "\t",
+                "↑"  to "\u001B[A",
+                "↓"  to "\u001B[B",
+                "←"  to "\u001B[D",
+                "→"  to "\u001B[C",
+                "PGUP" to "\u001B[5~",
+                "PGDN" to "\u001B[6~",
+                "|"  to "|",
+                "/"  to "/",
+                "~"  to "~",
+                "-"  to "-",
+                "C-c" to "\u0003",
+                "C-d" to "\u0004",
+                "C-z" to "\u001A",
+            )
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1A1A1A))
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                extraKeys.forEach { (label, seq) ->
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .background(Color(0xFF2D2D2D), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .clickable { active?.session?.write(seq) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label, color = Color(0xFFCCCCCC), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+
+        // SSH Manager sheet
+        if (showSshManager) {
+            SshManagerSheet(
+                onDismiss = { showSshManager = false },
+                onConnect = { label, cmd ->
+                    val id = System.currentTimeMillis().toString()
+                    val (session, client) = createTerminalSession(context, isUbuntu = false)
+                    tabs.add(TabSession(id, label, session, client))
+                    activeId = id
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        session.write(cmd + "\n")
+                    }, 300)
+                }
+            )
+        }
+
+        // Text Expansion manager sheet
+        if (showTextExpansions) {
+            TextExpansionSheet(onDismiss = { showTextExpansions = false })
         }
 
         // Terminal view
