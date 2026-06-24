@@ -240,7 +240,7 @@ fun TerminalPane(
                     ) {
                         Text(tab.name, color = if (isActive) Color.White else Color(0xFF969696),
                             fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
-                        Icon(Icons.Default.Edit, null, tint = Color(0xFF969696),
+                        Icon(Icons.Default.Create, null, tint = Color(0xFF969696),
                             modifier = Modifier.padding(start = 4.dp).clickable {
                                 renameTargetId = tab.id
                                 renameValue = tab.name
