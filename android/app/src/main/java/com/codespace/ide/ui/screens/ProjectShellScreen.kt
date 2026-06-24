@@ -340,6 +340,8 @@ fun ProjectShellScreen(
     var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
     var showSplitTerminal  by remember { mutableStateOf(false) }
     var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
+    // Shared terminal state — both TerminalPane and SplitTerminalPanel share this
+    val sharedTerminalState = rememberTerminalState(context)
 
     var activeBottomTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
@@ -817,6 +819,7 @@ fun ProjectShellScreen(
                                 BottomTab.TERMINAL -> TerminalPane(
                                     initialCommand = terminalCommandToRun,
                                     onCommandConsumed = { terminalCommandToRun = null },
+                                    externalState = sharedTerminalState,
                                 )
                                 BottomTab.PROBLEMS -> ProblemsPanel()
                                 BottomTab.OUTPUT   -> OutputPanel()
@@ -831,7 +834,7 @@ fun ProjectShellScreen(
                                     },
                                 )
                                 BottomTab.PORTS    -> PortsPanel()
-                                BottomTab.SPLIT    -> SplitTerminalPanel()
+                                BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
                             }
                         }
                     }
@@ -870,7 +873,7 @@ fun ProjectShellScreen(
                                     modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
                             }
                             HorizontalDivider(color = DividerColor)
-                            TerminalPane()
+                            TerminalPane(externalState = sharedTerminalState)
                         }
                     }
                 }
