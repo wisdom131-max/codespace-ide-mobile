@@ -194,7 +194,6 @@ dependencies {
     implementation("com.hierynomus:sshj:0.38.0")
 
     // Termux terminal PTY
-    implementation("com.github.termux:termux-terminal-view:2.0.0")
 
     // Tests
     testImplementation("junit:junit:4.13.2")
@@ -206,4 +205,3 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
-
