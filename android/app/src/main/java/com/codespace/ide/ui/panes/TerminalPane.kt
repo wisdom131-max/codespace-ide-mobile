@@ -36,6 +36,11 @@ import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.input.pointer.pointerInput
+
 
 private class SimpleTerminalSessionClient : TerminalSessionClient {
     var onTextChanged: (() -> Unit)? = null
@@ -325,6 +330,65 @@ fun TerminalPane(
                     }
                 )
             }
+        }
+    }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SplitTerminalPanel — replaces the AI tab
+// Two real full terminals side-by-side. Drag the center divider to resize.
+// Tap the pin (circle on divider) to lock the ratio. Each side has full tab
+// support so you can e.g. run Ubuntu on the left and bash on the right.
+// Any AI running in Ubuntu (Ollama, llama.cpp, etc.) automatically gets the
+// MCP env vars injected by BusyboxInstaller, so it can read/write project files.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun SplitTerminalPanel() {
+    val context  = LocalContext.current
+    var ratio    by remember { mutableFloatStateOf(0.5f) }
+    var isPinned by remember { mutableStateOf(false) }
+
+    Row(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
+
+        // Left terminal
+        Box(Modifier.fillMaxHeight().weight(ratio.coerceIn(0.2f, 0.8f))) {
+            TerminalPane()
+        }
+
+        // Resize divider + pin button
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .width(6.dp)
+                .background(if (isPinned) Color(0xFF007ACC) else Color(0xFF3C3C3C))
+                .pointerInput(isPinned) {
+                    if (!isPinned) {
+                        detectHorizontalDragGestures { _, drag ->
+                            ratio = (ratio + drag / 900f).coerceIn(0.2f, 0.8f)
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(22.dp)
+                    .background(
+                        if (isPinned) Color(0xFF007ACC) else Color(0xFF555555),
+                        CircleShape
+                    )
+                    .clickable { isPinned = !isPinned },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (isPinned) "||" else "||", color = Color.White, fontSize = 8.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+        }
+
+        // Right terminal
+        Box(Modifier.fillMaxHeight().weight((1f - ratio).coerceIn(0.2f, 0.8f))) {
+            TerminalPane()
         }
     }
 }
