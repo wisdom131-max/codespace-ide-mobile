@@ -188,6 +188,9 @@ internal fun TerminalPane(
     var showMenu        by remember { mutableStateOf(false) }
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
     var renameValue     by remember { mutableStateOf("") }
+    var showSshManager    by remember { mutableStateOf(false) }
+    var showTextExpansions by remember { mutableStateOf(false) }
+    var showExtraKeys     by remember { mutableStateOf(true) }
 
     // Use shared state if provided, otherwise own state
     val sharedState = externalState ?: rememberTerminalState(context)
