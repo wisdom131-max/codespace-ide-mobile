@@ -10,17 +10,18 @@ import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 /**
  * Manages Ubuntu proot installation and launch.
  *
- * Uses pre-built Termux proot binaries (bundled in assets/proot/arm64-v8a/)
- * instead of building from source, avoiding all Android 14 TLS / SONAME /
- * PIE-vs-EXEC issues that plagued the custom build approach.
+ * Uses pre-built Termux proot binaries from jniLibs/arm64-v8a/ (packaged by Gradle
+ * into nativeLibraryDir — always executable on Android, no W^X issues).
+ *
+ * Binaries in nativeLibraryDir:
+ *   libproot.so         — the real proot PIE binary (entry point, not a shared lib)
+ *   libproot-loader.so  — proot's guest ELF loader
+ *   libtalloc.so        — talloc (SONAME patched to libtalloc.so)
+ *   libandroid-shmem.so — Android shared memory shim required by proot
  *
  * On first Ubuntu launch:
- *  1. [ensureBinaries] extracts proot, proot-loader, libtalloc.so.2, and
- *     libandroid-shmem.so from assets into codeCacheDir/proot-bin/ (executable on Android 14+)
- *  2. [install] downloads + extracts the Ubuntu rootfs tarball
- *  3. [launchArgs] returns the correct executable path + env vars,
- *     with LD_LIBRARY_PATH pointing at our extracted libs dir so the
- *     dynamic linker finds them instead of the hardcoded Termux path.
+ *  1. [install] downloads + extracts the Ubuntu rootfs tarball
+ *  2. [launchArgs] returns correct executable + env vars using nativeLibraryDir paths
  */
 object ProotInstaller {
 
@@ -28,17 +29,6 @@ object ProotInstaller {
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
     private const val VERSION = "ubuntu-questing-v4.30.1"
-
-    // The ABI sub-folder inside assets/proot/ that matches this device.
-    // We only ship arm64-v8a for now; arm devices fall back gracefully.
-    private val ASSET_ABI = "arm64-v8a"
-
-    private val BINARY_NAMES = listOf(
-        "proot",
-        "proot-loader",
-        "libtalloc.so.2",
-        "libandroid-shmem.so"
-    )
 
     // ── public helpers ────────────────────────────────────────────────────────
 
@@ -51,30 +41,19 @@ object ProotInstaller {
                File(rootfsDir(context), "usr/bin/bash").exists()
     }
 
-    /** Extract the bundled Termux proot binaries from assets → filesDir/proot-bin/ */
+    /** No-op: binaries are in nativeLibraryDir (Gradle packages them automatically) */
     fun ensureBinaries(context: Context) {
-        // Android 14 W^X: executables must live in codeCacheDir, not filesDir
-        val binDir = File(context.codeCacheDir, "proot-bin").apply { mkdirs() }
-        val assetMgr = context.assets
-        for (name in BINARY_NAMES) {
-            val dest = File(binDir, name)
-            if (dest.exists() && dest.length() > 0) continue   // already extracted
-            try {
-                assetMgr.open("proot/$ASSET_ABI/$name").use { src ->
-                    dest.outputStream().use { it.write(src.readBytes()) }
-                }
-                dest.setExecutable(true, false)
-                dest.setReadable(true, false)
-                Log.d(TAG, "Extracted $name → ${dest.absolutePath} (${dest.length()} B)")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to extract $name: ${e.message}")
-            }
-        }
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        Log.d(TAG, "nativeLibraryDir=$nativeDir")
+        val proot  = File(nativeDir, "libproot.so")
+        val loader = File(nativeDir, "libproot-loader.so")
+        Log.d(TAG, "proot:  exists=${proot.exists()}  exec=${proot.canExecute()}  size=${proot.length()}")
+        Log.d(TAG, "loader: exists=${loader.exists()}  exec=${loader.canExecute()}  size=${loader.length()}")
     }
 
     /** Download + unpack the Ubuntu rootfs tarball. */
     fun install(context: Context, onProgress: (String) -> Unit = {}) {
-        val rootfs    = rootfsDir(context)
+        val rootfs      = rootfsDir(context)
         val versionFile = File(context.filesDir, ".ubuntu_version")
 
         if (isInstalled(context)) {
@@ -83,7 +62,7 @@ object ProotInstaller {
         }
 
         try {
-            onProgress("Downloading Ubuntu rootfs (~250 MB)…")
+            onProgress("Downloading Ubuntu rootfs (~250 MB)\u2026")
             val tarXzFile = File(context.cacheDir, "ubuntu.tar.xz")
             URL(ROOTFS_URL).openStream().use { input ->
                 tarXzFile.outputStream().use { output ->
@@ -92,7 +71,7 @@ object ProotInstaller {
             }
             Log.d(TAG, "Downloaded ${tarXzFile.length()} bytes")
 
-            onProgress("Extracting Ubuntu rootfs…")
+            onProgress("Extracting Ubuntu rootfs\u2026")
             rootfs.deleteRecursively()
             rootfs.mkdirs()
 
@@ -102,7 +81,6 @@ object ProotInstaller {
                 TarArchiveInputStream(xz).use { tar ->
                     var entry = tar.nextTarEntry
                     while (entry != null) {
-                        // Skip raw device nodes — proot virtualises /dev
                         if (!entry.name.contains("/dev/") || entry.name.endsWith("/dev/")) {
                             val stripped = entry.name.split("/", limit = 2)
                                 .let { if (it.size > 1) it[1] else entry.name }
@@ -148,7 +126,7 @@ object ProotInstaller {
 
             tarXzFile.delete()
             versionFile.writeText(VERSION)
-            onProgress("Ubuntu ready: $filesWritten files extracted ✓")
+            onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
 
         } catch (e: Exception) {
@@ -160,32 +138,30 @@ object ProotInstaller {
     /**
      * Returns (prootPath, args, envVars) ready to pass to TerminalSession.
      *
-     * Key fix vs previous approach:
-     *  - Uses the pre-built Termux proot from codeCacheDir/proot-bin/ (executable on Android 14+)
-     *  - Sets LD_LIBRARY_PATH to that same dir so the dynamic linker finds
-     *    libtalloc.so.2 and libandroid-shmem.so regardless of the hardcoded
-     *    RUNPATH in the proot binary (/data/data/com.termux/...)
-     *  - PROOT_LOADER points to codeCacheDir/proot-bin/proot-loader (a proper EXEC,
-     *    which is what proot expects — it exec()s the loader, not dlopen()s it)
+     * Uses nativeLibraryDir — Gradle packages all libXXX.so files there automatically,
+     * and Android always marks nativeLibraryDir as executable (no W^X issue).
+     *
+     * argv[0] MUST be the program name ("proot") — execvp() convention.
+     * The JNI code does: execvp(cmdStr, argv) where argv[0] is args[0].
+     * Without this the args are shifted by 1 and proot fails immediately.
      */
     fun launchArgs(context: Context): Triple<String, Array<String>, Array<String>> {
-        ensureBinaries(context)
-
-        // Android 14 W^X: executables must be in codeCacheDir
-        val binDir  = File(context.codeCacheDir, "proot-bin").absolutePath
-        val proot   = "$binDir/proot"
-        val loader  = "$binDir/proot-loader"
-        val rootfs  = rootfsDir(context).absolutePath
-        val tmpDir  = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val proot     = "$nativeDir/libproot.so"
+        val loader    = "$nativeDir/libproot-loader.so"
+        val rootfs    = rootfsDir(context).absolutePath
+        val tmpDir    = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val hostFiles = context.filesDir.absolutePath
 
-        // Make sure exec bits survived extraction
-        File(proot).setExecutable(true, false)
-        File(loader).setExecutable(true, false)
+        // Log for diagnosis — this is how v13 handoff confirmed PROOT_LOADER was empty
+        Log.d(TAG, "launchArgs: nativeDir=$nativeDir")
+        Log.d(TAG, "launchArgs: proot=$proot  exists=${File(proot).exists()}")
+        Log.d(TAG, "launchArgs: loader=$loader  exists=${File(loader).exists()}")
+        Log.d(TAG, "launchArgs: rootfs=$rootfs  bashExists=${File(rootfs, "usr/bin/bash").exists()}")
 
         val args = arrayOf(
-            "proot",              // argv[0] = program name (required by execvp convention)
-            "--link2symlink",
+            "proot",            // argv[0] = program name — REQUIRED by execvp convention
+            "--link2symlink",   // handle symlinks via ptrace (filesDir has no symlink support)
             "--kill-on-exit",
             "-S", rootfs,
             "-b", "/proc:/proc",
@@ -202,14 +178,11 @@ object ProotInstaller {
         )
 
         val envVars = arrayOf(
-            // Tell proot where its loader lives (it exec()s it — must be executable)
-            "PROOT_LOADER=$loader",
-            // Override the hardcoded /data/data/com.termux RUNPATH
-            "LD_LIBRARY_PATH=$binDir",
+            "PROOT_LOADER=$loader",          // proot exec()s the loader — must be set correctly
+            "LD_LIBRARY_PATH=$nativeDir",    // linker finds libtalloc.so + libandroid-shmem.so here
             "PROOT_TMP_DIR=$tmpDir",
             "TMPDIR=$tmpDir",
-            // Disable seccomp filtering — many Android kernels don't support it
-            "PROOT_NO_SECCOMP=1",
+            "PROOT_NO_SECCOMP=1",            // required on most Android kernels
             "HOME=${context.filesDir.absolutePath}"
         )
 
