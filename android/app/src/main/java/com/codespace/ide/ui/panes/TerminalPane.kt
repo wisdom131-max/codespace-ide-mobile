@@ -260,6 +260,22 @@ internal fun TerminalPane(
             } else {
                 progressSession.write("[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
             }
+            // Pre-flight: write binary info to terminal for diagnosis
+            val nativeDir = ctx.applicationInfo.nativeLibraryDir
+            val prootBin = java.io.File(nativeDir, "libproot.so")
+            val loaderBin = java.io.File(nativeDir, "libproot-loader.so")
+            val tallocBin = java.io.File(nativeDir, "libtalloc.so")
+            val shmemBin  = java.io.File(nativeDir, "libandroid-shmem.so")
+            progressSession.write("[Ubuntu] nativeLibraryDir: $nativeDir\r\n")
+            progressSession.write("[Ubuntu] proot:   exists=${prootBin.exists()} canExec=${prootBin.canExecute()} size=${prootBin.length()}\r\n")
+            progressSession.write("[Ubuntu] loader:  exists=${loaderBin.exists()} canExec=${loaderBin.canExecute()} size=${loaderBin.length()}\r\n")
+            progressSession.write("[Ubuntu] talloc:  exists=${tallocBin.exists()} size=${tallocBin.length()}\r\n")
+            progressSession.write("[Ubuntu] shmem:   exists=${shmemBin.exists()} size=${shmemBin.length()}\r\n")
+            val rootfsDir = ProotInstaller.rootfsDir(ctx)
+            val bashBin = java.io.File(rootfsDir, "usr/bin/bash")
+            progressSession.write("[Ubuntu] rootfs:  ${rootfsDir.absolutePath}\r\n")
+            progressSession.write("[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
+            progressSession.write("[Ubuntu] Launching proot...\r\n\r\n")
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
