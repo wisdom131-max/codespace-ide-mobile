@@ -130,15 +130,12 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
         return Pair(session, client)
     }
 
-    val env = BusyboxInstaller.environmentFor(context)
-    val shell = env["SHELL"]?.let { if (java.io.File(it).exists()) it else "/system/bin/sh" } ?: "/system/bin/sh"
-    val home = env["HOME"] ?: context.filesDir.absolutePath
-    val envArray = env.map { (k, v) -> "$k=$v" }.toTypedArray()
-    val args = when {
-        shell.contains("bash") -> arrayOf("--login", "-i")
-        else -> arrayOf("--login")
-    }
-    val session = TerminalSession(shell, home, args, envArray, 4000, client)
+    // Use /system/bin/sh directly — BusyboxInstaller targets filesDir which is noexec on Android 14.
+    // BusyboxInstaller.installIfNeeded() still runs in background via LaunchedEffect for future use.
+    // This avoids blocking the main thread with file I/O during session creation.
+    val shell = "/system/bin/sh"
+    val home  = context.filesDir.absolutePath
+    val session = TerminalSession(shell, home, arrayOf("--login"), emptyArray(), 4000, client)
     return Pair(session, client)
 }
 
