@@ -62,11 +62,49 @@ object ProotInstaller {
         }
 
         try {
-            onProgress("Downloading Ubuntu rootfs (~250 MB)\u2026")
             val tarXzFile = File(context.cacheDir, "ubuntu.tar.xz")
-            URL(ROOTFS_URL).openStream().use { input ->
-                tarXzFile.outputStream().use { output ->
-                    input.copyTo(output, bufferSize = 1024 * 1024)
+            val expectedSize = 250L * 1024 * 1024
+            var attempts = 0
+            while (attempts < 3) {
+                attempts++
+                val existingBytes = if (tarXzFile.exists()) tarXzFile.length() else 0L
+                if (existingBytes > 0) {
+                    onProgress("Resuming download from ${existingBytes / (1024 * 1024)}MB...")
+                } else {
+                    onProgress("Downloading Ubuntu rootfs (~250 MB)...")
+                }
+                try {
+                    val connection = java.net.URL(ROOTFS_URL).openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 30000
+                    connection.readTimeout = 60000
+                    if (existingBytes > 0) connection.setRequestProperty("Range", "bytes=$existingBytes-")
+                    connection.connect()
+                    val responseCode = connection.responseCode
+                    if (responseCode == 416) { tarXzFile.delete(); continue }
+                    val totalSize = connection.contentLengthLong.let { if (it > 0) it + existingBytes else expectedSize }
+                    val outStream = if (existingBytes > 0 && responseCode == 206) java.io.FileOutputStream(tarXzFile, true) else tarXzFile.outputStream()
+                    connection.inputStream.use { input ->
+                        outStream.use { output ->
+                            val buf = ByteArray(1024 * 1024)
+                            var downloaded = existingBytes
+                            var n: Int
+                            var lastPct = -1
+                            while (input.read(buf).also { n = it } != -1) {
+                                output.write(buf, 0, n)
+                                downloaded += n
+                                val pct = ((downloaded * 100) / totalSize).toInt()
+                                if (pct != lastPct && pct % 5 == 0) {
+                                    onProgress("Downloading... $pct% (${downloaded / (1024*1024)}MB)")
+                                    lastPct = pct
+                                }
+                            }
+                        }
+                    }
+                    break
+                } catch (e: Exception) {
+                    if (attempts >= 3) throw e
+                    onProgress("Download interrupted, retrying ($attempts/3)...")
+                    Thread.sleep(2000)
                 }
             }
             Log.d(TAG, "Downloaded ${tarXzFile.length()} bytes")
