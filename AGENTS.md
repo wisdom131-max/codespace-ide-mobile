@@ -1,5 +1,5 @@
 # AI Agent / Copilot — Project Context
-> Read this FIRST before touching any code. Updated June 25, 2026.
+> Read this FIRST before touching any code. Updated June 25, 2026 (session 2).
 
 ---
 
@@ -12,7 +12,7 @@ Built and maintained phone-only by Wisdom using Termux + GitHub Codespaces. No P
 - **Repo:** `wisdom131-max/codespace-ide-mobile`
 - **APK to install:** `app-prod-arm64-v8a-debug.apk` (always arm64-v8a)
 - **Build:** GitHub Actions auto-builds on every push → artifact `codespace-ide-apk`
-- **Device:** Android 14, arm64-v8a
+- **Device:** Android 14, arm64-v8a, 3GB RAM
 
 ---
 
@@ -22,189 +22,158 @@ Built and maintained phone-only by Wisdom using Termux + GitHub Codespaces. No P
 - Never repeat a failed approach without explaining what changed.
 - One command at a time unless batching is confirmed safe.
 - When in doubt — check the file first before patching.
+- Always say what a fix will do before applying it.
+- find /data/app is PERMISSION DENIED on device — never use it to check .so files.
+- Use [ -f path ] and echo EXISTS or echo MISSING not ls in app bash tab.
+- Always git pull --rebase and git push — never plain push.
 
 ---
 
-## How to Push & Build
+## How to Push and Build
 
-```bash
 git add .
 git commit -m "your message"
-git pull --rebase && git push   # always rebase, never plain push
-```
-Build triggers automatically. Wait ~5-8 min → Actions tab → latest run → Artifacts → codespace-ide-apk.zip.
+git pull --rebase && git push
+
+Build triggers automatically. Wait 5-8 min, Actions tab, latest run, Artifacts, codespace-ide-apk.zip.
+Always fully uninstall old APK before installing new one when binaries changed.
 
 ---
 
 ## THE UBUNTU PROOT PROBLEM — Full History
 
-This is the hardest part of the project. Read carefully.
-
 ### Goal
-Tap "🐧 Open Ubuntu Linux" → proot starts → Ubuntu rootfs mounts → bash prompt → apt works.
+Tap Open Ubuntu Linux, proot starts, Ubuntu rootfs mounts, bash prompt, apt works.
 
-### Root Cause Chain (resolved as of build #350)
+### Attempt History
 
-| # | Problem | Fix |
-|---|---|---|
-| 1 | `copyTo()` in tar extraction → all files empty | Replaced with manual `ByteArray(8192)` read loop |
-| 2 | `/bin/bash` not found | Ubuntu uses merged /usr — path is `/usr/bin/bash` |
-| 3 | filesDir is noexec on Android 14 | Executables must be in `nativeLibraryDir` or `codeCacheDir` |
-| 4 | Custom-compiled proot was DYN (shared lib), not PIE | Replaced with real Termux PIE binary from packages.termux.dev |
-| 5 | `libtalloc.so` SONAME mismatch (proot needed `libtalloc.so.2`) | `patchelf --set-soname` to fix SONAME |
-| 6 | Gradle stripped `libtalloc.so` (no JNI reference) | Added `System.loadLibrary()` stubs to force packaging |
-| 7 | `libandroid-shmem.so` missing | Extracted from termux deb, added to jniLibs |
-| 8 | `PROOT_LOADER` env var was empty string at runtime | Explicitly set to `$nativeLibraryDir/libproot-loader.so` with logging |
-| 9 | **`argv[0]` missing from args array** | JNI does `execvp(cmd, argv)` — argv[0] MUST be `"proot"` (program name). Without it args shift by 1 and proot fails → silently falls back to `/system/bin/sh` |
+1. copyTo() in tar extraction — all files empty — Fixed with manual ByteArray(8192) read loop
+2. /bin/bash not found — Ubuntu uses merged /usr, path is /usr/bin/bash
+3. filesDir is noexec on Android 14 — executables must be in nativeLibraryDir
+4. Custom proot was DYN not PIE — replaced with real Termux PIE binary
+5. libtalloc.so SONAME mismatch — fixed with patchelf --set-soname
+6. Gradle stripped unreferenced .so files — added all 4 libs to CMakeLists.txt as IMPORTED plus explicit jniLibs srcDir in build.gradle.kts
+7. libandroid-shmem.so missing — extracted from termux deb, added to jniLibs
+8. PROOT_LOADER env var empty at runtime — explicitly set to nativeLibraryDir/libproot-loader.so
+9. argv[0] missing from args array — argv[0] MUST be proot, execvp requires it
+10. Ubuntu tab opened blank, progress messages not showing — fixed onTextChanged wiring, added currentView state ref so background thread writes trigger onScreenUpdated
+11. Download had no resume or retry — replaced with resumable HTTP Range download, 5% progress updates, 3 retries
+12. find /data/app returned empty, thought .so files missing — permission denied on /data/app, files ARE packaged, confirmed via unzip -l on APK
 
-### Current Working Architecture (build #350+)
+### Current Architecture
 
-**All proot binaries live in `jniLibs/arm64-v8a/`** — Gradle packages them into `nativeLibraryDir` which is always executable on Android:
+All proot binaries live in jniLibs/arm64-v8a/
+Gradle packages them into nativeLibraryDir which is always executable.
 
-```
 jniLibs/arm64-v8a/
-  libproot.so          ← real Termux PIE proot binary (239KB)
-  libproot-loader.so   ← proot guest ELF loader (18KB)
-  libtalloc.so         ← talloc, SONAME patched to "libtalloc.so" (34KB)
-  libandroid-shmem.so  ← Android shmem shim (14KB)
-  libtermux-exec.so    ← termux exec helper (7KB)
-```
+  libproot.so          — real Termux PIE proot binary 239KB
+  libproot-loader.so   — proot guest ELF loader 18KB
+  libtalloc.so         — talloc, SONAME patched to libtalloc.so 34KB
+  libandroid-shmem.so  — Android shmem shim 14KB
+  libtermux-exec.so    — termux exec helper 7KB
 
-**`ProotInstaller.kt` launchArgs() — exactly how it must work:**
-```kotlin
-val nativeDir = context.applicationInfo.nativeLibraryDir
-val proot     = "$nativeDir/libproot.so"
-val loader    = "$nativeDir/libproot-loader.so"
+CMakeLists.txt declares all 4 as IMPORTED so Gradle packages them.
+build.gradle.kts has explicit sourceSets jniLibs.srcDirs declaration.
 
-val args = arrayOf(
-    "proot",            // argv[0] = program name — REQUIRED, JNI does execvp(cmd, argv)
-    "--link2symlink",   // MANDATORY — handles symlinks on filesDir filesystem
-    "--kill-on-exit",
-    "-S", rootfs,
-    "-b", "/proc:/proc",
-    "-b", "/dev:/dev",
-    "-b", "/sys:/sys",
-    "-b", "$hostFiles:/host-files",
-    "-w", "/root",
-    "/usr/bin/env", "-i",
-    "HOME=/root",
-    "TERM=xterm-256color",
-    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    "LANG=en_US.UTF-8",
-    "/usr/bin/bash", "--login"
-)
-
-val envVars = arrayOf(
-    "PROOT_LOADER=$loader",       // proot exec()s this — must point to real file
-    "LD_LIBRARY_PATH=$nativeDir", // linker finds libtalloc.so + libandroid-shmem.so
-    "PROOT_TMP_DIR=$tmpDir",
-    "TMPDIR=$tmpDir",
-    "PROOT_NO_SECCOMP=1",         // required on Android kernels
-    "HOME=${context.filesDir.absolutePath}"
-)
-```
+launchArgs uses:
+- argv[0] = "proot" (REQUIRED)
+- --link2symlink (MANDATORY)
+- --kill-on-exit
+- -S rootfs
+- binds for /proc /dev /sys /host-files
+- /usr/bin/bash --login
+- env: PROOT_LOADER, LD_LIBRARY_PATH, PROOT_TMP_DIR, PROOT_NO_SECCOMP=1
 
 ### Ubuntu Rootfs
-- URL: `https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz`
-- VERSION string: `ubuntu-questing-v4.30.1`
-- Extracted to: `context.filesDir/ubuntu-rootfs/`
-- `isInstalled()` checks: `.ubuntu_version` file content == VERSION AND `usr/bin/bash` exists
-- bash confirmed present at: `ubuntu-rootfs/usr/bin/bash` (1.6MB)
-- Reset extraction: `echo "" > /data/data/com.codespace.ide.debug/files/.ubuntu_version`
-
-### JNI Layer (pty_native.c)
-The native code does:
-```c
-execvp(cmdStr, argv);              // cmdStr = proot path, argv = args array
-// on failure → falls back to /system/bin/sh silently
-```
-This is why argv[0] = "proot" is critical. If args[0] is "--link2symlink", proot sees wrong args and exits → sh fallback with no visible error.
+- URL: https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz
+- VERSION: ubuntu-questing-v4.30.1
+- Extracted to: context.filesDir/ubuntu-rootfs/
+- isInstalled checks: .ubuntu_version == VERSION AND usr/bin/bash exists
+- Reset extraction: echo "" > /data/data/com.codespace.ide.debug/files/.ubuntu_version
+- Download: resumable HTTP Range, 5% progress updates, 3 auto-retries
 
 ---
 
 ## HARD RULES — Never Break These
 
-1. **NEVER gate "Open Ubuntu" behind `deviceCompat.shouldUseOfflineOnly()`** — Ubuntu must always be accessible
-2. **NEVER add `com.github.termux:termux-terminal-view` as a Gradle dep** — Termux source is vendored in `com/termux/terminal/`
-3. **NEVER replace `TerminalSession.java` with a ProcessBuilder version** — must use the PTY/forkpty JNI version
-4. **NEVER use `copyTo()` for tar extraction** — use manual `ByteArray(8192)` read loop
-5. **NEVER use static proot linking** — Android 14 TLS alignment (needs 64-byte, NDK gives 8-byte) always fails
-6. **NEVER put executable binaries in `filesDir`** — it is noexec on Android 14
-7. **NEVER remove argv[0] ("proot") from the args array** — execvp requires it
-8. **ALWAYS use `git pull --rebase && git push`** — plain push gets rejected
-9. **NEVER use heredoc (`<<EOF`) inside YAML workflows** — YAML parser breaks it
+1. NEVER gate Open Ubuntu behind deviceCompat.shouldUseOfflineOnly()
+2. NEVER add com.github.termux:termux-terminal-view as a Gradle dep — source is vendored
+3. NEVER replace TerminalSession.java with ProcessBuilder version
+4. NEVER use copyTo() for tar extraction — use manual ByteArray(8192) read loop
+5. NEVER use static proot linking — Android 14 TLS alignment fails
+6. NEVER put executable binaries in filesDir — noexec on Android 14
+7. NEVER remove argv[0] proot from args array — execvp requires it
+8. NEVER set onTextChanged to empty lambda — kills screen redraws
+9. ALWAYS use git pull --rebase && git push
+10. NEVER use heredoc EOF inside YAML workflows
+11. NEVER use find /data/app on device — permission denied, use unzip -l on APK instead
+12. NEVER use ls in app bash tab to check files — use [ -f path ] builtins
 
 ---
 
 ## Terminology
 
-| Term | Meaning |
-|---|---|
-| `filesDir` | `/data/data/com.codespace.ide.debug/files/` — writable, **NOEXEC** |
-| `nativeLibraryDir` | `/data/app/~~.../com.codespace.ide.debug-.../lib/arm64/` — **EXECUTABLE** ✅ |
-| `codeCacheDir` | `/data/data/com.codespace.ide.debug/code_cache/` — executable on most devices |
-| `proot` | Userspace chroot via ptrace — no root needed |
-| `--link2symlink` | proot flag to handle symlinks on noexec filesystems — **MANDATORY** |
-| `rootfs` | Ubuntu filesystem on device |
-| `VERSION` | `ubuntu-questing-v4.30.1` |
-| `jniLibs/` | Repo folder Gradle packages as native libs → `nativeLibraryDir` |
+filesDir = /data/data/com.codespace.ide.debug/files/ — writable, NOEXEC
+nativeLibraryDir = /data/app/.../lib/arm64/ — EXECUTABLE
+codeCacheDir = /data/data/com.codespace.ide.debug/code_cache/ — executable on most devices
+proot = userspace chroot via ptrace, no root needed
+--link2symlink = proot flag to handle symlinks, MANDATORY
+rootfs = Ubuntu filesystem on device
+VERSION = ubuntu-questing-v4.30.1
+jniLibs/ = repo folder Gradle packages as native libs into nativeLibraryDir
 
 ---
 
 ## Key Files
 
-```
 android/app/src/main/
-├── java/com/codespace/ide/terminal/
-│   ├── ProotInstaller.kt          ← CRITICAL: rootfs download/extract, proot launchArgs
-│   ├── BusyboxInstaller.kt        ← bootstrap shell (noexec issue — don't touch until Ubuntu works)
-│   ├── TerminalModeManager.kt     ← mode persistence (Ubuntu vs Offline)
-│   └── DeviceCompatibility.kt     ← DO NOT use to gate Ubuntu
-├── java/com/codespace/ide/ui/panes/
-│   ├── TerminalPane.kt            ← terminal UI, tabs, menus, extra keys bar
-│   ├── SshManagerSheet.kt         ← SSH profile manager
-│   └── TextExpansionSheet.kt      ← text expansion manager
-├── jniLibs/arm64-v8a/             ← proot binaries (always executable)
-├── assets/proot/arm64-v8a/        ← duplicate binaries (codeCacheDir approach, not used)
-└── cpp/pty_native.c               ← JNI: forkpty + execvp — the core terminal engine
-```
+  java/com/codespace/ide/terminal/
+    ProotInstaller.kt       — CRITICAL: rootfs download/extract, proot launchArgs
+    BusyboxInstaller.kt     — bootstrap shell, do not touch until Ubuntu works
+    TerminalModeManager.kt  — mode persistence
+    DeviceCompatibility.kt  — DO NOT use to gate Ubuntu
+  java/com/codespace/ide/ui/panes/
+    TerminalPane.kt         — terminal UI, tabs, menus, currentView redraws
+    SshManagerSheet.kt      — SSH profile manager
+    TextExpansionSheet.kt   — text expansion manager
+  jniLibs/arm64-v8a/        — proot binaries, always executable
+  cpp/
+    pty_native.c            — JNI forkpty + execvp, core terminal engine
+    CMakeLists.txt          — declares all proot libs as IMPORTED
 
 ---
 
-## Remaining Work (Priority Order)
+## Remaining Work Priority Order
 
-### 🔴 P1 — Verify Ubuntu boots on device (build #350)
-Test "🐧 Open Ubuntu Linux" → expect `root@localhost:~#` prompt.
-If still failing, check logcat for `ProotInstaller` tag — logs now print all paths.
+P1 RED — Verify Ubuntu boots on device
+Test Open Ubuntu Linux, should now see progress messages, expect root@localhost prompt.
+If blank tab: redraw bug still present, check currentView wiring in TerminalPane.kt.
+If Process completed: check diagnostic lines for proot canExec and bash exists.
 
-### 🟡 P2 — App bash tab: Permission Denied
-BusyboxInstaller extracts to `filesDir` → noexec. Fix = route through proot (same as Ubuntu tab).
-DO NOT fix until Ubuntu tab is confirmed working.
+P2 YELLOW — Terminal tab/session persistence
+Sessions destroyed on background/close. Fix = foreground TerminalService stub exists not wired.
 
-### 🟡 P3 — Terminal tab/session persistence
-Sessions live in Compose state, destroyed on background/close.
-Fix = foreground `TerminalService` (stub exists at `TerminalService.kt`, not wired up).
+P3 YELLOW — Terminal text redraw on keystrokes
+onScreenUpdated not wired to keystroke-write path. Affects all tabs.
 
-### 🟡 P4 — Terminal text doesn't redraw until tap/scroll
-`TerminalView.onScreenUpdated()` likely not wired to keystroke-write path.
+P4 GREEN — Ollama inside Ubuntu
+Once Ubuntu boots: curl -fsSL https://ollama.com/install.sh | sh inside Ubuntu.
 
-### 🟢 P5 — Ollama inside Ubuntu
-Once Ubuntu boots: `curl -fsSL https://ollama.com/install.sh | sh` inside Ubuntu.
+P5 GREEN — Git panel not verified end-to-end
 
-### 🟢 P6 — Git panel not verified end-to-end
-JGit wired in SourceControlPane.kt but never confirmed working.
+P6 GREEN — AI Assistant panel not in nav, code exists, removed during terminal focus
 
 ---
 
 ## Build Environment
 
-- **NDK:** 26.1.10909125
-- **compileSdk / targetSdk:** 34, **minSdk:** 26
-- **Kotlin + Jetpack Compose + Hilt DI**
-- **Codespace:** `urban-umbrella-774x47p55px394p` (shutdown, not deleted)
-- **Access:** `gh cs ssh` from Termux on phone
-- **Accounts:** `wisdom131-max` (owner/admin), `wisdomijezie90-art` (collaborator, no admin)
+NDK: 26.1.10909125
+compileSdk / targetSdk: 34, minSdk: 26
+Kotlin + Jetpack Compose + Hilt DI
+Codespace: urban-umbrella-774x47p55px394p (shutdown, not deleted)
+Access: gh cs ssh from Termux on phone
+Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator, no admin)
 
 ---
 
-*Last updated: June 25, 2026 — build #350*
+Last updated: June 25, 2026 — session 2 with Claude Sonnet 4.6
