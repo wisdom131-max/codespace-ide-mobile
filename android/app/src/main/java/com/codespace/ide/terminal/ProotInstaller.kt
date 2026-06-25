@@ -16,7 +16,7 @@ import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
  *
  * On first Ubuntu launch:
  *  1. [ensureBinaries] extracts proot, proot-loader, libtalloc.so.2, and
- *     libandroid-shmem.so from assets into filesDir/proot-bin/
+ *     libandroid-shmem.so from assets into codeCacheDir/proot-bin/ (executable on Android 14+)
  *  2. [install] downloads + extracts the Ubuntu rootfs tarball
  *  3. [launchArgs] returns the correct executable path + env vars,
  *     with LD_LIBRARY_PATH pointing at our extracted libs dir so the
@@ -53,7 +53,8 @@ object ProotInstaller {
 
     /** Extract the bundled Termux proot binaries from assets → filesDir/proot-bin/ */
     fun ensureBinaries(context: Context) {
-        val binDir = File(context.filesDir, "proot-bin").apply { mkdirs() }
+        // Android 14 W^X: executables must live in codeCacheDir, not filesDir
+        val binDir = File(context.codeCacheDir, "proot-bin").apply { mkdirs() }
         val assetMgr = context.assets
         for (name in BINARY_NAMES) {
             val dest = File(binDir, name)
@@ -160,21 +161,22 @@ object ProotInstaller {
      * Returns (prootPath, args, envVars) ready to pass to TerminalSession.
      *
      * Key fix vs previous approach:
-     *  - Uses the pre-built Termux proot from filesDir/proot-bin/ (not nativeLibDir)
+     *  - Uses the pre-built Termux proot from codeCacheDir/proot-bin/ (executable on Android 14+)
      *  - Sets LD_LIBRARY_PATH to that same dir so the dynamic linker finds
      *    libtalloc.so.2 and libandroid-shmem.so regardless of the hardcoded
      *    RUNPATH in the proot binary (/data/data/com.termux/...)
-     *  - PROOT_LOADER points to filesDir/proot-bin/proot-loader (a proper EXEC,
+     *  - PROOT_LOADER points to codeCacheDir/proot-bin/proot-loader (a proper EXEC,
      *    which is what proot expects — it exec()s the loader, not dlopen()s it)
      */
     fun launchArgs(context: Context): Triple<String, Array<String>, Array<String>> {
         ensureBinaries(context)
 
-        val binDir  = File(context.filesDir, "proot-bin").absolutePath
+        // Android 14 W^X: executables must be in codeCacheDir
+        val binDir  = File(context.codeCacheDir, "proot-bin").absolutePath
         val proot   = "$binDir/proot"
         val loader  = "$binDir/proot-loader"
         val rootfs  = rootfsDir(context).absolutePath
-        val tmpDir  = File(context.filesDir, "proot-tmp").apply { mkdirs() }.absolutePath
+        val tmpDir  = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val hostFiles = context.filesDir.absolutePath
 
         // Make sure exec bits survived extraction
