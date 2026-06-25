@@ -188,6 +188,7 @@ internal fun TerminalPane(
     var showSshManager    by remember { mutableStateOf(false) }
     var showTextExpansions by remember { mutableStateOf(false) }
     var showExtraKeys     by remember { mutableStateOf(true) }
+    val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     // Use shared state if provided, otherwise own state
     val sharedState = externalState ?: rememberTerminalState(context)
@@ -218,7 +219,7 @@ internal fun TerminalPane(
 
     DisposableEffect(activeId) {
         val tab = tabs.firstOrNull { it.id == activeId }
-        tab?.client?.onTextChanged = { }
+        tab?.client?.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
         onDispose { tab?.client?.onTextChanged = null }
     }
 
@@ -242,6 +243,7 @@ internal fun TerminalPane(
         val (progressSession, progressClient) = createTerminalSession(ctx, isUbuntu = false)
         tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
         activeId = id
+        progressClient.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
         progressSession.write("\r\n[Ubuntu] Checking installation...\r\n")
         Thread {
             // Ensure Termux proot binaries are extracted from assets
@@ -467,6 +469,7 @@ internal fun TerminalPane(
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
                             active.client.onTextChanged = { view.post { view.onScreenUpdated() } }
+                            currentView.value = view
                             view.requestFocus()
                         }
                     }
