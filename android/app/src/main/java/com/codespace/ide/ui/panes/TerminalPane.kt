@@ -236,6 +236,12 @@ internal fun TerminalPane(
         if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
 
+    fun writeToDisplay(session: TerminalSession, text: String) {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        session.getEmulator()?.append(bytes, bytes.size)
+        currentView.value?.post { currentView.value?.onScreenUpdated() }
+    }
+
     fun addUbuntuTab() {
         val ctx = context
         // Create the tab immediately with a shell session so we can write progress to it
@@ -244,20 +250,20 @@ internal fun TerminalPane(
         tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
         activeId = id
         progressClient.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
-        progressSession.write("\r\n[Ubuntu] Checking installation...\r\n")
+        writeToDisplay(progressSession, "\r\n[Ubuntu] Checking installation...\r\n")
         Thread {
             // Ensure Termux proot binaries are extracted from assets
-            progressSession.write("[Ubuntu] Preparing proot runtime...\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
             ProotInstaller.ensureBinaries(ctx)
             if (!ProotInstaller.isInstalled(ctx)) {
-                progressSession.write("[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
-                progressSession.write("[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
                 ProotInstaller.install(ctx) { msg ->
-                    progressSession.write("  $msg\r\n")
+                    writeToDisplay(progressSession, "  $msg\r\n")
                 }
-                progressSession.write("\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
+                writeToDisplay(progressSession, "\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
             } else {
-                progressSession.write("[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
             }
             // Pre-flight: write binary info to terminal for diagnosis
             val nativeDir = ctx.applicationInfo.nativeLibraryDir
@@ -265,16 +271,16 @@ internal fun TerminalPane(
             val loaderBin = java.io.File(nativeDir, "libproot-loader.so")
             val tallocBin = java.io.File(nativeDir, "libtalloc.so")
             val shmemBin  = java.io.File(nativeDir, "libandroid-shmem.so")
-            progressSession.write("[Ubuntu] nativeLibraryDir: $nativeDir\r\n")
-            progressSession.write("[Ubuntu] proot:   exists=${prootBin.exists()} canExec=${prootBin.canExecute()} size=${prootBin.length()}\r\n")
-            progressSession.write("[Ubuntu] loader:  exists=${loaderBin.exists()} canExec=${loaderBin.canExecute()} size=${loaderBin.length()}\r\n")
-            progressSession.write("[Ubuntu] talloc:  exists=${tallocBin.exists()} size=${tallocBin.length()}\r\n")
-            progressSession.write("[Ubuntu] shmem:   exists=${shmemBin.exists()} size=${shmemBin.length()}\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] nativeLibraryDir: $nativeDir\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] proot:   exists=${prootBin.exists()} canExec=${prootBin.canExecute()} size=${prootBin.length()}\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] loader:  exists=${loaderBin.exists()} canExec=${loaderBin.canExecute()} size=${loaderBin.length()}\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] talloc:  exists=${tallocBin.exists()} size=${tallocBin.length()}\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] shmem:   exists=${shmemBin.exists()} size=${shmemBin.length()}\r\n")
             val rootfsDir = ProotInstaller.rootfsDir(ctx)
             val bashBin = java.io.File(rootfsDir, "usr/bin/bash")
-            progressSession.write("[Ubuntu] rootfs:  ${rootfsDir.absolutePath}\r\n")
-            progressSession.write("[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
-            progressSession.write("[Ubuntu] Launching proot...\r\n\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] rootfs:  ${rootfsDir.absolutePath}\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
+            writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
