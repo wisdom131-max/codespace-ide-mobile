@@ -12,7 +12,8 @@ object BusyboxInstaller {
 
     fun binDir(context: Context): File = File(prefixDir(context), "bin")
 
-    fun prefixDir(context: Context): File = context.filesDir
+    // Android 14 W^X: binaries must be in codeCacheDir to be executable
+    fun prefixDir(context: Context): File = context.codeCacheDir
 
     fun offlineShellPath(context: Context): String {
         val bundled = File(binDir(context), "bash")
@@ -211,7 +212,7 @@ object BusyboxInstaller {
                 var entry = zip.nextEntry
                 while (entry != null) {
                     val entryName = entry.name
-                    val targetFile = File(context.filesDir, entryName)
+                    val targetFile = File(context.codeCacheDir, entryName)
 
                     if (entry.isDirectory) {
                         targetFile.mkdirs()
@@ -233,13 +234,13 @@ object BusyboxInstaller {
         }
 
         // Handle symlinks file
-        val symlinkFile = File(context.filesDir, "SYMLINKS.txt")
+        val symlinkFile = File(context.codeCacheDir, "SYMLINKS.txt")
         if (symlinkFile.exists()) {
             symlinkFile.forEachLine { line ->
                 val parts = line.split("←")
                 if (parts.size == 2) {
                     val target = parts[0]
-                    val linkPath = File(context.filesDir, parts[1])
+                    val linkPath = File(context.codeCacheDir, parts[1])
                     linkPath.parentFile?.mkdirs()
                     try {
                         val process = Runtime.getRuntime().exec(arrayOf("ln", "-sf", target, linkPath.absolutePath))
