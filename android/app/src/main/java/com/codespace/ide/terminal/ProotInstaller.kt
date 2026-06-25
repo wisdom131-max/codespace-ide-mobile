@@ -184,9 +184,9 @@ object ProotInstaller {
         File(loader).setExecutable(true, false)
 
         val args = arrayOf(
+            "proot",              // argv[0] = program name (required by execvp convention)
             "--link2symlink",
             "--kill-on-exit",
-            "--sysvipc",
             "-S", rootfs,
             "-b", "/proc:/proc",
             "-b", "/dev:/dev",
@@ -198,10 +198,7 @@ object ProotInstaller {
             "TERM=xterm-256color",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG=en_US.UTF-8",
-            "OLLAMA_HOST=0.0.0.0:11434",
-            "OLLAMA_MODELS=/root/.ollama/models",
-            "OLLAMA_KEEP_ALIVE=30m",
-            "/bin/bash", "--login"
+            "/usr/bin/bash", "--login"
         )
 
         val envVars = arrayOf(
