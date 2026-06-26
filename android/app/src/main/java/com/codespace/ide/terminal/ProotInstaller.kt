@@ -200,20 +200,17 @@ object ProotInstaller {
         Log.d(TAG, "launchArgs: rootfs=$rootfs  bashExists=${File(rootfs, "usr/bin/bash").exists()}")
 
         val args = arrayOf(
-            "proot",            // argv[0] = program name — REQUIRED by execvp convention
-            "--link2symlink",   // handle symlinks via ptrace (filesDir has no symlink support)
+            "proot",
+            "--link2symlink",
             "--kill-on-exit",
-            "-S", rootfs,
+            "-0",
+            "-r", rootfs,
             "-b", "/proc:/proc",
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
+            "-b", "/proc/self/fd:/dev/fd",
             "-b", "$hostFiles:/host-files",
             "-w", "/root",
-            "/usr/bin/env", "-i",
-            "HOME=/root",
-            "TERM=xterm-256color",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-            "LANG=en_US.UTF-8",
             "/usr/bin/bash", "--login"
         )
 
