@@ -204,7 +204,7 @@ object ProotInstaller {
             "--link2symlink",
             "--kill-on-exit",
             "-0",
-            "-r", rootfs,
+            "-R", rootfs,
             "-b", "/proc:/proc",
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
