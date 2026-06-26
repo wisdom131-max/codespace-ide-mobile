@@ -202,6 +202,7 @@ object ProotInstaller {
         val args = arrayOf(
             "proot",
             "--link2symlink",
+            "--cwd=/root",
             "--kill-on-exit",
             "-0",
             "-r", rootfs,
