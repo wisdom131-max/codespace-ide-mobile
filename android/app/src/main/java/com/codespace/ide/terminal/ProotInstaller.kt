@@ -206,7 +206,7 @@ object ProotInstaller {
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
             "-b", "$hostFiles:/host-files",
-            "-w", "/root",
+            "-w", "/",
             "/usr/bin/env", "-i",
             "HOME=/root",
             "TERM=xterm-256color",
