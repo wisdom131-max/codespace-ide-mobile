@@ -165,7 +165,9 @@ object ProotInstaller {
             tarXzFile.delete()
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
-            Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
+            // Ensure /root exists
+        File(rootfs, "root").mkdirs()
+        Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
 
         } catch (e: Exception) {
             Log.e(TAG, "Rootfs install failed: ${e.message}", e)
@@ -206,7 +208,7 @@ object ProotInstaller {
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
             "-b", "$hostFiles:/host-files",
-            "-w", "/",
+            "-w", "/root",
             "/usr/bin/env", "-i",
             "HOME=/root",
             "TERM=xterm-256color",
