@@ -227,7 +227,8 @@ object ProotInstaller {
             "LD_LIBRARY_PATH=$nativeDir",    // linker finds libtalloc.so + libandroid-shmem.so here
             "PROOT_TMP_DIR=$tmpDir",
             "TMPDIR=$tmpDir",
-            "PROOT_NO_SECCOMP=1",            // required on most Android kernels
+            "PROOT_NO_SECCOMP=1",
+            "PROOT_FORCE_COREDUMP=1",
             "HOME=${context.filesDir.absolutePath}"
         )
 
