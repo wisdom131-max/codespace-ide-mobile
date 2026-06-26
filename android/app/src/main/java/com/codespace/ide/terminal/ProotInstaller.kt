@@ -229,14 +229,6 @@ object ProotInstaller {
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "MOZ_FAKE_NO_SANDBOX=1",
             "/bin/bash", "--login"
-            "/usr/bin/env",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-            "HOME=/root",
-            "TERM=xterm-256color",
-            "USER=root",
-            "LANG=en_US.UTF-8",
-            "/bin/sh", "-c",
-            "echo nameserver 8.8.8.8 > /etc/resolv.conf; mkdir -p /etc/apt/apt.conf.d; echo \'APT::Sandbox::User \"root\";\' > /etc/apt/apt.conf.d/00sandbox; echo \'Acquire::AllowInsecureRepositories \"true\";\' >> /etc/apt/apt.conf.d/00sandbox; echo \'APT::Get::AllowUnauthenticated \"true\";\' >> /etc/apt/apt.conf.d/00sandbox; export TMPDIR=/tmp; exec /usr/bin/bash --login"
         )
 
         val envVars = arrayOf(
