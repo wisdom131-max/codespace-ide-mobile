@@ -201,7 +201,6 @@ object ProotInstaller {
             "proot",            // argv[0] = program name — REQUIRED by execvp convention
             "--link2symlink",   // handle symlinks via ptrace (filesDir has no symlink support)
             "--kill-on-exit",
-            "-0",
             "-S", rootfs,
             "-b", "/proc:/proc",
             "-b", "/dev:/dev",
