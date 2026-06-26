@@ -192,6 +192,7 @@ object ProotInstaller {
         val rootfs    = rootfsDir(context).absolutePath
         val tmpDir    = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val hostFiles = context.filesDir.absolutePath
+        val selinuxDir = File(context.cacheDir, "fake-selinux").apply { mkdirs() }.absolutePath
 
         // Log for diagnosis — this is how v13 handoff confirmed PROOT_LOADER was empty
         Log.d(TAG, "launchArgs: nativeDir=$nativeDir")
@@ -201,21 +202,33 @@ object ProotInstaller {
 
         val args = arrayOf(
             "proot",
-            "--link2symlink",
             "--kill-on-exit",
+            "--link2symlink",
             "--sysvipc",
+            "--kernel-release=\\Linux\\localhost\\6.17.0-PRoot-Distro\\#1 SMP PREEMPT_DYNAMIC Fri, 10 Oct 2025 00:00:00 +0000\\aarch64\\localdomain\\-1\\",
             "-L",
-            "-k", "5.15.0-android13",
             "--change-id=0:0",
-            "-r", rootfs,
-            "-b", "/proc:/proc",
-            "-b", "/dev:/dev",
-            "-b", "/sys:/sys",
-            "-b", "/proc/self/fd:/dev/fd",
-            "-b", "$rootfs/tmp:/dev/shm",
-            "-b", "/dev/urandom:/dev/random",
-            "-b", "$hostFiles:/host-files",
+            "--rootfs=$rootfs",
             "--cwd=/root",
+            "--bind=/dev",
+            "--bind=/proc",
+            "--bind=/sys",
+            "--bind=/dev/urandom:/dev/random",
+            "--bind=/proc/self/fd:/dev/fd",
+            "--bind=/proc/self/fd/0:/dev/stdin",
+            "--bind=/proc/self/fd/1:/dev/stdout",
+            "--bind=/proc/self/fd/2:/dev/stderr",
+            "--bind=$selinuxDir:/sys/fs/selinux",
+            "--bind=$rootfs/tmp:/dev/shm",
+            "--bind=$hostFiles:/host-files",
+            "/usr/bin/env", "-i",
+            "HOME=/root",
+            "USER=root",
+            "LOGNAME=root",
+            "TERM=xterm-256color",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "MOZ_FAKE_NO_SANDBOX=1",
+            "/bin/bash", "--login"
             "/usr/bin/env",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "HOME=/root",
