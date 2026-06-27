@@ -198,7 +198,7 @@ object ProotInstaller {
                 // Dynamically resolve package URLs by streaming Packages.gz line by line
                 val mirrorBase = "https://ports.ubuntu.com/ubuntu-ports"
                 val packagesUrl = "$mirrorBase/dists/questing/main/binary-arm64/Packages.gz"
-                val targets = setOf("curl", "libcurl4t64")
+                val targets = setOf("libcurl4t64")  // curl alone first — smaller package
                 val resolvedUrls = mutableMapOf<String, String>()
                 java.util.zip.GZIPInputStream(java.net.URL(packagesUrl).openStream()).bufferedReader().useLines { lines ->
                     var currentPkg = ""
