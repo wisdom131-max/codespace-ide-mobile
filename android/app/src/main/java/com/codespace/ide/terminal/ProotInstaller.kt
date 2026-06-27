@@ -198,7 +198,7 @@ object ProotInstaller {
                 // Dynamically resolve package URLs by streaming Packages.gz line by line
                 val mirrorBase = "https://ports.ubuntu.com/ubuntu-ports"
                 val packagesUrl = "$mirrorBase/dists/questing/main/binary-arm64/Packages.gz"
-                val targets = setOf("libcurl4t64")  // curl alone first — smaller package
+                val targets = setOf("curl", "libcurl4t64")  // curl binary + its shared lib
                 val resolvedUrls = mutableMapOf<String, String>()
                 java.util.zip.GZIPInputStream(java.net.URL(packagesUrl).openStream()).bufferedReader().useLines { lines ->
                     var currentPkg = ""
@@ -220,7 +220,13 @@ object ProotInstaller {
                         if (resolvedUrls.size == targets.size) return@useLines
                     }
                 }
-                val essentialDebs = resolvedUrls.values.toList().also { Log.d(TAG, "Resolved debs: $it") }
+                val essentialDebs = resolvedUrls.values.toList()
+                if (essentialDebs.isEmpty()) {
+                    Log.w(TAG, "Pre-install: could not resolve any package URLs — check mirror or package names")
+                    onProgress("Pre-install: package resolution failed (check network)")
+                } else {
+                    Log.d(TAG, "Resolved debs: $essentialDebs")
+                }
                 for (debUrl in essentialDebs) {
                     val debName = debUrl.substringAfterLast("/")
                     onProgress("Downloading $debName...")
@@ -298,6 +304,26 @@ object ProotInstaller {
             } catch (e: Exception) {
                 Log.e(TAG, "Pre-install failed: ${e.javaClass.simpleName}: ${e.message}", e)
                 onProgress("Pre-install error: ${e.javaClass.simpleName}: ${e.message}")
+            }
+
+            // Bake DNS + apt config permanently so they survive across proot sessions
+            try {
+                val resolvConf = File(rootfs, "etc/resolv.conf")
+                resolvConf.parentFile?.mkdirs()
+                resolvConf.writeText("nameserver 8.8.8.8
+nameserver 8.8.4.4
+")
+
+                val aptConfDir = File(rootfs, "etc/apt/apt.conf.d")
+                aptConfDir.mkdirs()
+                File(aptConfDir, "00sandbox").writeText(
+                    "APT::Sandbox::User \"root\";\n" +
+                    "Acquire::AllowInsecureRepositories \"true\";\n" +
+                    "APT::Get::AllowUnauthenticated \"true\";\n"
+                )
+                Log.d(TAG, "Baked DNS + apt config into rootfs")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to bake DNS/apt config: \${e.message}")
             }
 
             versionFile.writeText(VERSION)
