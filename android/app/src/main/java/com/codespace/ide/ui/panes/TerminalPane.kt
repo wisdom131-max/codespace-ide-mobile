@@ -134,12 +134,19 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
         val v = terminalView ?: return
         val emulator = v.mEmulator
         // URL detection on tap — matches Termux shouldOpenTerminalTranscriptURLOnClick
+        // Uses Termux's full multi-scheme URL regex (TermuxUrlUtils)
         if (emulator != null && e != null) {
             try {
                 val colRow = v.getColumnAndRow(e, true)
                 if (colRow != null && colRow.size >= 2) {
                     val word = emulator.screen?.getWordAtLocation(colRow[0], colRow[1]) ?: ""
-                    val urlMatch = Regex("""https?://[^\s'"<>]+""").find(word)
+                    // Full Termux URL regex — supports http/https/ftp/git/ssh/file/sftp/etc
+                    val urlRegex = Regex(
+                        """((?:dav|dict|dns|file|finger|ftp(?:s?)|git|gemini|gopher|http(?:s?)|imap(?:s?)|irc(?:[6s]?)|ip[fn]s|ldap(?:s?)|pop3(?:s?)|redis(?:s?)|rsync|rtsp(?:[su]?)|sftp|smb(?:s?)|smtp(?:s?)|svn(?:(?:\+ssh)?)|tcp|telnet|tftp|udp|vnc|ws(?:s?))://)""" +
+                        """((?:\S+(?::\S*)?@)?(?:(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:(?:[a-z¡-￿0-9]-*)*[a-z¡-￿0-9]+)(?:(?:\.(?:[a-z¡-￿0-9]-*)*[a-z¡-￿0-9]+)*(?:\.(?:[a-z¡-￿0-9]-*){1,}[a-z¡-￿0-9]{1,}))?|/(?:(?:[a-z¡-￿0-9]-*)*[a-z¡-￿0-9]+))(?::\d{1,5})?(?:/[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?(?:#[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?)""",
+                        setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+                    )
+                    val urlMatch = urlRegex.find(word)
                     if (urlMatch != null) {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
                             Uri.parse(urlMatch.value)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
