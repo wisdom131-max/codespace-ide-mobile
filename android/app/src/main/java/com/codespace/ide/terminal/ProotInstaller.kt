@@ -188,11 +188,10 @@ object ProotInstaller {
             } catch (e: Exception) {
                 Log.w(TAG, "Busybox install failed: ${e.message}")
             }
+            File(rootfs, "root").mkdirs()
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
-            // Ensure /root exists
-        File(rootfs, "root").mkdirs()
-        Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
+            Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
 
         } catch (e: Exception) {
             Log.e(TAG, "Rootfs install failed: ${e.message}", e)
