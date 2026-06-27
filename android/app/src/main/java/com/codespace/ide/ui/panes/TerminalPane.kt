@@ -312,7 +312,10 @@ internal fun TerminalPane(
     DisposableEffect(Unit) {
         TerminalService.start(context, "Terminal session active")
         onDispose {
-            TerminalService.stop(context)
+            // Do NOT stop the service here — TerminalPane can recompose (theme change,
+            // rotation, navigation) causing a stop()/start() gap during which the OEM
+            // power manager can send signal 31. The service stays alive for the app lifetime.
+            // It is a foreground service (low battery impact). OS cleans it up when app exits.
         }
     }
 

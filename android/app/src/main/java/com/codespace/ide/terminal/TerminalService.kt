@@ -11,6 +11,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Process
 import androidx.core.app.NotificationCompat
 
 /**
@@ -50,6 +51,9 @@ class TerminalService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Terminal session active"
+        // Boost service thread priority — reduces chance of OEM scheduler deprioritizing it.
+        // THREAD_PRIORITY_FOREGROUND = -2 (higher than default 0, same as UI thread).
+        Process.setThreadPriority(Process.THREAD_PRIORITY_FOREGROUND)
         startForeground(NOTIF_ID, buildNotification(text))
 
         when (intent?.action) {
