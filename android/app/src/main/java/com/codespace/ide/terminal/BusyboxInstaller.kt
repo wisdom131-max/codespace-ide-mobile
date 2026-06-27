@@ -69,7 +69,7 @@ object BusyboxInstaller {
         // Create symlinks in filesDir/bin/ → nativeLibraryDir/libbusybox.so
         // Symlinks execute the *target*, so they inherit nativeLibraryDir's exec permission.
         val tools = listOf(
-            "bash", "sh", "cat", "ls", "cp", "mv", "rm", "mkdir", "rmdir",
+            "ash", "sh", "cat", "ls", "cp", "mv", "rm", "mkdir", "rmdir",
             "chmod", "chown", "grep", "sed", "awk", "cut", "sort", "uniq",
             "head", "tail", "find", "xargs", "tar", "gzip", "gunzip",
             "echo", "printf", "test", "true", "false", "env", "which",
@@ -89,7 +89,7 @@ object BusyboxInstaller {
 
         // Write version marker
         File(context.filesDir, ".busybox_version").writeText(VERSION)
-        Log.d(TAG, "Busybox setup complete. bash=${File(bin,"bash").exists()}, target=${busybox.absolutePath}")
+        Log.d(TAG, "Busybox setup complete. ash=${File(bin,"ash").exists()}, target=${busybox.absolutePath}")
     }
 
     fun ensureOfflineShell(context: Context): String {
@@ -99,7 +99,7 @@ object BusyboxInstaller {
         val home = File(context.filesDir, "home").apply { mkdirs() }
         val bashrc = File(home, ".bashrc")
         bashrc.writeText(buildOfflineProfile(context))
-        File(home, ".bash_profile").writeText("[ -f ~/.bashrc ] && . ~/.bashrc\n")
+        File(home, ".profile").writeText("[ -f ~/.bashrc ] && . ~/.bashrc\n")
         File(home, ".inputrc").writeText(
             "set completion-ignore-case on\n" +
             "set show-all-if-ambiguous on\n" +
