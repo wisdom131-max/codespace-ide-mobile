@@ -162,7 +162,7 @@ Fix: Reduced to 64 KB.
 14. NEVER use @aar suffix on zstd-jni — suppresses native .so packaging
 15. Samsung kernel blocks chdir inside proot — NEVER assume cd works in Ubuntu
 16. ALWAYS grep codebase for other callers before renaming or removing any function
-17. NEVER call XZCompressorInputStream without memoryLimitInKb — OOM on 3GB device. Use 96*1024.
+17. NEVER call XZCompressorInputStream without memoryLimitInKb. Correct form: XZCompressorInputStream(stream, false, 96*1024). 2-arg constructor takes Boolean not Int — passing Int causes compile error.
 18. ALWAYS start TerminalService before any long extraction/download thread — plain threads get OOM-killed
 
 ---
@@ -213,7 +213,7 @@ Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator)
 - Always verify: unzip -l app.apk | grep zstd
 
 ### XZ extraction
-- ALWAYS use XZCompressorInputStream(stream, 96 * 1024) — the 2-arg constructor with memoryLimitInKb
+- ALWAYS use XZCompressorInputStream(stream, false, 96 * 1024) — the 3-arg constructor. Arg 2 is Boolean decompressConcatenated (use false). Arg 3 is memoryLimitInKb (Int).
 - Default (no limit) can allocate 800 MB, causing silent OOM crash on 3GB device
 - 96 MB is safe for ubuntu-questing tarball (peaks ~80 MB). If MemoryLimitException is thrown,
   the error surfaces in the UI — do not increase beyond 128 MB without profiling.
