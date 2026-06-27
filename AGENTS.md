@@ -165,3 +165,15 @@ Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator)
 ---
 
 Last updated: June 27, 2026 by Claude Sonnet 4.6
+
+---
+## ZSTD NATIVE LIBRARY FIX (June 27, 2026)
+
+zstd-jni requires explicit classifier to package libzstd.so into APK:
+- CORRECT: implementation("com.github.luben:zstd-jni:1.5.6-4") + implementation("com.github.luben:zstd-jni:1.5.6-4:linux_aarch64")
+- WRONG: implementation("com.github.luben:zstd-jni:1.5.6-4@aar") — suppresses native .so
+- WRONG: android_aarch64 classifier — does not exist on Maven
+- linux_aarch64 is correct for Android arm64 (Android uses Linux kernel)
+
+Without libzstd.so in APK, ZstdCompressorInputStream crashes silently at runtime.
+Always verify with: unzip -l app.apk | grep zstd
