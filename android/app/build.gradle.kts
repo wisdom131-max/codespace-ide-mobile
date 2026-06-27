@@ -173,9 +173,6 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.26.0")
     implementation("org.tukaani:xz:1.9")
     implementation("androidx.core:core-splashscreen:1.0.1")
-    implementation("com.github.luben:zstd-jni:1.5.6-4") {
-        exclude(group = "com.github.luben", module = "zstd-jni")
-    }
     implementation("com.github.luben:zstd-jni:1.5.6-4:linux_aarch64")
 
     // Network
