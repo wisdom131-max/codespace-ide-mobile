@@ -134,14 +134,33 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     val busybox = BusyboxInstaller.shellPath(context)
     val home = File(context.filesDir, "home").also { it.mkdirs() }.absolutePath
     val bin  = BusyboxInstaller.binDir(context).absolutePath
-    val env  = arrayOf(
+    // Build env the same way Termux does (TermuxShellEnvironment + AndroidShellEnvironment):
+    // Pass through Android system vars, set LANG/COLORTERM, add LD_PRELOAD for exec() compat.
+    val nativeDir = context.applicationInfo.nativeLibraryDir
+    val ldPreload  = "$nativeDir/libtermux-exec.so"
+    val envBuilder = mutableListOf(
         "HOME=$home",
+        "PWD=$home",
         "PATH=$bin:/system/bin:/system/xbin",
         "TERM=xterm-256color",
+        "COLORTERM=truecolor",
+        "LANG=en_US.UTF-8",
         "SHELL=$busybox",
         "BUSYBOX=$busybox",
         "TMPDIR=${context.cacheDir.absolutePath}"
     )
+    // LD_PRELOAD: intercepts exec() calls — Termux's secret weapon for Android compat.
+    if (java.io.File(ldPreload).exists()) envBuilder.add("LD_PRELOAD=$ldPreload")
+    // Pass through Android system environment vars exactly as Termux does
+    for (key in listOf("ANDROID_DATA","ANDROID_ROOT","ANDROID_STORAGE","ANDROID_RUNTIME_ROOT",
+                       "ANDROID_ART_ROOT","ANDROID_I18N_ROOT","ANDROID_TZDATA_ROOT",
+                       "EXTERNAL_STORAGE","BOOTCLASSPATH","DEX2OATBOOTCLASSPATH")) {
+        System.getenv(key)?.let { envBuilder.add("$key=$it") }
+    }
+    val env = envBuilder.toTypedArray()
+    // argv[0] = "-ash" — POSIX leading-dash login shell convention.
+    // ash IS the applet name in this busybox build (not bash).
+    // Termux does: processName = (isLoginShell ? "-" : "") + basename(executable)
     val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
     return Pair(session, client)
 }
