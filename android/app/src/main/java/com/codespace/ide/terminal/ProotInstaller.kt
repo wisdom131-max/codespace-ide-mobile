@@ -307,9 +307,7 @@ object ProotInstaller {
             try {
                 val resolvConf = File(rootfs, "etc/resolv.conf")
                 resolvConf.parentFile?.mkdirs()
-                resolvConf.writeText("nameserver 8.8.8.8
-nameserver 8.8.4.4
-")
+                resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
 
                 val aptConfDir = File(rootfs, "etc/apt/apt.conf.d")
                 aptConfDir.mkdirs()
