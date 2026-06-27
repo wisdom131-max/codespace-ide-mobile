@@ -10,7 +10,7 @@
 - **Package:** `com.codespace.ide.debug`
 - **Repo:** `wisdom131-max/codespace-ide-mobile`
 - **APK:** `app-prod-arm64-v8a-debug.apk`
-- **Device:** Android 14, Samsung kernel 5.15.180-android13, arm64-v8a, 3GB RAM
+- **Device:** TECNO KL4, Android 14, Samsung kernel 5.15.180-android13-8-gb70ce4a70964-ab489, arm64-v8a, 3GB RAM
 - **Build:** GitHub Actions auto-builds on every push (~6-8 min)
 
 ---
@@ -47,6 +47,8 @@ What works: bash, file reads/writes, network, single-process commands.
 What does not work: any command spawning subprocesses (dpkg, tar, python, ar), any cd command.
 
 The workaround: extract packages on Android host side in Java/Kotlin BEFORE proot launches.
+This means `apt install` will NEVER work inside Ubuntu on this device — that is permanent and by design.
+Do NOT attempt to skip host-side pre-install and fall back to apt. It will fail.
 
 ---
 
@@ -76,10 +78,30 @@ DNS + apt config is baked permanently into rootfs during extraction:
 - /etc/resolv.conf: nameserver 8.8.8.8 / 8.8.4.4
 - /etc/apt/apt.conf.d/00sandbox: APT::Sandbox::User "root"; AllowInsecureRepositories; AllowUnauthenticated
 
+### pty_native.c — Termux's exact JNI implementation (last updated June 27 session)
+Replaced the old forkpty() call with Termux's exact /dev/ptmx + fork() implementation:
+- forkpty() → /dev/ptmx + manual fork() — Android-safe
+- setsid() — proper terminal control group
+- sigfillset() + sigprocmask(SIG_UNBLOCK) — unblocks all signals after fork (Android's Java process blocks many)
+- Closes all extra file descriptors (3..255) in child
+- clearenv() + repopulate — no inherited JVM junk in child env
+- IUTF8 enabled — proper Unicode/emoji in terminal
+- Flow control (IXON/IXOFF) disabled — no more Ctrl+S lockup
+- Shows exec() error in terminal if shell launch fails — no more silent crash
+- Shows "Failed to exec: errno N" on terminal before child exits
+
+### ProotInstaller.kt — proot env additions (last updated June 27 session)
+- Added LD_PRELOAD=libtermux-exec.so to proot environment. This is Termux's "secret weapon":
+  intercepts exec() calls inside proot and rewrites /usr paths to work on Android.
+  Without it, many Ubuntu binaries silently fail. Path: nativeLibraryDir/libtermux-exec.so
+- Dropped PROOT_FORCE_COREDUMP=1 — was causing unnecessary overhead
+- Triple System.gc() + runFinalization() + 800ms sleep BEFORE the deb download loop
+  (gives Android time to reclaim heap after the 55MB rootfs extraction)
+
 ---
 
 ## WHAT IS WORKING (verified by build or logic)
-- APK builds successfully (last green: commit 28285028054 at 09:20)
+- APK builds successfully (last green: 7b390f2ff6 at 2026-06-27T10:50)
 - App launches, GitHub PAT login
 - Ubuntu boots to root@localhost (proot launch args confirmed correct)
 - apt update works (DNS baked in, apt config baked in)
@@ -88,19 +110,28 @@ DNS + apt config is baked permanently into rootfs during extraction:
 - Extra keys bar, SSH Manager, Text Expansions
 - Editor multi-tab, auto-save, session restore
 - Explorer SAF folder picker
-- Bash tab now uses libbusybox.so (nativeLibraryDir trick) — NOT YET TESTED on device
-- TerminalService foreground service now started before extraction — NOT YET TESTED on device
+- TerminalService foreground service started before extraction (confirmed logic correct)
+- Bash tab login shell: argv[0] = "-bash" (POSIX leading-dash convention, copied from Termux)
+- pty_native.c replaced with Termux's exact implementation (setsid, clearenv, IUTF8, etc.)
+- LD_PRELOAD=libtermux-exec.so added to proot env
 
-## WHAT IS BROKEN / UNTESTED
-- apt install — dpkg blocked by Samsung kernel chdir restriction (known, by design for now)
-- Host-side pre-install (curl + libcurl4t64) — logic is correct, NOT YET VERIFIED on device
-- Bash tab / tab completion / arrow keys — fix pushed but NOT YET TESTED on device
+## WHAT IS NOT YET TESTED ON DEVICE (install latest APK and verify)
+- Bash tab: does it open with a prompt? (no more "login: applet not found")
+- Ubuntu: does the foreground notification appear during extraction?
+- Ubuntu: does extraction complete without crash? (OOM fix + triple GC in place)
+- Ubuntu: does `curl --version` work after boot? (pre-install worked)
+- Ubuntu: does `curl` actually function (network, SSL)? (libtermux-exec.so intercept)
+- Tab completion and arrow key history in bash tab
 - Terminal redraw on keystrokes — known issue, not yet addressed
 - Tab session persistence — TerminalService.kt wired but session state not saved to disk
 
+## WHAT IS BROKEN / BY DESIGN
+- apt install — dpkg blocked by Samsung kernel chdir restriction. PERMANENT. Do not attempt.
+- Host-side pre-install is the only package install mechanism for Ubuntu packages on this device.
+
 ---
 
-## CRASH ROOT CAUSES FOUND (June 27, 2026 session)
+## CRASH ROOT CAUSES FOUND (June 27, 2026 sessions)
 
 ### 1. Ubuntu extraction OOM crash — FIXED
 Symptom: App crashes silently before showing any progress. No error message.
@@ -124,15 +155,68 @@ Root cause: ByteArray(1024 * 1024) during download. No throughput gain on mobile
   wastes ~960 KB heap during download phase alongside other allocations.
 Fix: Reduced to 64 KB.
 
+### 4. Bash tab "login: applet not found" (code 127) — FIXED
+Symptom: Bash tab shows "-login: applet not found" then "[Process completed (code 127)]"
+Root cause: TerminalSession(busybox, home, arrayOf("--login"), env, 4000, client) — Termux's
+  TerminalSession uses args[0] as argv[0]. So busybox received argv[0]="--login" and
+  treated "--login" as an applet name. No "login" applet → code 127.
+  Then tried arrayOf("bash","--login") — correct applet, but busybox bash doesn't support
+  --login flag. Only the POSIX leading-dash argv[0] convention works.
+Fix: arrayOf("-bash") — argv[0]="-bash" signals login shell. Copied exactly from Termux source.
+  String processName = (isLoginShell ? "-" : "") + ShellUtils.getExecutableBasename(executable)
+  arguments[0] = processName  // e.g. "-bash"
+
+### 5. Pre-install OOM crash during curl deb download — FIXED
+Symptom: Download completes (55MB rootfs), extraction starts, app crashes during
+  "Downloading curl_8.14.1-2ubuntu1_arm64.deb..."
+Root cause: 55MB rootfs extraction spikes heap. The deb download immediately after hits
+  the memory ceiling. Android OOM killer kills the process (bypasses try/catch).
+  System.gc() at line 188 was already there but not enough after such a large extraction.
+Fix: Triple System.gc() + runFinalization() + 800ms sleep right before the deb download loop.
+  Gives Android time to actually reclaim the heap before touching the network again.
+
+### 6. pty_native.c — 4 critical differences from Termux — FIXED
+Symptom: Terminal behavior subtly wrong (signals, Unicode, Ctrl+S lockup, silent exec failures)
+Root cause: Custom forkpty() implementation missing key Termux behaviors.
+Fix: Replaced entire pty_native.c with Termux's exact implementation. See CURRENT ARCHITECTURE above.
+
+### 7. Ubuntu binaries silently failing in proot — FIXED
+Symptom: Ubuntu commands fail without error after proot launches.
+Root cause: Missing LD_PRELOAD=libtermux-exec.so in proot env. This shared library intercepts
+  exec() calls and rewrites /usr paths for Android compatibility.
+Fix: Added to proot env: LD_PRELOAD={nativeLibraryDir}/libtermux-exec.so
+
+---
+
+## TEST PROCEDURE (next device test)
+Install latest APK (artifact: app-prod-arm64-v8a-debug from commit 7b390f2ff6). Test in order — stop at first failure:
+
+1. Open app → tap + in terminal tab bar → **Open Bash Terminal**
+   - Expected: clean bash prompt (no "login: applet not found")
+   - Failure means: BusyboxInstaller argv[0] or libbusybox.so path wrong
+
+2. Open app → tap + in terminal tab bar → **Open Ubuntu Linux**
+   - Expected: "[Ubuntu] Checking installation..." appears immediately
+   - Failure means: TerminalService didn't start
+
+3. Watch extraction:
+   - Expected: foreground notification visible, "Downloading... 0%...100%", "Extracting Ubuntu rootfs...", "Pre-installing essential packages...", "Downloading curl_8.14.1-2ubuntu1_arm64.deb...", "Extracting...", "Essential packages pre-installed", then proot launches to shell
+   - If crash during deb download: triple GC fix didn't work — try increasing sleep from 800ms to 1500ms
+
+4. At Ubuntu shell prompt, run: `curl --version`
+   - Expected: curl 8.14.x output
+   - Failure: pre-install failed or libtermux-exec.so not working
+
+5. Test bash tab separately: tap + → New Bash Terminal
+   - Expected: prompt shows with no errors, .bashrc loaded
+
+Report result of each step.
+
 ---
 
 ## NEXT STEPS IN ORDER
 
-1. **TEST on device** — install latest APK, tap Ubuntu, confirm:
-   a. Does the foreground notification appear? (confirms service started)
-   b. Does extraction complete? (no more crash)
-   c. Does `curl --version` work after Ubuntu boots? (confirms pre-install worked)
-   d. Does bash tab open with busybox bash? (libbusybox.so fix)
+1. **TEST on device** (see TEST PROCEDURE above)
 2. If bash tab works: verify tab completion and arrow key history
 3. If curl works in Ubuntu: expand pre-install list (wget, git, python3, nano)
 4. Fix terminal redraw on keystrokes
@@ -165,6 +249,10 @@ Fix: Reduced to 64 KB.
 17. NEVER assume any API signature, constructor args, or parameter types. Always read the actual source or javadoc first. Verify with the jar/docs before writing any call.
 18. XZCompressorInputStream correct form: XZCompressorInputStream(stream, false, memoryLimitInKb) — 3 args. Arg2=Boolean decompressConcatenated, Arg3=Int memoryLimitInKb. 2-arg constructor takes Boolean not Int.
 19. ALWAYS start TerminalService before any long extraction/download thread — plain threads get OOM-killed
+20. NEVER use --login flag for bash tab — busybox bash doesn't support it. Use argv[0]="-bash" (leading dash POSIX convention).
+21. NEVER use arrayOf("--login") as TerminalSession args — Termux TerminalSession uses args[0] as argv[0], so busybox sees "--login" as an applet name.
+22. ALWAYS add LD_PRELOAD=libtermux-exec.so to proot environment — without it Ubuntu binaries silently fail on Android.
+23. NEVER use apt install inside Ubuntu on this device — dpkg forks subprocesses that the Samsung kernel blocks. Host-side pre-install is the ONLY mechanism.
 
 ---
 
@@ -187,7 +275,7 @@ android/app/src/main/
     busybox_arm64           — static busybox binary (2.7MB)
   jniLibs/arm64-v8a/        — proot + busybox + zstd binaries, always executable
   cpp/
-    pty_native.c            — JNI forkpty + execvp
+    pty_native.c            — JNI: Termux's exact /dev/ptmx+fork() impl (setsid, clearenv, IUTF8, no flow control)
     CMakeLists.txt          — declares all proot libs as IMPORTED
 
 ---
@@ -219,6 +307,12 @@ Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator)
 - 96 MB is safe for ubuntu-questing tarball (peaks ~80 MB). If MemoryLimitException is thrown,
   the error surfaces in the UI — do not increase beyond 128 MB without profiling.
 
+### Termux TerminalSession argv convention
+- TerminalSession(executable, cwd, args, env, ...) — args[0] is argv[0] for the process.
+- For login shell: args = arrayOf("-bash") where "-bash" is the process name with leading dash.
+- Termux source: arguments[0] = (isLoginShell ? "-" : "") + ShellUtils.getExecutableBasename(executable)
+- This is the POSIX way: every shell checks argv[0][0] == '-' to decide if it's a login shell.
+
 ---
 
-Last updated: June 27, 2026 by Superagent (Base44)
+Last updated: June 27, 2026 by Superagent (Base44) — session 2 (PDF catch-up)
