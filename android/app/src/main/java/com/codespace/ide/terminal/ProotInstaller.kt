@@ -180,7 +180,7 @@ object ProotInstaller {
                     val link = File(rootfs, "usr/local/bin/$tool")
                     if (!link.exists()) {
                         runCatching {
-                            java.nio.file.Files.createSymbolicLink(link.toPath(), java.nio.file.Paths.get("busybox"))
+                            java.nio.file.Files.createSymbolicLink(link.toPath(), java.nio.file.Paths.get("/usr/local/bin/busybox"))
                         }
                     }
                 }
