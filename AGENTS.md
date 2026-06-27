@@ -533,3 +533,70 @@ Open terminal tab → pull down notification → tap "Acquire WakeLock" → lock
 - ALWAYS use `DisposableEffect(Unit)` to tie service lifetime to composable lifetime
 - WakeLock + WifiLock MUST be acquired/released as a pair (Termux pattern — never one without the other)
 - Notification MUST be rebuilt after lock state changes to reflect current state
+
+
+---
+
+## TERMUX vs CODESPACE IDE — FULL COMPARISON + IMPLEMENTATION LOG (June 27, 2026)
+
+### Research source
+Verified directly from Termux open source:
+- TermuxService.java, TermuxActivity.java
+- TermuxTerminalSessionActivityClient.java
+- TermuxTerminalViewClient.java
+- TerminalSession.java (terminal-emulator module)
+- TermuxTerminalExtraKeys.java
+
+---
+
+### FEATURES IMPLEMENTED THIS SESSION (commit f3c95d7321)
+
+All added to TerminalPane.kt:
+
+| Feature | What was done |
+|---|---|
+| **Bell handler** | `onBell` now vibrates 80ms via `VibrationEffect` (Termux default bell mode) |
+| **onTitleChanged** | Escape sequences (vim, tmux, bash `\e]0;title\a`) now update tab name |
+| **onSessionFinished** | Tab name appends `[exited]` when process dies — user can see it clearly |
+| **onTerminalCursorStateChange** | Relayed to `TerminalView.setTerminalCursorBlinkerState()` |
+| **onEmulatorSet cursor blink** | `onEmulatorSet()` now starts cursor blinker — matches Termux exactly |
+| **Pinch-to-zoom** | `onScale()` now increments/decrements font size (6–48sp range) |
+| **URL tap detection** | `onSingleTapUp` now regex-scans word at tap position, opens browser if URL found |
+| **keepScreenOn** | `TerminalView.keepScreenOn = true` — screen won't dim mid-session |
+| **PTY resize on layout** | `addOnLayoutChangeListener` fires `onScreenUpdated()` on size change → vim/nano get correct cols/rows |
+| **Callback wiring** | All 4 callbacks (text, title, finished, cursor) fully wired in AndroidView `update` block |
+
+---
+
+### STILL MISSING (not implemented yet — future work)
+
+| Feature | Termux impl | Status |
+|---|---|---|
+| **Custom color schemes** | `TerminalColors` loaded from `~/.termux/colors.properties` | ❌ Not done |
+| **Custom fonts** | TTF loaded from `~/.termux/font.ttf` | ❌ Not done |
+| **Hardware keyboard shortcuts** | Ctrl+Alt+N/P switch tabs, Ctrl+Alt+C new session etc | ❌ Not done |
+| **Transcript URL long-press list** | Shows all URLs in scrollback, tap to open | ❌ Not done |
+| **Session rename on title change** | Termux shows toast for background tab title changes | ❌ Not done |
+| **Back key = Escape setting** | `shouldBackButtonBeMappedToEscape` driven by user preference | ❌ Hardcoded false |
+| **Bell: beep mode** | SoundPool + bell.ogg (USAGE_ASSISTANCE_SONIFICATION) | ❌ Vibrate only |
+| **Bell: ignore mode** | User-selectable bell behaviour (vibrate/beep/ignore) | ❌ No setting |
+| **Auto-remove exited sessions** | Termux auto-closes on exit code 0 or 130 | ❌ Just marks [exited] |
+| **Keep screen on preference** | Termux makes this a toggle in prefs | ❌ Always on |
+| **Max sessions limit (8)** | Termux enforces MAX_SESSIONS = 8 | ❌ No limit |
+| **Session list drawer** | Left-swipe drawer with all sessions listed | ❌ Only tab bar |
+| **Ctrl+Alt keyboard shortcuts** | Full hardware keyboard shortcut map | ❌ Not done |
+| **`libtermux-exec.so` LD_PRELOAD** | exec() interception for full Linux compat | ⚠️ Partial (env var set but binary may not exist) |
+| **WifiLock on tab open** | Termux optional, we have it behind notification button | ✅ Done |
+| **WakeLock on tab open** | Same — notification button toggle | ✅ Done |
+
+---
+
+### HARD RULES from this research
+
+1. `onEmulatorSet()` MUST call `setTerminalCursorBlinkerState(true, true)` — without it cursor never blinks
+2. `onScale()` MUST return `1.0f` (reset scale factor) — not the raw scale — or pinch state compounds incorrectly
+3. `addOnLayoutChangeListener` is essential for vim/nano/htop — they need SIGWINCH via `onScreenUpdated()`
+4. ALL 4 client callbacks must be re-wired in the `update` block of AndroidView every time session changes
+5. `keepScreenOn = true` goes on the View, not the Activity Window
+6. `onTitleChanged` — always `take(20)` the title to prevent tab overflow
+7. Bell: always guard with `hasVibrator()` check — some emulators/devices have no vibrator
