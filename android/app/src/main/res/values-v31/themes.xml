@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CodeSpace.Starting" parent="Theme.SplashScreen">
+        <!-- Match the splash bg to app dark bg so no flash -->
+        <item name="windowSplashScreenBackground">#0D0D2B</item>
+        <!-- Use the foreground logo directly (transparent bg, no circle clash) -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <!-- Icon background — matches the dark theme -->
+        <item name="windowSplashScreenIconBackgroundColor">#0D0D2B</item>
+        <!-- Keep splash up until app draws first frame -->
+        <item name="postSplashScreenTheme">@style/Theme.CodeSpace</item>
+    </style>
+</resources>
