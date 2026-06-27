@@ -600,3 +600,80 @@ All added to TerminalPane.kt:
 5. `keepScreenOn = true` goes on the View, not the Activity Window
 6. `onTitleChanged` — always `take(20)` the title to prevent tab overflow
 7. Bell: always guard with `hasVibrator()` check — some emulators/devices have no vibrator
+
+---
+
+## DEEP ASH AUDIT -- June 27, 2026 (Base44 Superagent session 5)
+
+Deep Termux source comparison + ash root cause analysis. All issues found and fixed.
+
+### Termux source verified (live GitHub, June 27 2026)
+Sources read: termux.c (JNI), TerminalSession.java, TermuxShellUtils.java, TermuxSession.java,
+TermuxTerminalViewClient.java, TermuxTerminalSessionActivityClient.java, TerminalView.java,
+AndroidShellEnvironment.java, TermuxShellEnvironment.java, UnixShellEnvironment.java, TermuxUrlUtils.java
+
+### CONFIRMED: TerminalSession constructor does NOT start subprocess
+JNI.createSubprocess is called inside initializeEmulator() -> updateSize() -> attachSession().
+Session object is just a data holder until the view attaches it.
+.profile IS written before ash starts (LaunchedEffect -> ensureOfflineShell -> bootstrapReady=true -> AndroidView renders -> attachSession -> JNI.createSubprocess).
+
+### CRASH #10 -- build failure -- regex string literal (unescaped quotes) -- FIXED (b812d6e0)
+Regex("https?://[^\s'"<>]+") -- single quote inside double-quoted Kotlin string terminates it.
+Fix: triple-quoted string Regex("""https?://...""").
+
+### BUG #11 -- proot kernel-release malformed -- FIXED (51260c3c)
+--kernel-release had literal backslashes: \\Linux\\localhost\\6.17.0...
+proot receives garbage -> may refuse to start Ubuntu.
+Fix: --kernel-release=6.17.0-android13-1 (clean version string).
+
+### BUG #12 -- shell profile written to .bashrc instead of .ashrc -- FIXED (0b81b7d9)
+ensureOfflineShell wrote profile to .bashrc. ash NEVER reads .bashrc (that is bash-only).
+ash reads: .profile (login), $ENV file (interactive, default .ashrc).
+Fix: write profile content to .ashrc, write .profile to source .ashrc, stub out .bashrc.
+
+### BUG #13 -- PS1 used \[ \] which are bash/readline markers -- FIXED (47773f7e)
+PS1='\[\e[0;32m\]\u@vncode...' -- \[ and \] are bash readline non-printing markers.
+ash does NOT support them. ash prints them literally: [\u@vncode\w\$ ] -> garbled prompt.
+Fix: plain PS1 '\u@vncode:\w\$ ' with no ANSI codes.
+Correct colored ash PS1 uses \001 (Ctrl-A) and \002 (Ctrl-B) as non-printing wrappers.
+Example: PS1=$'\001\033[0;32m\002\u@vncode\001\033[0m\002:\001\033[0;34m\002\w\001\033[0m\002\$ '
+
+### BUG #14 -- AndroidView update block only wired callbacks on first attachSession -- FIXED (9c0219fc)
+The update lambda only ran client.onTextChanged=... etc inside if (view.mTermSession != active.session).
+Stale callbacks after recompose caused screen-not-updating and cursor-blink not working.
+Termux re-sets all clients on every onStart(). Fix: always rewire ALL callbacks on every update.
+Only skip attachSession() if session unchanged (attachSession resets scroll position).
+
+### BUG #15 -- missing USER and LOGNAME env vars -- FIXED (9c0219fc)
+Termux sets USER and LOGNAME via AndroidShellEnvironment. Many scripts check $USER.
+Fix: added USER=vncode, LOGNAME=vncode to env array in createTerminalSession.
+
+### URL regex upgraded to full Termux TermuxUrlUtils pattern -- FIXED (f5192bbc)
+Previous: simple https?://[^\s'"<>]+ -- only http/https, broken by quote escaping.
+Now: full Termux 30-scheme regex (http/https/ftp/git/ssh/file/sftp/irc/etc).
+
+### Hard rules added from this audit
+- NEVER use \[ \] in ash PS1 -- those are bash readline markers, ash prints them literally
+- Plain ash PS1 first to confirm prompt works, then add colors with \001/\002 wrappers
+- ALWAYS write shell profile content to .ashrc, NOT .bashrc
+- ALWAYS rewire ALL TerminalSessionClient callbacks on every AndroidView update recompose
+- NEVER assume session identity check means callbacks are current
+- USER and LOGNAME must be set in env
+- proot --kernel-release must be clean version string, no backslashes
+
+### Commits (session 5)
+- b812d6e0 -- fix regex string literal compile error
+- 51260c3c -- fix proot kernel-release malformed string
+- 0b81b7d9 -- write .ashrc not .bashrc
+- 47773f7e -- fix PS1 plain prompt
+- f5192bbc -- upgrade URL regex to full Termux pattern
+- 9c0219fc -- always rewire callbacks + USER/LOGNAME env vars
+All builds green June 27 2026.
+
+### NEXT STEP
+Install latest APK (9c0219fc build) on TECNO KL4 and test:
+1. Ash tab: tap + -> New Bash Terminal -> expect `vncode@vncode:~$ ` prompt (plain, no garbage)
+2. echo $PATH -> expect bin dir + /system/bin
+3. ls -> works (busybox via PATH)
+4. ll -> alias works
+5. Ubuntu tab -> extraction progress or 'Already installed. Launching...'
