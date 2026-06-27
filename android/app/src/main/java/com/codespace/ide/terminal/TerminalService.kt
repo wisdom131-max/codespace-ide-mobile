@@ -37,8 +37,26 @@ class TerminalService : Service() {
             .build()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     companion object {
         private const val CHANNEL_ID = "terminal_channel"
         private const val NOTIF_ID = 1001
+
+        fun start(context: android.content.Context) {
+            val intent = Intent(context, TerminalService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: android.content.Context) {
+            context.stopService(Intent(context, TerminalService::class.java))
+        }
     }
 }
