@@ -223,29 +223,28 @@ object ProotInstaller {
                     val debName = debUrl.substringAfterLast("/")
                     onProgress("Downloading $debName...")
                     val debFile = File(context.cacheDir, debName)
+                    // Stream download to file
                     java.net.URL(debUrl).openStream().use { inp ->
                         debFile.outputStream().use { out ->
                             val buf = ByteArray(8192); var n: Int
                             while (inp.read(buf).also { n = it } != -1) out.write(buf, 0, n)
                         }
                     }
-                    debFile.inputStream().use { fis ->
+                    onProgress("Extracting $debName...")
+                    // Parse ar format and extract data.tar directly from file (no full load into RAM)
+                    debFile.inputStream().buffered().use { fis ->
                         fis.skip(8) // ar global header
                         val headerBuf = ByteArray(60)
                         while (fis.read(headerBuf) == 60) {
                             val entryName = String(headerBuf, 0, 16).trim()
                             val entrySize = String(headerBuf, 48, 10).trim().toLongOrNull() ?: 0L
                             if (entryName.startsWith("data.tar")) {
-                                val tarBytes = ByteArray(entrySize.toInt())
-                                var totalRead = 0
-                                while (totalRead < entrySize) {
-                                    val r = fis.read(tarBytes, totalRead, (entrySize - totalRead).toInt())
-                                    if (r == -1) break; totalRead += r
-                                }
+                                // Stream directly from file into decompressor — no ByteArray buffer
+                                val limitedStream = org.apache.commons.compress.utils.BoundedInputStream(fis, entrySize)
                                 val tarStream = when {
-                                    entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(tarBytes.inputStream())
-                                    entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(tarBytes.inputStream())
-                                    else -> tarBytes.inputStream()
+                                    entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(limitedStream)
+                                    entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(limitedStream)
+                                    else -> limitedStream
                                 }
                                 org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tarStream).use { tar ->
                                     var entry = tar.nextTarEntry
