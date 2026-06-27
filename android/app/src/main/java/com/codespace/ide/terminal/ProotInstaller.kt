@@ -241,14 +241,22 @@ object ProotInstaller {
                             val entryName = String(headerBuf, 0, 16).trim()
                             val entrySize = String(headerBuf, 48, 10).trim().toLongOrNull() ?: 0L
                             if (entryName.startsWith("data.tar")) {
-                                // Stream directly from file into decompressor — no ByteArray buffer
+                                // Write data.tar to temp file first to avoid RAM pressure
+                                val tempTar = File(context.cacheDir, "data_${debName}.tar")
                                 val limitedStream = org.apache.commons.compress.utils.BoundedInputStream(fis, entrySize)
                                 val tarStream = when {
                                     entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(limitedStream)
                                     entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(limitedStream)
                                     else -> limitedStream
                                 }
-                                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tarStream).use { tar ->
+                                // Decompress to temp file
+                                tempTar.outputStream().use { o ->
+                                    val buf = ByteArray(8192); var n: Int
+                                    tarStream.use { while (it.read(buf).also { n = it } != -1) o.write(buf, 0, n) }
+                                }
+                                System.gc()
+                                // Now extract from temp tar file
+                                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tempTar.inputStream().buffered()).use { tar ->
                                     var entry = tar.nextTarEntry
                                     while (entry != null) {
                                         if (!entry.isDirectory && !entry.isSymbolicLink) {
@@ -266,6 +274,7 @@ object ProotInstaller {
                                         entry = tar.nextTarEntry
                                     }
                                 }
+                                tempTar.delete()
                                 break
                             } else {
                                 fis.skip(entrySize + if (entrySize % 2 != 0L) 1L else 0L)
