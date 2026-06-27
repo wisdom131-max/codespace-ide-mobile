@@ -7,28 +7,61 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 
 /**
- * Foreground service that keeps terminal sessions and background sync alive when the app
- * is backgrounded, so long-running builds/commands don't get killed on low-RAM devices.
+ * Foreground service that keeps terminal sessions alive when backgrounded.
  *
- * CRITICAL for Ubuntu extraction: Samsung's aggressive memory manager will kill a plain
- * background thread doing heavy memory work (XZ decompression). A foreground service
- * raises the process OOM priority so Android won't kill it mid-extraction.
+ * Matches Termux's TermuxService approach:
+ * - startForeground() raises OOM priority
+ * - WakeLock (PARTIAL_WAKE_LOCK) prevents OEM power managers (TECNO/Infinix/Samsung)
+ *   from sending SIGRTMIN (signal 31) to kill the subprocess mid-session.
  *
- * Call TerminalService.start(context) BEFORE starting Ubuntu extraction.
- * Call TerminalService.updateProgress(context, msg) to keep the notification fresh.
- * Call TerminalService.stop(context) after extraction + proot launch completes.
+ * Without the WakeLock, foreground service alone is NOT enough on TECNO KL4 —
+ * the OEM power manager still kills the process. Termux uses both.
  */
 class TerminalService : Service() {
+
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Terminal session active"
         startForeground(NOTIF_ID, buildNotification(text))
+        acquireWakeLock()
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        releaseWakeLock()
+        super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        releaseWakeLock()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "CodeSpaceIDE::TerminalWakeLock"
+        ).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
+        wakeLock = null
     }
 
     private fun buildNotification(text: String = "Terminal session active"): Notification {
@@ -44,11 +77,6 @@ class TerminalService : Service() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
-    }
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        stopSelf()
-        super.onTaskRemoved(rootIntent)
     }
 
     companion object {
@@ -67,13 +95,11 @@ class TerminalService : Service() {
             }
         }
 
-        /** Update the notification text while the service is running (e.g. extraction progress). */
         fun updateProgress(context: android.content.Context, text: String) {
-            // Re-start with new text — onStartCommand rebuilds the notification.
             val intent = Intent(context, TerminalService::class.java).apply {
                 putExtra(EXTRA_TEXT, text)
             }
-            context.startService(intent)  // plain startService updates a running service
+            context.startService(intent)
         }
 
         fun stop(context: android.content.Context) {
