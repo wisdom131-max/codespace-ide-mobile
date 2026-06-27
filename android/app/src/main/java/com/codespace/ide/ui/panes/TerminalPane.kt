@@ -221,7 +221,7 @@ internal fun TerminalPane(
     val tabs = sharedState.tabs
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) { BusyboxInstaller.installIfNeeded(context) }
+        withContext(Dispatchers.IO) { BusyboxInstaller.ensureOfflineShell(context) }
         bootstrapReady = true
     }
 
@@ -252,12 +252,12 @@ internal fun TerminalPane(
     fun addTab() {
         val id = System.currentTimeMillis().toString()
         val (session, client) = createTerminalSession(context)
-        tabs.add(TabSession(id, "bash ${tabs.size + 1}", session, client))
+        tabs.add(TabSession(id, "ash ${tabs.size + 1}", session, client))
         activeId = id
     }
 
     fun renameTab(id: String, newName: String) {
-        val trimmed = newName.trim().ifBlank { "bash" }
+        val trimmed = newName.trim().ifBlank { "ash" }
         val idx = tabs.indexOfFirst { it.id == id }
         if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
