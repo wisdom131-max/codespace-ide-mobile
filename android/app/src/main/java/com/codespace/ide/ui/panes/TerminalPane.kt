@@ -30,6 +30,7 @@ import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.terminal.DeviceCompatibility
 import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.terminal.TerminalService
 import com.codespace.ide.terminal.TerminalModeManager
 import com.codespace.ide.terminal.SshProfileStore
 import com.codespace.ide.terminal.TextExpansionStore
@@ -257,36 +258,47 @@ internal fun TerminalPane(
         activeId = id
         progressClient.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
         writeToDisplay(progressSession, "\r\n[Ubuntu] Checking installation...\r\n")
+        // Start foreground service BEFORE extraction — this raises process OOM priority so
+        // Samsung's memory manager won't kill us mid-extraction (plain background threads
+        // have the lowest OOM score and get killed first on 3 GB devices under memory pressure).
+        TerminalService.start(ctx, "Setting up Ubuntu...")
         Thread {
-            // Ensure Termux proot binaries are extracted from assets
-            writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
-            ProotInstaller.ensureBinaries(ctx)
-            if (!ProotInstaller.isInstalled(ctx)) {
-                writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
-                ProotInstaller.install(ctx) { msg ->
-                    writeToDisplay(progressSession, "  $msg\r\n")
+            try {
+                // Ensure Termux proot binaries are extracted from assets
+                writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
+                ProotInstaller.ensureBinaries(ctx)
+                if (!ProotInstaller.isInstalled(ctx)) {
+                    writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
+                    writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
+                    ProotInstaller.install(ctx) { msg ->
+                        // Mirror progress to the foreground notification so Android sees activity
+                        TerminalService.updateProgress(ctx, msg.take(60))
+                        writeToDisplay(progressSession, "  $msg\r\n")
+                    }
+                    writeToDisplay(progressSession, "\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
+                } else {
+                    writeToDisplay(progressSession, "[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
                 }
-                writeToDisplay(progressSession, "\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
-            } else {
-                writeToDisplay(progressSession, "[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
+                // Pre-flight: write binary info to terminal for diagnosis
+                val nativeDir = ctx.applicationInfo.nativeLibraryDir
+                val prootBin = java.io.File(nativeDir, "libproot.so")
+                val loaderBin = java.io.File(nativeDir, "libproot-loader.so")
+                val tallocBin = java.io.File(nativeDir, "libtalloc.so")
+                val shmemBin  = java.io.File(nativeDir, "libandroid-shmem.so")
+                writeToDisplay(progressSession, "[Ubuntu] nativeLibraryDir: $nativeDir\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] proot:   exists=${prootBin.exists()} canExec=${prootBin.canExecute()} size=${prootBin.length()}\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] loader:  exists=${loaderBin.exists()} canExec=${loaderBin.canExecute()} size=${loaderBin.length()}\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] talloc:  exists=${tallocBin.exists()} size=${tallocBin.length()}\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] shmem:   exists=${shmemBin.exists()} size=${shmemBin.length()}\r\n")
+                val rootfsDir = ProotInstaller.rootfsDir(ctx)
+                val bashBin = java.io.File(rootfsDir, "usr/bin/bash")
+                writeToDisplay(progressSession, "[Ubuntu] rootfs:  ${rootfsDir.absolutePath}\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
+                writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
+            } finally {
+                // Always stop the foreground service — proot manages its own process lifetime
+                TerminalService.stop(ctx)
             }
-            // Pre-flight: write binary info to terminal for diagnosis
-            val nativeDir = ctx.applicationInfo.nativeLibraryDir
-            val prootBin = java.io.File(nativeDir, "libproot.so")
-            val loaderBin = java.io.File(nativeDir, "libproot-loader.so")
-            val tallocBin = java.io.File(nativeDir, "libtalloc.so")
-            val shmemBin  = java.io.File(nativeDir, "libandroid-shmem.so")
-            writeToDisplay(progressSession, "[Ubuntu] nativeLibraryDir: $nativeDir\r\n")
-            writeToDisplay(progressSession, "[Ubuntu] proot:   exists=${prootBin.exists()} canExec=${prootBin.canExecute()} size=${prootBin.length()}\r\n")
-            writeToDisplay(progressSession, "[Ubuntu] loader:  exists=${loaderBin.exists()} canExec=${loaderBin.canExecute()} size=${loaderBin.length()}\r\n")
-            writeToDisplay(progressSession, "[Ubuntu] talloc:  exists=${tallocBin.exists()} size=${tallocBin.length()}\r\n")
-            writeToDisplay(progressSession, "[Ubuntu] shmem:   exists=${shmemBin.exists()} size=${shmemBin.length()}\r\n")
-            val rootfsDir = ProotInstaller.rootfsDir(ctx)
-            val bashBin = java.io.File(rootfsDir, "usr/bin/bash")
-            writeToDisplay(progressSession, "[Ubuntu] rootfs:  ${rootfsDir.absolutePath}\r\n")
-            writeToDisplay(progressSession, "[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
-            writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
