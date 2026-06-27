@@ -153,7 +153,9 @@ Java_com_codespace_ide_terminal_NativePty_createSubprocess(
 
     int procId = 0;
     char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
+    if (!cmd_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for cmd");
     char const* cwd_utf8 = (*env)->GetStringUTFChars(env, cwd, NULL);
+    if (!cwd_utf8) { (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8); return throw_runtime_exception(env, "GetStringUTFChars() failed for cwd"); }
     int ptm = create_subprocess(env, cmd_utf8, cwd_utf8, argv, envp, &procId, rows, cols, 0, 0);
     (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
     (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8);
@@ -161,6 +163,7 @@ Java_com_codespace_ide_terminal_NativePty_createSubprocess(
     if (argv) { for (char** t = argv; *t; ++t) free(*t); free(argv); }
     if (envp) { for (char** t = envp; *t; ++t) free(*t); free(envp); }
 
+    if (ptm < 0) return ptm;  // exception already thrown by create_subprocess
     int* pProcId = (int*)(*env)->GetPrimitiveArrayCritical(env, processIdArray, NULL);
     if (!pProcId) return throw_runtime_exception(env, "GetPrimitiveArrayCritical failed");
     *pProcId = procId;
@@ -217,7 +220,7 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
         for (int i = 0; i < size; ++i) {
             jstring env_java_string = (jstring)(*env)->GetObjectArrayElement(env, envVars, i);
             if (!env_java_string) { envp[i] = strdup(""); continue; }  // null guard: skip null env entries
-            char const* env_utf8 = (*env)->GetStringUTFChars(env, env_java_string, 0);
+            char const* env_utf8 = (*env)->GetStringUTFChars(env, env_java_string, NULL);
             if (!env_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for env");
             envp[i] = strdup(env_utf8);
             (*env)->ReleaseStringUTFChars(env, env_java_string, env_utf8);
@@ -227,7 +230,9 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
 
     int procId = 0;
     char const* cwd_utf8 = (*env)->GetStringUTFChars(env, cwd, NULL);
+    if (!cwd_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for cwd");
     char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
+    if (!cmd_utf8) { (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8); return throw_runtime_exception(env, "GetStringUTFChars() failed for cmd"); }
     int ptm = create_subprocess(env, cmd_utf8, cwd_utf8, argv, envp, &procId, rows, columns, cell_width, cell_height);
     (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
     (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8);
@@ -235,6 +240,7 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
     if (argv) { for (char** tmp = argv; *tmp; ++tmp) free(*tmp); free(argv); }
     if (envp) { for (char** tmp = envp; *tmp; ++tmp) free(*tmp); free(envp); }
 
+    if (ptm < 0) return ptm;  // exception already thrown by create_subprocess
     int* pProcId = (int*)(*env)->GetPrimitiveArrayCritical(env, processIdArray, NULL);
     if (!pProcId) return throw_runtime_exception(env, "JNI call GetPrimitiveArrayCritical failed");
     *pProcId = procId;
