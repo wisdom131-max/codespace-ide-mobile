@@ -126,7 +126,9 @@ Java_com_codespace_ide_terminal_NativePty_createSubprocess(
         if (!argv) return throw_runtime_exception(env, "malloc() for argv failed");
         for (int i = 0; i < size; ++i) {
             jstring s = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+            if (!s) { argv[i] = strdup(""); continue; }  // null guard
             char const* u = (*env)->GetStringUTFChars(env, s, NULL);
+            if (!u) { argv[i] = strdup(""); continue; }
             argv[i] = strdup(u);
             (*env)->ReleaseStringUTFChars(env, s, u);
         }
@@ -140,7 +142,9 @@ Java_com_codespace_ide_terminal_NativePty_createSubprocess(
         if (!envp) return throw_runtime_exception(env, "malloc() for envp failed");
         for (int i = 0; i < size; ++i) {
             jstring s = (jstring)(*env)->GetObjectArrayElement(env, envVars, i);
+            if (!s) { envp[i] = strdup(""); continue; }  // null guard: skip null env entries
             char const* u = (*env)->GetStringUTFChars(env, s, NULL);
+            if (!u) { envp[i] = strdup(""); continue; }
             envp[i] = strdup(u);
             (*env)->ReleaseStringUTFChars(env, s, u);
         }
@@ -211,6 +215,7 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
         if (!envp) return throw_runtime_exception(env, "malloc() for envp array failed");
         for (int i = 0; i < size; ++i) {
             jstring env_java_string = (jstring)(*env)->GetObjectArrayElement(env, envVars, i);
+            if (!env_java_string) { envp[i] = strdup(""); continue; }  // null guard: skip null env entries
             char const* env_utf8 = (*env)->GetStringUTFChars(env, env_java_string, 0);
             if (!env_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for env");
             envp[i] = strdup(env_utf8);
@@ -269,3 +274,4 @@ JNIEXPORT void JNICALL Java_com_termux_terminal_JNI_close(JNIEnv* env, jclass cl
 {
     close(fileDescriptor);
 }
+
