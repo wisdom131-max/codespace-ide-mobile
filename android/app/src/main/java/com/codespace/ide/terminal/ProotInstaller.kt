@@ -239,51 +239,64 @@ object ProotInstaller {
                         }
                     }
                     onProgress("Extracting $debName...")
-                    // Parse ar format and extract data.tar directly from file (no full load into RAM)
-                    debFile.inputStream().buffered().use { fis ->
-                        fis.skip(8) // ar global header
+                    // Parse ar format — use raw FileInputStream (not buffered) so BoundedInputStream
+                    // gets exact byte positions without buffered over-read corrupting zstd frames.
+                    java.io.FileInputStream(debFile).use { fis ->
+                        fis.skip(8) // ar global header ("!<arch>\n")
                         val headerBuf = ByteArray(60)
                         while (fis.read(headerBuf) == 60) {
                             val entryName = String(headerBuf, 0, 16).trim()
                             val entrySize = String(headerBuf, 48, 10).trim().toLongOrNull() ?: 0L
                             if (entryName.startsWith("data.tar")) {
-                                // Write data.tar to temp file first to avoid RAM pressure
-                                val tempTar = File(context.cacheDir, "data_${debName}.tar")
-                                val limitedStream = org.apache.commons.compress.utils.BoundedInputStream(fis, entrySize)
-                                val tarStream = when {
-                                    entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(limitedStream)
-                                    entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(limitedStream)
-                                    else -> limitedStream
+                                // Single-pass streaming: BoundedInputStream -> decompressor -> tar
+                                // No temp file = no disk space waste, no double buffering.
+                                val bounded = org.apache.commons.compress.utils.BoundedInputStream(fis, entrySize)
+                                val tarInput: java.io.InputStream = when {
+                                    entryName.contains("zst") ->
+                                        org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(bounded)
+                                    entryName.contains("xz") ->
+                                        org.apache.commons.compress.compressors.xz.XZCompressorInputStream(bounded)
+                                    entryName.contains("gz") ->
+                                        java.util.zip.GZIPInputStream(bounded)
+                                    else -> bounded
                                 }
-                                // Decompress to temp file
-                                tempTar.outputStream().use { o ->
-                                    val buf = ByteArray(8192); var n: Int
-                                    tarStream.use { while (it.read(buf).also { n = it } != -1) o.write(buf, 0, n) }
-                                }
-                                System.gc()
-                                // Now extract from temp tar file
-                                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tempTar.inputStream().buffered()).use { tar ->
+                                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tarInput).use { tar ->
                                     var entry = tar.nextTarEntry
+                                    val buf = ByteArray(8192)
                                     while (entry != null) {
-                                        if (!entry.isDirectory && !entry.isSymbolicLink) {
-                                            val stripped = entry.name.removePrefix("./")
-                                            val outFile = File(rootfs, stripped)
-                                            outFile.parentFile?.mkdirs()
-                                            runCatching {
-                                                outFile.outputStream().use { o ->
-                                                    val buf = ByteArray(8192); var n: Int
-                                                    while (tar.read(buf).also { n = it } != -1) o.write(buf, 0, n)
+                                        val stripped = entry.name.removePrefix("./")
+                                        when {
+                                            entry.isSymbolicLink -> {
+                                                // Record symlinks — create after all files extracted
+                                                // (target may not exist yet)
+                                                val link = File(rootfs, stripped)
+                                                link.parentFile?.mkdirs()
+                                                runCatching {
+                                                    java.nio.file.Files.createSymbolicLink(
+                                                        link.toPath(),
+                                                        java.nio.file.Paths.get(entry.linkName)
+                                                    )
                                                 }
-                                                if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
+                                            }
+                                            entry.isDirectory -> File(rootfs, stripped).mkdirs()
+                                            else -> {
+                                                val outFile = File(rootfs, stripped)
+                                                outFile.parentFile?.mkdirs()
+                                                runCatching {
+                                                    outFile.outputStream().use { o ->
+                                                        var n: Int
+                                                        while (tar.read(buf).also { n = it } != -1) o.write(buf, 0, n)
+                                                    }
+                                                    if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
+                                                }
                                             }
                                         }
                                         entry = tar.nextTarEntry
                                     }
                                 }
-                                tempTar.delete()
                                 break
                             } else {
-                                // skip() is unreliable on buffered streams — drain instead
+                                // Drain non-data entries exactly (plus alignment padding byte)
                                 var remaining = entrySize + if (entrySize % 2 != 0L) 1L else 0L
                                 val skipBuf = ByteArray(8192)
                                 while (remaining > 0) {
