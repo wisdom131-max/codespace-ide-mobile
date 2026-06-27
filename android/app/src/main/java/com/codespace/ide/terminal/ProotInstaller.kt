@@ -163,6 +163,8 @@ object ProotInstaller {
             }
 
             tarXzFile.delete()
+            System.gc() // Free rootfs extraction memory before pre-install
+            Thread.sleep(500) // Give GC time to run
             // Install static busybox into rootfs for dpkg/tar support
             try {
                 val busyboxDest = File(rootfs, "usr/local/bin/busybox")
