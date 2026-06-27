@@ -249,6 +249,9 @@ object ProotInstaller {
                 } else {
                     Log.d(TAG, "Resolved debs: $essentialDebs")
                 }
+                // Force GC before deb downloads — rootfs extraction leaves heap fragmented
+                System.gc(); System.runFinalization(); System.gc()
+                Thread.sleep(800) // give GC time to actually reclaim
                 for (debUrl in essentialDebs) {
                     val debName = debUrl.substringAfterLast("/")
                     onProgress("Downloading $debName...")
