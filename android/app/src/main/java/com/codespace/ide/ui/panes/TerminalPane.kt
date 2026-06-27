@@ -94,7 +94,10 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
         }
     }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
-    override fun shouldEnforceCharBasedInput(): Boolean = true
+    // TYPE_NULL is the correct input type (Termux default).
+    // TYPE_TEXT_VARIATION_VISIBLE_PASSWORD is only needed for Samsung stock keyboards.
+    // This device is TECNO — use TYPE_NULL (shouldEnforceCharBasedInput = false).
+    override fun shouldEnforceCharBasedInput(): Boolean = false
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
     override fun isTerminalViewSelected(): Boolean = true
     override fun copyModeChanged(copyMode: Boolean) {}
