@@ -400,7 +400,7 @@ object ProotInstaller {
             "--kill-on-exit",
             "--link2symlink",
             "--sysvipc",
-            "--kernel-release=\\Linux\\localhost\\6.17.0-PRoot-Distro\\#1 SMP PREEMPT_DYNAMIC Fri, 10 Oct 2025 00:00:00 +0000\\aarch64\\localdomain\\-1\\",
+            "--kernel-release=6.17.0-android13-1",
             "-L",
             "--change-id=0:0",
             "--rootfs=$rootfs",
