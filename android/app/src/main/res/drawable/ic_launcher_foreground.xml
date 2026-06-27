@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Safe zone is 66dp centered in 108dp = 21dp margin each side -->
+    <!-- Logo content fits inside x:21-87, y:21-87 -->
+
+    <!-- Gradient definitions via layer approach -->
+    <!-- V left stroke — cyan to blue gradient (left V of VA) -->
+    <path
+        android:pathData="M28,28 L42,72 L54,48 L42,28 Z"
+        android:fillColor="#00E5FF"/>
+
+    <!-- V right stroke — blue to deep blue (right V of VA) -->
+    <path
+        android:pathData="M66,28 L54,48 L66,72 L80,28 Z"
+        android:fillColor="#1565C0"/>
+
+    <!-- Center triangle — the A peak, lighter blue -->
+    <path
+        android:pathData="M42,28 L54,48 L66,28 Z"
+        android:fillColor="#1E88E5"/>
+
+    <!-- Bottom bridge line of the A -->
+    <path
+        android:pathData="M46,60 L62,60 L62,63 L46,63 Z"
+        android:fillColor="#90CAF9"/>
+
+    <!-- "code" text rendered as clean geometric shapes -->
+    <!-- c -->
+    <path
+        android:pathData="M31,80 Q31,76 35,76 L37,76 L37,78 L35,78 Q33,78 33,80 Q33,82 35,82 L37,82 L37,84 L35,84 Q31,84 31,80 Z"
+        android:fillColor="#78909C"/>
+    <!-- o -->
+    <path
+        android:pathData="M39,76 Q43,76 43,80 Q43,84 39,84 Q35,84 35,80 Q35,76 39,76 Z M39,78 Q37,78 37,80 Q37,82 39,82 Q41,82 41,80 Q41,78 39,78 Z"
+        android:fillColor="#78909C"/>
+    <!-- d -->
+    <path
+        android:pathData="M51,74 L51,84 L47,84 Q43,84 43,80 Q43,76 47,76 L49,76 L49,74 Z M47,78 Q45,78 45,80 Q45,82 47,82 L49,82 L49,78 Z"
+        android:fillColor="#78909C"/>
+    <!-- e -->
+    <path
+        android:pathData="M53,80 Q53,76 57,76 Q61,76 61,80 L61,81 L55,81 Q55,82 57,82 L61,82 L61,84 L57,84 Q53,84 53,80 Z M55,79 L59,79 Q59,78 57,78 Q55,78 55,79 Z"
+        android:fillColor="#78909C"/>
+
+</vector>
