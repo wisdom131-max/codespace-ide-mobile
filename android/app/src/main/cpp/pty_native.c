@@ -200,6 +200,7 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
         if (!argv) return throw_runtime_exception(env, "Couldn't allocate argv array");
         for (int i = 0; i < size; ++i) {
             jstring arg_java_string = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+            if (!arg_java_string) { argv[i] = strdup(""); continue; }  // null guard: prevents SIGSEGV crash
             char const* arg_utf8 = (*env)->GetStringUTFChars(env, arg_java_string, NULL);
             if (!arg_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for argv");
             argv[i] = strdup(arg_utf8);
