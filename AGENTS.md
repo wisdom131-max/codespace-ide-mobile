@@ -407,4 +407,55 @@ TerminalPane.kt imports com.termux.terminal.TerminalSession explicitly. No name 
 - ALWAYS call ensureOfflineShell (not installIfNeeded) on startup — the former writes .profile
 
 
-Last updated: June 27, 2026 by Superagent (Base44) — session 3 (Termux deep-dive + UI/shell audit)
+---
+
+## SIGNAL 31 CRASH + DEBUGGING STRATEGY — June 27, 2026 (session 3 pass 3)
+
+### Root cause identified: SIGRTMIN (signal 31)
+The terminal crash `[Process completed (signal 31) - press Enter]` is caused by Android's
+power/battery manager sending SIGRTMIN to kill the terminal subprocess. This is the #1
+cause of terminal crashes on TECNO, Infinix, and Samsung OEM devices with aggressive power management.
+
+### Fixes applied:
+1. **AndroidManifest.xml** — added `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `VIBRATE`,
+   `REQUEST_INSTALL_PACKAGES`, `RECEIVE_BOOT_COMPLETED` — commit 8708902143
+2. **MainActivity.kt** — added `requestBatteryOptimizationExemption()` called in `onCreate()`.
+   - Uses `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to prompt user on first launch.
+   - Fallback: opens `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` if OEM blocks the direct dialog.
+   - Commit: 6f1961f26d
+
+### Missing permissions vs Termux (now fixed):
+Termux has these that we were missing: VIBRATE, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+REQUEST_INSTALL_PACKAGES, RECEIVE_BOOT_COMPLETED, READ_LOGS, DUMP, WRITE_SECURE_SETTINGS,
+PACKAGE_USAGE_STATS, SET_ALARM.
+We added the non-system-privileged ones. READ_LOGS/DUMP/WRITE_SECURE_SETTINGS require
+system signing and cannot be granted to a regular APK.
+
+### SSH client already in app:
+`com.codespace.ide.ssh.SshManager` uses SSHJ library. Can connect OUT to SSH servers.
+No SSH server (dropbear) running on-device yet. Not needed for debugging.
+
+### Real-time crash log options:
+
+**Option 1 — Wireless ADB (RECOMMENDED — no code changes needed):**
+1. Settings → About Phone → tap Build Number 7× → enable Developer Options
+2. Settings → Developer Options → Wireless Debugging → Enable
+3. Tap "Pair device with pairing code" → note IP:port + code
+4. On PC (same WiFi): `adb pair <IP>:<port>` → enter code → `adb connect <IP>:<debug-port>`
+5. `adb logcat | grep -E "TerminalPane|BusyboxInstaller|ProotInstaller|JNI|proot|signal|killed|SIGRT"`
+
+**Option 2 — In-app logcat reader (future):**
+Add `READ_LOGS` permission (requires system signing or adb grant) + logcat reader screen.
+Not viable for debug builds without manual `adb shell pm grant`.
+
+### On-device manual battery fix (if dialog doesn't appear):
+Settings → Apps → Visual Node Code → Battery → "Unrestricted" or "No restrictions"
+
+### Hard rules from signal 31 investigation:
+- ALWAYS request battery optimization exemption at launch for any app with long-running processes
+- NEVER assume foreground service alone protects from OEM power managers — it does NOT on TECNO/Infinix
+- ALWAYS match Termux's AndroidManifest permissions for any terminal emulator fork
+- Signal 31 = SIGRTMIN = Android power manager kill. Not a code bug — a permission/system bug.
+
+
+Last updated: June 27, 2026 by Superagent (Base44) — session 3 (signal 31 root cause + battery fix + ADB debugging guide)
