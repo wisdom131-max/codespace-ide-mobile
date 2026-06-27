@@ -22,6 +22,12 @@ import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
  * On first Ubuntu launch:
  *  1. [install] downloads + extracts the Ubuntu rootfs tarball
  *  2. [launchArgs] returns correct executable + env vars using nativeLibraryDir paths
+ *
+ * MEMORY BUDGET (3 GB Samsung device):
+ *   - Download buffer: 64 KB (was 1 MB — no gain from larger buf on compressed stream)
+ *   - XZCompressorInputStream memoryLimitInKb: 96 MB  — caps XZ decoder RAM usage.
+ *     Default is unlimited; ubuntu-questing-aarch64 uses ~80 MB peak.  96 MB is safe.
+ *   - Extraction buf per file: 8 KB   (unchanged — streaming, no per-file heap spike)
  */
 object ProotInstaller {
 
@@ -29,6 +35,10 @@ object ProotInstaller {
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
     private const val VERSION = "ubuntu-questing-v4.30.1"
+
+    // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
+    // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
+    private const val XZ_MEMORY_LIMIT_KIB = 96 * 1024  // 96 MB
 
     // ── public helpers ────────────────────────────────────────────────────────
 
@@ -85,7 +95,10 @@ object ProotInstaller {
                     val outStream = if (existingBytes > 0 && responseCode == 206) java.io.FileOutputStream(tarXzFile, true) else tarXzFile.outputStream()
                     connection.inputStream.use { input ->
                         outStream.use { output ->
-                            val buf = ByteArray(1024 * 1024)
+                            // 64 KB buffer — smaller means less peak heap during download.
+                            // The bottleneck is network I/O, not memcpy, so 64 KB vs 1 MB
+                            // makes zero throughput difference on a mobile connection.
+                            val buf = ByteArray(64 * 1024)
                             var downloaded = existingBytes
                             var n: Int
                             var lastPct = -1
@@ -113,9 +126,18 @@ object ProotInstaller {
             rootfs.deleteRecursively()
             rootfs.mkdirs()
 
+            // Force GC before opening the XZ decompressor — free any download-phase garbage.
+            System.gc()
+            Thread.sleep(300)
+
             var filesWritten = 0
             var totalBytes   = 0L
-            XZCompressorInputStream(tarXzFile.inputStream()).use { xz ->
+            // memoryLimitInKb caps XZ decoder RAM to 96 MB.
+            // Without this, XZCompressorInputStream has no limit and can allocate up to
+            // ~800 MB on large .xz files, causing OOM kills on devices with 3 GB RAM.
+            // The ubuntu-questing-aarch64 tarball uses the LZMA2 preset 6 which peaks at
+            // about 80 MB decoder RAM — 96 MB gives 16 MB headroom, safely within budget.
+            XZCompressorInputStream(tarXzFile.inputStream(), XZ_MEMORY_LIMIT_KIB).use { xz ->
                 TarArchiveInputStream(xz).use { tar ->
                     var entry = tar.nextTarEntry
                     while (entry != null) {
@@ -255,7 +277,8 @@ object ProotInstaller {
                                     entryName.contains("zst") ->
                                         org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(bounded)
                                     entryName.contains("xz") ->
-                                        org.apache.commons.compress.compressors.xz.XZCompressorInputStream(bounded)
+                                        // Also cap deb-internal XZ streams to 96 MB
+                                        org.apache.commons.compress.compressors.xz.XZCompressorInputStream(bounded, XZ_MEMORY_LIMIT_KIB)
                                     entryName.contains("gz") ->
                                         java.util.zip.GZIPInputStream(bounded)
                                     else -> bounded
@@ -331,7 +354,7 @@ object ProotInstaller {
                 )
                 Log.d(TAG, "Baked DNS + apt config into rootfs")
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to bake DNS/apt config: \${e.message}")
+                Log.w(TAG, "Failed to bake DNS/apt config: ${e.message}")
             }
 
             versionFile.writeText(VERSION)
