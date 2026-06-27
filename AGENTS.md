@@ -1,179 +1,167 @@
 # AI Agent / Copilot — Project Context
-> Read this FIRST before touching any code. Updated June 25, 2026 (session 2).
+> Read this FIRST before touching any code. Updated June 27, 2026.
 
 ---
 
 ## What This Project Is
 
-**CodeSpace IDE** — a VS Code-style Android IDE app (Kotlin + Jetpack Compose).
-Built and maintained phone-only by Wisdom using Termux + GitHub Codespaces. No PC exists in this workflow.
+**Visual Node Code** (display name) / **CodeSpace IDE** (package) — a VS Code-style Android IDE with built-in Ubuntu Linux terminal powered by proot. No root needed.
 
 - **Package:** `com.codespace.ide.debug`
 - **Repo:** `wisdom131-max/codespace-ide-mobile`
-- **APK to install:** `app-prod-arm64-v8a-debug.apk` (always arm64-v8a)
-- **Build:** GitHub Actions auto-builds on every push → artifact `codespace-ide-apk`
-- **Device:** Android 14, arm64-v8a, 3GB RAM
+- **APK:** `app-prod-arm64-v8a-debug.apk`
+- **Device:** Android 14, Samsung kernel 5.15.180-android13, arm64-v8a, 3GB RAM
+- **Build:** GitHub Actions auto-builds on every push (~6-8 min)
 
 ---
 
-## Communication Rules (Wisdom's preferences)
+## Communication Rules
 - Short, direct answers. No fluff.
-- Always say WHERE to paste code (Codespace terminal vs app bash tab).
+- Always say WHERE to paste code (Codespace terminal vs app bash tab vs Ubuntu tab).
 - Never repeat a failed approach without explaining what changed.
-- One command at a time unless batching is confirmed safe.
-- When in doubt — check the file first before patching.
+- Check the file before patching.
 - Always say what a fix will do before applying it.
-- find /data/app is PERMISSION DENIED on device — never use it to check .so files.
-- Use [ -f path ] and echo EXISTS or echo MISSING not ls in app bash tab.
-- Always git pull --rebase and git push — never plain push.
+- find /data/app is PERMISSION DENIED on device. Use unzip -l on APK instead.
+- Use [ -f path ] not ls in app bash tab.
+- Always git pull --rebase && git push.
+- NEVER load large files with readBytes() — OOM on 3GB device. Stream instead.
 
 ---
 
-## How to Push and Build
-
-git add .
-git commit -m "your message"
-git pull --rebase && git push
-
-Build triggers automatically. Wait 5-8 min, Actions tab, latest run, Artifacts, codespace-ide-apk.zip.
-Always fully uninstall old APK before installing new one when binaries changed.
+## THREE SHELL ENVIRONMENTS — never confuse them
+1. Codespace terminal (browser or gh cs ssh) — all code edits
+2. App bash tab — test running app behavior
+3. Ubuntu tab inside the app — test Ubuntu/proot behavior
 
 ---
 
-## THE UBUNTU PROOT PROBLEM — Full History
+## SAMSUNG KERNEL RESTRICTION — ROOT CAUSE OF ALL dpkg FAILURES
 
-### Goal
-Tap Open Ubuntu Linux, proot starts, Ubuntu rootfs mounts, bash prompt, apt works.
+Device kernel 5.15.180-android13 blocks these syscalls inside proot ptrace:
+- chdir / getcwd — every cd fails with ENOSYS (38)
+- fork + execve for child processes — dpkg, tar, python all fail
+- setresuid — fixed via APT::Sandbox::User "root"
 
-### Attempt History
+What works: bash, file reads/writes, network, single-process commands.
+What does not work: any command spawning subprocesses (dpkg, tar, python, ar), any cd command.
 
-1. copyTo() in tar extraction — all files empty — Fixed with manual ByteArray(8192) read loop
-2. /bin/bash not found — Ubuntu uses merged /usr, path is /usr/bin/bash
-3. filesDir is noexec on Android 14 — executables must be in nativeLibraryDir
-4. Custom proot was DYN not PIE — replaced with real Termux PIE binary
-5. libtalloc.so SONAME mismatch — fixed with patchelf --set-soname
-6. Gradle stripped unreferenced .so files — added all 4 libs to CMakeLists.txt as IMPORTED plus explicit jniLibs srcDir in build.gradle.kts
-7. libandroid-shmem.so missing — extracted from termux deb, added to jniLibs
-8. PROOT_LOADER env var empty at runtime — explicitly set to nativeLibraryDir/libproot-loader.so
-9. argv[0] missing from args array — argv[0] MUST be proot, execvp requires it
-10. Ubuntu tab opened blank, progress messages not showing — fixed onTextChanged wiring, added currentView state ref so background thread writes trigger onScreenUpdated
-11. Download had no resume or retry — replaced with resumable HTTP Range download, 5% progress updates, 3 retries
-12. find /data/app returned empty, thought .so files missing — permission denied on /data/app, files ARE packaged, confirmed via unzip -l on APK
-
-### Current Architecture
-
-All proot binaries live in jniLibs/arm64-v8a/
-Gradle packages them into nativeLibraryDir which is always executable.
-
-jniLibs/arm64-v8a/
-  libproot.so          — real Termux PIE proot binary 239KB
-  libproot-loader.so   — proot guest ELF loader 18KB
-  libtalloc.so         — talloc, SONAME patched to libtalloc.so 34KB
-  libandroid-shmem.so  — Android shmem shim 14KB
-  libtermux-exec.so    — termux exec helper 7KB
-
-CMakeLists.txt declares all 4 as IMPORTED so Gradle packages them.
-build.gradle.kts has explicit sourceSets jniLibs.srcDirs declaration.
-
-launchArgs uses:
-- argv[0] = "proot" (REQUIRED)
-- --link2symlink (MANDATORY)
-- --kill-on-exit
-- -S rootfs
-- binds for /proc /dev /sys /host-files
-- /usr/bin/bash --login
-- env: PROOT_LOADER, LD_LIBRARY_PATH, PROOT_TMP_DIR, PROOT_NO_SECCOMP=1
-
-### Ubuntu Rootfs
-- URL: https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz
-- VERSION: ubuntu-questing-v4.30.1
-- Extracted to: context.filesDir/ubuntu-rootfs/
-- isInstalled checks: .ubuntu_version == VERSION AND usr/bin/bash exists
-- Reset extraction: echo "" > /data/data/com.codespace.ide.debug/files/.ubuntu_version
-- Download: resumable HTTP Range, 5% progress updates, 3 auto-retries
+The workaround: extract packages on Android host side in Java/Kotlin BEFORE proot launches.
 
 ---
 
-## HARD RULES — Never Break These
+## CURRENT ARCHITECTURE
+
+All proot binaries in jniLibs/arm64-v8a/:
+- libproot.so — Termux PIE proot binary (239KB)
+- libproot-loader.so — proot guest ELF loader (18KB)
+- libtalloc.so — talloc, SONAME patched (34KB)
+- libandroid-shmem.so — Android shmem shim (14KB)
+- libtermux-exec.so — termux exec helper (7KB)
+
+proot launch uses complete proot-distro flag set:
+--kill-on-exit --link2symlink --sysvipc --kernel-release=\Linux\localhost\6.17.0-PRoot-Distro\... -L --change-id=0:0 -r rootfs plus all required binds.
+
+Ubuntu rootfs: ubuntu-questing-aarch64 (Ubuntu 25.04 Questing)
+VERSION string: ubuntu-questing-v4.30.1
+Reset rootfs: echo "" > /data/data/com.codespace.ide.debug/files/.ubuntu_version
+
+Static busybox: assets/tools/busybox_arm64 — installed to rootfs/usr/local/bin/ during extraction.
+
+Host-side pre-install: ProotInstaller.kt streams Packages.gz line by line, downloads debs to file, extracts using BoundedInputStream + ZstdCompressorInputStream + TarArchiveInputStream. No proot involved. Dependencies: commons-compress:1.26.0, zstd-jni:1.5.6-4 (NO @aar suffix).
+
+Manual apt setup needed each session (until baked in):
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/00sandbox
+echo 'Acquire::AllowInsecureRepositories "true";' >> /etc/apt/apt.conf.d/00sandbox
+echo 'APT::Get::AllowUnauthenticated "true";' >> /etc/apt/apt.conf.d/00sandbox
+
+---
+
+## WHAT IS WORKING
+- APK builds, app launches, GitHub PAT login
+- Ubuntu boots to root@localhost
+- apt update works
+- Progress messages show in Ubuntu tab (currentView redraws fix)
+- Resumable download with 5% progress and 3 retries
+- Extra keys bar, SSH Manager, Text Expansions
+- Editor multi-tab, auto-save, session restore
+- Explorer SAF folder picker
+
+## WHAT IS BROKEN
+- apt install — dpkg blocked by Samsung kernel chdir restriction
+- Host-side pre-install — last fix was streaming extraction, not yet verified on device
+- Bash terminal tab — falls back to /system/bin/sh
+- Terminal redraw on keystrokes
+- Tab session persistence
+
+---
+
+## NEXT STEPS IN ORDER
+
+1. Test current build — does curl --version work after Ubuntu boots?
+2. If yes: bake DNS + apt config into proot launch init script permanently
+3. Expand pre-install list: wget, git, python3
+4. Install Ollama: curl -fsSL https://ollama.com/install.sh | sh
+5. Fix bash terminal tab
+6. Fix terminal session persistence (TerminalService.kt stub exists, not wired)
+7. Fix terminal redraw on keystrokes
+8. UI rebrand — real VS Code functionality (search, git, run/debug, extensions, AI panel)
+9. App icon — propagate new V/\Code logo to all mipmap folders (mdpi through xxxhdpi)
+10. Play Store release prep
+
+---
+
+## HARD RULES — NEVER BREAK
 
 1. NEVER gate Open Ubuntu behind deviceCompat.shouldUseOfflineOnly()
-2. NEVER add com.github.termux:termux-terminal-view as a Gradle dep — source is vendored
+2. NEVER add com.github.termux:termux-terminal-view as Gradle dep — source is vendored
 3. NEVER replace TerminalSession.java with ProcessBuilder version
 4. NEVER use copyTo() for tar extraction — use manual ByteArray(8192) read loop
 5. NEVER use static proot linking — Android 14 TLS alignment fails
-6. NEVER put executable binaries in filesDir — noexec on Android 14
+6. NEVER put executable binaries in filesDir — NOEXEC on Android 14
 7. NEVER remove argv[0] proot from args array — execvp requires it
 8. NEVER set onTextChanged to empty lambda — kills screen redraws
 9. ALWAYS use git pull --rebase && git push
 10. NEVER use heredoc EOF inside YAML workflows
-11. NEVER use find /data/app on device — permission denied, use unzip -l on APK instead
-12. NEVER use ls in app bash tab to check files — use [ -f path ] builtins
+11. NEVER use find /data/app on device — permission denied
+12. NEVER use ls in app bash tab — use [ -f path ] builtins
+13. NEVER use readBytes() for large files — OOM on 3GB device, stream instead
+14. NEVER use @aar suffix on zstd-jni — suppresses native .so packaging
+15. Samsung kernel blocks chdir inside proot — NEVER assume cd works in Ubuntu
 
 ---
 
-## Terminology
-
-filesDir = /data/data/com.codespace.ide.debug/files/ — writable, NOEXEC
-nativeLibraryDir = /data/app/.../lib/arm64/ — EXECUTABLE
-codeCacheDir = /data/data/com.codespace.ide.debug/code_cache/ — executable on most devices
-proot = userspace chroot via ptrace, no root needed
---link2symlink = proot flag to handle symlinks, MANDATORY
-rootfs = Ubuntu filesystem on device
-VERSION = ubuntu-questing-v4.30.1
-jniLibs/ = repo folder Gradle packages as native libs into nativeLibraryDir
-
----
-
-## Key Files
+## KEY FILES
 
 android/app/src/main/
   java/com/codespace/ide/terminal/
-    ProotInstaller.kt       — CRITICAL: rootfs download/extract, proot launchArgs
+    ProotInstaller.kt       — CRITICAL: download, extract, pre-install packages, launch proot
     BusyboxInstaller.kt     — bootstrap shell, do not touch until Ubuntu works
     TerminalModeManager.kt  — mode persistence
     DeviceCompatibility.kt  — DO NOT use to gate Ubuntu
   java/com/codespace/ide/ui/panes/
-    TerminalPane.kt         — terminal UI, tabs, menus, currentView redraws
+    TerminalPane.kt         — terminal UI, tabs, currentView redraws fix
     SshManagerSheet.kt      — SSH profile manager
     TextExpansionSheet.kt   — text expansion manager
+  assets/tools/
+    busybox_arm64           — static busybox binary (2.7MB)
   jniLibs/arm64-v8a/        — proot binaries, always executable
   cpp/
-    pty_native.c            — JNI forkpty + execvp, core terminal engine
+    pty_native.c            — JNI forkpty + execvp
     CMakeLists.txt          — declares all proot libs as IMPORTED
 
 ---
 
-## Remaining Work Priority Order
-
-P1 RED — Verify Ubuntu boots on device
-Test Open Ubuntu Linux, should now see progress messages, expect root@localhost prompt.
-If blank tab: redraw bug still present, check currentView wiring in TerminalPane.kt.
-If Process completed: check diagnostic lines for proot canExec and bash exists.
-
-P2 YELLOW — Terminal tab/session persistence
-Sessions destroyed on background/close. Fix = foreground TerminalService stub exists not wired.
-
-P3 YELLOW — Terminal text redraw on keystrokes
-onScreenUpdated not wired to keystroke-write path. Affects all tabs.
-
-P4 GREEN — Ollama inside Ubuntu
-Once Ubuntu boots: curl -fsSL https://ollama.com/install.sh | sh inside Ubuntu.
-
-P5 GREEN — Git panel not verified end-to-end
-
-P6 GREEN — AI Assistant panel not in nav, code exists, removed during terminal focus
-
----
-
-## Build Environment
+## BUILD ENVIRONMENT
 
 NDK: 26.1.10909125
-compileSdk / targetSdk: 34, minSdk: 26
+compileSdk/targetSdk: 34, minSdk: 26
 Kotlin + Jetpack Compose + Hilt DI
-Codespace: urban-umbrella-774x47p55px394p (shutdown, not deleted)
-Access: gh cs ssh from Termux on phone
-Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator, no admin)
+Key deps: commons-compress:1.26.0, zstd-jni:1.5.6-4, xz:1.9
+Codespace: urban-umbrella-774x47p55px394p (shutdown not deleted)
+Access: gh cs ssh from Termux
+Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator)
 
 ---
 
-Last updated: June 25, 2026 — session 2 with Claude Sonnet 4.6
+Last updated: June 27, 2026 by Claude Sonnet 4.6
