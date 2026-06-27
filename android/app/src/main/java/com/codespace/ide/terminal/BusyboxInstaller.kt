@@ -3,7 +3,6 @@ package com.codespace.ide.terminal
 import android.content.Context
 import android.util.Log
 import java.io.File
-import java.util.zip.ZipInputStream
 
 object BusyboxInstaller {
 
@@ -194,71 +193,56 @@ object BusyboxInstaller {
 
     fun installIfNeeded(context: Context) {
         val prefix = prefixDir(context)
+        val bin = binDir(context)
         val versionFile = File(context.filesDir, ".bootstrap_version")
 
-        if (versionFile.exists() && versionFile.readText().trim() == VERSION) {
+        if (versionFile.exists() && versionFile.readText().trim() == VERSION &&
+            File(bin, "busybox").exists()) {
             Log.d(TAG, "Bootstrap already installed")
             return
         }
 
-        Log.d(TAG, "Installing bootstrap to ${prefix.absolutePath}")
+        Log.d(TAG, "Installing busybox bootstrap to ${prefix.absolutePath}")
         try {
-        prefix.deleteRecursively()
-        prefix.mkdirs()
+            prefix.deleteRecursively()
+            prefix.mkdirs()
+            bin.mkdirs()
 
-        val assetName = "bootstrap-aarch64.zip"
-        context.assets.open(assetName).use { stream ->
-            ZipInputStream(stream).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    val entryName = entry.name
-                    val targetFile = File(context.codeCacheDir, entryName)
-
-                    if (entry.isDirectory) {
-                        targetFile.mkdirs()
-                    } else {
-                        targetFile.parentFile?.mkdirs()
-                        targetFile.outputStream().use { out ->
-                            zip.copyTo(out)
-                        }
-                        // Make executables in bin/ and lib/ executable
-                        if (entryName.contains("/bin/") || entryName.contains("/lib/") ||
-                            entryName.endsWith(".so") || !entryName.contains(".")) {
-                            targetFile.setExecutable(true, false)
-                        }
-                    }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
+            // Install busybox from assets/tools/busybox_arm64 into codeCacheDir/bin/
+            // codeCacheDir is always executable on Android (unlike filesDir which is noexec)
+            val busyboxDest = File(bin, "busybox")
+            context.assets.open("tools/busybox_arm64").use { input ->
+                busyboxDest.outputStream().use { out ->
+                    val buf = ByteArray(8192); var n: Int
+                    while (input.read(buf).also { n = it } != -1) out.write(buf, 0, n)
                 }
             }
-        }
+            busyboxDest.setExecutable(true, false)
+            busyboxDest.setReadable(true, false)
 
-        // Handle symlinks file
-        val symlinkFile = File(context.codeCacheDir, "SYMLINKS.txt")
-        if (symlinkFile.exists()) {
-            symlinkFile.forEachLine { line ->
-                val parts = line.split("←")
-                if (parts.size == 2) {
-                    val target = parts[0]
-                    val linkPath = File(context.codeCacheDir, parts[1])
-                    linkPath.parentFile?.mkdirs()
-                    try {
-                        val process = Runtime.getRuntime().exec(arrayOf("ln", "-sf", target, linkPath.absolutePath))
-                        process.waitFor()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Symlink failed: $line")
-                    }
+            // Create symlinks: bash → busybox, sh → busybox (busybox applet mode)
+            listOf("bash", "sh", "cat", "ls", "cp", "mv", "rm", "mkdir",
+                   "chmod", "chown", "grep", "sed", "awk", "cut", "sort",
+                   "head", "tail", "find", "xargs", "tar", "gzip", "echo",
+                   "printf", "test", "true", "false", "env", "which").forEach { tool ->
+                val link = File(bin, tool)
+                if (!link.exists()) {
+                    runCatching {
+                        java.nio.file.Files.createSymbolicLink(
+                            link.toPath(),
+                            java.nio.file.Paths.get(busyboxDest.absolutePath)
+                        )
+                    }.onFailure { Log.w(TAG, "Symlink $tool failed: \${it.message}") }
                 }
             }
-            symlinkFile.delete()
-        }
 
-        versionFile.writeText(VERSION)
-        Log.d(TAG, "Bootstrap installed successfully. bash=${File(binDir(context), "bash").exists()}")
+            versionFile.writeText(VERSION)
+            Log.d(TAG, "Bootstrap installed. bash=${File(bin, "bash").exists()} busybox=${busyboxDest.exists()}")
         } catch (e: Exception) {
-            Log.e(TAG, "Bootstrap installation failed: ${e.message}", e)
+            Log.e(TAG, "Bootstrap installation failed: \${e.message}", e)
         }
     }
+
 
     fun environmentFor(context: Context): Map<String, String> {
         val prefix = prefixDir(context)
