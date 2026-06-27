@@ -427,12 +427,13 @@ object ProotInstaller {
         )
 
         val envVars = arrayOf(
-            "PROOT_LOADER=$loader",          // proot exec()s the loader — must be set correctly
-            "LD_LIBRARY_PATH=$nativeDir",    // linker finds libtalloc.so + libandroid-shmem.so here
+            "PROOT_LOADER=$loader",
             "PROOT_TMP_DIR=$tmpDir",
-            "TMPDIR=$tmpDir",
             "PROOT_NO_SECCOMP=1",
-            "PROOT_FORCE_COREDUMP=1",
+            "LD_LIBRARY_PATH=$nativeDir",
+            // LD_PRELOAD libtermux-exec — intercepts exec() path rewriting, same trick Termux uses
+            "LD_PRELOAD=$nativeDir/libtermux-exec.so",
+            "TMPDIR=$tmpDir",
             "HOME=${context.filesDir.absolutePath}"
         )
 
