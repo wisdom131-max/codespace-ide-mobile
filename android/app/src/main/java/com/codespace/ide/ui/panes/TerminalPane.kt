@@ -142,7 +142,7 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
         "BUSYBOX=$busybox",
         "TMPDIR=${context.cacheDir.absolutePath}"
     )
-    val session = TerminalSession(busybox, home, arrayOf("--login"), env, 4000, client)
+    val session = TerminalSession(busybox, home, arrayOf("bash", "--login"), env, 4000, client)
     return Pair(session, client)
 }
 
@@ -632,5 +632,3 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
-
-
