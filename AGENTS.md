@@ -502,3 +502,34 @@ AGENTS.md updated by Base44 Superagent to reflect full crash history and current
 - All known crashes fixed and pushed
 - WHAT IS NOT YET TESTED ON DEVICE (see above section) is the next priority
 - Next step: install the latest APK on TECNO KL4 and test ash tab + Ubuntu tab
+
+
+---
+
+## SIGNAL 31 — DEEPER FIX (June 27, 2026, session 4)
+
+### Root cause #2 found: TerminalService was stopping after Ubuntu setup
+`TerminalService.stop(ctx)` was called in the Ubuntu `finally` block — so after extraction
+the foreground service died, leaving ash tab and Ubuntu tab completely unprotected.
+Fix: `DisposableEffect(Unit)` in `TerminalPane` now starts service on open, stops on dispose.
+Commit: 7203fa9780
+
+### Root cause #3 found: No WakeLock/WifiLock (optional but critical on TECNO)
+Verified from Termux source: Termux uses `ACTION_WAKE_LOCK` / `ACTION_WAKE_UNLOCK` intents
+to toggle both `PowerManager.PARTIAL_WAKE_LOCK` and `WifiManager.WIFI_MODE_FULL_HIGH_PERF`
+as a pair, triggered by a notification button. Notification rebuilds to show "Wake Lock held".
+
+Implemented identically in `TerminalService`:
+- Notification now has "Acquire WakeLock" / "Release WakeLock" button
+- Both locks acquired/released as a pair (Termux pattern)
+- `ACCESS_WIFI_STATE` + `CHANGE_WIFI_STATE` added to AndroidManifest
+- Commits: bd570f8414 (TerminalService), 59dace346d (Manifest)
+
+### How to use:
+Open terminal tab → pull down notification → tap "Acquire WakeLock" → locks prevent signal 31.
+
+### Hard rules from this investigation:
+- NEVER stop TerminalService in a `finally` block mid-session — only stop when pane disposes
+- ALWAYS use `DisposableEffect(Unit)` to tie service lifetime to composable lifetime
+- WakeLock + WifiLock MUST be acquired/released as a pair (Termux pattern — never one without the other)
+- Notification MUST be rebuilt after lock state changes to reflect current state
