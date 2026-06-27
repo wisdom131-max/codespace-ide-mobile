@@ -189,6 +189,73 @@ object ProotInstaller {
                 Log.w(TAG, "Busybox install failed: ${e.message}")
             }
             File(rootfs, "root").mkdirs()
+
+            // Pre-install essential packages into rootfs on host side (no proot/chdir needed)
+            onProgress("Pre-installing essential packages...")
+            try {
+                val essentialDebs = listOf(
+                    "https://ports.ubuntu.com/ubuntu-ports/pool/main/c/curl/curl_8.14.1-2ubuntu1.3_arm64.deb",
+                    "https://ports.ubuntu.com/ubuntu-ports/pool/main/c/curl/libcurl4t64_8.14.1-2ubuntu1.3_arm64.deb"
+                )
+                for (debUrl in essentialDebs) {
+                    val debName = debUrl.substringAfterLast("/")
+                    onProgress("Downloading $debName...")
+                    val debFile = File(context.cacheDir, debName)
+                    java.net.URL(debUrl).openStream().use { inp ->
+                        debFile.outputStream().use { out ->
+                            val buf = ByteArray(8192); var n: Int
+                            while (inp.read(buf).also { n = it } != -1) out.write(buf, 0, n)
+                        }
+                    }
+                    debFile.inputStream().use { fis ->
+                        fis.skip(8) // ar global header
+                        val headerBuf = ByteArray(60)
+                        while (fis.read(headerBuf) == 60) {
+                            val entryName = String(headerBuf, 0, 16).trim()
+                            val entrySize = String(headerBuf, 48, 10).trim().toLongOrNull() ?: 0L
+                            if (entryName.startsWith("data.tar")) {
+                                val tarBytes = ByteArray(entrySize.toInt())
+                                var totalRead = 0
+                                while (totalRead < entrySize) {
+                                    val r = fis.read(tarBytes, totalRead, (entrySize - totalRead).toInt())
+                                    if (r == -1) break; totalRead += r
+                                }
+                                val tarStream = when {
+                                    entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(tarBytes.inputStream())
+                                    entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(tarBytes.inputStream())
+                                    else -> tarBytes.inputStream()
+                                }
+                                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tarStream).use { tar ->
+                                    var entry = tar.nextTarEntry
+                                    while (entry != null) {
+                                        if (!entry.isDirectory && !entry.isSymbolicLink) {
+                                            val stripped = entry.name.removePrefix("./")
+                                            val outFile = File(rootfs, stripped)
+                                            outFile.parentFile?.mkdirs()
+                                            runCatching {
+                                                outFile.outputStream().use { o ->
+                                                    val buf = ByteArray(8192); var n: Int
+                                                    while (tar.read(buf).also { n = it } != -1) o.write(buf, 0, n)
+                                                }
+                                                if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
+                                            }
+                                        }
+                                        entry = tar.nextTarEntry
+                                    }
+                                }
+                                break
+                            } else {
+                                fis.skip(entrySize + if (entrySize % 2 != 0L) 1L else 0L)
+                            }
+                        }
+                    }
+                    debFile.delete()
+                }
+                onProgress("Essential packages pre-installed")
+            } catch (e: Exception) {
+                Log.w(TAG, "Pre-install failed: ${e.message}")
+            }
+
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")

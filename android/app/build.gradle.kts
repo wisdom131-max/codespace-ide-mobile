@@ -172,6 +172,7 @@ dependencies {
     // Tar/XZ extraction for Ubuntu rootfs
     implementation("org.apache.commons:commons-compress:1.26.0")
     implementation("org.tukaani:xz:1.9")
+    implementation("com.github.luben:zstd-jni:1.5.6-4@aar")
 
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
