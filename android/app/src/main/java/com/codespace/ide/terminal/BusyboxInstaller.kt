@@ -166,7 +166,10 @@ object BusyboxInstaller {
         // Correct ash color PS1 uses \001 (Ctrl-A) and \002 (Ctrl-B) as non-printing wrappers,
         // OR just use a plain prompt with no ANSI codes to guarantee it works on all OEMs.
         // Plain prompt is safest — colors can be added once plain prompt is confirmed working.
-        appendLine("PS1='\u@vncode:\w\$ '")
+        // PS1: use string concat so Kotlin does not interpret \u as unicode escape
+        // Shell target: PS1='\u@vncode:\w\$ '
+        val ps1Val = "PS1='" + "\\" + "u@vncode:" + "\\" + "w" + "\\" + "$ '"
+        appendLine(ps1Val)
         appendLine("echo 'VN Code terminal ready'")
     }
 
