@@ -24,7 +24,9 @@ class TerminalModeManager(private val context: Context) {
         const val MODE_OFFLINE = "offline"
         const val MODE_OLLAMA = "ollama"
         const val MODE_UBUNTU = "ubuntu"
-        const val DEFAULT_MODE = MODE_OLLAMA
+        // DEFAULT = offline — ollama mode does a 3-second health check on every terminal open
+        // which blocks ash startup when backend is unreachable (always on device).
+        const val DEFAULT_MODE = MODE_OFFLINE
         private const val KEY_MODE = "mode"
     }
 }

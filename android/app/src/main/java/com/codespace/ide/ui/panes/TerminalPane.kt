@@ -422,7 +422,7 @@ internal fun TerminalPane(
                 }
                 activeId = id
             }
-        }.apply { isDaemon = true; start() }
+        }.apply { isDaemon = false; name = "UbuntuSetupThread"; start() }  // non-daemon: survives app backgrounding during extraction
     }
 
     fun closeTab(id: String) {
@@ -753,17 +753,17 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                             setTypeface(android.graphics.Typeface.MONOSPACE)
                             isFocusable = true
                             isFocusableInTouchMode = true
+                            keepScreenOn = true  // mirror pane also keeps screen on
                         }
                     },
                     update = { view ->
                         if (view.mTermSession != mirrorTab.session) {
                             view.attachSession(mirrorTab.session)
-                            // Second observer on the same client — updates both views
-                            val existing = mirrorTab.client.onTextChanged
-                            mirrorTab.client.onTextChanged = {
-                                existing?.invoke()
-                                view.post { view.onScreenUpdated() }
-                            }
+                            // Mirror panel: set callback directly without chaining.
+                            // update{} runs on every recompose — chaining lambdas here
+                            // creates an infinite chain on each recompose (memory leak + slowdown).
+                            // The mirror only needs: post onScreenUpdated. Done cleanly here.
+                            mirrorTab.client.onTextChanged = { view.post { view.onScreenUpdated() } }
                             view.requestFocus()
                         }
                     }

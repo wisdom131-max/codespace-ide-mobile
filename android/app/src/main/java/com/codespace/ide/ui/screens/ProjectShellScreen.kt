@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,9 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.terminal.BusyboxInstaller
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.codespace.ide.terminal.TerminalEnhancementManager
 import com.codespace.ide.ui.panes.*
 
@@ -313,6 +317,7 @@ fun ProjectShellScreen(
     sessionStateStore: SessionStateStore,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
@@ -445,12 +450,12 @@ fun ProjectShellScreen(
                 showNotification("Shell profile installed", "success")
             }
             "Setup Offline Shell" -> {
-                BusyboxInstaller.ensureOfflineShell(context)
-                showNotification("Offline shell ready", "success")
+                showNotification("Setting up offline shell...", "info")
+                scope.launch { withContext(Dispatchers.IO) { BusyboxInstaller.ensureOfflineShell(context) }; showNotification("Offline shell ready", "success") }
             }
             "Install Offline Essentials" -> {
-                BusyboxInstaller.installIfNeeded(context)
-                showNotification("Offline essentials staged", "success")
+                showNotification("Installing...", "info")
+                scope.launch { withContext(Dispatchers.IO) { BusyboxInstaller.installIfNeeded(context) }; showNotification("Offline essentials staged", "success") }
             }
             "Backup Shell Profile" -> {
                 terminalEnhancements.backupProfile()

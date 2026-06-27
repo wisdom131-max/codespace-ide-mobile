@@ -307,7 +307,7 @@ object ProotInstaller {
             // LD_PRELOAD libtermux-exec — intercepts exec() path rewriting, same trick Termux uses
             "LD_PRELOAD=$nativeDir/libtermux-exec.so",
             "TMPDIR=$tmpDir",
-            "HOME=${context.filesDir.absolutePath}"
+            "HOME=/root"  // inside proot chroot, home is /root (not host filesDir)
         )
 
         return Triple(proot, args, envVars)
