@@ -162,8 +162,9 @@ Fix: Reduced to 64 KB.
 14. NEVER use @aar suffix on zstd-jni — suppresses native .so packaging
 15. Samsung kernel blocks chdir inside proot — NEVER assume cd works in Ubuntu
 16. ALWAYS grep codebase for other callers before renaming or removing any function
-17. NEVER call XZCompressorInputStream without memoryLimitInKb. Correct form: XZCompressorInputStream(stream, false, 96*1024). 2-arg constructor takes Boolean not Int — passing Int causes compile error.
-18. ALWAYS start TerminalService before any long extraction/download thread — plain threads get OOM-killed
+17. NEVER assume any API signature, constructor args, or parameter types. Always read the actual source or javadoc first. Verify with the jar/docs before writing any call.
+18. XZCompressorInputStream correct form: XZCompressorInputStream(stream, false, memoryLimitInKb) — 3 args. Arg2=Boolean decompressConcatenated, Arg3=Int memoryLimitInKb. 2-arg constructor takes Boolean not Int.
+19. ALWAYS start TerminalService before any long extraction/download thread — plain threads get OOM-killed
 
 ---
 
