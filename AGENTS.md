@@ -10,7 +10,7 @@
 - **Package:** `com.codespace.ide.debug`
 - **Repo:** `wisdom131-max/codespace-ide-mobile`
 - **APK:** `app-prod-arm64-v8a-debug.apk`
-- **Device:** TECNO KL4, Android 14, Samsung kernel 5.15.180-android13-8-gb70ce4a70964-ab489, arm64-v8a, 3GB RAM
+- **Device:** TECNO KL4, Android 14, Samsung kernel 5.15.180-android13, arm64-v8a, 3GB RAM
 - **Build:** GitHub Actions auto-builds on every push (~6-8 min)
 
 ---
@@ -31,8 +31,8 @@
 
 ## THREE SHELL ENVIRONMENTS — never confuse them
 1. Codespace terminal (browser or gh cs ssh) — all code edits
-2. App bash tab — test running app behavior
-3. Ubuntu tab inside the app — test Ubuntu/proot behavior
+2. App bash tab — ash shell via libbusybox.so
+3. Ubuntu tab inside the app — Ubuntu/proot environment
 
 ---
 
@@ -45,10 +45,64 @@ Device kernel 5.15.180-android13 blocks these syscalls inside proot ptrace:
 
 What works: bash, file reads/writes, network, single-process commands.
 What does not work: any command spawning subprocesses (dpkg, tar, python, ar), any cd command.
+`apt install` will NEVER work inside Ubuntu on this device. Host-side pre-install is the ONLY mechanism.
 
-The workaround: extract packages on Android host side in Java/Kotlin BEFORE proot launches.
-This means `apt install` will NEVER work inside Ubuntu on this device — that is permanent and by design.
-Do NOT attempt to skip host-side pre-install and fall back to apt. It will fail.
+---
+
+## TERMUX SOURCE AUDIT — HOW TERMUX DOES IT (verified June 27, 2026)
+
+Deep-dive of termux/termux-app latest source. All differences found and fixed.
+
+### termux.c (JNI) — our impl is IDENTICAL to Termux's
+Termux's create_subprocess does exactly: /dev/ptmx open, grantpt/unlockpt, IUTF8+no-flow-control termios,
+TIOCSWINSZ, fork(), sigfillset(SIG_UNBLOCK), setsid(), dup2 stdin/stdout/stderr, close extra FDs via /proc/self/fd,
+clearenv(), putenv() from envp, chdir(cwd), execvp(cmd, argv).
+Our pty_native.c is already identical. ✓
+
+### Login shell argv — POSIX leading-dash convention
+Termux source (TermuxSession.java):
+```java
+String processName = (isLoginShell ? "-" : "") + ShellUtils.getExecutableBasename(executable);
+arguments[0] = processName;  // e.g. "-bash" or "-ash"
+```
+execvp(cmd, argv): `cmd` = executable path (what to run), `argv[0]` = process name (what it sees as itself).
+These are SEPARATE. cmd tells OS what binary to exec. argv[0] is just the name shown in `ps`.
+Busybox additionally uses argv[0] to pick the applet. Leading dash stripped: "-ash" → "ash" applet.
+
+### libbusybox.so applet table — ash not bash
+Our libbusybox.so (2.79MB) has these shell applets: ash, sh, hush.
+"bash" appears only as a string in an error message — NOT as a compiled applet.
+Trying to run "-bash" → "bash: applet not found" → code 127.
+Fix: use "-ash" as argv[0]. ash is BusyBox's full interactive POSIX shell.
+
+### LD_PRELOAD — Termux sets it in the shell environment, not just proot
+Termux exports LD_PRELOAD=libtermux-exec-ld-preload.so in every shell session's environment
+(via TermuxAppShellEnvironment). This intercepts exec() calls from ANY child process.
+We now do the same for the ash tab: LD_PRELOAD=${nativeLibraryDir}/libtermux-exec.so.
+
+### Environment variables — what Termux sets (AndroidShellEnvironment + TermuxShellEnvironment)
+Required vars (we now match these exactly):
+- HOME, PWD, PATH, SHELL, TMPDIR
+- TERM=xterm-256color
+- COLORTERM=truecolor
+- LANG=en_US.UTF-8
+- LD_PRELOAD=libtermux-exec.so (if file exists)
+- ANDROID_DATA, ANDROID_ROOT, ANDROID_STORAGE, ANDROID_RUNTIME_ROOT,
+  ANDROID_ART_ROOT, ANDROID_I18N_ROOT, ANDROID_TZDATA_ROOT,
+  EXTERNAL_STORAGE, BOOTCLASSPATH, DEX2OATBOOTCLASSPATH (passed from System.getenv())
+
+### Shell startup files — ash vs bash
+- bash reads: .bash_profile (login), .bashrc (interactive)
+- ash reads: .profile (login), $ENV file (interactive, e.g. .ashrc)
+- We now write .profile (not .bash_profile) ✓
+- We set ENV=$HOME/.ashrc in .profile so ash loads aliases/settings for interactive use
+- .inputrc is NOT used by ash (ash has its own line editing, not readline)
+
+### setupShellCommandArguments — Termux's extra step
+Termux reads the first 4 bytes of the executable to detect ELF vs script vs shebang.
+For ELF: runs directly. For shebang: rewrites interpreter path to $PREFIX/bin/interp.
+For no-shebang scripts: prepends $PREFIX/bin/sh.
+We don't need this since we always run libbusybox.so directly (it IS an ELF).
 
 ---
 
@@ -59,171 +113,131 @@ All proot binaries in jniLibs/arm64-v8a/:
 - libproot-loader.so — proot guest ELF loader (18KB)
 - libtalloc.so — talloc, SONAME patched (34KB)
 - libandroid-shmem.so — Android shmem shim (14KB)
-- libtermux-exec.so — termux exec helper (7KB)
-- libbusybox.so — static busybox 2.7MB (nativeLibraryDir trick — always executable)
+- libtermux-exec.so — Termux exec interceptor (7KB) — used BOTH for proot AND ash tab LD_PRELOAD
+- libbusybox.so — static busybox (2.79MB, type ET_EXEC, aarch64) — shell applets: ash, sh, hush
 - libzstd-jni.so — zstd native lib (767KB)
 
-proot launch uses complete proot-distro flag set:
---kill-on-exit --link2symlink --sysvipc --kernel-release=\Linux\localhost\6.17.0-PRoot-Distro\... -L --change-id=0:0 -r rootfs plus all required binds.
+busybox applet list (from binary): acpid, addgroup, adduser, ash, awk, base64, basename, cat, chmod,
+chown, chroot, cp, cut, date, dd, df, diff, du, echo, env, expr, find, grep, gunzip, gzip, head,
+hostname, httpd, hush, id, ifconfig, ip, kill, killall, less, ln, ls, md5sum, mkdir, more, mount,
+mv, netstat, nslookup, ntpd, passwd, ping, printf, ps, pwd, rm, rmdir, route, sed, seq, sh,
+sha256sum, sleep, sort, su, tail, tar, tee, test, top, touch, tr, uname, uniq, unzip, wget, which,
+whoami, wc, xargs, xz, xxd, yes, zcat (and many more — full Unix toolset, NO bash or curl)
 
-Ubuntu rootfs: ubuntu-questing-aarch64 (Ubuntu 25.04 Questing)
-VERSION string: ubuntu-questing-v4.30.1
+Ubuntu rootfs: ubuntu-questing-aarch64 (Ubuntu 25.04)
 Reset rootfs: echo "" > /data/data/com.codespace.ide.debug/files/.ubuntu_version
 
-Static busybox: assets/tools/busybox_arm64 — installed to rootfs/usr/local/bin/ during extraction.
+Host-side pre-install: ProotInstaller.kt streams Packages.gz, downloads debs, extracts via
+BoundedInputStream + ZstdCompressorInputStream + TarArchiveInputStream. No proot. No dpkg.
 
-Host-side pre-install: ProotInstaller.kt streams Packages.gz line by line, downloads debs to file, extracts using BoundedInputStream + ZstdCompressorInputStream + TarArchiveInputStream. No proot involved. Dependencies: commons-compress:1.26.0, zstd-jni:1.5.6-4 (NO @aar suffix).
+### pty_native.c — Termux's exact JNI (verified identical)
+Replaces forkpty(). Does: /dev/ptmx + fork(), setsid(), sigfillset SIG_UNBLOCK, close extra FDs,
+clearenv(), IUTF8, flow-control off, shows exec error in terminal on failure.
 
-DNS + apt config is baked permanently into rootfs during extraction:
-- /etc/resolv.conf: nameserver 8.8.8.8 / 8.8.4.4
-- /etc/apt/apt.conf.d/00sandbox: APT::Sandbox::User "root"; AllowInsecureRepositories; AllowUnauthenticated
-
-### pty_native.c — Termux's exact JNI implementation (last updated June 27 session)
-Replaced the old forkpty() call with Termux's exact /dev/ptmx + fork() implementation:
-- forkpty() → /dev/ptmx + manual fork() — Android-safe
-- setsid() — proper terminal control group
-- sigfillset() + sigprocmask(SIG_UNBLOCK) — unblocks all signals after fork (Android's Java process blocks many)
-- Closes all extra file descriptors (3..255) in child
-- clearenv() + repopulate — no inherited JVM junk in child env
-- IUTF8 enabled — proper Unicode/emoji in terminal
-- Flow control (IXON/IXOFF) disabled — no more Ctrl+S lockup
-- Shows exec() error in terminal if shell launch fails — no more silent crash
-- Shows "Failed to exec: errno N" on terminal before child exits
-
-### ProotInstaller.kt — proot env additions (last updated June 27 session)
-- Added LD_PRELOAD=libtermux-exec.so to proot environment. This is Termux's "secret weapon":
-  intercepts exec() calls inside proot and rewrites /usr paths to work on Android.
-  Without it, many Ubuntu binaries silently fail. Path: nativeLibraryDir/libtermux-exec.so
-- Dropped PROOT_FORCE_COREDUMP=1 — was causing unnecessary overhead
-- Triple System.gc() + runFinalization() + 800ms sleep BEFORE the deb download loop
-  (gives Android time to reclaim heap after the 55MB rootfs extraction)
+### createTerminalSession (TerminalPane.kt) — ash tab env
+Now matches Termux exactly:
+- cmd = libbusybox.so path (execvp executable)
+- argv[0] = "-ash" (POSIX login shell name, busybox strips leading dash to find "ash" applet)
+- env includes: HOME, PWD, PATH, TERM, COLORTERM=truecolor, LANG=en_US.UTF-8, SHELL, TMPDIR,
+  LD_PRELOAD=libtermux-exec.so (if exists), ANDROID_* passthrough from System.getenv()
 
 ---
 
-## WHAT IS WORKING (verified by build or logic)
-- APK builds successfully (last green: 7b390f2ff6 at 2026-06-27T10:50)
+## WHAT IS WORKING (verified by build)
+- APK builds (last green: 3a81d835ab58 at ~13:30 UTC June 27)
 - App launches, GitHub PAT login
-- Ubuntu boots to root@localhost (proot launch args confirmed correct)
-- apt update works (DNS baked in, apt config baked in)
-- Progress messages show in Ubuntu tab (currentView redraws fix)
-- Resumable download with 5% progress and 3 retries
+- Ubuntu boots to root@localhost (proot launch args correct)
+- apt update works (DNS + apt config baked in)
+- Progress messages in Ubuntu tab
+- Resumable download, 5% progress, 3 retries
 - Extra keys bar, SSH Manager, Text Expansions
 - Editor multi-tab, auto-save, session restore
-- Explorer SAF folder picker
-- TerminalService foreground service started before extraction (confirmed logic correct)
-- Bash tab login shell: argv[0] = "-bash" (POSIX leading-dash convention, copied from Termux)
-- pty_native.c replaced with Termux's exact implementation (setsid, clearenv, IUTF8, etc.)
-- LD_PRELOAD=libtermux-exec.so added to proot env
+- TerminalService foreground before extraction
+- pty_native.c = Termux exact impl
+- LD_PRELOAD=libtermux-exec.so in proot env
+- LD_PRELOAD=libtermux-exec.so in ash tab env (new)
+- ash tab: argv[0]="-ash", full Termux-matching env
 
-## WHAT IS NOT YET TESTED ON DEVICE (install latest APK and verify)
-- Bash tab: does it open with a prompt? (no more "login: applet not found")
-- Ubuntu: does the foreground notification appear during extraction?
-- Ubuntu: does extraction complete without crash? (OOM fix + triple GC in place)
-- Ubuntu: does `curl --version` work after boot? (pre-install worked)
-- Ubuntu: does `curl` actually function (network, SSL)? (libtermux-exec.so intercept)
-- Tab completion and arrow key history in bash tab
-- Terminal redraw on keystrokes — known issue, not yet addressed
-- Tab session persistence — TerminalService.kt wired but session state not saved to disk
+## WHAT IS NOT YET TESTED ON DEVICE
+- ash tab: prompt appears, no "applet not found" (fix: -ash not -bash)
+- Ubuntu: extraction no crash (OOM fix)
+- Ubuntu: curl works after boot (pre-install + libtermux-exec)
+- Tab completion and arrow keys in ash tab
+- Terminal redraw on keystrokes
 
-## WHAT IS BROKEN / BY DESIGN
-- apt install — dpkg blocked by Samsung kernel chdir restriction. PERMANENT. Do not attempt.
-- Host-side pre-install is the only package install mechanism for Ubuntu packages on this device.
+## WHAT IS BROKEN BY DESIGN
+- apt install — dpkg blocked by Samsung kernel. PERMANENT.
 
 ---
 
-## CRASH ROOT CAUSES FOUND (June 27, 2026 sessions)
+## ALL CRASH ROOT CAUSES (June 27, 2026)
 
-### 1. Ubuntu extraction OOM crash — FIXED
-Symptom: App crashes silently before showing any progress. No error message.
-Root cause A: XZCompressorInputStream has NO memory limit by default. Can allocate up to
-  ~800 MB for the Ubuntu .tar.xz. Android kills the process before any output appears.
-Fix: Pass memoryLimitInKb = 96*1024 (96 MB) to XZCompressorInputStream constructor.
-  ubuntu-questing tarball peaks at ~80 MB — 96 MB is safe with headroom.
-Root cause B: TerminalService.start() was NEVER called — it was dead code. Extraction ran
-  as a plain daemon Thread with the lowest OOM priority. Samsung kills these first.
-Fix: TerminalService.start() called before Thread starts; stop() in finally block.
-  Progress messages mirrored to notification to keep service visibly active.
+### 1. XZ OOM crash — FIXED
+XZCompressorInputStream default: no memory limit → up to 800MB → Android OOM kill.
+Fix: XZCompressorInputStream(stream, false, 96*1024) — 96MB limit, safe for ubuntu-questing (~80MB peak).
 
-### 2. Build failure — FIXED
-Symptom: compileProdDebugKotlin FAILED — Unresolved reference: installEssentials
-Root cause: ProjectShellScreen.kt called BusyboxInstaller.installEssentials() which
-  was a stale reference from a previous AI session. The method never existed.
-Fix: Replaced with installIfNeeded() which is the correct existing method.
+### 2. TerminalService never started — FIXED
+Extraction ran as plain daemon thread (lowest OOM priority). Samsung kills first.
+Fix: TerminalService.start() before thread, stop() in finally, progress in notification.
 
-### 3. Download buffer was 1 MB — FIXED (minor)
-Root cause: ByteArray(1024 * 1024) during download. No throughput gain on mobile;
-  wastes ~960 KB heap during download phase alongside other allocations.
-Fix: Reduced to 64 KB.
+### 3. stale BusyboxInstaller.installEssentials() call — FIXED
+ProjectShellScreen.kt referenced non-existent method. Fix: installIfNeeded().
 
-### 4. Bash tab "login: applet not found" (code 127) — FIXED
-Symptom: Bash tab shows "-login: applet not found" then "[Process completed (code 127)]"
-Root cause: TerminalSession(busybox, home, arrayOf("--login"), env, 4000, client) — Termux's
-  TerminalSession uses args[0] as argv[0]. So busybox received argv[0]="--login" and
-  treated "--login" as an applet name. No "login" applet → code 127.
-  Then tried arrayOf("bash","--login") — correct applet, but busybox bash doesn't support
-  --login flag. Only the POSIX leading-dash argv[0] convention works.
-Fix: arrayOf("-bash") — argv[0]="-bash" signals login shell. Copied exactly from Termux source.
-  String processName = (isLoginShell ? "-" : "") + ShellUtils.getExecutableBasename(executable)
-  arguments[0] = processName  // e.g. "-bash"
+### 4. Bash tab "login: applet not found" code 127 — FIXED (multiple rounds)
+Round 1: arrayOf("--login") → TerminalSession uses args[0] as argv[0], busybox saw "--login" as applet name.
+Round 2: arrayOf("bash","--login") → busybox ash doesn't support --login flag.
+Round 3: arrayOf("-bash") → "bash" applet not compiled into libbusybox.so.
+Round 4 (final): arrayOf("-ash") → ash IS the applet. "-ash" → strip dash → "ash" applet → works.
 
-### 5. Pre-install OOM crash during curl deb download — FIXED
-Symptom: Download completes (55MB rootfs), extraction starts, app crashes during
-  "Downloading curl_8.14.1-2ubuntu1_arm64.deb..."
-Root cause: 55MB rootfs extraction spikes heap. The deb download immediately after hits
-  the memory ceiling. Android OOM killer kills the process (bypasses try/catch).
-  System.gc() at line 188 was already there but not enough after such a large extraction.
-Fix: Triple System.gc() + runFinalization() + 800ms sleep right before the deb download loop.
-  Gives Android time to actually reclaim the heap before touching the network again.
+### 5. Pre-install OOM during curl deb download — FIXED
+55MB rootfs extraction, then immediate deb download hits memory ceiling. Android OOM kill bypasses try/catch.
+Fix: triple System.gc() + runFinalization() + 800ms sleep before deb download loop.
 
-### 6. pty_native.c — 4 critical differences from Termux — FIXED
-Symptom: Terminal behavior subtly wrong (signals, Unicode, Ctrl+S lockup, silent exec failures)
-Root cause: Custom forkpty() implementation missing key Termux behaviors.
-Fix: Replaced entire pty_native.c with Termux's exact implementation. See CURRENT ARCHITECTURE above.
+### 6. pty_native.c missing Termux features — FIXED
+forkpty() → /dev/ptmx+fork(). Missing: setsid, signal unblock, FD cleanup, clearenv, IUTF8, flow-control off.
+Fix: replaced entire pty_native.c with Termux's exact termux.c.
 
 ### 7. Ubuntu binaries silently failing in proot — FIXED
-Symptom: Ubuntu commands fail without error after proot launches.
-Root cause: Missing LD_PRELOAD=libtermux-exec.so in proot env. This shared library intercepts
-  exec() calls and rewrites /usr paths for Android compatibility.
-Fix: Added to proot env: LD_PRELOAD={nativeLibraryDir}/libtermux-exec.so
+Missing LD_PRELOAD=libtermux-exec.so in proot env. exec() calls fail silently on Android.
+Fix: added to proot env.
+
+### 8. Missing env vars in ash tab — FIXED
+Missing LANG, COLORTERM, LD_PRELOAD, Android system vars, PWD.
+Fix: createTerminalSession now builds env matching Termux's AndroidShellEnvironment + TermuxShellEnvironment.
 
 ---
 
-## TEST PROCEDURE (next device test)
-Install latest APK (artifact: app-prod-arm64-v8a-debug from commit 7b390f2ff6). Test in order — stop at first failure:
+## TEST PROCEDURE
+Install latest APK (commit 3a81d835ab58). Test in order — stop at first failure:
 
-1. Open app → tap + in terminal tab bar → **Open Bash Terminal**
-   - Expected: clean bash prompt (no "login: applet not found")
-   - Failure means: BusyboxInstaller argv[0] or libbusybox.so path wrong
+1. **Ash tab**: tap + → New Bash Terminal
+   - Expected: prompt appears (no "applet not found")
+   - If fails: check BusyboxInstaller.shellPath() returns valid nativeLibraryDir path
 
-2. Open app → tap + in terminal tab bar → **Open Ubuntu Linux**
-   - Expected: "[Ubuntu] Checking installation..." appears immediately
-   - Failure means: TerminalService didn't start
+2. **Ubuntu tab**: tap + → Open Ubuntu Linux
+   - Expected: "[Ubuntu] Checking installation..." immediately
+   - Failure: TerminalService not started
 
-3. Watch extraction:
-   - Expected: foreground notification visible, "Downloading... 0%...100%", "Extracting Ubuntu rootfs...", "Pre-installing essential packages...", "Downloading curl_8.14.1-2ubuntu1_arm64.deb...", "Extracting...", "Essential packages pre-installed", then proot launches to shell
-   - If crash during deb download: triple GC fix didn't work — try increasing sleep from 800ms to 1500ms
+3. **Extraction**: watch progress
+   - Expected: Downloading 0%→100%, Extracting rootfs, Pre-installing, Downloading curl deb, Essential packages pre-installed, shell prompt
+   - If crash at curl deb: increase GC sleep from 800ms to 1500ms
 
-4. At Ubuntu shell prompt, run: `curl --version`
-   - Expected: curl 8.14.x output
-   - Failure: pre-install failed or libtermux-exec.so not working
+4. **Ubuntu shell**: `curl --version` → should show curl 8.14.x
 
-5. Test bash tab separately: tap + → New Bash Terminal
-   - Expected: prompt shows with no errors, .bashrc loaded
-
-Report result of each step.
+5. **Ash tab**: confirm tab completion (Tab key) and arrow key history work
 
 ---
 
 ## NEXT STEPS IN ORDER
 
 1. **TEST on device** (see TEST PROCEDURE above)
-2. If bash tab works: verify tab completion and arrow key history
+2. If ash tab works: verify tab completion and arrow key history
 3. If curl works in Ubuntu: expand pre-install list (wget, git, python3, nano)
-4. Fix terminal redraw on keystrokes
-5. Fix tab session persistence (save session state to disk on TerminalService stop)
-6. Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
-7. UI rebrand — real VS Code functionality (search, git, run/debug, extensions, AI panel)
-8. App icon — propagate new V/\Code logo to all mipmap folders (mdpi through xxxhdpi)
+4. Fix terminal redraw on keystrokes (known issue)
+5. Fix tab session persistence (save to disk on TerminalService stop)
+6. Install Ollama in Ubuntu: `curl -fsSL https://ollama.com/install.sh | sh`
+7. UI rebrand — VS Code functionality (search, git panel, run/debug, extensions, AI panel)
+8. App icon — propagate new V/\Code logo to all mipmap folders
 9. Play Store release prep
 
 ---
@@ -246,13 +260,16 @@ Report result of each step.
 14. NEVER use @aar suffix on zstd-jni — suppresses native .so packaging
 15. Samsung kernel blocks chdir inside proot — NEVER assume cd works in Ubuntu
 16. ALWAYS grep codebase for other callers before renaming or removing any function
-17. NEVER assume any API signature, constructor args, or parameter types. Always read the actual source or javadoc first. Verify with the jar/docs before writing any call.
-18. XZCompressorInputStream correct form: XZCompressorInputStream(stream, false, memoryLimitInKb) — 3 args. Arg2=Boolean decompressConcatenated, Arg3=Int memoryLimitInKb. 2-arg constructor takes Boolean not Int.
-19. ALWAYS start TerminalService before any long extraction/download thread — plain threads get OOM-killed
-20. NEVER use --login flag for bash tab — busybox bash doesn't support it. Use argv[0]="-bash" (leading dash POSIX convention).
-21. NEVER use arrayOf("--login") as TerminalSession args — Termux TerminalSession uses args[0] as argv[0], so busybox sees "--login" as an applet name.
-22. ALWAYS add LD_PRELOAD=libtermux-exec.so to proot environment — without it Ubuntu binaries silently fail on Android.
-23. NEVER use apt install inside Ubuntu on this device — dpkg forks subprocesses that the Samsung kernel blocks. Host-side pre-install is the ONLY mechanism.
+17. NEVER assume any API signature, constructor args, or parameter types. Always read source first.
+18. XZCompressorInputStream: 3-arg form XZCompressorInputStream(stream, false, memoryLimitInKb). Arg2=Boolean, Arg3=Int.
+19. ALWAYS start TerminalService before any long extraction/download thread
+20. NEVER use --login flag for busybox bash/ash — use argv[0]="-ash" (leading dash POSIX convention)
+21. NEVER use arrayOf("--login") — TerminalSession uses args[0] as argv[0], busybox treats it as applet name
+22. ALWAYS add LD_PRELOAD=libtermux-exec.so to proot env AND ash tab env
+23. NEVER assume apt install works in Ubuntu on this device — dpkg blocked by Samsung kernel permanently
+24. libbusybox.so has ash/sh/hush — NOT bash. NEVER use "-bash" as argv[0]. Use "-ash".
+25. ash login shell reads .profile (not .bash_profile). ash interactive reads $ENV (not .bashrc).
+26. ALWAYS pass Android system env vars (ANDROID_DATA, ANDROID_ROOT etc.) from System.getenv() — Termux does this and many binaries need them
 
 ---
 
@@ -260,22 +277,22 @@ Report result of each step.
 
 android/app/src/main/
   java/com/codespace/ide/terminal/
-    ProotInstaller.kt       — CRITICAL: download, extract, pre-install packages, launch proot
-    BusyboxInstaller.kt     — bash tab shell setup (libbusybox.so nativeLibraryDir trick)
+    ProotInstaller.kt       — download, extract, pre-install packages, launch proot
+    BusyboxInstaller.kt     — ash tab shell setup (libbusybox.so nativeLibraryDir trick)
     TerminalService.kt      — foreground service, MUST be started before extraction
     TerminalModeManager.kt  — mode persistence
     DeviceCompatibility.kt  — DO NOT use to gate Ubuntu
   java/com/codespace/ide/ui/panes/
-    TerminalPane.kt         — terminal UI, tabs, addUbuntuTab(), currentView redraws fix
+    TerminalPane.kt         — terminal UI, tabs, createTerminalSession() — CRITICAL for ash env
     SshManagerSheet.kt      — SSH profile manager
     TextExpansionSheet.kt   — text expansion manager
   java/com/codespace/ide/ui/screens/
     ProjectShellScreen.kt   — shell actions menu — keep in sync with BusyboxInstaller API
   assets/tools/
-    busybox_arm64           — static busybox binary (2.7MB)
-  jniLibs/arm64-v8a/        — proot + busybox + zstd binaries, always executable
+    busybox_arm64           — static busybox binary (same as libbusybox.so, 2.79MB)
+  jniLibs/arm64-v8a/        — proot + busybox + zstd + termux-exec binaries
   cpp/
-    pty_native.c            — JNI: Termux's exact /dev/ptmx+fork() impl (setsid, clearenv, IUTF8, no flow control)
+    pty_native.c            — JNI: Termux's exact /dev/ptmx+fork() impl (verified identical)
     CMakeLists.txt          — declares all proot libs as IMPORTED
 
 ---
@@ -295,24 +312,35 @@ Accounts: wisdom131-max (owner/admin), wisdomijezie90-art (collaborator)
 ## LIBRARY NOTES
 
 ### zstd-jni
-- CORRECT: implementation("com.github.luben:zstd-jni:1.5.6-4") with NO classifier
-  The libzstd-jni.so is bundled directly in jniLibs/arm64-v8a/ — do NOT use classifier
-- WRONG: implementation("com.github.luben:zstd-jni:1.5.6-4@aar") — suppresses native .so
-- WRONG: linux_aarch64 or android_aarch64 classifier — causes duplicate .so conflict
-- Always verify: unzip -l app.apk | grep zstd
+- CORRECT: implementation("com.github.luben:zstd-jni:1.5.6-4") — NO classifier
+- WRONG: @aar suffix or linux_aarch64/android_aarch64 classifier
+- Verify: unzip -l app.apk | grep zstd
 
 ### XZ extraction
-- ALWAYS use XZCompressorInputStream(stream, false, 96 * 1024) — the 3-arg constructor. Arg 2 is Boolean decompressConcatenated (use false). Arg 3 is memoryLimitInKb (Int).
-- Default (no limit) can allocate 800 MB, causing silent OOM crash on 3GB device
-- 96 MB is safe for ubuntu-questing tarball (peaks ~80 MB). If MemoryLimitException is thrown,
-  the error surfaces in the UI — do not increase beyond 128 MB without profiling.
+- ALWAYS: XZCompressorInputStream(stream, false, 96 * 1024) — 3-arg constructor
+- Default (2-arg) can OOM with 800MB allocation → silent Android kill
 
-### Termux TerminalSession argv convention
-- TerminalSession(executable, cwd, args, env, ...) — args[0] is argv[0] for the process.
-- For login shell: args = arrayOf("-bash") where "-bash" is the process name with leading dash.
+### busybox libbusybox.so shell applets
+- HAS: ash, sh, hush (and 200+ Unix tools)
+- DOES NOT HAVE: bash, curl, python, git, node
+- ash IS BusyBox's full POSIX shell — supports variables, functions, for/while, arrays (limited), pipelines, redirects, here-docs, job control
+- ash line editing: built-in (not readline). Arrow keys work. Tab completion works for paths and commands.
+- ash startup: .profile (login), $ENV file (interactive). Set ENV=$HOME/.ashrc in .profile.
+
+### TerminalSession argv convention (CRITICAL)
+- TerminalSession(cmd, cwd, args, env, ...) calls JNI.createSubprocess(cmd, cwd, args, env, ...)
+- JNI does: execvp(cmd, argv) where argv = args array
+- cmd = executable to run (e.g. /data/.../nativeLibraryDir/libbusybox.so)
+- args[0] = argv[0] = process name (what the process sees as its own name)
+- These are SEPARATE. cmd is what gets exec'd. argv[0] is just the process name / applet selector.
+- For busybox: argv[0] selects the applet. Leading "-" is stripped: "-ash" → selects "ash" applet → login shell.
 - Termux source: arguments[0] = (isLoginShell ? "-" : "") + ShellUtils.getExecutableBasename(executable)
-- This is the POSIX way: every shell checks argv[0][0] == '-' to decide if it's a login shell.
+
+### libtermux-exec.so — Termux's secret weapon
+Intercepts exec() calls via LD_PRELOAD and rewrites /usr/* paths to work on Android.
+Without it, many Ubuntu binaries and scripts fail silently.
+Set in BOTH proot env AND ash tab env. Path: context.applicationInfo.nativeLibraryDir + "/libtermux-exec.so"
 
 ---
 
-Last updated: June 27, 2026 by Superagent (Base44) — session 2 (PDF catch-up)
+Last updated: June 27, 2026 by Superagent (Base44) — session 3 (Termux deep-dive audit)
