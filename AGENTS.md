@@ -343,4 +343,68 @@ Set in BOTH proot env AND ash tab env. Path: context.applicationInfo.nativeLibra
 
 ---
 
-Last updated: June 27, 2026 by Superagent (Base44) — session 3 (Termux deep-dive audit)
+---
+
+## UI/SHELL GLUE AUDIT — June 27, 2026 (session 3 pass 2)
+
+Deep audit of Termux UI/shell integration vs our implementation.
+
+### TerminalSessionClient interface — COMPLETE ✓
+All 13 methods implemented in SimpleTerminalSessionClient:
+onTextChanged, onTitleChanged, onSessionFinished, onCopyTextToClipboard, onPasteTextFromClipboard,
+onBell, onColorsChanged, onTerminalCursorStateChange, setTerminalShellPid, getTerminalCursorStyle,
+logError/Warn/Info/Debug/Verbose/StackTrace. All correct.
+
+### TerminalViewClient interface — COMPLETE ✓ (with 1 fix)
+All methods implemented in SimpleTerminalViewClient. One fix:
+- shouldEnforceCharBasedInput: was true (Samsung password keyboard mode) → fixed to false (TYPE_NULL, correct for TECNO)
+- Termux base class returns false. TYPE_NULL is "most correct" per Termux comments.
+- TYPE_TEXT_VARIATION_VISIBLE_PASSWORD is only for Samsung stock keyboards — not needed on TECNO KL4.
+
+### TerminalView.java — IDENTICAL to Termux ✓
+Line count matches upstream exactly (1500 lines). No divergence.
+
+### mTermSession field — public ✓
+TerminalView.mTermSession is public. Direct access in update lambda is fine.
+
+### updateSize / initializeEmulator — called automatically ✓
+TerminalView.attachSession() calls updateSize() internally.
+onSizeChanged() also calls updateSize(). No manual call needed.
+
+### Session creation timing — NO RACE ✓
+- TerminalState/TerminalSession object created in remember{} (main thread) — no subprocess yet.
+- LaunchedEffect fires → ensureOfflineShell writes .profile on IO thread.
+- Spinner shows until bootstrapReady = true.
+- AndroidView only rendered AFTER bootstrapReady → attachSession → updateSize → initializeEmulator → ash starts.
+- .profile exists before ash subprocess launches. Correct order. ✓
+
+### IME input connection — correct ✓
+shouldEnforceCharBasedInput=false → TYPE_NULL input type.
+IME_FLAG_NO_FULLSCREEN set in TerminalView. Correct for terminal use.
+onSingleTapUp → requestFocus() + showSoftInput(). Keyboard appears on tap. ✓
+
+### TerminalEnhancementManager — dead code ✓
+terminal_profile.sh is written but never sourced by ash. The file is only accessible from UI menu items
+("Setup Shell Profile", "Backup Shell Profile", "Restore Shell Profile"). Harmless, just not used by the shell.
+
+### Two TerminalSession classes — NOT a conflict ✓
+- com.codespace.ide.terminal.TerminalSession (Kotlin) — ProcessBuilder-based, used nowhere relevant
+- com.termux.terminal.TerminalSession (Java) — real PTY session, used by TerminalPane.kt
+TerminalPane.kt imports com.termux.terminal.TerminalSession explicitly. No name collision at runtime.
+
+### Bugs found and fixed (UI/shell audit):
+1. shouldEnforceCharBasedInput = true → false (wrong keyboard mode for TECNO) — commit 3e22991779
+2. PS1 with single-quoted $(printf) — ash doesn't expand cmd substitution in prompt — fixed in dce9e01042
+3. HISTFILESIZE/HISTCONTROL — ash ignores (bash-only) — removed in dce9e01042
+4. .inputrc — ash doesn't use readline — removed in dce9e01042
+5. installIfNeeded vs ensureOfflineShell at startup — .profile never written — fixed in 1dbd0d4e8c
+
+### Hard rules added from this audit:
+- NEVER set shouldEnforceCharBasedInput = true — only for Samsung stock keyboards
+- NEVER use HISTFILESIZE or HISTCONTROL in ash profiles (bash-only vars)
+- NEVER write .inputrc for ash — ash uses built-in line editor, not readline
+- NEVER assume ash expands $(cmd) in PS1 — use ESC=$'\033' + double-quoted PS1
+- ALWAYS call ensureOfflineShell (not installIfNeeded) on startup — the former writes .profile
+
+
+Last updated: June 27, 2026 by Superagent (Base44) — session 3 (Termux deep-dive + UI/shell audit)
