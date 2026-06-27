@@ -139,7 +139,7 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                 val colRow = v.getColumnAndRow(e, true)
                 if (colRow != null && colRow.size >= 2) {
                     val word = emulator.screen?.getWordAtLocation(colRow[0], colRow[1]) ?: ""
-                    val urlMatch = Regex("https?://[^\s'"<>]+").find(word)
+                    val urlMatch = Regex("""https?://[^\s'"<>]+""").find(word)
                     if (urlMatch != null) {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
                             Uri.parse(urlMatch.value)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
