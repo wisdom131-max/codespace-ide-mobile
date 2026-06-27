@@ -163,6 +163,31 @@ object ProotInstaller {
             }
 
             tarXzFile.delete()
+            // Install static busybox into rootfs for dpkg/tar support
+            try {
+                val busyboxDest = File(rootfs, "usr/local/bin/busybox")
+                busyboxDest.parentFile?.mkdirs()
+                context.assets.open("tools/busybox_arm64").use { input ->
+                    busyboxDest.outputStream().use { output ->
+                        val buf = ByteArray(8192)
+                        var n: Int
+                        while (input.read(buf).also { n = it } != -1) output.write(buf, 0, n)
+                    }
+                }
+                busyboxDest.setExecutable(true, false)
+                // Create symlinks for common tools
+                listOf("tar", "ar", "xz", "gzip", "zstd", "unzstd", "sh").forEach { tool ->
+                    val link = File(rootfs, "usr/local/bin/$tool")
+                    if (!link.exists()) {
+                        runCatching {
+                            java.nio.file.Files.createSymbolicLink(link.toPath(), java.nio.file.Paths.get("busybox"))
+                        }
+                    }
+                }
+                Log.d(TAG, "Busybox installed to rootfs")
+            } catch (e: Exception) {
+                Log.w(TAG, "Busybox install failed: ${e.message}")
+            }
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             // Ensure /root exists
