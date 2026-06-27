@@ -99,12 +99,10 @@ object BusyboxInstaller {
         val home = File(context.filesDir, "home").apply { mkdirs() }
         val bashrc = File(home, ".bashrc")
         bashrc.writeText(buildOfflineProfile(context))
-        File(home, ".profile").writeText("[ -f ~/.bashrc ] && . ~/.bashrc\n")
-        File(home, ".inputrc").writeText(
-            "set completion-ignore-case on\n" +
-            "set show-all-if-ambiguous on\n" +
-            "\"\\\\e[A\": history-search-backward\n" +
-            "\"\\\\e[B\": history-search-forward\n"
+        File(home, ".profile").writeText(
+            "[ -f ~/.bashrc ] && . ~/.bashrc\n" +
+            "export ENV=\$HOME/.ashrc\n" +
+            "[ -f \$HOME/.ashrc ] || cp \$HOME/.bashrc \$HOME/.ashrc 2>/dev/null\n"
         )
         OllamaSetup(context).installProfile()
         return shellPath(context)
@@ -136,8 +134,7 @@ object BusyboxInstaller {
         appendLine("export HOME=$home")
         appendLine("export TERM=xterm-256color")
         appendLine("export HISTSIZE=5000")
-        appendLine("export HISTFILESIZE=10000")
-        appendLine("export HISTCONTROL=ignoredups:erasedups")
+        appendLine("export HISTFILE=\$HOME/.ash_history")
         appendLine("export MCP_SERVER_URL='$backendUrl'")
 
         appendLine("alias ll='ls -la'")
@@ -158,7 +155,12 @@ object BusyboxInstaller {
         appendLine("alias c='clear'")
         appendLine("alias grep='grep --color=auto'")
 
-        appendLine("PS1='\\[\\033[0;32m\\]\\u@vncode\\[\\033[0m\\]:\\[\\033[0;34m\\]\\w\\[\\033[0m\\]\\$ '")
+        // ash PS1 with ANSI color:
+        // 1. Store ESC byte via $'\033' ANSI-C quoting (busybox ash supports this)
+        // 2. Build PS1 in double quotes so \u \w \$ and $ESC all expand correctly
+        // Single-quoted PS1 with $(printf) does NOT work — ash doesn't run cmd substitution in prompt
+        appendLine("ESC=\$'\\033'")
+        appendLine("PS1=\"\${'$'}{ESC}[0;32m\\u@vncode\${'$'}{ESC}[0m:\${'$'}{ESC}[0;34m\\w\${'$'}{ESC}[0m\\\$ \"")
         appendLine("echo \"VN Code Shell — busybox $(busybox --help 2>&1 | head -1 | grep -o 'v[0-9.]*') ready\"")
     }
 
