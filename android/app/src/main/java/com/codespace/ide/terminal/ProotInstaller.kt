@@ -193,26 +193,32 @@ object ProotInstaller {
             // Pre-install essential packages into rootfs on host side (no proot/chdir needed)
             onProgress("Pre-installing essential packages...")
             try {
-                // Dynamically resolve latest package URLs from Ubuntu Questing (25.04) mirror
+                // Dynamically resolve package URLs by streaming Packages.gz line by line
                 val mirrorBase = "https://ports.ubuntu.com/ubuntu-ports"
                 val packagesUrl = "$mirrorBase/dists/questing/main/binary-arm64/Packages.gz"
-                val packagesGz = java.net.URL(packagesUrl).readBytes()
-                val packagesText = java.util.zip.GZIPInputStream(packagesGz.inputStream()).bufferedReader().readText()
-                fun resolveDebUrl(packageName: String): String? {
-                    val sections = packagesText.split("\n\n")
-                    for (section in sections) {
-                        val nameMatch = Regex("^Package: (.+)$", RegexOption.MULTILINE).find(section)
-                        if (nameMatch?.groupValues?.get(1)?.trim() == packageName) {
-                            val filenameMatch = Regex("^Filename: (.+)$", RegexOption.MULTILINE).find(section)
-                            return filenameMatch?.groupValues?.get(1)?.trim()?.let { "$mirrorBase/$it" }
+                val targets = setOf("curl", "libcurl4t64")
+                val resolvedUrls = mutableMapOf<String, String>()
+                java.util.zip.GZIPInputStream(java.net.URL(packagesUrl).openStream()).bufferedReader().useLines { lines ->
+                    var currentPkg = ""
+                    var currentFile = ""
+                    for (line in lines) {
+                        when {
+                            line.startsWith("Package: ") -> {
+                                currentPkg = line.removePrefix("Package: ").trim()
+                                currentFile = ""
+                            }
+                            line.startsWith("Filename: ") -> currentFile = line.removePrefix("Filename: ").trim()
+                            line.isEmpty() -> {
+                                if (currentPkg in targets && currentFile.isNotEmpty()) {
+                                    resolvedUrls[currentPkg] = "$mirrorBase/$currentFile"
+                                }
+                                currentPkg = ""; currentFile = ""
+                            }
                         }
+                        if (resolvedUrls.size == targets.size) return@useLines
                     }
-                    return null
                 }
-                val essentialDebs = listOfNotNull(
-                    resolveDebUrl("curl"),
-                    resolveDebUrl("libcurl4t64")
-                ).also { Log.d(TAG, "Resolved debs: $it") }
+                val essentialDebs = resolvedUrls.values.toList().also { Log.d(TAG, "Resolved debs: $it") }
                 for (debUrl in essentialDebs) {
                     val debName = debUrl.substringAfterLast("/")
                     onProgress("Downloading $debName...")
