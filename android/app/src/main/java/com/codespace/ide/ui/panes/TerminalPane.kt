@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -126,12 +127,21 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
         return Pair(session, client)
     }
 
-    // Use /system/bin/sh directly — BusyboxInstaller targets filesDir which is noexec on Android 14.
-    // BusyboxInstaller.installIfNeeded() still runs in background via LaunchedEffect for future use.
-    // This avoids blocking the main thread with file I/O during session creation.
-    val shell = "/system/bin/sh"
-    val home  = context.filesDir.absolutePath
-    val session = TerminalSession(shell, home, arrayOf("--login"), emptyArray(), 4000, client)
+    // Use libbusybox.so from nativeLibraryDir — always executable on Android 14 (no W^X/noexec).
+    // This is the same trick Termux uses: ship the binary as a .so, Android extracts it to
+    // nativeLibraryDir which is always marked executable by PackageManagerService.
+    val busybox = BusyboxInstaller.shellPath(context)
+    val home = File(context.filesDir, "home").also { it.mkdirs() }.absolutePath
+    val bin  = BusyboxInstaller.binDir(context).absolutePath
+    val env  = arrayOf(
+        "HOME=$home",
+        "PATH=$bin:/system/bin:/system/xbin",
+        "TERM=xterm-256color",
+        "SHELL=$busybox",
+        "BUSYBOX=$busybox",
+        "TMPDIR=${context.cacheDir.absolutePath}"
+    )
+    val session = TerminalSession(busybox, home, arrayOf("--login"), env, 4000, client)
     return Pair(session, client)
 }
 
