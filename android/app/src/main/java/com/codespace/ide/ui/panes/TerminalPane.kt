@@ -46,14 +46,37 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.input.pointer.pointerInput
 
 import androidx.compose.ui.text.style.TextOverflow
+import android.media.AudioAttributes
+import android.media.SoundPool
+import android.os.Vibrator
+import android.os.VibrationEffect
+import android.os.Build
+import android.net.Uri
 
 
 internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var onTextChanged: (() -> Unit)? = null
-    override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
-    override fun onTitleChanged(changedSession: TerminalSession) {}
-    override fun onSessionFinished(finishedSession: TerminalSession) {}
+    var onTitleChanged: ((String?) -> Unit)? = null
+    var onSessionFinished: (() -> Unit)? = null
+    var onCursorStateChange: ((Boolean) -> Unit)? = null
     var appContext: Context? = null
+
+    fun initBell(ctx: Context) { /* sound pool reserved for future beep mode */ }
+    fun releaseBell() {}
+
+    override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
+
+    override fun onTitleChanged(changedSession: TerminalSession) {
+        onTitleChanged?.invoke(changedSession.title)
+    }
+
+    override fun onSessionFinished(finishedSession: TerminalSession) {
+        onSessionFinished?.invoke()
+    }
+
+    override fun onTerminalCursorStateChange(state: Boolean) {
+        onCursorStateChange?.invoke(state)
+    }
     override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
         if (text == null) return
         val ctx = appContext ?: return
@@ -69,9 +92,22 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
             if (pasteText != null) session?.write(pasteText)
         }
     }
-    override fun onBell(session: TerminalSession) {}
+    override fun onBell(session: TerminalSession) {
+        val ctx = appContext ?: return
+        try {
+            @Suppress("DEPRECATION")
+            val v = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
+            if (v?.hasVibrator() == true) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.vibrate(80)
+                }
+            }
+        } catch (_: Exception) {}
+    }
     override fun onColorsChanged(session: TerminalSession) {}
-    override fun onTerminalCursorStateChange(state: Boolean) {}
     override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
     override fun getTerminalCursorStyle(): Int? = null
     override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
@@ -85,13 +121,37 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
 
 internal class SimpleTerminalViewClient : TerminalViewClient {
     var terminalView: TerminalView? = null
-    override fun onScale(scale: Float): Float = scale
-    override fun onSingleTapUp(e: MotionEvent?) {
-        terminalView?.let { v ->
-            v.requestFocus()
-            val imm = v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-            imm.showSoftInput(v, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+    private var currentTextSize: Int = 13
+
+    override fun onScale(scale: Float): Float {
+        if (scale < 0.9f || scale > 1.1f) {
+            currentTextSize = (currentTextSize + if (scale > 1f) 1 else -1).coerceIn(6, 48)
+            terminalView?.setTextSize(currentTextSize)
         }
+        return 1.0f
+    }
+    override fun onSingleTapUp(e: MotionEvent?) {
+        val v = terminalView ?: return
+        val emulator = v.mEmulator
+        // URL detection on tap — matches Termux shouldOpenTerminalTranscriptURLOnClick
+        if (emulator != null && e != null) {
+            try {
+                val colRow = v.getColumnAndRow(e, true)
+                if (colRow != null && colRow.size >= 2) {
+                    val word = emulator.screen?.getWordAtLocation(colRow[0], colRow[1]) ?: ""
+                    val urlMatch = Regex("https?://[^\s'"<>]+").find(word)
+                    if (urlMatch != null) {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            Uri.parse(urlMatch.value)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        v.context.startActivity(intent)
+                        return
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        v.requestFocus()
+        val imm = v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.showSoftInput(v, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
     }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
     // TYPE_NULL is the correct input type (Termux default).
@@ -109,7 +169,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     override fun readShiftKey(): Boolean = false
     override fun readFnKey(): Boolean = false
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean = false
-    override fun onEmulatorSet() {}
+    override fun onEmulatorSet() {
+        terminalView?.setTerminalCursorBlinkerState(true, true)
+    }
     override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
     override fun logWarn(tag: String?, message: String?) { Log.w(tag, message ?: "") }
     override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
@@ -521,12 +583,45 @@ internal fun TerminalPane(
                             setTypeface(android.graphics.Typeface.MONOSPACE)
                             isFocusable = true
                             isFocusableInTouchMode = true
+                            // Keep screen on while terminal is visible — matches Termux setKeepScreenOn()
+                            keepScreenOn = true
+                            // PTY resize on layout change — without this, vim/nano use wrong cols/rows
+                            addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
+                                if ((r - l) != (or2 - ol) || (b - t) != (ob - ot)) {
+                                    post { onScreenUpdated() }
+                                }
+                            }
                         }
                     },
                     update = { view ->
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
                             active.client.onTextChanged = { view.post { view.onScreenUpdated() } }
+                            // Tab title from escape sequences (vim, tmux, etc set the terminal title)
+                            active.client.onTitleChanged = { title ->
+                                if (!title.isNullOrBlank()) {
+                                    val idx = tabs.indexOfFirst { it.id == active.id }
+                                    if (idx >= 0) {
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                            tabs[idx] = tabs[idx].copy(name = title.take(20))
+                                        }
+                                    }
+                                }
+                            }
+                            // Session finished: mark tab as [exited]
+                            active.client.onSessionFinished = {
+                                val idx = tabs.indexOfFirst { it.id == active.id }
+                                if (idx >= 0 && !tabs[idx].name.contains("[exited]")) {
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        tabs[idx] = tabs[idx].copy(name = tabs[idx].name + " [exited]")
+                                    }
+                                }
+                            }
+                            // Cursor blink state relay from emulator
+                            active.client.onCursorStateChange = { enabled ->
+                                view.setTerminalCursorBlinkerState(enabled, false)
+                            }
+                            active.client.initBell(view.context)
                             currentView.value = view
                             view.requestFocus()
                         }
@@ -666,4 +761,5 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
 
