@@ -243,7 +243,10 @@ object ProotInstaller {
                             if (entryName.startsWith("data.tar")) {
                                 // Write data.tar to temp file first to avoid RAM pressure
                                 val tempTar = File(context.cacheDir, "data_${debName}.tar")
-                                val limitedStream = org.apache.commons.compress.utils.BoundedInputStream(fis, entrySize)
+                                val limitedStream = org.apache.commons.compress.utils.BoundedInputStream.builder()
+                                    .setInputStream(fis)
+                                    .setMaxCount(entrySize)
+                                    .get()
                                 val tarStream = when {
                                     entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(limitedStream)
                                     entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(limitedStream)
@@ -277,7 +280,15 @@ object ProotInstaller {
                                 tempTar.delete()
                                 break
                             } else {
-                                fis.skip(entrySize + if (entrySize % 2 != 0L) 1L else 0L)
+                                // skip() is unreliable on buffered streams — drain instead
+                                var remaining = entrySize + if (entrySize % 2 != 0L) 1L else 0L
+                                val skipBuf = ByteArray(8192)
+                                while (remaining > 0) {
+                                    val toRead = minOf(skipBuf.size.toLong(), remaining).toInt()
+                                    val read = fis.read(skipBuf, 0, toRead)
+                                    if (read == -1) break
+                                    remaining -= read
+                                }
                             }
                         }
                     }
@@ -285,7 +296,8 @@ object ProotInstaller {
                 }
                 onProgress("Essential packages pre-installed")
             } catch (e: Exception) {
-                Log.w(TAG, "Pre-install failed: ${e.message}")
+                Log.e(TAG, "Pre-install failed: ${e.javaClass.simpleName}: ${e.message}", e)
+                onProgress("Pre-install error: ${e.javaClass.simpleName}: ${e.message}")
             }
 
             versionFile.writeText(VERSION)
