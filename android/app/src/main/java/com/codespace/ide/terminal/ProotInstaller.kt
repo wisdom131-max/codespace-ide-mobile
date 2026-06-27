@@ -249,10 +249,7 @@ object ProotInstaller {
                             if (entryName.startsWith("data.tar")) {
                                 // Write data.tar to temp file first to avoid RAM pressure
                                 val tempTar = File(context.cacheDir, "data_${debName}.tar")
-                                val limitedStream = org.apache.commons.compress.utils.BoundedInputStream.builder()
-                                    .setInputStream(fis)
-                                    .setMaxCount(entrySize)
-                                    .get()
+                                val limitedStream = org.apache.commons.compress.utils.BoundedInputStream(fis, entrySize)
                                 val tarStream = when {
                                     entryName.contains("zst") -> org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(limitedStream)
                                     entryName.contains("xz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(limitedStream)
