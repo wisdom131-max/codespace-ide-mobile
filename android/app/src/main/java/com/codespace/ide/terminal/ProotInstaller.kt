@@ -137,7 +137,7 @@ object ProotInstaller {
             // ~800 MB on large .xz files, causing OOM kills on devices with 3 GB RAM.
             // The ubuntu-questing-aarch64 tarball uses the LZMA2 preset 6 which peaks at
             // about 80 MB decoder RAM — 96 MB gives 16 MB headroom, safely within budget.
-            XZCompressorInputStream(tarXzFile.inputStream(), XZ_MEMORY_LIMIT_KIB).use { xz ->
+            XZCompressorInputStream(tarXzFile.inputStream(), false, XZ_MEMORY_LIMIT_KIB).use { xz ->
                 TarArchiveInputStream(xz).use { tar ->
                     var entry = tar.nextTarEntry
                     while (entry != null) {
@@ -278,7 +278,7 @@ object ProotInstaller {
                                         org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream(bounded)
                                     entryName.contains("xz") ->
                                         // Also cap deb-internal XZ streams to 96 MB
-                                        org.apache.commons.compress.compressors.xz.XZCompressorInputStream(bounded, XZ_MEMORY_LIMIT_KIB)
+                                        org.apache.commons.compress.compressors.xz.XZCompressorInputStream(bounded, false, XZ_MEMORY_LIMIT_KIB)
                                     entryName.contains("gz") ->
                                         java.util.zip.GZIPInputStream(bounded)
                                     else -> bounded
