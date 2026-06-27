@@ -677,3 +677,54 @@ Install latest APK (9c0219fc build) on TECNO KL4 and test:
 3. ls -> works (busybox via PATH)
 4. ll -> alias works
 5. Ubuntu tab -> extraction progress or 'Already installed. Launching...'
+
+---
+
+## FULL JNI LOOP AUDIT -- June 27, 2026 (Base44 Superagent session 5, part 2)
+
+Triggered by: device bugreport showing SIGSEGV in JNI_createSubprocess at offsets +116 and +312.
+
+### ROOT CAUSE CONFIRMED FROM BUGREPORT
+Two separate SIGSEGV crashes in Java_com_termux_terminal_JNI_createSubprocess:
+  pid 1628: offset +116 (inside argv loop)
+  pid 29420: offset +312 (inside argv loop)
+Both crashes = GetStringUTFChars() called on a NULL jstring from GetObjectArrayElement().
+The envp loop had a null guard. The argv loop did NOT. One missing null check = crash.
+Signal 31 was NOT the root cause -- it was Android cleanup after the SIGSEGV.
+
+### COMPLETE pty_native.c LOOP AUDIT (every JNI array access)
+
+NativePty::createSubprocess (used by ash/bash tab):
+  argv loop: GetObjectArrayElement -> null guard present, GetStringUTFChars -> null guard present [OK]
+  envp loop: GetObjectArrayElement -> null guard present, GetStringUTFChars -> null guard present [OK]
+  cmd string: GetStringUTFChars -> null check MISSING [FIXED b5580d84 -> 4e9203bd]
+  cwd string: GetStringUTFChars -> null check MISSING [FIXED 4e9203bd]
+  ptm < 0 before GetPrimitiveArrayCritical: guard MISSING [FIXED 4e9203bd]
+  GetPrimitiveArrayCritical -> null check present [OK]
+
+Termux JNI::createSubprocess (used by TerminalSession.java):
+  argv loop: GetObjectArrayElement -> null guard MISSING [FIXED b5580d84]
+  argv loop: GetStringUTFChars -> null check present [OK]
+  envp loop: GetObjectArrayElement -> null guard present [OK]
+  envp loop: GetStringUTFChars(env, s, 0) -> changed to NULL for correctness [FIXED 4e9203bd]
+  cwd string: GetStringUTFChars -> null check MISSING [FIXED 4e9203bd]
+  cmd string: GetStringUTFChars -> null check MISSING [FIXED 4e9203bd]
+  ptm < 0 before GetPrimitiveArrayCritical: guard MISSING [FIXED 4e9203bd]
+  GetPrimitiveArrayCritical -> null check present [OK]
+
+### HARD RULES from this audit
+- EVERY GetObjectArrayElement return value MUST be null-checked before use
+- EVERY GetStringUTFChars return value MUST be null-checked before use
+- ALWAYS check ptm < 0 before calling GetPrimitiveArrayCritical (exception may be pending)
+- NEVER call GetPrimitiveArrayCritical with a pending JNI exception (undefined behavior)
+- Use NULL not 0 as the isCopy arg to GetStringUTFChars
+- Signal 31 on Android = process already dead, look for the SIGSEGV/abort BEFORE it
+
+### Commits
+  b5580d84 -- add argv null guard to Termux JNI loop (crash fix confirmed by bugreport)
+  4e9203bd -- null-check cmd/cwd strings + ptm<0 guard in both JNI functions (full hardening)
+All builds green June 27 2026.
+
+### STATUS after 4e9203bd
+Every JNI array/string access in pty_native.c is now fully null-guarded.
+No remaining unguarded GetObjectArrayElement or GetStringUTFChars calls exist.
