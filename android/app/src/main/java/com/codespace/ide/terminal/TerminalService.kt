@@ -55,6 +55,13 @@ class TerminalService : Service() {
         when (intent?.action) {
             ACTION_WAKE_LOCK   -> actionAcquireWakeLock()
             ACTION_WAKE_UNLOCK -> actionReleaseWakeLock()
+            else -> {
+                // Auto-acquire WakeLock on every start — foreground service alone is NOT enough
+                // on Samsung/TECNO OEM devices. Without WakeLock, OEM power manager sends
+                // SIGRTMIN (signal 31) and kills terminal processes immediately.
+                // This is the ONLY reliable fix for "signal 31 on all tabs" on this device.
+                actionAcquireWakeLock()
+            }
         }
 
         return START_STICKY
