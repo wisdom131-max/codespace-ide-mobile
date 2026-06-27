@@ -97,13 +97,20 @@ object BusyboxInstaller {
         ensureOfflinePackageManager(context)
 
         val home = File(context.filesDir, "home").apply { mkdirs() }
-        val bashrc = File(home, ".bashrc")
-        bashrc.writeText(buildOfflineProfile(context))
+        val profileContent = buildOfflineProfile(context)
+
+        // ash reads .profile on login, and $ENV file for interactive sessions.
+        // ash does NOT read .bashrc — that is bash-only.
+        // Write the profile content to .ashrc (interactive) and point .profile at it.
+        File(home, ".ashrc").writeText(profileContent)
         File(home, ".profile").writeText(
-            "[ -f ~/.bashrc ] && . ~/.bashrc\n" +
+            "# ash login profile\n" +
             "export ENV=\$HOME/.ashrc\n" +
-            "[ -f \$HOME/.ashrc ] || cp \$HOME/.bashrc \$HOME/.ashrc 2>/dev/null\n"
+            "[ -f \$HOME/.ashrc ] && . \$HOME/.ashrc\n"
         )
+        // Keep .bashrc as a no-op stub so scripts that source it don't error
+        File(home, ".bashrc").writeText("# stub — ash uses .ashrc instead\n")
+
         OllamaSetup(context).installProfile()
         return shellPath(context)
     }
@@ -159,9 +166,9 @@ object BusyboxInstaller {
         // 1. Store ESC byte via $'\033' ANSI-C quoting (busybox ash supports this)
         // 2. Build PS1 in double quotes so \u \w \$ and $ESC all expand correctly
         // Single-quoted PS1 with $(printf) does NOT work — ash doesn't run cmd substitution in prompt
-        appendLine("ESC=\$'\\033'")
-        appendLine("PS1=\"\${'$'}{ESC}[0;32m\\u@vncode\${'$'}{ESC}[0m:\${'$'}{ESC}[0;34m\\w\${'$'}{ESC}[0m\\\$ \"")
-        appendLine("echo \"VN Code Shell — busybox $(busybox --help 2>&1 | head -1 | grep -o 'v[0-9.]*') ready\"")
+        // ash PS1: use \\[...\\] for non-printing sequences so line editing stays correct
+        // ash supports \u \w \$ natively — wrap ANSI codes with \001/\002 (= \[ \])
+        appendLine("PS1='\\[\\e[0;32m\\]\\u@vncode\\[\\e[0m\\]:\\[\\e[0;34m\\]\\w\\[\\e[0m\\]\\$ '")
     }
 
     private fun buildOfflinePackageScript(context: Context): String = buildString {
