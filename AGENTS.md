@@ -459,3 +459,46 @@ Settings → Apps → Visual Node Code → Battery → "Unrestricted" or "No res
 
 
 Last updated: June 27, 2026 by Superagent (Base44) — session 3 (signal 31 root cause + battery fix + ADB debugging guide)
+
+
+---
+
+## CRASH #9 — SIGSEGV signal 11 in JNI_createSubprocess — FIXED (June 27, 2026)
+
+### Root cause
+`Java_com_termux_terminal_JNI_createSubprocess` in `pty_native.c` — Termux JNI block.
+The `args` array loop called `GetStringUTFChars(env, arg_java_string, NULL)` without a null check.
+If any element in the `args` array was null, this caused SIGSEGV at offset `0x3c` (null pointer dereference).
+
+### Tombstone key info
+- Signal: 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x3c
+- Cause: null pointer dereference
+- Frame #00–#01: CheckJNI::GetStringCharsInternal in libart.so
+- Frame #02: Java_com_termux_terminal_JNI_createSubprocess+116 in libptynative.so
+- Call chain: onSizeChanged → updateSize → initializeEmulator → createSubprocess
+- Timestamp: 2026-06-27 08:08:54 +0100, device TECNO KL4, Android 14
+
+### Fix
+Added null guard in the `args` loop inside `Java_com_termux_terminal_JNI_createSubprocess`:
+```c
+if (!arg_java_string) { argv[i] = strdup(""); continue; }
+```
+Matches the null guard already present in `Java_com_codespace_ide_terminal_NativePty_createSubprocess`.
+Pushed in commit b2f60e9ddb.
+
+### How crash was found
+Bug report extracted from TECNO KL4 built-in bug reporter → tombstone_14 grepped for signal/crash info.
+
+---
+
+## SESSION HANDOFF NOTE — June 27, 2026
+
+Previous AI (Claude via other platform) hit credit limit mid-session.
+Continuing here on Base44 Superagent.
+Context transferred via docx containing key parts of the previous conversation.
+AGENTS.md updated by Base44 Superagent to reflect full crash history and current state.
+
+### Current status as of handoff
+- All known crashes fixed and pushed
+- WHAT IS NOT YET TESTED ON DEVICE (see above section) is the next priority
+- Next step: install the latest APK on TECNO KL4 and test ash tab + Ubuntu tab
