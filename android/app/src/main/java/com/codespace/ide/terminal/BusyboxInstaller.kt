@@ -136,8 +136,8 @@ object BusyboxInstaller {
         val prefs = context.getSharedPreferences("vncode_prefs", Context.MODE_PRIVATE)
         val backendUrl = prefs.getString("backend_url", "") ?: ""
 
-        appendLine("# VN Code shell profile — powered by busybox at $busybox")
-        appendLine("export PATH=$bin:${'$'}PATH")
+        appendLine("# VN Code ash profile — auto-generated, do not edit")
+        appendLine("export PATH=$bin:\$PATH")
         appendLine("export HOME=$home")
         appendLine("export TERM=xterm-256color")
         appendLine("export HISTSIZE=5000")
@@ -162,13 +162,12 @@ object BusyboxInstaller {
         appendLine("alias c='clear'")
         appendLine("alias grep='grep --color=auto'")
 
-        // ash PS1 with ANSI color:
-        // 1. Store ESC byte via $'\033' ANSI-C quoting (busybox ash supports this)
-        // 2. Build PS1 in double quotes so \u \w \$ and $ESC all expand correctly
-        // Single-quoted PS1 with $(printf) does NOT work — ash doesn't run cmd substitution in prompt
-        // ash PS1: use \\[...\\] for non-printing sequences so line editing stays correct
-        // ash supports \u \w \$ natively — wrap ANSI codes with \001/\002 (= \[ \])
-        appendLine("PS1='\\[\\e[0;32m\\]\\u@vncode\\[\\e[0m\\]:\\[\\e[0;34m\\]\\w\\[\\e[0m\\]\\$ '")
+        // ash PS1 — ash does NOT support \[ \] (those are bash/readline markers).
+        // Correct ash color PS1 uses \001 (Ctrl-A) and \002 (Ctrl-B) as non-printing wrappers,
+        // OR just use a plain prompt with no ANSI codes to guarantee it works on all OEMs.
+        // Plain prompt is safest — colors can be added once plain prompt is confirmed working.
+        appendLine("PS1='\u@vncode:\w\$ '")
+        appendLine("echo 'VN Code terminal ready'")
     }
 
     private fun buildOfflinePackageScript(context: Context): String = buildString {
