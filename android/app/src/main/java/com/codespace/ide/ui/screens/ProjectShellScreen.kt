@@ -449,7 +449,7 @@ fun ProjectShellScreen(
                 showNotification("Offline shell ready", "success")
             }
             "Install Offline Essentials" -> {
-                BusyboxInstaller.installEssentials(context)
+                BusyboxInstaller.installIfNeeded(context)
                 showNotification("Offline essentials staged", "success")
             }
             "Backup Shell Profile" -> {
