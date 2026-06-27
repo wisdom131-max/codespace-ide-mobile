@@ -174,6 +174,7 @@ dependencies {
     implementation("org.tukaani:xz:1.9")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
+    implementation("com.github.luben:zstd-jni:1.5.6-4:linux_aarch64")
 
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
