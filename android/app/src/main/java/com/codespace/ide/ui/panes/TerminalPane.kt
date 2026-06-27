@@ -228,6 +228,17 @@ internal fun TerminalPane(
         bootstrapReady = true
     }
 
+    // Keep TerminalService alive for the entire lifetime of TerminalPane.
+    // Matches Termux: TermuxService runs as long as ANY terminal session is open.
+    // Without this, the foreground service stops after Ubuntu setup and the ash tab
+    // is left completely unprotected — OEM power manager sends signal 31 and kills it.
+    DisposableEffect(Unit) {
+        TerminalService.start(context, "Terminal session active")
+        onDispose {
+            TerminalService.stop(context)
+        }
+    }
+
     if (!bootstrapReady) {
         Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -318,8 +329,9 @@ internal fun TerminalPane(
                 writeToDisplay(progressSession, "[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
                 writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
             } finally {
-                // Always stop the foreground service — proot manages its own process lifetime
-                TerminalService.stop(ctx)
+                // Do NOT stop TerminalService here — it must stay alive for the proot session.
+                // TerminalService is stopped only when TerminalPane is disposed (all tabs closed).
+                TerminalService.updateProgress(ctx, "Ubuntu terminal active")
             }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session
@@ -654,3 +666,4 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
