@@ -210,6 +210,12 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // Pass through Android system vars, set LANG/COLORTERM, add LD_PRELOAD for exec() compat.
     val nativeDir = context.applicationInfo.nativeLibraryDir
     val ldPreload  = "$nativeDir/libtermux-exec.so"
+    // uid-based username for USER env var (Termux does this via getpwuid)
+    val uid = android.os.Process.myUid()
+    val userName = try {
+        android.os.Process.myPid().let { "u0_a${uid - 10000}" }
+    } catch (_: Exception) { "vncode" }
+
     val envBuilder = mutableListOf(
         "HOME=$home",
         "PWD=$home",
@@ -219,7 +225,9 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
         "LANG=en_US.UTF-8",
         "SHELL=$busybox",
         "BUSYBOX=$busybox",
-        "TMPDIR=${context.cacheDir.absolutePath}"
+        "TMPDIR=${context.cacheDir.absolutePath}",
+        "USER=vncode",
+        "LOGNAME=vncode"
     )
     // LD_PRELOAD: intercepts exec() calls — Termux's secret weapon for Android compat.
     if (java.io.File(ldPreload).exists()) envBuilder.add("LD_PRELOAD=$ldPreload")
@@ -601,35 +609,36 @@ internal fun TerminalPane(
                         }
                     },
                     update = { view ->
+                        // ALWAYS rewire callbacks on every recomposition — Termux pattern:
+                        // TermuxTerminalSessionActivityClient re-sets client on every onStart().
+                        // Stale callbacks cause screen-not-updating and cursor-blink bugs.
+                        active.client.onTextChanged = { view.post { view.onScreenUpdated() } }
+                        active.client.onTitleChanged = { title ->
+                            if (!title.isNullOrBlank()) {
+                                val idx = tabs.indexOfFirst { it.id == active.id }
+                                if (idx >= 0) {
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        tabs[idx] = tabs[idx].copy(name = title.take(20))
+                                    }
+                                }
+                            }
+                        }
+                        active.client.onSessionFinished = {
+                            val idx = tabs.indexOfFirst { it.id == active.id }
+                            if (idx >= 0 && !tabs[idx].name.contains("[exited]")) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    tabs[idx] = tabs[idx].copy(name = tabs[idx].name + " [exited]")
+                                }
+                            }
+                        }
+                        active.client.onCursorStateChange = { enabled ->
+                            view.setTerminalCursorBlinkerState(enabled, false)
+                        }
+                        currentView.value = view
+                        // Only call attachSession if session actually changed — it resets scroll
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
-                            active.client.onTextChanged = { view.post { view.onScreenUpdated() } }
-                            // Tab title from escape sequences (vim, tmux, etc set the terminal title)
-                            active.client.onTitleChanged = { title ->
-                                if (!title.isNullOrBlank()) {
-                                    val idx = tabs.indexOfFirst { it.id == active.id }
-                                    if (idx >= 0) {
-                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                            tabs[idx] = tabs[idx].copy(name = title.take(20))
-                                        }
-                                    }
-                                }
-                            }
-                            // Session finished: mark tab as [exited]
-                            active.client.onSessionFinished = {
-                                val idx = tabs.indexOfFirst { it.id == active.id }
-                                if (idx >= 0 && !tabs[idx].name.contains("[exited]")) {
-                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                        tabs[idx] = tabs[idx].copy(name = tabs[idx].name + " [exited]")
-                                    }
-                                }
-                            }
-                            // Cursor blink state relay from emulator
-                            active.client.onCursorStateChange = { enabled ->
-                                view.setTerminalCursorBlinkerState(enabled, false)
-                            }
                             active.client.initBell(view.context)
-                            currentView.value = view
                             view.requestFocus()
                         }
                     }
