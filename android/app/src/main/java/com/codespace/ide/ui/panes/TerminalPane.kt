@@ -557,10 +557,7 @@ internal fun TerminalPane(
                             addUbuntuTab()
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 val ubuntuTab = tabs.lastOrNull()
-                                ubuntuTab?.session?.write("ollama serve &
-clear
-echo "Ollama running on :11434 — try: ollama run llama3"
-")
+                                ubuntuTab?.session?.write("ollama serve &\nclear\necho \"Ollama running on :11434 — try: ollama run llama3\"\n")
                             }, 3000)
                         })
                     DropdownMenuItem(
