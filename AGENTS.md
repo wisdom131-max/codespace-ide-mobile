@@ -362,3 +362,63 @@ Built with NDK r22b, arm64-v8a.
 - Use the **Search** tab (magnifying glass) → search class name
 - Or: long-press `classes.dex` → **Dex to Java** if you have jadx plugin
 
+
+---
+
+## TERMUX TermuxService.smali — DECOMPILED (June 28, 2026)
+> Source: classes.dex decompiled on user's TECNO KL4 via Dex Editor Plus in MT Manager.
+
+### onStartCommand — full logic (confirmed from smali):
+```
+onStartCommand(Intent, int, int):
+  1. runStartForeground()          ← FIRST, always, no conditions
+  2. if (intent == null) → return START_STICKY   ← restart case, no WakeLock
+  3. switch(intent.getAction()):
+       "com.termux.service_wake_lock"   → actionAcquireWakeLock()
+       "com.termux.service_wake_unlock" → actionReleaseWakeLock()
+       "com.termux.service_execute"     → actionExecute()
+       "com.termux.service_stop"        → actionStopService()
+       else                            → log error
+  4. return START_STICKY
+```
+
+### CRITICAL: WakeLock is NOT auto-acquired
+- Termux WakeLock is **opt-in** — sent via explicit intent action by TermuxActivity
+- Service restarts (null intent) do NOT acquire WakeLock
+- Termux survives on TECNO **without** a continuously held WakeLock
+- Our auto-acquire in `else` branch is extra insurance (no harm, keeps our sessions alive)
+
+### onDestroy — full logic:
+```
+onDestroy():
+  1. clearTermuxTMPDIR()
+  2. actionReleaseWakeLock(false)   ← drop lock if held
+  3. if (!mWantsToStop) → killAllTermuxExecutionCommands()
+  4. runStopForeground()
+```
+- `mWantsToStop = true` = user stopped it
+- `mWantsToStop = false` = system killed it → clean up shells
+
+### What actually keeps Termux alive (confirmed, in order of importance):
+1. `targetSdk=28` → full Android compat mode, ALL FGS restrictions bypassed
+2. OEM meta-data (samsung keepalive, max_aspect, window extensions)
+3. `START_STICKY` → service auto-restarts if killed
+4. `startForeground()` called first in every `onStartCommand` invocation
+5. WakeLock = optional, user-toggled, NOT the primary survival mechanism
+6. NO cgroup, NO setProcessGroup, NO prctl — confirmed absent from binary
+
+### Our TerminalService vs Termux comparison (post-fix):
+| Pattern | Termux | Ours |
+|---|---|---|
+| startForeground() first | ✓ | ✓ |
+| START_STICKY | ✓ | ✓ |
+| WakeLock auto-acquire | ✗ (opt-in) | ✓ (extra, no harm) |
+| mWantsToStop flag | ✓ | ✗ (not needed, same effect) |
+| targetSdk=28 | ✓ | ✓ (fixed) |
+| OEM meta-data | ✓ | ✓ (fixed) |
+
+### Next decompile targets:
+1. `TermuxApplication.onCreate()` — what does it do at startup?
+2. Search `PowerManager` in STRINGS tab — see all WakeLock usage sites
+3. Search `sharedUserId` effect — does Termux use any cross-process permissions?
+4. `runStartForeground()` method body — what notification channel / type does it use?
