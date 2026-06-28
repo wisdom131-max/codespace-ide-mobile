@@ -1046,8 +1046,7 @@ fun McpPanel() {
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
                 Text(
-                    if (selectedTab == "Installed") "No MCP servers added yet.
-Tap Recommended to browse."
+                    if (selectedTab == "Installed") "No MCP servers added yet.\nTap Recommended to browse."
                     else "No results for \"$searchQuery\"",
                     color = Color(0xFF717171),
                     fontSize = 12.sp,
