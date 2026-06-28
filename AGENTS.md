@@ -497,3 +497,186 @@ bullets without rediscovering them from scratch.
 [Status Bar 22dp — full width, blue background]
 ```
 
+---
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║         MASTER ROADMAP — CODESPACE IDE MOBILE               ║
+# ║         Updated: 2026-06-28 (Wisdom's full vision)          ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+## Vision
+A fully VS Code-branded mobile IDE that combines:
+- Real VS Code UI/UX (activity bar, chat panel, extensions, IntelliSense)
+- NewTermux terminal enhancements (zsh+OMZ, PiP tabs, autocorrect, STT, root, package manager)
+- A powerful embedded AI Agent: GitHub Copilot + Claude + planning + MCP + Ollama models
+- Connectors: image editing, app builder, GitHub, web browsing, file manager
+- Full offline capability (proot Ubuntu, busybox ash, Ollama local models)
+
+---
+
+## PHASE 1 — VS Code UI Rebrand (IN PROGRESS)
+Source: VS Code 2026 YouTube tutorials + screenshots
+
+### Completed ✅
+- [x] Activity bar: Explorer, Search, Git, Run/Debug, Extensions icons
+- [x] Command palette (center clickable title bar)
+- [x] Status bar (colored by theme, bottom 22dp)
+- [x] Breadcrumbs (file path below tab bar)
+- [x] 11 color themes (Dracula, Tokyo Night, Monokai, Nord, etc.)
+- [x] Bottom panel: TERMINAL / OUTPUT / PROBLEMS / DEBUG / PORTS / SPLIT tabs
+- [x] Person icon (account menu) + Gear icon (settings)
+- [x] Terminal dropdown: categorized sections (TERMINALS / AI & TOOLS / DEFAULT / MANAGE)
+- [x] Copilot Chat panel — right-side collapsible, chat toggle icon in title bar
+- [x] Extensions panel — reads real dpkg/status file + searchable marketplace suggestions
+
+### In Progress 🔄
+- [ ] Fix ExtensionsPanel compile error (LaunchedEffect + coroutines missing import in ExplorerPane.kt)
+- [ ] Extensions panel: INSTALLED / RECOMMENDED / MCP SERVERS collapsible sections
+- [ ] IntelliSense autocomplete dropdown (language-aware, shows method/var/class with icons)
+- [ ] Hover documentation tooltip (type + MDN reference, shows on long-press in editor)
+- [ ] Minimap (right side of editor, code overview)
+- [ ] Git diff inline indicators (+ / - line gutters)
+
+### TODO 📋
+- [ ] Breadcrumb navigation (tap any segment to jump)
+- [ ] Multi-cursor editing
+- [ ] Code folding (collapse blocks)
+- [ ] Snippet support
+- [ ] Ports panel (real port forwarding list)
+- [ ] Run config (launch.json style tasks)
+- [ ] Title bar: back/forward navigation arrows
+- [ ] Search panel: Find + Replace with Aa / word / regex toggles (already visible in screenshots)
+- [ ] Editor welcome screen ("Getting Started" tab with keybindings cheatsheet)
+
+---
+
+## PHASE 2 — NewTermux Feature Integration (NEXT)
+Source: https://github.com/The412Banner/NewTermux
+
+Integrate the following NewTermux features INTO the CodeSpace terminal (TerminalPane.kt):
+
+### Terminal Shell
+- [ ] **Zsh + Oh My Zsh** auto-setup on first terminal launch (download + configure in background)
+- [ ] **Zsh plugins toggle**: autosuggestions + syntax highlighting (from bundled zip, no download)
+- [ ] **Session PiP view**: mini live terminal previews in tab chips instead of plain text tabs
+- [ ] **Session renaming**: long-press tab to rename it
+- [ ] **Failsafe mode**: if main shell crashes, offer a fallback minimal shell
+
+### Toolbar Buttons (terminal quick actions row)
+- [ ] **AC** — toggle keyboard autocorrect (using AutoCorrectHandler)
+- [ ] **Root** — switch to root shell via `su` (using RootToggleManager)
+- [ ] **STT** — speech-to-text input into terminal (using SpeechInputManager)
+- [ ] **Packages** — opens Package Manager panel (real dpkg/apt package browser)
+- [ ] **Clear** — clears terminal screen
+- [ ] **Export Screen** — save terminal output to file via system file picker
+- [ ] **Make Script** — pick commands from history → save as .sh script
+
+### Left Drawer (in terminal)
+- [ ] Custom command buttons (up to 10 user-defined, long-press to edit, +/-)
+- [ ] Pkg Update shortcut (runs `pkg update -y`)
+- [ ] Backup/restore Termux data (.tar.gz)
+
+### Extra Features
+- [ ] **URL detection**: long-press URL in terminal → open in browser or copy
+- [ ] **Startup script**: dot-sourced into every new session
+- [ ] **Text expansion**: trigger shortcuts (`;ll` → `ls -la`) — already partially done
+- [ ] **Autocorrect bar**: suggestion strip above keyboard for shell commands
+- [ ] **9 accent presets + HSV color wheel** for terminal theming
+- [ ] **6 terminal color themes + custom editor** (edit all 18 ANSI colors live)
+
+---
+
+## PHASE 3 — AI Agent System (MAJOR FEATURE)
+Vision: A mix of GitHub Copilot + Claude + any local Ollama model + planning agent
+
+### Core Architecture
+- [ ] **AI Chat Panel** (already added as VS Code Copilot panel)
+  - Connect to: Ollama (local, any model launched in terminal or AI tab)
+  - Connect to: Remote APIs (Claude, OpenAI, Gemini — user provides key in Settings)
+  - Model picker: dropdown shows all models currently running via `ollama list`
+  - Mode selector: Ask / Agent / Plan
+
+### Agent Modes
+- [ ] **Ask mode**: single-turn Q&A about code (explain this function, what does this error mean)
+- [ ] **Agent mode**: multi-step task execution (like GitHub Copilot Agent)
+  - Reads open files in editor tabs
+  - Can write/edit files via file manager
+  - Can run commands in terminal tab
+  - Can create new files/folders
+- [ ] **Plan mode**: breaks large tasks into steps, asks for approval before executing
+  - Shows step-by-step plan with checkboxes
+  - User can approve/reject/modify individual steps
+  - Tracks progress and can resume after interruption
+
+### Context Sources (@ mentions)
+- [ ] **@ Add Context**: current file, open tabs, workspace folder, git diff, terminal output
+- [ ] **MCP (Model Context Protocol)**: connect AI to real tools
+  - GitHub MCP — read repos, create issues, PRs
+  - File system MCP — read/write workspace files
+  - Terminal MCP — run commands and get output back
+  - Web search MCP — fetch URLs, search the web
+  - Custom MCP — user can add any MCP server endpoint
+
+### Connectors (like Base44 superagent)
+- [ ] **Image editing**: open image files, describe edits in chat, AI applies them
+- [ ] **GitHub connector**: clone repos, push commits, review PRs from within the IDE
+- [ ] **App builder**: scaffold a new project (React, Flask, Express, etc.) via chat
+- [ ] **Web browser**: embedded browser tab, AI can scrape + summarize pages
+- [ ] **File manager**: AI can read, create, move, delete files
+- [ ] **Camera**: capture screenshot/photo and add to chat context
+
+### Ollama Integration
+- [ ] **Auto-detect running models**: poll `http://localhost:11434/api/tags` every 30s
+- [ ] **Model switcher**: show available models in chat panel model picker
+- [ ] **Stream responses**: show token-by-token output (not wait for full response)
+- [ ] **System prompt**: configurable per-project system prompt
+- [ ] **Chat history**: persisted per project/workspace in local JSON
+- [ ] **Multi-model**: use different models for different tasks (coding vs planning vs image)
+
+### Sessions Panel (like VS Code Copilot Sessions)
+- [ ] Sessions list in chat panel header (like the screenshots show)
+- [ ] Named sessions: "Debugging login bug", "Refactoring auth module"
+- [ ] Timestamps + completion status
+- [ ] Resume any past session
+
+---
+
+## PHASE 4 — Polish & Performance
+- [ ] Smooth terminal font rendering (monospace, ligatures)
+- [ ] Keyboard shortcut overlay (Ctrl+Shift+P etc. shown in welcome screen)
+- [ ] Onboarding flow: first launch wizard (install bootstrap, choose theme, connect GitHub)
+- [ ] App icon: VS Code style (your branding, not Microsoft's)
+- [ ] Settings screen: full VS Code-style settings JSON editor
+- [ ] Crash reporting + auto-recovery
+- [ ] Performance: lazy-load panels, cache file tree
+
+---
+
+## BUILD SEQUENCE (ordered by value + dependencies)
+
+1. **Fix ExtensionsPanel compile** (LaunchedEffect import) — blocks APK
+2. **Zsh + OMZ auto-setup** in terminal (huge UX win, quick to add)
+3. **STT button** in terminal extra keys (SpeechInputManager port)
+4. **Root toggle** terminal button (RootToggleManager port)
+5. **Ollama model auto-detect** (poll /api/tags, populate model picker in chat panel)
+6. **Chat panel: real Ollama streaming** (HTTP POST to localhost:11434/api/chat)
+7. **MCP: terminal MCP** (run commands, get output back in chat)
+8. **Agent mode** (file read/write + terminal commands via chat)
+9. **Extensions: INSTALLED/RECOMMENDED/MCP sections** + star ratings
+10. **Session PiP view** in terminal tabs
+11. **Plan mode** with step approval
+12. **GitHub connector** (OAuth → clone/push/PR from IDE)
+13. **Minimap** in code editor
+14. **IntelliSense** autocomplete in editor
+
+---
+
+## CURRENT BLOCKER
+ExtensionsPanel.kt in ExplorerPane.kt fails to compile — needs:
+```kotlin
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.LaunchedEffect
+```
+These may not be in ExplorerPane.kt's existing imports. Fix = add them explicitly.
+
