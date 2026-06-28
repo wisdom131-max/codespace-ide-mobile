@@ -7,6 +7,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
@@ -30,6 +33,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        hideSystemUI()
 
         // ── Storage permissions ───────────────────────────────────────────────
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -63,6 +67,24 @@ class MainActivity : ComponentActivity() {
         Thread { BusyboxInstaller.installIfNeeded(applicationContext) }.apply { isDaemon = true; start() }
         setContent {
             CodeSpaceApp(tokenStore = tokenStore)
+        }
+    }
+
+    private fun hideSystemUI() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { ctrl ->
+                ctrl.hide(WindowInsets.Type.statusBars())
+                ctrl.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
         }
     }
 
