@@ -378,6 +378,13 @@ fun ProjectShellScreen(
     var commandTab         by remember { mutableStateOf("Commands") }
     var notificationMsg    by remember { mutableStateOf<String?>(null) }
     var notificationType   by remember { mutableStateOf("info") }
+    // Persistent notification list (bell drawer)
+    data class NotifItem(val id: Long, val msg: String, val type: String)
+    val notifList = remember { mutableStateListOf<NotifItem>() }
+    var notifUnread by remember { mutableStateOf(0) }
+    var showNotifDrawer by remember { mutableStateOf(false) }
+    // Connectors hub (replaces Person menu)
+    var showConnectorsSheet by remember { mutableStateOf(false) }
     val terminalEnhancements = remember { TerminalEnhancementManager(context) }
     var terminalTheme by remember { mutableStateOf(terminalEnhancements.currentTheme()) }
     var showTerminalThemePicker by remember { mutableStateOf(false) }
@@ -420,7 +427,14 @@ fun ProjectShellScreen(
         if (notificationMsg != null) { kotlinx.coroutines.delay(3000); notificationMsg = null }
     }
 
-    fun showNotification(msg: String, type: String = "info") { notificationMsg = msg; notificationType = type }
+    fun showNotification(msg: String, type: String = "info") {
+        notificationMsg = msg
+        notificationType = type
+        // Also push to persistent notification list
+        notifList.add(0, NotifItem(System.currentTimeMillis(), msg, type))
+        if (notifList.size > 50) notifList.removeAt(notifList.size - 1)
+        if (!showNotifDrawer) notifUnread++
+    }
 
     fun handleMenuAction(action: String) {
         openMenuBar = null
@@ -530,7 +544,23 @@ fun ProjectShellScreen(
                     Icon(Icons.Default.Chat, null, tint = if (showChatPanel) Color.White else TabTextInactive, modifier = Modifier.size(20.dp))
                 }
                 Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.Notifications, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
+                // Notification bell with unread badge
+                Box(Modifier.size(28.dp).clickable {
+                    showNotifDrawer = !showNotifDrawer
+                    if (showNotifDrawer) notifUnread = 0
+                }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Notifications, null,
+                        tint = if (notifUnread > 0) Color(0xFFF44336) else TabTextInactive,
+                        modifier = Modifier.size(20.dp))
+                    if (notifUnread > 0) {
+                        Box(Modifier.align(Alignment.TopEnd).size(14.dp)
+                            .background(Color(0xFFF44336), CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            Text(if (notifUnread > 9) "9+" else notifUnread.toString(),
+                                color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
             }
 
@@ -567,8 +597,9 @@ fun ProjectShellScreen(
                     }
                     Spacer(Modifier.weight(1f))
 
-                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showPersonMenu = true }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Person, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
+                    // Connectors hub (GitHub + SSH + Services)
+                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showConnectorsSheet = true }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.AccountCircle, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
                     }
                     Box(Modifier.fillMaxWidth().height(48.dp).clickable { showGearMenu = true }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Settings, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
@@ -1327,7 +1358,165 @@ fun ProjectShellScreen(
 
         // Simple overlay menus
         if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline","Split Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
-        if (showPersonMenu) { Box(Modifier.fillMaxSize().clickable { showPersonMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 110.dp, start = 4.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Sign in with GitHub","Sign in with Microsoft","Manage Accounts").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showPersonMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        // ── Connectors Hub Sheet ─────────────────────────────────────────
+        if (showConnectorsSheet) {
+            Box(Modifier.fillMaxSize().background(Color(0x88000000)).clickable { showConnectorsSheet = false }) {
+                Card(
+                    Modifier.align(Alignment.BottomStart)
+                        .padding(bottom = 0.dp)
+                        .fillMaxWidth()
+                        .clickable(onClick = {}), // eat clicks so card doesn't dismiss
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MenuBg),
+                    elevation = CardDefaults.cardElevation(12.dp),
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        // Handle bar
+                        Box(Modifier.align(Alignment.CenterHorizontally).width(40.dp).height(4.dp)
+                            .background(Color(0xFF555555), RoundedCornerShape(2.dp)))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Connectors", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MenuText)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Sign in and manage services", fontSize = 12.sp, color = Color(0xFF888888))
+                        Spacer(Modifier.height(16.dp))
+
+                        // GitHub
+                        ConnectorRow(
+                            icon = Icons.Default.Code,
+                            name = "GitHub",
+                            subtitle = "Clone, push, pull, PRs",
+                            color = Color(0xFF6E40C9),
+                            menuText = MenuText,
+                            onClick = {
+                                showConnectorsSheet = false
+                                showNotification("GitHub — use Source Control panel (branch icon)", "info")
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        // SSH
+                        ConnectorRow(
+                            icon = Icons.Default.Terminal,
+                            name = "SSH",
+                            subtitle = "Remote server access",
+                            color = Color(0xFF0097A7),
+                            menuText = MenuText,
+                            onClick = {
+                                showConnectorsSheet = false
+                                activePanel = SidePanel.EXTENSIONS
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        // AI Keys
+                        ConnectorRow(
+                            icon = Icons.Default.Psychology,
+                            name = "AI Providers",
+                            subtitle = "OpenAI, Anthropic, Gemini keys",
+                            color = Color(0xFF7B1FA2),
+                            menuText = MenuText,
+                            onClick = {
+                                showConnectorsSheet = false
+                                showNotification("Set AI keys in Settings → AI Config", "info")
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        // Services
+                        ConnectorRow(
+                            icon = Icons.Default.Cloud,
+                            name = "Services",
+                            subtitle = "Vercel, Netlify, Firebase, Docker",
+                            color = Color(0xFF1565C0),
+                            menuText = MenuText,
+                            onClick = {
+                                showConnectorsSheet = false
+                                showNotification("Service connectors coming soon", "info")
+                            }
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        // Manage Accounts
+                        Row(Modifier.fillMaxWidth()
+                            .background(Color(0xFF007ACC), RoundedCornerShape(8.dp))
+                            .clickable { showConnectorsSheet = false; showNotification("Manage Accounts → Settings", "info") }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.ManageAccounts, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Manage Accounts", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Spacer(Modifier.height(24.dp))
+                    }
+                }
+            }
+        }
+
+        // ── Notification Drawer ────────────────────────────────────────────
+        if (showNotifDrawer) {
+            Box(Modifier.fillMaxSize().background(Color(0x44000000)).clickable { showNotifDrawer = false }) {
+                Card(
+                    Modifier.align(Alignment.TopEnd)
+                        .padding(top = 28.dp, end = 4.dp)
+                        .width(300.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MenuBg),
+                    elevation = CardDefaults.cardElevation(12.dp),
+                ) {
+                    Column(Modifier.fillMaxWidth()) {
+                        // Header
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text("Notifications", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MenuText, modifier = Modifier.weight(1f))
+                            if (notifList.isNotEmpty()) {
+                                Text("Clear all", fontSize = 11.sp, color = Color(0xFF007ACC),
+                                    modifier = Modifier.clickable { notifList.clear(); notifUnread = 0 })
+                            }
+                        }
+                        HorizontalDivider(color = DividerColor)
+                        if (notifList.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                                Text("No notifications", fontSize = 13.sp, color = Color(0xFF888888))
+                            }
+                        } else {
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                                items(notifList) { notif ->
+                                    Row(
+                                        Modifier.fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                            .background(when (notif.type) {
+                                                "success" -> Color(0xFF1B4332)
+                                                "error"   -> Color(0xFF7F1D1D)
+                                                "warning" -> Color(0xFF7C4A00)
+                                                else      -> Color(0xFF2A2A2A)
+                                            }, RoundedCornerShape(16.dp))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            when (notif.type) {
+                                                "success" -> Icons.Default.Check
+                                                "error"   -> Icons.Default.Cancel
+                                                "warning" -> Icons.Default.Warning
+                                                else      -> Icons.Default.Info
+                                            },
+                                            null,
+                                            tint = when (notif.type) {
+                                                "success" -> Color(0xFF4CAF50)
+                                                "error"   -> Color(0xFFF44336)
+                                                "warning" -> Color(0xFFFF9800)
+                                                else      -> Color(0xFF64B5F6)
+                                            },
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(notif.msg, fontSize = 12.sp, color = MenuText, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
         if (showGearMenu) { Box(Modifier.fillMaxSize().clickable { showGearMenu = false }) { Card(Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp, start = 4.dp).width(280.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Settings","Color Theme","Terminal Theme","Setup Shell Profile","Setup Offline Shell","Install Offline Essentials","Backup Shell Profile","Restore Shell Profile","Keyboard Shortcuts","Extensions").forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "Color Theme" -> { showColorTheme = true; showGearMenu = false }; "Terminal Theme" -> { showTerminalThemePicker = true; showGearMenu = false }; "Setup Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; "Setup Offline Shell" -> { handleMenuAction(item); showGearMenu = false }; "Install Offline Essentials" -> { handleMenuAction(item); showGearMenu = false }; "Backup Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; "Restore Shell Profile" -> { handleMenuAction(item); showGearMenu = false }; else -> showGearMenu = false } }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showRunMenu) { Box(Modifier.fillMaxSize().clickable { showRunMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run Program","Start Debugging","Stop","Restart").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showRunMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
@@ -1410,4 +1599,35 @@ fun ProjectShellScreen(
         }
     }
 
+}
+
+@Composable
+private fun ConnectorRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    name: String,
+    subtitle: String,
+    color: Color,
+    menuText: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(Color(0x1A007ACC), RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(36.dp).background(color.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = menuText)
+            Text(subtitle, fontSize = 11.sp, color = Color(0xFF888888))
+        }
+        Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF555555), modifier = Modifier.size(16.dp))
+    }
 }
