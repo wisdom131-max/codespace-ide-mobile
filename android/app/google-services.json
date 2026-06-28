@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "872673459882",
+    "project_id": "codespace-ide-2026",
+    "storage_bucket": "codespace-ide-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:872673459882:android:74d81e99d8a54f2e2edad3",
+        "android_client_info": {
+          "package_name": "com.codespace.ide"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFr1uziXJCVbU43LdKB1uC2wLNe7sGZU0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
