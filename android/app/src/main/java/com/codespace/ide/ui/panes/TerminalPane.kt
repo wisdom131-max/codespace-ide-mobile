@@ -530,34 +530,79 @@ internal fun TerminalPane(
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696)) }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
                     offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
-                    DropdownMenuItem(text = { Text("+ New Bash Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    // ── TERMINALS ──────────────────────────────────────────
+                    DropdownMenuItem(
+                        leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
+                        text = { Text("TERMINALS", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
+                        onClick = {}, enabled = false)
+                    DropdownMenuItem(
+                        leadingIcon = { Text("${'$'}", fontSize = 13.sp, color = Color(0xFF89B4FA)) },
+                        text = { Text("New Bash Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; addTab() })
-                    DropdownMenuItem(text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("Default: Offline Mode (no Ubuntu)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("Default: Ubuntu Mode", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(text = { Text("🐧 Open Ubuntu Linux", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🐧", fontSize = 13.sp) },
+                        text = { Text("Open Ubuntu Linux", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = { showMenu = false; addUbuntuTab() })
-                    DropdownMenuItem(text = { Text("🤖 Run Ollama AI (in Ubuntu)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                    HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
+                    // ── AI & TOOLS ─────────────────────────────────────────────
+                    DropdownMenuItem(
+                        leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
+                        text = { Text("AI & TOOLS", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
+                        onClick = {}, enabled = false)
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🤖", fontSize = 13.sp) },
+                        text = { Text("Run Ollama AI (in Ubuntu)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             addUbuntuTab()
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 val ubuntuTab = tabs.lastOrNull()
-                                ubuntuTab?.session?.write("ollama serve &\nclear\necho \"Ollama running on :11434 — try: ollama run llama3\"\n")
+                                ubuntuTab?.session?.write("ollama serve &
+clear
+echo "Ollama running on :11434 — try: ollama run llama3"
+")
                             }, 3000)
                         })
-                    DropdownMenuItem(text = { Text("✕ Close This Tab", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("📦", fontSize = 13.sp) },
+                        text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
-                    DropdownMenuItem(text = { Text("🔑 SSH Manager", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    // ── DEFAULT MODE ───────────────────────────────────────────
+                    DropdownMenuItem(
+                        leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
+                        text = { Text("DEFAULT MODE", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
+                        onClick = {}, enabled = false)
+                    DropdownMenuItem(
+                        leadingIcon = { Text("⚡", fontSize = 13.sp) },
+                        text = { Text("Set Default: Offline / Bash", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default: Offline / Bash", android.widget.Toast.LENGTH_SHORT).show() })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🐧", fontSize = 13.sp) },
+                        text = { Text("Set Default: Ubuntu Mode", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default: Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
+                    HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
+                    // ── MANAGE ─────────────────────────────────────────────────
+                    DropdownMenuItem(
+                        leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
+                        text = { Text("MANAGE", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
+                        onClick = {}, enabled = false)
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🔑", fontSize = 13.sp) },
+                        text = { Text("SSH Manager", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; showSshManager = true })
-                    DropdownMenuItem(text = { Text("⚡ Text Expansions", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(
+                        leadingIcon = { Text("⚡", fontSize = 13.sp) },
+                        text = { Text("Text Expansions", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; showTextExpansions = true })
-                    DropdownMenuItem(text = { Text(if (showExtraKeys) "▲ Hide Extra Keys" else "▼ Show Extra Keys", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                    DropdownMenuItem(
+                        leadingIcon = { Text(if (showExtraKeys) "▲" else "▼", fontSize = 13.sp, color = Color(0xFF969696)) },
+                        text = { Text(if (showExtraKeys) "Hide Extra Keys" else "Show Extra Keys", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; showExtraKeys = !showExtraKeys })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("✕", fontSize = 13.sp, color = Color(0xFFFF6B6B)) },
+                        text = { Text("Close This Tab", color = Color(0xFFFF6B6B), fontSize = 13.sp) },
+                        onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
                 }
             }
         }
