@@ -15,6 +15,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.*
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -80,6 +82,7 @@ fun PreviewPane(
     }
 
     var activeMode by remember(activeFilePath) { mutableStateOf(defaultMode) }
+    var showGuide by remember { mutableStateOf(false) }
     var browserUrl by remember { mutableStateOf("http://localhost:3000") }
     var browserInput by remember { mutableStateOf("http://localhost:3000") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -141,6 +144,14 @@ fun PreviewPane(
                         strokeWidth = 2.dp,
                     )
                 }
+                Icon(
+                    Icons.Default.HelpOutline,
+                    contentDescription = "How to use Preview",
+                    tint = TextMuted,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { showGuide = true }
+                )
                 Icon(
                     Icons.Default.Refresh,
                     contentDescription = "Refresh",
@@ -215,6 +226,52 @@ fun PreviewPane(
                     .background(Surface)
                     .padding(horizontal = 12.dp, vertical = 2.dp),
                 maxLines = 1,
+            )
+        }
+
+        // ── How-to-use guide dialog ─────────────────────────────────────
+        if (showGuide) {
+            AlertDialog(
+                onDismissRequest = { showGuide = false },
+                containerColor = Color(0xFF1E1E1E),
+                titleContentColor = Color(0xFFD4D4D4),
+                textContentColor = Color(0xFF9CDCFE),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Visibility, null, tint = Color(0xFFFF79C6), modifier = Modifier.size(20.dp))
+                        Text("How to use Preview", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        PreviewGuideRow("HTML", Color(0xFF4EC9B0),
+                            "Open any .html, .htm file. Full JS + CSS rendering. CSS files preview against demo elements. JS files capture console.log output.")
+                        PreviewGuideRow("Markdown", Color(0xFF569CD6),
+                            "Open any .md file. Rendered with dark-mode styling (h1–h4, code blocks, tables, blockquotes). Requires internet for marked.js.")
+                        PreviewGuideRow("SVG", Color(0xFFF1FA8C),
+                            "Open any .svg file. Rendered centered on a dark background. No JS.")
+                        PreviewGuideRow("Browser", Color(0xFFFF79C6),
+                            "Type any URL in the address bar and tap Go. Default is localhost:3000 — start your dev server in the terminal first, then switch here to see it live.")
+                        Divider(color = Color(0xFF3C3C3C))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF252526))
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Icon(Icons.Default.Lightbulb, null, tint = Color(0xFFF1FA8C), modifier = Modifier.size(14.dp))
+                            Text("Tap ↺ to manually refresh. The preview auto-updates when you switch files.", fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showGuide = false }) {
+                        Text("Got it", color = Accent, fontWeight = FontWeight.SemiBold)
+                    }
+                },
             )
         }
 
@@ -456,3 +513,26 @@ private fun BrowserPreview(
     )
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PreviewGuideRow — used inside the how-to-use dialog
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun PreviewGuideRow(mode: String, accent: Color, description: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(accent.copy(alpha = 0.15f))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        ) {
+            Text(mode, fontSize = 10.sp, color = accent, fontWeight = FontWeight.Bold)
+        }
+        Text(description, fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp, modifier = Modifier.weight(1f))
+    }
+}
