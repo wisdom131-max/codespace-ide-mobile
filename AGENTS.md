@@ -869,3 +869,47 @@ import androidx.compose.runtime.LaunchedEffect
 ```
 These may not be in ExplorerPane.kt's existing imports. Fix = add them explicitly.
 
+---
+
+## OWNER / ADMIN RECOGNITION — June 28, 2026
+
+### How it works (fully implemented)
+1. User taps "Sign in with Google" on `AuthScreen.kt`
+2. Firebase Credential Manager gets a Google ID token
+3. App posts the Firebase ID token to `POST /api/v1/auth/google`
+4. Backend (`auth.service.ts`) verifies the token with Firebase Admin SDK
+5. If the email matches `OWNER_EMAIL` env var → user gets `role: "owner"` in DB
+6. Backend returns `{ accessToken, refreshToken, role }` as JWT
+7. `CodeSpaceApp.kt` stores `refreshToken` + `role` in `SecureTokenStore`
+8. `tokenStore.isOwner` (true/false) is available anywhere via DI
+
+### To activate owner role for Wisdom
+Set this env var on the backend server:
+```
+OWNER_EMAIL=wisdom@gmail.com   # <-- replace with the actual Google account email
+```
+
+### Files involved
+| File | Role |
+|---|---|
+| `backend/src/auth/auth.service.ts` | `OWNER_EMAIL` check → stamps `role=owner` |
+| `backend/src/users/user.entity.ts` | `UserRole.OWNER / USER` enum + DB column |
+| `android/.../ui/screens/AuthScreen.kt` | Google Sign-In, calls `/auth/google`, returns `AuthResult(role=...)` |
+| `android/.../ui/CodeSpaceApp.kt` | Saves `result.role` to `tokenStore.userRole` on auth |
+| `android/.../data/SecureTokenStore.kt` | `userRole: String`, `isOwner: Boolean` — persisted encrypted |
+
+### Using isOwner in any screen
+```kotlin
+@Inject lateinit var tokenStore: SecureTokenStore
+// then:
+if (tokenStore.isOwner) { /* show admin options */ }
+```
+
+### Backend env vars needed (not yet set on production server)
+```
+OWNER_EMAIL=<wisdom's google email>
+FIREBASE_PROJECT_ID=<from google-services.json>
+FIREBASE_CLIENT_EMAIL=<firebase service account>
+FIREBASE_PRIVATE_KEY=<firebase service account private key>
+```
+
