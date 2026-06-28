@@ -12,7 +12,20 @@
           "package_name": "com.codespace.ide"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "872673459882-3sjd4bb4msmjuem6lbk511n73cpaok7k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.codespace.ide",
+            "certificate_hash": "4d893a14f7acd523ffd19f34957d5e4a7bda9223"
+          }
+        },
+        {
+          "client_id": "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAFr1uziXJCVbU43LdKB1uC2wLNe7sGZU0"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
