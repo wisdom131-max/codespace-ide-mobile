@@ -51,8 +51,9 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore) {
         val nav = rememberNavController()
         NavHost(navController = nav, startDestination = startDest) {
             composable(Routes.AUTH) {
-                AuthScreen(onAuthenticated = { token ->
-                    tokenStore.refreshToken = token
+                AuthScreen(onAuthenticated = { result ->
+                    tokenStore.refreshToken = result.refreshToken
+                    tokenStore.userRole     = result.role
                     nav.navigate(Routes.HOME) {
                         popUpTo(Routes.AUTH) { inclusive = true }
                     }
