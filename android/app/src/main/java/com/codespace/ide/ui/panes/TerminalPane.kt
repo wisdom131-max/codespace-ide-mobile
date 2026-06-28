@@ -108,7 +108,26 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         } catch (_: Exception) {}
     }
     override fun onColorsChanged(session: TerminalSession) {}
-    override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
+    override fun setTerminalShellPid(session: TerminalSession, pid: Int) {
+        // Move child process into foreground cgroup — PREVENTS phantom process killer (signal 31).
+        // Android 12+ LMKD/phantom process killer kills child processes whose parent is NOT
+        // a foreground service. setProcessGroup(pid, THREAD_GROUP_FOREGROUND) re-assigns
+        // the child to the foreground cgroup, making Android treat it as a protected process.
+        // WakeLock alone does NOT protect child processes on TECNO/Samsung Android 14.
+        try {
+            // Try TOP_APP first (highest priority cgroup — same as foreground UI).
+            // Fallback to FOREGROUND if permission denied on some ROM builds.
+            android.os.Process.setProcessGroup(pid, android.os.Process.THREAD_GROUP_TOP_APP)
+            android.util.Log.d("TerminalSession", "setProcessGroup($pid, TOP_APP) — phantom kill protection active")
+        } catch (_: Exception) {
+            try {
+                android.os.Process.setProcessGroup(pid, android.os.Process.THREAD_GROUP_FOREGROUND)
+                android.util.Log.d("TerminalSession", "setProcessGroup($pid, FOREGROUND) — fallback protection active")
+            } catch (e2: Exception) {
+                android.util.Log.w("TerminalSession", "setProcessGroup failed entirely (non-fatal): ${e2.message}")
+            }
+        }
+    }
     override fun getTerminalCursorStyle(): Int? = null
     override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
     override fun logWarn(tag: String?, message: String?) { Log.w(tag, message ?: "") }
