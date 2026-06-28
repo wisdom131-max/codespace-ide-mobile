@@ -34,6 +34,7 @@ data class OnboardingStep(
     val title: String,
     val description: String,
     val tip: String? = null,
+    val bullets: List<String> = emptyList(),
 )
 
 private val steps = listOf(
@@ -92,6 +93,19 @@ private val steps = listOf(
         title = "Settings & Themes",
         description = "Change color themes, terminal themes, set up your shell profile, install offline essentials, and configure keyboard shortcuts.",
         tip = "Tap the ⚙ gear icon at the bottom of the sidebar to open the settings menu."
+    ),
+    OnboardingStep(
+        icon = Icons.Default.Visibility,
+        iconTint = Color(0xFFFF79C6),
+        title = "Preview Panel",
+        description = "Live preview for 4 file types — no browser switching needed.",
+        bullets = listOf(
+            "HTML  →  full render with JS & CSS",
+            "Markdown  →  styled dark-mode render",
+            "SVG  →  centered vector preview",
+            "Browser  →  embedded browser, point it at localhost:3000",
+        ),
+        tip = "Open any .html / .md / .svg file then tap PREVIEW in the bottom panel."
     ),
 )
 
@@ -201,6 +215,29 @@ fun OnboardingWalkthrough(onDone: () -> Unit) {
                             textAlign = TextAlign.Center,
                             lineHeight = 22.sp
                         )
+
+                        // Bullet list (optional)
+                        if (s.bullets.isNotEmpty()) {
+                            Spacer(Modifier.height(14.dp))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF252526))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                s.bullets.forEach { bullet ->
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text("▸", fontSize = 11.sp, color = s.iconTint, modifier = Modifier.padding(top = 1.dp))
+                                        Text(bullet, fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp)
+                                    }
+                                }
+                            }
+                        }
 
                         // Tip chip
                         if (s.tip != null) {
