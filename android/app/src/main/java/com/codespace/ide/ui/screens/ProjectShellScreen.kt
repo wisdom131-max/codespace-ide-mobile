@@ -363,6 +363,8 @@ fun ProjectShellScreen(
     var showReplaceRow     by remember { mutableStateOf(false) }
     var showMoreMenu       by remember { mutableStateOf(false) }
     var showPersonMenu     by remember { mutableStateOf(false) }
+    var showChatPanel      by remember { mutableStateOf(false) }
+    var chatInput          by remember { mutableStateOf("") }
     var terminalCommandToRun by remember { mutableStateOf<String?>(null) }
     var showGearMenu       by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
@@ -514,6 +516,15 @@ fun ProjectShellScreen(
                     modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT })
                 Spacer(Modifier.width(8.dp))
 
+                Box(
+                    Modifier
+                        .background(if (showChatPanel) Color(0xFF007ACC) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .clickable { showChatPanel = !showChatPanel }
+                        .padding(4.dp)
+                ) {
+                    Icon(Icons.Default.Chat, null, tint = if (showChatPanel) Color.White else TabTextInactive, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Notifications, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
             }
@@ -598,8 +609,9 @@ fun ProjectShellScreen(
                     )
                 }
 
-                // Editor Column
-                Column(Modifier.weight(1f).fillMaxHeight()) {
+                // Editor Column + right Chat Panel
+                val editorWeight = if (showChatPanel) 0.55f else 1f
+                Column(Modifier.weight(editorWeight).fillMaxHeight()) {
 
                     // Editor tab bar
                     if (editorTabs.isNotEmpty()) {
@@ -880,7 +892,79 @@ fun ProjectShellScreen(
                     }
                 }
 
-            } // end main Row
+            } // end main Row (editor + optional chat panel)
+
+            // ── VS Code Copilot Chat Panel (right side) ─────────────────
+            if (showChatPanel) {
+                Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
+                Column(
+                    Modifier.weight(0.45f).fillMaxHeight().background(Color(0xFF1F1F1F))
+                ) {
+                    // Chat header
+                    Row(
+                        Modifier.fillMaxWidth().height(35.dp).background(Color(0xFF252526)).padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("CHAT", fontSize = 11.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.Add, null, tint = Color(0xFF858585), modifier = Modifier.size(16.dp).clickable { /* new chat */ })
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.Close, null, tint = Color(0xFF858585), modifier = Modifier.size(16.dp).clickable { showChatPanel = false })
+                    }
+                    HorizontalDivider(color = Color(0xFF333333))
+
+                    // Chat body
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(
+                            Modifier.fillMaxSize().padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            // Copilot chat icon (speech bubble)
+                            Icon(Icons.Default.Chat, null, tint = Color(0xFF569CD6), modifier = Modifier.size(40.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Ask about your code", fontSize = 16.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(6.dp))
+                            Text("AI responses may be inaccurate.", fontSize = 11.sp, color = Color(0xFF717171))
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFF333333))
+                    // Model + input row
+                    Column(Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(Color(0xFF2D2D2D), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("@ Add Context…", fontSize = 12.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(Color(0xFF2D2D2D), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Describe what to build next", fontSize = 12.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
+                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.Mic, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.Send, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Agent", fontSize = 11.sp, color = Color(0xFF569CD6))
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.ExpandMore, null, tint = Color(0xFF717171), modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Claude Opus 4.5", fontSize = 11.sp, color = Color(0xFF858585))
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.ExpandMore, null, tint = Color(0xFF717171), modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
 
             // Status Bar
             HorizontalDivider(color = DividerColor)
