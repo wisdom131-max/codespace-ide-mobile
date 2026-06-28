@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import java.io.File
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -192,13 +193,61 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
     override fun isTerminalViewSelected(): Boolean = true
     override fun copyModeChanged(copyMode: Boolean) {}
-    override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean = false
-    override fun onKeyUp(keyCode: Int, e: KeyEvent?): Boolean = false
+    // Key state tracking — Termux pattern for hardware keyboard modifier awareness
+    private var ctrlKeyDown  = false
+    private var altKeyDown   = false
+    private var shiftKeyDown = false
+
+    // Callbacks wired from TerminalPane so shortcuts can act on tab state
+    var onNewTab:      (() -> Unit)? = null
+    var onCloseTab:    (() -> Unit)? = null
+    var onPrevTab:     (() -> Unit)? = null
+    var onNextTab:     (() -> Unit)? = null
+    var onClearScreen: (() -> Unit)? = null
+
+    override fun readControlKey(): Boolean = ctrlKeyDown
+    override fun readAltKey():     Boolean = altKeyDown
+    override fun readShiftKey():   Boolean = shiftKeyDown
+    override fun readFnKey():      Boolean = false
+
+    override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean {
+        val isCtrl  = e?.isCtrlPressed  == true
+        val isAlt   = e?.isAltPressed   == true
+        val isShift = e?.isShiftPressed == true
+        // Track modifier state for readControlKey()/readAltKey()
+        if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT  || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT)  { ctrlKeyDown = true;  return false }
+        if (keyCode == KeyEvent.KEYCODE_ALT_LEFT   || keyCode == KeyEvent.KEYCODE_ALT_RIGHT)   { altKeyDown  = true;  return false }
+        if (keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) { shiftKeyDown = true; return false }
+        // ── Termux-style Ctrl+Alt shortcuts ──
+        // Ctrl+Alt+N = new tab, Ctrl+Alt+W = close tab
+        // Ctrl+Alt+← / P = prev tab, Ctrl+Alt+→ / N = next tab
+        // Ctrl+Alt+L = clear screen
+        if (isCtrl && isAlt) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_N                  -> { onNewTab?.invoke();      return true }
+                KeyEvent.KEYCODE_W                  -> { onCloseTab?.invoke();    return true }
+                KeyEvent.KEYCODE_P,
+                KeyEvent.KEYCODE_DPAD_LEFT          -> { onPrevTab?.invoke();     return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT         -> { onNextTab?.invoke();     return true }
+                KeyEvent.KEYCODE_L                  -> { onClearScreen?.invoke(); return true }
+            }
+        }
+        // Ctrl+L = clear screen (common convention, non-destructive)
+        if (isCtrl && keyCode == KeyEvent.KEYCODE_L && !isAlt) {
+            session?.write("")  // form feed = clear
+            return true
+        }
+        return false
+    }
+
+    override fun onKeyUp(keyCode: Int, e: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT  || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT)  { ctrlKeyDown = false;  return false }
+        if (keyCode == KeyEvent.KEYCODE_ALT_LEFT   || keyCode == KeyEvent.KEYCODE_ALT_RIGHT)   { altKeyDown  = false;  return false }
+        if (keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) { shiftKeyDown = false; return false }
+        return false
+    }
+
     override fun onLongPress(e: MotionEvent?): Boolean = false
-    override fun readControlKey(): Boolean = false
-    override fun readAltKey(): Boolean = false
-    override fun readShiftKey(): Boolean = false
-    override fun readFnKey(): Boolean = false
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean = false
     override fun onEmulatorSet() {
         terminalView?.setTerminalCursorBlinkerState(true, true)
@@ -213,6 +262,77 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
 }
 
 internal data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
+
+// ── Built-in color schemes — matching Termux's bundled themes ──────────────────
+internal object TerminalSchemes {
+    data class Scheme(val name: String, val fg: Int, val bg: Int, val cursor: Int, val colors: IntArray)
+
+    // Helper: apply a scheme to the static COLOR_SCHEME singleton that all TerminalColors instances reset from
+    fun apply(scheme: Scheme) {
+        val cs = com.termux.terminal.TerminalColors.COLOR_SCHEME
+        cs.mDefaultColors[com.termux.terminal.TextStyle.COLOR_INDEX_FOREGROUND] = scheme.fg
+        cs.mDefaultColors[com.termux.terminal.TextStyle.COLOR_INDEX_BACKGROUND] = scheme.bg
+        cs.mDefaultColors[com.termux.terminal.TextStyle.COLOR_INDEX_CURSOR]     = scheme.cursor
+        for (i in scheme.colors.indices.take(16)) cs.mDefaultColors[i] = scheme.colors[i]
+    }
+
+    val DARK = Scheme("Dark",
+        fg     = 0xFFE5E5E5.toInt(),
+        bg     = 0xFF000000.toInt(),
+        cursor = 0xFFFFFFFF.toInt(),
+        colors = intArrayOf(
+            0xFF000000.toInt(), 0xFFCD0000.toInt(), 0xFF00CD00.toInt(), 0xFFCDCD00.toInt(),
+            0xFF6495ED.toInt(), 0xFFCD00CD.toInt(), 0xFF00CDCD.toInt(), 0xFFE5E5E5.toInt(),
+            0xFF7F7F7F.toInt(), 0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFFFFFF00.toInt(),
+            0xFF5C5CFF.toInt(), 0xFFFF00FF.toInt(), 0xFF00FFFF.toInt(), 0xFFFFFFFF.toInt()
+        ))
+
+    val DRACULA = Scheme("Dracula",
+        fg     = 0xFFF8F8F2.toInt(),
+        bg     = 0xFF282A36.toInt(),
+        cursor = 0xFFBBBBBB.toInt(),
+        colors = intArrayOf(
+            0xFF21222C.toInt(), 0xFFFF5555.toInt(), 0xFF50FA7B.toInt(), 0xFFF1FA8C.toInt(),
+            0xFFBD93F9.toInt(), 0xFFFF79C6.toInt(), 0xFF8BE9FD.toInt(), 0xFFF8F8F2.toInt(),
+            0xFF6272A4.toInt(), 0xFFFF6E6E.toInt(), 0xFF69FF94.toInt(), 0xFFFFFFA5.toInt(),
+            0xFFD6ACFF.toInt(), 0xFFFF92DF.toInt(), 0xFFA4FFFF.toInt(), 0xFFFFFFFF.toInt()
+        ))
+
+    val SOLARIZED_DARK = Scheme("Solarized Dark",
+        fg     = 0xFF839496.toInt(),
+        bg     = 0xFF002B36.toInt(),
+        cursor = 0xFF839496.toInt(),
+        colors = intArrayOf(
+            0xFF073642.toInt(), 0xFFDC322F.toInt(), 0xFF859900.toInt(), 0xFFB58900.toInt(),
+            0xFF268BD2.toInt(), 0xFFD33682.toInt(), 0xFF2AA198.toInt(), 0xFF839496.toInt(),
+            0xFF002B36.toInt(), 0xFFCB4B16.toInt(), 0xFF586E75.toInt(), 0xFF657B83.toInt(),
+            0xFF839496.toInt(), 0xFF6C71C4.toInt(), 0xFF93A1A1.toInt(), 0xFFFDF6E3.toInt()
+        ))
+
+    val MONOKAI = Scheme("Monokai",
+        fg     = 0xFFF8F8F2.toInt(),
+        bg     = 0xFF1B1D1E.toInt(),
+        cursor = 0xFFF92672.toInt(),
+        colors = intArrayOf(
+            0xFF1B1D1E.toInt(), 0xFFF92672.toInt(), 0xFFA6E22E.toInt(), 0xFFFD971F.toInt(),
+            0xFF66D9EF.toInt(), 0xFF9E6EFE.toInt(), 0xFF529B2F.toInt(), 0xFFF8F8F2.toInt(),
+            0xFF75715E.toInt(), 0xFFF92672.toInt(), 0xFFA6E22E.toInt(), 0xFFF4BF75.toInt(),
+            0xFF66D9EF.toInt(), 0xFFAE81FF.toInt(), 0xFFA1EFE4.toInt(), 0xFFF9F8F5.toInt()
+        ))
+
+    val GRUVBOX = Scheme("Gruvbox",
+        fg     = 0xFFEBDBB2.toInt(),
+        bg     = 0xFF282828.toInt(),
+        cursor = 0xFFEBDBB2.toInt(),
+        colors = intArrayOf(
+            0xFF282828.toInt(), 0xFFCC241D.toInt(), 0xFF98971A.toInt(), 0xFFD79921.toInt(),
+            0xFF458588.toInt(), 0xFFB16286.toInt(), 0xFF689D6A.toInt(), 0xFFA89984.toInt(),
+            0xFF928374.toInt(), 0xFFFB4934.toInt(), 0xFFB8BB26.toInt(), 0xFFFABD2F.toInt(),
+            0xFF83A598.toInt(), 0xFFD3869B.toInt(), 0xFF8EC07C.toInt(), 0xFFEBDBB2.toInt()
+        ))
+
+    val ALL = listOf(DARK, DRACULA, SOLARIZED_DARK, MONOKAI, GRUVBOX)
+}
 
 internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
     val client = SimpleTerminalSessionClient()
@@ -329,6 +449,8 @@ internal fun TerminalPane(
     var isRootMode        by remember { mutableStateOf(false) }
     var showSttHint       by remember { mutableStateOf(false) }
     var zshSetupDone      by remember { mutableStateOf(false) }
+    var showSchemeMenu    by remember { mutableStateOf(false) }
+    var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     // Use shared state if provided, otherwise own state
@@ -616,6 +738,11 @@ internal fun TerminalPane(
                         text = { Text(if (showExtraKeys) "Hide Extra Keys" else "Show Extra Keys", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; showExtraKeys = !showExtraKeys })
                     DropdownMenuItem(
+                        leadingIcon = { Text("🎨", fontSize = 13.sp, color = Color(0xFFCCCCCC)) },
+                        text = { Text("Color Scheme: ${activeScheme.name}", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; showSchemeMenu = true }
+                    )
+                    DropdownMenuItem(
                         leadingIcon = { Text("✕", fontSize = 13.sp, color = Color(0xFFFF6B6B)) },
                         text = { Text("Close This Tab", color = Color(0xFFFF6B6B), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
@@ -797,6 +924,47 @@ internal fun TerminalPane(
             )
         }
 
+        // Color scheme picker dialog
+        if (showSchemeMenu) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showSchemeMenu = false }) {
+                androidx.compose.material3.Card(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = Color(0xFF252526)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Terminal Color Scheme", color = Color(0xFFCCCCCC), fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
+                        TerminalSchemes.ALL.forEach { scheme ->
+                            val isActive = scheme.name == activeScheme.name
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable {
+                                        activeScheme = scheme
+                                        TerminalSchemes.apply(scheme)
+                                        // Reset emulator colors so change takes effect immediately
+                                        currentView.value?.mEmulator?.mColors?.reset()
+                                        currentView.value?.onScreenUpdated()
+                                        showSchemeMenu = false
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Color preview swatch
+                                Box(Modifier.size(20.dp)
+                                    .background(Color(scheme.bg.toLong() or 0xFF000000L), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .border(1.dp, Color(scheme.fg.toLong() or 0xFF000000L), androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                Spacer(Modifier.width(10.dp))
+                                Text(scheme.name, color = if (isActive) Color(0xFF89B4FA) else Color(0xFFCCCCCC), fontSize = 13.sp)
+                                if (isActive) { Spacer(Modifier.weight(1f)); Text("✔", color = Color(0xFF89B4FA), fontSize = 12.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Text Expansion manager sheet
         if (showTextExpansions) {
             TextExpansionSheet(onDismiss = { showTextExpansions = false })
@@ -857,6 +1025,16 @@ internal fun TerminalPane(
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
                             active.client.initBell(view.context)
+                            // Wire hardware keyboard shortcuts to tab actions
+                            val viewClient2 = view.mTerminalViewClient as? SimpleTerminalViewClient
+                            if (viewClient2 != null) {
+                                viewClient2.onNewTab      = { addTab() }
+                                viewClient2.onCloseTab    = { closeTab(active.id) }
+                                viewClient2.onPrevTab     = { val i = tabs.indexOfFirst { it.id == activeId }; if (i > 0) activeId = tabs[i-1].id else if (tabs.isNotEmpty()) activeId = tabs.last().id }
+                                viewClient2.onNextTab     = { val i = tabs.indexOfFirst { it.id == activeId }; activeId = if (i < tabs.size-1) tabs[i+1].id else tabs.first().id }
+                                viewClient2.onClearScreen = { active.session.write("clear
+") }
+                            }
                             view.requestFocus()
                         }
                     }
