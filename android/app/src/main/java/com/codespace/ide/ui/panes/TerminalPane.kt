@@ -445,7 +445,7 @@ internal fun TerminalPane(
     var renameValue     by remember { mutableStateOf("") }
     var showSshManager    by remember { mutableStateOf(false) }
     var showTextExpansions by remember { mutableStateOf(false) }
-    var showExtraKeys     by remember { mutableStateOf(true) }
+    var showExtraKeys     by remember { mutableStateOf(false) }
     var isRootMode        by remember { mutableStateOf(false) }
     var showSttHint       by remember { mutableStateOf(false) }
     var zshSetupDone      by remember { mutableStateOf(false) }
