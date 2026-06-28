@@ -719,14 +719,9 @@ internal fun TerminalPane(
                     .clickable {
                         try {
                             val screen = active?.session?.getEmulator()?.screen
-                            val sb = StringBuilder()
-                            if (screen != null) {
-                                for (row in 0 until screen.activeRows) {
-                                    sb.appendLine(screen.getSelectedText(0, row, screen.mColumns, row).trimEnd())
-                                }
-                            }
+                            val text = screen?.getTranscriptText() ?: ""
                             val file = java.io.File(context.getExternalFilesDir(null), "terminal_export_${System.currentTimeMillis()}.txt")
-                            file.writeText(sb.toString())
+                            file.writeText(text)
                             android.widget.Toast.makeText(context, "Saved to: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
                             android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
