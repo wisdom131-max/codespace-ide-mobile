@@ -8,7 +8,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Encrypted, Keystore-backed storage for refresh tokens and BYOK AI API keys.
+ * Encrypted, Keystore-backed storage for tokens, role, and BYOK AI API keys.
  * Access tokens are kept in memory only.
  */
 @Singleton
@@ -31,6 +31,13 @@ class SecureTokenStore @Inject constructor(
         get() = prefs.getString(KEY_REFRESH, null)
         set(value) = prefs.edit().putString(KEY_REFRESH, value).apply()
 
+    /** "owner" | "user" — persisted across restarts */
+    var userRole: String
+        get() = prefs.getString(KEY_ROLE, "user") ?: "user"
+        set(value) = prefs.edit().putString(KEY_ROLE, value).apply()
+
+    val isOwner: Boolean get() = userRole == "owner"
+
     fun aiKey(provider: String): String? = prefs.getString("ai_$provider", null)
     fun setAiKey(provider: String, key: String?) =
         prefs.edit().putString("ai_$provider", key).apply()
@@ -39,5 +46,6 @@ class SecureTokenStore @Inject constructor(
 
     private companion object {
         const val KEY_REFRESH = "refresh_token"
+        const val KEY_ROLE    = "user_role"
     }
 }
