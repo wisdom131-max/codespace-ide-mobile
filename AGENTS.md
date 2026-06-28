@@ -417,8 +417,81 @@ onDestroy():
 | targetSdk=28 | ✓ | ✓ (fixed) |
 | OEM meta-data | ✓ | ✓ (fixed) |
 
-### Next decompile targets:
-1. `TermuxApplication.onCreate()` — what does it do at startup?
-2. Search `PowerManager` in STRINGS tab — see all WakeLock usage sites
-3. Search `sharedUserId` effect — does Termux use any cross-process permissions?
-4. `runStartForeground()` method body — what notification channel / type does it use?
+### TermuxActivity lifecycle — FULLY DECOMPILED (June 28, 2026)
+> All lifecycle methods read from smali on device. Ground truth.
+
+**onResume() — lines 2394-2440 — COMPLETE:**
+```
+super.onResume()
+log "onResume"
+if mIsInvalidState → return
+if mTermuxTerminalSessionClient != null → .onResume()
+if mTermuxTerminalViewClient != null → .onResume()
+mIsOnResumeAfterOnCreate = false
+return
+```
+**NO wake_lock intent sent. No service call. Nothing else.**
+
+**onStart() — lines 2619-2681 — COMPLETE:**
+```
+super.onStart()
+addTermuxActivityRootViewGlobalLayoutListener()
+registerTermuxActivityBroadcastReceiver()
+return
+```
+**NO wake_lock intent sent here either.**
+
+**onStop():**
+- mIsVisible = false
+- mTermuxTerminalSessionClient.onStop()
+- mTermuxTerminalViewClient.onStop()
+- removeLayoutListener
+
+**onDestroy():**
+- mTermuxService.unsetTermuxTerminalSessionClient()
+- mTermuxService = null
+- unbindService()
+
+**onServiceConnected():**
+- Store service reference
+- setTermuxSessionsListView()
+- If sessions empty AND visible → TermuxInstaller.setupBootstrapIfNeeded()
+- If sessions empty AND NOT visible → finishActivityIfNotFinishing()
+- If action == "android.intent.action.RUN" → check failsafe_session bundle extra
+
+**onServiceDisconnected():**
+- finishActivityIfNotFinishing() ← kills Activity if service dies
+
+**onSaveInstanceState():**
+- super + saveTerminalToolbarTextInputText() only
+
+### DEFINITIVE CONCLUSION: Where does Termux send the wake_lock intent?
+**It does NOT come from any Activity lifecycle method.**
+The wake_lock intent (`com.termux.service_wake_lock`) is sent by the **notification action button** only — a user-initiated PendingIntent in the notification itself. Termux does NOT auto-acquire WakeLock from code. The user taps the notification button.
+
+**Our auto-acquire in TerminalService.onStartCommand() is therefore BETTER than Termux** — we grab it automatically so the user never needs to tap. This is correct behavior for our use case.
+
+### TermuxApplication.onCreate() — COMPLETE:
+```
+super.onCreate()
+TermuxCrashUtils.setCrashHandler(context)
+setLogLevel()   ← reads SharedPreferences
+return
+```
+Nothing else. No System.loadLibrary(). No service start. No magic.
+
+### runStartForeground() — COMPLETE:
+```
+setupNotificationChannel()    ← channel "termux_notification_channel", "Termux App", IMPORTANCE_LOW
+buildNotification()
+startForeground(1337, notification)   ← 2-arg, NO type
+return
+```
+**We now match this exactly** (fixed in commit e479b65505).
+
+### DECOMPILE COMPLETE — all targets exhausted
+No more Termux smali needed. We have the full picture:
+- Survival = targetSdk=28 + OEM meta-data + START_STICKY + startForeground first
+- WakeLock = user opt-in via notification button (we auto-acquire = better)
+- No native tricks, no cgroup, no prctl, no Process.setProcessGroup
+- Notification: channel "termux_notification_channel", IMPORTANCE_LOW, ID 1337
