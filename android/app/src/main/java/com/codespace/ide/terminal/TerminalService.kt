@@ -174,7 +174,7 @@ class TerminalService : Service() {
     // Fork happens HERE, inside the Service. Parent PID = Service process.
     // Android phantom process killer does NOT kill children of foreground services.
     // This is the exact same pattern Termux uses (TermuxService.executeTermuxSessionCommand).
-    fun createSession(isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
+    internal fun createSession(isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
         val client = SimpleTerminalSessionClient()
         client.appContext = applicationContext
 
