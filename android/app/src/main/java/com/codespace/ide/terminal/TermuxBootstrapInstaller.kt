@@ -174,8 +174,10 @@ object TermuxBootstrapInstaller {
             "TMPDIR=$prefix/tmp",
             "SHELL=$prefix/bin/bash",
             "LANG=en_US.UTF-8",
-            "LD_LIBRARY_PATH=$prefix/lib:$nativeDir",
-            "LD_PRELOAD=$nativeDir/libtermux-exec.so"
+            "LD_LIBRARY_PATH=$prefix/lib:$nativeDir"
+            // NOTE: NO LD_PRELOAD here — libtermux-exec.so is only for the Ubuntu/proot tab.
+            // Setting it on the bash tab causes "/etc/profile: Permission denied" because
+            // exec() interceptor tries to access /data/data/com.termux paths we don't own.
         )
         return Pair(shell, env)
     }
@@ -206,5 +208,19 @@ echo "VN Code bash ready — \$(bash --version | head -1)"
 
         // tmp dir must exist
         File(prefix, "tmp").mkdirs()
+
+        // apt.conf — disable GPG signature verification.
+        // Samsung kernel 5.15 blocks fork() inside proot ptrace, so gpgv (a subprocess
+        // apt forks to verify signatures) always exits with "Bad system call".
+        // This makes `apt update` and `apt install` work despite the kernel restriction.
+        val aptConf = File(prefix, "etc/apt/apt.conf.d/99-vncode-nogpg")
+        aptConf.parentFile?.mkdirs()
+        aptConf.writeText("""
+// VN Code — disable GPG check (Samsung kernel blocks gpgv subprocess)
+APT::Get::AllowUnauthenticated "true";
+Acquire::AllowInsecureRepositories "true";
+Acquire::AllowDowngradeToInsecureRepositories "true";
+APT::Sandbox::User "root";
+""".trimIndent())
     }
 }
