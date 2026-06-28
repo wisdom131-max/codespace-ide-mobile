@@ -33,6 +33,9 @@ import androidx.documentfile.provider.DocumentFile
 import android.content.ClipboardManager
 import android.content.ClipData
 import java.io.File
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 
 private val BgColor      = Color(0xFFFFFFFF)
 private val SelectedBg   = Color(0xFFCCE5FF)
@@ -586,23 +589,184 @@ private fun fileIcon(name: String) = when {
 }
 
 @Composable fun ExtensionsPanel() {
-    var extQuery by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().padding(8.dp)) {
-        OutlinedTextField(value = extQuery, onValueChange = { extQuery = it },
-            label = { Text("Search Extensions") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        Text("INSTALLED", fontSize = 11.sp, color = Color(0xFF717171))
-        listOf("Kotlin", "Git Lens", "Prettier", "ESLint").forEach { ext ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Extension, null, tint = Color(0xFF007ACC),
-                    modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(ext, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("✓", fontSize = 12.sp, color = Color(0xFF4CAF50))
+    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    // Installed packages: read from Ubuntu dpkg status file
+    var installed by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loadError by remember { mutableStateOf("") }
+
+    // Suggested packages — curated list of useful proot/Ubuntu tools
+    val suggested = listOf(
+        "python3"         to "Python 3 interpreter & pip",
+        "nodejs"          to "Node.js JavaScript runtime",
+        "git"             to "Distributed version control system",
+        "curl"            to "HTTP client (already pre-installed)",
+        "vim"             to "Terminal text editor",
+        "nano"            to "Simple terminal text editor",
+        "htop"            to "Interactive process viewer",
+        "tmux"            to "Terminal multiplexer / split panes",
+        "gcc"             to "GNU C / C++ compiler",
+        "make"            to "Build automation tool",
+        "jq"              to "Command-line JSON processor",
+        "sqlite3"         to "Lightweight SQL database",
+        "ffmpeg"          to "Audio/video conversion toolkit",
+        "php"             to "PHP scripting language",
+        "ruby"            to "Ruby language interpreter",
+        "golang-go"       to "Go programming language",
+        "rustc"           to "Rust compiler",
+        "clang"           to "LLVM C/C++ compiler",
+        "neofetch"        to "System info display tool",
+        "tree"            to "Directory tree viewer",
+        "wget"            to "Non-interactive network downloader",
+        "zip"             to "ZIP archive utility",
+        "unzip"           to "Extract ZIP archives",
+        "ssh"             to "Secure Shell client",
+        "nmap"            to "Network exploration / scanner",
+        "net-tools"       to "ifconfig, netstat, route",
+        "build-essential" to "gcc + make + core build tools bundle",
+        "libssl-dev"      to "SSL/TLS development headers",
+        "libffi-dev"      to "Foreign function interface library",
+        "zlib1g-dev"      to "Compression library headers",
+        "openjdk-21-jdk"  to "Java Development Kit 21"
+    )
+
+    // Load installed packages from dpkg status file (runs once)
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val rootfs = com.codespace.ide.terminal.ProotInstaller.rootfsDir(context)
+                val statusFile = java.io.File(rootfs, "var/lib/dpkg/status")
+                if (statusFile.exists()) {
+                    val pkgs = mutableListOf<String>()
+                    var currentPkg = ""
+                    statusFile.bufferedReader().forEachLine { line ->
+                        when {
+                            line.startsWith("Package: ") -> currentPkg = line.removePrefix("Package: ").trim()
+                            line.startsWith("Status: install ok installed") && currentPkg.isNotEmpty() -> {
+                                pkgs.add(currentPkg); currentPkg = ""
+                            }
+                        }
+                    }
+                    installed = pkgs.sorted()
+                } else {
+                    loadError = "Ubuntu not installed yet — open the Ubuntu tab first"
+                }
+            } catch (e: Exception) {
+                loadError = "Error reading packages: ${e.message}"
             }
-            HorizontalDivider(color = Color(0xFFEEEEEE))
+        }
+    }
+
+    val qLower = query.lowercase()
+    val filteredInstalled = if (qLower.isEmpty()) installed else installed.filter { it.contains(qLower) }
+    val filteredSuggested = if (qLower.isEmpty()) suggested else suggested.filter {
+        it.first.contains(qLower) || it.second.lowercase().contains(qLower)
+    }
+    val installedSet = installed.toSet()
+
+    Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
+        // Search bar
+        OutlinedTextField(
+            value = query, onValueChange = { query = it },
+            placeholder = { Text("Search packages…", color = Color(0xFF717171), fontSize = 13.sp) },
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp)) },
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF569CD6),
+                unfocusedBorderColor = Color(0xFF444444),
+                focusedTextColor = Color(0xFFCCCCCC),
+                unfocusedTextColor = Color(0xFFCCCCCC),
+                cursorColor = Color(0xFF569CD6)
+            ),
+            modifier = Modifier.fillMaxWidth().padding(8.dp)
+        )
+
+        LazyColumn(Modifier.fillMaxSize()) {
+            // ── INSTALLED section ───────────────────────────────────────
+            if (filteredInstalled.isNotEmpty()) {
+                item {
+                    Text(
+                        "INSTALLED (${filteredInstalled.size})",
+                        fontSize = 10.sp, color = Color(0xFF717171),
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                items(filteredInstalled) { pkg ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(Color(0xFF252526))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4EC9B0), modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(pkg, color = Color(0xFFCCCCCC), fontSize = 13.sp)
+                        }
+                        Text("installed", color = Color(0xFF4EC9B0), fontSize = 10.sp)
+                    }
+                    HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 0.5.dp)
+                }
+            }
+
+            if (loadError.isNotEmpty()) {
+                item {
+                    Text(loadError, color = Color(0xFFFF6B6B), fontSize = 12.sp,
+                        modifier = Modifier.padding(12.dp))
+                }
+            }
+
+            // ── SUGGESTED section ───────────────────────────────────────
+            if (filteredSuggested.isNotEmpty()) {
+                item {
+                    Text(
+                        "SUGGESTED FOR PROOT / UBUNTU",
+                        fontSize = 10.sp, color = Color(0xFF717171),
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                items(filteredSuggested) { (pkg, desc) ->
+                    val isInstalled = pkg in installedSet
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(if (isInstalled) Color(0xFF252526) else Color(0xFF1E1E1E))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isInstalled) Icons.Default.CheckCircle else Icons.Default.Download,
+                            null,
+                            tint = if (isInstalled) Color(0xFF4EC9B0) else Color(0xFF569CD6),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(pkg, color = Color(0xFFCCCCCC), fontSize = 13.sp)
+                            Text(desc, color = Color(0xFF717171), fontSize = 11.sp)
+                        }
+                        if (!isInstalled) {
+                            Text(
+                                "apt install",
+                                color = Color(0xFF569CD6), fontSize = 10.sp,
+                                modifier = Modifier
+                                    .background(Color(0xFF2D2D2D), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .clickable {
+                                        // Copy the install command to system clipboard
+                                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("cmd", "apt install -y $pkg"))
+                                        android.widget.Toast.makeText(context, "Copied: apt install -y $pkg", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                            )
+                        } else {
+                            Text("✓", color = Color(0xFF4EC9B0), fontSize = 10.sp)
+                        }
+                    }
+                    HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 0.5.dp)
+                }
+            }
         }
     }
 }
