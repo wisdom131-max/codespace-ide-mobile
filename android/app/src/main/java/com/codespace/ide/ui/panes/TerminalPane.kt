@@ -413,6 +413,12 @@ internal fun TerminalPane(
     }
 
     fun addUbuntuTab() {
+        // If Ubuntu is already installed and a tab exists, just switch to it — don't re-download
+        val existingUbuntu = tabs.indexOfFirst { it.title == "Ubuntu" }
+        if (existingUbuntu >= 0 && ProotInstaller.isInstalled(ctx)) {
+            activeId = tabs[existingUbuntu].id
+            return
+        }
         val ctx = context
         // Create the tab immediately with a shell session so we can write progress to it
         val id = System.currentTimeMillis().toString()
