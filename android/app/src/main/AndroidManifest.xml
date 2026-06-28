@@ -11,7 +11,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
@@ -65,7 +64,7 @@
         <!-- Foreground service for terminal & background sync keep-alive -->
         <service
             android:name=".terminal.TerminalService"
-            android:foregroundServiceType="dataSync|specialUse"
+            android:foregroundServiceType="specialUse"
             android:exported="false">
             <!-- specialUse required: terminal emulator forks pty/shell processes,
                  which doesn't map to any standard Android foreground service type.
@@ -74,6 +73,25 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="terminal_emulator" />
         </service>
+
+        <!-- OEM keepalive signals — read by Samsung, TECNO, Infinix, and other OEMs
+             that share Samsung's power management framework. Without these, the OEM
+             power manager treats the app as a regular background app and sends SIGRTMIN.
+             Termux ships these exact values and survives on all these OEMs. -->
+        <meta-data
+            android:name="com.samsung.android.keepalive.density"
+            android:value="true" />
+        <meta-data
+            android:name="com.samsung.android.multidisplay.keep_process_alive"
+            android:value="true" />
+        <meta-data
+            android:name="com.sec.android.support.multiwindow"
+            android:value="true" />
+
+        <!-- TECNO/Transsion specific — prevent phantom process killing -->
+        <meta-data
+            android:name="com.hihonor.android.support.keepalive"
+            android:value="true" />
 
     </application>
 </manifest>
