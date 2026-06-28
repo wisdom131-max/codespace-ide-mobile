@@ -56,6 +56,7 @@ What does not work: any command spawning subprocesses (dpkg, tar, python, ar), a
 
 | Commit | What it fixed |
 |--------|--------------|
+| `b3abee6d` | Replaced placeholder bootstrap-aarch64.zip with full uncorrupted Termux bootstrap (3,490 entries: bash, curl, apt, dpkg, full Termux prefix, 28MB) extracted from libtermux-bootstrap.so |
 | `28cd899` | createSession marked `internal` — fixes public API exposing internal type |
 | `0024eed` | `Int::class.javaPrimitiveType` for setProcessGroup reflection (int args require primitive type) |
 | `b9f2437` | setProcessGroup via reflection (hidden API not in public SDK) |
@@ -379,5 +380,5 @@ bindService(TermuxService, this, 0) ← bind; throws RuntimeException if fails
 
 2. **Cursor blink fix** (Medium priority) — wire `onEmulatorSet()` callback to call `setTerminalCursorBlinkerState(true)` when emulator is attached
 
-3. **Bootstrap integration** (if needed) — if user can supply uncorrupted `libtermux-bootstrap.so` via MT Manager Store-mode copy, we can extract the full Termux prefix (bash 5.2, curl, coreutils) and ship it in the APK
+3. **Bootstrap integration** ✅ DONE (commit `b3abee6d`) — full uncorrupted `libtermux-bootstrap.so` extracted and pushed as `android/app/src/main/assets/bootstrap-aarch64.zip` (3,490 entries, 28MB). Bash 5.2, curl, apt, dpkg, full Termux prefix now ships in APK.
 
