@@ -15,7 +15,15 @@ export class UsersService {
     return this.repo.findOne({ where: { id } });
   }
 
+  findByFirebaseUid(firebaseUid: string) {
+    return this.repo.findOne({ where: { firebaseUid } });
+  }
+
   create(data: Partial<User>) {
     return this.repo.save(this.repo.create(data));
+  }
+
+  update(id: string, data: Partial<User>) {
+    return this.repo.save({ id, ...data });
   }
 }
