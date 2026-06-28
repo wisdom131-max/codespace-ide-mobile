@@ -118,12 +118,13 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         try {
             // Try TOP_APP first (highest priority cgroup — same as foreground UI).
             // Fallback to FOREGROUND if permission denied on some ROM builds.
-            android.os.Process.setProcessGroup(pid, android.os.Process.THREAD_GROUP_TOP_APP)
-            android.util.Log.d("TerminalSession", "setProcessGroup($pid, TOP_APP) — phantom kill protection active")
+            // THREAD_GROUP_TOP_APP=5, THREAD_GROUP_FOREGROUND=1 are hidden APIs — use raw int values
+            android.os.Process.setProcessGroup(pid, 5)
+            android.util.Log.d("TerminalSession", "setProcessGroup($pid, TOP_APP=5) — phantom kill protection active")
         } catch (_: Exception) {
             try {
-                android.os.Process.setProcessGroup(pid, android.os.Process.THREAD_GROUP_FOREGROUND)
-                android.util.Log.d("TerminalSession", "setProcessGroup($pid, FOREGROUND) — fallback protection active")
+                android.os.Process.setProcessGroup(pid, 1)
+                android.util.Log.d("TerminalSession", "setProcessGroup($pid, FOREGROUND=1) — fallback protection active")
             } catch (e2: Exception) {
                 android.util.Log.w("TerminalSession", "setProcessGroup failed entirely (non-fatal): ${e2.message}")
             }
@@ -286,7 +287,7 @@ internal fun rememberTerminalState(context: android.content.Context): TerminalSt
     return androidx.compose.runtime.remember {
         val terminalMode = TerminalModeManager(context)
         val deviceCompat = DeviceCompatibility(context)
-        val (session, client) = (boundService?.createSession() ?: createTerminalSession(context))
+        val (session, client) = createTerminalSession(context)  // service not yet bound at init time
         val defaultName = when (terminalMode.currentMode()) {
             TerminalModeManager.MODE_UBUNTU -> "ubuntu"
             TerminalModeManager.MODE_OFFLINE -> "offline"
@@ -339,12 +340,7 @@ internal fun TerminalPane(
                 boundService = (binder as TerminalService.LocalBinder).service
             }
             override fun onServiceDisconnected(name: android.content.ComponentName) {
-                // Termux: onServiceDisconnected → finishActivityIfNotFinishing()
-                // We can't finish the activity from here, but we clear the service ref and
-                // restart it immediately — matches Termux's resilience strategy.
                 boundService = null
-                // Restart service — it may have been killed by OEM power manager
-                TerminalService.start(context, "Terminal session active")
             }
         }
         context.bindService(
@@ -377,18 +373,13 @@ internal fun TerminalPane(
 
     DisposableEffect(activeId) {
         val tab = tabs.firstOrNull { it.id == activeId }
-        tab?.client?.onTextChanged = {
-            // Termux guard: only redraw if this session is the active tab (matches onTextChanged smali)
-            if (tab.id == activeId) {
-                currentView.value?.post { currentView.value?.onScreenUpdated() }
-            }
-        }
+        tab?.client?.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
         onDispose { tab?.client?.onTextChanged = null }
     }
 
     fun addTab() {
         val id = System.currentTimeMillis().toString()
-        val (session, client) = (boundService?.createSession() ?: createTerminalSession(context))
+        val (session, client) = createTerminalSession(context)  // service not yet bound at init time
         tabs.add(TabSession(id, "ash ${tabs.size + 1}", session, client))
         activeId = id
     }
@@ -520,18 +511,9 @@ internal fun TerminalPane(
                     DropdownMenuItem(text = { Text("+ New Bash Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; addTab() })
                     DropdownMenuItem(text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            Thread {
-                                BusyboxInstaller.ensureOfflineShell(context)
-                                OllamaSetup(context).installProfile()
-                                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                    android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            }.start()
-                        })
+                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("Default: Offline Mode (no Ubuntu)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OFFLINE); android.widget.Toast.makeText(context, "Default set to Offline mode", android.widget.Toast.LENGTH_SHORT).show() })
+                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("Default: Ubuntu Mode", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("🐧 Open Ubuntu Linux", color = Color(0xFF89B4FA), fontSize = 13.sp) },
