@@ -132,7 +132,7 @@ class TerminalService : Service() {
     private fun buildNotification(text: String): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "Terminal", NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, "Termux App", NotificationManager.IMPORTANCE_LOW
             )
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
@@ -216,8 +216,8 @@ class TerminalService : Service() {
     }
 
         companion object {
-        private const val CHANNEL_ID      = "terminal_channel"
-        private const val NOTIF_ID        = 1001
+        private const val CHANNEL_ID      = "termux_notification_channel"
+        private const val NOTIF_ID        = 1337   // 0x539 — matches Termux exactly
         private const val EXTRA_TEXT      = "notif_text"
         const val ACTION_WAKE_LOCK        = "com.codespace.ide.terminal.ACTION_WAKE_LOCK"
         const val ACTION_WAKE_UNLOCK      = "com.codespace.ide.terminal.ACTION_WAKE_UNLOCK"
