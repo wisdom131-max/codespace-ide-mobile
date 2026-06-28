@@ -453,3 +453,47 @@ create a Base44 Skill documenting the entire process end-to-end, including:
 This skill will be reusable for ANY future terminal/IDE app build — dodge the same
 bullets without rediscovering them from scratch.
 
+---
+
+## VS CODE REBRAND — FEATURE TRACKING (Updated 2026-06-28)
+
+### Source material
+- YouTube transcript: "VS Code for Absolute Beginners | 2026" (57KB)
+- YouTube transcript: "Learn Visual Studio Code in 15 minutes: 2026 Official Beginner Tutorial" (18KB)
+- 8 screenshots from VS Code 2026 UI
+
+### Features confirmed IMPLEMENTED
+- [x] Activity bar: Explorer, Search, Git, Run/Debug, Extensions
+- [x] Command palette (click center title or Ctrl+Shift+P)
+- [x] Status bar (bottom, colored by theme)
+- [x] Breadcrumbs (file path below editor tabs)
+- [x] Multiple themes (Dracula, Tokyo Night, Monokai, Nord, etc.)
+- [x] Bottom panel: TERMINAL / OUTPUT / PROBLEMS / DEBUG / PORTS / SPLIT tabs
+- [x] Person icon (account menu)
+- [x] Gear icon (settings menu)
+- [x] Extensions panel — now reads real dpkg status, shows INSTALLED/RECOMMENDED/MCP sections
+- [x] Terminal menu — categorized (TERMINALS / AI & TOOLS / DEFAULT MODE / MANAGE)
+- [x] Chat panel — right-side collapsible AI chat panel (toggle via chat icon in title bar)
+
+### Features IN PROGRESS / NEXT
+- [ ] IntelliSense autocomplete dropdown in code editor (language-aware completions)
+- [ ] Hover documentation tooltip (type signature + description + MDN Reference link)
+- [ ] Minimap (right side of editor showing code overview)
+- [ ] Git diff view (inline +/- line indicators)
+- [ ] Multi-cursor editing (tap + hold select)
+- [ ] Code folding (collapse functions/blocks)
+- [ ] Snippets support (user-defined shorthand)
+- [ ] Extensions panel: star ratings + install count (like VS Code marketplace)
+- [ ] Ports panel (real forwarded ports list)
+- [ ] Run config panel (launch.json style)
+
+### UI Layout (matches VS Code 2026)
+```
+[Activity Bar 48dp] | [Side Panel ~200dp] | [Editor Area] | [Chat Panel ~45%] (optional)
+                                           |--- Tab Bar ---|
+                                           |--- Breadcrumb-|
+                                           |--- Editor  ---|
+                                           |--- Bottom Panel: TERMINAL/OUTPUT/etc. ---|
+[Status Bar 22dp — full width, blue background]
+```
+
