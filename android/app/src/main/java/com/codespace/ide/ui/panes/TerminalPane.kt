@@ -867,44 +867,96 @@ internal fun TerminalPane(
         }
         HorizontalDivider(color = Color(0xFF2A2A2A))
 
-        // Extra keys bar (ESC, TAB, arrows, Ctrl, special chars)
+        // ── Full laptop-style extra keys bar ───────────────────────────────────
+        // Row 1: F1–F12  |  Row 2: Sticky modifiers + nav cluster + symbols + Ctrl combos
         if (showExtraKeys) {
-            val extraKeys = listOf(
-                "ESC" to "\u001B",
-                "TAB" to "\t",
-                "↑"  to "\u001B[A",
-                "↓"  to "\u001B[B",
-                "←"  to "\u001B[D",
-                "→"  to "\u001B[C",
-                "PGUP" to "\u001B[5~",
-                "PGDN" to "\u001B[6~",
-                "|"  to "|",
-                "/"  to "/",
-                "~"  to "~",
-                "-"  to "-",
-                "C-c" to "\u0003",
-                "C-d" to "\u0004",
-                "C-z" to "\u001A",
-            )
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1A1A1A))
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                extraKeys.forEach { (label, seq) ->
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier
-                            .background(Color(0xFF2D2D2D), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                            .clickable { active?.session?.write(seq) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(label, color = Color(0xFFCCCCCC), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
+            var ctrlArmed  by remember { mutableStateOf(false) }
+            var altArmed   by remember { mutableStateOf(false) }
+            var shiftArmed by remember { mutableStateOf(false) }
+
+            fun send(seq: String) {
+                val session = active?.session ?: return
+                var out = seq
+                if (ctrlArmed && seq.length == 1) {
+                    val cp = seq[0].uppercaseChar().code
+                    if (cp in 64..95) out = (cp - 64).toChar().toString()
+                    ctrlArmed = false; altArmed = false; shiftArmed = false
+                } else if (altArmed) {
+                    out = "\u001B$seq"; altArmed = false; ctrlArmed = false; shiftArmed = false
+                } else if (shiftArmed && seq.length == 1) {
+                    out = seq.uppercase(); shiftArmed = false; ctrlArmed = false; altArmed = false
+                } else {
+                    ctrlArmed = false; altArmed = false; shiftArmed = false
                 }
+                session.write(out)
+            }
+
+            @Composable
+            fun KeyBtn(label: String, seq: String = "", wide: Boolean = false,
+                       accent: Boolean = false, armed: Boolean = false,
+                       onTap: (() -> Unit)? = null) {
+                val bg = when {
+                    armed  -> Color(0xFF007ACC)
+                    accent -> Color(0xFF3A3A3A)
+                    else   -> Color(0xFF2D2D2D)
+                }
+                Box(
+                    modifier = Modifier
+                        .background(bg, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .clickable { onTap?.invoke() ?: send(seq) }
+                        .padding(horizontal = if (wide) 14.dp else 9.dp, vertical = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, color = if (armed) Color.White else Color(0xFFCCCCCC),
+                        fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                }
+            }
+
+            // ── Row 1: F1–F12 ────────────────────────────────────────────────────
+            val fKeys = listOf(
+                "F1" to "\u001BOP",    "F2" to "\u001BOQ",    "F3" to "\u001BOR",    "F4" to "\u001BOS",
+                "F5" to "\u001B[15~",  "F6" to "\u001B[17~",  "F7" to "\u001B[18~",  "F8" to "\u001B[19~",
+                "F9" to "\u001B[20~",  "F10" to "\u001B[21~", "F11" to "\u001B[23~", "F12" to "\u001B[24~"
+            )
+            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF141414))
+                    .horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                fKeys.forEach { (l, s) -> KeyBtn(l, s) }
+            }
+
+            // ── Row 2: Modifiers + nav + symbols + Ctrl combos ───────────────────
+            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF1A1A1A))
+                    .horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                // Sticky modifier keys
+                KeyBtn("CTRL", accent = true, armed = ctrlArmed,
+                    onTap = { ctrlArmed = !ctrlArmed; altArmed = false; shiftArmed = false })
+                KeyBtn("ALT",  accent = true, armed = altArmed,
+                    onTap = { altArmed = !altArmed; ctrlArmed = false; shiftArmed = false })
+                KeyBtn("SHFT", accent = true, armed = shiftArmed,
+                    onTap = { shiftArmed = !shiftArmed; ctrlArmed = false; altArmed = false })
+                // Nav cluster
+                listOf(
+                    "ESC"  to "\u001B",    "TAB" to "\t",
+                    "HOME" to "\u001B[H",  "END" to "\u001B[F",
+                    "INS"  to "\u001B[2~", "DEL" to "\u001B[3~",
+                    "PGUP" to "\u001B[5~", "PGDN" to "\u001B[6~",
+                    "\u2191" to "\u001B[A", "\u2193" to "\u001B[B",
+                    "\u2190" to "\u001B[D", "\u2192" to "\u001B[C"
+                ).forEach { (l, s) -> KeyBtn(l, s) }
+                // Symbol keys
+                listOf("|","/","\\","~","`","-","_","=","+","[","]","{","}","(",")",
+                       "<",">",";",":","'","\"","!","@","#","$","^","&","*").forEach { sym ->
+                    KeyBtn(sym, sym)
+                }
+                // Ctrl combos
+                listOf(
+                    "C-c" to "\u0003", "C-d" to "\u0004", "C-z" to "\u001A",
+                    "C-a" to "\u0001", "C-e" to "\u0005", "C-k" to "\u000B",
+                    "C-u" to "\u0015", "C-l" to "\u000C", "C-r" to "\u0012",
+                    "C-w" to "\u0017", "C-b" to "\u0002", "C-f" to "\u0006",
+                    "C-p" to "\u0010", "C-n" to "\u000E", "C-t" to "\u0014"
+                ).forEach { (l, s) -> KeyBtn(l, s) }
             }
         }
 
