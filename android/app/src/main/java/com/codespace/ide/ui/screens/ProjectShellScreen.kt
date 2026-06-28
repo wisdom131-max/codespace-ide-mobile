@@ -940,8 +940,7 @@ fun ProjectShellScreen(
                                 else    -> "You are a helpful coding assistant. Answer questions about code clearly and concisely."
                             }
                             // Build context: include current open file name if any
-                            val fileCtx = if (activeEditorTab != null) "
-[Open file: ${activeEditorTab!!.substringAfterLast('/')}]" else ""
+                            val fileCtx = if (activeEditorTab != null) "\n[Open file: ${activeEditorTab!!.substringAfterLast('/')}]" else ""
                             val body = org.json.JSONObject().apply {
                                 put("model", selectedModel)
                                 put("stream", false)
@@ -972,11 +971,7 @@ fun ProjectShellScreen(
                         } catch (e: Exception) {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 chatMessages = chatMessages + ChatMsg("assistant",
-                                    "⚠️ Could not reach Ollama at localhost:11434.
-
-Make sure you've started it:
-• Open Ubuntu tab → type: ollama serve
-• Then try again.")
+                                    "⚠️ Could not reach Ollama at localhost:11434.\n\nMake sure you've started it:\n• Open Ubuntu tab → type: ollama serve\n• Then try again.")
                                 chatLoading = false
                             }
                         }
