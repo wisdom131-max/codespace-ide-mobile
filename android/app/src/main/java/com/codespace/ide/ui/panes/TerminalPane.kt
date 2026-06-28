@@ -572,8 +572,7 @@ internal fun TerminalPane(
                         text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
-                            active?.session?.write("npx -y @modelcontextprotocol/server-filesystem \${HOME}
-")
+                            active?.session?.write("npx -y @modelcontextprotocol/server-filesystem \${HOME}\n")
                             android.widget.Toast.makeText(context, "Starting MCP filesystem server…", android.widget.Toast.LENGTH_SHORT).show()
                         })
                     DropdownMenuItem(
@@ -581,8 +580,7 @@ internal fun TerminalPane(
                         text = { Text("Make Script from History", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
-                            active?.session?.write("history | tail -20
-")
+                            active?.session?.write("history | tail -20\n")
                             android.widget.Toast.makeText(context, "Review history above — copy commands to a .sh file", android.widget.Toast.LENGTH_LONG).show()
                         })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
@@ -681,13 +679,11 @@ internal fun TerminalPane(
                 Modifier.background(if (isRootMode) Color(0xFF7A1A1A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                     .clickable {
                         if (!isRootMode) {
-                            active?.session?.write("su
-")
+                            active?.session?.write("su\n")
                             isRootMode = true
                             android.widget.Toast.makeText(context, "Root shell requested — grant in prompt", android.widget.Toast.LENGTH_SHORT).show()
                         } else {
-                            active?.session?.write("exit
-")
+                            active?.session?.write("exit\n")
                             isRootMode = false
                         }
                     }
