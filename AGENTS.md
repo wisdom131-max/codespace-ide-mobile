@@ -1112,6 +1112,87 @@ First-launch onboarding tour implemented across 2 files:
 
 ---
 
+---
+
+## NEW FEATURE SPECS — June 28, 2026 (from user)
+
+### 1. Editable Preview Panel
+The preview panel currently shows HTML/Markdown/SVG read-only.
+**Goal:** Make it a two-way editor — user can edit HTML/CSS/JS/Markdown directly inside the preview panel and changes reflect live.
+- Add a split-view toggle in PreviewPane header: [Preview | Edit | Split]
+- In Edit mode: show a CodeEditor (same as EditorPane) inside PreviewPane
+- In Split mode: left = editor, right = live WebView with JS bridge for hot-reload
+- Changes in the edit view auto-save to disk and trigger WebView reload
+- Wiring: PreviewPane already reads `activeEditorTab` from ProjectShellScreen — it needs a write-back lambda too
+
+### 2. Notification Bell — wired + functional
+Currently: `Icons.Default.Notifications` in top bar is a dead icon (no click handler).
+**Goal:** Make it a full notification centre.
+
+**Behaviour:**
+- Bell icon in top bar shows a badge number (count of unread notifications)
+- On tap: opens a notification drawer (slide down from top bar)
+- Each notification is a small curved-edge breadcrumb pill
+- Auto-dismiss after 3 seconds (already have showNotification() for transient toasts)
+- Persistent notifications (repo changes, build events, debug logs) stay until dismissed
+
+**Notification sources to wire:**
+- App internal: file saved, build started/succeeded/failed, shell command output
+- GitHub: new commits on watched branch, PR opened, review requested
+- Debug: app crash logs, signal kills, terminal process exits
+- MCP: tool call results, agent actions
+
+**Badge numbering:** red circle on bell icon with unread count, resets to 0 on open
+
+**Breadcrumb style:** `RoundedCornerShape(16.dp)`, small pill, 3s auto-close for transient
+
+### 3. "Three-legged" icon (Activity Bar bottom) — GitHub + Connectors hub
+Currently: `Icons.Default.Person` at bottom of activity bar → `showPersonMenu = true` (basic menu).
+**Goal:** Rename / rebrand to a Connectors hub. Wire it to:
+
+**a) GitHub login + repo management:**
+- GitHub OAuth login (already partially in AuthScreen/GitEngine)
+- After login: show list of user's repos (clone, open, switch)
+- Per-repo actions: Pull, Push, Commit, Branch, PR, Issues
+- Show current repo name + branch in status bar
+
+**b) All connectors (TIER 2 from roadmap):**
+- GitHub, GitLab, SSH, Firebase, Vercel, Netlify, Docker Hub, AI providers
+- Each connector shows: connected/disconnected status, quick actions
+- Add/remove connectors from this panel
+
+**Implementation:**
+- Replace `showPersonMenu` with `showConnectorsSheet = true`
+- New file: `ConnectorsSheet.kt` — ModalBottomSheet with tabs: [GitHub | SSH | Services | AI Keys]
+- GitHub tab: login button → OAuth flow → repo list with actions
+- Credentials in SecureTokenStore (already exists)
+
+### 4. MCP access to everything
+Currently MCP wired in McpShellProfile.kt with `MCP_SERVER_URL` env var.
+**Goal:** MCP tools should have access to ALL app capabilities:
+- Read/write files in the project
+- Run terminal commands (ash + Ubuntu)
+- Read/write editor content
+- Trigger git operations (commit, push, pull)
+- Read notification log
+- Open files in editor
+- Access ConnectorStore (repo list, connection status)
+- Control preview panel (switch mode, reload)
+
+**Implementation:** Expand MCP tool definitions in McpShellProfile.kt to expose all the above as tool calls. Each tool maps to an existing Kotlin function already in the codebase.
+
+### 5. Google sign-in error (screenshot, June 28)
+Error: `Sign-in cancelled: During begin sign in, failure response from one tap: 10: [28444] Developer console is not set up correctly`
+**Root cause:** Google OAuth Client ID in `google-services.json` is missing the SHA-1 fingerprint for the debug keystore, OR the OAuth consent screen is not configured in Google Cloud Console.
+**Fix needed:**
+1. In Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs
+2. Add SHA-1 of the debug keystore: run `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android`
+3. Add that SHA-1 to the Android OAuth client
+4. Re-download `google-services.json` and replace in repo
+OR: Use GitHub OAuth as primary sign-in instead (already wired) and remove/skip Google sign-in for now.
+
+---
+
 ## MASTER ROADMAP — Full IDE Intelligence Layer
 
 > This section is the north star for all future AI sessions. Every item below is planned, not yet built. Work top-down.
