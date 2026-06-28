@@ -1200,3 +1200,24 @@ The AI currently only knows the open file. Full project awareness requires:
 5. Skills that call AI use `AiRegistry.create()` — never hardcode API endpoints
 6. Every new file gets documented in this AGENTS.md section before the PR is merged
 
+
+---
+
+## PREVIEW GUIDE + ONBOARDING STEP 9 (commits 08274be230 + 3c1429667d, June 28 2026)
+
+### OnboardingWalkthrough.kt — step 9 added
+- New `OnboardingStep` for "Preview Panel" (icon: Visibility, pink tint)
+- `OnboardingStep` data class now has `bullets: List<String>` field — renders a bulleted list above the tip chip
+- Preview step uses bullets to list all 4 modes: HTML, Markdown, SVG, Browser
+- Tip: "Open any .html / .md / .svg file then tap PREVIEW in the bottom panel."
+
+### PreviewPane.kt — in-panel how-to-use guide
+- `?` (HelpOutline) icon added to the top-right control row of the preview header
+- Tapping it opens an `AlertDialog` with a `PreviewGuideRow` for each of the 4 modes
+- Each row shows: colored mode badge + plain-English description of what it does and what files trigger it
+- Bottom tip chip: "Tap ↺ to manually refresh. The preview auto-updates when you switch files."
+- `PreviewGuideRow` is a private helper composable at the bottom of the file
+
+### Hard rules:
+- `AlertDialog` `containerColor` must be explicitly set to `Color(0xFF1E1E1E)` — default Material3 container is white
+- `bullets` field defaults to `emptyList()` so all existing steps are unaffected
