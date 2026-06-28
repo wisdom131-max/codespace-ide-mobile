@@ -1078,7 +1078,7 @@ internal fun TerminalPane(
                             view.attachSession(active.session)
                             active.client.initBell(view.context)
                             // Wire hardware keyboard shortcuts to tab actions
-                            val viewClient2 = view.mTerminalViewClient as? SimpleTerminalViewClient
+                            val viewClient2 = view.mClient as? SimpleTerminalViewClient
                             if (viewClient2 != null) {
                                 viewClient2.onNewTab      = { addTab() }
                                 viewClient2.onCloseTab    = { closeTab(active.id) }
