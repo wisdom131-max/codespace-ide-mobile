@@ -1076,3 +1076,127 @@ First-launch onboarding tour implemented across 2 files:
 - `prefs` is declared inside the composable using `remember { context.getSharedPreferences("app_prefs", 0) }` — same prefs instance already used by `CodeSpaceApp` for theme persistence.
 - `OnboardingWalkthrough` uses `dismissOnBackPress = false` and `dismissOnClickOutside = false` — user must explicitly tap Skip or Get Started.
 - `AnimatedContent` slide direction: forward = slide left, backward = slide right.
+
+---
+
+## PREVIEW PANEL (commits dd6c6ad288 + aad5044a1c, June 28 2026)
+
+### Files changed
+- **`PreviewPane.kt`** (new) — self-contained preview compositor
+- **`ProjectShellScreen.kt`** — added `BottomTab.PREVIEW` and wired it
+
+### 4 preview modes (tab bar at top of panel)
+
+| Mode | Trigger | What it does |
+|------|---------|--------------|
+| HTML | `.html`, `.htm`, `.css`, `.js`, `.ts` | Renders file in WebView with JS enabled |
+| Markdown | `.md`, `.markdown` | Renders via `marked.js` (CDN) with VS Code dark styling |
+| SVG | `.svg` | Renders SVG centered, JS disabled |
+| Browser | Manual | Embedded browser with address bar — point at `localhost:3000` or any URL |
+
+### How it works
+- `PreviewPane` reads the active editor file path from `activeEditorTab` state in `ProjectShellScreen`
+- File content is loaded from disk via `produceState` — refreshes whenever path changes
+- Language/mode is auto-detected from file extension
+- User can manually switch modes using the tab bar in the panel header
+- Refresh button reloads the current WebView
+- CSS preview injects content into a demo page with sample elements
+- JS/TS preview wraps code in a console-capture sandbox (output appears on screen)
+- Markdown preview loads `marked.js` from CDN (requires internet) — offline fallback planned
+
+### Hard rules for future AI:
+- `PreviewPane` has no dependency on `EditorPane` internals — it reads from disk directly using `activeEditorTab` file path
+- WebView `loadDataWithBaseURL` must use `"https://cdn.jsdelivr.net"` as base for Markdown (so CDN script tag loads)
+- `SuppressLint("SetJavaScriptEnabled")` is required on every `@Composable` that creates a WebView with JS
+- Internet permission is already in AndroidManifest — no changes needed
+
+---
+
+## MASTER ROADMAP — Full IDE Intelligence Layer
+
+> This section is the north star for all future AI sessions. Every item below is planned, not yet built. Work top-down.
+
+### TIER 1 — Preview & Run (immediate next)
+- [ ] **Hot-reload preview** — FileObserver on the active file, auto-refresh WebView on save
+- [ ] **Port forwarding UI** — list of forwarded ports in the PORTS tab, clickable → opens in Browser preview
+- [ ] **Run button** — detect `package.json` / `main.py` / `Makefile`, offer one-tap run in terminal
+
+### TIER 2 — Connectors (external service integrations)
+Each connector is a `ConnectorManager` singleton + a UI sheet. All credentials stored in `SecureTokenStore` (Android Keystore).
+
+| Connector | Purpose | Key APIs |
+|-----------|---------|----------|
+| **GitHub** | Clone, push, PR, issues | GitHub REST + GraphQL |
+| **GitLab** | Same as GitHub for GitLab repos | GitLab REST |
+| **Firebase** | Deploy, view Firestore, read logs | Firebase CLI via terminal |
+| **Vercel** | Deploy frontend projects | Vercel REST API |
+| **Netlify** | Same for Netlify | Netlify REST API |
+| **Docker Hub** | Pull/push images | Docker Registry API |
+| **OpenAI / Anthropic / Gemini** | BYOK AI keys | AiRegistry (already wired) |
+| **SSH** | Remote server access | SshManager (already built) |
+| **Ngrok / Cloudflare Tunnel** | Expose localhost to internet | CLI via terminal |
+
+**Architecture:** `ConnectorStore.kt` — stores connector configs (name, type, credentials, last-used). `ConnectorSheet.kt` — unified bottom sheet for add/edit/delete. Shown from Extensions tab.
+
+### TIER 3 — Automations (in-app task scheduler)
+Automations run shell scripts or AI prompts on a trigger. Stored as JSON in app storage.
+
+| Trigger type | Example |
+|-------------|---------|
+| On file save | Auto-lint, auto-format, auto-commit |
+| On schedule | Daily git pull, nightly backup |
+| On terminal output | Alert when build fails / tests pass |
+| On git event | Auto-push after commit |
+
+**Architecture:** `AutomationStore.kt` — list of `Automation(id, name, trigger, action, enabled)`. `AutomationRunner.kt` — executes shell commands via NativePty. `AutomationSheet.kt` — UI to create/edit/delete. Accessible from Extensions or Settings menu.
+
+### TIER 4 — Memory & Chat History
+Already partially built (`ai_chat_history` SharedPrefs in `AiAssistantPane`). Needs upgrade:
+
+| Feature | Implementation |
+|---------|---------------|
+| **Per-project chat history** | Key by `projectId` not just app-global |
+| **File context injection** | Auto-attach open file content to AI prompt (already done via `fileCtx`) |
+| **Conversation search** | Search past messages by keyword |
+| **Memory pinning** | Pin key facts ("my backend URL is X") that persist across sessions |
+| **Export chat** | Export conversation as Markdown |
+
+**Architecture:** `ChatMemoryStore.kt` — replaces raw SharedPrefs. Stores `List<ChatSession>` per project. `MemoryPin.kt` — pinned facts injected into every system prompt.
+
+### TIER 5 — Skills (reusable AI-powered commands)
+A "skill" is a named prompt template + optional shell command, runnable from the command palette.
+
+| Skill | What it does |
+|-------|-------------|
+| `explain` | AI explains selected code |
+| `refactor` | AI rewrites for clarity |
+| `write-tests` | AI generates unit tests for current file |
+| `git-message` | AI writes commit message from staged diff |
+| `summarize-file` | AI summarizes what the current file does |
+| `docker-run` | Builds and runs project in Docker |
+| `deploy-vercel` | Runs `vercel --prod` in terminal |
+| `search-web` | Opens Browser preview with search query |
+
+**Architecture:** `SkillRegistry.kt` — list of `Skill(id, name, icon, promptTemplate, shellCommand?)`. Skills appear in command palette (Ctrl+Shift+P) and AI quick-action bar. Custom skills saved to `custom_skills.json` in project storage. Skills can chain: prompt → insert output into editor OR run in terminal.
+
+### TIER 6 — File Memory & Project Index
+The AI currently only knows the open file. Full project awareness requires:
+
+- `ProjectIndexer.kt` — walks project tree, extracts symbols (functions, classes, exports) per file
+- `EmbeddingStore.kt` — stores text chunks with simple keyword index (no vector DB needed on-device)
+- `RetrievalEngine.kt` — given a query, returns the top-N most relevant chunks from the project
+- Inject retrieved chunks into `AiContext.retrievedChunks` (field already exists in `AiProvider.kt`)
+
+### TIER 7 — Notifications & Background Agents
+- `BuildNotifier.kt` — watches terminal output for `BUILD SUCCESSFUL` / `error:` patterns, fires OS notification
+- `GitPollAgent.kt` — background job, polls remote every X min, notifies on new commits
+- `CrashWatcher.kt` — monitors `logcat` output for the app's own package name, surfaces crash summary in Problems panel
+
+### Hard rules for future AI building these tiers:
+1. All credentials go through `SecureTokenStore` (Android Keystore) — never plain SharedPrefs for secrets
+2. All network calls go through the existing `OkHttpClient` in `AppModule.kt` — do not create new instances
+3. All new bottom sheets follow the `SshManagerSheet.kt` pattern (ModalBottomSheet + ViewModel-free state hoisting)
+4. Automations must use `NativePty` (not `ProcessBuilder`) for shell execution
+5. Skills that call AI use `AiRegistry.create()` — never hardcode API endpoints
+6. Every new file gets documented in this AGENTS.md section before the PR is merged
+
