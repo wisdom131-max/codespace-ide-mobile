@@ -770,3 +770,457 @@ private fun fileIcon(name: String) = when {
         }
     }
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP Panel — Model Context Protocol server manager
+// Separate from the dpkg ExtensionsPanel above. Do not merge.
+// ─────────────────────────────────────────────────────────────────────────────
+
+private const val MCP_PREFS = "mcp_installed"
+private const val MCP_KEY   = "mcp_list"
+
+private data class McpEntry(
+    val id: String,
+    val name: String,
+    val description: String,
+    val command: String,       // npx / uvx / node command
+    val args: List<String>,
+    val envKeys: List<String>, // env vars user must supply
+    val docsUrl: String = ""
+)
+
+private val MCP_MARKETPLACE: List<McpEntry> = listOf(
+    McpEntry(
+        id = "github",
+        name = "GitHub",
+        description = "Read/write repos, issues, PRs, commits and releases via the GitHub API.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-github"),
+        envKeys = listOf("GITHUB_PERSONAL_ACCESS_TOKEN"),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/github"
+    ),
+    McpEntry(
+        id = "filesystem",
+        name = "Filesystem",
+        description = "Read and write files on the device filesystem with path sandboxing.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-filesystem", "/storage/emulated/0"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
+    ),
+    McpEntry(
+        id = "fetch",
+        name = "Fetch",
+        description = "Fetch any URL and convert web pages to Markdown for LLM consumption.",
+        command = "uvx",
+        args = listOf("mcp-server-fetch"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
+    ),
+    McpEntry(
+        id = "brave-search",
+        name = "Brave Search",
+        description = "Web and local search powered by the Brave Search API.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-brave-search"),
+        envKeys = listOf("BRAVE_API_KEY"),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search"
+    ),
+    McpEntry(
+        id = "sqlite",
+        name = "SQLite",
+        description = "Query and manipulate a local SQLite database with full SQL support.",
+        command = "uvx",
+        args = listOf("mcp-server-sqlite", "--db-path", "/storage/emulated/0/codespace.db"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"
+    ),
+    McpEntry(
+        id = "puppeteer",
+        name = "Puppeteer",
+        description = "Browser automation — navigate pages, take screenshots, fill forms.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-puppeteer"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer"
+    ),
+    McpEntry(
+        id = "memory",
+        name = "Memory",
+        description = "Persistent key-value memory store for long-running agent context.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-memory"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/memory"
+    ),
+    McpEntry(
+        id = "sequential-thinking",
+        name = "Sequential Thinking",
+        description = "Structured step-by-step reasoning for complex problem solving.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-sequential-thinking"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking"
+    ),
+    McpEntry(
+        id = "postgres",
+        name = "PostgreSQL",
+        description = "Read-only query access to a PostgreSQL database.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-postgres"),
+        envKeys = listOf("POSTGRES_URL"),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres"
+    ),
+    McpEntry(
+        id = "slack",
+        name = "Slack",
+        description = "Post messages, list channels, and read Slack workspace data.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-slack"),
+        envKeys = listOf("SLACK_BOT_TOKEN", "SLACK_TEAM_ID"),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/slack"
+    ),
+    McpEntry(
+        id = "google-maps",
+        name = "Google Maps",
+        description = "Geocoding, directions, and place search via Google Maps API.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-google-maps"),
+        envKeys = listOf("GOOGLE_MAPS_API_KEY"),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/google-maps"
+    ),
+    McpEntry(
+        id = "everything",
+        name = "Everything (test)",
+        description = "Reference MCP server exposing all protocol features — great for testing.",
+        command = "npx",
+        args = listOf("-y", "@modelcontextprotocol/server-everything"),
+        envKeys = emptyList(),
+        docsUrl = "https://github.com/modelcontextprotocol/servers/tree/main/src/everything"
+    ),
+)
+
+private fun loadInstalledMcps(context: android.content.Context): MutableList<String> {
+    val prefs = context.getSharedPreferences(MCP_PREFS, android.content.Context.MODE_PRIVATE)
+    val raw = prefs.getString(MCP_KEY, "[]") ?: "[]"
+    return try {
+        val arr = org.json.JSONArray(raw)
+        MutableList(arr.length()) { arr.getString(it) }
+    } catch (_: Exception) { mutableListOf() }
+}
+
+private fun saveInstalledMcps(context: android.content.Context, ids: List<String>) {
+    val prefs = context.getSharedPreferences(MCP_PREFS, android.content.Context.MODE_PRIVATE)
+    prefs.edit().putString(MCP_KEY, org.json.JSONArray(ids).toString()).apply()
+}
+
+private fun buildMcpConfigJson(entries: List<McpEntry>): String {
+    val servers = org.json.JSONObject()
+    entries.forEach { e ->
+        val obj = org.json.JSONObject()
+        obj.put("command", e.command)
+        obj.put("args", org.json.JSONArray(e.args))
+        if (e.envKeys.isNotEmpty()) {
+            val env = org.json.JSONObject()
+            e.envKeys.forEach { k -> env.put(k, "YOUR_${k}_HERE") }
+            obj.put("env", env)
+        }
+        servers.put(e.id, obj)
+    }
+    return org.json.JSONObject().put("mcpServers", servers).toString(2)
+}
+
+@Composable
+fun McpPanel() {
+    val context = LocalContext.current
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableStateOf("Recommended") }  // Recommended | Search | Installed
+    var installedIds by remember { mutableStateOf(loadInstalledMcps(context)) }
+    var expandedId by remember { mutableStateOf<String?>(null) }
+    val tabs = listOf("Recommended", "Search", "Installed")
+
+    val installedSet = installedIds.toSet()
+    val qLow = searchQuery.lowercase()
+
+    val displayList: List<McpEntry> = when (selectedTab) {
+        "Installed"   -> MCP_MARKETPLACE.filter { it.id in installedSet }
+        "Search"      -> if (qLow.isEmpty()) MCP_MARKETPLACE
+                         else MCP_MARKETPLACE.filter {
+                             it.name.lowercase().contains(qLow) ||
+                             it.description.lowercase().contains(qLow) ||
+                             it.id.contains(qLow)
+                         }
+        else          -> MCP_MARKETPLACE // Recommended = full curated list
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF181818))
+    ) {
+        // ── Section header ────────────────────────────────────────────────
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF1E1E1E))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Extension,
+                contentDescription = null,
+                tint = Color(0xFF569CD6),
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "MCP SERVERS",
+                fontSize = 10.sp,
+                color = Color(0xFF717171),
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${installedIds.size} installed",
+                fontSize = 10.sp,
+                color = Color(0xFF4EC9B0)
+            )
+        }
+
+        // ── Tab dropdown row ──────────────────────────────────────────────
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF252526))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            tabs.forEach { tab ->
+                val active = tab == selectedTab
+                Box(
+                    Modifier
+                        .clickable { selectedTab = tab; if (tab != "Search") searchQuery = "" }
+                        .background(
+                            if (active) Color(0xFF37373D) else Color.Transparent,
+                            androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Text(
+                        tab,
+                        fontSize = 11.sp,
+                        color = if (active) Color(0xFFCCCCCC) else Color(0xFF717171),
+                        fontWeight = if (active) androidx.compose.ui.text.font.FontWeight.Medium
+                                     else androidx.compose.ui.text.font.FontWeight.Normal
+                    )
+                }
+            }
+        }
+
+        // ── Search bar (only in Search tab) ──────────────────────────────
+        if (selectedTab == "Search") {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search MCP marketplace…", color = Color(0xFF717171), fontSize = 12.sp) },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = Color(0xFF717171), modifier = Modifier.size(15.dp)) },
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF569CD6),
+                    unfocusedBorderColor = Color(0xFF3C3C3C),
+                    focusedTextColor = Color(0xFFCCCCCC),
+                    unfocusedTextColor = Color(0xFFCCCCCC),
+                    cursorColor = Color(0xFF569CD6)
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+
+        // ── Empty state ───────────────────────────────────────────────────
+        if (displayList.isEmpty()) {
+            Box(
+                Modifier.fillMaxWidth().padding(24.dp),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                Text(
+                    if (selectedTab == "Installed") "No MCP servers added yet.
+Tap Recommended to browse."
+                    else "No results for \"$searchQuery\"",
+                    color = Color(0xFF717171),
+                    fontSize = 12.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+            return@Column
+        }
+
+        // ── MCP list ──────────────────────────────────────────────────────
+        LazyColumn(
+            Modifier.heightIn(max = 480.dp),
+            contentPadding = PaddingValues(bottom = 8.dp)
+        ) {
+            items(displayList, key = { it.id }) { mcp ->
+                val isInstalled = mcp.id in installedSet
+                val isExpanded = expandedId == mcp.id
+
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { expandedId = if (isExpanded) null else mcp.id }
+                        .background(if (isExpanded) Color(0xFF2A2D2E) else Color(0xFF1E1E1E))
+                ) {
+                    // Row summary
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isInstalled) Icons.Default.CheckCircle else Icons.Default.Extension,
+                            null,
+                            tint = if (isInstalled) Color(0xFF4EC9B0) else Color(0xFF569CD6),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(mcp.name, color = Color(0xFFCCCCCC), fontSize = 13.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                            Text(mcp.description, color = Color(0xFF717171), fontSize = 11.sp, maxLines = if (isExpanded) Int.MAX_VALUE else 1,
+                                overflow = if (isExpanded) androidx.compose.ui.text.style.TextOverflow.Visible
+                                           else androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        if (isInstalled) {
+                            Text("✓", color = Color(0xFF4EC9B0), fontSize = 11.sp)
+                        } else {
+                            Box(
+                                Modifier
+                                    .background(Color(0xFF0E639C), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .clickable {
+                                        val newList = (installedIds + mcp.id).distinct().toMutableList()
+                                        installedIds = newList
+                                        saveInstalledMcps(context, newList)
+                                        // Write mcp_servers.json to app files dir
+                                        val installedMcps = MCP_MARKETPLACE.filter { it.id in newList.toSet() }
+                                        val json = buildMcpConfigJson(installedMcps)
+                                        try {
+                                            java.io.File(context.filesDir, "mcp_servers.json").writeText(json)
+                                        } catch (_: Exception) {}
+                                        android.widget.Toast.makeText(context, "Added ${mcp.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                        expandedId = mcp.id
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("Add", color = Color(0xFFFFFFFF), fontSize = 10.sp)
+                            }
+                        }
+                    }
+
+                    // Expanded detail
+                    if (isExpanded) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF252526))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            // Command preview
+                            Text("Command", color = Color(0xFF9CDCFE), fontSize = 10.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                            Spacer(Modifier.height(3.dp))
+                            val cmdPreview = (listOf(mcp.command) + mcp.args).joinToString(" ")
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF1A1A1A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .padding(8.dp)
+                            ) {
+                                Text(cmdPreview, color = Color(0xFF4EC9B0), fontSize = 11.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            }
+
+                            // Env vars required
+                            if (mcp.envKeys.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text("Required env vars", color = Color(0xFFFF9966), fontSize = 10.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                mcp.envKeys.forEach { key ->
+                                    Row(Modifier.padding(top = 3.dp)) {
+                                        Text("• ", color = Color(0xFF717171), fontSize = 11.sp)
+                                        Text(key, color = Color(0xFFCE9178), fontSize = 11.sp,
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Action buttons row
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (isInstalled) {
+                                    // Copy config button
+                                    Box(
+                                        Modifier
+                                            .background(Color(0xFF37373D), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                            .clickable {
+                                                val single = buildMcpConfigJson(listOf(mcp))
+                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mcp", single))
+                                                android.widget.Toast.makeText(context, "Config copied", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                    ) {
+                                        Text("Copy config", color = Color(0xFFCCCCCC), fontSize = 10.sp)
+                                    }
+                                    // Remove button
+                                    Box(
+                                        Modifier
+                                            .background(Color(0xFF5A1D1D), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                            .clickable {
+                                                val newList = installedIds.filter { it != mcp.id }.toMutableList()
+                                                installedIds = newList
+                                                saveInstalledMcps(context, newList)
+                                                val installedMcps = MCP_MARKETPLACE.filter { it.id in newList.toSet() }
+                                                val json = buildMcpConfigJson(installedMcps)
+                                                try {
+                                                    java.io.File(context.filesDir, "mcp_servers.json").writeText(json)
+                                                } catch (_: Exception) {}
+                                                android.widget.Toast.makeText(context, "Removed ${mcp.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                                expandedId = null
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                    ) {
+                                        Text("Remove", color = Color(0xFFFF6B6B), fontSize = 10.sp)
+                                    }
+                                }
+                                // Docs button
+                                if (mcp.docsUrl.isNotEmpty()) {
+                                    Box(
+                                        Modifier
+                                            .background(Color(0xFF37373D), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                            .clickable {
+                                                try {
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                                        android.net.Uri.parse(mcp.docsUrl))
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {}
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                    ) {
+                                        Text("Docs ↗", color = Color(0xFF569CD6), fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 0.5.dp)
+                }
+            }
+        }
+    }
+}
