@@ -245,7 +245,7 @@ private fun ideColors(themeName: String): IdeColors {
 }
 
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS }
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -432,6 +432,7 @@ fun ProjectShellScreen(
             "Extensions"         -> activePanel = SidePanel.EXTENSIONS
             "Toggle Sidebar"     -> activePanel = if (activePanel == null) SidePanel.EXPLORER else null
             "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
+            "Preview"            -> { showBottomPanel = true; activeBottomTab = BottomTab.PREVIEW }
             "Split Terminal"     -> { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT }
             "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
@@ -835,6 +836,9 @@ fun ProjectShellScreen(
                                 )
                                 BottomTab.PORTS    -> PortsPanel()
                                 BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
+                                BottomTab.PREVIEW  -> PreviewPane(
+                                    activeFilePath = activeEditorTab ?: "",
+                                )
                             }
                         }
                     }
@@ -1229,7 +1233,7 @@ fun ProjectShellScreen(
                     HorizontalDivider(color = DividerColor)
                     val allCmds by remember(commandQuery) { derivedStateOf { listOf(
                         "Explorer","Search","Source Control","Run & Debug","Extensions",
-                        "Terminal","Split Terminal","Problems","Output","Toggle Sidebar","New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
+                        "Terminal","Split Terminal","Preview","Problems","Output","Toggle Sidebar","New File","Save","Find","Replace","Change Color Theme","Zoom In","Zoom Out",
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About Visual Node Code",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
