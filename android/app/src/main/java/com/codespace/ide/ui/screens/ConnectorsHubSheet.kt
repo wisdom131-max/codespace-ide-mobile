@@ -11,14 +11,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.codespace.ide.ui.theme.IdeColors
 
 @Composable
 internal fun ConnectorsHubSheet(
-    colors: IdeColors,
     onDismiss: () -> Unit,
 ) {
     val MenuBg   = Color(0xFF252526)
@@ -111,5 +110,36 @@ internal fun ConnectorsHubSheet(
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+}
+
+@Composable
+internal fun ConnectorRow(
+    icon: ImageVector,
+    name: String,
+    subtitle: String,
+    color: Color,
+    menuText: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(Color(0x1A007ACC), RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(36.dp).background(color.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = menuText)
+            Text(subtitle, fontSize = 11.sp, color = Color(0xFF888888))
+        }
+        Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF555555), modifier = Modifier.size(16.dp))
     }
 }
