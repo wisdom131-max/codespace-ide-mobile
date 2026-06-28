@@ -2,16 +2,13 @@ package com.codespace.ide.ui.screens
 
 import android.app.Activity
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -23,23 +20,42 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 
-// Web client ID from google-services.json (client_type: 3)
 private const val WEB_CLIENT_ID =
     "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com"
 
+// Passed in by the caller — different per flavor (dev/staging/prod)
+// Defaults to prod if not overridden
+private const val AUTH_ENDPOINT = "https://api.codespace-ide.app/api/v1/auth/google"
+
+data class AuthResult(
+    val accessToken: String,
+    val refreshToken: String,
+    val role: String,           // "owner" | "user"
+    val isOwner: Boolean = role == "owner",
+)
+
 @Composable
-fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
-    val context = LocalContext.current
+fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
+    val context  = LocalContext.current
     val activity = context as Activity
-    val scope = rememberCoroutineScope()
+    val scope    = rememberCoroutineScope()
 
     var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
+    var error   by remember { mutableStateOf("") }
 
     val credentialManager = remember { CredentialManager.create(context) }
-    val firebaseAuth = remember { FirebaseAuth.getInstance() }
+    val firebaseAuth      = remember { FirebaseAuth.getInstance() }
+    val httpClient        = remember { OkHttpClient() }
 
     Column(
         modifier = Modifier
@@ -48,29 +64,24 @@ fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            "Visual Node Code",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        Text("Visual Node Code", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text(
             "The Mobile IDE for Android",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color  = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(Modifier.height(64.dp))
 
-        // Google Sign-In button
         OutlinedButton(
             onClick = {
                 loading = true
-                error = ""
+                error   = ""
                 scope.launch {
                     try {
-                        // Build the Google ID request
+                        // 1. Credential Manager — pick Google account
                         val googleIdOption = GetGoogleIdOption.Builder()
-                            .setFilterByAuthorizedAccounts(false) // show all accounts
+                            .setFilterByAuthorizedAccounts(false)
                             .setServerClientId(WEB_CLIENT_ID)
                             .setAutoSelectEnabled(false)
                             .build()
@@ -79,36 +90,56 @@ fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
                             .addCredentialOption(googleIdOption)
                             .build()
 
-                        // Launch the credential picker
-                        val result = credentialManager.getCredential(
+                        val credResult = credentialManager.getCredential(
                             request = request,
                             context = activity,
                         )
 
-                        // Extract Google ID token
                         val googleIdToken = GoogleIdTokenCredential
-                            .createFrom(result.credential.data)
+                            .createFrom(credResult.credential.data)
                             .idToken
 
-                        // Exchange with Firebase
-                        val firebaseCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                        firebaseAuth.signInWithCredential(firebaseCredential)
-                            .addOnSuccessListener { authResult ->
-                                val uid = authResult.user?.uid ?: ""
-                                // Pass Firebase UID as the auth token downstream
-                                // (swap for real JWT from your backend if needed)
-                                onAuthenticated(uid)
-                            }
-                            .addOnFailureListener { e ->
-                                error = "Firebase sign-in failed: ${e.message}"
-                                loading = false
-                            }
+                        // 2. Sign into Firebase and get its ID token
+                        val firebaseCred = GoogleAuthProvider.getCredential(googleIdToken, null)
+                        val authResult   = firebaseAuth.signInWithCredential(firebaseCred).await()
+                        val firebaseIdToken = authResult.user
+                            ?.getIdToken(false)
+                            ?.await()
+                            ?.token
+                            ?: throw Exception("Could not get Firebase ID token")
+
+                        // 3. Exchange with our backend — get JWT + role
+                        val body = JSONObject().apply {
+                            put("firebaseIdToken", firebaseIdToken)
+                        }.toString().toRequestBody("application/json".toMediaType())
+
+                        val backendResp = withContext(Dispatchers.IO) {
+                            httpClient.newCall(
+                                Request.Builder()
+                                    .url(AUTH_ENDPOINT)
+                                    .post(body)
+                                    .build()
+                            ).execute()
+                        }
+
+                        if (!backendResp.isSuccessful) {
+                            throw Exception("Backend auth failed (${backendResp.code})")
+                        }
+
+                        val json = JSONObject(backendResp.body!!.string())
+                        val result = AuthResult(
+                            accessToken  = json.getString("accessToken"),
+                            refreshToken = json.getString("refreshToken"),
+                            role         = json.optString("role", "user"),
+                        )
+
+                        onAuthenticated(result)
 
                     } catch (e: GetCredentialException) {
-                        error = "Sign-in cancelled or unavailable: ${e.message}"
-                        loading = false
+                        error = "Sign-in cancelled: ${e.message}"
                     } catch (e: Exception) {
-                        error = "Unexpected error: ${e.message}"
+                        error = "Error: ${e.message}"
+                    } finally {
                         loading = false
                     }
                 }
@@ -116,29 +147,17 @@ fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            shape   = RoundedCornerShape(8.dp),
+            border  = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             enabled = !loading,
-            colors = ButtonDefaults.outlinedButtonColors(
+            colors  = ButtonDefaults.outlinedButtonColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
         ) {
             if (loading) {
                 CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
             } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    // Google "G" icon — place ic_google.xml in res/drawable
-                    // or swap for Text("G") if you skip the asset
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Continue with Google",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
+                Text("Continue with Google", fontSize = 16.sp, fontWeight = FontWeight.Medium)
             }
         }
 
@@ -153,7 +172,6 @@ fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
         }
 
         Spacer(Modifier.height(32.dp))
-
         Text(
             "Sign in with your Google account to get started.",
             style = MaterialTheme.typography.bodySmall,
