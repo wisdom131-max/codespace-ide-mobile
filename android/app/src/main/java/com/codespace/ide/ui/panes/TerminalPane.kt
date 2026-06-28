@@ -1084,8 +1084,7 @@ internal fun TerminalPane(
                                 viewClient2.onCloseTab    = { closeTab(active.id) }
                                 viewClient2.onPrevTab     = { val i = tabs.indexOfFirst { it.id == activeId }; if (i > 0) activeId = tabs[i-1].id else if (tabs.isNotEmpty()) activeId = tabs.last().id }
                                 viewClient2.onNextTab     = { val i = tabs.indexOfFirst { it.id == activeId }; activeId = if (i < tabs.size-1) tabs[i+1].id else tabs.first().id }
-                                viewClient2.onClearScreen = { active.session.write("clear
-") }
+                                viewClient2.onClearScreen = { active.session.write("clear\n") }
                             }
                             view.requestFocus()
                         }
