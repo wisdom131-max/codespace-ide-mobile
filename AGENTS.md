@@ -608,3 +608,152 @@ Our current `onTextChanged` fires `onScreenUpdated()` for ALL sessions.
 Must add: skip if activity not visible, skip if not active tab.
 This is causing unnecessary redraws and potential terminal flicker.
 
+
+
+---
+
+## TermuxTerminalViewClient — FULLY DECOMPILED (June 28, 2026)
+> Source: TermuxTerminalViewClient.smali from hereyougo.zip
+
+### Complete method list (45 methods) — key ones:
+
+**onCreate():**
+```
+terminalView.setTextSize(preferences.getFontSize())
+terminalView.setKeepScreenOn(preferences.shouldKeepScreenOn())
+```
+→ Font size comes from SharedPreferences. We should persist font size too.
+
+**onStart():**
+```
+terminalView.setIsTerminalViewKeyLoggingEnabled(prefs.isTerminalViewKeyLoggingEnabled())
+rootView.setIsRootViewLoggingEnabled(...)
+ViewUtils.setIsViewUtilsLoggingEnabled(...)
+```
+→ Just logging flags. Not relevant to us.
+
+**onResume():**
+```
+setSoftKeyboardState(isStartup=true, isReload=false)   ← show keyboard
+mTerminalCursorBlinkerStateAlreadySet = false
+if terminalView.mEmulator != null:
+    setTerminalCursorBlinkerState(true)
+    mTerminalCursorBlinkerStateAlreadySet = true
+```
+→ Keyboard always shown on resume. Cursor blink started on resume if emulator ready.
+
+**onStop():**
+```
+setTerminalCursorBlinkerState(false)   ← stop cursor blink to save battery
+```
+
+**onReload():**
+```
+setSoftKeyboardState(isStartup=false, isReload=true)
+setTerminalCursorBlinkerState(true)
+```
+
+**onEmulatorSet() — CRITICAL:**
+```
+if !mTerminalCursorBlinkerStateAlreadySet:
+    setTerminalCursorBlinkerState(true)
+    mTerminalCursorBlinkerStateAlreadySet = true
+```
+→ Called when TerminalView.attachSession() sets up the emulator. This is what starts the cursor.
+→ We MUST wire this up — currently cursor blink never starts in our app.
+
+**onKeyDown(keyCode, event, session):**
+- handleVirtualKeys first (Ctrl/Alt/Fn/Shift combos)
+- keyCode 0x42 (KEYCODE_BACK) + session not running → removeFinishedSession
+- Ctrl+Alt shortcuts: N=new session, P=prev session, U=open drawer, K=kill session dialog, +/-=font size, etc.
+- Falls through to TerminalView default handling
+
+**onKeyUp(keyCode, event):**
+```
+if keyCode == KEYCODE_BACK (4) && emulator == null:
+    finishActivityIfNotFinishing()   ← back pressed with no session = exit
+handleVirtualKeys(keyCode, event, isDown=false)
+```
+
+**onScale(scale):**
+```
+if scale < 0.9 or scale > 1.1:   ← ignore tiny pinches
+    changeFontSize(scale > 1.0)
+return 1.0f   ← always return 1.0 (no actual zoom)
+```
+→ Pinch-to-zoom changes font size, not actual zoom.
+
+**changeFontSize(increase):**
+```
+prefs.changeFontSize(increase)          ← save to SharedPreferences
+terminalView.setTextSize(prefs.getFontSize())
+```
+
+**setTerminalCursorBlinkerState(start):**
+```
+if start:
+    terminalView.setTerminalCursorBlinkerRate(prefs.getTerminalCursorBlinkRate())
+    if rate set OK: terminalView.setTerminalCursorBlinkerState(true, true)
+    else: log error
+else:
+    terminalView.setTerminalCursorBlinkerState(false, true)
+```
+
+**shouldBackButtonBeMappedToEscape():** → reads from properties file
+**shouldEnforceCharBasedInput():** → reads from properties file
+**shouldUseCtrlSpaceWorkaround():** → reads from properties file
+
+### TermuxActivity.onCreate() — COMPLETE:
+```
+isOnResumeAfterOnCreate = true
+setActivityTheme()                        ← black or default theme from properties
+super.onCreate(bundle)
+setContentView(R.layout.activity_termux)
+build SharedPreferences
+setMargins()
+find mTermuxActivityRootView (R.id.activity_termux)
+find mTermuxActivityBottomSpaceView
+setOnApplyWindowInsetsListener(lambda)
+if isUsingFullScreen: window.addFlags(FLAG_FULLSCREEN)
+setDrawerTheme()
+setTermuxTerminalViewAndClients()         ← creates SessionClient + ViewClient + finds TerminalView
+setTerminalToolbarView(savedInstanceState)
+setSettingsButtonView()
+setNewSessionButtonView()
+setToggleKeyboardView()
+registerForContextMenu(terminalView)
+startService(TermuxService)              ← start before bind
+bindService(TermuxService, this, 0)      ← bind; throws RuntimeException if fails
+sendTermuxOpenedBroadcast()
+```
+
+**setTermuxTerminalViewAndClients():**
+```
+mTermuxTerminalSessionClient = new TermuxTerminalSessionClient(this)
+mTermuxTerminalViewClient = new TermuxTerminalViewClient(this, sessionClient)
+mTerminalView = findViewById(R.id.terminal_view) as TerminalView
+mTerminalView.setTerminalViewClient(viewClient)
+viewClient.onCreate()     ← sets font size + keepScreenOn
+sessionClient.onCreate()  ← loads colors.properties
+```
+
+**finishActivityIfNotFinishing():**
+```
+if !isFinishing(): finish()
+```
+
+### WHAT OUR CODE IS STILL MISSING vs Termux:
+| Feature | Termux | Ours | Priority |
+|---|---|---|---|
+| onTextChanged active-tab guard | ✓ | ✅ FIXED | Done |
+| onServiceDisconnected resilience | ✓ | ✅ FIXED | Done |
+| MODE_OFFLINE menu item | ✓ | ✅ FIXED | Done |
+| BusyboxInstaller off main thread | ✓ | ✅ FIXED | Done |
+| Cursor blink via onEmulatorSet | ✓ | ✗ — cursor never starts | Medium |
+| Font size from SharedPreferences | ✓ | ✗ — hardcoded | Low |
+| Pinch-to-zoom changes font size | ✓ | ✗ — no pinch handler | Low |
+| Back key with no emulator = finish | ✓ | ✗ — back does nothing | Low |
+| Color scheme from colors.properties | ✓ | ✗ — hardcoded dark theme | Low |
+
+### DECOMPILE SESSION COMPLETE
+All target classes fully analyzed. No more smali needed.
