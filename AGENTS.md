@@ -994,3 +994,45 @@ Shortcut callbacks (`onNewTab`, `onCloseTab`, `onPrevTab`, `onNextTab`, `onClear
 - Auto-close tab on exit code 0/130
 - Transcript URL long-press list (show all URLs in scrollback)
 - Session list drawer (left-swipe)
+
+---
+
+## TERMINAL FEATURES — BATCH 3 (commit 459c1f1668, run 589 ✅, June 28, 2026)
+
+### Full laptop-style extra keys bar (2 rows)
+
+**Row 1 — F1–F12:**
+| Key | VT Sequence |
+|-----|-------------|
+| F1–F4 | `\u001BOP` – `\u001BOS` (SS3) |
+| F5–F12 | `\u001B[15~` – `\u001B[24~` (CSI tilde) |
+
+**Row 2 — Modifiers + Nav + Symbols + Ctrl combos (horizontal scroll):**
+- **Sticky modifiers:** `CTRL`, `ALT`, `SHFT` — tap to arm (turns blue), next key sends with modifier, auto-disarms. Only one modifier can be armed at a time.
+- **Nav cluster:** `ESC`, `TAB`, `HOME` (`\u001B[H`), `END` (`\u001B[F`), `INS` (`\u001B[2~`), `DEL` (`\u001B[3~`), `PGUP` (`\u001B[5~`), `PGDN` (`\u001B[6~`), `↑↓←→`
+- **Symbols:** `|` `/` `\` `~` `` ` `` `-` `_` `=` `+` `[` `]` `{` `}` `(` `)` `<` `>` `;` `:` `'` `"` `!` `@` `#` `$` `^` `&` `*`
+- **Ctrl combos:** `C-c` `C-d` `C-z` `C-a` `C-e` `C-k` `C-u` `C-l` `C-r` `C-w` `C-b` `C-f` `C-p` `C-n` `C-t`
+
+### Extra keys bar hidden by default
+`showExtraKeys = false` — bar only appears when user toggles "Show Extra Keys" from the terminal menu (⋮).
+
+### Hard rules learned (runs 584–589):
+- `\n` inside a Kotlin string literal written via Python heredoc becomes a real newline in the source → always use `\\n` in Python when targeting Kotlin string content.
+- The public field on `TerminalView` is `mClient` (type `TerminalViewClient`), NOT `mTerminalViewClient`. Casting: `view.mClient as? SimpleTerminalViewClient`.
+- Shortcut callback lambdas (`onClearScreen` etc.) must use `\\n` not literal newline.
+
+### Build failure post-mortem (runs 575–588, all now resolved):
+
+| Runs | Root Cause | Fix |
+|------|-----------|-----|
+| 575–579 | `processProdDebugGoogleServices` — `com.codespace.ide.debug` missing from `google-services.json` | Added debug package to `google-services.json` (run 580) |
+| 584–587 | `TerminalPane.kt` line ~1035/1087 — `\n` heredoc split into real newline inside Kotlin string | Escaped to `\\n` in Python write |
+| 588 | `Unresolved reference: mTerminalViewClient` | Replaced with `mClient` (run 589) |
+
+### Still pending (next batch):
+- Custom TTF font loading
+- Bell mode preference (vibrate / beep / silent)
+- Back key → Escape user setting
+- Auto-close tab on process exit (code 0 or 130)
+- URL long-press list from scrollback transcript
+- Session list drawer (left-swipe)
