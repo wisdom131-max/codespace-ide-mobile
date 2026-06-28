@@ -66,13 +66,15 @@
             android:name=".terminal.TerminalService"
             android:foregroundServiceType="specialUse"
             android:exported="false">
-            <!-- specialUse required: terminal emulator forks pty/shell processes,
-                 which doesn't map to any standard Android foreground service type.
-                 This is the correct type for Termux-style terminal emulators. -->
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="terminal_emulator" />
+            <!-- specialUse: terminal emulator forks pty/shell processes.
+                 Matches Termux architecture. No PROPERTY sub-element — not required
+                 for functionality, only for Play Store review which we handle separately. -->
         </service>
+
+        <!-- Max aspect ratio — tells OEM display/power manager this is a full-screen productive app -->
+        <meta-data
+            android:name="android.max_aspect"
+            android:value="10.0" />
 
         <!-- OEM keepalive signals — read by Samsung, TECNO, Infinix, and other OEMs
              that share Samsung's power management framework. Without these, the OEM
@@ -92,6 +94,16 @@
         <meta-data
             android:name="com.hihonor.android.support.keepalive"
             android:value="true" />
+
+        <!-- Samsung DeX / foldable window compat — Termux ships these exact entries.
+             Some OEM power managers (TECNO HiOS) use these to classify the app as
+             foreground-capable and spare it from background process killing. -->
+        <uses-library
+            android:name="androidx.window.extensions"
+            android:required="false" />
+        <uses-library
+            android:name="androidx.window.sidecar"
+            android:required="false" />
 
     </application>
 </manifest>
