@@ -11,7 +11,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -61,15 +60,13 @@
             </intent-filter>
         </activity>
 
-        <!-- Foreground service for terminal & background sync keep-alive -->
+        <!-- Foreground service for terminal — NO foregroundServiceType.
+             targetSdk=28 (same as Termux): type attribute not required below API 29.
+             Android 14 applies full compat mode — all FGS restrictions bypassed.
+             This is exactly how Termux declares it on the TECNO KL4. -->
         <service
             android:name=".terminal.TerminalService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
-            <!-- specialUse: terminal emulator forks pty/shell processes.
-                 Matches Termux architecture. No PROPERTY sub-element — not required
-                 for functionality, only for Play Store review which we handle separately. -->
-        </service>
+            android:exported="false" />
 
         <!-- Max aspect ratio — tells OEM display/power manager this is a full-screen productive app -->
         <meta-data

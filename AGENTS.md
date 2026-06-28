@@ -294,3 +294,71 @@ Shell startup files:
 - Ubuntu tab boots to `root@localhost` after rootfs already installed
 - Tab completion + arrow keys in ash
 - Split panel stable after 10+ min use (lambda leak fix)
+
+---
+
+## TERMUX ON-DEVICE DECOMPILE FINDINGS (June 28, 2026)
+> Source: Termux v0.118.3 APK decompiled directly from user's TECNO KL4 via MT Manager.
+> This is ground truth — not from internet sources. Files: AndroidManifest.xml + libtermux.so.
+
+### libtermux.so — Symbol Table Analysis
+Built with NDK r22b, arm64-v8a.
+
+**Exported JNI symbols (complete list — nothing else):**
+- `Java_com_termux_terminal_JNI_close`
+- `Java_com_termux_terminal_JNI_createSubprocess`
+- `Java_com_termux_terminal_JNI_setPtyUTF8Mode`
+- `Java_com_termux_terminal_JNI_setPtyWindowSize`
+- `Java_com_termux_terminal_JNI_waitFor`
+
+**C stdlib calls used:** `fork`, `setsid`, `execvp`, `clearenv`, `putenv`, `sigfillset`, `sigprocmask`, `dup2`, `ioctl`, `opendir`, `readdir`, `closedir`, `grantpt`, `unlockpt`, `ptsname_r`, `waitpid`, `open`, `close`, `chdir`, `strerror`, `asprintf`, `perror`, `exit`
+
+**NOT present (confirmed absent):** `prctl`, `setProcessGroup`, `cgroup`, `phantom`, `PR_SET_CHILD_SUBREAPER`
+
+**Conclusion:** Termux C code is IDENTICAL in behavior to our `pty_native.c`. Signal 31 survival is NOT from the native layer.
+
+---
+
+### AndroidManifest.xml — Full Comparison (from device)
+
+| Setting | Termux (device) | Ours (before fix) | Ours (after fix) |
+|---|---|---|---|
+| `targetSdkVersion` | **28** | 34 | **28** ✓ |
+| `compileSdkVersion` | 30 | 34 | 34 |
+| `foregroundServiceType` | **NONE** | specialUse | **NONE** ✓ |
+| `android.max_aspect` | **10.0** | missing | **10.0** ✓ |
+| `com.samsung.android.keepalive.density` | true | true | true ✓ |
+| `com.samsung.android.multidisplay.keep_process_alive` | true | true | true ✓ |
+| `com.sec.android.support.multiwindow` | true | true | true ✓ |
+| `androidx.window.extensions` | required=false | missing | required=false ✓ |
+| `androidx.window.sidecar` | required=false | missing | required=false ✓ |
+| `FOREGROUND_SERVICE_SPECIAL_USE` perm | absent | present | **removed** ✓ |
+
+### Why targetSdk=28 is the nuclear option:
+- Android 14 applies full **compat mode** for apps targeting SDK < 29
+- All FGS restrictions (API 29+, 31+, 33+, 34+) are completely bypassed
+- No foregroundServiceType required → no `specialUse` enforcement
+- No phantom process rules → children of service not subject to phantom killer
+- No 6-hour FGS timeout (dataSync/API 31+)
+- OEM power managers (HiOS/TECNO) treat compat-mode apps more leniently
+
+### Commits from this session:
+| Commit | Change |
+|---|---|
+| `78e6513` | Added Samsung/TECNO OEM keepalive meta-data, removed dataSync FGS type |
+| `4233848` | Added android.max_aspect=10.0, added androidx.window libs, removed PROPERTY sub-element |
+| next | targetSdk=28, removed foregroundServiceType entirely, removed FOREGROUND_SERVICE_SPECIAL_USE |
+
+### NEXT: Decompile classes.dex — TermuxService.smali
+**What to look for:**
+1. `TermuxService` → `onStartCommand` method — how does it call startForeground?
+2. `TermuxApplication` → `onCreate` — anything besides crash handler?
+3. Search for `Process` class usage — any `setProcessGroup` or `setThreadPriority`?
+4. Search for `PowerManager` — when/how is WakeLock acquired?
+5. Search for `cgroup` string in the full dex dump
+
+**How to do it in MT Manager:**
+- Open base.apk → `classes.dex` → tap **Dex Editor Plus**
+- Use the **Search** tab (magnifying glass) → search class name
+- Or: long-press `classes.dex` → **Dex to Java** if you have jadx plugin
+
