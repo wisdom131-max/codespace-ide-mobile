@@ -118,12 +118,14 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         try {
             // Try TOP_APP first (highest priority cgroup — same as foreground UI).
             // Fallback to FOREGROUND if permission denied on some ROM builds.
-            // THREAD_GROUP_TOP_APP=5, THREAD_GROUP_FOREGROUND=1 are hidden APIs — use raw int values
-            android.os.Process.setProcessGroup(pid, 5)
+            // setProcessGroup is a hidden API — call via reflection
+            val m = android.os.Process::class.java.getMethod("setProcessGroup", Int::class.java, Int::class.java)
+            m.invoke(null, pid, 5) // 5 = THREAD_GROUP_TOP_APP
             android.util.Log.d("TerminalSession", "setProcessGroup($pid, TOP_APP=5) — phantom kill protection active")
         } catch (_: Exception) {
             try {
-                android.os.Process.setProcessGroup(pid, 1)
+                val m = android.os.Process::class.java.getMethod("setProcessGroup", Int::class.java, Int::class.java)
+                m.invoke(null, pid, 1) // 1 = THREAD_GROUP_FOREGROUND
                 android.util.Log.d("TerminalSession", "setProcessGroup($pid, FOREGROUND=1) — fallback protection active")
             } catch (e2: Exception) {
                 android.util.Log.w("TerminalSession", "setProcessGroup failed entirely (non-fatal): ${e2.message}")
