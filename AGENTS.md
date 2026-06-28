@@ -913,3 +913,43 @@ FIREBASE_CLIENT_EMAIL=<firebase service account>
 FIREBASE_PRIVATE_KEY=<firebase service account private key>
 ```
 
+
+---
+
+## BUILD HISTORY AUDIT — RUNS 549–582 (June 28, 2026)
+
+### Summary
+Investigated by: Agent session June 28, 2026 (this session).
+
+| Run range | Root cause | Resolution |
+|-----------|-----------|-----------|
+| 549–558 | Literal `\n` inside Kotlin string literals in `ProjectShellScreen.kt` — `Expecting '"'` at compiler | Fixed run by run with unicode escapes (`\n` → `\n`) |
+| 562–563 | `TerminalBuffer.mColumns` accessed directly — package-private, compiler error | Fixed in 564: switched to `getTranscriptText()` |
+| 567–579 | `google-services.json` missing `com.codespace.ide.debug` app package | Fixed in 580 |
+| 580–582 | ✅ GREEN — all issues resolved |
+
+### Features shipped by other AI (all in current HEAD, all building):
+
+| Feature | File(s) |
+|---------|---------|
+| Chat panel — Ollama (Ask/Agent/Plan modes, history) | `ProjectShellScreen.kt` |
+| NewTermux toolbar — STT, Root, Zsh+OMZ, Clear, Export, Pkg Update, MCP start, Script maker | `TerminalPane.kt` |
+| McpPanel — MCP marketplace in Extensions tab | `McpPanel.kt` (new file) |
+| Immersive fullscreen (status bar hides, swipe to peek) | `ProjectShellScreen.kt` |
+| Google Sign-In via Firebase + Credential Manager | `AuthScreen.kt` |
+| Owner role system — `ijeziewisdom131@gmail.com` = owner | `SecureTokenStore.kt` |
+| Backend auth: Firebase token verify → JWT + role stamp | `backend/src/auth/` |
+
+### Our terminal fixes (from this session) — also in current HEAD (run 582 ✅):
+All 9 features confirmed in HEAD `TerminalPane.kt`:
+- Bell vibrate, pinch-to-zoom, URL tap-to-open, cursor blinking wired
+- Tab title updates from escape sequences
+- Session finished → `[exited]` tab marker
+- `keepScreenOn = true` on TerminalView
+- Layout change listener → SIGWINCH for vim/nano/htop
+- `DisposableEffect` service lifetime — TerminalService alive for full pane lifetime
+
+### Hard rule added:
+Never use `TerminalBuffer.mColumns` directly — it is package-private.
+Always use `screen.getTranscriptText()` or `emulator.screen.getTranscriptText()`.
+
