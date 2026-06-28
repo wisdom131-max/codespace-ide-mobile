@@ -1334,6 +1334,14 @@ fun ProjectShellScreen(
         if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
 
 
+    // ── First-launch onboarding walkthrough ─────────────────────────────
+    if (showOnboarding) {
+        OnboardingWalkthrough(onDone = {
+            showOnboarding = false
+            prefs.edit().putBoolean("onboarding_seen", true).apply()
+        })
+    }
+
     } // end root Box
 }
 
@@ -1400,13 +1408,6 @@ fun ProjectShellScreen(
         Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
             Text("No forwarded ports. Tap + to forward a local server port.", fontSize = 13.sp, color = Color(0xFF717171))
         }
-    }
-    // ── First-launch onboarding walkthrough ───────────────────────────────────
-    if (showOnboarding) {
-        OnboardingWalkthrough(onDone = {
-            showOnboarding = false
-            prefs.edit().putBoolean("onboarding_seen", true).apply()
-        })
     }
 
 }
