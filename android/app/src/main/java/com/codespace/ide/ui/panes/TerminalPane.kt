@@ -700,10 +700,9 @@ internal fun TerminalPane(
                     .clickable {
                         val cmd = buildString {
                             append("pkg install -y zsh curl git && ")
-                            append("sh -c "\$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended && ")
+                            append("sh -c \"\$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" -- --unattended && ")
                             append("chsh -s zsh && ")
-                            append("echo "Zsh + Oh My Zsh ready!"
-")
+                            append("echo \"Zsh + Oh My Zsh ready!\"\n")
                         }
                         active?.session?.write(cmd)
                         zshSetupDone = true
@@ -714,8 +713,7 @@ internal fun TerminalPane(
             // Clear screen
             Box(
                 Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                    .clickable { active?.session?.write("clear
-") }
+                    .clickable { active?.session?.write("clear\n") }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Clear", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
 
@@ -745,8 +743,7 @@ internal fun TerminalPane(
             // Pkg update shortcut
             Box(
                 Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                    .clickable { active?.session?.write("pkg update -y && pkg upgrade -y
-") }
+                    .clickable { active?.session?.write("pkg update -y && pkg upgrade -y\n") }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Pkg↑", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
         }
