@@ -52,6 +52,8 @@ object TermuxBootstrapInstaller {
     fun installIfNeeded(context: Context, onProgress: (String) -> Unit = {}) {
         if (isInstalled(context)) {
             Log.d(TAG, "Termux bootstrap already installed")
+            // Always ensure apt.conf exists — may be missing from older installs
+            ensureAptConf(context)
             return
         }
 
@@ -142,6 +144,7 @@ object TermuxBootstrapInstaller {
 
             // Write environment profile for bash
             writeProfile(context, prefix)
+            ensureAptConf(context)
 
             File(context.filesDir, ".termux_bootstrap_version").writeText(VERSION)
             onProgress("Termux bootstrap ready ✓ ($filesWritten files, $symlinksDone symlinks)")
@@ -209,18 +212,28 @@ echo "VN Code bash ready — \$(bash --version | head -1)"
         // tmp dir must exist
         File(prefix, "tmp").mkdirs()
 
-        // apt.conf — disable GPG signature verification.
-        // Samsung kernel 5.15 blocks fork() inside proot ptrace, so gpgv (a subprocess
-        // apt forks to verify signatures) always exits with "Bad system call".
-        // This makes `apt update` and `apt install` work despite the kernel restriction.
-        val aptConf = File(prefix, "etc/apt/apt.conf.d/99-vncode-nogpg")
+    }
+
+    /**
+     * Writes apt.conf to disable GPG verification.
+     * Called both from fresh install AND on every startup for existing installs.
+     * Samsung kernel blocks gpgv fork() -> "Bad system call" without this.
+     */
+    fun ensureAptConf(context: Context) {
+        val aptConf = File(prefixDir(context), "etc/apt/apt.conf.d/99-vncode-nogpg")
+        if (aptConf.exists()) return
         aptConf.parentFile?.mkdirs()
-        aptConf.writeText("""
-// VN Code — disable GPG check (Samsung kernel blocks gpgv subprocess)
-APT::Get::AllowUnauthenticated "true";
-Acquire::AllowInsecureRepositories "true";
-Acquire::AllowDowngradeToInsecureRepositories "true";
-APT::Sandbox::User "root";
-""".trimIndent())
+        aptConf.writeText(
+            "// VN Code — disable GPG check (Samsung kernel blocks gpgv subprocess)
+" +
+            "APT::Get::AllowUnauthenticated "true";
+" +
+            "Acquire::AllowInsecureRepositories "true";
+" +
+            "Acquire::AllowDowngradeToInsecureRepositories "true";
+" +
+            "APT::Sandbox::User "root";
+"
+        )
     }
 }
