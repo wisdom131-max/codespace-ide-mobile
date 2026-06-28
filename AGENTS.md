@@ -1302,3 +1302,60 @@ The AI currently only knows the open file. Full project awareness requires:
 ### Hard rules:
 - `AlertDialog` `containerColor` must be explicitly set to `Color(0xFF1E1E1E)` — default Material3 container is white
 - `bullets` field defaults to `emptyList()` so all existing steps are unaffected
+
+---
+
+## BUILD FIX SESSION — June 28, 2026 (Superagent / Base44)
+
+### What failed (29 consecutive CI failures, all "Build Android APK")
+
+Root cause: A large refactor split `ProjectShellScreen.kt` (600-line composable → separate overlay files).
+The extraction left **private-in-file types being referenced across file boundaries** — a Kotlin visibility rule violation.
+
+**Exact compiler errors fixed:**
+
+| File | Error |
+|------|-------|
+| `ConnectorsHubSheet.kt` | `Unresolved reference: theme` (bad import path for IdeColors) |
+| `ConnectorsHubSheet.kt` | `'internal' function exposes 'private-in-file' IdeColors` |
+| `ConnectorsHubSheet.kt` | `Cannot access 'ConnectorRow': it is private in file` (×4 call sites) |
+| `CopilotChatPanelOverlay.kt` | `Unresolved reference: theme` |
+| `CopilotChatPanelOverlay.kt` | `'internal' function exposes 'private-in-file' IdeColors` |
+| `NotificationDrawerOverlay.kt` | `'internal' function exposes 'private-in-file' NotifItem` (×3) |
+| `ProjectShellScreen.kt` | `Unresolved reference: colors` (×2 — passing removed param) |
+
+### Fixes applied (commits de86a5d2 → 39e97845, June 28 2026)
+
+**`ConnectorsHubSheet.kt`**
+- Removed `IdeColors` import + parameter entirely (it was unused — the sheet uses hardcoded VS Code colors)
+- Moved `ConnectorRow` composable INTO this file as `internal` (was `private` in ProjectShellScreen)
+- `ConnectorsHubSheet` itself is `internal` — correct, callable from same package
+
+**`CopilotChatPanelOverlay.kt`**
+- Removed `IdeColors` import + `colors: IdeColors` parameter entirely (unused)
+- Replaced deprecated `Divider()` with `HorizontalDivider()` (Material3)
+- `CopilotChatPanelOverlay` remains `internal`
+
+**`NotificationDrawerOverlay.kt`**
+- Moved `NotifItem` data class into THIS file as `internal data class NotifItem` (was `private` in ProjectShellScreen)
+- Replaced deprecated `Divider()` with `HorizontalDivider()` (Material3)
+
+**`ProjectShellScreen.kt`**
+- Removed `private data class NotifItem` (now lives in NotificationDrawerOverlay.kt)
+- Removed `@Composable private fun ConnectorRow` block (now lives in ConnectorsHubSheet.kt)
+- Fixed call site: `CopilotChatPanelOverlay(colors = colors, ...)` → `CopilotChatPanelOverlay(...)`
+- Fixed call site: `ConnectorsHubSheet(colors = colors, ...)` → `ConnectorsHubSheet(...)`
+
+### Result
+- ✅ Build succeeded: run `28337666579`
+- ✅ APK artifact uploaded: `app-prod-arm64-v8a-debug.apk`
+- ✅ Terminal layer (TerminalPane, TerminalService, NativePty, ProotInstaller, BusyboxInstaller, TermuxBootstrapInstaller) — **zero files touched**
+
+### Hard rules added from this session
+
+7. When extracting a composable to its own file: **always check visibility of every type it references**. If the type is `private` or `private-in-file` in the source file, either (a) move it to the new file as `internal`, or (b) create a shared `Models.kt` in the same package.
+8. Never pass a `private-in-file` type as a parameter to an `internal` function — Kotlin forbids this across files even in the same package.
+9. `IdeColors` lives as a `private data class` inside `ProjectShellScreen.kt`. Do NOT import it from `com.codespace.ide.ui.theme` — it is not there. If overlay files genuinely need theme colors, pass individual `Color` values or read from `MaterialTheme` directly.
+10. After every push to the repo (success or failure), update this AGENTS.md with: what changed, what commit SHA, and what the build result was.
+11. When a suggestion is made (by the user or agent) about code patterns, rules, or conventions — add it to the Hard Rules section immediately, not later.
+
