@@ -15,3 +15,8 @@ export class LoginDto {
 export class RefreshDto {
   @IsString() refreshToken: string;
 }
+
+export class GoogleAuthDto {
+  @IsString() firebaseIdToken: string;
+  @IsOptional() @IsString() deviceId?: string;
+}
