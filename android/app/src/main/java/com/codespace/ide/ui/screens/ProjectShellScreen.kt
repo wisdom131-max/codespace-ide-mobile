@@ -245,6 +245,8 @@ private fun ideColors(themeName: String): IdeColors {
 }
 
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS }
+
+private data class NotifItem(val id: Long, val msg: String, val type: String)
 private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW }
 
 private val SPECIAL_KEYS = listOf(
@@ -379,7 +381,6 @@ fun ProjectShellScreen(
     var notificationMsg    by remember { mutableStateOf<String?>(null) }
     var notificationType   by remember { mutableStateOf("info") }
     // Persistent notification list (bell drawer)
-    data class NotifItem(val id: Long, val msg: String, val type: String)
     val notifList = remember { mutableStateListOf<NotifItem>() }
     var notifUnread by remember { mutableStateOf(0) }
     var showNotifDrawer by remember { mutableStateOf(false) }
@@ -1395,7 +1396,7 @@ fun ProjectShellScreen(
                         Spacer(Modifier.height(8.dp))
                         // SSH
                         ConnectorRow(
-                            icon = Icons.Default.Terminal,
+                            icon = Icons.Default.Computer,
                             name = "SSH",
                             subtitle = "Remote server access",
                             color = Color(0xFF0097A7),
@@ -1408,7 +1409,7 @@ fun ProjectShellScreen(
                         Spacer(Modifier.height(8.dp))
                         // AI Keys
                         ConnectorRow(
-                            icon = Icons.Default.Psychology,
+                            icon = Icons.Default.SmartToy,
                             name = "AI Providers",
                             subtitle = "OpenAI, Anthropic, Gemini keys",
                             color = Color(0xFF7B1FA2),
@@ -1439,7 +1440,7 @@ fun ProjectShellScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(Icons.Default.ManageAccounts, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.AccountBox, null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Manage Accounts", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
