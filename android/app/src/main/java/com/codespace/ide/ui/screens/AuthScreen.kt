@@ -1,47 +1,45 @@
 package com.codespace.ide.ui.screens
 
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import android.app.Activity
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
+
+// Web client ID from google-services.json (client_type: 3)
+private const val WEB_CLIENT_ID =
+    "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com"
 
 @Composable
 fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
     val context = LocalContext.current
+    val activity = context as Activity
     val scope = rememberCoroutineScope()
-    var token by remember { mutableStateOf("") }
+
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+
+    val credentialManager = remember { CredentialManager.create(context) }
+    val firebaseAuth = remember { FirebaseAuth.getInstance() }
 
     Column(
         modifier = Modifier
@@ -50,86 +48,114 @@ fun AuthScreen(onAuthenticated: (token: String) -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Visual Node Code", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text(
+            "Visual Node Code",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+        )
         Text(
             "The Mobile IDE for Android",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(48.dp))
 
-        OutlinedTextField(
-            value = token,
-            onValueChange = { token = it; error = "" },
-            label = { Text("GitHub Personal Access Token") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            isError = error.isNotEmpty(),
-            supportingText = if (error.isNotEmpty()) {
-                { Text(error, color = MaterialTheme.colorScheme.error) }
-            } else null,
-        )
+        Spacer(Modifier.height(64.dp))
 
-        Spacer(Modifier.height(8.dp))
-
-        Button(
+        // Google Sign-In button
+        OutlinedButton(
             onClick = {
-                if (token.isBlank()) {
-                    error = "Please enter your GitHub token"
-                    return@Button
-                }
                 loading = true
                 error = ""
                 scope.launch {
                     try {
-                        val client = OkHttpClient()
-                        val request = Request.Builder()
-                            .url("https://api.github.com/user")
-                            .header("Authorization", "Bearer ${token.trim()}")
-                            .header("Accept", "application/vnd.github+json")
+                        // Build the Google ID request
+                        val googleIdOption = GetGoogleIdOption.Builder()
+                            .setFilterByAuthorizedAccounts(false) // show all accounts
+                            .setServerClientId(WEB_CLIENT_ID)
+                            .setAutoSelectEnabled(false)
                             .build()
-                        val response = withContext(Dispatchers.IO) {
-                            client.newCall(request).execute()
-                        }
-                        if (response.isSuccessful) {
-                            onAuthenticated(token.trim())
-                        } else {
-                            error = "Invalid token (${response.code}). Please check and try again."
-                        }
+
+                        val request = GetCredentialRequest.Builder()
+                            .addCredentialOption(googleIdOption)
+                            .build()
+
+                        // Launch the credential picker
+                        val result = credentialManager.getCredential(
+                            request = request,
+                            context = activity,
+                        )
+
+                        // Extract Google ID token
+                        val googleIdToken = GoogleIdTokenCredential
+                            .createFrom(result.credential.data)
+                            .idToken
+
+                        // Exchange with Firebase
+                        val firebaseCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
+                        firebaseAuth.signInWithCredential(firebaseCredential)
+                            .addOnSuccessListener { authResult ->
+                                val uid = authResult.user?.uid ?: ""
+                                // Pass Firebase UID as the auth token downstream
+                                // (swap for real JWT from your backend if needed)
+                                onAuthenticated(uid)
+                            }
+                            .addOnFailureListener { e ->
+                                error = "Firebase sign-in failed: ${e.message}"
+                                loading = false
+                            }
+
+                    } catch (e: GetCredentialException) {
+                        error = "Sign-in cancelled or unavailable: ${e.message}"
+                        loading = false
                     } catch (e: Exception) {
-                        error = "Network error: ${e.message}"
-                    } finally {
+                        error = "Unexpected error: ${e.message}"
                         loading = false
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             enabled = !loading,
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
         ) {
-            if (loading) CircularProgressIndicator()
-            else Text("Sign In")
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    // Google "G" icon — place ic_google.xml in res/drawable
+                    // or swap for Text("G") if you skip the asset
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Continue with Google",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = {
-                val intent = Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://github.com/settings/tokens/new?scopes=repo,read:user&description=CodeSpaceIDE")
-                )
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Get GitHub Token")
+        if (error.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
 
         Text(
-            "Tap 'Get GitHub Token' → create token with 'repo' and 'read:user' scopes → copy and paste it above.",
+            "Sign in with your Google account to get started.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
