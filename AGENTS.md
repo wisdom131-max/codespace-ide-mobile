@@ -788,6 +788,56 @@ Current gear menu items and their required implementations:
 
 ---
 
+---
+
+## PENDING FEATURES — June 28, 2026 batch 3 (screenshot review)
+
+### AGENT RULE — Always push ideas to AGENTS.md
+> Every time Wisdom describes a feature, UI change, or idea — no matter how small —
+> push it to AGENTS.md immediately before doing anything else. This is a hard rule.
+
+### 10. Remove Run / Debug / Terminal / Split quick-action row
+- [x] **DONE** — removed entirely from the toolbar above the editor area
+- These actions are accessible via the menu bar (Run menu, Terminal menu) — no need for a dedicated row
+- Freed vertical space for the editor
+
+### 11. Immersive Fullscreen — Hide Status Bar
+- [x] **DONE** — `MainActivity.kt` now hides the system status bar (time, battery, signal) on launch
+- Android 11+: `WindowInsetsController.hide(statusBars)` with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`
+- Android <11: `SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_IMMERSIVE_STICKY`
+- Swipe down from top → status bar appears briefly then auto-hides again
+- Goal: maximum vertical space for the editor and terminal
+
+### 12. Shrink Command Palette
+- [x] **DONE** — palette is now compact:
+  - Top padding reduced: 80dp → 40dp (sits closer to top)
+  - Width: 0.95f → 0.90f
+  - List max height: 320dp → 200dp
+  - Item row padding: 16dp/10dp → 10dp/5dp
+  - Font size: 13sp → 12sp
+  - TextField height: 40dp, font 12sp
+  - Removed bottom spacer
+- Keyboard focus fix already in place (focusRequester + LaunchedEffect)
+
+### 13. Shrink Bottom Panel Tab Row (PROBLEMS / OUTPUT / TERMINAL / DEBUG / PORTS / SPLIT)
+- [x] **DONE** — tab row reduced:
+  - Height: 28dp → 22dp
+  - Horizontal padding: 8dp → 4dp
+  - Tab padding: 10dp/4dp → 6dp/2dp
+  - Font: 11sp → 10sp
+
+### 14. "workspace ready" label
+- The text "workspace ready" was part of the Run/Debug row — removed with it (#10 above)
+- If it reappears elsewhere, remove it — wastes space, provides no value
+
+### NOTES ON SCREENSHOTS
+- Screenshot 1: Command palette full-screen (circled) → fixed in #12
+- Screenshot 2: Run/Debug/Terminal/Split row (circled) → removed in #10
+- Screenshot 3: Two crossed-out lines = the tab row above terminal → shrunk in #13.
+  Also the system status bar → hidden fullscreen in #11
+
+---
+
 ## BUILD SEQUENCE (ordered by value + dependencies)
 
 1. **Fix ExtensionsPanel compile** (LaunchedEffect import) — blocks APK
