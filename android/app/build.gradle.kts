@@ -7,6 +7,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
+    id("com.google.gms.google-services")
 }
 
 // Read signing config from keystore.properties if present (not committed)
@@ -141,6 +142,16 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
 
+    // Firebase BOM — manages all Firebase lib versions
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
+
+    // Google Sign-In — Credential Manager (modern, replaces legacy GoogleSignIn)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
     // Compose + Material 3
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -173,7 +184,7 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.26.0")
     implementation("org.tukaani:xz:1.9")
     implementation("androidx.core:core-splashscreen:1.0.1")
-    implementation("com.github.luben:zstd-jni:1.5.6-4")  // .so bundled in jniLibs/arm64-v8a/
+    implementation("com.github.luben:zstd-jni:1.5.6-4")
 
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
@@ -185,7 +196,7 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // WorkManager (sync, backups)
+    // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // DocumentFile for SAF folder picker
@@ -200,8 +211,6 @@ dependencies {
 
     // SSH / SFTP
     implementation("com.hierynomus:sshj:0.38.0")
-
-    // Termux terminal PTY
 
     // Tests
     testImplementation("junit:junit:4.13.2")
