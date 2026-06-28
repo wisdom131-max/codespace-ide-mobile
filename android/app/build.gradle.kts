@@ -48,7 +48,7 @@ android {
     ndkVersion = "26.1.10909125"
 
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
