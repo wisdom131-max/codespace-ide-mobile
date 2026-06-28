@@ -953,3 +953,44 @@ All 9 features confirmed in HEAD `TerminalPane.kt`:
 Never use `TerminalBuffer.mColumns` directly — it is package-private.
 Always use `screen.getTranscriptText()` or `emulator.screen.getTranscriptText()`.
 
+
+---
+
+## TERMINAL FEATURES — BATCH 2 (commit 7ad76069fa, June 28, 2026)
+
+### Hardware keyboard shortcuts
+Implemented in `SimpleTerminalViewClient.onKeyDown` — matches Termux's TermuxTerminalViewClient.
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Alt+N` | New tab |
+| `Ctrl+Alt+W` | Close current tab |
+| `Ctrl+Alt+P` or `Ctrl+Alt+←` | Previous tab |
+| `Ctrl+Alt+→` | Next tab |
+| `Ctrl+Alt+L` | Clear screen (sends `clear\n`) |
+| `Ctrl+L` | Clear screen (sends `\f` form feed) |
+
+Key modifier state now tracked properly — `ctrlKeyDown`/`altKeyDown`/`shiftKeyDown` fields.
+`readControlKey()`, `readAltKey()`, `readShiftKey()` now return actual state (not hardcoded false).
+Shortcut callbacks (`onNewTab`, `onCloseTab`, `onPrevTab`, `onNextTab`, `onClearScreen`) wired in AndroidView `update` block.
+
+### Color scheme picker (5 built-in themes)
+- `TerminalSchemes` object with `Scheme` data class
+- Themes: **Dark** (default), **Dracula**, **Solarized Dark**, **Monokai**, **Gruvbox**
+- Applied via `TerminalColors.COLOR_SCHEME.mDefaultColors` (the static singleton all emulators reset from)
+- Live apply: `mColors.reset()` + `onScreenUpdated()` triggers immediate re-render
+- Picker accessible from terminal dropdown menu → "🎨 Color Scheme: [current]"
+- Dialog shows color swatch + checkmark for active theme
+
+### Hard rules learned:
+- `TerminalColors.COLOR_SCHEME` is static — changing `mDefaultColors` there applies to ALL sessions. Call `mColors.reset()` on the emulator after to propagate.
+- `readControlKey()` must return live state — TerminalView uses it to decide whether Ctrl+key combos go to the emulator or the host app. Hardcoding `false` breaks all Ctrl sequences from hardware keyboards.
+- Shortcut callback lambdas must be re-wired in `update {}` block (not `factory {}`) — after `attachSession()` — because `viewClient` is set in `factory` and survives session changes.
+
+### Still missing (next batch):
+- Custom font loading from TTF file
+- Bell mode preference (vibrate/beep/ignore) — currently always vibrate
+- Back key → Escape setting (user preference)
+- Auto-close tab on exit code 0/130
+- Transcript URL long-press list (show all URLs in scrollback)
+- Session list drawer (left-swipe)
