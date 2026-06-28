@@ -495,3 +495,116 @@ No more Termux smali needed. We have the full picture:
 - WakeLock = user opt-in via notification button (we auto-acquire = better)
 - No native tricks, no cgroup, no prctl, no Process.setProcessGroup
 - Notification: channel "termux_notification_channel", IMPORTANCE_LOW, ID 1337
+
+
+---
+
+## TermuxTerminalSessionClient — FULLY DECOMPILED (June 28, 2026)
+> Source: TermuxTerminalSessionClient.smali extracted from Termux v0.118.3 APK on device.
+> Ground truth — not from internet sources.
+
+### Complete method list (35 methods):
+constructor, getBellSoundPool, getCurrentStoredSession, releaseBellSoundPool,
+addNewSession, checkAndScrollToSession, checkForFontAndColors, getCurrentStoredSessionOrLast,
+getTerminalCursorStyle, lambda$renameSession, notifyOfSessionChange, onBell, onColorsChanged,
+onCopyTextToClipboard, onCreate, onPasteTextFromClipboard, onReload, onResetTerminalSession,
+onResume, onSessionFinished, onStart, onStop, onTerminalCursorStateChange, onTextChanged,
+onTitleChanged, removeFinishedSession, renameSession, setCurrentSession, setCurrentStoredSession,
+switchToSession(I), switchToSession(Z), termuxSessionListNotifyUpdated, toToastTitle, updateBackgroundColor
+
+### KEY METHODS — exact logic:
+
+**onCreate():**
+```
+checkForFontAndColors()   ← loads ~/.termux/colors.properties + updates TerminalColors.COLOR_SCHEME
+```
+
+**onStart():**
+```
+if service != null:
+    setCurrentSession(getCurrentStoredSessionOrLast())  ← restore last session
+    termuxSessionListNotifyUpdated()
+terminalView.onScreenUpdated()   ← ALWAYS force redraw on start
+```
+
+**onResume():**
+```
+getBellSoundPool()   ← lazy-init bell sound. NOTHING ELSE.
+```
+
+**onStop():**
+```
+setCurrentStoredSession()   ← persist current session handle to SharedPreferences
+releaseBellSoundPool()      ← release audio resource
+```
+
+**onTextChanged(session):**
+```
+if !activity.isVisible() → return           ← SKIP if activity not visible
+if session != currentSession → return       ← SKIP if not the active tab
+terminalView.onScreenUpdated()              ← redraw ONLY for active visible session
+```
+**CRITICAL:** Our SimpleTerminalSessionClient.onTextChanged must follow this exact pattern.
+Currently we call onScreenUpdated unconditionally — wastes CPU for background tabs.
+
+**onColorsChanged(session):**
+```
+if session == currentSession:
+    updateBackgroundColor()
+```
+
+**updateBackgroundColor():**
+```
+if !activity.isVisible() → return
+session = getCurrentSession()
+if session != null && emulator != null:
+    window.decorView.setBackgroundColor(emulator.mColors.mCurrentColors[0x101])
+    // 0x101 = index 257 = COLOR_BACKGROUND in TerminalColors array
+```
+**CRITICAL:** Termux sets the WINDOW background (decorView), not a View background.
+This is why their terminal background color matches perfectly — it's the window itself.
+We use `Modifier.background(Color(0xFF1E1E1E))` on a Compose Box — fine for now but
+means we can't support custom color schemes from ~/.termux/colors.properties later.
+
+**setCurrentSession(session):**
+```
+if session == null → return
+terminalView.attachSession(session)     ← THIS starts the subprocess (see AGENTS.md note)
+if attachSession returned true:
+    notifyOfSessionChange()             ← show toast
+checkAndScrollToSession(session)
+updateBackgroundColor()
+```
+
+**onSessionFinished(session):**
+- If service.wantsToStop() → goto cleanup
+- Get session index, check for pending plugin results
+- If last session → removeFinishedSession + finishActivityIfNotFinishing (kills activity)
+- Else → switch to adjacent session
+
+**checkForFontAndColors():**
+```
+load ~/.termux/colors.properties into Properties
+TerminalColors.COLOR_SCHEME.updateWith(props)   ← static global color scheme
+if currentSession.emulator != null:
+    emulator.mColors.reset()                    ← apply new scheme to emulator
+updateBackgroundColor()
+```
+
+### WHAT OUR SimpleTerminalSessionClient IS MISSING vs Termux:
+
+| Feature | Termux | Ours |
+|---|---|---|
+| onTextChanged: skip if not visible | ✓ | ✗ — redraws even when backgrounded |
+| onTextChanged: skip if not active tab | ✓ | ✗ — redraws all tabs |
+| onStart: restore last session | ✓ | ✗ — no session persistence |
+| onStop: persist session handle | ✓ | ✗ — no session persistence |
+| onResume: init bell sound | ✓ | ✗ — no bell (fine) |
+| updateBackgroundColor on session change | ✓ | ✗ — hardcoded bg color |
+| checkForFontAndColors on create/reload | ✓ | ✗ — no theme file support |
+
+### IMMEDIATE FIX NEEDED — onTextChanged guard:
+Our current `onTextChanged` fires `onScreenUpdated()` for ALL sessions.
+Must add: skip if activity not visible, skip if not active tab.
+This is causing unnecessary redraws and potential terminal flicker.
+
