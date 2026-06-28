@@ -1036,3 +1036,43 @@ Shortcut callbacks (`onNewTab`, `onCloseTab`, `onPrevTab`, `onNextTab`, `onClear
 - Auto-close tab on process exit (code 0 or 130)
 - URL long-press list from scrollback transcript
 - Session list drawer (left-swipe)
+
+---
+
+## ONBOARDING WALKTHROUGH (commits 3dc8dc2d32 + 5c4a9f8289, June 28 2026)
+
+### Overview
+First-launch onboarding tour implemented across 2 files:
+- **`OnboardingWalkthrough.kt`** (new) — self-contained 8-step modal dialog
+- **`ProjectShellScreen.kt`** — reads/writes `onboarding_seen` SharedPrefs flag, renders walkthrough on first open
+
+### How it works
+- On first launch after login, `ProjectShellScreen` checks `prefs.getBoolean("onboarding_seen", false)`.
+- If `false`, renders `OnboardingWalkthrough` as a full-screen dialog overlay.
+- When user taps **Get Started** (last step) or **Skip**, sets `onboarding_seen = true` in `app_prefs` SharedPreferences — never shown again.
+- Steps can be navigated forward (Next) or backward (Back).
+
+### 8 steps covered
+
+| Step | Topic | Key tip shown |
+|------|-------|---------------|
+| 1 | Explorer | File icon in sidebar toggles panel |
+| 2 | Code Editor | Pinch to zoom, ⋮ menu for split view |
+| 3 | Terminal | ⌨ menu button shows full keyboard bar (F1–F12, Ctrl combos) |
+| 4 | AI Assistant | Chat bubble icon top-right |
+| 5 | Source Control | Branch icon in sidebar |
+| 6 | Run & Debug | ▶ icon in sidebar |
+| 7 | Extensions | Puzzle piece icon at bottom of sidebar |
+| 8 | Settings & Themes | ⚙ gear icon at bottom of sidebar |
+
+### UI design
+- Dark card dialog (`#1E1E1E`) with slide + fade animation between steps
+- Progress dots at top (filled = visited, current = large blue, future = grey)
+- Per-step circular icon with tinted background matching VS Code icon colors
+- Yellow lightbulb tip chip at bottom of each card
+- **Skip** on step 1 only; **Back** on steps 2–8; **Next** / **Get Started** on last step
+
+### Hard rules:
+- `prefs` is declared inside the composable using `remember { context.getSharedPreferences("app_prefs", 0) }` — same prefs instance already used by `CodeSpaceApp` for theme persistence.
+- `OnboardingWalkthrough` uses `dismissOnBackPress = false` and `dismissOnClickOutside = false` — user must explicitly tap Skip or Get Started.
+- `AnimatedContent` slide direction: forward = slide left, backward = slide right.
