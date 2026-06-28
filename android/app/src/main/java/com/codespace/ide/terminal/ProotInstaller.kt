@@ -289,6 +289,13 @@ object ProotInstaller {
             "--bind=$selinuxDir:/sys/fs/selinux",
             "--bind=$rootfs/tmp:/dev/shm",
             "--bind=$hostFiles:/host-files",
+            // Bind /sdcard so user can access Downloads inside Ubuntu
+            "--bind=/sdcard",
+            // -w sets the initial working directory inside the chroot to /root.
+            // Without this, getcwd() fails with ENOSYS because proot can't translate
+            // the host cwd (/data/data/...) into a guest path. Every shell command that
+            // calls getcwd() (dpkg, debconf, perl) would crash with "Function not implemented".
+            "-w", "/root",
             "/usr/bin/env", "-i",
             "HOME=/root",
             "USER=root",
@@ -309,7 +316,15 @@ object ProotInstaller {
             // causing "cannot be preloaded: ignored" noise on every session start.
             // exec() interception is not needed inside the Ubuntu chroot.
             "TMPDIR=$tmpDir",
-            "HOME=/root"  // inside proot chroot, home is /root (not host filesDir)
+            "HOME=/root",  // inside proot chroot, home is /root (not host filesDir)
+            // Prevent dpkg/debconf from trying to open a terminal frontend (dialog, readline).
+            // Inside proot there's no controlling terminal for debconf — it crashes without this.
+            "DEBIAN_FRONTEND=noninteractive",
+            "DEBCONF_NONINTERACTIVE_SEEN=true",
+            // Suppress perl locale warnings from dpkg post-install scripts
+            "PERL_BADLANG=0",
+            "LANG=C.UTF-8",
+            "LC_ALL=C"
         )
 
         return Triple(proot, args, envVars)
