@@ -246,7 +246,7 @@ private fun ideColors(themeName: String): IdeColors {
 
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS }
 
-private data class NotifItem(val id: Long, val msg: String, val type: String)
+// NotifItem moved to NotificationDrawerOverlay.kt
 private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW }
 
 private val SPECIAL_KEYS = listOf(
@@ -919,14 +919,14 @@ fun ProjectShellScreen(
             // ── VS Code Copilot Chat Panel (right side) ─────────────────
             if (showChatPanel) {
                 Box(Modifier.fillMaxSize()) {
-                    CopilotChatPanelOverlay(colors = colors, onClose = { showChatPanel = false })
+                    CopilotChatPanelOverlay(onClose = { showChatPanel = false })
                 }
             }
         // Simple overlay menus
         if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline","Split Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         // ── Connectors Hub Sheet ─────────────────────────────────────────
         if (showConnectorsSheet) {
-            ConnectorsHubSheet(colors = colors, onDismiss = { showConnectorsSheet = false })
+            ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
         }
 
         // ── Notification Drawer ────────────────────────────────────────────
@@ -1020,33 +1020,4 @@ fun ProjectShellScreen(
 
 }
 
-@Composable
-private fun ConnectorRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    name: String,
-    subtitle: String,
-    color: Color,
-    menuText: Color,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth()
-            .background(Color(0x1A007ACC), RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(36.dp).background(color.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = menuText)
-            Text(subtitle, fontSize = 11.sp, color = Color(0xFF888888))
-        }
-        Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF555555), modifier = Modifier.size(16.dp))
-    }
-}
+// ConnectorRow moved to ConnectorsHubSheet.kt
