@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.terminal.TermuxBootstrapInstaller
 import com.codespace.ide.terminal.DeviceCompatibility
 import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
@@ -264,8 +265,16 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // argv[0] = "-ash" — POSIX leading-dash login shell convention.
     // ash IS the applet name in this busybox build (not bash).
     // Termux does: processName = (isLoginShell ? "-" : "") + basename(executable)
-    val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
-    return Pair(session, client)
+    // Use Termux bootstrap bash if installed, otherwise fall back to busybox ash.
+    // TermuxBootstrapInstaller.installIfNeeded() is called from LaunchedEffect in TerminalPane.
+    return if (TermuxBootstrapInstaller.isInstalled(context)) {
+        val (shell, bashEnv) = TermuxBootstrapInstaller.shellArgs(context)
+        val session = TerminalSession(shell, home, arrayOf("--login"), bashEnv, 4000, client)
+        Pair(session, client)
+    } else {
+        val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
+        Pair(session, client)
+    }
 }
 
 
@@ -324,7 +333,12 @@ internal fun TerminalPane(
     val tabs = sharedState.tabs
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) { BusyboxInstaller.ensureOfflineShell(context) }
+        withContext(Dispatchers.IO) {
+            BusyboxInstaller.ensureOfflineShell(context)
+            // Extract Termux bootstrap (bash, curl, apt) on first launch.
+            // Streaming ZIP extraction — safe on 3 GB device, no full-file load.
+            TermuxBootstrapInstaller.installIfNeeded(context)
+        }
         bootstrapReady = true
     }
 
