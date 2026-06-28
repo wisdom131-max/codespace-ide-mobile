@@ -387,3 +387,69 @@ bindService(TermuxService, this, 0) ← bind; throws RuntimeException if fails
 
 3. **Bootstrap integration** ✅ DONE (commit `b3abee6d`) — full uncorrupted `libtermux-bootstrap.so` extracted and pushed as `android/app/src/main/assets/bootstrap-aarch64.zip` (3,490 entries, 28MB). Bash 5.2, curl, apt, dpkg, full Termux prefix now ships in APK.
 
+---
+
+## HOW WE RESEARCHED TERMUX — REVERSE ENGINEERING WORKFLOW
+
+> This section exists so future AI agents know exactly how we figured things out.
+> Do NOT skip this — it saved us from guessing blindly at Termux internals.
+
+### The problem
+We needed to understand exactly how the real Termux app initializes its terminal,
+sets environment variables, handles LD_PRELOAD, writes profiles, and structures its
+prefix directory. GitHub source alone wasn't enough — compiled behaviour differs.
+
+### Solution: On-device APK inspection with ZArchiver / MT Manager
+
+The user decompiled the **live Termux APK** directly on their TECNO KL4 device using
+**ZArchiver** or **MT Manager** (both can open .apk/.zip files on-device without a PC).
+
+Steps used:
+1. Locate the Termux APK: `Settings > Apps > Termux > Storage > show app APK path`
+   (usually `/data/app/~~.../com.termux-.../base.apk`)
+2. Open the APK in ZArchiver or MT Manager — it's just a zip file
+3. Browse to:
+   - `assets/` — bootstrap zip files, shell scripts
+   - `lib/arm64-v8a/` — native .so files including `libtermux-exec.so`
+   - `classes.dex` — decompile with jadx-gui on PC if needed
+4. Cross-reference with GitHub source for full picture
+
+### What we learned from this
+- `libtermux-exec.so` lives inside `$PREFIX/lib/`, NOT in the app's `nativeLibraryDir`
+- It is set via `/etc/profile.d/` shell scripts INSIDE the bootstrap, NOT from Java/Kotlin
+- The Java code does NOT set LD_PRELOAD — it is entirely managed by the bootstrap
+- bootstrap-aarch64.zip structure: `./bin/`, `./lib/`, `./etc/`, `./share/`, `./tmp/`
+- Shell init: bash --login sources `/etc/profile` which sources `/etc/profile.d/*.sh`
+- This is why setting LD_PRELOAD from Kotlin was wrong — we were copying a pattern
+  that only works when the .so is already inside the prefix
+
+### Google Drive integration for large file transfer
+Base44 has a 5MB file paste limit in chat. For larger files (bootstrap zips, APKs,
+decompiled source):
+- Connect Google Drive to Base44 (OAuth connector)
+- Upload the large file to Drive, share the link or let the agent read it directly
+- The agent can then extract, inspect, and reference content from Drive
+- This was used to share large ZIPs and decompiled code that exceeded the chat limit
+
+### The meta-lesson
+> When stuck on "how does X really work" — don't guess from docs alone.
+> Open the actual binary on-device. ZArchiver + MT Manager = free on-device decompiler.
+> This approach applies to ANY Android app you are reverse-engineering or forking.
+
+---
+
+## PLANNED: MASTER SKILL — "How to build an Android terminal app from scratch"
+
+When the full app is complete (terminal + editor + all tabs working), the user will
+create a Base44 Skill documenting the entire process end-to-end, including:
+
+- How to fork Termux terminal library correctly
+- How to bootstrap a prefix on Android (bootstrap-aarch64.zip + proot)
+- How to avoid known pitfalls (LD_PRELOAD, Samsung kernel, signal 31, JNI null checks)
+- The ZArchiver/MT Manager reverse engineering workflow
+- How to handle APK size limits, Google Drive for large files, multi-session AI handoffs
+- Test procedure for TECNO KL4 (ash prompt, Ubuntu extraction, curl check, apt update)
+
+This skill will be reusable for ANY future terminal/IDE app build — dodge the same
+bullets without rediscovering them from scratch.
+
