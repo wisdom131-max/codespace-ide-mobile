@@ -304,8 +304,10 @@ object ProotInstaller {
             "PROOT_TMP_DIR=$tmpDir",
             "PROOT_NO_SECCOMP=1",
             "LD_LIBRARY_PATH=$nativeDir",
-            // LD_PRELOAD libtermux-exec — intercepts exec() path rewriting, same trick Termux uses
-            "LD_PRELOAD=$nativeDir/libtermux-exec.so",
+            // LD_PRELOAD libtermux-exec is intentionally NOT set here.
+            // Inside proot, the host nativeLibraryDir path is not accessible to the guest,
+            // causing "cannot be preloaded: ignored" noise on every session start.
+            // exec() interception is not needed inside the Ubuntu chroot.
             "TMPDIR=$tmpDir",
             "HOME=/root"  // inside proot chroot, home is /root (not host filesDir)
         )
