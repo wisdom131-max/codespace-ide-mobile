@@ -326,6 +326,9 @@ internal fun TerminalPane(
     var showSshManager    by remember { mutableStateOf(false) }
     var showTextExpansions by remember { mutableStateOf(false) }
     var showExtraKeys     by remember { mutableStateOf(true) }
+    var isRootMode        by remember { mutableStateOf(false) }
+    var showSttHint       by remember { mutableStateOf(false) }
+    var zshSetupDone      by remember { mutableStateOf(false) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     // Use shared state if provided, otherwise own state
@@ -622,6 +625,114 @@ internal fun TerminalPane(
                 },
             )
         }
+
+        // ── NewTermux-style toolbar row ────────────────────────────
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xFF161616)).padding(horizontal = 6.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // STT (Speech to Text)
+            val sttLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val data = result.data
+                val results = data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+                if (!results.isNullOrEmpty()) {
+                    active?.session?.write(results[0])
+                }
+            }
+            Box(
+                Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        try {
+                            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Speak a terminal command…")
+                            }
+                            sttLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "STT not available on this device", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("🎤 STT", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // Root toggle
+            Box(
+                Modifier.background(if (isRootMode) Color(0xFF7A1A1A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        if (!isRootMode) {
+                            active?.session?.write("su
+")
+                            isRootMode = true
+                            android.widget.Toast.makeText(context, "Root shell requested — grant in prompt", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            active?.session?.write("exit
+")
+                            isRootMode = false
+                        }
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text(if (isRootMode) "# ROOT" else "Root", color = if (isRootMode) Color(0xFFFF6B6B) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // Zsh + OMZ setup
+            Box(
+                Modifier.background(if (zshSetupDone) Color(0xFF1A4A1A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        val cmd = buildString {
+                            append("pkg install -y zsh curl git && ")
+                            append("sh -c "\$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended && ")
+                            append("chsh -s zsh && ")
+                            append("echo "Zsh + Oh My Zsh ready!"
+")
+                        }
+                        active?.session?.write(cmd)
+                        zshSetupDone = true
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text(if (zshSetupDone) "✓ Zsh" else "Zsh+OMZ", color = if (zshSetupDone) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // Clear screen
+            Box(
+                Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { active?.session?.write("clear
+") }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("Clear", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // Export terminal output to file
+            Box(
+                Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        try {
+                            val screen = active?.session?.getEmulator()?.screen
+                            val sb = StringBuilder()
+                            if (screen != null) {
+                                for (row in 0 until screen.activeRows) {
+                                    sb.appendLine(screen.getSelectedText(0, row, screen.mColumns, row).trimEnd())
+                                }
+                            }
+                            val file = java.io.File(context.getExternalFilesDir(null), "terminal_export_${System.currentTimeMillis()}.txt")
+                            file.writeText(sb.toString())
+                            android.widget.Toast.makeText(context, "Saved to: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("Export", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            Spacer(Modifier.weight(1f))
+            // Pkg update shortcut
+            Box(
+                Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { active?.session?.write("pkg update -y && pkg upgrade -y
+") }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("Pkg↑", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+        }
+        HorizontalDivider(color = Color(0xFF2A2A2A))
 
         // Extra keys bar (ESC, TAB, arrows, Ctrl, special chars)
         if (showExtraKeys) {
