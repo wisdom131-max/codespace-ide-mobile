@@ -219,21 +219,22 @@ echo "VN Code bash ready — \$(bash --version | head -1)"
      * Called both from fresh install AND on every startup for existing installs.
      * Samsung kernel blocks gpgv fork() -> "Bad system call" without this.
      */
+    /**
+     * Writes apt.conf to disable GPG verification.
+     * Called both from fresh install AND on every startup for existing installs.
+     * Samsung kernel blocks gpgv fork() -> "Bad system call" without this.
+     */
     fun ensureAptConf(context: Context) {
         val aptConf = File(prefixDir(context), "etc/apt/apt.conf.d/99-vncode-nogpg")
         if (aptConf.exists()) return
         aptConf.parentFile?.mkdirs()
-        aptConf.writeText(
-            "// VN Code — disable GPG check (Samsung kernel blocks gpgv subprocess)
-" +
-            "APT::Get::AllowUnauthenticated "true";
-" +
-            "Acquire::AllowInsecureRepositories "true";
-" +
-            "Acquire::AllowDowngradeToInsecureRepositories "true";
-" +
-            "APT::Sandbox::User "root";
-"
-        )
+        // Use triple-quoted string to safely embed double-quoted apt.conf values
+        aptConf.writeText("""
+// VN Code -- disable GPG check (Samsung kernel blocks gpgv subprocess)
+APT::Get::AllowUnauthenticated "true";
+Acquire::AllowInsecureRepositories "true";
+Acquire::AllowDowngradeToInsecureRepositories "true";
+APT::Sandbox::User "root";
+        """.trimIndent())
     }
 }
