@@ -18,6 +18,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+internal data class NotifItem(val id: Long, val msg: String, val type: String)
+
 @Composable
 internal fun NotificationDrawerOverlay(
     notifList: List<NotifItem>,
@@ -57,7 +59,7 @@ internal fun NotificationDrawerOverlay(
                         )
                     }
                 }
-                Divider(color = Color(0xFF313244))
+                HorizontalDivider(color = Color(0xFF313244))
                 if (notifList.isEmpty()) {
                     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                         Text("No notifications", color = Color(0xFF6C7086), fontSize = 12.sp)
@@ -86,7 +88,7 @@ internal fun NotificationDrawerOverlay(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Divider(color = Color(0xFF313244), thickness = 0.5.dp)
+                            HorizontalDivider(color = Color(0xFF313244), thickness = 0.5.dp)
                         }
                     }
                 }
