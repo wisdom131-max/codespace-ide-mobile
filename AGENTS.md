@@ -56,6 +56,7 @@ What does not work: any command spawning subprocesses (dpkg, tar, python, ar), a
 
 | Commit | What it fixed |
 |--------|--------------|
+| `7af7a5d1` | Added `TermuxBootstrapInstaller.kt` — streams bootstrap-aarch64.zip from assets, extracts 3,490 entries to `termux-prefix/`, creates 1,146 symlinks, writes bash profile, exposes `shellArgs()` for bash tab |
 | `b3abee6d` | Replaced placeholder bootstrap-aarch64.zip with full uncorrupted Termux bootstrap (3,490 entries: bash, curl, apt, dpkg, full Termux prefix, 28MB) extracted from libtermux-bootstrap.so |
 | `28cd899` | createSession marked `internal` — fixes public API exposing internal type |
 | `0024eed` | `Int::class.javaPrimitiveType` for setProcessGroup reflection (int args require primitive type) |
@@ -364,6 +365,7 @@ bindService(TermuxService, this, 0) ← bind; throws RuntimeException if fails
 | Int::class.javaPrimitiveType for reflection | ✓ | ✅ FIXED | Done |
 | Cursor blink via onEmulatorSet | ✓ | ✗ — cursor never starts | **Medium** |
 | Font size from SharedPreferences | ✓ | ✗ — hardcoded | Low |
+| Real bash in bash tab (Termux prefix) | ✓ | ✅ DONE — TermuxBootstrapInstaller extracts bootstrap-aarch64.zip on first launch | Done |
 | Pinch-to-zoom changes font size | ✓ | ✗ — no pinch handler | Low |
 | Back key with no emulator = finish | ✓ | ✗ — back does nothing | Low |
 | Color scheme from colors.properties | ✓ | ✗ — hardcoded dark theme | Low |
@@ -378,7 +380,9 @@ bindService(TermuxService, this, 0) ← bind; throws RuntimeException if fails
    - Terminal stays alive when screen off (WakeLock + setProcessGroup working)
    - Split terminal pane works without memory leak
 
-2. **Cursor blink fix** (Medium priority) — wire `onEmulatorSet()` callback to call `setTerminalCursorBlinkerState(true)` when emulator is attached
+2. **Wire bash tab to TermuxBootstrapInstaller** — in `BusyboxInstaller.ensureOfflineShell()` or `TerminalPane addBashTab()`, call `TermuxBootstrapInstaller.installIfNeeded()` on IO thread, then use `TermuxBootstrapInstaller.bashPath()` + `shellArgs()` as the session shell instead of libbusybox.so
+
+4. **Cursor blink fix** (Medium priority) — wire `onEmulatorSet()` callback to call `setTerminalCursorBlinkerState(true)` when emulator is attached
 
 3. **Bootstrap integration** ✅ DONE (commit `b3abee6d`) — full uncorrupted `libtermux-bootstrap.so` extracted and pushed as `android/app/src/main/assets/bootstrap-aarch64.zip` (3,490 entries, 28MB). Bash 5.2, curl, apt, dpkg, full Termux prefix now ships in APK.
 
