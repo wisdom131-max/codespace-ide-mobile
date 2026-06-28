@@ -339,7 +339,12 @@ internal fun TerminalPane(
                 boundService = (binder as TerminalService.LocalBinder).service
             }
             override fun onServiceDisconnected(name: android.content.ComponentName) {
+                // Termux: onServiceDisconnected → finishActivityIfNotFinishing()
+                // We can't finish the activity from here, but we clear the service ref and
+                // restart it immediately — matches Termux's resilience strategy.
                 boundService = null
+                // Restart service — it may have been killed by OEM power manager
+                TerminalService.start(context, "Terminal session active")
             }
         }
         context.bindService(
@@ -372,7 +377,12 @@ internal fun TerminalPane(
 
     DisposableEffect(activeId) {
         val tab = tabs.firstOrNull { it.id == activeId }
-        tab?.client?.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
+        tab?.client?.onTextChanged = {
+            // Termux guard: only redraw if this session is the active tab (matches onTextChanged smali)
+            if (tab.id == activeId) {
+                currentView.value?.post { currentView.value?.onScreenUpdated() }
+            }
+        }
         onDispose { tab?.client?.onTextChanged = null }
     }
 
@@ -510,9 +520,18 @@ internal fun TerminalPane(
                     DropdownMenuItem(text = { Text("+ New Bash Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; addTab() })
                     DropdownMenuItem(text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
+                        onClick = {
+                            showMenu = false
+                            Thread {
+                                BusyboxInstaller.ensureOfflineShell(context)
+                                OllamaSetup(context).installProfile()
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }.start()
+                        })
                     DropdownMenuItem(text = { Text("Default: Offline Mode (no Ubuntu)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default set to Ollama / Offline", android.widget.Toast.LENGTH_SHORT).show() })
+                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OFFLINE); android.widget.Toast.makeText(context, "Default set to Offline mode", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("Default: Ubuntu Mode", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default set to Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(text = { Text("🐧 Open Ubuntu Linux", color = Color(0xFF89B4FA), fontSize = 13.sp) },
