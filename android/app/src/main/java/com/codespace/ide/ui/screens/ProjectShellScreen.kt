@@ -568,8 +568,7 @@ fun ProjectShellScreen(
                     Box(Modifier.fillMaxWidth().height(48.dp).clickable { showGearMenu = true }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Settings, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
                     }
-                    Spacer(Modifier.height(4.dp))
-                }
+                                    }
 
                 // Side Panel
                 if (activePanel != null) {
@@ -660,28 +659,7 @@ fun ProjectShellScreen(
                         HorizontalDivider(color = DividerColor)
                     }
 
-                    // Quick actions
-                    Row(
-                        Modifier.fillMaxWidth().background(Color(0xFFF8FAFC)).padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        listOf("Run" to "Run Program", "Debug" to "Start Debugging", "Terminal" to "Terminal", "Split" to "Split Terminal").forEach { (label, action) ->
-                            OutlinedButton(
-                                onClick = { handleMenuAction(action) },
-                                modifier = Modifier.height(30.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                            ) { Text(label, fontSize = 11.sp) }
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            if (activeEditorTab != null) "${activeEditorTab!!.substringAfterLast('/')} • workspace ready" else "workspace ready",
-                            fontSize = 11.sp,
-                            color = TabTextInactive,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    // Quick actions row removed — Run/Debug/Terminal/Split moved to menu bar
 
                     // Find & Replace bar
                     if (showFindBar) {
@@ -799,7 +777,7 @@ fun ProjectShellScreen(
                                 }
                         )
                         Row(
-                            Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(28.dp).padding(horizontal = 8.dp),
+                            Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(22.dp).padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             BottomTab.entries.forEach { tab ->
@@ -808,10 +786,10 @@ fun ProjectShellScreen(
                                     Modifier.clickable { activeBottomTab = tab }
                                         .background(if (isActive) Color(0xFFDCEAFB) else Color.Transparent, RoundedCornerShape(4.dp))
                                         .border(if (isActive) 1.dp else 0.dp, if (isActive) Color(0xFF007ACC) else Color.Transparent, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Text(tab.name, fontSize = 11.sp,
+                                    Text(tab.name, fontSize = 10.sp,
                                         color = if (isActive) Color(0xFF007ACC) else Color(0xFF717171),
                                         fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal)
                                 }
@@ -1225,12 +1203,12 @@ fun ProjectShellScreen(
         // Command Palette
         if (showCommandPalette) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable { showCommandPalette = false; commandQuery = "" }, contentAlignment = Alignment.TopCenter) {
-                Column(Modifier.padding(top = 80.dp).fillMaxWidth(0.95f).background(MenuBg, RoundedCornerShape(8.dp)).border(1.dp, MenuBorder, RoundedCornerShape(8.dp)).clickable(enabled = false) {}) {
-                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Column(Modifier.padding(top = 40.dp).fillMaxWidth(0.9f).background(MenuBg, RoundedCornerShape(6.dp)).border(1.dp, MenuBorder, RoundedCornerShape(6.dp)).clickable(enabled = false) {}) {
+                    Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         listOf("Commands", "Files").forEach { tab ->
                             val isA = commandTab == tab
-                            Box(Modifier.clickable { commandTab = tab }.background(if (isA) Color(0xFF0060C0) else Color.Transparent, RoundedCornerShape(4.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                                Text(tab, fontSize = 13.sp, color = if (isA) Color.White else TabTextInactive)
+                            Box(Modifier.clickable { commandTab = tab }.background(if (isA) Color(0xFF0060C0) else Color.Transparent, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                Text(tab, fontSize = 12.sp, color = if (isA) Color.White else TabTextInactive)
                             }
                         }
                     }
@@ -1241,8 +1219,8 @@ fun ProjectShellScreen(
                         cmdKeyboard?.show()
                     }
                     OutlinedTextField(value = commandQuery, onValueChange = { commandQuery = it },
-                        placeholder = { Text("> Type command…", fontSize = 14.sp) },
-                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(8.dp)
+                        placeholder = { Text("> Type command…", fontSize = 12.sp) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp).height(40.dp)
                             .focusRequester(cmdFocusRequester))
                     HorizontalDivider(color = DividerColor)
                     val allCmds by remember(commandQuery) { derivedStateOf { listOf(
@@ -1251,13 +1229,13 @@ fun ProjectShellScreen(
                         "Run Program","Git: Commit","Git: Push","Git: Pull","Format Document",
                         "Keyboard Shortcuts","About Visual Node Code",
                     ).filter { commandQuery.isBlank() || it.contains(commandQuery, ignoreCase = true) } } }
-                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
                         items(allCmds) { cmd ->
                             val idx = allCmds.indexOf(cmd)
                             Row(Modifier.fillMaxWidth().background(if (idx == 0) CmdSelectedBg else Color.Transparent)
                                 .clickable { handleMenuAction(cmd); showCommandPalette = false; commandQuery = "" }
-                                .padding(horizontal = 16.dp, vertical = 10.dp)) {
-                                Text(cmd, fontSize = 13.sp, color = if (idx == 0) CmdSelectedText else MenuText, modifier = Modifier.weight(1f))
+                                .padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                Text(cmd, fontSize = 12.sp, color = if (idx == 0) CmdSelectedText else MenuText, modifier = Modifier.weight(1f))
                             }
                         }
                     }
