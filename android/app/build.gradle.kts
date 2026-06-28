@@ -48,6 +48,12 @@ android {
     ndkVersion = "26.1.10909125"
 
     signingConfigs {
+        create("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             if (keystorePropsFile.exists()) {
                 storeFile = file(keystoreProps["storeFile"] as String)
@@ -77,6 +83,7 @@ android {
         getByName("debug") {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
