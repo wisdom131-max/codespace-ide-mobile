@@ -652,6 +652,59 @@ Vision: A mix of GitHub Copilot + Claude + any local Ollama model + planning age
 
 ---
 
+---
+
+## PENDING FEATURES — June 28, 2026 (Wisdom's requests)
+
+### 1. Search / Find in Editor (magnifier icon)
+- [ ] The search icon in the toolbar must trigger real **find-in-file** inside the active editor
+- [ ] Highlight all occurrences in the editor view (like VS Code)
+- [ ] Navigate matches with Up/Down arrows
+- [ ] Case-sensitive and whole-word toggles
+- [ ] The existing `showFindBar` state + `findQuery` are already wired — confirm the icon tap actually sets `showFindBar = true` and the bar performs real text matching inside the CodeEditor composable
+
+### 2. Source Control Panel — Git diff + real commit/push
+- [ ] The 3-box connected icon (Source Control) must show **actual changed files** just like VS Code's SCM panel
+- [ ] Each file entry must show: filename, change type badge (M = modified, A = added, D = deleted, U = untracked)
+- [ ] Tapping a file shows an inline diff (old vs new) — colour-coded red/green lines
+- [ ] Stage individual files or "Stage All" button
+- [ ] Commit message text field + "Commit" button → runs `git commit -m "..."` in the proot Ubuntu shell
+- [ ] "Push" button → runs `git push origin HEAD` in the proot shell
+- [ ] "Pull" button → runs `git pull --rebase` in the proot shell
+- [ ] Uses the Ubuntu tab shell (proot), not busybox ash — git is installed via apt in Ubuntu
+- [ ] Auth: support HTTPS with stored token (read from SecureTokenStore) or SSH key in Ubuntu home
+
+### 3. Explorer — Full File Manager (view, edit, delete any file on phone)
+- [ ] Add a new "Phone Files" button/icon inside the Explorer pane header (next to the existing New File / New Folder buttons)
+- [ ] Opens a full file browser rooted at `/storage/emulated/0` (external storage)
+- [ ] Shows ALL files and folders — not just the workspace
+- [ ] Each entry: icon (folder/file type), name, size, last modified
+- [ ] **Long-press context menu**: Open in Editor, Rename, Delete, Copy Path, Move
+- [ ] **Single tap on text/code file**: opens it in the editor tab
+- [ ] **Images**: show name + path only in list (cannot edit). **Long-press 3s → full-size image preview overlay**
+- [ ] **Edit**: opens file in editor. **Delete**: confirmation dialog before deleting
+- [ ] Request `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` / `MANAGE_EXTERNAL_STORAGE` permissions as needed
+- [ ] Breadcrumb navigation bar so user can tap up through folders
+
+### 4. Command Palette — Smaller / tighter like real VS Code
+- [ ] Current command palette is too large / takes up too much screen
+- [ ] Target: max 60-70% screen height, appears from top (not full screen)
+- [ ] Input field at top, results list below — compact rows (32dp height each)
+- [ ] Background: semi-transparent dark overlay behind the palette card
+- [ ] Font size: 12sp for results, 14sp for the input field
+- [ ] Should feel like VS Code mobile — quick and lightweight, not a dialog
+
+### IMPLEMENTATION NOTES
+- All file manager operations must be on IO thread (`Dispatchers.IO`), never main thread
+- Image long-press timer: use `pointerInput` with `detectTapGestures(onLongPress = {...})` + 3000ms delay
+- Git operations: write command to the Ubuntu terminal session via `session.write("git ... && echo DONE
+")` — parse output for result
+- For push/commit: git credential helper must be pre-configured in Ubuntu (store mode or token in URL)
+- Command palette: use `Dialog` composable with `usePlatformDefaultWidth = false` + fixed width fraction
+- Screenshot-based UI sizing review coming — resize decisions deferred until screenshots received
+
+---
+
 ## BUILD SEQUENCE (ordered by value + dependencies)
 
 1. **Fix ExtensionsPanel compile** (LaunchedEffect import) — blocks APK
@@ -671,8 +724,11 @@ Vision: A mix of GitHub Copilot + Claude + any local Ollama model + planning age
 
 ---
 
-## CURRENT BLOCKER
-ExtensionsPanel.kt in ExplorerPane.kt fails to compile — needs:
+## CURRENT BLOCKER (resolved June 28, 2026)
+~~ExtensionsPanel.kt in ExplorerPane.kt fails to compile~~ — Fixed.
+Build still failing due to literal newlines in TerminalPane.kt + ProjectShellScreen.kt — patched in commits c43ae073 + a656f968.
+
+## PREVIOUSLY:
 ```kotlin
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
