@@ -896,71 +896,239 @@ fun ProjectShellScreen(
 
             // ── VS Code Copilot Chat Panel (right side) ─────────────────
             if (showChatPanel) {
+                data class ChatMsg(val role: String, val text: String)
+                var chatMessages by remember { mutableStateOf(listOf<ChatMsg>()) }
+                var chatInput    by remember { mutableStateOf("") }
+                var chatLoading  by remember { mutableStateOf(false) }
+                var ollamaModels by remember { mutableStateOf(listOf("llama3", "mistral", "codellama")) }
+                var selectedModel by remember { mutableStateOf("llama3") }
+                var chatMode     by remember { mutableStateOf("Ask") } // Ask / Agent / Plan
+                var showModelPicker by remember { mutableStateOf(false) }
+                val chatScope    = rememberCoroutineScope()
+                val listState    = androidx.compose.foundation.lazy.rememberLazyListState()
+
+                // Poll Ollama for available models
+                LaunchedEffect(showChatPanel) {
+                    if (!showChatPanel) return@LaunchedEffect
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val url = java.net.URL("http://localhost:11434/api/tags")
+                            val conn = url.openConnection() as java.net.HttpURLConnection
+                            conn.connectTimeout = 2000; conn.readTimeout = 3000
+                            if (conn.responseCode == 200) {
+                                val resp = conn.inputStream.bufferedReader().readText()
+                                val arr = org.json.JSONObject(resp).optJSONArray("models")
+                                if (arr != null) {
+                                    val names = (0 until arr.length()).map { arr.getJSONObject(it).getString("name") }
+                                    if (names.isNotEmpty()) ollamaModels = names
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                fun sendMessage(msg: String) {
+                    if (msg.isBlank() || chatLoading) return
+                    chatMessages = chatMessages + ChatMsg("user", msg)
+                    chatInput = ""
+                    chatLoading = true
+                    chatScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val sysPrompt = when (chatMode) {
+                                "Agent" -> "You are an expert coding agent. Analyze code, suggest edits, and give step-by-step solutions. Be concise but complete."
+                                "Plan"  -> "You are a planning assistant. Break the user's task into numbered steps. Ask for clarification before proceeding."
+                                else    -> "You are a helpful coding assistant. Answer questions about code clearly and concisely."
+                            }
+                            // Build context: include current open file name if any
+                            val fileCtx = if (activeEditorTab != null) "
+[Open file: ${activeEditorTab!!.substringAfterLast('/')}]" else ""
+                            val body = org.json.JSONObject().apply {
+                                put("model", selectedModel)
+                                put("stream", false)
+                                put("messages", org.json.JSONArray().apply {
+                                    put(org.json.JSONObject().put("role","system").put("content", sysPrompt + fileCtx))
+                                    chatMessages.takeLast(10).forEach { m ->
+                                        put(org.json.JSONObject().put("role", m.role).put("content", m.text))
+                                    }
+                                })
+                            }.toString()
+                            val url = java.net.URL("http://localhost:11434/api/chat")
+                            val conn = url.openConnection() as java.net.HttpURLConnection
+                            conn.requestMethod = "POST"
+                            conn.setRequestProperty("Content-Type", "application/json")
+                            conn.doOutput = true
+                            conn.connectTimeout = 30000; conn.readTimeout = 60000
+                            conn.outputStream.write(body.toByteArray())
+                            val respCode = conn.responseCode
+                            val respText = if (respCode == 200) conn.inputStream.bufferedReader().readText()
+                                           else conn.errorStream?.bufferedReader()?.readText() ?: "Error $respCode"
+                            val reply = if (respCode == 200) {
+                                org.json.JSONObject(respText).optJSONObject("message")?.optString("content") ?: respText
+                            } else "Ollama error: $respText"
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                chatMessages = chatMessages + ChatMsg("assistant", reply)
+                                chatLoading = false
+                            }
+                        } catch (e: Exception) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                chatMessages = chatMessages + ChatMsg("assistant",
+                                    "⚠️ Could not reach Ollama at localhost:11434.
+
+Make sure you've started it:
+• Open Ubuntu tab → type: ollama serve
+• Then try again.")
+                                chatLoading = false
+                            }
+                        }
+                    }
+                }
+
                 Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
-                Column(
-                    Modifier.weight(0.45f).fillMaxHeight().background(Color(0xFF1F1F1F))
-                ) {
-                    // Chat header
+                Column(Modifier.weight(0.45f).fillMaxHeight().background(Color(0xFF1F1F1F))) {
+                    // ── Header ─────────────────────────────────────────────
                     Row(
                         Modifier.fillMaxWidth().height(35.dp).background(Color(0xFF252526)).padding(horizontal = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("CHAT", fontSize = 11.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.Add, null, tint = Color(0xFF858585), modifier = Modifier.size(16.dp).clickable { /* new chat */ })
-                        Spacer(Modifier.width(8.dp))
+                        Text("CHAT", fontSize = 11.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        // Mode chips
+                        listOf("Ask","Agent","Plan").forEach { mode ->
+                            val active = chatMode == mode
+                            Box(
+                                Modifier
+                                    .background(if (active) Color(0xFF007ACC) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .clickable { chatMode = mode }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) { Text(mode, fontSize = 10.sp, color = if (active) Color.White else Color(0xFF858585)) }
+                            Spacer(Modifier.width(4.dp))
+                        }
                         Icon(Icons.Default.Close, null, tint = Color(0xFF858585), modifier = Modifier.size(16.dp).clickable { showChatPanel = false })
                     }
                     HorizontalDivider(color = Color(0xFF333333))
 
-                    // Chat body
+                    // ── Messages ───────────────────────────────────────────
                     Box(Modifier.weight(1f).fillMaxWidth()) {
-                        Column(
-                            Modifier.fillMaxSize().padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            // Copilot chat icon (speech bubble)
-                            Icon(Icons.Default.Chat, null, tint = Color(0xFF569CD6), modifier = Modifier.size(40.dp))
-                            Spacer(Modifier.height(12.dp))
-                            Text("Ask about your code", fontSize = 16.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.height(6.dp))
-                            Text("AI responses may be inaccurate.", fontSize = 11.sp, color = Color(0xFF717171))
+                        if (chatMessages.isEmpty()) {
+                            Column(
+                                Modifier.fillMaxSize().padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Chat, null, tint = Color(0xFF569CD6), modifier = Modifier.size(36.dp))
+                                Spacer(Modifier.height(10.dp))
+                                Text("Ask about your code", fontSize = 15.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(6.dp))
+                                Text("Powered by Ollama — model: $selectedModel", fontSize = 11.sp, color = Color(0xFF717171), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Spacer(Modifier.height(4.dp))
+                                Text("AI responses may be inaccurate.", fontSize = 10.sp, color = Color(0xFF555555))
+                            }
+                        } else {
+                            androidx.compose.foundation.lazy.LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize().padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(chatMessages.size) { idx ->
+                                    val msg = chatMessages[idx]
+                                    val isUser = msg.role == "user"
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth(if (isUser) 0.85f else 1f)
+                                                .background(
+                                                    if (isUser) Color(0xFF0E4D7A) else Color(0xFF2D2D2D),
+                                                    androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                                )
+                                                .padding(10.dp)
+                                        ) {
+                                            Text(
+                                                msg.text,
+                                                color = if (isUser) Color(0xFFE8F4FF) else Color(0xFFCCCCCC),
+                                                fontSize = 12.sp,
+                                                fontFamily = if (msg.text.contains("```")) FontFamily.Monospace else FontFamily.Default
+                                            )
+                                        }
+                                    }
+                                }
+                                if (chatLoading) {
+                                    item {
+                                        Row(Modifier.padding(4.dp)) {
+                                            Text("● ● ●", color = Color(0xFF569CD6), fontSize = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Auto-scroll
+                        LaunchedEffect(chatMessages.size) {
+                            if (chatMessages.isNotEmpty()) listState.animateScrollToItem(chatMessages.size - 1)
                         }
                     }
 
                     HorizontalDivider(color = Color(0xFF333333))
-                    // Model + input row
+
+                    // ── Input area ─────────────────────────────────────────
                     Column(Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(8.dp)) {
+                        // Model picker row
+                        Row(
+                            Modifier.fillMaxWidth().clickable { showModelPicker = !showModelPicker }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Memory, null, tint = Color(0xFF569CD6), modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(selectedModel, fontSize = 11.sp, color = Color(0xFF569CD6))
+                            Spacer(Modifier.width(2.dp))
+                            Icon(Icons.Default.ExpandMore, null, tint = Color(0xFF717171), modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.weight(1f))
+                            if (chatMessages.isNotEmpty()) {
+                                Icon(Icons.Default.Delete, null, tint = Color(0xFF717171),
+                                    modifier = Modifier.size(14.dp).clickable { chatMessages = emptyList() })
+                            }
+                        }
+                        // Model dropdown
+                        if (showModelPicker) {
+                            Column(Modifier.fillMaxWidth().background(Color(0xFF2D2D2D), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(4.dp)) {
+                                ollamaModels.forEach { model ->
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable { selectedModel = model; showModelPicker = false }.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (model == selectedModel) Icon(Icons.Default.Check, null, tint = Color(0xFF4EC9B0), modifier = Modifier.size(12.dp))
+                                        else Spacer(Modifier.size(12.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(model, fontSize = 12.sp, color = Color(0xFFCCCCCC))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        // Text input
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(Color(0xFF2D2D2D), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("@ Add Context…", fontSize = 12.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .background(Color(0xFF2D2D2D), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Describe what to build next", fontSize = 12.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = chatInput,
+                                onValueChange = { chatInput = it },
+                                modifier = Modifier.weight(1f),
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFFCCCCCC), fontSize = 13.sp),
+                                decorationBox = { inner ->
+                                    if (chatInput.isEmpty()) Text("Describe what to build next…", color = Color(0xFF717171), fontSize = 13.sp)
+                                    inner()
+                                }
+                            )
                             Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.Mic, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.Send, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Agent", fontSize = 11.sp, color = Color(0xFF569CD6))
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Default.ExpandMore, null, tint = Color(0xFF717171), modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Claude Opus 4.5", fontSize = 11.sp, color = Color(0xFF858585))
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Default.ExpandMore, null, tint = Color(0xFF717171), modifier = Modifier.size(14.dp))
+                            Icon(
+                                Icons.Default.Send, null,
+                                tint = if (chatInput.isNotBlank() && !chatLoading) Color(0xFF569CD6) else Color(0xFF444444),
+                                modifier = Modifier.size(18.dp).clickable { sendMessage(chatInput) }
+                            )
                         }
                     }
                 }
