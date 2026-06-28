@@ -13,7 +13,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
 import androidx.core.app.NotificationCompat
-import com.codespace.ide.proot.ProotInstaller
+import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
 import com.termux.terminal.TerminalSession
