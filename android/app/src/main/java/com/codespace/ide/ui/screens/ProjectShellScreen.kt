@@ -948,6 +948,7 @@ fun ProjectShellScreen(
             prefs.edit().putBoolean("onboarding_seen", true).apply()
         })
     }
+    }
 
     } // end root Box
 }
