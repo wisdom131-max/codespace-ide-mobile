@@ -30,6 +30,7 @@ import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.terminal.DeviceCompatibility
 import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
+import android.content.ServiceConnection
 import com.codespace.ide.terminal.TerminalService
 import com.codespace.ide.terminal.TerminalModeManager
 import com.codespace.ide.terminal.SshProfileStore
@@ -285,7 +286,7 @@ internal fun rememberTerminalState(context: android.content.Context): TerminalSt
     return androidx.compose.runtime.remember {
         val terminalMode = TerminalModeManager(context)
         val deviceCompat = DeviceCompatibility(context)
-        val (session, client) = createTerminalSession(context)
+        val (session, client) = (boundService?.createSession() ?: createTerminalSession(context))
         val defaultName = when (terminalMode.currentMode()) {
             TerminalModeManager.MODE_UBUNTU -> "ubuntu"
             TerminalModeManager.MODE_OFFLINE -> "offline"
@@ -328,13 +329,26 @@ internal fun TerminalPane(
     // Matches Termux: TermuxService runs as long as ANY terminal session is open.
     // Without this, the foreground service stops after Ubuntu setup and the ash tab
     // is left completely unprotected — OEM power manager sends signal 31 and kills it.
+    // Bind to TerminalService so sessions are forked from Service context (not Activity).
+    // This matches Termux's architecture: phantom process killer spares children of FGS.
+    var boundService by remember { mutableStateOf<TerminalService?>(null) }
     DisposableEffect(Unit) {
         TerminalService.start(context, "Terminal session active")
+        val conn = object : android.content.ServiceConnection {
+            override fun onServiceConnected(name: android.content.ComponentName, binder: android.os.IBinder) {
+                boundService = (binder as TerminalService.LocalBinder).service
+            }
+            override fun onServiceDisconnected(name: android.content.ComponentName) {
+                boundService = null
+            }
+        }
+        context.bindService(
+            android.content.Intent(context, TerminalService::class.java),
+            conn,
+            android.content.Context.BIND_AUTO_CREATE
+        )
         onDispose {
-            // Do NOT stop the service here — TerminalPane can recompose (theme change,
-            // rotation, navigation) causing a stop()/start() gap during which the OEM
-            // power manager can send signal 31. The service stays alive for the app lifetime.
-            // It is a foreground service (low battery impact). OS cleans it up when app exits.
+            try { context.unbindService(conn) } catch (_: Exception) {}
         }
     }
 
@@ -364,7 +378,7 @@ internal fun TerminalPane(
 
     fun addTab() {
         val id = System.currentTimeMillis().toString()
-        val (session, client) = createTerminalSession(context)
+        val (session, client) = (boundService?.createSession() ?: createTerminalSession(context))
         tabs.add(TabSession(id, "ash ${tabs.size + 1}", session, client))
         activeId = id
     }
@@ -436,7 +450,7 @@ internal fun TerminalPane(
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
                 progressSession.finishIfRunning()
-                val (session, client) = createTerminalSession(ctx, isUbuntu = true)
+                val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(ctx, isUbuntu = true))
                 if (idx >= 0) {
                     tabs[idx] = TabSession(id, "Ubuntu", session, client)
                 } else {

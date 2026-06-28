@@ -13,6 +13,11 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
 import androidx.core.app.NotificationCompat
+import com.codespace.ide.proot.ProotInstaller
+import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
+import com.termux.terminal.TerminalSession
+import java.io.File
 
 /**
  * Foreground service that keeps terminal sessions alive when backgrounded.
@@ -47,7 +52,14 @@ class TerminalService : Service() {
 
     val isWakeLockHeld: Boolean get() = wakeLock?.isHeld == true
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    // ── LocalBinder — allows TerminalPane to call createSession() from Service context ──
+    // This is the KEY architectural fix: Termux forks all shells from inside the Service,
+    // not from Activity. Android's phantom process killer sees Service as parent → not phantom.
+    inner class LocalBinder : android.os.Binder() {
+        val service: TerminalService get() = this@TerminalService
+    }
+    private val binder = LocalBinder()
+    override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Terminal session active"
@@ -158,7 +170,52 @@ class TerminalService : Service() {
         nm.notify(NOTIF_ID, buildNotification(text))
     }
 
-    companion object {
+    // ── Session factory — called via LocalBinder from TerminalPane ──
+    // Fork happens HERE, inside the Service. Parent PID = Service process.
+    // Android phantom process killer does NOT kill children of foreground services.
+    // This is the exact same pattern Termux uses (TermuxService.executeTermuxSessionCommand).
+    fun createSession(isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
+        val client = SimpleTerminalSessionClient()
+        client.appContext = applicationContext
+
+        if (isUbuntu) {
+            val (proot, args, envVars) = ProotInstaller.launchArgs(this)
+            val session = TerminalSession(proot, "/", args, envVars, 4000, client)
+            return Pair(session, client)
+        }
+
+        val busybox = BusyboxInstaller.shellPath(this)
+        val home = File(filesDir, "home").also { it.mkdirs() }.absolutePath
+        val bin  = BusyboxInstaller.binDir(this).absolutePath
+        val nativeDir = applicationInfo.nativeLibraryDir
+        val ldPreload  = "$nativeDir/libtermux-exec.so"
+        val uid = android.os.Process.myUid()
+
+        val envBuilder = mutableListOf(
+            "HOME=$home",
+            "PWD=$home",
+            "PATH=$bin:/system/bin:/system/xbin",
+            "TERM=xterm-256color",
+            "COLORTERM=truecolor",
+            "LANG=en_US.UTF-8",
+            "SHELL=$busybox",
+            "BUSYBOX=$busybox",
+            "TMPDIR=${cacheDir.absolutePath}",
+            "USER=vncode",
+            "LOGNAME=vncode"
+        )
+        if (File(ldPreload).exists()) envBuilder.add("LD_PRELOAD=$ldPreload")
+        for (key in listOf("ANDROID_DATA","ANDROID_ROOT","ANDROID_STORAGE","ANDROID_RUNTIME_ROOT",
+                           "ANDROID_ART_ROOT","ANDROID_I18N_ROOT","ANDROID_TZDATA_ROOT",
+                           "EXTERNAL_STORAGE","BOOTCLASSPATH","DEX2OATBOOTCLASSPATH")) {
+            System.getenv(key)?.let { envBuilder.add("$key=$it") }
+        }
+        val env = envBuilder.toTypedArray()
+        val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
+        return Pair(session, client)
+    }
+
+        companion object {
         private const val CHANNEL_ID      = "terminal_channel"
         private const val NOTIF_ID        = 1001
         private const val EXTRA_TEXT      = "notif_text"
