@@ -16,13 +16,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.codespace.ide.ui.theme.IdeColors
 
 private data class ChatMsg(val role: String, val text: String)
 
 @Composable
 internal fun CopilotChatPanelOverlay(
-    colors: IdeColors,
     onClose: () -> Unit,
 ) {
     var chatMessages  by remember { mutableStateOf(listOf<ChatMsg>()) }
@@ -76,7 +74,7 @@ internal fun CopilotChatPanelOverlay(
                     )
                 }
             }
-            Divider(color = Color(0xFF313244))
+            HorizontalDivider(color = Color(0xFF313244))
             // Messages
             LazyColumn(
                 Modifier.fillMaxWidth().weight(1f).padding(8.dp),
@@ -102,7 +100,7 @@ internal fun CopilotChatPanelOverlay(
                     }
                 }
             }
-            Divider(color = Color(0xFF313244))
+            HorizontalDivider(color = Color(0xFF313244))
             // Input
             Row(
                 Modifier
