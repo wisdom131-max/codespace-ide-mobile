@@ -705,6 +705,89 @@ Vision: A mix of GitHub Copilot + Claude + any local Ollama model + planning age
 
 ---
 
+---
+
+## PENDING FEATURES — June 28, 2026 batch 2 (Wisdom's requests)
+
+### 5. Replace Login Screen with Google Sign-In
+- [ ] Remove the current PAT (GitHub token) text-field login from `AuthScreen.kt` entirely
+- [ ] Replace with a single **"Sign in with Google"** button (Google Identity / Credential Manager API)
+- [ ] On successful Google login: extract user name, email, Google account photo URL
+- [ ] Send a Gmail notification to Wisdom's email with: user display name, email, login timestamp, device model
+- [ ] After login, the GitHub PAT entry moves to the **gear icon → "Connect GitHub"** inside `ProjectShellScreen.kt`
+- [ ] Store: Google ID token in `SecureTokenStore`, GitHub PAT separately keyed by Google user ID
+- [ ] Future: users without subscription → their projects become public (flag in SharedPreferences: `is_subscribed`)
+- [ ] Dependencies needed in `build.gradle`: `credentials-play-services-auth`, `googleid`, `play-services-auth`
+- [ ] `AndroidManifest.xml`: add `<uses-permission android:name="android.permission.GET_ACCOUNTS" />`
+- [ ] OAuth client ID must be in `google-services.json` (web client ID for Credential Manager)
+
+### 6. Command Palette — Keyboard / Input Bug Fix
+- [ ] When tapping the search field in the command palette, typing does nothing — only paste works
+- [ ] Root cause likely: `BasicTextField` or `OutlinedTextField` inside a `Dialog` loses focus on Android
+- [ ] Fix: use `focusRequester` + `LaunchedEffect` to auto-request focus on the field when palette opens
+  ```kotlin
+  val focusRequester = remember { FocusRequester() }
+  LaunchedEffect(Unit) { focusRequester.requestFocus() }
+  // add .focusRequester(focusRequester) to the TextField modifier
+  ```
+- [ ] Also ensure the `Dialog` has `properties = DialogProperties(usePlatformDefaultWidth = false)`
+- [ ] Also ensure `keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)` on the text field
+
+### 7. GitHub Login → Gear Icon (move PAT entry out of splash)
+- [ ] Remove GitHub token input from `AuthScreen.kt` (replaced by Google login — see #5)
+- [ ] In `ProjectShellScreen.kt` gear menu → add **"Connect GitHub"** item
+- [ ] Tapping it opens a bottom sheet with: GitHub PAT text field, "Validate & Save" button, "Get Token →" link
+- [ ] On save: store via `SecureTokenStore`, show toast "GitHub connected as @username"
+- [ ] GitHub avatar + username shown in gear menu header once connected
+- [ ] All git operations (push/pull/clone) use this stored token
+
+### 8. Gear Icon — Make All Buttons Functional
+Current gear menu items and their required implementations:
+- [ ] **Settings** → already navigates to `SettingsScreen` ✓
+- [ ] **Color Theme** → already opens color theme picker ✓
+- [ ] **Terminal Theme** → already opens terminal theme picker ✓
+- [ ] **Setup Shell Profile** → runs Zsh + OMZ install script in Ubuntu terminal (write to session)
+- [ ] **Setup Offline Shell** → installs offline proot bootstrap (existing ProotInstaller logic)
+- [ ] **Install Offline Essentials** → runs: `apt install -y python3 nodejs git curl vim htop` in Ubuntu tab
+- [ ] **Backup Shell Profile** → copies `~/.zshrc`, `~/.bashrc`, `~/.profile` to `/storage/emulated/0/codespace_backup/`
+- [ ] **Restore Shell Profile** → reads from backup folder and writes back to Ubuntu home
+- [ ] **Keyboard Shortcuts** → opens a modal/sheet listing all Ctrl+X shortcuts with their actions
+- [ ] **Extensions** → switches the active side panel to `SidePanel.EXTENSIONS`
+- [ ] **Connect GitHub** → opens GitHub PAT bottom sheet (see #7 above)
+
+### 9. Full Project Persistence (auto-save everything)
+- [ ] When a project is opened, restore EXACTLY the state from last time:
+  - Active editor tabs (all of them, in order)
+  - Active/focused tab
+  - Scroll position of each tab's editor
+  - Cursor position (line + column) per tab
+  - Bottom panel open/closed + which tab (Terminal / Ubuntu / etc.)
+  - Side panel open/closed + which panel (Explorer / Search / Git / etc.)
+  - Side panel width
+  - Chat panel open/closed
+  - Editor font size
+  - Any unsaved edits (buffer content saved to a temp file per tab)
+- [ ] Save trigger: every time any of the above state changes (debounced 1s)
+- [ ] Storage: extend `SessionStateStore.ShellState` with all the above fields
+- [ ] Key: `session_state` SharedPreferences, key = `shell_state_{projectId}`
+- [ ] Each tab's unsaved buffer → save to `context.filesDir/buffers/{projectId}/{filename}.buf`
+- [ ] On open: read buffer file if it exists, load into editor instead of reading from disk
+- [ ] Scroll + cursor position: store as `Map<filePath, Pair<Int,Int>>` (line, col) in ShellState JSON
+
+### IMPLEMENTATION PRIORITY ORDER (updated)
+1. Fix ExplorerPane.kt compile error (literal newline in McpPanel) — DONE ✅
+2. Fix TerminalPane.kt + ProjectShellScreen.kt literal newlines — DONE ✅
+3. Command palette keyboard focus fix (#6) — quick, high impact
+4. Project persistence (#9) — foundational, enables everything else
+5. Google login (#5) — needs google-services.json setup from Wisdom
+6. GitHub PAT → gear icon (#7)
+7. Gear buttons functional (#8)
+8. Search panel git diff SCM (#2 from batch 1)
+9. Explorer phone file manager (#3 from batch 1)
+10. Command palette resize (#4 from batch 1)
+
+---
+
 ## BUILD SEQUENCE (ordered by value + dependencies)
 
 1. **Fix ExtensionsPanel compile** (LaunchedEffect import) — blocks APK
