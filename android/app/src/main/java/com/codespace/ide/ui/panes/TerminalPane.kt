@@ -567,6 +567,24 @@ internal fun TerminalPane(
                         leadingIcon = { Text("📦", fontSize = 13.sp) },
                         text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🔌", fontSize = 13.sp) },
+                        text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            active?.session?.write("npx -y @modelcontextprotocol/server-filesystem \${HOME}
+")
+                            android.widget.Toast.makeText(context, "Starting MCP filesystem server…", android.widget.Toast.LENGTH_SHORT).show()
+                        })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("📜", fontSize = 13.sp) },
+                        text = { Text("Make Script from History", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            active?.session?.write("history | tail -20
+")
+                            android.widget.Toast.makeText(context, "Review history above — copy commands to a .sh file", android.widget.Toast.LENGTH_LONG).show()
+                        })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
                     // ── DEFAULT MODE ───────────────────────────────────────────
                     DropdownMenuItem(
