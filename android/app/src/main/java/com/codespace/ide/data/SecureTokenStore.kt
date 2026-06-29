@@ -8,7 +8,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Encrypted, Keystore-backed storage for tokens, role, and BYOK AI API keys.
+ * Encrypted, Keystore-backed storage for tokens, role, BYOK AI API keys,
+ * and app-level security preferences (biometric lock).
  * Access tokens are kept in memory only.
  */
 @Singleton
@@ -38,6 +39,11 @@ class SecureTokenStore @Inject constructor(
 
     val isOwner: Boolean get() = userRole == "owner"
 
+    /** When true, app shows a biometric / device-credential prompt on every launch */
+    var biometricLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BIOMETRIC_LOCK, false)
+        set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_LOCK, value).apply()
+
     fun aiKey(provider: String): String? = prefs.getString("ai_$provider", null)
     fun setAiKey(provider: String, key: String?) =
         prefs.edit().putString("ai_$provider", key).apply()
@@ -45,7 +51,8 @@ class SecureTokenStore @Inject constructor(
     fun clear() = prefs.edit().clear().apply()
 
     private companion object {
-        const val KEY_REFRESH = "refresh_token"
-        const val KEY_ROLE    = "user_role"
+        const val KEY_REFRESH        = "refresh_token"
+        const val KEY_ROLE           = "user_role"
+        const val KEY_BIOMETRIC_LOCK = "biometric_lock_enabled"
     }
 }
