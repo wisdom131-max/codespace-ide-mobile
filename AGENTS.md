@@ -1705,3 +1705,56 @@ Never hardcode connection strings. Always read from process.env.
 Every time a feature is completed, push an AGENTS.md checkpoint immediately.
 Never let more than 2-3 features complete without a checkpoint push.
 This ensures continuity for the next AI session.
+
+
+---
+
+## SESSION CHECKPOINT 3 — June 29, 2026 (07:40 WAT)
+
+### COMPILE ERRORS FIXED
+| Error | Fix | Commit |
+|---|---|---|
+| HomeScreen missing accessToken + onSignOut | CodeSpaceApp.kt: store + pass accessToken | 42345bb7 |
+| setLoginHint compile error in AuthScreen | Reflection fallback — safe on all versions | fe9fadfa |
+| accessToken not persisted | SecureTokenStore.lastAccessToken added | d5bec9ec |
+
+### NEW FEATURES PUSHED THIS CHECKPOINT
+| Feature | File | Commit |
+|---|---|---|
+| IntelliSense autocomplete | CodeEditor.kt — dropdown, keyword/type/snippet | 65b00cab |
+| Session PiP live preview | TerminalPane.kt — last-line in inactive tab | 3db675dc |
+| AC autocorrect toggle | TerminalPane.kt — toolbar button | af6ab47c |
+| Custom Commands drawer | TerminalPane.kt — tap run, long-press delete | af6ab47c |
+| Ollama streaming chat | CopilotChatPanelOverlay.kt — real API calls | 120765aa |
+| Ask/Agent/Plan modes | CopilotChatPanelOverlay.kt — mode tabs | 120765aa |
+| Chat history persistence | CopilotChatPanelOverlay.kt — SharedPrefs | 120765aa |
+| Model auto-detect | CopilotChatPanelOverlay.kt — /api/tags | 120765aa |
+
+### REMAINING BUILD SEQUENCE ITEMS
+| Item | Status |
+|---|---|
+| IntelliSense autocomplete | DONE (65b00cab) |
+| Zsh + OMZ | DONE (already existed) |
+| STT button | DONE (already existed) |
+| Root toggle | DONE (already existed) |
+| Ollama model auto-detect | DONE (120765aa) |
+| Ollama streaming chat | DONE (120765aa) |
+| Ask/Agent/Plan modes | DONE (120765aa) |
+| AC autocorrect | DONE (af6ab47c) |
+| Custom commands | DONE (af6ab47c) |
+| Session PiP | DONE (3db675dc) |
+| Git diff gutters | NOT YET |
+| Minimap | NOT YET |
+| MCP server wiring | NOT YET (McpPanel exists, not wired to real MCP) |
+| Plan mode step approval | NOT YET (UI exists, no real step execution) |
+| GitHub connector | NOT YET |
+
+### BACKEND DEPLOY — WISDOM MUST DO THIS
+Still needed: NestJS at api.codespace-ide.app has no server.
+Steps: See CHECKPOINT 1 above — Railway deploy, 5 minutes.
+All backend code is ready. Just needs deploy + env vars.
+
+### NEXT ITEMS TO IMPLEMENT
+1. Git diff gutters (+ / - in gutter column when file has unsaved/unstaged changes)
+2. Minimap (right-side thumbnail code overview)
+3. Wire MCP panel to real stdio MCP server in terminal
