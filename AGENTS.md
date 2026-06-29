@@ -973,3 +973,58 @@ User marked specific elements in screenshots to resize.
 8. Terminal blank on first tap — LaunchedEffect timing
 9. Get Started blank — navigation fix
 10. Terminal text reflow in portrait
+
+---
+
+## FIX PLAN — June 29, 2026 (exact code locations confirmed by reading files)
+
+### FILE: MainActivity.kt
+**Bug 13 — System status bar hidden in portrait**
+- Current: `hideSystemUI()` is called unconditionally in `onCreate()`, hides status bar always
+- Fix: add `onConfigurationChanged` override — call `hideSystemUI()` only when `orientation == LANDSCAPE`, call `showSystemUI()` when `PORTRAIT`
+- Also add a `showSystemUI()` method that reverses the hide
+
+### FILE: ProjectShellScreen.kt
+**Bug 12 — Blue VS Code status bar missing**
+- Confirmed: `StatusBarBg` color is defined in all themes but the bottom status bar Row was REMOVED by another AI
+- Fix: restore a `Row(height=22.dp, background=StatusBarBg)` at the very bottom of the screen Column, with Left/Right text items (branch name left, line/col right) — exactly like VS Code
+
+**Bug 4 — Command palette does nothing**
+- Confirmed: `showCommandPalette = true` is set on click but there is NO `if (showCommandPalette)` block rendering any dialog anywhere in the file
+- Fix: add a `CommandPaletteDialog` overlay in the overlays section that shows when `showCommandPalette == true`
+
+**Bug 6 + 9 — Chat panel + Bell/NotifDrawer blank areas**
+- `CopilotChatPanelOverlay` is rendered inside `Box(Modifier.fillMaxSize())` which has no background — transparent box over the layout causes the blank flash
+- `NotificationDrawerOverlay` same issue
+- Fix: add `background(BgColor)` (or appropriate overlay color) to the wrapper Box
+
+**Bug 2 — 3-dot near Extensions tab**
+- Confirmed: `showExplorerMore` triggers a card menu near the Explorer panel. The Extensions panel itself calls `onMoreMenu` but there is no `if (showExtensionsMore)` — it re-uses `showExplorerMore`
+- Fix: remove the 3-dot from Extensions panel header entirely (ExtensionsPanel.kt)
+
+**Bug 7 — 3-dot in terminal panel toolbar**
+- Confirmed line 840: `Icon(Icons.Default.MoreHoriz ... clickable { showPanelMenu = true })` in the bottom panel tab bar
+- Fix: remove that MoreHoriz icon from the terminal panel tab bar row
+
+**Bug 8 — Back button broken**
+- Confirmed: `onBack()` lambda is correctly wired at line ~517 `Icon(KeyboardArrowUp... clickable { onBack() })`
+- Check CodeSpaceApp.kt / HomeScreen.kt — likely `onBack` callback is not properly passed down or NavController is missing the back stack entry
+- Fix: trace `onBack` in CodeSpaceApp.kt and ensure it calls `navController.popBackStack()`
+
+**Bug 3 — Person icon goes fullscreen**
+- `showPersonMenu` is set to true but never rendered → currently the AccountCircle icon in the activity bar opens `showConnectorsSheet` instead — that IS a full-screen sheet
+- Fix: separate person icon from connectors hub — person icon shows a small DropdownMenu with profile info, sign out option
+
+### FILE: TerminalPane.kt  
+**Bug 5 — Terminal blank on first tap**
+- Likely: `bootstrapReady` starts false, shows loading spinner — but bootstrap check runs async and may complete before or after the LaunchedEffect
+- Fix: ensure `bootstrapReady` is set to true on the main thread after install check
+
+**Bug 10 — Terminal doesn't reach top**
+- Another AI added `windowInsets.statusBars` padding at top of the terminal screen — removes the full-height reach
+- Fix: remove or reduce the top inset padding inside ProjectShellScreen Column
+
+**Bug 11 — Terminal text doesn't reflow in portrait**  
+- TerminalView uses a fixed column count set at creation time — need to call `updateSize()` on orientation change
+- Fix: observe `LocalConfiguration.current` in TerminalPane and call `terminalView.updateSize(cols, rows)` on change
+
