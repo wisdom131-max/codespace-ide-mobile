@@ -1758,3 +1758,30 @@ All backend code is ready. Just needs deploy + env vars.
 1. Git diff gutters (+ / - in gutter column when file has unsaved/unstaged changes)
 2. Minimap (right-side thumbnail code overview)
 3. Wire MCP panel to real stdio MCP server in terminal
+
+---
+
+## RAILWAY DEPLOY SESSION — June 29, 2026 (08:30–09:00 WAT)
+
+### What happened
+
+Railway was successfully connected to wisdom131-max/codespace-ide-mobile.
+First deploy failed with: npm error ENOENT — Could not read package.json, no such file /app/package.json
+
+### Root cause
+railway.json set dockerfilePath to backend/Dockerfile but Railway used the REPO ROOT as the Docker build context.
+So inside the Dockerfile, COPY package*.json ./ had no package.json to find — it was in backend/, not root.
+
+### Fix applied (commit da01b18)
+1. railway.json updated — dockerfilePath changed from backend/Dockerfile to just Dockerfile
+2. In Railway dashboard → Service Settings → Root Directory set to backend
+With Root Directory = backend, Railway runs the build from inside backend/ so the Dockerfile finds package.json correctly.
+
+### Rule 24 — Railway Root Directory must be set to backend/
+When deploying this repo to Railway, ALWAYS set Root Directory = backend in the service settings.
+The railway.json dockerfilePath must be Dockerfile (not backend/Dockerfile) because paths are relative to the Root Directory.
+Never assume Railway uses the dockerfilePath folder as the build context — it always uses Root Directory.
+
+### Current status (09:00 WAT)
+Railway redeploy triggered after Root Directory fix. Awaiting build result.
+Next step: confirm build passes, then add PostgreSQL + env vars (JWT_SECRET, FIREBASE_*, etc.)
