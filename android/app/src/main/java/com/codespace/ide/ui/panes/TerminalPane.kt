@@ -925,12 +925,9 @@ internal fun TerminalPane(
                     }
                 }
                 if (list.isEmpty()) {
-                    list.add(Pair("ls -la", "ls -la
-"))
-                    list.add(Pair("top", "top
-"))
-                    list.add(Pair("df -h", "df -h
-"))
+                    list.add(Pair("ls -la", "ls -la\n"))
+                    list.add(Pair("top", "top\n"))
+                    list.add(Pair("df -h", "df -h\n"))
                 }
                 list
             }
