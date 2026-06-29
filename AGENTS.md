@@ -1559,3 +1559,26 @@ Never return another user's projects. All project endpoints require JWT auth gua
 ### Rule 20 — HomeScreen requires accessToken + onSignOut props
 HomeScreen now requires both props. Any navigation call to HomeScreen must pass the
 JWT accessToken from AuthResult and a callback that clears auth state and returns to AuthScreen.
+
+
+---
+
+## AuthScreen — Account picker + manual email (June 29, 2026)
+
+### Rule 21 — Account picker AND manual email field must BOTH be always visible
+Never hide the manual email field behind a toggle/expand. The correct layout is:
+1. Top button: "Continue with Google" → opens phone account picker (no loginHint, filterAuthorized=false)
+2. Divider: "or type your email"
+3. OutlinedTextField (always visible, optional) — label: "Google email (optional)"
+4. Helper text: "Leave blank to pick from your phone accounts, or type to use a specific / new Google account."
+5. Single bottom button — label changes dynamically:
+   - email blank → "Pick Google account"
+   - email typed → "Continue with {email}"
+   Both paths call the same doGoogleSignIn(loginHint = email.takeIf { it.isNotBlank() })
+
+This satisfies Rule 18 (switch account) while keeping the familiar phone-account picker available.
+Typing an email pre-fills Google's sign-in sheet — user can still pick from the list or add new account.
+
+### What the previous version did wrong
+Used AnimatedVisibility to hide the manual field behind "Use a different Google account" TextButton.
+This broke Rule 21 — the field was not always visible, defeating the purpose.
