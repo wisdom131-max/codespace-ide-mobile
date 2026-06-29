@@ -1196,3 +1196,34 @@ File(aptConfDir, "01dpkg-options").writeText(
 - `android/app/src/main/java/com/codespace/ide/ui/screens/CopilotChatPanelOverlay.kt` — scrim + dismiss
 - `android/app/src/main/java/com/codespace/ide/ui/screens/ProjectShellScreen.kt` — dead menus removed, BackHandler added
 - `android/app/src/main/java/com/codespace/ide/ui/panes/ExplorerPane.kt` — MoreVert removed
+
+---
+
+## Terminal Bug Investigation — 2026-06-29
+
+### Symptoms from user's device (TECNO KL4, Samsung kernel 5.15)
+
+```
+--login: /data/data/com.termux/files/usr/etc/profile: Permission denied
+@vncode:home$ pkg upgrade → Bad system call + "Package list up to date."
+@vncode:home$ ls → Bad system call
+@vncode:home$ curl --version → WORKS ✅
+```
+
+### Root Causes Identified
+
+| # | Symptom | Root Cause | Fix Commit |
+|---|---------|-----------|------------|
+| 1 | `--login: /etc/profile: Permission denied` | `arrayOf("--login")` still in `createTerminalSession()` — bash `--login` reads prefix `/etc/profile` which on Samsung resolves to the real Termux path (forbidden) | `1048bc47` — switched to `--rcfile $HOME/.bashrc` |
+| 2 | `ls → Bad system call` | Termux coreutils binary calls `statx()` / `__NR_statx` which Samsung kernel 5.15 blocks via seccomp in app context | `943d3097` — `ensureAptConf()` now replaces coreutils binaries with busybox wrapper scripts |
+| 3 | `pkg upgrade → "Package list up to date."` | `BusyboxInstaller` was writing fake `apt`/`pkg` scripts to its binDir **before** Termux bootstrap bindir in PATH — fake scripts intercepted the real apt | `f8da0cf6` — smart wrappers: check for real bootstrap apt first, fall back to stub |
+| 4 | `apt update → Bad system call` | `dpkg` forks a `/bin/sh` subprocess for pre/post install scripts → `clone()` blocked by Samsung seccomp | `943d3097` — `dpkg.cfg` adds `no-triggers`, `apt.conf.d` adds `DPkg::Pre-Install-Pkgs {}` and `Dpkg::Use-Pty "0"` |
+
+### Key architectural insight
+The Bash terminal **and** the fake apt/pkg scripts are both installed by `BusyboxInstaller.ensureOfflineShell()`. But once `TermuxBootstrapInstaller.installIfNeeded()` runs, the real Termux bootstrap prefix at `termux-prefix/bin/` has proper apt, pkg, bash. The PATH must put `termux-prefix/bin` FIRST and the busybox bindir must be a FALLBACK, not an override.
+
+The `--login` → `--rcfile` switch is the most critical fix: it prevents bash from reading `/etc/profile` entirely, relying only on our controlled `.bashrc`.
+
+### VERSION bump
+`TermuxBootstrapInstaller.VERSION` bumped to `termux-bootstrap-3490-v3` to force re-extraction and `ensureAptConf()` re-run on existing installs.
+
