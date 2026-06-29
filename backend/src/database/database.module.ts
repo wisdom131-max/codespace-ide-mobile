@@ -12,9 +12,14 @@ const isProduction = process.env.NODE_ENV === 'production';
       type: 'postgres',
       url: process.env.DATABASE_URL,
       entities: [User, RefreshToken, Project],
-      synchronize: !isProduction,  // auto-migrate only in dev; prod uses migrations
+      synchronize: !isProduction,
       autoLoadEntities: true,
       ssl: isProduction ? { rejectUnauthorized: false } : false,
+      // Retry on startup so Railway healthcheck has time to pass
+      // before TypeORM gives up (DB may take a few seconds to become ready)
+      retryAttempts: 10,
+      retryDelay: 3000,
+      connectTimeoutMS: 10000,
     }),
   ],
 })
