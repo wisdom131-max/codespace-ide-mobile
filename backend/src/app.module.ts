@@ -9,6 +9,7 @@ import { ReposModule } from './repos/repos.module';
 import { AiModule } from './ai/ai.module';
 import { SyncModule } from './sync/sync.module';
 import { TerminalModule } from './terminal/terminal.module';
+import { ProjectsModule } from './projects/projects.module';
 import { HealthController } from './common/health.controller';
 
 @Module({
@@ -22,6 +23,7 @@ import { HealthController } from './common/health.controller';
     AiModule,
     SyncModule,
     TerminalModule,
+    ProjectsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
