@@ -11,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -1002,13 +1001,15 @@ internal fun TerminalPane(
                         Box(
                             Modifier
                                 .background(Color(0xFF2A2A3A), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                .combinedClickable(
-                                    onClick = { active?.session?.write(cmd) },
-                                    onLongClick = {
-                                        savedCmds.removeAt(idx)
-                                        saveCmds()
-                                    }
-                                )
+                                .clickable { active?.session?.write(cmd) }
+                                .pointerInput(idx) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            savedCmds.removeAt(idx)
+                                            saveCmds()
+                                        }
+                                    )
+                                }
                                 .padding(horizontal = 10.dp, vertical = 5.dp)
                         ) { Text(label, color = Color(0xFFCCCCCC), fontSize = 11.sp) }
                     }
