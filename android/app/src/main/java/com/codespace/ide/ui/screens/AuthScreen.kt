@@ -1,7 +1,6 @@
 package com.codespace.ide.ui.screens
 
 import android.app.Activity
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +44,6 @@ data class AuthResult(
     val isOwner: Boolean = role == "owner",
 )
 
-// Which tab the user is on
 private enum class AuthTab { SIGN_IN, SIGN_UP }
 
 @Composable
@@ -54,28 +52,27 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
     val activity = context as Activity
     val scope    = rememberCoroutineScope()
 
-    var loading        by remember { mutableStateOf(false) }
-    var error          by remember { mutableStateOf("") }
-    var activeTab      by remember { mutableStateOf(AuthTab.SIGN_IN) }
-    var showManualEntry by remember { mutableStateOf(false) }
-    var manualEmail    by remember { mutableStateOf("") }
-    var statusMessage  by remember { mutableStateOf("") }
+    var loading       by remember { mutableStateOf(false) }
+    var error         by remember { mutableStateOf("") }
+    var activeTab     by remember { mutableStateOf(AuthTab.SIGN_IN) }
+    var manualEmail   by remember { mutableStateOf("") }
+    var statusMessage by remember { mutableStateOf("") }
 
     val credentialManager = remember { CredentialManager.create(context) }
     val firebaseAuth      = remember { FirebaseAuth.getInstance() }
     val httpClient        = remember { OkHttpClient() }
 
-    // Core sign-in logic — shared between both tabs and manual entry
-    suspend fun doGoogleSignIn(filterAuthorized: Boolean, loginHint: String? = null) {
+    // Core sign-in logic — loginHint is optional; if blank, normal account picker shows
+    suspend fun doGoogleSignIn(loginHint: String? = null) {
         loading = true
         error   = ""
         statusMessage = ""
         try {
             val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(filterAuthorized)
+                .setFilterByAuthorizedAccounts(false)
                 .setServerClientId(WEB_CLIENT_ID)
                 .setAutoSelectEnabled(false)
-                .apply { loginHint?.let { setLoginHint(it) } }
+                .apply { loginHint?.takeIf { it.isNotBlank() }?.let { setLoginHint(it) } }
                 .build()
 
             val request = GetCredentialRequest.Builder()
@@ -153,20 +150,19 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
         // ── Sign In / Sign Up tabs ─────────────────────────────────
         TabRow(selectedTabIndex = activeTab.ordinal) {
             Tab(
-                selected  = activeTab == AuthTab.SIGN_IN,
-                onClick   = { activeTab = AuthTab.SIGN_IN; error = ""; showManualEntry = false },
-                text      = { Text("Sign In") },
+                selected = activeTab == AuthTab.SIGN_IN,
+                onClick  = { activeTab = AuthTab.SIGN_IN; error = "" },
+                text     = { Text("Sign In") },
             )
             Tab(
-                selected  = activeTab == AuthTab.SIGN_UP,
-                onClick   = { activeTab = AuthTab.SIGN_UP; error = ""; showManualEntry = false },
-                text      = { Text("Sign Up") },
+                selected = activeTab == AuthTab.SIGN_UP,
+                onClick  = { activeTab = AuthTab.SIGN_UP; error = "" },
+                text     = { Text("Sign Up") },
             )
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(28.dp))
 
-        // ── Description text per tab ───────────────────────────────
         Text(
             text = if (activeTab == AuthTab.SIGN_IN)
                 "Welcome back. Sign in to access your projects from any device."
@@ -179,18 +175,14 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
 
         Spacer(Modifier.height(24.dp))
 
-        // ── Main Google button ─────────────────────────────────────
+        // ── Main Google button — opens account picker (no hint) ────
         OutlinedButton(
-            onClick = {
-                scope.launch { doGoogleSignIn(filterAuthorized = false) }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape   = RoundedCornerShape(8.dp),
-            border  = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            enabled = !loading,
-            colors  = ButtonDefaults.outlinedButtonColors(
+            onClick = { scope.launch { doGoogleSignIn() } },
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape    = RoundedCornerShape(8.dp),
+            border   = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            enabled  = !loading,
+            colors   = ButtonDefaults.outlinedButtonColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
         ) {
@@ -205,62 +197,68 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
             }
         }
 
+        Spacer(Modifier.height(20.dp))
+
+        // ── Divider with label ────────────────────────────────────
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Divider(modifier = Modifier.weight(1f))
+            Text(
+                "  or type your email  ",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Divider(modifier = Modifier.weight(1f))
+        }
+
         Spacer(Modifier.height(12.dp))
 
-        // ── Use a different / specific Google account ──────────────
-        TextButton(
-            onClick = { showManualEntry = !showManualEntry; error = "" },
-            enabled = !loading,
+        // ── Manual email field — always visible ───────────────────
+        // Typing here pre-fills the Google sign-in sheet with that email.
+        // The phone account picker still appears — the email just highlights
+        // the matching account (or lets the user add a new one).
+        OutlinedTextField(
+            value         = manualEmail,
+            onValueChange = { manualEmail = it; error = "" },
+            label         = { Text("Google email (optional)") },
+            placeholder   = { Text("you@gmail.com") },
+            modifier      = Modifier.fillMaxWidth(),
+            singleLine    = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            enabled       = !loading,
+        )
+
+        Spacer(Modifier.height(4.dp))
+
+        Text(
+            "Leave blank to pick from your phone accounts, or type to use a specific / new Google account.",
+            style     = MaterialTheme.typography.labelSmall,
+            color     = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Single continue button — uses hint if email typed ─────
+        Button(
+            onClick = {
+                scope.launch {
+                    doGoogleSignIn(loginHint = manualEmail.trim().takeIf { it.isNotBlank() })
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            enabled  = !loading,
         ) {
             Text(
-                if (showManualEntry) "Hide" else "Use a different Google account",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
+                if (manualEmail.isBlank()) "Pick Google account"
+                else "Continue with ${manualEmail.trim()}",
+                fontWeight = FontWeight.Medium,
             )
         }
 
-        // ── Manual email hint entry ────────────────────────────────
-        AnimatedVisibility(visible = showManualEntry) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(
-                    value         = manualEmail,
-                    onValueChange = { manualEmail = it },
-                    label         = { Text("Enter your Google email") },
-                    placeholder   = { Text("you@gmail.com") },
-                    modifier      = Modifier.fillMaxWidth(),
-                    singleLine    = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    enabled       = !loading,
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        if (manualEmail.isNotBlank()) {
-                            scope.launch {
-                                doGoogleSignIn(filterAuthorized = false, loginHint = manualEmail.trim())
-                            }
-                        } else {
-                            error = "Please enter a Google email address."
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled  = !loading,
-                ) {
-                    Text("Continue with this account")
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Google will open so you can sign in to this email. " +
-                    "If it's not on this device, you can add it in the Google sign-in screen.",
-                    style     = MaterialTheme.typography.labelSmall,
-                    color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-
-        // ── Error message ──────────────────────────────────────────
+        // ── Error / status messages ───────────────────────────────
         if (error.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
             Text(
