@@ -7,13 +7,11 @@ COPY . .
 RUN npm run build
 
 # ---- runtime stage ----
-FROM node:20-bookworm AS runtime
+FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm install --omit=dev
-# Rebuild node-pty native binding for the runtime container arch
-RUN cd node_modules/node-pty && npm rebuild
+RUN npm install --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 EXPOSE 8080
 CMD ["node", "dist/main.js"]
