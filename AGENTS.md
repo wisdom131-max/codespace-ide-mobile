@@ -15,6 +15,76 @@
 
 ---
 
+---
+
+## GOOGLE DRIVE — Credentials & File Map
+> Last updated: 2026-06-29
+> Any AI agent working on this project MUST read this section first.
+
+### Where to find credentials
+
+| What | Location |
+|------|----------|
+| All dev credentials (Railway token, Firebase IDs, OAuth clients, SHA-1) | Google Drive → **Codespace IDE — Dev Credentials** folder → `credentials-and-keys.md` |
+| Firebase service account JSON (FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY) | Google Drive → **Codespace IDE — Dev Credentials** folder → `codespace-ide-2026-firebase-adminsdk-fbsvc-6716e69019.json` |
+| `google-services.json` (Android OAuth + API key) | Google Drive → **Codespace IDE — Dev Credentials** folder → `google-services.json` |
+| Railway API token | Inside `credentials-and-keys.md` above — field "API Token (Superagent)" |
+
+### Google Drive folder → file ID map
+
+| Folder | Drive ID |
+|--------|----------|
+| **Codespace IDE — Dev Credentials** | `1faD1RO8P7gX3r-LKIu7X_AbaBDfadmRM` |
+| **Codespace IDE — Dev Files** | `[see Drive]` |
+| **YouTube & Finance** | `[see Drive]` |
+| **Personal** | `[see Drive]` |
+| **Resources & References** | `[see Drive]` |
+
+### Key values (set on Railway production as of 2026-06-29)
+
+| Railway Env Var | Status | Value / Notes |
+|----------------|--------|---------------|
+| `FIREBASE_PROJECT_ID` | ✅ Set | `codespace-ide-2026` |
+| `FIREBASE_CLIENT_EMAIL` | ✅ Set | `firebase-adminsdk-fbsvc@codespace-ide-2026.iam.gserviceaccount.com` |
+| `FIREBASE_PRIVATE_KEY` | ✅ Set | From service account JSON (2048-bit RSA) |
+| `OWNER_EMAIL` | ✅ Set | `ijeziewisdom5@gmail.com` |
+| `JWT_SECRET` | ✅ Set | (random 64-char hex) |
+| `DATABASE_URL` | ✅ Set | PostgreSQL via Railway |
+| `NODE_ENV` | ✅ Set | `production` |
+| `PORT` | ✅ Set | `3000` |
+
+### Railway project details
+
+| Field | Value |
+|-------|-------|
+| Project name | `stunning-gentleness` |
+| Project ID | `5fa8bf0f-4ad9-4dda-bbdf-ef81b1863119` |
+| Service name | `codespace-ide-mobile` |
+| Service ID | `4aa086c6-3f43-4d0a-95e3-481700990b88` |
+| Environment | `production` |
+| Environment ID | `4ad3c2b6-7a08-4270-9d68-871371293033` |
+| Live URL | `https://codespace-ide-mobile-production.up.railway.app` |
+| Health check | `GET /api/v1/health` → `{"status":"ok"}` |
+
+### How to set/update Railway env vars (for future AI)
+```bash
+# Set or update any env var:
+curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+  -H "Authorization: Bearer <RAILWAY_API_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d @payload.json   # payload: variableCollectionUpsert mutation with projectId/environmentId/serviceId/variables
+
+# Railway API token is in credentials-and-keys.md on Google Drive
+```
+
+### How to read Railway env vars (for future AI)
+```graphql
+# Query:
+{ variables(projectId: "5fa8bf0f...", environmentId: "4ad3c2b6...", serviceId: "4aa086c6...") }
+```
+
+---
+
 ## Communication Rules
 - Short, direct answers. No fluff.
 - Always say WHERE to paste code (Codespace terminal vs app bash tab vs Ubuntu tab).
