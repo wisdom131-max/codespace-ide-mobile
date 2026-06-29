@@ -15,8 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
@@ -320,7 +320,6 @@ fun ProjectShellScreen(
     sessionStateStore: SessionStateStore,
 ) {
     val context = LocalContext.current
-    BackHandler { onBack() }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val t = ideColors(currentTheme)
@@ -376,6 +375,8 @@ fun ProjectShellScreen(
     var terminalCommandToRun by remember { mutableStateOf<String?>(null) }
     var showGearMenu       by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
+    var showPanelMenu      by remember { mutableStateOf(false) }
+    var showExplorerMore   by remember { mutableStateOf(false) }
     var commandQuery       by remember { mutableStateOf("") }
     var commandTab         by remember { mutableStateOf("Commands") }
     var notificationMsg    by remember { mutableStateOf<String?>(null) }
@@ -615,7 +616,7 @@ fun ProjectShellScreen(
                                     activePanel = null
                                     showNotification("Opened ${path.substringAfterLast("/")}", "success")
                                 },
-                                onMoreMenu = {},
+                                onMoreMenu = { showExplorerMore = true },
                                 onOpenInTerminal = { path ->
                                     showBottomPanel = true
                                     activeBottomTab = BottomTab.TERMINAL
@@ -915,6 +916,11 @@ fun ProjectShellScreen(
         // ── Connectors Hub Sheet ─────────────────────────────────────────
         if (showConnectorsSheet) {
             ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
+        }
+
+
+        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
 
 
     // ── First-launch onboarding walkthrough ─────────────────────────────
