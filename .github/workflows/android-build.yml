@@ -27,6 +27,10 @@ jobs:
         working-directory: android
         run: chmod +x ./gradlew
 
+      - name: Print debug keystore SHA-1 and SHA-256
+        working-directory: android
+        run: ./gradlew signingReport 2>&1 | grep -A6 "Variant: debug\|Variant: prodDebug\|SHA1\|SHA-256\|Alias"
+
       - name: Check for signing secrets
         id: signing
         env:
