@@ -880,3 +880,96 @@ Vision: A mix of GitHub Copilot + Claude + any local Ollama model + planning age
 - [ ] Set `JWT_SECRET` (run: `openssl rand -hex 64`) on Railway
 
 ---
+
+---
+
+## USER COMPLAINT — June 29, 2026 (from Google Drive complaint doc + screenshots)
+> Source: "complain to base 44.docx" read directly from user's Google Drive.
+> These are ALL the bugs Wisdom found after other AIs modified the app.
+
+### BUG LIST (in order of complaint)
+
+#### 1. Get Started screen — blank on tap [BLANK SCREEN BUG]
+Tapping "Get Started" button shows blank screen. Only worked after rotating device.
+Likely cause: OnboardingWalkthrough or HomeScreen navigation not triggering recompose.
+
+#### 2. 3-dot menu near Extensions tab — white flash, REMOVE IT
+When tapping the 3-dot (overflow menu) near the Extensions tab, everything goes white around it.
+FIX: Remove the 3-dot entirely from the Extensions tab area. Do not replace it.
+
+#### 3. Person icon — goes fullscreen instead of mini popup
+Tapping the person icon (account) launches a full-screen overlay instead of a small popup/sheet.
+FIX: Should show as a small dropdown/bottom sheet, NOT a full-screen navigation.
+Portrait: dismiss by tapping empty space should work (was broken).
+
+#### 4. Command palette — completely broken, no dropdown on tap
+Tapping the workspace search bar (top center of IDE, looks like a command palette) does nothing.
+No dropdown, no UI response. Was working before other AIs modified it.
+File: ProjectShellScreen.kt — the command palette click handler is broken.
+
+#### 5. Terminal icon — blank screen on first tap
+Tapping the terminal icon in the activity bar shows blank screen.
+Back-and-forth navigation eventually makes it work. Race condition or composition issue.
+
+#### 6. Chat panel — blank area around it when opened
+Opening the Copilot chat panel causes blank/white area around the panel.
+Likely z-index or background color issue in CopilotChatPanelOverlay.kt.
+
+#### 7. 3-dot in terminal area (near zoom buttons) — REMOVE IT
+Same white flash issue. Remove the 3-dot from terminal toolbar area entirely.
+
+#### 8. Back button to exit project — BROKEN
+The back button (return to home/project list) does not work.
+FIX: Wire up back navigation from ProjectShellScreen → HomeScreen.
+
+#### 9. Bell icon — everything disappears around it
+Tapping the bell/notification icon causes surrounding UI to disappear.
+Likely: NotificationDrawerOverlay has wrong background or z-order.
+
+#### 10. Terminal top edge — no longer reaches workspace bar
+Previously the terminal could scroll/extend to the top where the workspace bar is.
+Other AI changed the layout and broke this.
+
+#### 11. Terminal text does not reflow in portrait mode
+When rotating to portrait, terminal text stays at landscape width — hard to read.
+FIX: TerminalView must respond to orientation changes and reflow text.
+
+#### 12. Blue VS Code status bar at bottom — REMOVED BY OTHER AI, RESTORE IT
+The blue bar at the bottom (VS Code style) was present and good.
+Another AI removed it. RESTORE IT with the themed StatusBarBg color.
+
+#### 13. System status bar (time/battery) hidden in PORTRAIT — REVERT
+User asked to hide the system status bar (time/battery/signal) in LANDSCAPE only.
+Another AI hid it in BOTH orientations. 
+FIX: Show system status bar in portrait, hide only in landscape.
+File: MainActivity.kt → hideSystemUI() is always called regardless of orientation.
+Correct fix: only call hideSystemUI() when orientation == LANDSCAPE.
+
+#### 14. Resize marked UI elements
+User marked specific elements in screenshots to resize. 
+(Need to identify from screenshots — check June 29 Drive screenshots for red/marked areas.)
+
+### WHAT NOT TO TOUCH
+- WakeLock logic — correctly auto-acquired, leave it
+- targetSdk=28 — leave it
+- OEM meta-data in manifest — leave it
+- pty_native.c / NativePty.kt — leave it
+- ProotInstaller.kt — leave it (curl block already removed)
+- BusyboxInstaller.kt — leave it
+
+### CURRENT BUILD STATE
+- Last good commit from this agent: a6600a0 (targetSdk=28 + Termux manifest match)
+- Subsequent commits from other AIs: added Railway backend, Firebase, TermuxBootstrapInstaller
+- These additions may or may not compile — check build status before fixing UI
+
+### FIX ORDER (priority)
+1. Status bar: portrait shows, landscape hides — MainActivity.kt
+2. Blue VS Code bottom bar — restore in ProjectShellScreen.kt
+3. Back button — wire navigation
+4. Command palette — fix click handler
+5. Remove 3-dots (Extensions tab + terminal toolbar)
+6. Person icon — make it a sheet not fullscreen
+7. Chat panel / Bell / overlay blank areas — background fix
+8. Terminal blank on first tap — LaunchedEffect timing
+9. Get Started blank — navigation fix
+10. Terminal text reflow in portrait
