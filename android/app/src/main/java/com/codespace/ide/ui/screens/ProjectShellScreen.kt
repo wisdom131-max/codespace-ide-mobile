@@ -500,7 +500,7 @@ fun ProjectShellScreen(
 
             // ── Top Bar (VS Code style)
             Row(
-                Modifier.fillMaxWidth().height(28.dp).background(ActivityBarBg)
+                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
                     .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

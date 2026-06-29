@@ -228,7 +228,31 @@ object ProotInstaller {
                     "Acquire::AllowInsecureRepositories \"true\";\n" +
                     "APT::Get::AllowUnauthenticated \"true\";\n"
                 )
-                Log.d(TAG, "Baked DNS + apt config into rootfs")
+                // Write /etc/dpkg/dpkg.cfg to force unsafe-io permanently inside rootfs.
+                // Samsung 5.15 kernel blocks linkat/renameat2 inside proot — dpkg uses
+                // these for atomic status file renames. force-unsafe-io makes dpkg use
+                // direct write instead, matching what Termux does for OEM kernels.
+                val dpkgCfgDir = File(rootfs, "etc/dpkg")
+                dpkgCfgDir.mkdirs()
+                File(dpkgCfgDir, "dpkg.cfg").writeText(
+                    "# Written by CodeSpace IDE — OEM kernel workaround
+" +
+                    "force-unsafe-io
+"
+                )
+
+                // Also write /etc/apt/apt.conf.d/01dpkg-options to pass --force-unsafe-io
+                // through apt automatically, so the user never has to pass flags manually.
+                File(aptConfDir, "01dpkg-options").writeText(
+                    "DPkg::Options {
+" +
+                    "   "--force-unsafe-io";
+" +
+                    "};
+"
+                )
+
+                Log.d(TAG, "Baked DNS + apt config + dpkg unsafe-io workaround into rootfs")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to bake DNS/apt config: ${e.message}")
             }
@@ -296,6 +320,9 @@ object ProotInstaller {
             // the host cwd (/data/data/...) into a guest path. Every shell command that
             // calls getcwd() (dpkg, debconf, perl) would crash with "Function not implemented".
             "-w", "/root",
+            // Bind /proc/self/cwd so getcwd() resolves through procfs when
+            // the kernel blocks SYS_getcwd (Samsung 5.15 seccomp policy).
+            "--bind=/proc/self/cwd:/proc/self/cwd",
             "/usr/bin/env", "-i",
             "HOME=/root",
             "USER=root",
@@ -320,6 +347,10 @@ object ProotInstaller {
             // Prevent dpkg/debconf from trying to open a terminal frontend (dialog, readline).
             // Inside proot there's no controlling terminal for debconf — it crashes without this.
             "DEBIAN_FRONTEND=noninteractive",
+            // Force dpkg to skip atomic rename (linkat/renameat2) which Samsung 5.15
+            // kernel blocks inside proot. Uses direct write instead of rename-swap.
+            // This is the same workaround Termux uses for OEM kernels.
+            "DPKG_FORCE=unsafe-io",
             "DEBCONF_NONINTERACTIVE_SEEN=true",
             // Suppress perl locale warnings from dpkg post-install scripts
             "PERL_BADLANG=0",
