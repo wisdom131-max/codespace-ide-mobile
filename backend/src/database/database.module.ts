@@ -4,14 +4,17 @@ import { User } from '../users/user.entity';
 import { RefreshToken } from '../auth/refresh-token.entity';
 import { Project } from '../repos/project.entity';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
       entities: [User, RefreshToken, Project],
-      synchronize: process.env.NODE_ENV !== 'production', // use migrations in prod
+      synchronize: !isProduction,  // auto-migrate only in dev; prod uses migrations
       autoLoadEntities: true,
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
     }),
   ],
 })
