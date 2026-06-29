@@ -235,9 +235,7 @@ object ProotInstaller {
                 val dpkgCfgDir = File(rootfs, "etc/dpkg")
                 dpkgCfgDir.mkdirs()
                 File(dpkgCfgDir, "dpkg.cfg").writeText(
-                    "# Written by CodeSpace IDE — OEM kernel workaround
-" +
-                    "force-unsafe-io\n"
+                    "# Written by CodeSpace IDE \u2014 OEM kernel workaround\nforce-unsafe-io\n"
                 )
 
                 // Also write /etc/apt/apt.conf.d/01dpkg-options to pass --force-unsafe-io
