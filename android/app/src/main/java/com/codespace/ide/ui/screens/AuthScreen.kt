@@ -35,7 +35,7 @@ import org.json.JSONObject
 private const val WEB_CLIENT_ID =
     "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com"
 
-private const val AUTH_ENDPOINT = "https://api.codespace-ide.app/api/v1/auth/google"
+private const val AUTH_ENDPOINT = "https://codespace-ide-mobile-production.up.railway.app/api/v1/auth/google"
 
 data class AuthResult(
     val accessToken: String,
