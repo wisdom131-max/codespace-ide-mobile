@@ -1028,3 +1028,27 @@ User marked specific elements in screenshots to resize.
 - TerminalView uses a fixed column count set at creation time — need to call `updateSize()` on orientation change
 - Fix: observe `LocalConfiguration.current` in TerminalPane and call `terminalView.updateSize(cols, rows)` on change
 
+
+---
+
+## VISUAL CLARIFICATIONS — June 29, 2026 (from screenshots)
+
+### Bug clarification: "environment disappears around overlays"
+Screenshot confirmed: when bell/notification icon tapped, the entire IDE background 
+goes SOLID GREY — activity bar, editor, terminal all vanish. Only top bar + notification 
+card remain visible. Root cause: overlay Box uses fillMaxSize() with opaque grey background 
+instead of transparent scrim. Fix: use Color(0x00000000) transparent or Color(0x80000000) 
+semi-transparent scrim so IDE content shows through behind the card.
+
+### Bug clarification: "terminal should reach workspace line"
+Screenshot confirmed: the terminal bottom panel has a drag handle at the top edge. 
+User wants to drag it UP until the terminal fills the screen — stopping just below the 
+top bar (Workspace line). Currently it stops short. Fix: increase the coerceIn max for 
+bottomPanelHeight from totalHeight*0.75f to totalHeight*0.92f so it can expand almost 
+to the top bar.
+
+### 3-dot locations confirmed from screenshot:
+1. Terminal tab bar row (PROBLEMS/OUTPUT/TERMINAL/DEBUG...) — "..." at far right → REMOVE
+2. Terminal session header row ("offline", "root@localhost") — "⋮" vertical dots → REMOVE
+
+### Terminal screenshot also shows the app IS working (Ubuntu proot, apt upgrade ran) ✅
