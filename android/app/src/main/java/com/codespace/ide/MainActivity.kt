@@ -1,6 +1,7 @@
 package com.codespace.ide
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -33,7 +34,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        hideSystemUI()
+        updateSystemUIForOrientation(resources.configuration.orientation)
 
         // ── Storage permissions ───────────────────────────────────────────────
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -70,6 +71,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateSystemUIForOrientation(newConfig.orientation)
+    }
+
+    private fun updateSystemUIForOrientation(orientation: Int) {
+        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            hideSystemUI()
+        } else {
+            showSystemUI()
+        }
+    }
+
     private fun hideSystemUI() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { ctrl ->
@@ -83,6 +97,20 @@ class MainActivity : ComponentActivity() {
                 View.SYSTEM_UI_FLAG_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+        }
+    }
+
+    private fun showSystemUI() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { ctrl ->
+                ctrl.show(WindowInsets.Type.statusBars())
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
         }

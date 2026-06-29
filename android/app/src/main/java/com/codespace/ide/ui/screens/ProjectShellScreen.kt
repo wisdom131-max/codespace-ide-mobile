@@ -496,13 +496,11 @@ fun ProjectShellScreen(
         Modifier.fillMaxSize().background(BgColor)
             .onGloballyPositioned { totalWidth = it.size.width.toFloat(); totalHeight = it.size.height.toFloat() }
     ) {
-        Column(Modifier.fillMaxSize().padding(top = with(androidx.compose.ui.platform.LocalDensity.current) {
-            androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(this).toDp()
-        })) {
+        Column(Modifier.fillMaxSize()) {
 
             // ── Top Bar (VS Code style)
             Row(
-                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
+                Modifier.fillMaxWidth().height(28.dp).background(ActivityBarBg)
                     .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -593,13 +591,11 @@ fun ProjectShellScreen(
                             Icon(icon, null, tint = if (isActive) ActivityBarIconActive else ActivityBarIcon, modifier = Modifier.size(24.dp))
                         }
                     }
-                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showMoreMenu = true }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.MoreHoriz, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
-                    }
+
                     Spacer(Modifier.weight(1f))
 
                     // Connectors hub (GitHub + SSH + Services)
-                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showConnectorsSheet = true }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showPersonMenu = true }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.AccountCircle, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
                     }
                     Box(Modifier.fillMaxWidth().height(48.dp).clickable { showGearMenu = true }, contentAlignment = Alignment.Center) {
@@ -809,7 +805,7 @@ fun ProjectShellScreen(
                                     detectDragGestures { _, dragAmount ->
                                         val nh = bottomPanelHeight - dragAmount.y
                                         if (nh < 60f) showBottomPanel = false
-                                        else bottomPanelHeight = nh.coerceIn(60f, totalHeight * 0.75f)
+                                        else bottomPanelHeight = nh.coerceIn(60f, totalHeight * 0.92f)
                                     }
                                 }
                         )
@@ -833,9 +829,7 @@ fun ProjectShellScreen(
                                 Spacer(Modifier.width(4.dp))
                             }
                             Spacer(Modifier.weight(1f))
-                            Icon(Icons.Default.MoreHoriz, null, tint = TabTextInactive,
-                                modifier = Modifier.size(16.dp).clickable { showPanelMenu = true })
-                            Spacer(Modifier.width(8.dp))
+
                             Icon(Icons.Default.OpenInFull, null, tint = TabTextInactive,
                                 modifier = Modifier.size(16.dp).clickable {
                                     bottomPanelHeight = if (bottomPanelHeight > totalHeight * 0.5f) 260f else totalHeight * 0.75f
@@ -916,20 +910,50 @@ fun ProjectShellScreen(
 
             } // end main Row (editor + optional chat panel)
 
-            // ── VS Code Copilot Chat Panel (right side) ─────────────────
-            if (showChatPanel) {
-                Box(Modifier.fillMaxSize()) {
-                    CopilotChatPanelOverlay(onClose = { showChatPanel = false })
-                }
-            }
         // Simple overlay menus
-        if (showMoreMenu) { Box(Modifier.fillMaxSize().clickable { showMoreMenu = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(220.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("Run & Debug","Extensions","Remote Explorer","Timeline","Split Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { handleMenuAction(item); showMoreMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+
         // ── Connectors Hub Sheet ─────────────────────────────────────────
         if (showConnectorsSheet) {
             ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
         }
 
-        // ── Notification Drawer ────────────────────────────────────────────
+
+        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+
+
+    // ── First-launch onboarding walkthrough ─────────────────────────────
+            // ── VS Code status bar (blue bar at bottom) ──────────────────
+            Row(
+                Modifier.fillMaxWidth().height(22.dp).background(StatusBarBg).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("main", fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+                Spacer(Modifier.weight(1f))
+                Text("Ln 1, Col 1", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+            }
+    } // end Column
+
+    // ── First-launch onboarding walkthrough (overlay, outside Column) ──
+    if (showOnboarding) {
+        OnboardingWalkthrough(onDone = {
+            showOnboarding = false
+            prefs.edit().putBoolean("onboarding_seen", true).apply()
+        })
+    }
+
+        // ── All overlays — direct children of root Box so they cover full screen ──
+
+        // Copilot Chat Panel
+        if (showChatPanel) {
+            CopilotChatPanelOverlay(onClose = { showChatPanel = false })
+        }
+
+        // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
             NotificationDrawerOverlay(
                 notifList = notifList,
@@ -937,18 +961,91 @@ fun ProjectShellScreen(
                 onClear = { notifList.clear() },
             )
         }
-        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
-        if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
 
+        // Command Palette
+        if (showCommandPalette) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color(0x88000000))
+                    .clickable { showCommandPalette = false }
+            ) {
+                Card(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 36.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp)
+                        .clickable(enabled = false) {},
+                    colors = CardDefaults.cardColors(containerColor = MenuBg),
+                    elevation = CardDefaults.cardElevation(12.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                ) {
+                    Column {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = commandQuery,
+                            onValueChange = { commandQuery = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = MenuText, fontFamily = FontFamily.Default),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            decorationBox = { inner ->
+                                if (commandQuery.isEmpty()) Text("> Type a command or file name…", fontSize = 14.sp, color = MenuText.copy(alpha = 0.4f))
+                                inner()
+                            },
+                            singleLine = true,
+                        )
+                        HorizontalDivider(color = DividerColor)
+                        val filtered = listOf(
+                            "New File", "New Folder", "Save File", "Open File",
+                            "Toggle Sidebar", "Toggle Terminal", "Select Color Theme",
+                            "Go to File", "Find in Files", "Run Program", "Split Terminal",
+                        ).filter { commandQuery.isEmpty() || it.contains(commandQuery, ignoreCase = true) }
+                        filtered.take(8).forEach { item ->
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
+                                    .clickable { handleMenuAction(item); showCommandPalette = false; commandQuery = "" }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-    // ── First-launch onboarding walkthrough ─────────────────────────────
-    if (showOnboarding) {
-        OnboardingWalkthrough(onDone = {
-            showOnboarding = false
-            prefs.edit().putBoolean("onboarding_seen", true).apply()
-        })
-    }
-    }
+        // Person / Account menu
+        if (showPersonMenu) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color(0x44000000))
+                    .clickable { showPersonMenu = false }
+            ) {
+                Card(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 52.dp, bottom = 56.dp)
+                        .width(220.dp)
+                        .clickable(enabled = false) {},
+                    colors = CardDefaults.cardColors(containerColor = MenuBg),
+                    elevation = CardDefaults.cardElevation(8.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                ) {
+                    Column(Modifier.padding(8.dp)) {
+                        Text("Signed in as", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(8.dp))
+                        Text("Wisdom Ijezie", fontSize = 13.sp, color = MenuText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
+                        HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 8.dp))
+                        listOf("Settings", "Sign Out").forEach { item ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { showPersonMenu = false }.padding(horizontal = 8.dp, vertical = 10.dp)
+                            ) {
+                                Text(item, fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
     } // end root Box
 }
