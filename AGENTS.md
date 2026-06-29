@@ -1592,3 +1592,56 @@ Typing an email pre-fills Google's sign-in sheet — user can still pick from th
 ### What the previous version did wrong
 Used AnimatedVisibility to hide the manual field behind "Use a different Google account" TextButton.
 This broke Rule 21 — the field was not always visible, defeating the purpose.
+
+
+---
+
+## BACKEND DEPLOY SESSION — June 29, 2026 (07:14 WAT)
+
+### STATUS: IN PROGRESS — deploying to Railway
+
+### What was done this session (commits):
+| Commit | What |
+|---|---|
+| 38cab674 | firebase-admin ^12.1.0 added to backend/package.json |
+| 359f0ecb | railway.json added — one-click Railway deploy config |
+| 5318fd8e | Dockerfile fixed — node-pty rebuilt in runtime stage |
+| 0bdb5670 | .env.example updated — Firebase vars documented |
+
+### BIGGEST BLOCKER: Backend not deployed
+The NestJS backend at api.codespace-ide.app has no server. 
+Google Sign-In works (Firebase OK) but then calls api.codespace-ide.app and fails.
+
+### HOW TO DEPLOY ON RAILWAY (Wisdom must do this — 5 min)
+1. Go to railway.app → New Project → Deploy from GitHub repo
+2. Select wisdom131-max/codespace-ide-mobile
+3. Railway will detect railway.json and use backend/Dockerfile automatically
+4. Add a PostgreSQL plugin (free) — Railway sets DATABASE_URL automatically
+5. Add a Redis plugin (free) — Railway sets REDIS_URL automatically
+6. Set these env vars in Railway dashboard:
+   JWT_SECRET = (run: openssl rand -hex 64)
+   JWT_REFRESH_SECRET = (run: openssl rand -hex 64)
+   ENCRYPTION_KEY = (run: openssl rand -hex 32)
+   OWNER_EMAIL = ijeziewisdom131@gmail.com
+   FIREBASE_PROJECT_ID = codespace-ide-2026
+   FIREBASE_CLIENT_EMAIL = (from Firebase service account JSON)
+   FIREBASE_PRIVATE_KEY = (from Firebase service account JSON)
+7. After deploy: copy the Railway URL (e.g. https://codespace-ide-backend.up.railway.app)
+8. Update AUTH_ENDPOINT in AuthScreen.kt: replace https://api.codespace-ide.app with Railway URL
+9. Set up custom domain api.codespace-ide.app → Railway URL in your DNS provider
+
+### Firebase Service Account (needed for step 6)
+Firebase Console → codespace-ide-2026 → Project Settings → Service Accounts → Generate new private key
+Downloads a JSON file. Copy projectId, clientEmail, privateKey from it.
+
+### Rule 22 — Railway is the deploy target
+Backend deploys to Railway. DATABASE_URL and REDIS_URL are injected automatically.
+Never hardcode connection strings. Always read from process.env.
+
+### NEXT TASKS IN ORDER (continuing this session):
+1. ✅ firebase-admin in deps
+2. ✅ railway.json deploy config
+3. ✅ Dockerfile fixed
+4. ⏳ Audit all Android features from AGENTS.md build sequence — check if implemented
+5. ⏳ Fix any unimplemented features from build sequence list
+6. ⏳ Update AuthScreen.kt to handle backend-not-deployed gracefully (offline mode)
