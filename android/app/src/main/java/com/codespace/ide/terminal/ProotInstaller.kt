@@ -237,19 +237,15 @@ object ProotInstaller {
                 File(dpkgCfgDir, "dpkg.cfg").writeText(
                     "# Written by CodeSpace IDE — OEM kernel workaround
 " +
-                    "force-unsafe-io
-"
+                    "force-unsafe-io\n"
                 )
 
                 // Also write /etc/apt/apt.conf.d/01dpkg-options to pass --force-unsafe-io
                 // through apt automatically, so the user never has to pass flags manually.
                 File(aptConfDir, "01dpkg-options").writeText(
-                    "DPkg::Options {
-" +
-                    "   "--force-unsafe-io";
-" +
-                    "};
-"
+                    "DPkg::Options {\n" +
+                    "   \"--force-unsafe-io\";\n" +
+                    "};\n"
                 )
 
                 Log.d(TAG, "Baked DNS + apt config + dpkg unsafe-io workaround into rootfs")
