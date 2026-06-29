@@ -1504,3 +1504,24 @@ Link: https://console.firebase.google.com/project/codespace-ide-2026/settings/ge
 The app must show a "Switch account / Use different account" button on the login screen.
 This is separate from the biometric lock toggle. It clears the cached Google credential
 and forces the user to pick a new Google account on next sign-in.
+
+---
+
+## google-services.json FINAL — both packages complete (June 29, 2026 06:45 WAT)
+
+Final google-services.json pushed to repo and synced to Google Drive.
+Both Android packages now have the correct SHA-1 fingerprint registered:
+
+- com.codespace.ide       → OAuth client: 872673459882-vess8kh6asgn6g184en67i8hb692pgs1
+  SHA-1: 09539806fb99759995d35e2b6aa562a2191b83f5
+- com.codespace.ide.debug → OAuth client: 872673459882-u9p1lv1q1hq864kfepma6rm3cme2kfa1
+  SHA-1: 09539806fb99759995d35e2b6aa562a2191b83f5
+
+Google Sign-In is now fully configured on the Firebase side.
+Remaining blocker: NestJS backend at api.codespace-ide.app is not deployed.
+After Firebase auth succeeds, the app will call the backend and fail until it is live.
+
+### Next priorities (in order)
+1. Deploy NestJS backend (/backend folder) to Railway or Render — this unblocks full login
+2. Add "Switch account" button to login screen (Rule 18)
+3. Implement Remotion Studio button in PreviewPane (Option C)
