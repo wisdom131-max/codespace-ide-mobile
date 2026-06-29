@@ -94,21 +94,31 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore) {
         }
 
         val nav = rememberNavController()
+        // accessToken kept in memory only (not persisted — re-auth on cold start)
+        var accessToken by remember { mutableStateOf(tokenStore.lastAccessToken ?: "") }
         NavHost(navController = nav, startDestination = startDest) {
             composable(Routes.AUTH) {
                 AuthScreen(onAuthenticated = { result ->
-                    tokenStore.refreshToken = result.refreshToken
-                    tokenStore.userRole     = result.role
+                    tokenStore.refreshToken  = result.refreshToken
+                    tokenStore.userRole      = result.role
+                    tokenStore.lastAccessToken = result.accessToken
+                    accessToken = result.accessToken
                     nav.navigate(Routes.HOME) { popUpTo(Routes.AUTH) { inclusive = true } }
                 })
             }
             composable(Routes.HOME) {
                 HomeScreen(
-                    onOpenProject  = { id ->
+                    accessToken   = accessToken,
+                    onOpenProject = { id ->
                         sessionStateStore.saveProjectId(id)
                         nav.navigate(Routes.project(id))
                     },
                     onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                    onSignOut = {
+                        tokenStore.clear()
+                        accessToken = ""
+                        nav.navigate(Routes.AUTH) { popUpTo(0) { inclusive = true } }
+                    },
                 )
             }
             composable(Routes.PROJECT) { backStackEntry ->
