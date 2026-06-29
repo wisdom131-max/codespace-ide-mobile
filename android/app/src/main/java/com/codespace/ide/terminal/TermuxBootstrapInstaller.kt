@@ -37,7 +37,7 @@ object TermuxBootstrapInstaller {
     private const val TAG        = "TermuxBootstrap"
     private const val ASSET_NAME = "bootstrap-aarch64.zip"
     // Bump version so existing installs re-extract with the copy-instead-of-symlink fix
-    private const val VERSION    = "termux-bootstrap-3490-v4"
+    private const val VERSION    = "termux-bootstrap-3490-v5"
 
     // Multi-call binaries: the target binary dispatches via argv[0].
     // Copying is safe and avoids symlinkat() seccomp block on Samsung.
@@ -243,16 +243,20 @@ object TermuxBootstrapInstaller {
         val home = File(context.filesDir, "home").apply { mkdirs() }
         val prefixPath = prefix.absolutePath
 
+        // ── .bashrc ───────────────────────────────────────────────────────────
         File(home, ".bashrc").writeText(
-            "# VN Code — Termux bash profile (auto-generated)\n" +
+            "# VN Code bash profile\n" +
             "export PREFIX=$prefixPath\n" +
             "export PATH=\$PREFIX/bin:\$PREFIX/sbin:/system/bin\n" +
             "export TMPDIR=\$PREFIX/tmp\n" +
             "export HOME=${home.absolutePath}\n" +
             "export TERM=xterm-256color\n" +
             "export LANG=en_US.UTF-8\n" +
+            "export LC_ALL=en_US.UTF-8\n" +
             "export DPKG_FORCE=unsafe-io\n" +
-            "export PERL_BADLANG=0\n\n" +
+            "export PERL_BADLANG=0\n" +
+            "export TERMUX_VERSION=0.118.1\n" +
+            "export TERMUX_APP_PACKAGE_MANAGER=apt\n\n" +
             "alias ll='ls -la'\n" +
             "alias la='ls -A'\n" +
             "alias gs='git status'\n" +
@@ -260,48 +264,79 @@ object TermuxBootstrapInstaller {
             "alias gc='git commit'\n" +
             "alias gl='git log --oneline --graph --decorate --all -20'\n\n" +
             "PS1='\\u@vncode:\\w\\$ '\n" +
-            "echo \"VN Code bash ready\"\n"
+            "echo \"Termux bash ready — run: apt update && apt install <package>\"\n"
         )
 
         File(prefix, "tmp").mkdirs()
 
-        // CRITICAL: Overwrite etc/profile — the bootstrap copy hardcodes
-        // /data/data/com.termux/ paths which are inaccessible in our app.
-        // Replace with PREFIX-relative paths so bash --login works correctly.
-        val profile = File(prefix, "etc/profile")
-        profile.parentFile?.mkdirs()
-        profile.writeText(
-            "# VN Code bootstrap etc/profile (patched from Termux original)\n" +
-            "# Uses \$PREFIX so paths work in com.codespace.ide package\n" +
+        // ── PATCH ALL SCRIPTS ─────────────────────────────────────────────────
+        // The Termux bootstrap has 185+ shell scripts that all hardcode
+        // /data/data/com.termux/files/usr  — replace with our actual prefix.
+        // We do a recursive walk of bin/, lib/, etc/ to patch every text file.
+        patchAllScripts(prefix, prefixPath)
+
+        // ── etc/profile ───────────────────────────────────────────────────────
+        // Overwrite entirely — the bootstrap version hardcodes com.termux paths
+        File(prefix, "etc/profile").writeText(
+            "# VN Code etc/profile\n" +
             "for i in \$PREFIX/etc/profile.d/*.sh; do\n" +
             "  [ -r \$i ] && . \$i\n" +
-            "done\n" +
-            "unset i\n" +
-            "if [ -r \$PREFIX/etc/bash.bashrc ]; then\n" +
-            "  . \$PREFIX/etc/bash.bashrc\n" +
-            "fi\n" +
-            "if [ -r \$HOME/.bashrc ]; then\n" +
-            "  . \$HOME/.bashrc\n" +
-            "fi\n"
+            "done\nunset i\n" +
+            "[ -r \$PREFIX/etc/bash.bashrc ] && . \$PREFIX/etc/bash.bashrc\n" +
+            "[ -r \$HOME/.bashrc ] && . \$HOME/.bashrc\n"
         )
 
-        // Patch etc/bash.bashrc too — remove hardcoded com.termux paths
-        val bashrc = File(prefix, "etc/bash.bashrc")
-        if (bashrc.exists()) {
-            val txt = bashrc.readText()
-                .replace("/data/data/com.termux/files/usr", prefix.absolutePath)
-            bashrc.writeText(txt)
+        // ── etc/termux/bootstrap ──────────────────────────────────────────────
+        // Overwrite second-stage script with our prefix
+        val secondStage = File(prefix, "etc/termux/bootstrap/termux-bootstrap-second-stage.sh")
+        if (secondStage.exists()) {
+            val txt = secondStage.readText()
+                .replace("#!/data/data/com.termux/files/usr/bin/bash", "#!${prefix.absolutePath}/bin/bash")
+                .replace("/data/data/com.termux/files/usr", prefixPath)
+                .replace("""export TERMUX_PREFIX="/data/data/com.termux/files/usr"""",
+                         """export TERMUX_PREFIX="$prefixPath"""")
+            secondStage.writeText(txt)
+            secondStage.setExecutable(true, false)
         }
 
-        // Patch bin/pkg shebang — replace com.termux path with our prefix
-        val pkgBin = File(prefix, "bin/pkg")
-        if (pkgBin.exists()) {
-            val txt = pkgBin.readText()
-                .replace("#!/data/data/com.termux/files/usr/bin/bash", "#!${prefix.absolutePath}/bin/bash")
-                .replace("/data/data/com.termux/files/usr", prefix.absolutePath)
-            pkgBin.writeText(txt)
-            pkgBin.setExecutable(true, false)
-        }
+        // ── sources.list ──────────────────────────────────────────────────────
+        // Ensure apt has the correct Termux repo — this is what was missing!
+        val aptDir = File(prefix, "etc/apt")
+        aptDir.mkdirs()
+        File(aptDir, "sources.list").writeText(
+            "# Termux main repository\n" +
+            "deb https://packages-cf.termux.dev/apt/termux-main/ stable main\n"
+        )
+    }
+
+    /**
+     * Walk all text files under the Termux prefix and replace the hardcoded
+     * /data/data/com.termux/files/usr path with our actual prefix path.
+     * This patches all 185 shell scripts in one pass.
+     */
+    private fun patchAllScripts(prefix: File, prefixPath: String) {
+        val OLD_PREFIX = "/data/data/com.termux/files/usr"
+        val OLD_HOME   = "/data/data/com.termux/files/home"
+        val newHome    = File(prefix.parentFile?.parentFile ?: prefix, "home").absolutePath
+
+        prefix.walkTopDown()
+            .filter { it.isFile && it.length() < 500_000L }  // skip large binaries
+            .forEach { file ->
+                try {
+                    val bytes = file.readBytes()
+                    // Quick check: does it contain the old path?
+                    val idx = bytes.indexOf(OLD_PREFIX.toByteArray())
+                    if (idx != -1) {
+                        val text = bytes.toString(Charsets.UTF_8)
+                        val patched = text
+                            .replace(OLD_PREFIX, prefixPath)
+                            .replace(OLD_HOME, newHome)
+                        file.writeText(patched, Charsets.UTF_8)
+                    }
+                } catch (_: Exception) {
+                    // Binary file or unreadable — skip silently
+                }
+            }
     }
 
     /**
