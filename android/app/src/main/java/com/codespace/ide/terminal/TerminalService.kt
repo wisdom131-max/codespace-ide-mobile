@@ -184,33 +184,57 @@ class TerminalService : Service() {
             return Pair(session, client)
         }
 
-        val busybox = BusyboxInstaller.shellPath(this)
-        val home = File(filesDir, "home").also { it.mkdirs() }.absolutePath
-        val bin  = BusyboxInstaller.binDir(this).absolutePath
+        // ── Shell session — mirrors Termux's TermuxShellEnvironmentClient exactly ──
+        // Termux: executablePath=$PREFIX/bin/bash, argv[0]="-bash" (login shell)
+        // We ship bash via libbusybox.so (busybox ash) since no real bash .so exists.
+        // busybox launched with argv[0]="-ash" triggers login-shell .profile sourcing.
+        val busybox   = BusyboxInstaller.shellPath(this)
+        val home      = File(filesDir, "home").also { it.mkdirs() }.absolutePath
+        val bin       = BusyboxInstaller.binDir(this).absolutePath
         val nativeDir = applicationInfo.nativeLibraryDir
-        val ldPreload  = "$nativeDir/libtermux-exec.so"
-        val uid = android.os.Process.myUid()
+        val tmpDir    = File(cacheDir, "tmp").also { it.mkdirs() }.absolutePath
+
+        // Termux sets LD_LIBRARY_PATH to nativeLibraryDir so .so deps resolve
+        val ldLibPath = buildString {
+            append(nativeDir)
+            System.getenv("LD_LIBRARY_PATH")?.let { append(":$it") }
+        }
 
         val envBuilder = mutableListOf(
+            // Core identity — match Termux exactly
             "HOME=$home",
-            "PWD=$home",
-            "PATH=$bin:/system/bin:/system/xbin",
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
             "LANG=en_US.UTF-8",
             "SHELL=$busybox",
-            "BUSYBOX=$busybox",
-            "TMPDIR=${cacheDir.absolutePath}",
             "USER=vncode",
-            "LOGNAME=vncode"
+            "LOGNAME=vncode",
+            "TMPDIR=$tmpDir",
+            "PWD=$home",
+            // PATH: our bin symlinks first, then system
+            "PATH=$bin:$nativeDir:/system/bin:/system/xbin",
+            // LD_LIBRARY_PATH: required for native .so resolution (Termux does this)
+            "LD_LIBRARY_PATH=$ldLibPath",
+            // libtermux-exec intercepts exec() calls for Samsung/OEM compat
+            "LD_PRELOAD=$nativeDir/libtermux-exec.so",
+            // ash interactive mode: point ENV at our rc file
+            "ENV=$home/.ashrc"
         )
-        if (File(ldPreload).exists()) envBuilder.add("LD_PRELOAD=$ldPreload")
-        for (key in listOf("ANDROID_DATA","ANDROID_ROOT","ANDROID_STORAGE","ANDROID_RUNTIME_ROOT",
-                           "ANDROID_ART_ROOT","ANDROID_I18N_ROOT","ANDROID_TZDATA_ROOT",
-                           "EXTERNAL_STORAGE","BOOTCLASSPATH","DEX2OATBOOTCLASSPATH")) {
+
+        // Inherit Android system vars exactly as Termux does
+        for (key in listOf(
+            "ANDROID_DATA", "ANDROID_ROOT", "ANDROID_STORAGE",
+            "ANDROID_RUNTIME_ROOT", "ANDROID_ART_ROOT",
+            "ANDROID_I18N_ROOT", "ANDROID_TZDATA_ROOT",
+            "EXTERNAL_STORAGE", "BOOTCLASSPATH", "DEX2OATBOOTCLASSPATH"
+        )) {
             System.getenv(key)?.let { envBuilder.add("$key=$it") }
         }
+
         val env = envBuilder.toTypedArray()
+
+        // "-ash" as argv[0] = login shell mode — busybox reads .profile on startup
+        // This is equivalent to Termux passing "-bash" for bash login sessions
         val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
         return Pair(session, client)
     }
