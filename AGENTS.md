@@ -1420,3 +1420,39 @@ All credentials live in Google Drive → "Codespace IDE — Dev Credentials" fol
 
 ### Remaining login issue
 The app still hits `https://api.codespace-ide.app/api/v1/auth/google` after Firebase sign-in succeeds. That domain has no server. The backend (`/backend` NestJS app) needs to be deployed (Railway / Render / VPS) and the domain DNS pointed at it before full login works end-to-end.
+
+---
+
+## RULE: AI Agent Communication — June 29, 2026
+
+### Rule 15 — Never use code blocks for anything Wisdom needs to copy
+Wisdom cannot select or copy text from markdown code blocks (backtick or fenced blocks) in the Base44 chat UI. All terminal commands, URLs, file paths, and any text Wisdom needs to type or paste must be written as plain inline text in the message. This is a hard rule for ALL Base44 agent responses in this project.
+
+---
+
+## CURRENT STATUS — June 29, 2026 (06:04 WAT)
+
+### Where we are right now
+
+**Completed this session:**
+- Biometric lock (opt-in) added to app-level Settings — SecureTokenStore.kt, SettingsScreen.kt, CodeSpaceApp.kt — all builds green
+- google-services.json SHA-1 corrected (09539806 → 4d893a14) — build green
+- AGENTS.md updated after every push ✅
+
+**Blocked — in progress:**
+We discovered the SHA-1 registered in Firebase may still be wrong or there were multiple conflicting fingerprints added on previous days. We are doing a clean slate:
+
+Steps remaining before Google Sign-In works:
+1. Wisdom runs this command in terminal on TECNO KL4:
+   keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android 2>/dev/null | grep -A2 "SHA"
+2. Wisdom adds the SHA-1 and SHA-256 from that output to Firebase console for both package names:
+   - Production: https://console.firebase.google.com/project/codespace-ide-2026/settings/general/android:com.codespace.ide
+   - Debug: https://console.firebase.google.com/project/codespace-ide-2026/settings/general/android:com.codespace.ide.debug
+3. Wisdom downloads fresh google-services.json from Firebase
+4. Agent pushes it to repo, updates Google Drive credentials-and-keys.md, updates AGENTS.md
+
+**Next blocker after login:**
+Backend NestJS app (/backend folder) is fully written but NOT deployed. The domain api.codespace-ide.app has no DNS or server. After login is fixed this is the next task — deploy to Railway or Render (free tier).
+
+**Remotion (Option C) — planned, not started:**
+Decision: Remotion Studio runs as local Node server, accessed via existing PreviewPane browser tab. Implementation not started yet. Waiting for login + backend to be stable first.
