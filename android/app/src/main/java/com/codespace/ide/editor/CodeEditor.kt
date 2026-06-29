@@ -100,6 +100,7 @@ fun CodeEditor(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
+                .padding(end = 62.dp)   // leave room for minimap
                 .verticalScroll(vScroll)
         ) {
             // Gutter — with diff indicators
@@ -156,6 +157,42 @@ fun CodeEditor(
                     visualTransformation = SyntaxTransformation(language, colors),
                     modifier = Modifier.padding(end = 24.dp),
                 )
+            }
+        }
+
+        // ── Minimap — right-side code thumbnail ──────────────────────────────
+        val textLines = remember(value.text) { value.text.split("
+") }
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .width(60.dp)
+                .fillMaxHeight()
+                .background(Color(0xFF1A1A1A))
+                .zIndex(5f),
+        ) {
+            textLines.forEachIndexed { idx, line ->
+                // Each minimap "line" is a thin colored rect representing code density
+                val density = (line.trimStart().length.coerceAtMost(80)).toFloat() / 80f
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .padding(horizontal = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Indentation blank
+                    val indent = line.length - line.trimStart().length
+                    Spacer(Modifier.width((indent * 0.3f).dp))
+                    // Code line body
+                    Box(
+                        Modifier
+                            .weight(density.coerceAtLeast(0.05f))
+                            .fillMaxHeight()
+                            .background(Color(0xFF3C3C3C))
+                    )
+                    Spacer(Modifier.weight((1f - density).coerceAtLeast(0.05f)))
+                }
             }
         }
 
