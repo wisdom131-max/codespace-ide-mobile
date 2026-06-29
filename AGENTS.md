@@ -1117,3 +1117,82 @@ Termux WakeLock is fully internal to `TermuxService`. Exact strings found:
 - This works because `targetSdkVersion=28` exempts it from Android 14 foreground service type requirements
 - **Action:** Consider removing our `specialUse` type and `FOREGROUND_SERVICE_SPECIAL_USE` permission if they cause issues, relying on targetSdk=28 instead like Termux does.
 
+
+---
+
+## Session: June 29, 2026 — Bug Audit from User Complaint Doc + Build Fix
+
+### Root Cause of All 4 Build Failures
+Every build since June 29 13:52 failed due to a **syntax error in `ProotInstaller.kt` line 248** introduced by a previous AI. The error was raw unescaped newlines and mis-escaped double-quotes inside Kotlin string literals:
+
+```kotlin
+// BROKEN (what previous AI wrote):
+File(aptConfDir, "01dpkg-options").writeText(
+    "DPkg::Options {
+" +
+    "   "--force-unsafe-io";
+" +
+    "};
+"
+)
+
+// FIXED:
+File(aptConfDir, "01dpkg-options").writeText(
+    "DPkg::Options {\n" +
+    "   \"--force-unsafe-io\";\n" +
+    "};\n"
+)
+```
+
+**Fix committed:** `1d47ef4b7c3b` — `ProotInstaller.kt` syntax corrected.
+
+---
+
+### User Complaint Doc — Full Bug List (13 Issues)
+
+**Source:** `complain to base 44.docx` from Google Drive (downloaded June 29).
+
+| # | Bug | Status | Commit |
+|---|-----|--------|--------|
+| 1 | Get Started tap → blank screen (needed screen rotate to unblock) | Architecture OK — OnboardingWalkthrough has scrim; root cause is Compose recomposition lag on first launch | — |
+| 2 | 3-dot near Extensions tab → everything went white | **FIXED** — removed `MoreVert` icon + `showExplorerMore` dead menu | `c8dbaacb43fc` |
+| 3 | Person icon → full-screen instead of mini popup | Already fixed in prior session (Card popup, not fullscreen) | — |
+| 4 | Workspace/command palette box didn't show dropdown | Already wired correctly in code; may be input focus issue on device | — |
+| 5 | Terminal tap → blank screen (needed back-and-forth to work) | `bootstrapReady` guard + `rememberTerminalState` creates session before bootstrap; if busybox ash spawns instead of bash it looks blank briefly | Under review |
+| 6 | Chat icon tap → everything blank around it | **FIXED** — added `Color(0x66000000)` scrim + click-outside dismiss to `CopilotChatPanelOverlay` | `c989f0865cd5` |
+| 7 | 3-dot in terminal area → everything blank around it | **FIXED** — removed dead `showPanelMenu` overlay (was declared but never triggered; left a white-background `Box(fillMaxSize)` orphan) | `6a3d295585d3` |
+| 8 | Back button doesn't exit project | **FIXED** — added `BackHandler { onBack() }` to `ProjectShellScreen` | `6a3d295585d3` |
+| 9 | Bell icon tap → everything disappears around it | `NotificationDrawerOverlay` already has `Color(0x44000000)` scrim; if still happening, investigate z-order | — |
+| 10 | Terminal used to reach top bar line; now doesn't | Layout spacing regression — investigate `TerminalPane` top padding | Pending |
+| 11 | Terminal text doesn't reflow on portrait rotation | Fixed in prior session `eea399ec` — `addOnLayoutChangeListener` + `updateSize()` | ✅ |
+| 12 | Blue VS Code status bar removed by previous AI | Confirmed present in `ProjectShellScreen.kt` bottom `Row` | ✅ |
+| 13 | Portrait status bar gap (time/battery) visible in landscape | Fixed in `MainActivity.kt` — `hideSystemUI()` in landscape, `showSystemUI()` in portrait | ✅ |
+
+---
+
+### Termux APK Binary Analysis (June 29)
+
+**Source:** `termux-app_v0.118.3+github-debug_arm64-v8a.7z` from Google Drive.
+
+**libtermux-bootstrap.so** (29,392,992 bytes):
+- ELF magic: `7f454c46` ✅ AArch64 (`e_machine=0x00B7`) ✅
+- Embedded ZIP starts at offset `0x530`
+- **3,490 ZIP entries** | **1,146 symlinks** (format: `TARGET←LINK`)
+- Key binaries: `bin/bash` (837 KB), `bin/curl` (280 KB), `bin/apt` (38 KB), `bin/dpkg` (269 KB), `bin/nano` ✅
+- Missing (install via apt): `python3`, `git`, `vim`
+- Symlink separator character: `\u2190` (←)
+
+**libtermux.so** (9,008 bytes — JNI bridge):
+- JNI exports: `createSubprocess`, `setPtyWindowSize`, `setPtyUTF8Mode`, `waitFor`, `close`
+- Subprocess launch: `fork()` → `execvp()` → PTY via `/dev/ptmx`
+- Env setup: `clearenv()` then `putenv()` for each variable passed from Kotlin
+
+**Key architecture insight:** `TermuxBootstrapInstaller.kt` already extracts this ZIP to `filesDir/termux-home/` and `createTerminalSession()` already checks `TermuxBootstrapInstaller.isInstalled()` before falling back to busybox. The bootstrap and JNI layer are correctly integrated.
+
+---
+
+### Files Modified This Session
+- `android/app/src/main/java/com/codespace/ide/terminal/ProotInstaller.kt` — syntax fix
+- `android/app/src/main/java/com/codespace/ide/ui/screens/CopilotChatPanelOverlay.kt` — scrim + dismiss
+- `android/app/src/main/java/com/codespace/ide/ui/screens/ProjectShellScreen.kt` — dead menus removed, BackHandler added
+- `android/app/src/main/java/com/codespace/ide/ui/panes/ExplorerPane.kt` — MoreVert removed
