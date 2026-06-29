@@ -80,6 +80,7 @@ fun CodeEditor(
     fontSize: Int = 13,
     onContentChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    savedContent: String = "",   // original saved text — used for diff gutter indicators
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -101,15 +102,40 @@ fun CodeEditor(
                 .background(colors.background)
                 .verticalScroll(vScroll)
         ) {
-            // Gutter
-            Column(modifier = Modifier.padding(horizontal = 8.dp).width(44.dp)) {
-                for (line in 1..lineCount) {
-                    Text(
-                        text = line.toString(),
-                        color = colors.gutter,
-                        fontSize = fontSize.sp,
-                        fontFamily = FontFamily.Monospace,
+            // Gutter — with diff indicators
+            val savedLines = remember(savedContent) { savedContent.split("
+") }
+            val currentLines = remember(value.text) { value.text.split("
+") }
+            Column(modifier = Modifier.padding(horizontal = 4.dp).width(50.dp)) {
+                for (lineNum in 1..lineCount) {
+                    val idx = lineNum - 1
+                    val isDirty = savedContent.isNotEmpty() && (
+                        idx >= savedLines.size || (idx < currentLines.size && idx < savedLines.size && currentLines[idx] != savedLines[idx])
                     )
+                    val isAdded = savedContent.isNotEmpty() && idx >= savedLines.size
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Diff indicator — 4dp wide
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(fontSize.dp)
+                                .background(
+                                    when {
+                                        isAdded -> Color(0xFF4EC9B0) // teal = added
+                                        isDirty -> Color(0xFF569CD6)  // blue = modified
+                                        else    -> Color.Transparent
+                                    }
+                                )
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            text = lineNum.toString(),
+                            color = colors.gutter,
+                            fontSize = fontSize.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
                 }
             }
             // Editor surface
