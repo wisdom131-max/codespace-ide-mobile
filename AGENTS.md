@@ -1392,3 +1392,31 @@ Biometric lock is **opt-in via Settings** (not on by default). Reason: don't blo
 12. Biometric auth must always use `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` — never `BIOMETRIC_STRONG` alone (excludes PIN fallback on devices with weak biometric hardware).
 13. Security settings (biometric, account switching) live in the **app-level Settings** (HomeScreen → Settings gear), NOT inside project settings. Project settings = per-project config only.
 
+
+---
+
+## BUG FIX: Google Sign-In SHA-1 Mismatch — June 29, 2026
+
+### Root cause
+`google-services.json` in the repo had the wrong `certificate_hash` for both app clients:
+- **Wrong (was in repo):** `09539806fb99759995d35e2b6aa562a2191b83f5`
+- **Correct (from Drive / debug.keystore):** `4d893a14f7acd523ffd19f34957d5e4a7bda9223`
+
+Firebase Credential Manager rejects Google Sign-In when the APK's signing SHA-1 doesn't match what's registered. This caused the "Unable to resolve host / Sign-in cancelled" error on AuthScreen — the Google account picker either failed silently or threw a `GetCredentialException` before the network call even happened.
+
+### Fix
+Updated `certificate_hash` in both client entries (`com.codespace.ide` and `com.codespace.ide.debug`) to the correct SHA-1 from the debug.keystore committed in the repo.
+
+- Commit: `b4294b0d`
+- Build: ✅ success (run 28349433333)
+
+### Source of truth for credentials
+All credentials live in Google Drive → "Codespace IDE — Dev Credentials" folder:
+- `credentials-and-keys.md` — SHA-1, client IDs, package names, Firebase project info
+- `google-services.json` — the authoritative copy to use in the repo
+
+### Hard rule added
+14. **Always verify** `google-services.json` `certificate_hash` matches the committed `debug.keystore` SHA-1 (`4d893a14f7acd523ffd19f34957d5e4a7bda9223`) before blaming auth code for sign-in failures. SHA-1 mismatch is silent — no obvious build error, only a runtime sign-in crash.
+
+### Remaining login issue
+The app still hits `https://api.codespace-ide.app/api/v1/auth/google` after Firebase sign-in succeeds. That domain has no server. The backend (`/backend` NestJS app) needs to be deployed (Railway / Render / VPS) and the domain DNS pointed at it before full login works end-to-end.
