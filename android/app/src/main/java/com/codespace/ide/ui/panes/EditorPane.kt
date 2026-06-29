@@ -267,6 +267,7 @@ fun EditorPane(
                         content = active.content,
                         language = active.language,
                         fontSize = fontSize,
+                        savedContent = active.savedContent,
                         onContentChange = { newText ->
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
@@ -292,6 +293,7 @@ fun EditorPane(
                         content = active.content,
                         language = active.language,
                         fontSize = fontSize,
+                        savedContent = active.savedContent,
                         onContentChange = { newText ->
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
