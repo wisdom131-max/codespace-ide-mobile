@@ -1052,3 +1052,68 @@ to the top bar.
 2. Terminal session header row ("offline", "root@localhost") — "⋮" vertical dots → REMOVE
 
 ### Terminal screenshot also shows the app IS working (Ubuntu proot, apt upgrade ran) ✅
+
+---
+
+## Termux APK Binary Analysis — June 29, 2026
+**Source:** `termux-app_v0.118.3+github-debug_arm64-v8a` decompiled from user's TECNO device via MT Manager, extracted from Google Drive.
+
+### AndroidManifest.xml — CONFIRMED values
+
+| Key | Termux Value | Our Value |
+|-----|-------------|-----------|
+| `targetSdkVersion` | **28** | 28 ✅ (matched) |
+| `minSdkVersion` | 24 | 24 ✅ |
+| `compileSdkVersion` | 30 | should match |
+| `android.max_aspect` | **10.000000** | 10.0 ✅ |
+| `com.samsung.android.keepalive.density` | **true** | ✅ added |
+| `com.samsung.android.multidisplay.keep_process_alive` | **true** | ✅ added |
+| `uses-library: androidx.window.extensions` | required=false | ✅ added |
+| `uses-library: androidx.window.sidecar` | required=false | ✅ added |
+| `android.permission.WAKE_LOCK` | ✅ present | ✅ |
+| `android.permission.FOREGROUND_SERVICE` | ✅ present | ✅ |
+| `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | ✅ present | check ours |
+| `FOREGROUND_SERVICE_SPECIAL_USE` | ❌ NOT present | we added this — may be unnecessary |
+| `sharedUserId` | `com.termux` | N/A for us |
+
+**Key finding:** Termux does NOT use `FOREGROUND_SERVICE_SPECIAL_USE`. It uses plain `FOREGROUND_SERVICE` + targetSdk=28 to bypass the restriction entirely. Our `specialUse` declaration may be causing extra permission issues on older firmware.
+
+### WakeLock — CONFIRMED from classes20.dex
+
+Termux WakeLock is fully internal to `TermuxService`. Exact strings found:
+- `com.termux.service_wake_lock` — intent action to acquire
+- `com.termux.service_wake_unlock` — intent action to release
+- `actionAcquireWakeLock` / `actionReleaseWakeLock` — method names
+- `mWakeLock` — field name (PowerManager.WakeLock)
+- `newWakeLock` — called in TermuxService, NOT in Application.onCreate
+- `WakeLocks acquired successfully` / `WakeLocks released successfully` — log strings
+- `Ignoring acquiring WakeLocks since they are already held` — guard present
+
+**Conclusion:** Termux acquires WakeLock lazily via intent, not eagerly in Application.onCreate. Our approach of acquiring in Application.onCreate is MORE aggressive — this is fine or better.
+
+### Shell exec — CONFIRMED from classes20.dex
+
+- Termux shells into: `/data/data/com.termux/files/usr/bin/bash`
+- Uses `/data/data/com.termux/files/usr/bin/login` for session init (classes13.dex)
+- Bootstrap: `/data/data/com.termux/files/usr/etc/termux/bootstrap/termux-bootstrap-second-stage.sh`
+- Termux prefix tmp dir: `/data/data/com.termux/files/usr/tmp`
+
+**Key difference:** Termux runs bash from its OWN prefix (`/data/data/com.termux/files/usr/bin/bash`), not from Ubuntu proot. It IS a proot-free native bash environment. The `usr/bin/login` is Termux's own custom login binary.
+
+### dpkg / getcwd — CONFIRMED
+
+- `force-unsafe-io` string: **NOT FOUND** anywhere in the Termux APK
+- `dpkg.cfg`: **NOT FOUND**
+- `setProcessGroup`: **NOT FOUND**
+- `proot`: **NOT FOUND** in Termux app itself (proot is a separate `proot-distro` package)
+- `getcwd`: **NOT FOUND**
+
+**Conclusion:** Termux does NOT ship any `force-unsafe-io` or proot workarounds in the app itself. The dpkg/getcwd failures the user experienced are **proot environment issues**, not Termux app issues. Termux's native bash doesn't use proot at all — it runs directly in the Android sandbox with its own prefix. Our fix (baking `dpkg.cfg` + `DPKG_FORCE=unsafe-io` + `/proc/self/cwd` bind) is the correct approach for our proot-Ubuntu setup and is NOT something Termux needs to do.
+
+### foregroundServiceType — CONFIRMED
+
+- Termux uses plain `FOREGROUND_SERVICE` permission (no `specialUse` type)
+- No `foregroundServiceType` attribute found in the service declaration
+- This works because `targetSdkVersion=28` exempts it from Android 14 foreground service type requirements
+- **Action:** Consider removing our `specialUse` type and `FOREGROUND_SERVICE_SPECIAL_USE` permission if they cause issues, relying on targetSdk=28 instead like Termux does.
+
