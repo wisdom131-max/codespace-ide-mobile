@@ -37,7 +37,7 @@ object TermuxBootstrapInstaller {
     private const val TAG        = "TermuxBootstrap"
     private const val ASSET_NAME = "bootstrap-aarch64.zip"
     // Bump version so existing installs re-extract with the copy-instead-of-symlink fix
-    private const val VERSION    = "termux-bootstrap-3490-v2"
+    private const val VERSION    = "termux-bootstrap-3490-v3"
 
     // Multi-call binaries: the target binary dispatches via argv[0].
     // Copying is safe and avoids symlinkat() seccomp block on Samsung.
@@ -272,26 +272,56 @@ object TermuxBootstrapInstaller {
         val aptConfDir = File(prefixDir(context), "etc/apt/apt.conf.d")
         aptConfDir.mkdirs()
 
-        val nogpg = File(aptConfDir, "99-vncode-nogpg")
-        if (!nogpg.exists()) {
-            nogpg.writeText(
-                "// VN Code -- disable GPG check (Samsung kernel blocks gpgv subprocess)\n" +
-                "APT::Get::AllowUnauthenticated \"true\";\n" +
-                "Acquire::AllowInsecureRepositories \"true\";\n" +
-                "Acquire::AllowDowngradeToInsecureRepositories \"true\";\n" +
-                "APT::Sandbox::User \"root\";\n"
-            )
-        }
+        // Always overwrite — ensure latest config is present even after updates
+        File(aptConfDir, "99-vncode-nogpg").writeText(
+            "// VN Code -- Samsung kernel seccomp workarounds\n" +
+            "APT::Get::AllowUnauthenticated \"true\";\n" +
+            "Acquire::AllowInsecureRepositories \"true\";\n" +
+            "Acquire::AllowDowngradeToInsecureRepositories \"true\";\n" +
+            // Disable sandboxing — Samsung blocks setresuid/prctl inside apt sandbox
+            "APT::Sandbox::User \"root\";\n" +
+            "APT::Sandbox::Seccomp \"false\";\n" +
+            // Disable PTY allocation in dpkg (PTY alloc via ioctl is blocked)
+            "Dpkg::Use-Pty \"0\";\n" +
+            // Suppress pre-install script hooks (fork() inside hook scripts blocked)
+            "DPkg::Pre-Install-Pkgs {};\n" +
+            "DPkg::Post-Invoke {};\n"
+        )
 
-        // Also write dpkg.cfg to force unsafe-io permanently
+        // dpkg.cfg — force unsafe-io AND disable triggers (trigger fork is blocked)
         val dpkgCfgDir = File(prefixDir(context), "etc/dpkg")
         dpkgCfgDir.mkdirs()
-        val dpkgCfg = File(dpkgCfgDir, "dpkg.cfg")
-        if (!dpkgCfg.exists()) {
-            dpkgCfg.writeText(
-                "# VN Code -- OEM kernel workaround\n" +
-                "force-unsafe-io\n"
-            )
+        File(dpkgCfgDir, "dpkg.cfg").writeText(
+            "# VN Code -- Samsung kernel seccomp workarounds\n" +
+            "force-unsafe-io\n" +
+            "no-triggers\n"
+        )
+
+        // Write a wrapper script for 'ls' that uses busybox if coreutils ls fails
+        // Samsung may block certain syscalls in the Termux coreutils binary
+        val binDir = File(prefixDir(context), "bin")
+        // Ensure busybox aliases exist as fallback for Samsung-blocked coreutils calls
+        // We write a small sh wrapper that tries the real ls first, falls back to busybox
+        // Actually: the issue is coreutils calls __NR_statx which Samsung 5.15 blocks.
+        // Use busybox as direct replacement for blocked coreutils tools.
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val busyboxPath = "$nativeDir/libbusybox.so"
+        if (java.io.File(busyboxPath).exists()) {
+            // Replace coreutils ls/cat/etc copies with busybox equivalents
+            // Busybox uses older syscalls (getdents not getdents64/statx) — Samsung-safe
+            listOf("ls","cat","cp","mv","rm","mkdir","rmdir","head","tail","wc",
+                   "chmod","touch","echo","printf","pwd","env","sleep","sort",
+                   "uniq","cut","tr","tee","dirname","basename","date","id",
+                   "whoami","uname","du","df","stat","readlink","realpath").forEach { cmd ->
+                val cmdFile = File(binDir, cmd)
+                if (cmdFile.exists()) {
+                    // Write a thin wrapper script: exec busybox cmd "$@"
+                    cmdFile.writeText("#!/bin/sh
+exec $busyboxPath $cmd "\$@"
+")
+                    cmdFile.setExecutable(true, false)
+                }
+            }
         }
     }
 }
