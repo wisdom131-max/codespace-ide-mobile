@@ -631,23 +631,49 @@ internal fun TerminalPane(
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 tabs.forEach { tab ->
                     val isActive = tab.id == activeId
-                    Row(
+                    // PiP: grab last non-blank line from session buffer for mini preview
+                    val pipPreview = remember(tab.id) {
+                        derivedStateOf {
+                            try {
+                                val txt = tab.session.getEmulator()?.screen
+                                    ?.getTranscriptText()?.trim() ?: ""
+                                // Last meaningful line (non-blank, max 28 chars)
+                                txt.lines().lastOrNull { it.isNotBlank() }
+                                    ?.trim()?.take(28) ?: ""
+                            } catch (_: Exception) { "" }
+                        }
+                    }
+                    Column(
                         Modifier
                             .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
                             .clickable { activeId = tab.id }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .widthIn(min = 60.dp, max = 140.dp),
                     ) {
-                        Text(tab.name, color = if (isActive) Color.White else Color(0xFF969696),
-                            fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
-                        Text("✎", color = Color(0xFF969696), fontSize = 11.sp,
-                            modifier = Modifier.padding(start = 4.dp).clickable {
-                                renameTargetId = tab.id; renameValue = tab.name
-                            }.padding(2.dp))
-                        if (tabs.size > 1) {
-                            Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
-                                modifier = Modifier.padding(start = 4.dp).clickable { closeTab(tab.id) }.padding(2.dp))
+                        // Tab title + controls
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(tab.name, color = if (isActive) Color.White else Color(0xFF969696),
+                                fontSize = 12.sp, fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
+                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f))
+                            Text("✎", color = Color(0xFF666666), fontSize = 9.sp,
+                                modifier = Modifier.clickable { renameTargetId = tab.id; renameValue = tab.name }.padding(2.dp))
+                            if (tabs.size > 1) {
+                                Icon(Icons.Default.Close, null, tint = Color(0xFF666666),
+                                    modifier = Modifier.size(10.dp).clickable { closeTab(tab.id) })
+                            }
+                        }
+                        // PiP mini preview — live last line from terminal
+                        if (!isActive && pipPreview.value.isNotBlank()) {
+                            Text(
+                                pipPreview.value,
+                                color = Color(0xFF4EC9B0),
+                                fontSize = 8.sp,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.padding(top = 1.dp),
+                            )
                         }
                     }
                 }
