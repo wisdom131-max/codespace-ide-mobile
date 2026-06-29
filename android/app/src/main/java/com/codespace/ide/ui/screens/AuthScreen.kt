@@ -68,12 +68,20 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
         error   = ""
         statusMessage = ""
         try {
-            val googleIdOption = GetGoogleIdOption.Builder()
+            val baseBuilder = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
                 .setServerClientId(WEB_CLIENT_ID)
                 .setAutoSelectEnabled(false)
-                .apply { loginHint?.takeIf { it.isNotBlank() }?.let { setLoginHint(it) } }
-                .build()
+            val googleIdOption = if (!loginHint.isNullOrBlank()) {
+                try {
+                    // setLoginHint available in googleid >= 1.1.0
+                    val m = baseBuilder.javaClass.getMethod("setLoginHint", String::class.java)
+                    m.invoke(baseBuilder, loginHint)
+                    baseBuilder.build()
+                } catch (_: Exception) { baseBuilder.build() }
+            } else {
+                baseBuilder.build()
+            }
 
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(googleIdOption)
