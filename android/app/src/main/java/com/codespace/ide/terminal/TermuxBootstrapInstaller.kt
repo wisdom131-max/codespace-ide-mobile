@@ -37,7 +37,7 @@ object TermuxBootstrapInstaller {
     private const val TAG        = "TermuxBootstrap"
     private const val ASSET_NAME = "bootstrap-aarch64.zip"
     // Bump version so existing installs re-extract with the copy-instead-of-symlink fix
-    private const val VERSION    = "termux-bootstrap-3490-v5"
+    private const val VERSION    = "termux-bootstrap-3490-v6"
 
     // Multi-call binaries: the target binary dispatches via argv[0].
     // Copying is safe and avoids symlinkat() seccomp block on Samsung.
@@ -318,15 +318,22 @@ object TermuxBootstrapInstaller {
         val OLD_PREFIX = "/data/data/com.termux/files/usr"
         val OLD_HOME   = "/data/data/com.termux/files/home"
         val newHome    = File(prefix.parentFile?.parentFile ?: prefix, "home").absolutePath
+        val oldPrefixBytes = OLD_PREFIX.toByteArray(Charsets.ISO_8859_1)
 
         prefix.walkTopDown()
             .filter { it.isFile && it.length() < 500_000L }  // skip large binaries
             .forEach { file ->
                 try {
                     val bytes = file.readBytes()
-                    // Quick check: does it contain the old path?
-                    val idx = bytes.indexOf(OLD_PREFIX.toByteArray())
-                    if (idx != -1) {
+                    // Quick check: scan bytes for the ASCII marker before decoding as UTF-8
+                    var found = false
+                    outer@ for (i in 0..(bytes.size - oldPrefixBytes.size)) {
+                        for (j in oldPrefixBytes.indices) {
+                            if (bytes[i + j] != oldPrefixBytes[j]) continue@outer
+                        }
+                        found = true; break
+                    }
+                    if (found) {
                         val text = bytes.toString(Charsets.UTF_8)
                         val patched = text
                             .replace(OLD_PREFIX, prefixPath)
