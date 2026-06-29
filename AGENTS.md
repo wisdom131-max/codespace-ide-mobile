@@ -1227,3 +1227,56 @@ The `--login` → `--rcfile` switch is the most critical fix: it prevents bash f
 ### VERSION bump
 `TermuxBootstrapInstaller.VERSION` bumped to `termux-bootstrap-3490-v3` to force re-extraction and `ensureAptConf()` re-run on existing installs.
 
+---
+
+## Termux APK Forensics — 2026-06-29 (Google Drive Analysis)
+
+**Source:** `termux-app_v0.118.3+github-debug_arm64-v8a.7z` from Google Drive (41 MB)
+**Extracted:** `lib/arm64-v8a/libtermux-bootstrap.so` (28 MB ELF with embedded ZIP at offset 0x530)
+
+### What the real Termux APK does
+
+| File | Finding |
+|------|---------|
+| `lib/arm64-v8a/libtermux-bootstrap.so` | ELF AArch64 + ZIP at offset 0x530 → 3,490 entries |
+| `lib/arm64-v8a/libtermux.so` | JNI bridge: createSubprocess, setPtyWindowSize, waitFor |
+| `bin/bash` | 837 KB — real bash 5.x |
+| `bin/coreutils` | 1.27 MB — multi-call binary (ls/cat/cp/rm/etc = symlinks to this) |
+| `bin/apt` | 38 KB — real apt |
+| `bin/dpkg` | 269 KB — real dpkg |
+| `bin/pkg` | 13 KB — shell script |
+| `etc/profile` | **HARDCODES `/data/data/com.termux/`** — breaks in our app package |
+| `etc/bash.bashrc` | Also hardcodes com.termux paths |
+| `bin/pkg` | Shebang `#!/data/data/com.termux/files/usr/bin/bash` — also breaks |
+| `SYMLINKS.txt` | 1,146 symlinks using `←` separator (U+2190) |
+| `bin/ls, cat, cp, rm...` | All SYMLINKS to `coreutils` (multi-call) |
+| `bin/sh` | SYMLINK to `dash` |
+
+### Root cause of all terminal failures
+The bootstrap ZIP was designed only for `com.termux`. All scripts use hardcoded paths.
+Our `TermuxBootstrapInstaller` extracted the ZIP but did NOT patch the scripts.
+Result: bash `--login` reads `etc/profile` → tries to source `/data/data/com.termux/...` → Permission denied.
+
+### Fix applied (commit `9cd451c8`) ✅
+After extraction, `writeProfile()` now:
+1. **Overwrites `etc/profile`** — replaces all `com.termux` paths with `$PREFIX` variable
+2. **Patches `etc/bash.bashrc`** — string-replaces hardcoded paths with our prefix
+3. **Patches `bin/pkg` shebang** — `#!/data/data/com.termux/...` → `#!/{prefix}/bin/bash`
+4. Adds `TERMUX_VERSION=0.118.1` and `TERMUX_APP_PACKAGE_MANAGER=apt` to session env
+5. **Bumped VERSION to `termux-bootstrap-3490-v4`** — forces re-extraction on existing installs
+6. Also fixed Kotlin multiline string bug in `ensureAptConf` busybox wrapper
+
+### Also fixed (commit `1048bc47`) ✅ (earlier this session)
+- `bash --login` → `bash --rcfile $HOME/.bashrc` — avoids etc/profile entirely as backup
+
+### Also fixed (commit `f8da0cf6`) ✅
+- `BusyboxInstaller` fake `apt`/`pkg` wrappers now defer to real Termux bootstrap binary when installed
+
+### Expected terminal behavior after installing `9cd451c8` APK
+```
+VN Code bash ready           ← from .bashrc echo
+@vncode:~$ ls                ← works (coreutils via symlink, not Samsung-blocked)
+@vncode:~$ apt update        ← works (real apt, patched sources.list)
+@vncode:~$ pkg install git   ← works (real pkg script, patched shebang)
+```
+
