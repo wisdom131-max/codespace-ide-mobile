@@ -1484,3 +1484,23 @@ All three must match at all times.
 2. Download fresh google-services.json from Firebase, share here for push to repo
 3. Deploy NestJS backend (/backend folder) to Railway or Render
 4. Implement Remotion Studio button in PreviewPane (Option C)
+
+---
+
+## google-services.json updated — June 29, 2026 (06:39 WAT)
+
+Fresh google-services.json downloaded from Firebase and pushed to android/app/google-services.json.
+Also synced to Google Drive (Codespace IDE — Dev Credentials folder).
+
+SHA-1 registered in Firebase (production app com.codespace.ide): 09:53:98:06:FB:99:75:99:95:D3:5E:2B:6A:A5:62:A2:19:1B:83:F5
+
+NOTE: The debug package (com.codespace.ide.debug) does not yet have an Android OAuth client
+with the SHA-1 in this json — it only has the web client. This means Google Sign-In will work
+on production debug builds but the debug package variant may still fail.
+Next action: add SHA-1 fingerprint to com.codespace.ide.debug in Firebase console too.
+Link: https://console.firebase.google.com/project/codespace-ide-2026/settings/general/android:com.codespace.ide.debug
+
+### Rule 18 — Switch account option
+The app must show a "Switch account / Use different account" button on the login screen.
+This is separate from the biometric lock toggle. It clears the cached Google credential
+and forces the user to pick a new Google account on next sign-in.
