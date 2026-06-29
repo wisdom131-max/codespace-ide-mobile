@@ -417,7 +417,10 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
         // --rcfile skips /etc/profile (which resolves to wrong Termux path on Samsung).
         // Samsung kernel blocks --login via seccomp on /data/data/com.termux path.
         val rcFile = java.io.File(context.filesDir, "home/.bashrc").absolutePath
-        val session = TerminalSession(shell, home, arrayOf("--rcfile", rcFile), bashEnv, 4000, client)
+        // argv[0] must be "bash" — TerminalSession passes args[0] as argv[0] to execve.
+        // Use -bash (login shell convention) so bash sources etc/profile automatically.
+        // etc/profile is now fully patched (v6) to use $PREFIX, so --login is safe.
+        val session = TerminalSession(shell, home, arrayOf("-bash"), bashEnv, 4000, client)
         Pair(session, client)
     } else {
         val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
