@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.screens
 
 import android.content.Context
+import androidx.biometric.BiometricManager
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -51,6 +53,8 @@ fun SettingsScreen(
     tokenStore: SecureTokenStore,
 ) {
     val context = LocalContext.current
+
+    // ── AI provider key state ────────────────────────────────────────────────
     val keyMap = remember {
         mutableStateMapOf<AiProviderId, String>().apply {
             AiProviderId.entries.forEach { provider ->
@@ -73,6 +77,19 @@ fun SettingsScreen(
     var savedMsg by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf<String?>(null) }
 
+    // ── Biometric lock state ─────────────────────────────────────────────────
+    var biometricEnabled by remember { mutableStateOf(tokenStore.biometricLockEnabled) }
+
+    // Check if the device actually supports biometric / device-credential auth
+    val biometricManager = remember { BiometricManager.from(context) }
+    val biometricAvailable = remember {
+        biometricManager.canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        ) == BiometricManager.BIOMETRIC_SUCCESS
+    }
+
+    // ── Clear-data dialog ────────────────────────────────────────────────────
     if (showClearDialog != null) {
         AlertDialog(
             onDismissRequest = { showClearDialog = null },
@@ -83,8 +100,8 @@ fun SettingsScreen(
                     onClick = {
                         when (showClearDialog) {
                             "Terminal History" -> context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().apply()
-                            "AI Chat History" -> context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().apply()
-                            "Projects" -> context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().apply()
+                            "AI Chat History"  -> context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().apply()
+                            "Projects"         -> context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().apply()
                             "All Data" -> {
                                 context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().apply()
                                 context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().apply()
@@ -121,7 +138,8 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Theme
+            // ── Appearance ───────────────────────────────────────────────────
+            Text("Appearance", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             ListItem(
                 headlineContent = { Text("Dark mode") },
                 trailingContent = {
@@ -130,10 +148,66 @@ fun SettingsScreen(
             )
             HorizontalDivider()
 
-            // AI Providers
+            // ── Security ─────────────────────────────────────────────────────
+            Text("Security", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+
+            if (biometricAvailable) {
+                ListItem(
+                    headlineContent = { Text("Biometric / PIN lock") },
+                    supportingContent = {
+                        Text(
+                            if (biometricEnabled)
+                                "App requires fingerprint or PIN on every launch"
+                            else
+                                "Off — anyone who opens the app gets straight in"
+                        )
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = null,
+                            tint = if (biometricEnabled)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = biometricEnabled,
+                            onCheckedChange = { checked ->
+                                biometricEnabled = checked
+                                tokenStore.biometricLockEnabled = checked
+                                savedMsg = if (checked) "✓ Biometric lock enabled" else "✓ Biometric lock disabled"
+                            }
+                        )
+                    },
+                )
+            } else {
+                // Device has no biometric / PIN set up — inform the user
+                ListItem(
+                    headlineContent = { Text("Biometric / PIN lock") },
+                    supportingContent = {
+                        Text("Not available — set up a fingerprint or screen lock in your device settings first")
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        )
+                    },
+                    trailingContent = {
+                        Switch(checked = false, onCheckedChange = {}, enabled = false)
+                    },
+                )
+            }
+            HorizontalDivider()
+
+            // ── AI Providers ─────────────────────────────────────────────────
             Text("AI Providers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             AiProviderId.entries.forEach { provider ->
-                val key = keyMap[provider] ?: ""
+                val key     = keyMap[provider] ?: ""
                 val visible = visibleMap[provider] ?: false
                 val isActive = activeProvider == provider
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -148,13 +222,18 @@ fun SettingsScreen(
                         value = key,
                         onValueChange = { keyMap[provider] = it },
                         label = {
-                            Text(if (provider == AiProviderId.OLLAMA) "Base URL e.g. http://192.168.1.x:11434"
-                            else "${provider.displayName} API Key")
+                            Text(
+                                if (provider == AiProviderId.OLLAMA) "Base URL e.g. http://192.168.1.x:11434"
+                                else "${provider.displayName} API Key"
+                            )
                         },
                         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { visibleMap[provider] = !visible }) {
-                                Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null)
+                                Icon(
+                                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                )
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -177,12 +256,16 @@ fun SettingsScreen(
             ) { Text("Save API Keys") }
 
             if (savedMsg.isNotEmpty()) {
-                Text(savedMsg, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
+                Text(
+                    savedMsg,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
             }
 
             HorizontalDivider()
 
-            // Clear Data section
+            // ── Clear Data ───────────────────────────────────────────────────
             Text("Clear Data", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
 
             listOf("Terminal History", "AI Chat History", "Projects").forEach { item ->
