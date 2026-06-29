@@ -1,4 +1,46 @@
 # AI Agent / Copilot — Project Context
+
+## CREDENTIALS & SECRETS REFERENCE
+> Last updated: 2026-06-29. All Railway env vars are now fully set.
+> Do NOT commit secrets to the repo. This section points to where they live.
+
+### Where to find everything
+| Secret | Location |
+|--------|----------|
+| Railway API Token | Google Drive → "Codespace IDE — Dev Credentials" → `credentials-and-keys.md` |
+| Firebase service account JSON | Shared with Wisdom directly (filename: `codespace-ide-2026-firebase-adminsdk-fbsvc-6716e69019.json`) |
+| `google-services.json` | Google Drive → "Codespace IDE — Dev Credentials" folder |
+| GitHub tokens | Superagent secrets: `$GITHUB_TOKEN`, `$GITHUB_TOKEN_2` |
+| All other keys | Google Drive → "Codespace IDE — Dev Credentials" → `credentials-and-keys.md` |
+
+### Railway env vars — ALL SET ✅ (as of 2026-06-29)
+| Var | Status |
+|-----|--------|
+| `FIREBASE_PROJECT_ID` | ✅ `codespace-ide-2026` |
+| `FIREBASE_CLIENT_EMAIL` | ✅ `firebase-adminsdk-fbsvc@codespace-ide-2026.iam.gserviceaccount.com` |
+| `FIREBASE_PRIVATE_KEY` | ✅ set from service account JSON |
+| `OWNER_EMAIL` | ✅ `ijeziewisdom5@gmail.com` |
+| `JWT_SECRET` | ✅ set |
+| `DATABASE_URL` | ✅ Postgres on Railway |
+| `NODE_ENV` | ✅ `production` |
+| `PORT` | ✅ `3000` |
+
+### Google Drive folder structure (organised 2026-06-29)
+```
+📁 Codespace IDE — Dev Credentials  → credentials-and-keys.md + google-services.json
+📁 Codespace IDE — Dev Files        → libtermux-bootstrap, AndroidManifest, bug reports, zip assets
+📁 YouTube & Finance                → YouTube Pipeline, finance docs
+📁 Personal                        → bank account screenshots, personal photos
+📁 Resources & References          → PDFs, error bibles, Zinny Studio resources
+```
+
+### Backend URL
+`https://codespace-ide-mobile-production.up.railway.app`
+- Health: `GET /api/v1/health` → `{"status":"ok"}`
+- Auth: `POST /api/v1/auth/google` with `{ "firebaseIdToken": "..." }`
+
+---
+
 > Read this FIRST before touching any code. Updated June 28, 2026.
 
 ---
