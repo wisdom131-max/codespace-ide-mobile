@@ -206,8 +206,7 @@ alias gc='git commit'
 alias gl='git log --oneline --graph --decorate --all -20'
 
 PS1='\u@vncode:\w\$ '
-echo "VN Code bash ready — \$(bash --version | head -1)"
-""".trimIndent())
+echo "VN Code bash ready — \$(bash --version | head -1)"\n""".trimIndent())
 
         // tmp dir must exist
         File(prefix, "tmp").mkdirs()
