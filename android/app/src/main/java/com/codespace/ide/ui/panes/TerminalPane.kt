@@ -447,6 +447,8 @@ internal fun TerminalPane(
     var showTextExpansions by remember { mutableStateOf(false) }
     var showExtraKeys     by remember { mutableStateOf(false) }
     var isRootMode        by remember { mutableStateOf(false) }
+    var acEnabled         by remember { mutableStateOf(false) }
+    var showCustomCmds    by remember { mutableStateOf(false) }
     var showSttHint       by remember { mutableStateOf(false) }
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
@@ -864,8 +866,132 @@ internal fun TerminalPane(
                     .clickable { active?.session?.write("pkg update -y && pkg upgrade -y\n") }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Pkg↑", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // AC — toggle autocorrect on the keyboard
+            Box(
+                Modifier.background(if (acEnabled) Color(0xFF1A3A4A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        acEnabled = !acEnabled
+                        android.widget.Toast.makeText(context, if (acEnabled) "Autocorrect ON" else "Autocorrect OFF", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("AC", color = if (acEnabled) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // Custom cmds drawer toggle
+            Box(
+                Modifier.background(if (showCustomCmds) Color(0xFF2A1A4A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { showCustomCmds = !showCustomCmds }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("Cmds", color = if (showCustomCmds) Color(0xFFBB86FC) else Color(0xFFCCCCCC), fontSize = 11.sp) }
         }
         HorizontalDivider(color = Color(0xFF2A2A2A))
+
+        // ── Custom commands drawer ────────────────────────────────────────────
+        if (showCustomCmds) {
+            val savedCmds = remember {
+                val prefs = context.getSharedPreferences("custom_cmds", android.content.Context.MODE_PRIVATE)
+                val raw = prefs.getString("cmds", null)
+                val list = mutableStateListOf<Pair<String,String>>() // label, command
+                if (!raw.isNullOrBlank()) {
+                    raw.split("|SEP|").forEach { entry ->
+                        val parts = entry.split("|CMD|")
+                        if (parts.size == 2) list.add(Pair(parts[0], parts[1]))
+                    }
+                }
+                if (list.isEmpty()) {
+                    list.add(Pair("ls -la", "ls -la
+"))
+                    list.add(Pair("top", "top
+"))
+                    list.add(Pair("df -h", "df -h
+"))
+                }
+                list
+            }
+            fun saveCmds() {
+                val encoded = savedCmds.joinToString("|SEP|") { "${it.first}|CMD|${it.second}" }
+                context.getSharedPreferences("custom_cmds", android.content.Context.MODE_PRIVATE)
+                    .edit().putString("cmds", encoded).apply()
+            }
+            var addLabel by remember { mutableStateOf("") }
+            var addCmd   by remember { mutableStateOf("") }
+            var showAdd  by remember { mutableStateOf(false) }
+
+            Column(
+                Modifier.fillMaxWidth().background(Color(0xFF1A1A2A)).padding(4.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Custom Commands", color = Color(0xFFBB86FC), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Row {
+                        Box(
+                            Modifier.background(Color(0xFF2A1A4A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                .clickable { showAdd = !showAdd }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) { Text("+", color = Color(0xFFBB86FC), fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+
+                if (showAdd) {
+                    Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(
+                            value = addLabel, onValueChange = { addLabel = it },
+                            placeholder = { Text("Label", fontSize = 10.sp) },
+                            modifier = Modifier.width(80.dp),
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp),
+                        )
+                        OutlinedTextField(
+                            value = addCmd, onValueChange = { addCmd = it },
+                            placeholder = { Text("command\n", fontSize = 10.sp) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp),
+                        )
+                        Box(
+                            Modifier.background(Color(0xFF007ACC), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                .clickable {
+                                    if (addLabel.isNotBlank() && addCmd.isNotBlank()) {
+                                        val cmd = if (addCmd.endsWith("\n")) addCmd else "$addCmd\n"
+                                        savedCmds.add(Pair(addLabel.trim(), cmd))
+                                        saveCmds()
+                                        addLabel = ""; addCmd = ""; showAdd = false
+                                    }
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .align(Alignment.CenterVertically)
+                        ) { Text("Add", color = Color.White, fontSize = 11.sp) }
+                    }
+                }
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                ) {
+                    items(savedCmds.size) { idx ->
+                        val (label, cmd) = savedCmds[idx]
+                        Box(
+                            Modifier
+                                .background(Color(0xFF2A2A3A), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                .combinedClickable(
+                                    onClick = { active?.session?.write(cmd) },
+                                    onLongClick = {
+                                        savedCmds.removeAt(idx)
+                                        saveCmds()
+                                    }
+                                )
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) { Text(label, color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+                    }
+                }
+                Text("Tap to run • Long-press to delete", color = Color(0xFF555555), fontSize = 9.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+            }
+            HorizontalDivider(color = Color(0xFF2A2A2A))
+        }
 
         // ── Full laptop-style extra keys bar ───────────────────────────────────
         // Row 1: F1–F12  |  Row 2: Sticky modifiers + nav cluster + symbols + Ctrl combos
