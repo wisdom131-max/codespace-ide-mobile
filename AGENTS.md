@@ -28,6 +28,7 @@
 | All dev credentials (Railway token, Firebase IDs, OAuth clients, SHA-1) | Google Drive → **Codespace IDE — Dev Credentials** folder → `credentials-and-keys.md` |
 | Firebase service account JSON (FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY) | Google Drive → **Codespace IDE — Dev Credentials** folder → `codespace-ide-2026-firebase-adminsdk-fbsvc-6716e69019.json` |
 | `google-services.json` (Android OAuth + API key) | Google Drive → **Codespace IDE — Dev Credentials** folder → `google-services.json` |
+| Firebase service account JSON (private key for Railway) | Google Drive → **Codespace IDE — Dev Credentials** folder → `codespace-ide-2026-firebase-adminsdk.json` (Drive ID: `1k20Ic4erMvzDxX68OVvQ_8v5Ejeemm5_`) |
 | Railway API token | Inside `credentials-and-keys.md` above — field "API Token (Superagent)" |
 
 ### Google Drive folder → file ID map
@@ -35,10 +36,10 @@
 | Folder | Drive ID |
 |--------|----------|
 | **Codespace IDE — Dev Credentials** | `1faD1RO8P7gX3r-LKIu7X_AbaBDfadmRM` |
-| **Codespace IDE — Dev Files** | `[see Drive]` |
-| **YouTube & Finance** | `[see Drive]` |
-| **Personal** | `[see Drive]` |
-| **Resources & References** | `[see Drive]` |
+| **Codespace IDE — Dev Files** | `1myi670kmiTSxEYd3lI0ENqQudHrFDDyE` |
+| **YouTube & Finance** | `1uItBB0vv7shtiofjXu-2VWstTYEVA5EI` |
+| **Personal** | `18QGkcKm9YAmCtqFEQrFBmdgGUVT_fSYD` |
+| **Resources & References** | `1Idx-ibXsMZmhkTgFHoFzBCrHeidN7A7i` |
 
 ### Key values (set on Railway production as of 2026-06-29)
 
