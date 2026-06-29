@@ -104,10 +104,8 @@ fun CodeEditor(
                 .verticalScroll(vScroll)
         ) {
             // Gutter — with diff indicators
-            val savedLines = remember(savedContent) { savedContent.split("
-") }
-            val currentLines = remember(value.text) { value.text.split("
-") }
+            val savedLines = remember(savedContent) { savedContent.split("\n") }
+            val currentLines = remember(value.text) { value.text.split("\n") }
             Column(modifier = Modifier.padding(horizontal = 4.dp).width(50.dp)) {
                 for (lineNum in 1..lineCount) {
                     val idx = lineNum - 1
@@ -161,8 +159,7 @@ fun CodeEditor(
         }
 
         // ── Minimap — right-side code thumbnail ──────────────────────────────
-        val textLines = remember(value.text) { value.text.split("
-") }
+        val textLines = remember(value.text) { value.text.split("\n") }
         Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
