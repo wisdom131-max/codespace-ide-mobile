@@ -25,6 +25,9 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = process.env.PORT ?? 8080;
+  // Simple health check for Railway / load balancers
+  app.use('/api/v1/health', (_req: any, res: any) => res.json({ status: 'ok' }));
+
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(`CodeSpace API listening on :${port}`);
