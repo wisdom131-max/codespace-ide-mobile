@@ -228,6 +228,24 @@ object ProotInstaller {
                     "Acquire::AllowInsecureRepositories \"true\";\n" +
                     "APT::Get::AllowUnauthenticated \"true\";\n"
                 )
+
+                // CRITICAL: Write sources.list — the Ubuntu questing minimal image
+                // ships with an empty or localhost-only sources.list, so apt update
+                // finds zero packages. We write the full Ubuntu 25.04 (questing) sources.
+                val sourcesDir = File(rootfs, "etc/apt")
+                sourcesDir.mkdirs()
+                File(sourcesDir, "sources.list").writeText(
+                    "# Ubuntu 25.04 (Questing) — written by VN Code\n" +
+                    "deb http://ports.ubuntu.com/ubuntu-ports questing main restricted universe multiverse\n" +
+                    "deb http://ports.ubuntu.com/ubuntu-ports questing-updates main restricted universe multiverse\n" +
+                    "deb http://ports.ubuntu.com/ubuntu-ports questing-security main restricted universe multiverse\n"
+                )
+                // Also remove any .sources files that may override sources.list
+                File(rootfs, "etc/apt/sources.list.d").listFiles()?.forEach { f ->
+                    if (f.name.endsWith(".sources") || f.name.endsWith(".list")) {
+                        f.delete()
+                    }
+                }
                 // Write /etc/dpkg/dpkg.cfg to force unsafe-io permanently inside rootfs.
                 // Samsung 5.15 kernel blocks linkat/renameat2 inside proot — dpkg uses
                 // these for atomic status file renames. force-unsafe-io makes dpkg use
