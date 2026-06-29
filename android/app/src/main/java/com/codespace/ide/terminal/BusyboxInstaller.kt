@@ -162,14 +162,10 @@ object BusyboxInstaller {
         appendLine("alias c='clear'")
         appendLine("alias grep='grep --color=auto'")
 
-        // ash PS1 — ash does NOT support \[ \] (those are bash/readline markers).
-        // Correct ash color PS1 uses \001 (Ctrl-A) and \002 (Ctrl-B) as non-printing wrappers,
-        // OR just use a plain prompt with no ANSI codes to guarantee it works on all OEMs.
-        // Plain prompt is safest — colors can be added once plain prompt is confirmed working.
-        // PS1: use string concat so Kotlin does not interpret \u as unicode escape
-        // Shell target: PS1='\u@vncode:\w\$ '
-        val ps1Val = "PS1='" + "\\" + "u@vncode:" + "\\" + "w" + "\\" + "$ '"
-        appendLine(ps1Val)
+        // ash PS1 — ash does NOT support \u, \w, \[ \] (those are bash/readline markers).
+        // Use $USER and $PWD variables directly — they work in ash.
+        // We set PS1 via a shell variable that ash will expand at prompt time.
+        appendLine("PS1='\${USER}@vncode:\${PWD##*/}\$ '")
         appendLine("echo 'VN Code terminal ready'")
     }
 
