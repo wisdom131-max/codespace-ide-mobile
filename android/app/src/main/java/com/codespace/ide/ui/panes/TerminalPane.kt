@@ -162,17 +162,23 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     }
 
     override fun onScale(scale: Float): Float {
-        // Termux GestureAndScaleRecognizer calls onScale() with the raw ScaleGestureDetector span ratio.
-        // It only fires onScale when scale != 1.0 (pinch actually moved).
-        // We apply the same delta-based font adjust Termux uses:
-        //   newSize = (currentSize * scale).roundToInt().coerceIn(MIN, MAX)
-        val newSize = (currentTextSize * scale).toInt().coerceIn(MIN_FONTSIZE, MAX_FONTSIZE)
-        if (newSize != currentTextSize) {
-            currentTextSize = newSize
-            terminalView?.setTextSize(currentTextSize)
-            onFontSizeChanged?.invoke(currentTextSize)
+        // Exact Termux TermuxTerminalViewClient.onScale() logic:
+        // 'scale' here is TerminalView.mScaleFactor — the ACCUMULATED scale factor.
+        // TerminalView does: mScaleFactor *= rawPinch; mScaleFactor = mClient.onScale(mScaleFactor)
+        // We MUST return 1.0f to reset mScaleFactor back to neutral each call.
+        // Without the 1.0f return, scale accumulates exponentially and font jumps wildly.
+        //
+        // Termux formula: newSize = (currentSize * scale + 0.5).toInt().coerceIn(MIN, MAX)
+        // Threshold 0.9 / 1.1: ignore micro-wobbles from a two-finger touch that isn't a real pinch.
+        if (scale < 0.9f || scale > 1.1f) {
+            val newSize = (currentTextSize * scale + 0.5f).toInt().coerceIn(MIN_FONTSIZE, MAX_FONTSIZE)
+            if (newSize != currentTextSize) {
+                currentTextSize = newSize
+                terminalView?.setTextSize(currentTextSize)
+                onFontSizeChanged?.invoke(currentTextSize)
+            }
         }
-        return 1.0f
+        return 1.0f   // ALWAYS reset mScaleFactor — prevents exponential accumulation
     }
     override fun onSingleTapUp(e: MotionEvent?) {
         val v = terminalView ?: return
