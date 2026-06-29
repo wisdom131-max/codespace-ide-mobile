@@ -37,7 +37,7 @@ object TermuxBootstrapInstaller {
     private const val TAG        = "TermuxBootstrap"
     private const val ASSET_NAME = "bootstrap-aarch64.zip"
     // Bump version so existing installs re-extract with the copy-instead-of-symlink fix
-    private const val VERSION    = "termux-bootstrap-3490-v6"
+    private const val VERSION    = "termux-bootstrap-3490-v7"
 
     // Multi-call binaries: the target binary dispatches via argv[0].
     // Copying is safe and avoids symlinkat() seccomp block on Samsung.
@@ -226,7 +226,12 @@ object TermuxBootstrapInstaller {
             "TMPDIR=$prefix/tmp",
             "SHELL=$prefix/bin/bash",
             "LANG=en_US.UTF-8",
-            "LD_LIBRARY_PATH=$prefix/lib:$nativeDir",
+            // NOTE: Do NOT include $prefix/lib here — Termux bootstrap libs
+            // (libandroid-support.so etc.) have mismatched e_version for our
+            // linker and cause "unexpected e_version" crashes on every exec().
+            // bash and all Termux binaries are statically linked or use rpath,
+            // so they do not need LD_LIBRARY_PATH to find their own libs.
+            "LD_LIBRARY_PATH=$nativeDir",
             // DPKG_FORCE_UNSAFE_IO: bypass Samsung kernel's blocked linkat/renameat2
             "DPKG_FORCE=unsafe-io",
             // Suppress perl locale warnings from dpkg postinst scripts
