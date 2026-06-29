@@ -37,7 +37,7 @@ object TermuxBootstrapInstaller {
     private const val TAG        = "TermuxBootstrap"
     private const val ASSET_NAME = "bootstrap-aarch64.zip"
     // Bump version so existing installs re-extract with the copy-instead-of-symlink fix
-    private const val VERSION    = "termux-bootstrap-3490-v3"
+    private const val VERSION    = "termux-bootstrap-3490-v4"
 
     // Multi-call binaries: the target binary dispatches via argv[0].
     // Copying is safe and avoids symlinkat() seccomp block on Samsung.
@@ -231,7 +231,10 @@ object TermuxBootstrapInstaller {
             "DPKG_FORCE=unsafe-io",
             // Suppress perl locale warnings from dpkg postinst scripts
             "PERL_BADLANG=0",
-            "LC_ALL=en_US.UTF-8"
+            "LC_ALL=en_US.UTF-8",
+            // TERMUX_VERSION: required by bin/pkg and termux scripts
+            "TERMUX_VERSION=0.118.1",
+            "TERMUX_APP_PACKAGE_MANAGER=apt"
         )
         return Pair(shell, env)
     }
@@ -261,6 +264,44 @@ object TermuxBootstrapInstaller {
         )
 
         File(prefix, "tmp").mkdirs()
+
+        // CRITICAL: Overwrite etc/profile — the bootstrap copy hardcodes
+        // /data/data/com.termux/ paths which are inaccessible in our app.
+        // Replace with PREFIX-relative paths so bash --login works correctly.
+        val profile = File(prefix, "etc/profile")
+        profile.parentFile?.mkdirs()
+        profile.writeText(
+            "# VN Code bootstrap etc/profile (patched from Termux original)\n" +
+            "# Uses \$PREFIX so paths work in com.codespace.ide package\n" +
+            "for i in \$PREFIX/etc/profile.d/*.sh; do\n" +
+            "  [ -r \$i ] && . \$i\n" +
+            "done\n" +
+            "unset i\n" +
+            "if [ -r \$PREFIX/etc/bash.bashrc ]; then\n" +
+            "  . \$PREFIX/etc/bash.bashrc\n" +
+            "fi\n" +
+            "if [ -r \$HOME/.bashrc ]; then\n" +
+            "  . \$HOME/.bashrc\n" +
+            "fi\n"
+        )
+
+        // Patch etc/bash.bashrc too — remove hardcoded com.termux paths
+        val bashrc = File(prefix, "etc/bash.bashrc")
+        if (bashrc.exists()) {
+            val txt = bashrc.readText()
+                .replace("/data/data/com.termux/files/usr", prefix.absolutePath)
+            bashrc.writeText(txt)
+        }
+
+        // Patch bin/pkg shebang — replace com.termux path with our prefix
+        val pkgBin = File(prefix, "bin/pkg")
+        if (pkgBin.exists()) {
+            val txt = pkgBin.readText()
+                .replace("#!/data/data/com.termux/files/usr/bin/bash", "#!${prefix.absolutePath}/bin/bash")
+                .replace("/data/data/com.termux/files/usr", prefix.absolutePath)
+            pkgBin.writeText(txt)
+            pkgBin.setExecutable(true, false)
+        }
     }
 
     /**
@@ -316,9 +357,8 @@ object TermuxBootstrapInstaller {
                 val cmdFile = File(binDir, cmd)
                 if (cmdFile.exists()) {
                     // Write a thin wrapper script: exec busybox cmd "$@"
-                    cmdFile.writeText("#!/bin/sh
-exec $busyboxPath $cmd "\$@"
-")
+                    // Write wrapper: exec busybox applet
+                    cmdFile.writeText("#!/bin/sh\nexec \"$busyboxPath\" $cmd \"\$@\"\n")
                     cmdFile.setExecutable(true, false)
                 }
             }
