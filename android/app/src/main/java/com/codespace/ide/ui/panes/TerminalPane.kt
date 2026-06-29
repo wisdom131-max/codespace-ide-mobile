@@ -149,12 +149,28 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
 
 internal class SimpleTerminalViewClient : TerminalViewClient {
     var terminalView: TerminalView? = null
-    private var currentTextSize: Int = 13
+    // Shared font size — injected from TerminalPane state so all tabs + rotation stay in sync
+    var currentTextSize: Int = 13
+    var onFontSizeChanged: ((Int) -> Unit)? = null
+
+    // Termux-exact constants from TermuxPreferenceConstants / TerminalView:
+    // MIN_FONTSIZE=6, MAX_FONTSIZE=56, DEFAULT_FONTSIZE=13
+    companion object {
+        const val MIN_FONTSIZE     = 6
+        const val MAX_FONTSIZE     = 56
+        const val DEFAULT_FONTSIZE = 13
+    }
 
     override fun onScale(scale: Float): Float {
-        if (scale < 0.9f || scale > 1.1f) {
-            currentTextSize = (currentTextSize + if (scale > 1f) 1 else -1).coerceIn(6, 48)
+        // Termux GestureAndScaleRecognizer calls onScale() with the raw ScaleGestureDetector span ratio.
+        // It only fires onScale when scale != 1.0 (pinch actually moved).
+        // We apply the same delta-based font adjust Termux uses:
+        //   newSize = (currentSize * scale).roundToInt().coerceIn(MIN, MAX)
+        val newSize = (currentTextSize * scale).toInt().coerceIn(MIN_FONTSIZE, MAX_FONTSIZE)
+        if (newSize != currentTextSize) {
+            currentTextSize = newSize
             terminalView?.setTextSize(currentTextSize)
+            onFontSizeChanged?.invoke(currentTextSize)
         }
         return 1.0f
     }
@@ -440,6 +456,16 @@ internal fun TerminalPane(
     externalState: TerminalState? = null,          // if provided, uses shared state
 ) {
     val context      = LocalContext.current
+    // ── Font size state — persisted via SharedPreferences (Termux KEY_FONTSIZE pattern) ──
+    // MIN=6, MAX=56, DEFAULT=13 — survives rotation, tab switches, process restarts
+    val prefs = remember { context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE) }
+    var terminalFontSize by remember { mutableStateOf(prefs.getInt("KEY_FONTSIZE", SimpleTerminalViewClient.DEFAULT_FONTSIZE).coerceIn(SimpleTerminalViewClient.MIN_FONTSIZE, SimpleTerminalViewClient.MAX_FONTSIZE)) }
+    // Observe screen configuration for rotation — triggers updateSize() on all TerminalViews
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    @Suppress("UNUSED_VARIABLE")
+    val screenWidthDp  = configuration.screenWidthDp   // read to subscribe to config changes
+    @Suppress("UNUSED_VARIABLE")
+    val screenHeightDp = configuration.screenHeightDp
     val deviceCompat = remember { DeviceCompatibility(context) }
     val terminalMode = remember { TerminalModeManager(context) }
     var bootstrapReady by remember { mutableStateOf(false) }
@@ -864,6 +890,30 @@ internal fun TerminalPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text(if (zshSetupDone) "✓ Zsh" else "Zsh+OMZ", color = if (zshSetupDone) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
 
+            // Font size controls — Termux-style pinch zoom equivalent via buttons
+            Box(
+                Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        val newSize = (terminalFontSize - 1).coerceAtLeast(SimpleTerminalViewClient.MIN_FONTSIZE)
+                        terminalFontSize = newSize
+                        prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
+                        currentView.value?.setTextSize(newSize)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("A−", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+            Text("${terminalFontSize}sp", color = Color(0xFF555555), fontSize = 9.sp,
+                modifier = Modifier.padding(horizontal = 2.dp))
+            Box(
+                Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable {
+                        val newSize = (terminalFontSize + 1).coerceAtMost(SimpleTerminalViewClient.MAX_FONTSIZE)
+                        terminalFontSize = newSize
+                        prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
+                        currentView.value?.setTextSize(newSize)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("A+", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
+
             // Clear screen
             Box(
                 Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
@@ -1184,15 +1234,25 @@ internal fun TerminalPane(
                     factory = { ctx ->
                         TerminalView(ctx, null).apply {
                             val viewClient = SimpleTerminalViewClient()
-                            viewClient.terminalView = this
+                            viewClient.terminalView  = this
+                            viewClient.currentTextSize = terminalFontSize
+                            // Propagate pinch-zoom font changes back to Compose state + SharedPrefs
+                            viewClient.onFontSizeChanged = { newSize ->
+                                prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
+                                // Post to main thread — ViewClient callbacks may be on any thread
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    // Update compose state so all views stay in sync
+                                }
+                            }
                             setTerminalViewClient(viewClient)
-                            setTextSize(13)
+                            setTextSize(terminalFontSize)
                             setTypeface(android.graphics.Typeface.MONOSPACE)
                             isFocusable = true
                             isFocusableInTouchMode = true
                             // Keep screen on while terminal is visible — matches Termux setKeepScreenOn()
                             keepScreenOn = true
                             // PTY resize on layout change — without this, vim/nano use wrong cols/rows
+                            // Also fires on rotation — updateSize() sends new COLUMNS/ROWS to PTY
                             addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
                                 if ((r - l) != (or2 - ol) || (b - t) != (ob - ot)) {
                                     post { onScreenUpdated() }
@@ -1201,6 +1261,15 @@ internal fun TerminalPane(
                         }
                     },
                     update = { view ->
+                        // Sync external font size changes (e.g. +/- buttons) to the view
+                        val viewClient = view.mClient as? SimpleTerminalViewClient
+                        if (viewClient != null && viewClient.currentTextSize != terminalFontSize) {
+                            viewClient.currentTextSize = terminalFontSize
+                            view.setTextSize(terminalFontSize)
+                        }
+                        // Rotation / screen resize: notify PTY of new dimensions
+                        // Compose recomposes when screenWidthDp/screenHeightDp change — this fires
+                        view.post { view.onScreenUpdated() }
                         // ALWAYS rewire callbacks on every recomposition — Termux pattern:
                         // TermuxTerminalSessionActivityClient re-sets client on every onStart().
                         // Stale callbacks cause screen-not-updating and cursor-blink bugs.
@@ -1261,6 +1330,13 @@ internal fun TerminalPane(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 internal fun SplitTerminalPanel(sharedState: TerminalState) {
+    val context  = androidx.compose.ui.platform.LocalContext.current
+    val prefs    = remember { context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE) }
+    var terminalFontSize by remember { mutableStateOf(prefs.getInt("KEY_FONTSIZE", SimpleTerminalViewClient.DEFAULT_FONTSIZE).coerceIn(SimpleTerminalViewClient.MIN_FONTSIZE, SimpleTerminalViewClient.MAX_FONTSIZE)) }
+    // Observe rotation / config changes
+    val configuration  = androidx.compose.ui.platform.LocalConfiguration.current
+    @Suppress("UNUSED_VARIABLE") val screenWidthDp  = configuration.screenWidthDp
+    @Suppress("UNUSED_VARIABLE") val screenHeightDp = configuration.screenHeightDp
     val tabs     = sharedState.tabs
     var isPinned by remember { mutableStateOf(sharedState.pinnedId != null) }
 
@@ -1348,9 +1424,13 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                     factory = { ctx ->
                         TerminalView(ctx, null).apply {
                             val viewClient = SimpleTerminalViewClient()
-                            viewClient.terminalView = this
+                            viewClient.terminalView  = this
+                            viewClient.currentTextSize = terminalFontSize
+                            viewClient.onFontSizeChanged = { newSize ->
+                                prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
+                            }
                             setTerminalViewClient(viewClient)
-                            setTextSize(13)
+                            setTextSize(terminalFontSize)
                             setTypeface(android.graphics.Typeface.MONOSPACE)
                             isFocusable = true
                             isFocusableInTouchMode = true
@@ -1358,12 +1438,15 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                         }
                     },
                     update = { view ->
+                        // Sync font size + rotation for split panel
+                        val splitVc = view.mClient as? SimpleTerminalViewClient
+                        if (splitVc != null && splitVc.currentTextSize != terminalFontSize) {
+                            splitVc.currentTextSize = terminalFontSize
+                            view.setTextSize(terminalFontSize)
+                        }
+                        view.post { view.onScreenUpdated() }
                         if (view.mTermSession != mirrorTab.session) {
                             view.attachSession(mirrorTab.session)
-                            // Mirror panel: set callback directly without chaining.
-                            // update{} runs on every recompose — chaining lambdas here
-                            // creates an infinite chain on each recompose (memory leak + slowdown).
-                            // The mirror only needs: post onScreenUpdated. Done cleanly here.
                             mirrorTab.client.onTextChanged = { view.post { view.onScreenUpdated() } }
                             view.requestFocus()
                         }
