@@ -1,9 +1,24 @@
 import { Injectable } from '@nestjs/common';
 
-interface Change {
+export interface Change {
   path: string;
   op: 'write' | 'delete' | 'rename';
   checksum?: string;
+}
+
+export interface PullResult {
+  rev: number;
+  changes: Change[];
+  hasMore: boolean;
+  sinceRev: number;
+}
+
+export interface PushResult {
+  accepted: boolean;
+  conflicts?: string[];
+  serverRev?: number;
+  rev?: number;
+  applied?: number;
 }
 
 /**
@@ -15,15 +30,14 @@ export class SyncService {
   // In production these are persisted in sync_state / object storage.
   private revs = new Map<string, number>();
 
-  pull(projectId: string, sinceRev: number) {
+  pull(projectId: string, sinceRev: number): PullResult {
     const current = this.revs.get(projectId) ?? 0;
     return { rev: current, changes: [] as Change[], hasMore: false, sinceRev };
   }
 
-  push(projectId: string, clientRev: number, changes: Change[]) {
+  push(projectId: string, clientRev: number, changes: Change[]): PushResult {
     const serverRev = this.revs.get(projectId) ?? 0;
     if (clientRev < serverRev) {
-      // Conflict: client is behind. Caller resolves via 3-way merge.
       return { accepted: false, conflicts: changes.map((c) => c.path), serverRev };
     }
     const newRev = serverRev + 1;
