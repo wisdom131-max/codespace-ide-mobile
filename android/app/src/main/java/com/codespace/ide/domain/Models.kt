@@ -45,6 +45,7 @@ data class EditorTab(
     val language: Language,
     val isDirty: Boolean = false,
     val cursorOffset: Int = 0,
+    val savedContent: String = content,  // snapshot when file was last saved — for diff gutter
 )
 
 data class GitStatus(
