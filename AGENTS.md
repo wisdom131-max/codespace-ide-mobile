@@ -1280,3 +1280,86 @@ VN Code bash ready           ← from .bashrc echo
 @vncode:~$ pkg install git   ← works (real pkg script, patched shebang)
 ```
 
+---
+
+## Full Termux Script Patching — 2026-06-29 (Session Close)
+
+### Problem confirmed from device output
+
+```
+root@localhost:~# apt install -y nano
+Error: Unable to locate package nano
+
+root@localhost:~# apt install -y tmux
+Package tmux is not available, but is referred to by another package.
+Error: Package 'tmux' has no installation candidate
+```
+
+The Ubuntu `apt` (3.1.6ubuntu2) was responding but had no package index — `apt update` had never succeeded because **all 185 Termux shell scripts** had hardcoded `/data/data/com.termux/files/usr` paths baked in from the bootstrap ZIP.
+
+### Root cause
+The `libtermux-bootstrap.so` ZIP (3,490 files) was designed **only for `com.termux`**. Every script, config, and shebang line hardcodes that path. Previous fix only patched a few files manually (`etc/profile`, `bin/pkg`, `etc/bash.bashrc`). The remaining 182+ scripts (including `apt`, `dpkg`, `termux-setup-package-manager`, etc.) still pointed nowhere valid.
+
+### Termux APK Forensics (Google Drive — `libtermux-bootstrap.so`)
+| Item | Detail |
+|------|--------|
+| ZIP offset in ELF | 0x530 |
+| ZIP entries | 3,490 files |
+| Scripts with `com.termux` paths | **185 shell scripts** |
+| Key binaries | `bash` (837KB), `coreutils` (1.27MB), `apt` (38KB), `dpkg` (269KB) |
+| `bin/ls`, `bin/cat`, etc | SYMLINKS → `coreutils` multi-call binary |
+| `bin/sh` | SYMLINK → `dash` |
+| `etc/profile` | Hardcodes com.termux — MUST be overwritten |
+| `etc/apt/sources.list` | Points to `packages-cf.termux.dev` — correct |
+
+### Fix applied: `47992b3b` ✅ BUILD SUCCESS
+
+**`patchAllScripts(prefix, prefixPath)`** — new function added to `TermuxBootstrapInstaller`:
+- `prefix.walkTopDown()` — walks every file in the Termux prefix after extraction
+- File size guard: skip files > 500KB (ELF binaries)
+- Manual byte scan for `com.termux` ASCII marker before UTF-8 decode (avoids Kotlin `ByteArray.indexOf` which doesn't exist)
+- String-replaces `/data/data/com.termux/files/usr` → actual prefix path
+- String-replaces `/data/data/com.termux/files/home` → actual home path
+- Patches all 185 scripts in one pass at extraction time
+
+**Other changes in `47992b3b`:**
+- `etc/profile` fully rewritten (PREFIX-relative, no hardcoded paths)
+- `etc/termux/bootstrap/termux-bootstrap-second-stage.sh` patched
+- `etc/apt/sources.list` explicitly written: `packages-cf.termux.dev/apt/termux-main/`
+- `TERMUX_VERSION=0.118.1` + `TERMUX_APP_PACKAGE_MANAGER=apt` added to session env array
+- VERSION bumped to `termux-bootstrap-3490-v6` → forces re-extraction on existing installs
+
+### Version history this session
+| Version | Commit | Status | What it fixed |
+|---------|--------|--------|---------------|
+| v1 | (prior) | — | Initial bootstrap extraction |
+| v2 | (prior) | — | GPG / dpkg seccomp workarounds |
+| v3 | `4e9203bd` | ✅ | Null-pointer guards in `pty_native.c` JNI loops |
+| v4 | `9cd451c8` | ✅ | Patched `etc/profile` + `bin/pkg` + `etc/bash.bashrc` manually |
+| v5 | `095d8ff1` | ❌ | Added `patchAllScripts` but used `ByteArray.indexOf` (doesn't exist in Kotlin) |
+| v6 | `47992b3b` | ✅ | Fixed `patchAllScripts` with manual byte scan — patches all 185 scripts |
+
+### Expected terminal behavior after v6 APK install
+```
+Termux bash ready — run: apt update && apt install <package>
+root@vncode:~# apt update
+Get:1 https://packages-cf.termux.dev/apt/termux-main stable InRelease
+...
+Fetched X kB in Xs
+Reading package lists... Done
+
+root@vncode:~# apt install -y nano
+Reading package lists... Done
+...
+Setting up nano ...
+
+root@vncode:~# nano --version
+GNU nano, version X.X
+```
+
+### Next priorities
+1. **Verify on device** — install `47992b3b` APK and confirm `apt update && apt install nano` works
+2. **MCP integration** — wire MCP server support through the AI chat panel
+3. **Ollama model access** — connect the AI chat panel to local Ollama instance
+4. **proot Ubuntu `apt`** — separate issue from Termux apt; Ubuntu chroot apt may also need sources fix
+
