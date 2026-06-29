@@ -18,7 +18,7 @@
           "client_type": 1,
           "android_info": {
             "package_name": "com.codespace.ide",
-            "certificate_hash": "09539806fb99759995d35e2b6aa562a2191b83f5"
+            "certificate_hash": "4d893a14f7acd523ffd19f34957d5e4a7bda9223"
           }
         },
         {
@@ -55,7 +55,7 @@
           "client_type": 1,
           "android_info": {
             "package_name": "com.codespace.ide.debug",
-            "certificate_hash": "09539806fb99759995d35e2b6aa562a2191b83f5"
+            "certificate_hash": "4d893a14f7acd523ffd19f34957d5e4a7bda9223"
           }
         },
         {
