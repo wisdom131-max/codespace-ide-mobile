@@ -1359,3 +1359,36 @@ The extraction left **private-in-file types being referenced across file boundar
 10. After every push to the repo (success or failure), update this AGENTS.md with: what changed, what commit SHA, and what the build result was.
 11. When a suggestion is made (by the user or agent) about code patterns, rules, or conventions — add it to the Hard Rules section immediately, not later.
 
+
+---
+
+## FEATURE: Optional Biometric / PIN Lock — June 29, 2026
+
+### What was built (commits: 3 pushes, all ✅ success)
+
+**`SecureTokenStore.kt`**
+- Added `biometricLockEnabled: Boolean` — encrypted pref backed by Android Keystore
+- Key: `KEY_BIOMETRIC_LOCK = "biometric_lock_enabled"`, default `false` (opt-in, not forced)
+
+**`SettingsScreen.kt`** — new **Security** section (above AI Providers)
+- Shows `BiometricManager.canAuthenticate()` check — if device has no biometric/PIN set up, toggle is shown but disabled with an explanatory message
+- Toggle saved immediately to `tokenStore.biometricLockEnabled` — no Save button needed
+- Icon: `Icons.Default.Fingerprint`, tinted primary when active
+- Supporting text changes live: "App requires fingerprint or PIN on every launch" vs "Off — anyone who opens the app gets straight in"
+
+**`CodeSpaceApp.kt`** — `BiometricGate` composable
+- Checked once per process launch: if `!tokenStore.biometricLockEnabled` → skips gate entirely (no overhead)
+- Full-screen lock UI with Fingerprint icon + "Try Again" button
+- Uses `BiometricPrompt` with `BIOMETRIC_WEAK | DEVICE_CREDENTIAL` — supports fingerprint, face, or PIN fallback
+- `LaunchedEffect(Unit)` auto-shows the system prompt on entry
+- On success → sets `biometricUnlocked = true` → normal NavHost renders
+- On cancel/error → stays on gate screen, user can tap "Try Again"
+- `androidx.biometric:biometric:1.2.0-alpha05` was already in `build.gradle.kts` — no dep changes needed
+
+### Design decision
+Biometric lock is **opt-in via Settings** (not on by default). Reason: don't block developer during active development. User enables it when the app is ready to hand off or leave on a desk.
+
+### Hard rules added
+12. Biometric auth must always use `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` — never `BIOMETRIC_STRONG` alone (excludes PIN fallback on devices with weak biometric hardware).
+13. Security settings (biometric, account switching) live in the **app-level Settings** (HomeScreen → Settings gear), NOT inside project settings. Project settings = per-project config only.
+
