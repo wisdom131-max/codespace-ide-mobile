@@ -414,7 +414,10 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // TermuxBootstrapInstaller.installIfNeeded() is called from LaunchedEffect in TerminalPane.
     return if (TermuxBootstrapInstaller.isInstalled(context)) {
         val (shell, bashEnv) = TermuxBootstrapInstaller.shellArgs(context)
-        val session = TerminalSession(shell, home, arrayOf("--login"), bashEnv, 4000, client)
+        // --rcfile skips /etc/profile (which resolves to wrong Termux path on Samsung).
+        // Samsung kernel blocks --login via seccomp on /data/data/com.termux path.
+        val rcFile = java.io.File(context.filesDir, "home/.bashrc").absolutePath
+        val session = TerminalSession(shell, home, arrayOf("--rcfile", rcFile), bashEnv, 4000, client)
         Pair(session, client)
     } else {
         val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
