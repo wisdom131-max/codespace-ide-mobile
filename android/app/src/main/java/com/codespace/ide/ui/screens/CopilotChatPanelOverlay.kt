@@ -173,13 +173,14 @@ internal fun CopilotChatPanelOverlay(onClose: () -> Unit) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable { onClose() }) {
         Column(
             Modifier
                 .align(Alignment.TopEnd)
                 .fillMaxHeight()
                 .width(320.dp)
                 .background(Color(0xFF1E1E2E), RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp))
+                .clickable(enabled = false) {}
         ) {
             // ── Header ────────────────────────────────────────────────────────
             Row(
