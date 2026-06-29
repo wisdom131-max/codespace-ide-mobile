@@ -36,16 +36,29 @@
 
 ---
 
-## SAMSUNG KERNEL RESTRICTION — ROOT CAUSE OF ALL dpkg FAILURES
+## SAMSUNG KERNEL RESTRICTION — REVISED JUNE 29, 2026
 
-Device kernel 5.15.180-android13 blocks these syscalls inside proot ptrace:
-- `chdir` / `getcwd` — every `cd` fails with ENOSYS (38)
-- `fork` + `execve` for child processes — dpkg, tar, python all fail
-- `setresuid` — fixed via `APT::Sandbox::User "root"`
+Device kernel 5.15.180-android13 — ORIGINAL ASSUMPTION WAS WRONG.
 
-What works: bash, file reads/writes, network, single-process commands.
-What does not work: any command spawning subprocesses (dpkg, tar, python, ar), any `cd` command.
-**`apt install` will NEVER work inside Ubuntu on this device. Host-side pre-install is the ONLY mechanism.**
+### What was assumed (incorrect)
+`apt install` would NEVER work. Host-side pre-install was thought to be the only mechanism.
+
+### What was confirmed on device (June 29, 2026)
+Wisdom ran `apt upgrade` and `apt` in native Termux on the TECNO KL4 — both worked perfectly.
+apt 2.8.1 (aarch64) is fully functional in native Termux on this device.
+
+### Revised understanding
+The kernel blocks apply INSIDE proot ptrace, not natively. Specifically:
+- `chdir` / `getcwd` — ENOSYS (38) inside proot — NOT in native Termux
+- `fork` + `execve` for child processes — blocked inside proot ptrace
+- `setresuid` — blocked inside proot (workaround: `APT::Sandbox::User "root"`)
+
+### What this means going forward
+- Native Termux: apt, dpkg, python, git — all work fine on this device
+- Inside our Ubuntu proot tab: apt install is still likely blocked (proot ptrace restriction)
+- The Termux bootstrap we ship (bash, curl, etc.) works because it runs natively via nativeLibraryDir
+- Next test needed: confirm whether `apt install` works inside OUR Ubuntu proot tab specifically
+- If it does work: host-side pre-install workaround is unnecessary — remove it
 
 ---
 
@@ -62,6 +75,8 @@ What does not work: any command spawning subprocesses (dpkg, tar, python, ar), a
 | `28cd899` | createSession marked `internal` — fixes public API exposing internal type |
 | `0024eed` | `Int::class.javaPrimitiveType` for setProcessGroup reflection (int args require primitive type) |
 | `b9f2437` | setProcessGroup via reflection (hidden API not in public SDK) |
+| `5d6f776` | AuthScreen — account picker + always-visible email field (Rule 21) |
+| `892d14f` | AGENTS.md — Rule 21 documented |
 | `2eddbdb` | Correct ProotInstaller import (was proot package, is terminal package) |
 | `024e817` | Full UI/UX/terminal audit — 7 bugs fixed (see below) |
 | `9884a0e` | Manifest `specialUse` type + AGENTS.md research overhaul |
@@ -1555,11 +1570,6 @@ After Firebase auth succeeds, the app will call the backend and fail until it is
 ### Rule 19 — Projects are user-scoped cloud entities
 Projects must always be associated with the authenticated user (ownerId = JWT userId).
 Never return another user's projects. All project endpoints require JWT auth guard.
-
-### Rule 20 — HomeScreen requires accessToken + onSignOut props
-HomeScreen now requires both props. Any navigation call to HomeScreen must pass the
-JWT accessToken from AuthResult and a callback that clears auth state and returns to AuthScreen.
-
 
 ---
 
