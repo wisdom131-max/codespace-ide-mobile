@@ -1456,3 +1456,31 @@ Backend NestJS app (/backend folder) is fully written but NOT deployed. The doma
 
 **Remotion (Option C) — planned, not started:**
 Decision: Remotion Studio runs as local Node server, accessed via existing PreviewPane browser tab. Implementation not started yet. Waiting for login + backend to be stable first.
+
+---
+
+## SHA-1 Fingerprint Confirmed — June 29, 2026
+
+### Source of truth — debug keystore SHA fingerprints
+Extracted directly from GitHub Actions signingReport (build run 28350524042):
+
+SHA-1:   09:53:98:06:FB:99:75:99:95:D3:5E:2B:6A:A5:62:A2:19:1B:83:F5
+SHA-256: CC:C5:0B:7F:2C:F9:43:A1:8A:1A:22:92:A4:0C:0A:60:EA:C4:60:BD:2B:EA:FD:ED:7B:42:37:9B:28:45:E8:B7
+
+These must be registered in Firebase for both com.codespace.ide and com.codespace.ide.debug.
+
+### Rule 16 — SHA-1 source of truth is signingReport from CI, not from device
+Never assume or derive the SHA-1 from a device keystore. Always extract it from the GitHub Actions signingReport step. The CI keystore (auto-generated debug.keystore) is what signs the APK — that is the only SHA-1 that matters for Firebase registration.
+
+### Rule 17 — Credentials-and-keys.md in Google Drive is the single source of truth
+After any credential change (SHA-1, client IDs, API keys, package names), update:
+1. google-services.json in the repo
+2. credentials-and-keys.md in Google Drive (folder: Codespace IDE — Dev Credentials)
+3. AGENTS.md (this file)
+All three must match at all times.
+
+### Next actions (in order)
+1. Go to Firebase console and update SHA fingerprints for both packages (links in credentials-and-keys.md)
+2. Download fresh google-services.json from Firebase, share here for push to repo
+3. Deploy NestJS backend (/backend folder) to Railway or Render
+4. Implement Remotion Studio button in PreviewPane (Option C)
