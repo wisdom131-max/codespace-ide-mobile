@@ -48,11 +48,18 @@ class SecureTokenStore @Inject constructor(
     fun setAiKey(provider: String, key: String?) =
         prefs.edit().putString("ai_$provider", key).apply()
 
+    /** Last JWT access token — stored so HomeScreen can warm-start without re-auth */
+    var lastAccessToken: String?
+        get() = prefs.getString(KEY_ACCESS, null)
+        set(value) = if (value != null) prefs.edit().putString(KEY_ACCESS, value).apply()
+                     else prefs.edit().remove(KEY_ACCESS).apply()
+
     fun clear() = prefs.edit().clear().apply()
 
     private companion object {
         const val KEY_REFRESH        = "refresh_token"
         const val KEY_ROLE           = "user_role"
         const val KEY_BIOMETRIC_LOCK = "biometric_lock_enabled"
+        const val KEY_ACCESS         = "last_access_token"
     }
 }
