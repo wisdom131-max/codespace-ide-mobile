@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "872673459882-3sjd4bb4msmjuem6lbk511n73cpaok7k.apps.googleusercontent.com",
+          "client_id": "872673459882-vess8kh6asgn6g184en67i8hb692pgs1.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.codespace.ide",
-            "certificate_hash": "4d893a14f7acd523ffd19f34957d5e4a7bda9223"
+            "certificate_hash": "09539806fb99759995d35e2b6aa562a2191b83f5"
           }
         },
         {
@@ -50,14 +50,6 @@
         }
       },
       "oauth_client": [
-        {
-          "client_id": "872673459882-u9p1lv1q1hq864kfepma6rm3cme2kfa1.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.codespace.ide.debug",
-            "certificate_hash": "4d893a14f7acd523ffd19f34957d5e4a7bda9223"
-          }
-        },
         {
           "client_id": "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com",
           "client_type": 3
