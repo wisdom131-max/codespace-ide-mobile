@@ -1785,3 +1785,67 @@ Never assume Railway uses the dockerfilePath folder as the build context — it 
 ### Current status (09:00 WAT)
 Railway redeploy triggered after Root Directory fix. Awaiting build result.
 Next step: confirm build passes, then add PostgreSQL + env vars (JWT_SECRET, FIREBASE_*, etc.)
+
+---
+
+## RAILWAY BACKEND DEPLOYMENT — June 29, 2026
+
+### Service: `codespace-ide-mobile` on Railway (stunting-gentleness / production)
+- Backend is a NestJS app in `backend/` subdirectory
+- Dockerfile: `backend/Dockerfile`
+- railway.json: at repo root, `dockerfilePath: "backend/Dockerfile"`
+
+### ROOT CAUSE OF FAILURE (commit e7775688)
+`node-pty@1.0.0` is a native Node addon — it uses `node-gyp` to compile C++ at install time.
+Railway's Docker build stage (`node:20-bookworm`) did NOT have `python3`, `make`, or `g++`.
+Without Python, `node-gyp` cannot run and `npm install` exits code 1.
+
+**Error chain:**
+```
+npm error code 1
+npm error path /app/node_modules/node-pty
+npm error command failed
+npm error command sh -c node scripts/prebuild.js || node-gyp rebuild
+npm error gyp info find Python → ERROR: Could not find any Python installation
+```
+
+### FIX (commits c2c4b07a + dac4a74a)
+
+**backend/Dockerfile — build stage now installs build tools:**
+```dockerfile
+# ---- build stage ----
+FROM node:20-bookworm AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && apt-get clean
+COPY package*.json ./
+RUN npm install        # node-pty compiles here with python3 available
+COPY . .
+RUN npm run build
+
+# ---- runtime stage ----
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/node_modules ./node_modules  # pre-built .node binary copied
+COPY --from=build /app/dist ./dist
+EXPOSE 8080
+CMD ["node", "dist/main.js"]
+```
+
+**Key change:** runtime stage no longer runs `npm install` — it copies pre-built
+`node_modules` from the build stage. This avoids re-running node-gyp without build tools.
+
+**railway.json fix:** `dockerfilePath` updated to `"backend/Dockerfile"` (was just `"Dockerfile"`)
+Railway resolves this relative to repo root, so it now finds the correct file.
+
+### Rule 24 (from earlier session)
+When Railway Dockerfile has a subdirectory backend, `dockerfilePath` in railway.json
+MUST be `"backend/Dockerfile"` — not just `"Dockerfile"`.
+The build context is the repo root when Railway clones; paths are relative to that.
+
+### node-pty usage in backend
+`terminal.gateway.ts` uses node-pty for server-side PTY sessions (WebSocket terminal).
+This is a lazy `require('node-pty')` — it won't crash if the native build fails at runtime,
+but it DOES fail at install time if build tools are missing.
+The server-side terminal is NOT the main terminal (which runs on-device via NativePty/JNI).
+
