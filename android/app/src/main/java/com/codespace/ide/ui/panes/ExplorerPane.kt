@@ -227,8 +227,6 @@ fun ExplorerSidePanel(
                     })
             }
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.MoreVert, null, tint = MutedColor,
-                modifier = Modifier.size(16.dp).clickable { onMoreMenu() })
         }
         HorizontalDivider(color = DividerColor)
 
