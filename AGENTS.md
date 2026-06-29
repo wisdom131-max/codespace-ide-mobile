@@ -1645,3 +1645,63 @@ Never hardcode connection strings. Always read from process.env.
 4. ⏳ Audit all Android features from AGENTS.md build sequence — check if implemented
 5. ⏳ Fix any unimplemented features from build sequence list
 6. ⏳ Update AuthScreen.kt to handle backend-not-deployed gracefully (offline mode)
+
+
+---
+
+## SESSION CHECKPOINT 2 — June 29, 2026 (07:30 WAT)
+
+### FEATURE AUDIT RESULTS — what was already implemented vs missing
+
+| Feature | Status |
+|---|---|
+| Zsh + OMZ | ALREADY IN TerminalPane.kt |
+| STT button | ALREADY IN TerminalPane.kt |
+| Root toggle | ALREADY IN TerminalPane.kt |
+| Bell vibrate | ALREADY IN TerminalPane.kt |
+| Pinch zoom | ALREADY IN TerminalPane.kt |
+| URL tap-to-open | ALREADY IN TerminalPane.kt |
+| Cursor blink | ALREADY IN TerminalPane.kt |
+| Clear button | ALREADY IN TerminalPane.kt |
+| Export screen | ALREADY IN TerminalPane.kt |
+| Make Script | ALREADY IN TerminalPane.kt |
+| Pkg Update | ALREADY IN TerminalPane.kt |
+| Session rename | ALREADY IN TerminalPane.kt |
+| Failsafe shell | ALREADY IN TerminalPane.kt |
+| Biometric lock | ALREADY IN CodeSpaceApp.kt |
+| McpPanel | ALREADY IN ProjectShellScreen.kt |
+| AC autocorrect toggle | ADDED this session (commit af6ab47c) |
+| Custom Commands drawer | ADDED this session (commit af6ab47c) |
+| Copilot Chat Ollama streaming | ADDED this session (commit 120765aa) |
+| Ask/Agent/Plan chat modes | ADDED this session (commit 120765aa) |
+| Chat model auto-detect | ADDED this session (commit 120765aa) |
+| Chat history persistence | ADDED this session (commit 120765aa) |
+| Session PiP mini previews | NOT YET — next to add |
+
+### COMMITS THIS SESSION (newest first)
+| Commit | What |
+|---|---|
+| af6ab47c | TerminalPane: AC autocorrect + Custom Commands drawer |
+| 120765aa | CopilotChatPanelOverlay: real Ollama API, Ask/Agent/Plan, history |
+| 3079666 | AGENTS.md checkpoint 1 |
+| 0bdb5670 | .env.example: Firebase vars documented |
+| 5318fd8e | Dockerfile: node-pty rebuilt in runtime stage |
+| 359f0ecb | railway.json: one-click Railway deploy |
+| 38cab674 | package.json: firebase-admin ^12.1.0 added |
+| 892d14fc | AGENTS.md: Rule 21 |
+| 5d6f7767 | AuthScreen: account picker + always-visible email (Rule 21) |
+| f2c892cd | AGENTS.md: Samsung kernel corrected, duplicates removed |
+
+### STILL TODO (in priority order)
+1. Session PiP — mini live terminal previews in tab chips
+2. Verify build passes with all new code
+3. Wisdom: deploy backend to Railway (5-min task — instructions in previous checkpoint)
+4. Wisdom: update AUTH_ENDPOINT in AuthScreen.kt to Railway URL after deploy
+5. IntelliSense autocomplete in editor (LazyColumn overlay, language-aware)
+6. Git diff gutters (+ / - line indicators in editor gutter)
+7. Minimap (right side code overview)
+
+### Rule 23 — AGENTS.md checkpoint every major feature or 2 minutes
+Every time a feature is completed, push an AGENTS.md checkpoint immediately.
+Never let more than 2-3 features complete without a checkpoint push.
+This ensures continuity for the next AI session.
