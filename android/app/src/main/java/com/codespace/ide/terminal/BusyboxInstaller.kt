@@ -121,12 +121,34 @@ object BusyboxInstaller {
         val pkgScript = File(bin, "pkg")
         pkgScript.writeText(buildOfflinePackageScript(context))
         pkgScript.setExecutable(true, false)
+        // Smart wrappers: if Termux bootstrap real apt/pkg is present, use it.
+        // Prevents fake "Package list up to date." from blocking the real apt.
+        val realAptPath = java.io.File(context.filesDir, "termux-prefix/bin/apt").absolutePath
+        val realPkgPath = java.io.File(context.filesDir, "termux-prefix/bin/pkg").absolutePath
         for (alias in listOf("apt", "apt-get")) {
             File(bin, alias).also { f ->
-                f.writeText("#!/system/bin/sh\nexec \"${pkgScript.absolutePath}\" \"$@\"\n")
+                f.writeText(
+                    "#!/system/bin/sh\n" +
+                    "if [ -x \"$realAptPath\" ]; then\n" +
+                    "  exec \"$realAptPath\" \"\$@\"\n" +
+                    "else\n" +
+                    "  exec \"${pkgScript.absolutePath}\" \"\$@\"\n" +
+                    "fi\n"
+                )
                 f.setExecutable(true, false)
             }
         }
+        // Also write a smart pkg wrapper
+        val smartPkg = File(bin, "pkg")
+        smartPkg.writeText(
+            "#!/system/bin/sh\n" +
+            "if [ -x \"$realPkgPath\" ]; then\n" +
+            "  exec \"$realPkgPath\" \"\$@\"\n" +
+            "else\n" +
+            "  exec \"${pkgScript.absolutePath}\" \"\$@\"\n" +
+            "fi\n"
+        )
+        smartPkg.setExecutable(true, false)
     }
 
     private fun buildOfflineProfile(context: Context): String = buildString {
