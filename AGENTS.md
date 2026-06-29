@@ -1525,3 +1525,37 @@ After Firebase auth succeeds, the app will call the backend and fail until it is
 1. Deploy NestJS backend (/backend folder) to Railway or Render — this unblocks full login
 2. Add "Switch account" button to login screen (Rule 18)
 3. Implement Remotion Studio button in PreviewPane (Option C)
+
+---
+
+## Cloud Project Sync + Auth Screen Overhaul — June 29, 2026
+
+### What changed
+- AuthScreen.kt fully rewritten:
+  - Sign In / Sign Up tabs — visually separate flows
+  - "Use a different Google account" expands a text field where user types their email
+  - Google Credential Manager opens pre-filled with that email as a login hint
+  - Works for accounts not yet on the device — Google's own sign-in sheet handles adding them
+  - "Switch Google account" link in HomeScreen bottom section
+- HomeScreen.kt fully rewritten:
+  - Accepts `accessToken` and `onSignOut` parameters
+  - On launch: auto-fetches projects from backend (GET /api/v1/projects)
+  - Falls back to local SharedPreferences cache when offline
+  - Creating a project: saved locally + pushed to cloud immediately
+  - Deleting a project: removed locally + deleted from cloud
+  - Manual sync button (↻) in top bar
+  - "Switch Google account" shortcut at bottom of list and on empty state
+- Backend: new projects module added
+  - backend/src/projects/project.entity.ts — Project TypeORM entity (id, name, kind, pathOrUrl, defaultBranch, ownerId)
+  - backend/src/projects/projects.service.ts — list, upsert, remove (scoped to user)
+  - backend/src/projects/projects.controller.ts — GET /projects, POST /projects, PUT /projects/:id, DELETE /projects/:id (JWT-guarded)
+  - backend/src/projects/projects.module.ts — module definition
+  - backend/src/app.module.ts — ProjectsModule registered
+
+### Rule 19 — Projects are user-scoped cloud entities
+Projects must always be associated with the authenticated user (ownerId = JWT userId).
+Never return another user's projects. All project endpoints require JWT auth guard.
+
+### Rule 20 — HomeScreen requires accessToken + onSignOut props
+HomeScreen now requires both props. Any navigation call to HomeScreen must pass the
+JWT accessToken from AuthResult and a callback that clears auth state and returns to AuthScreen.
