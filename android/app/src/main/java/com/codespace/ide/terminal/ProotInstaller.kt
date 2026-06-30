@@ -34,7 +34,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r4"
+    private const val VERSION = "ubuntu-questing-v4.30.1-r3"
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
@@ -307,11 +307,7 @@ object ProotInstaller {
         val args = arrayOf(
             "proot",
             "--kill-on-exit",
-            // --link2symlink REMOVED: this flag makes proot queue all hardlinks as deferred
-            // symlinks, then resolve them via symlinkat() syscall. Samsung/TECNO Android 14
-            // kernel blocks symlinkat() inside unprivileged namespaces via seccomp → SIGSYS crash.
-            // The ubuntu-questing-aarch64 tarball uses real symlinks, not hardlinks, so
-            // --link2symlink is not needed. Removing this stops the crash immediately.
+            "--link2symlink",
             // --sysvipc removed: Samsung 5.15 kernel blocks SysV IPC syscalls inside
             // unprivileged namespaces (clone() seccomp). proot fails to start with it.
             "--kernel-release=5.15.0-android13-4",
