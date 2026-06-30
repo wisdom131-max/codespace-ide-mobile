@@ -37,7 +37,7 @@ object TermuxBootstrapInstaller {
     private const val TAG        = "TermuxBootstrap"
     private const val ASSET_NAME = "bootstrap-aarch64.zip"
     // Bump version so existing installs re-extract with the copy-instead-of-symlink fix
-    private const val VERSION    = "termux-bootstrap-3490-v7"
+    private const val VERSION    = "termux-bootstrap-3490-v8"
 
     // Multi-call binaries: the target binary dispatches via argv[0].
     // Copying is safe and avoids symlinkat() seccomp block on Samsung.
@@ -226,18 +226,15 @@ object TermuxBootstrapInstaller {
             "TMPDIR=$prefix/tmp",
             "SHELL=$prefix/bin/bash",
             "LANG=en_US.UTF-8",
-            // NOTE: Do NOT include $prefix/lib here — Termux bootstrap libs
-            // (libandroid-support.so etc.) have mismatched e_version for our
-            // linker and cause "unexpected e_version" crashes on every exec().
-            // bash and all Termux binaries are statically linked or use rpath,
-            // so they do not need LD_LIBRARY_PATH to find their own libs.
-            "LD_LIBRARY_PATH=$nativeDir",
-            // DPKG_FORCE_UNSAFE_IO: bypass Samsung kernel's blocked linkat/renameat2
-            "DPKG_FORCE=unsafe-io",
-            // Suppress perl locale warnings from dpkg postinst scripts
-            "PERL_BADLANG=0",
             "LC_ALL=en_US.UTF-8",
-            // TERMUX_VERSION: required by bin/pkg and termux scripts
+            // CRITICAL: Do NOT set LD_LIBRARY_PATH at all.
+            // $prefix/lib causes "unexpected e_version" on libandroid-support.so.
+            // $nativeDir causes our app's AArch64 JNI .so files to be injected into
+            // the bash process — wrong ABI context, triggers signal 31 (SIGSEGV cleanup).
+            // Termux bootstrap binaries use rpath baked at build time; they find their
+            // own libs without LD_LIBRARY_PATH. Omitting it entirely is the correct fix.
+            "DPKG_FORCE=unsafe-io",
+            "PERL_BADLANG=0",
             "TERMUX_VERSION=0.118.1",
             "TERMUX_APP_PACKAGE_MANAGER=apt"
         )
