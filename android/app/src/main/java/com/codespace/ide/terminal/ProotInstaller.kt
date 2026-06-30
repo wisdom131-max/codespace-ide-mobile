@@ -34,7 +34,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r4"
+    private const val VERSION = "ubuntu-questing-v4.30.1-r3"
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
@@ -148,28 +148,13 @@ object ProotInstaller {
                             when {
                                 entry.isDirectory -> outFile.mkdirs()
                                 entry.isSymbolicLink -> {
-                                    // Samsung 5.15 kernel blocks symlinkat() inside proot seccomp.
-                                    // Instead of creating a real symlink, copy the target file.
-                                    // proot --link2symlink is also removed for the same reason.
                                     runCatching {
-                                        if (outFile.exists()) outFile.delete()
-                                        outFile.parentFile?.mkdirs()
-                                        val linkName = entry.linkName
-                                        // Resolve the target relative to the symlink's parent dir
-                                        val targetFile = if (linkName.startsWith("/")) {
-                                            File(rootfs, linkName)
-                                        } else {
-                                            File(outFile.parentFile, linkName)
-                                        }
-                                        if (targetFile.exists() && targetFile.isFile) {
-                                            targetFile.copyTo(outFile, overwrite = true)
-                                            outFile.setExecutable(targetFile.canExecute(), false)
-                                        } else {
-                                            // Target not yet extracted — record for later resolution
-                                            outFile.writeText("__symlink__:$linkName")
-                                        }
-                                        filesWritten++
-                                    }.onFailure { Log.w(TAG, "Symlink-copy failed ${entry.name}: ${it.message}") }
+                                        val link   = outFile.toPath()
+                                        val target = java.nio.file.Paths.get(entry.linkName)
+                                        if (java.nio.file.Files.exists(link))
+                                            java.nio.file.Files.delete(link)
+                                        java.nio.file.Files.createSymbolicLink(link, target)
+                                    }.onFailure { Log.w(TAG, "Symlink failed ${entry.name}: ${it.message}") }
                                 }
                                 else -> {
                                     outFile.parentFile?.mkdirs()
@@ -322,8 +307,7 @@ object ProotInstaller {
         val args = arrayOf(
             "proot",
             "--kill-on-exit",
-            // --link2symlink removed: Samsung 5.15 blocks linkat() inside seccomp.
-            // We copy symlinks as files during extraction instead (see install()).
+            "--link2symlink",
             // --sysvipc removed: Samsung 5.15 kernel blocks SysV IPC syscalls inside
             // unprivileged namespaces (clone() seccomp). proot fails to start with it.
             "--kernel-release=5.15.0-android13-4",
@@ -387,4 +371,3 @@ object ProotInstaller {
         return Triple(proot, args, envVars)
     }
 }
-
