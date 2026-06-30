@@ -1,5 +1,5 @@
 # AI Agent / Copilot — Project Context
-> Read this FIRST before touching any code. Updated June 28, 2026.
+> Read this FIRST before touching any code. Updated June 30, 2026.
 
 
 ---
@@ -125,6 +125,7 @@ We use:  `context.filesDir/termux-prefix` — correct, just different path
 | `apt install` — no packages found | `sources.list` is empty in bootstrap zip | Write sources.list at extraction time |
 | `CANNOT LINK EXECUTABLE -bash: libandroid-support.so not found` | `LD_LIBRARY_PATH=$nativeDir` in proot envVars — host JNI .so injected into bash | Remove `LD_LIBRARY_PATH` from proot `envVars` entirely (a86517fa) |
 | Samsung `symlinkat()` seccomp block | Samsung kernel 5.15 blocks symlinkat() | Copy multi-call binaries instead of symlinking |
+| **Ubuntu black screen after "Resolving N deferred symlinks..."** | `initializeEmulator()` never called — `updateSize()` only fires from `onSizeChanged()`, but view is already laid out when Ubuntu session is swapped in | Call `view.updateSize()` immediately after `view.attachSession()` (commit 955b3f3e5ab0) |
 
 ---
 
@@ -168,7 +169,19 @@ Changed:
 - VERSION bumped to `ubuntu-questing-v4.30.1-r2` (forces re-extraction on device)
 Build: ✅ green (8f0f5ba6)
 
-#### STEP 4 — Device test Ubuntu
+#### STEP 4 — Fix Ubuntu black screen (PTY never initialized)
+**Status:** ✅ DONE (2026-06-30) — commit 955b3f3e5ab0
+**Root cause:** `initializeEmulator()` is only called from `updateSize()`, which is only called
+from `onSizeChanged()`. When the Ubuntu session is swapped into an already-laid-out TerminalView,
+`onSizeChanged()` never fires again → emulator stays `null` → proot output has nowhere to go → black screen.
+**Fix (TerminalPane.kt — 3 surgical changes):**
+1. After `view.attachSession()`: immediately call `view.updateSize()` (post to UI thread, or wait for
+   `OnGlobalLayoutListener` if view not yet measured). This is literally what the Termux source comment says to do.
+2. `addOnLayoutChangeListener`: now calls `updateSize()` + `onScreenUpdated()` (was only `onScreenUpdated()`).
+3. Ubuntu session CWD: changed from `"/"` (host root, SELinux blocked) → `filesDir` (always accessible).
+**Expected result on device:** Ubuntu tab shows bash prompt after symlink resolution instead of black screen.
+
+#### STEP 4b — Device test Ubuntu (PENDING)
 **Status:** ⬜ DEVICE TEST (human)
 **Commands:**
 ```bash
@@ -179,6 +192,36 @@ python3 --version
 
 ---
 
+
+---
+
+## AUTH SCREEN — REDESIGN (2026-06-30)
+
+### Problem
+- Old design: Sign In / Sign Up tabs + separate Google button + email field + separate picker button = too many elements
+- Error "Server auth failed (500)" was a DB crash — TypeORM `synchronize: false` in production meant tables never created
+
+### Fixes applied
+| Fix | Commit | File |
+|-----|--------|------|
+| TypeORM `synchronize: true` always — creates tables on Railway startup | fe7e60b2163e | `database.module.ts` |
+| Full AuthScreen redesign — single "Sign in or Sign up" button + email field with inline arrow | b3c6e4b994cd | `AuthScreen.kt` |
+
+### New AuthScreen layout
+```
+Codespace IDE
+Your projects. Any device.
+
+[ Sign in or Sign up ]          ← primary button, full width
+[ Enter your Google email  → ]  ← outlined field, arrow icon right side (turns blue when typed)
+
+Tap the field to pick an account or type your email
+```
+- Tap button OR arrow → opens Google account picker
+- Type email manually → press arrow or keyboard Go → picker pre-filtered to that email
+- No tabs, no dividers, no redundant buttons
+
+---
 ### PRIORITY 2: Bash tab (Termux exact parity)
 
 #### STEP 5 — Fix shellArgs() in TermuxBootstrapInstaller.kt
@@ -279,3 +322,11 @@ apt install -y nano git python3
 - [ ] Step 7 — Device test Bash (**HUMAN STEP**)
 - [ ] Step 8 — Build ExtensionsPane
 - [ ] Step 9 — Terminal menu cleanup
+
+
+---
+
+## BACKLOG — HARD
+
+- [ ] **Remotion video creator** — render videos clip-by-clip using Remotion (React-based), then merge clips into final video using FFmpeg; avoids memory/timeout issues from rendering full video at once; ideal for YouTube content, code walkthroughs, and project demos from within the IDE
+
