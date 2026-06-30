@@ -411,7 +411,7 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // ash IS the applet name in this busybox build (not bash).
     // Termux does: processName = (isLoginShell ? "-" : "") + basename(executable)
     // Use Termux bootstrap bash if installed, otherwise fall back to busybox ash.
-    // TermuxBootstrapInstaller.installIfNeeded() is called from LaunchedEffect in TerminalPane.
+    // TermuxManager.installIfNeeded() is called from LaunchedEffect in TerminalPane.
     return if (TermuxManager.isInstalled(context)) {
         // TermuxManager: clean Termux parity — correct argv[0], no LD_LIBRARY_PATH
         val (shell, argv, bashEnv) = TermuxManager.sessionArgs(context)
@@ -499,7 +499,7 @@ internal fun TerminalPane(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            BusyboxInstaller.ensureOfflineShell(context)
+            TermuxManager.installIfNeeded(context)
             // Extract Termux bootstrap (bash, curl, apt) on first launch.
             // Streaming ZIP extraction — safe on 3 GB device, no full-file load.
             TermuxManager.installIfNeeded(context)
@@ -754,7 +754,7 @@ internal fun TerminalPane(
                     DropdownMenuItem(
                         leadingIcon = { Text("📦", fontSize = 13.sp) },
                         text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
+                        onClick = { showMenu = false; TermuxManager.installIfNeeded(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
                         text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
