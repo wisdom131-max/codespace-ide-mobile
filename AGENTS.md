@@ -126,6 +126,7 @@ We use:  `context.filesDir/termux-prefix` — correct, just different path
 | `CANNOT LINK EXECUTABLE -bash: libandroid-support.so not found` | `LD_LIBRARY_PATH=$nativeDir` in proot envVars — host JNI .so injected into bash | Remove `LD_LIBRARY_PATH` from proot `envVars` entirely (a86517fa) |
 | Samsung `symlinkat()` seccomp block | Samsung kernel 5.15 blocks symlinkat() | Copy multi-call binaries instead of symlinking |
 | **Ubuntu black screen after "Resolving N deferred symlinks..."** | `initializeEmulator()` never called — `updateSize()` only fires from `onSizeChanged()`, but view is already laid out when Ubuntu session is swapped in | Call `view.updateSize()` immediately after `view.attachSession()` (commit 955b3f3e5ab0) |
+| **App crash after "Resolving 1747 deferred symlinks..."** | `--link2symlink` flag tells proot to queue all hardlinks then resolve via `symlinkat()`. Samsung/TECNO kernel blocks `symlinkat()` inside unprivileged namespaces via seccomp → SIGSYS → crash | **Remove `--link2symlink` entirely** — ubuntu-questing tarball uses real symlinks, no conversion needed (commit 70b415a659e1) |
 
 ---
 
@@ -181,9 +182,19 @@ from `onSizeChanged()`. When the Ubuntu session is swapped into an already-laid-
 3. Ubuntu session CWD: changed from `"/"` (host root, SELinux blocked) → `filesDir` (always accessible).
 **Expected result on device:** Ubuntu tab shows bash prompt after symlink resolution instead of black screen.
 
-#### STEP 4b — Device test Ubuntu (PENDING)
+#### STEP 4b — Fix proot crash after symlink resolution
+**Status:** ✅ DONE (2026-06-30) — commit 70b415a659e1
+**Root cause:** App crashed after showing "Resolving 1747 deferred symlinks..." 
+`--link2symlink` flag makes proot queue all hardlinks then call `symlinkat()` to resolve them.
+Samsung/TECNO Android 14 kernel blocks `symlinkat()` inside unprivileged containers via seccomp → SIGSYS → crash.
+ubuntu-questing tarball already uses real symlinks (not hardlinks) in the rootfs, so `--link2symlink` is unnecessary.
+**Fix:** Remove `--link2symlink` from proot args in `ProotInstaller.kt`. VERSION bumped to `r4` to force re-extraction.
+**Note:** This fix stacks on top of STEP 4 (black screen fix, commit 955b3f3e5ab0). Both needed for Ubuntu to work.
+
+#### STEP 4c — Device test Ubuntu (PENDING)
 **Status:** ⬜ DEVICE TEST (human)
-**Commands:**
+**What to expect:** Ubuntu tab opens, proot starts, NO symlink message, bash prompt appears directly.
+**Commands to test:**
 ```bash
 apt update
 apt install -y nano vim curl git python3
@@ -329,4 +340,5 @@ apt install -y nano git python3
 ## BACKLOG — HARD
 
 - [ ] **Remotion video creator** — render videos clip-by-clip using Remotion (React-based), then merge clips into final video using FFmpeg; avoids memory/timeout issues from rendering full video at once; ideal for YouTube content, code walkthroughs, and project demos from within the IDE
+
 
