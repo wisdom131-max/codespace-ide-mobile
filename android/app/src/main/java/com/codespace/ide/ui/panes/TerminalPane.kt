@@ -29,8 +29,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.codespace.ide.terminal.BusyboxInstaller
-import com.codespace.ide.terminal.TermuxBootstrapInstaller
+// BusyboxInstaller replaced by TermuxManager
+import com.codespace.ide.terminal.TermuxManager
 import com.codespace.ide.terminal.DeviceCompatibility
 import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
@@ -372,9 +372,9 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // Use libbusybox.so from nativeLibraryDir — always executable on Android 14 (no W^X/noexec).
     // This is the same trick Termux uses: ship the binary as a .so, Android extracts it to
     // nativeLibraryDir which is always marked executable by PackageManagerService.
-    val busybox = BusyboxInstaller.shellPath(context)
+    val busybox = TermuxManager.busyboxPath(context)
     val home = File(context.filesDir, "home").also { it.mkdirs() }.absolutePath
-    val bin  = BusyboxInstaller.binDir(context).absolutePath
+    val bin  = TermuxManager.homeDir(context).parent + "/bin"
     // Build env the same way Termux does (TermuxShellEnvironment + AndroidShellEnvironment):
     // Pass through Android system vars, set LANG/COLORTERM, add LD_PRELOAD for exec() compat.
     val nativeDir = context.applicationInfo.nativeLibraryDir
@@ -412,18 +412,15 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // Termux does: processName = (isLoginShell ? "-" : "") + basename(executable)
     // Use Termux bootstrap bash if installed, otherwise fall back to busybox ash.
     // TermuxBootstrapInstaller.installIfNeeded() is called from LaunchedEffect in TerminalPane.
-    return if (TermuxBootstrapInstaller.isInstalled(context)) {
-        val (shell, bashEnv) = TermuxBootstrapInstaller.shellArgs(context)
-        // --rcfile skips /etc/profile (which resolves to wrong Termux path on Samsung).
-        // Samsung kernel blocks --login via seccomp on /data/data/com.termux path.
-        val rcFile = java.io.File(context.filesDir, "home/.bashrc").absolutePath
-        // argv[0] must be "bash" — TerminalSession passes args[0] as argv[0] to execve.
-        // Use -bash (login shell convention) so bash sources etc/profile automatically.
-        // etc/profile is now fully patched (v6) to use $PREFIX, so --login is safe.
-        val session = TerminalSession(shell, home, arrayOf("-bash"), bashEnv, 4000, client)
+    return if (TermuxManager.isInstalled(context)) {
+        // TermuxManager: clean Termux parity — correct argv[0], no LD_LIBRARY_PATH
+        val (shell, argv, bashEnv) = TermuxManager.sessionArgs(context)
+        val session = TerminalSession(shell, home, argv, bashEnv, 4000, client)
         Pair(session, client)
     } else {
-        val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
+        // Busybox fallback while Termux bootstrap is being installed
+        val (bbShell, bbArgv, bbEnv) = TermuxManager.busyboxFallbackArgs(context)
+        val session = TerminalSession(bbShell, home, bbArgv, bbEnv, 4000, client)
         Pair(session, client)
     }
 }
@@ -505,7 +502,7 @@ internal fun TerminalPane(
             BusyboxInstaller.ensureOfflineShell(context)
             // Extract Termux bootstrap (bash, curl, apt) on first launch.
             // Streaming ZIP extraction — safe on 3 GB device, no full-file load.
-            TermuxBootstrapInstaller.installIfNeeded(context)
+            TermuxManager.installIfNeeded(context)
         }
         bootstrapReady = true
     }
