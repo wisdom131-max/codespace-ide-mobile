@@ -29,8 +29,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-// BusyboxInstaller replaced by TermuxManager
-import com.codespace.ide.terminal.TermuxManager
+import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.terminal.TermuxBootstrapInstaller
 import com.codespace.ide.terminal.DeviceCompatibility
 import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
@@ -372,9 +372,9 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // Use libbusybox.so from nativeLibraryDir — always executable on Android 14 (no W^X/noexec).
     // This is the same trick Termux uses: ship the binary as a .so, Android extracts it to
     // nativeLibraryDir which is always marked executable by PackageManagerService.
-    val busybox = TermuxManager.busyboxPath(context)
+    val busybox = BusyboxInstaller.shellPath(context)
     val home = File(context.filesDir, "home").also { it.mkdirs() }.absolutePath
-    val bin  = TermuxManager.homeDir(context).parent + "/bin"
+    val bin  = BusyboxInstaller.binDir(context).absolutePath
     // Build env the same way Termux does (TermuxShellEnvironment + AndroidShellEnvironment):
     // Pass through Android system vars, set LANG/COLORTERM, add LD_PRELOAD for exec() compat.
     val nativeDir = context.applicationInfo.nativeLibraryDir
@@ -411,16 +411,19 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
     // ash IS the applet name in this busybox build (not bash).
     // Termux does: processName = (isLoginShell ? "-" : "") + basename(executable)
     // Use Termux bootstrap bash if installed, otherwise fall back to busybox ash.
-    // TermuxManager.installIfNeeded() is called from LaunchedEffect in TerminalPane.
-    return if (TermuxManager.isInstalled(context)) {
-        // TermuxManager: clean Termux parity — correct argv[0], no LD_LIBRARY_PATH
-        val (shell, argv, bashEnv) = TermuxManager.sessionArgs(context)
-        val session = TerminalSession(shell, home, argv, bashEnv, 4000, client)
+    // TermuxBootstrapInstaller.installIfNeeded() is called from LaunchedEffect in TerminalPane.
+    return if (TermuxBootstrapInstaller.isInstalled(context)) {
+        val (shell, bashEnv) = TermuxBootstrapInstaller.shellArgs(context)
+        // --rcfile skips /etc/profile (which resolves to wrong Termux path on Samsung).
+        // Samsung kernel blocks --login via seccomp on /data/data/com.termux path.
+        val rcFile = java.io.File(context.filesDir, "home/.bashrc").absolutePath
+        // argv[0] must be "bash" — TerminalSession passes args[0] as argv[0] to execve.
+        // Use -bash (login shell convention) so bash sources etc/profile automatically.
+        // etc/profile is now fully patched (v6) to use $PREFIX, so --login is safe.
+        val session = TerminalSession(shell, home, arrayOf("-bash"), bashEnv, 4000, client)
         Pair(session, client)
     } else {
-        // Busybox fallback while Termux bootstrap is being installed
-        val (bbShell, bbArgv, bbEnv) = TermuxManager.busyboxFallbackArgs(context)
-        val session = TerminalSession(bbShell, home, bbArgv, bbEnv, 4000, client)
+        val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
         Pair(session, client)
     }
 }
@@ -499,10 +502,10 @@ internal fun TerminalPane(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            TermuxManager.installIfNeeded(context)
+            BusyboxInstaller.ensureOfflineShell(context)
             // Extract Termux bootstrap (bash, curl, apt) on first launch.
             // Streaming ZIP extraction — safe on 3 GB device, no full-file load.
-            TermuxManager.installIfNeeded(context)
+            TermuxBootstrapInstaller.installIfNeeded(context)
         }
         bootstrapReady = true
     }
@@ -754,7 +757,7 @@ internal fun TerminalPane(
                     DropdownMenuItem(
                         leadingIcon = { Text("📦", fontSize = 13.sp) },
                         text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; TermuxManager.installIfNeeded(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
+                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
                         text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
