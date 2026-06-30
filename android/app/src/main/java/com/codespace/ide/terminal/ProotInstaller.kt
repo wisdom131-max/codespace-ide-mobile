@@ -1,77 +1,103 @@
 package com.codespace.ide.terminal
 
 import android.content.Context
-import android.system.Os
 import android.util.Log
+import java.io.File
+import java.net.URL
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * ProotInstaller — Ubuntu 25.04 (Questing) rootfs installer.
+ * Manages Ubuntu proot installation and launch.
  *
- * Symlink strategy (r14):
- *   Write target←relpath to SYMLINKS.txt during streaming.
- *   After extraction + double GC, call Os.symlink(target, rootfs + "/" + relpath).
- *   This is the exact Termux pattern from TermuxInstaller.java.
- *   Avoids Files.createSymbolicLink() which uses symlinkat() — blocked by Samsung seccomp.
+ * Uses pre-built Termux proot binaries from jniLibs/arm64-v8a/ (packaged by Gradle
+ * into nativeLibraryDir — always executable on Android, no W^X issues).
  *
- * Path construction fix (r14):
- *   hostLink = rootfs.absolutePath + "/" + relPath  (never File(rootfs, "/absolute"))
- *   File(parent, "/absolute") silently ignores parent in Java/Kotlin — r14 eliminates this bug.
+ * Binaries in nativeLibraryDir:
+ *   libproot.so         — the real proot PIE binary (entry point, not a shared lib)
+ *   libproot-loader.so  — proot's guest ELF loader
+ *   libtalloc.so        — talloc (SONAME patched to libtalloc.so)
+ *   libandroid-shmem.so — Android shared memory shim required by proot
+ *
+ * On first Ubuntu launch:
+ *  1. [install] downloads + extracts the Ubuntu rootfs tarball
+ *  2. [launchArgs] returns correct executable + env vars using nativeLibraryDir paths
+ *
+ * MEMORY BUDGET (3 GB Samsung device):
+ *   - Download buffer: 64 KB (was 1 MB — no gain from larger buf on compressed stream)
+ *   - XZCompressorInputStream memoryLimitInKb: 96 MB  — caps XZ decoder RAM usage.
+ *     Default is unlimited; ubuntu-questing-aarch64 uses ~80 MB peak.  96 MB is safe.
+ *   - Extraction buf per file: 8 KB   (unchanged — streaming, no per-file heap spike)
  */
 object ProotInstaller {
 
-    private const val TAG     = "ProotInstaller"
+    private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r14"
-    private const val XZ_MEMORY_LIMIT_KIB = 98304  // 96 MB — safe for LZMA2 preset 6
+    private const val VERSION = "ubuntu-questing-v4.30.1-r3"
+
+    // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
+    // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
+    private const val XZ_MEMORY_LIMIT_KIB = 96 * 1024  // 96 MB
+
+    // ── public helpers ────────────────────────────────────────────────────────
 
     fun rootfsDir(context: Context): File = File(context.filesDir, "ubuntu-rootfs")
 
     fun isInstalled(context: Context): Boolean {
-        val v = File(context.filesDir, ".ubuntu_version")
-        return v.exists() &&
-               v.readText().trim() == VERSION &&
+        val versionFile = File(context.filesDir, ".ubuntu_version")
+        return versionFile.exists() &&
+               versionFile.readText().trim() == VERSION &&
                File(rootfsDir(context), "usr/bin/bash").exists()
     }
 
-    fun install(context: Context, onProgress: (String) -> Unit = {}) {
-        if (isInstalled(context)) { onProgress("Ubuntu already installed \u2713"); return }
+    /** No-op: binaries are in nativeLibraryDir (Gradle packages them automatically) */
+    fun ensureBinaries(context: Context) {
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        Log.d(TAG, "nativeLibraryDir=$nativeDir")
+        val proot  = File(nativeDir, "libproot.so")
+        val loader = File(nativeDir, "libproot-loader.so")
+        Log.d(TAG, "proot:  exists=${proot.exists()}  exec=${proot.canExecute()}  size=${proot.length()}")
+        Log.d(TAG, "loader: exists=${loader.exists()}  exec=${loader.canExecute()}  size=${loader.length()}")
+    }
 
+    /** Download + unpack the Ubuntu rootfs tarball. */
+    fun install(context: Context, onProgress: (String) -> Unit = {}) {
         val rootfs      = rootfsDir(context)
         val versionFile = File(context.filesDir, ".ubuntu_version")
-        val tarXzFile   = File(context.cacheDir, "ubuntu.tar.xz")
 
-        // ── Download (with resume) ────────────────────────────────────────────
+        if (isInstalled(context)) {
+            Log.d(TAG, "Ubuntu rootfs already installed")
+            return
+        }
+
         try {
-            onProgress("Downloading Ubuntu rootfs (~250 MB)\u2026")
+            val tarXzFile = File(context.cacheDir, "ubuntu.tar.xz")
+            val expectedSize = 250L * 1024 * 1024
             var attempts = 0
-            while (true) {
+            while (attempts < 3) {
                 attempts++
+                val existingBytes = if (tarXzFile.exists()) tarXzFile.length() else 0L
+                if (existingBytes > 0) {
+                    onProgress("Resuming download from ${existingBytes / (1024 * 1024)}MB...")
+                } else {
+                    onProgress("Downloading Ubuntu rootfs (~250 MB)...")
+                }
                 try {
-                    val existingBytes = if (tarXzFile.exists()) tarXzFile.length() else 0L
-                    val conn = URL(ROOTFS_URL).openConnection() as HttpURLConnection
-                    conn.connectTimeout = 30_000
-                    conn.readTimeout = 120_000
-                    if (existingBytes > 0) conn.setRequestProperty("Range", "bytes=$existingBytes-")
-                    conn.connect()
-
-                    val totalSize = conn.contentLengthLong.let {
-                        if (it < 0) 260L * 1024 * 1024 else existingBytes + it
-                    }.coerceAtLeast(260L * 1024 * 1024)
-
-                    conn.inputStream.use { input ->
-                        val fos = if (existingBytes > 0)
-                            java.io.FileOutputStream(tarXzFile, true)
-                        else
-                            tarXzFile.outputStream()
-                        fos.use { output ->
+                    val connection = java.net.URL(ROOTFS_URL).openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 30000
+                    connection.readTimeout = 60000
+                    if (existingBytes > 0) connection.setRequestProperty("Range", "bytes=$existingBytes-")
+                    connection.connect()
+                    val responseCode = connection.responseCode
+                    if (responseCode == 416) { tarXzFile.delete(); continue }
+                    val totalSize = connection.contentLengthLong.let { if (it > 0) it + existingBytes else expectedSize }
+                    val outStream = if (existingBytes > 0 && responseCode == 206) java.io.FileOutputStream(tarXzFile, true) else tarXzFile.outputStream()
+                    connection.inputStream.use { input ->
+                        outStream.use { output ->
+                            // 64 KB buffer — smaller means less peak heap during download.
+                            // The bottleneck is network I/O, not memcpy, so 64 KB vs 1 MB
+                            // makes zero throughput difference on a mobile connection.
                             val buf = ByteArray(64 * 1024)
                             var downloaded = existingBytes
                             var n: Int
@@ -81,7 +107,7 @@ object ProotInstaller {
                                 downloaded += n
                                 val pct = ((downloaded * 100) / totalSize).toInt()
                                 if (pct != lastPct && pct % 5 == 0) {
-                                    onProgress("Downloading... $pct% (${downloaded / (1024*1024)} MB)")
+                                    onProgress("Downloading... $pct% (${downloaded / (1024*1024)}MB)")
                                     lastPct = pct
                                 }
                             }
@@ -94,193 +120,200 @@ object ProotInstaller {
                     Thread.sleep(2000)
                 }
             }
-        } catch (e: Exception) {
-            onProgress("Download failed: ${e.message}")
-            return
-        }
+            Log.d(TAG, "Downloaded ${tarXzFile.length()} bytes")
 
-        // ── Extract ───────────────────────────────────────────────────────────
-        onProgress("Preparing extraction\u2026")
-        rootfs.deleteRecursively()
-        rootfs.mkdirs()
-        System.gc()
-        Thread.sleep(300)
+            onProgress("Extracting Ubuntu rootfs\u2026")
+            rootfs.deleteRecursively()
+            rootfs.mkdirs()
 
-        onProgress("Extracting rootfs (this takes ~3 min)\u2026")
+            // Force GC before opening the XZ decompressor — free any download-phase garbage.
+            System.gc()
+            Thread.sleep(300)
 
-        // Write symlinks to file during streaming (Termux pattern — no RAM list).
-        val symlinksFile   = File(context.cacheDir, "SYMLINKS.txt")
-        val symlinksWriter = BufferedWriter(FileWriter(symlinksFile))
-
-        var filesWritten = 0
-        var symCount     = 0
-
-        try {
+            var filesWritten = 0
+            var totalBytes   = 0L
+            // memoryLimitInKb caps XZ decoder RAM to 96 MB.
+            // Without this, XZCompressorInputStream has no limit and can allocate up to
+            // ~800 MB on large .xz files, causing OOM kills on devices with 3 GB RAM.
+            // The ubuntu-questing-aarch64 tarball uses the LZMA2 preset 6 which peaks at
+            // about 80 MB decoder RAM — 96 MB gives 16 MB headroom, safely within budget.
             XZCompressorInputStream(tarXzFile.inputStream(), false, XZ_MEMORY_LIMIT_KIB).use { xz ->
                 TarArchiveInputStream(xz).use { tar ->
-                    val writeBuf = ByteArray(32 * 1024)
                     var entry = tar.nextTarEntry
                     while (entry != null) {
-                        // stripped = path relative to rootfs root (no leading slash)
-                        val stripped = stripRoot(entry.name)
-
-                        if (stripped.startsWith("dev/") && stripped != "dev/") {
-                            entry = tar.nextTarEntry; continue
-                        }
-
-                        val outFile = File(rootfs.absolutePath + "/" + stripped)
-
-                        when {
-                            entry.isDirectory -> outFile.mkdirs()
-
-                            entry.isSymbolicLink -> {
-                                // Termux format: target←relpath  (relpath has no leading slash)
-                                symlinksWriter.write("${entry.linkName}\u2190${stripped}")
-                                symlinksWriter.newLine()
-                                outFile.parentFile?.mkdirs()
-                                symCount++
+                        if (!entry.name.contains("/dev/") || entry.name.endsWith("/dev/")) {
+                            val stripped = entry.name.split("/", limit = 2)
+                                .let { if (it.size > 1) it[1] else entry.name }
+                            val outFile = File(rootfs, stripped)
+                            when {
+                                entry.isDirectory -> outFile.mkdirs()
+                                entry.isSymbolicLink -> {
+                                    runCatching {
+                                        val link   = outFile.toPath()
+                                        val target = java.nio.file.Paths.get(entry.linkName)
+                                        if (java.nio.file.Files.exists(link))
+                                            java.nio.file.Files.delete(link)
+                                        java.nio.file.Files.createSymbolicLink(link, target)
+                                    }.onFailure { Log.w(TAG, "Symlink failed ${entry.name}: ${it.message}") }
+                                }
+                                else -> {
+                                    outFile.parentFile?.mkdirs()
+                                    runCatching {
+                                        var bytes = 0L
+                                        outFile.outputStream().use { out ->
+                                            val buf = ByteArray(8192)
+                                            var n: Int
+                                            while (tar.read(buf).also { n = it } != -1) {
+                                                out.write(buf, 0, n); bytes += n
+                                            }
+                                        }
+                                        filesWritten++; totalBytes += bytes
+                                        val mode = entry.mode
+                                        if ((mode and 0b001_001_001) != 0 ||
+                                            outFile.path.contains("/bin/") ||
+                                            outFile.path.contains("/sbin/") ||
+                                            outFile.path.contains("/lib/"))
+                                            outFile.setExecutable(true, false)
+                                        outFile.setReadable(true, false)
+                                    }.onFailure { Log.w(TAG, "Skipped ${entry.name}: ${it.message}") }
+                                }
                             }
-
-                            else -> {
-                                outFile.parentFile?.mkdirs()
-                                runCatching {
-                                    outFile.outputStream().use { o ->
-                                        var n: Int
-                                        while (tar.read(writeBuf).also { n = it } != -1)
-                                            o.write(writeBuf, 0, n)
-                                    }
-                                    val mode = entry.mode
-                                    if ((mode and 0b001_001_001) != 0 ||
-                                        outFile.path.contains("/bin/") ||
-                                        outFile.path.contains("/sbin/") ||
-                                        outFile.path.contains("/lib/"))
-                                        outFile.setExecutable(true, false)
-                                    outFile.setReadable(true, false)
-                                    filesWritten++
-                                }.onFailure { Log.w(TAG, "Skipped ${entry.name}: ${it.message}") }
-                            }
                         }
-                        if (filesWritten > 0 && filesWritten % 1000 == 0)
-                            onProgress("Extracting\u2026 $filesWritten files, $symCount symlinks")
                         entry = tar.nextTarEntry
                     }
                 }
             }
-        } catch (e: Exception) {
-            runCatching { symlinksWriter.close() }
-            onProgress("Extract failed at $filesWritten files: ${e.javaClass.simpleName}: ${e.message}")
-            Log.e(TAG, "Extract failed", e)
-            return
-        } finally {
-            runCatching { symlinksWriter.close() }
-        }
 
-        // ── Free memory before symlink pass ───────────────────────────────────
-        tarXzFile.delete()
-        System.gc()
-        Thread.sleep(500)
-        System.gc()
-        Thread.sleep(300)
-
-        // ── Symlink pass — exact Termux Os.symlink() pattern ──────────────────
-        // hostLink = rootfs.absolutePath + "/" + relPath  (never File(rootfs, "/abs"))
-        // File(root, "/usr/bin/python3") ignores root — Os.symlink avoids this bug.
-        onProgress("Creating $symCount symlinks\u2026")
-        var symlinksDone   = 0
-        var symlinksFailed = 0
-
-        symlinksFile.bufferedReader().use { reader ->
-            reader.lineSequence().forEach { line ->
-                val idx = line.indexOf('\u2190')
-                if (idx < 0) return@forEach
-                val target   = line.substring(0, idx)
-                val relPath  = line.substring(idx + "\u2190".length)
-                val hostLink = rootfs.absolutePath + "/" + relPath
-
-                File(hostLink).delete()
-                runCatching {
-                    Os.symlink(target, hostLink)
-                    symlinksDone++
-                }.onFailure { e ->
-                    Log.w(TAG, "Os.symlink failed [$symlinksDone]: $hostLink -> $target : ${e.message}")
-                    symlinksFailed++
+            tarXzFile.delete()
+            System.gc() // Free rootfs extraction memory before DNS config
+            Thread.sleep(500) // Give GC time to run
+            // Install static busybox into rootfs for dpkg/tar support
+            try {
+                val busyboxDest = File(rootfs, "usr/local/bin/busybox")
+                busyboxDest.parentFile?.mkdirs()
+                context.assets.open("tools/busybox_arm64").use { input ->
+                    busyboxDest.outputStream().use { output ->
+                        val buf = ByteArray(8192)
+                        var n: Int
+                        while (input.read(buf).also { n = it } != -1) output.write(buf, 0, n)
+                    }
                 }
-
-                if (symlinksDone % 200 == 0 && symlinksDone > 0)
-                    onProgress("Symlinks\u2026 $symlinksDone / $symCount")
+                busyboxDest.setExecutable(true, false)
+                // Create symlinks for common tools
+                listOf("tar", "ar", "xz", "gzip", "zstd", "unzstd", "sh").forEach { tool ->
+                    val link = File(rootfs, "usr/local/bin/$tool")
+                    if (!link.exists()) {
+                        runCatching {
+                            java.nio.file.Files.createSymbolicLink(link.toPath(), java.nio.file.Paths.get("/usr/local/bin/busybox"))
+                        }
+                    }
+                }
+                Log.d(TAG, "Busybox installed to rootfs")
+            } catch (e: Exception) {
+                Log.w(TAG, "Busybox install failed: ${e.message}")
             }
+            File(rootfs, "root").mkdirs()
+
+
+            // Bake DNS + apt config permanently so they survive across proot sessions
+            try {
+                val resolvConf = File(rootfs, "etc/resolv.conf")
+                resolvConf.parentFile?.mkdirs()
+                resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
+
+                val aptConfDir = File(rootfs, "etc/apt/apt.conf.d")
+                aptConfDir.mkdirs()
+                File(aptConfDir, "00sandbox").writeText(
+                    "APT::Sandbox::User \"root\";\n" +
+                    "Acquire::AllowInsecureRepositories \"true\";\n" +
+                    "APT::Get::AllowUnauthenticated \"true\";\n"
+                )
+
+                // CRITICAL: Write sources.list — the Ubuntu questing minimal image
+                // ships with an empty or localhost-only sources.list, so apt update
+                // finds zero packages. We write the full Ubuntu 25.04 (questing) sources.
+                val sourcesDir = File(rootfs, "etc/apt")
+                sourcesDir.mkdirs()
+                File(sourcesDir, "sources.list").writeText(
+                    "# Ubuntu 25.04 (Questing) — written by VN Code\n" +
+                    "deb http://ports.ubuntu.com/ubuntu-ports questing main restricted universe multiverse\n" +
+                    "deb http://ports.ubuntu.com/ubuntu-ports questing-updates main restricted universe multiverse\n" +
+                    "deb http://ports.ubuntu.com/ubuntu-ports questing-security main restricted universe multiverse\n"
+                )
+                // Also remove any .sources files that may override sources.list
+                File(rootfs, "etc/apt/sources.list.d").listFiles()?.forEach { f ->
+                    if (f.name.endsWith(".sources") || f.name.endsWith(".list")) {
+                        f.delete()
+                    }
+                }
+                // Write /etc/dpkg/dpkg.cfg to force unsafe-io permanently inside rootfs.
+                // Samsung 5.15 kernel blocks linkat/renameat2 inside proot — dpkg uses
+                // these for atomic status file renames. force-unsafe-io makes dpkg use
+                // direct write instead, matching what Termux does for OEM kernels.
+                val dpkgCfgDir = File(rootfs, "etc/dpkg")
+                dpkgCfgDir.mkdirs()
+                File(dpkgCfgDir, "dpkg.cfg").writeText(
+                    "# Written by CodeSpace IDE \u2014 OEM kernel workaround\nforce-unsafe-io\n"
+                )
+
+                // Also write /etc/apt/apt.conf.d/01dpkg-options to pass --force-unsafe-io
+                // through apt automatically, so the user never has to pass flags manually.
+                File(aptConfDir, "01dpkg-options").writeText(
+                    "DPkg::Options {\n" +
+                    "   \"--force-unsafe-io\";\n" +
+                    "};\n"
+                )
+
+                Log.d(TAG, "Baked DNS + apt config + dpkg unsafe-io workaround into rootfs")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to bake DNS/apt config: ${e.message}")
+            }
+
+            versionFile.writeText(VERSION)
+            onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
+            Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Rootfs install failed: ${e.message}", e)
+            onProgress("Failed: ${e.message}")
         }
-        symlinksFile.delete()
-        Log.d(TAG, "Symlinks: done=$symlinksDone failed=$symlinksFailed total=$symCount")
-
-        // ── Post-install config ───────────────────────────────────────────────
-        File(rootfs, "root").mkdirs()
-        File(rootfs, "tmp").apply { mkdirs() }.setWritable(true, false)
-
-        // DNS
-        File(rootfs, "etc/resolv.conf").apply {
-            parentFile?.mkdirs()
-            writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
-        }
-
-        // apt config
-        val aptConfDir = File(rootfs, "etc/apt/apt.conf.d").apply { mkdirs() }
-        File(aptConfDir, "00sandbox").writeText(
-            "APT::Sandbox::User \"root\";\n" +
-            "Acquire::AllowInsecureRepositories \"true\";\n" +
-            "APT::Get::AllowUnauthenticated \"true\";\n"
-        )
-        File(aptConfDir, "01dpkg-options").writeText(
-            "DPkg::Options {\n   \"--force-unsafe-io\";\n};\n"
-        )
-
-        // Ubuntu 25.04 sources
-        File(rootfs, "etc/apt/sources.list").apply {
-            parentFile?.mkdirs()
-            writeText(
-                "# Ubuntu 25.04 (Questing) \u2014 written by VN Code\n" +
-                "deb http://ports.ubuntu.com/ubuntu-ports questing main restricted universe multiverse\n" +
-                "deb http://ports.ubuntu.com/ubuntu-ports questing-updates main restricted universe multiverse\n" +
-                "deb http://ports.ubuntu.com/ubuntu-ports questing-security main restricted universe multiverse\n"
-            )
-        }
-        // Remove any .sources files that may override sources.list
-        File(rootfs, "etc/apt/sources.list.d").listFiles()?.forEach { f ->
-            if (f.name.endsWith(".sources") || f.name.endsWith(".list")) f.delete()
-        }
-
-        // dpkg unsafe-io for Samsung kernel
-        File(rootfs, "etc/dpkg").mkdirs()
-        File(rootfs, "etc/dpkg/dpkg.cfg").writeText(
-            "# Written by CodeSpace IDE \u2014 OEM kernel workaround\nforce-unsafe-io\n"
-        )
-
-        versionFile.writeText(VERSION)
-        onProgress("Ubuntu ready \u2713  ($filesWritten files, $symlinksDone/$symCount symlinks)")
-        Log.d(TAG, "Install complete: files=$filesWritten symlinks=$symlinksDone/$symCount")
     }
 
-    private fun stripRoot(name: String): String =
-        name.split("/", limit = 2).let { if (it.size > 1) it[1] else name }
-
+    /**
+     * Returns (prootPath, args, envVars) ready to pass to TerminalSession.
+     *
+     * Uses nativeLibraryDir — Gradle packages all libXXX.so files there automatically,
+     * and Android always marks nativeLibraryDir as executable (no W^X issue).
+     *
+     * argv[0] MUST be the program name ("proot") — execvp() convention.
+     * The JNI code does: execvp(cmdStr, argv) where argv[0] is args[0].
+     * Without this the args are shifted by 1 and proot fails immediately.
+     */
     fun launchArgs(context: Context): Triple<String, Array<String>, Array<String>> {
-        val nativeDir  = context.applicationInfo.nativeLibraryDir
-        val proot      = "$nativeDir/libproot.so"
-        val loader     = "$nativeDir/libproot-loader.so"
-        val rootfs     = rootfsDir(context).absolutePath
-        val tmpDir     = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
-        val hostFiles  = context.filesDir.absolutePath
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val proot     = "$nativeDir/libproot.so"
+        val loader    = "$nativeDir/libproot-loader.so"
+        val rootfs    = rootfsDir(context).absolutePath
+        val tmpDir    = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
+        val hostFiles = context.filesDir.absolutePath
         val selinuxDir = File(context.cacheDir, "fake-selinux").apply { mkdirs() }.absolutePath
 
+        // Log for diagnosis — this is how v13 handoff confirmed PROOT_LOADER was empty
+        Log.d(TAG, "launchArgs: nativeDir=$nativeDir")
         Log.d(TAG, "launchArgs: proot=$proot  exists=${File(proot).exists()}")
         Log.d(TAG, "launchArgs: loader=$loader  exists=${File(loader).exists()}")
-        Log.d(TAG, "launchArgs: rootfs=$rootfs  bash=${File(rootfs, "usr/bin/bash").exists()}")
+        Log.d(TAG, "launchArgs: rootfs=$rootfs  bashExists=${File(rootfs, "usr/bin/bash").exists()}")
 
         val args = arrayOf(
             "proot",
             "--kill-on-exit",
             "--link2symlink",
+            // --sysvipc removed: Samsung 5.15 kernel blocks SysV IPC syscalls inside
+            // unprivileged namespaces (clone() seccomp). proot fails to start with it.
             "--kernel-release=5.15.0-android13-4",
+            // -L (LDSO interception) removed: conflicts with our nativeLibraryDir .so layout
+            // and is only needed for running guest executables that need a different linker.
+            // Ubuntu 25.04 ships with a compatible linker — no interception needed.
             "--change-id=0:0",
             "--rootfs=$rootfs",
             "--cwd=/root",
@@ -296,6 +329,8 @@ object ProotInstaller {
             "--bind=$rootfs/tmp:/dev/shm",
             "--bind=$hostFiles:/host-files",
             "--bind=/sdcard",
+            // -w sets the initial working directory inside proot to /root.
+            // Without this getcwd() fails — proot can't map the host cwd into guest space.
             "-w", "/root",
             "/usr/bin/env", "-i",
             "HOME=/root",
@@ -312,11 +347,22 @@ object ProotInstaller {
             "PROOT_LOADER=$loader",
             "PROOT_TMP_DIR=$tmpDir",
             "PROOT_NO_SECCOMP=1",
+            // LD_LIBRARY_PATH=$nativeDir REMOVED — this was injecting libandroid-support.so
+            // (our app's AArch64 JNI .so) into the bash process inside proot, causing:
+            // "CANNOT LINK EXECUTABLE: library libandroid-support.so not found"
+            // proot itself finds its own libs via PROOT_LOADER. bash and Ubuntu binaries
+            // use their own rpath — they must NOT see the host nativeLibraryDir at all.
             "TMPDIR=$tmpDir",
-            "HOME=/root",
+            "HOME=/root",  // inside proot chroot, home is /root (not host filesDir)
+            // Prevent dpkg/debconf from trying to open a terminal frontend (dialog, readline).
+            // Inside proot there's no controlling terminal for debconf — it crashes without this.
             "DEBIAN_FRONTEND=noninteractive",
-            "DEBCONF_NONINTERACTIVE_SEEN=true",
+            // Force dpkg to skip atomic rename (linkat/renameat2) which Samsung 5.15
+            // kernel blocks inside proot. Uses direct write instead of rename-swap.
+            // This is the same workaround Termux uses for OEM kernels.
             "DPKG_FORCE=unsafe-io",
+            "DEBCONF_NONINTERACTIVE_SEEN=true",
+            // Suppress perl locale warnings from dpkg post-install scripts
             "PERL_BADLANG=0",
             "LANG=C.UTF-8",
             "LC_ALL=C"
@@ -325,3 +371,4 @@ object ProotInstaller {
         return Triple(proot, args, envVars)
     }
 }
+
