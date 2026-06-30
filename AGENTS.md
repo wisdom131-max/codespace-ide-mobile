@@ -1363,3 +1363,84 @@ GNU nano, version X.X
 3. **Ollama model access** — connect the AI chat panel to local Ollama instance
 4. **proot Ubuntu `apt`** — separate issue from Termux apt; Ubuntu chroot apt may also need sources fix
 
+---
+
+## MASTER PLAN: Full Termux Terminal Rewrite — 2026-06-30
+
+### Decision
+The user has directed a **complete rewrite** of all Termux-related terminal code.
+Everything that currently uses Termux (`TermuxBootstrapInstaller`, `BusyboxInstaller`,
+`TerminalPane` Termux session init, `TerminalSession.java`, the vendored `TerminalView`)
+is to be **replaced from scratch** with a clean, first-party implementation.
+
+### What to KEEP (do NOT touch)
+| Component | Reason to keep |
+|-----------|---------------|
+| `ProotInstaller.kt` | Ubuntu proot tab — separate system, working |
+| `TerminalPane.kt` menu structure | TERMINALS / AI & TOOLS / DEFAULT MODE / MANAGE categories |
+| `TerminalPane.kt` shortcuts | Ctrl/Alt key row, swipe gestures, tab navigation |
+| `TextExpansionStore.kt` + `TextExpansionSheet.kt` | Text expansion snippets feature |
+| `SshProfile.kt` + `SshProfileStore.kt` + `SshManagerSheet.kt` | SSH manager |
+| `TerminalEnhancements.kt` | Profile script helper |
+| `AiAssistantPane.kt` | AI chat panel |
+| `McpShellProfile.kt` | MCP shell integration |
+| `OllamaSetup.kt` | Ollama AI integration |
+| `pty_native.c` | Our patched JNI — already correct, kept as-is |
+| `NativePty.kt` | Our PTY Kotlin wrapper |
+| NewTermux UI improvements | Touch shortcuts, tab chips, font sizing, swipe, context menu |
+
+### What to REWRITE from scratch
+| Component | What replaces it |
+|-----------|-----------------|
+| `TermuxBootstrapInstaller.kt` | New `TermuxManager.kt` — clean bootstrap extraction, no legacy cruft |
+| `BusyboxInstaller.kt` | Absorbed into `TermuxManager.kt` as fallback shell |
+| `TerminalSession.java` (vendored Termux) | Keep the file but wire it through `TermuxManager` properly |
+| Session init in `TerminalPane.kt` | Clean `createBashSession()` using `TermuxManager` |
+| Shell env setup | Exact Termux parity — correct `PATH`, no `LD_LIBRARY_PATH`, correct `argv[0]` |
+
+### Target: Exact Termux Feature Parity
+The Bash tab must behave identically to real Termux:
+
+| Feature | Implementation |
+|---------|---------------|
+| `apt update` / `apt install <pkg>` | ✅ bootstrap-aarch64.zip + correct sources.list |
+| `bash` with `~/.bashrc` | Login shell via `argv[0] = "-bash"`, no `--rcfile` |
+| `ls`, `cat`, `grep`, etc. | coreutils multi-call binary, copied not symlinked (Samsung seccomp fix) |
+| `pkg install <pkg>` | Termux `bin/pkg` script, all 185 scripts patched at extraction |
+| `git`, `python`, `node`, `vim`, etc. | `apt install` from `packages-cf.termux.dev` |
+| Environment | `PREFIX`, `HOME`, `PATH`, `TMPDIR`, `TERM`, `LANG` — NO `LD_LIBRARY_PATH` |
+| Tab completion | bash readline — works natively once bash starts correctly |
+| Ctrl+C / Ctrl+Z | Signal forwarding via TerminalView |
+| Resize | `TIOCSWINSZ` via `NativePty.setWindowSize()` |
+| Multiple tabs | TerminalPane tab system (already working) |
+| Session restore | Re-launch shell on tab re-open |
+
+### Known bugs solved in this rewrite
+| Bug | Fix |
+|-----|-----|
+| `signal 31` on startup | Remove `LD_LIBRARY_PATH` entirely — Termux binaries use rpath |
+| `CANNOT LINK EXECUTABLE "--rcfile"` | Use `argv[0] = "-bash"` not `arrayOf("--rcfile", path)` |
+| `libandroid-support.so e_version mismatch` | Drop `$prefix/lib` from `LD_LIBRARY_PATH` |
+| 185 scripts with hardcoded `com.termux` paths | `patchAllScripts()` walks entire prefix after extraction |
+| `apt install nano` — package not found | `sources.list` injected at extraction time |
+| Ubuntu tab `apt` fails | `ProotInstaller` writes Ubuntu 25.04 `sources.list` on install |
+| `/etc/profile: Permission denied` | Removed `--login` flag; use `-bash` login shell convention |
+| Samsung `symlinkat()` seccomp block | Copy multi-call binaries instead of symlinking |
+
+### Build plan (execute in order)
+1. ✅ Update AGENTS.md (this entry)
+2. ⬜ Rewrite `TermuxManager.kt` — single clean replacement for `TermuxBootstrapInstaller` + `BusyboxInstaller`
+3. ⬜ Update `TerminalPane.kt` — clean `createBashSession()` wired to `TermuxManager`, keep all UI/shortcuts
+4. ⬜ Verify build is green
+5. ⬜ Test on device — `ls`, `apt update`, `apt install nano`, `git`, `python3`
+
+### Architecture after rewrite
+```
+TerminalPane.kt
+├── Bash tab  → TermuxManager.createSession(context)
+│                 └── TerminalSession(bash, cwd, ["-bash"], env, rows, client)
+│                       └── pty_native.c → fork/exec bash
+├── Ubuntu tab → ProotInstaller.launchArgs(context)  [unchanged]
+├── SSH tab    → SshProfile                           [unchanged]
+└── Busybox tab → TermuxManager.busyboxFallback()     [unchanged]
+```
