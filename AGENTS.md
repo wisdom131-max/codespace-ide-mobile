@@ -1,3 +1,22 @@
+# ⚠️ TWO-REPO STRUCTURE — READ BEFORE TOUCHING ANYTHING
+
+## THIS is the MAIN IDE repo: `wisdom131-max/codespace-ide-mobile`
+
+## Ubuntu proot fixes go in the TEST repo: `wisdom131-max/ubuntu-proot-test`
+
+| Repo | Purpose | What goes here |
+|------|---------|----------------|
+| `wisdom131-max/codespace-ide-mobile` | Full Codespace IDE app | Auth, editor, terminal UI, Bash tab, all non-Ubuntu features |
+| `wisdom131-max/ubuntu-proot-test` | Isolated Ubuntu proot test harness | ProotInstaller, proot launch args, Ubuntu rootfs extraction, symlink fixes, proot crashes |
+
+### Rule: If the fix touches proot, Ubuntu rootfs, or symlinkat() — it goes in `ubuntu-proot-test` ONLY.
+
+### DO NOT push Ubuntu/proot fixes to `codespace-ide-mobile`. They will be reverted.
+
+### Once a fix is verified working in `ubuntu-proot-test`, Wisdom will port it back manually.
+
+---
+
 # AI Agent / Copilot — Project Context
 > Read this FIRST before touching any code. Updated June 30, 2026.
 
@@ -340,5 +359,6 @@ apt install -y nano git python3
 ## BACKLOG — HARD
 
 - [ ] **Remotion video creator** — render videos clip-by-clip using Remotion (React-based), then merge clips into final video using FFmpeg; avoids memory/timeout issues from rendering full video at once; ideal for YouTube content, code walkthroughs, and project demos from within the IDE
+
 
 
