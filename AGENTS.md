@@ -123,6 +123,7 @@ We use:  `context.filesDir/termux-prefix` — correct, just different path
 | `/etc/profile: Permission denied` | `--login` flag tries host `/etc/profile` | Remove `--login` flag entirely |
 | 185 scripts broken paths | Bootstrap zip hardcodes `/data/data/com.termux/files/usr` | `patchAllScripts()` after extraction |
 | `apt install` — no packages found | `sources.list` is empty in bootstrap zip | Write sources.list at extraction time |
+| `CANNOT LINK EXECUTABLE -bash: libandroid-support.so not found` | `LD_LIBRARY_PATH=$nativeDir` in proot envVars — host JNI .so injected into bash | Remove `LD_LIBRARY_PATH` from proot `envVars` entirely (a86517fa) |
 | Samsung `symlinkat()` seccomp block | Samsung kernel 5.15 blocks symlinkat() | Copy multi-call binaries instead of symlinking |
 
 ---
@@ -271,6 +272,7 @@ apt install -y nano git python3
 - [x] Step 1 — Diagnose Ubuntu apt ✅
 - [x] Step 2 — Fix Ubuntu sources.list ✅ (already correct)
 - [x] Step 3 — Fix proot launch args ✅ 8f0f5ba6
+- [x] Step 3b — Remove LD_LIBRARY_PATH from proot envVars ✅ a86517fa
 - [ ] Step 4 — Device test Ubuntu (**HUMAN STEP**)
 - [ ] Step 5 — Fix Bash shellArgs() — remove LD_LIBRARY_PATH
 - [ ] Step 6 — Fix TerminalPane createTerminalSession args
