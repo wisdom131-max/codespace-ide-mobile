@@ -1363,3 +1363,127 @@ GNU nano, version X.X
 3. **Ollama model access** — connect the AI chat panel to local Ollama instance
 4. **proot Ubuntu `apt`** — separate issue from Termux apt; Ubuntu chroot apt may also need sources fix
 
+---
+
+## TERMINAL REBUILD PLAN — 2026-06-30
+### Status: PLANNING (not started)
+### Base commit: 45beedcb (reverted to b34abb09 state — green build)
+
+---
+
+### GOAL
+Replace the broken Termux session launch with a clean, first-party implementation
+that achieves **exact Termux feature parity**: bash, apt, pkg, git, python, vim — all
+working out of the box, identical to real Termux.
+
+---
+
+### WHAT TO KEEP — DO NOT TOUCH THESE
+| File | Why |
+|------|-----|
+| `ProotInstaller.kt` | Ubuntu proot tab — separate, working |
+| `TerminalPane.kt` — ALL UI | Menu categories, tab chips, shortcuts bar, swipe gestures, font size |
+| `TextExpansionStore.kt` / `TextExpansionSheet.kt` | Snippet feature |
+| `SshProfile.kt` / `SshProfileStore.kt` / `SshManagerSheet.kt` | SSH manager |
+| `AiAssistantPane.kt` | AI chat panel |
+| `McpShellProfile.kt` | MCP shell |
+| `OllamaSetup.kt` | Ollama AI |
+| `TerminalEnhancements.kt` | Profile helper |
+| `pty_native.c` | JNI fork/exec — already correct |
+| `NativePty.kt` | PTY Kotlin wrapper |
+| NewTermux improvements | Touch shortcuts, swipe, context menu, tab gestures |
+
+---
+
+### ROOT CAUSE OF ALL CRASHES (documented — do not repeat these)
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| `signal 31` on bash start | `LD_LIBRARY_PATH` set to `$nativeDir` — app JNI .so files injected into bash process, wrong ABI → SIGSEGV → OEM cleanup signal 31 | **Remove LD_LIBRARY_PATH entirely** — Termux binaries use rpath |
+| `CANNOT LINK EXECUTABLE "--rcfile"` | `args[0]` passed as `"--rcfile"` — JNI `execve()` treats `args[0]` as the binary name | **Use `arrayOf("-bash")`** — leading dash = login shell convention |
+| `libandroid-support.so e_version: 65725` | `$prefix/lib` in `LD_LIBRARY_PATH` — Termux bootstrap .so has wrong ELF version for our linker | **Drop `$prefix/lib`** — same fix as above (remove LD_LIBRARY_PATH entirely) |
+| `apt install nano` — package not found | `sources.list` empty in bootstrap zip | Write `sources.list` at extraction time |
+| `/etc/profile: Permission denied` | `--login` flag tries to source host `/etc/profile` | Remove `--login`, use `-bash` argv[0] login shell instead |
+| 185 scripts broken paths | Bootstrap zip hardcodes `/data/data/com.termux/files/usr` | `patchAllScripts()` after extraction |
+| Samsung `symlinkat()` seccomp | Samsung kernel 5.15 blocks `symlinkat()` in app namespaces | Copy multi-call binaries (coreutils, dash, gawk) instead of symlinking |
+
+---
+
+### STEP-BY-STEP BUILD PLAN
+
+#### STEP 1 — Clean up `TermuxBootstrapInstaller.kt` (DO NOT REWRITE — just fix shellArgs)
+**File:** `TermuxBootstrapInstaller.kt`
+**What:** The extraction logic is correct (patchAllScripts works). Only `shellArgs()` is broken.
+**Changes:**
+- Remove `LD_LIBRARY_PATH` from env entirely
+- Confirm `argv[0] = "-bash"` in the returned args
+- Remove any `--rcfile` reference
+- Remove `$prefix/lib` and `$nativeDir` from any env var
+**Test:** Build green, bash starts, `echo $PREFIX` prints the prefix path
+
+#### STEP 2 — Wire `TerminalPane.kt` session init correctly
+**File:** `TerminalPane.kt` — only the `createTerminalSession()` function
+**What:** Replace the `TerminalSession(shell, home, arrayOf("-bash"), bashEnv, ...)` call
+to use the fixed `shellArgs()` from Step 1.
+**Changes:**
+- `val (shell, argv, env) = TermuxBootstrapInstaller.shellArgs(context)`
+- `TerminalSession(shell, home, argv, env, 4000, client)`
+**Do NOT touch:** menu, tabs, shortcuts, swipe, font, any UI composable
+**Test:** Bash tab opens, prompt appears, no signal 31
+
+#### STEP 3 — Verify apt works
+**On device:**
+```
+apt update
+apt install -y nano
+nano --version
+apt install -y git
+git --version
+```
+Expected: packages download and install. If `apt update` fails, check `sources.list`.
+
+#### STEP 4 — Verify Ubuntu tab apt works
+**On device:** Open Ubuntu tab (fresh install)
+```
+apt update
+apt install -y nano
+```
+Expected: Ubuntu 25.04 packages resolve from `ports.ubuntu.com`.
+The `sources.list` fix is already in `ProotInstaller.kt` (commit `2b93e4ef`).
+
+#### STEP 5 — Extensions panel (real package explorer)
+**File:** New `ExtensionsPane.kt` or inside `TerminalPane.kt`
+**What:** Real VS Code-style extension/package market connected to the live terminal
+**Features:**
+- Reads `/var/lib/dpkg/status` from Termux prefix → shows installed packages
+- Reads `/var/lib/dpkg/status` from Ubuntu proot → shows Ubuntu installed packages
+- Search box queries `apt-cache search <term>` via a background shell command
+- One-tap install: sends `apt install -y <pkg>\n` to the active terminal tab
+- Categories: Dev Tools, Languages, Networking, Utilities, AI/ML
+- Badge count on Extensions icon shows how many packages are installed
+**Tech:** `TerminalPane` exposes `fun sendToActiveTab(cmd: String)` — Extensions panel calls it
+
+#### STEP 6 — Categorized terminal menu (dropdown cleanup)
+**Current state:** Menu has TERMINALS / AI & TOOLS / DEFAULT MODE / MANAGE categories — keep these
+**Changes:**
+- Add chevron/expand icon to dropdown sections
+- Move scattered buttons (Open Ubuntu, Offline Tools) INTO the dropdown categories
+- No floating buttons outside the dropdown
+**Do NOT break:** existing menu items, tab creation, keyboard shortcut row
+
+---
+
+### EXECUTION RULES FOR AGENT
+1. Start each step by reading the target file fresh from GitHub
+2. Make the smallest possible change — surgical edits, not rewrites
+3. Push and wait for green build before the next step
+4. If a build fails: read the error log, fix only the error, re-push — do not refactor
+5. Never touch files not listed in a step's "File:" section
+6. Update this plan's step status (⬜ → ✅) after each green build
+
+### STEP STATUS
+- [ ] Step 1 — Fix shellArgs() in TermuxBootstrapInstaller.kt
+- [ ] Step 2 — Wire TerminalPane.kt to fixed shellArgs
+- [ ] Step 3 — Verify apt on Bash tab (device test)
+- [ ] Step 4 — Verify apt on Ubuntu tab (device test)
+- [ ] Step 5 — Build ExtensionsPane (real package market)
+- [ ] Step 6 — Clean up terminal menu dropdown
