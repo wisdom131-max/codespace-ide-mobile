@@ -34,7 +34,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1"
+    private const val VERSION = "ubuntu-questing-v4.30.1-r2"
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
@@ -308,9 +308,12 @@ object ProotInstaller {
             "proot",
             "--kill-on-exit",
             "--link2symlink",
-            "--sysvipc",
-            "--kernel-release=6.17.0-android13-1",
-            "-L",
+            // --sysvipc removed: Samsung 5.15 kernel blocks SysV IPC syscalls inside
+            // unprivileged namespaces (clone() seccomp). proot fails to start with it.
+            "--kernel-release=5.15.0-android13-4",
+            // -L (LDSO interception) removed: conflicts with our nativeLibraryDir .so layout
+            // and is only needed for running guest executables that need a different linker.
+            // Ubuntu 25.04 ships with a compatible linker — no interception needed.
             "--change-id=0:0",
             "--rootfs=$rootfs",
             "--cwd=/root",
@@ -325,22 +328,17 @@ object ProotInstaller {
             "--bind=$selinuxDir:/sys/fs/selinux",
             "--bind=$rootfs/tmp:/dev/shm",
             "--bind=$hostFiles:/host-files",
-            // Bind /sdcard so user can access Downloads inside Ubuntu
             "--bind=/sdcard",
-            // -w sets the initial working directory inside the chroot to /root.
-            // Without this, getcwd() fails with ENOSYS because proot can't translate
-            // the host cwd (/data/data/...) into a guest path. Every shell command that
-            // calls getcwd() (dpkg, debconf, perl) would crash with "Function not implemented".
+            // -w sets the initial working directory inside proot to /root.
+            // Without this getcwd() fails — proot can't map the host cwd into guest space.
             "-w", "/root",
-            // Bind /proc/self/cwd so getcwd() resolves through procfs when
-            // the kernel blocks SYS_getcwd (Samsung 5.15 seccomp policy).
-            "--bind=/proc/self/cwd:/proc/self/cwd",
             "/usr/bin/env", "-i",
             "HOME=/root",
             "USER=root",
             "LOGNAME=root",
             "TERM=xterm-256color",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "COLORTERM=truecolor",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games",
             "MOZ_FAKE_NO_SANDBOX=1",
             "/bin/bash", "--login"
         )
