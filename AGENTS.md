@@ -360,5 +360,20 @@ apt install -y nano git python3
 
 - [ ] **Remotion video creator** — render videos clip-by-clip using Remotion (React-based), then merge clips into final video using FFmpeg; avoids memory/timeout issues from rendering full video at once; ideal for YouTube content, code walkthroughs, and project demos from within the IDE
 
+## 2026-06-30 — ProotInstaller r14: Os.symlink + SYMLINKS.txt file-based pattern
 
+**Commit:** 4d8d9580ab9c
+**Problem:** Ubuntu symlinks failing with Bad system call.
+**Root causes:**
+1. Files.createSymbolicLink() calls symlinkat() — blocked by Samsung kernel 5.15 seccomp.
+2. File(rootfs, "/usr/bin/python3") silently ignores rootfs when child starts with slash.
+
+**Fix (exact Termux TermuxInstaller.java pattern):**
+- Write symlinks to SYMLINKS.txt during tar streaming (format: target←relpath)
+- After extraction + double GC: Os.symlink(target, rootfs.absolutePath + "/" + relPath)
+- Os.symlink() bypasses blocked symlinkat() via Android JNI layer
+- Path construction: always use string concat, never File(parent, "/absolute")
+
+**Validated:** ubuntu-proot-test r14 (886f7e7d5f) builds green.
+**Bash tab:** TermuxBootstrapInstaller v2 uses copy-instead-of-symlink for multi-call binaries.
 
