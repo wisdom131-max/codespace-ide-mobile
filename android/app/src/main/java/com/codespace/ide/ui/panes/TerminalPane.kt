@@ -365,12 +365,7 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
 
     if (isUbuntu) {
         val (proot, args, envVars) = ProotInstaller.launchArgs(context)
-        // CWD must be a real, readable directory on the host — "/" is the host root
-        // which may not be accessible from the app's SELinux context.
-        // Use filesDir which is always accessible to the app process.
-        val sessionCwd = android.os.Environment.getExternalStorageDirectory()?.absolutePath
-            ?: context.filesDir.absolutePath
-        val session = TerminalSession(proot, sessionCwd, args, envVars, 4000, client)
+        val session = TerminalSession(proot, "/", args, envVars, 4000, client)
         return Pair(session, client)
     }
 
@@ -1271,13 +1266,8 @@ internal fun TerminalPane(
                             // PTY resize on layout change — without this, vim/nano use wrong cols/rows
                             // Also fires on rotation — updateSize() sends new COLUMNS/ROWS to PTY
                             addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
-                                val newW = r - l; val newH = b - t
-                                val oldW = or2 - ol; val oldH = ob - ot
-                                if (newW != oldW || newH != oldH) {
-                                    post {
-                                        updateSize()       // sends COLUMNS/ROWS to PTY
-                                        onScreenUpdated()  // redraws terminal buffer
-                                    }
+                                if ((r - l) != (or2 - ol) || (b - t) != (ob - ot)) {
+                                    post { onScreenUpdated() }
                                 }
                             }
                         }
@@ -1321,29 +1311,6 @@ internal fun TerminalPane(
                         // Only call attachSession if session actually changed — it resets scroll
                         if (view.mTermSession != active.session) {
                             view.attachSession(active.session)
-                            // Force PTY initialization immediately after session attach.
-                            // Without this, proot/bash shows a black screen because
-                            // initializeEmulator() is only called from updateSize(), and
-                            // updateSize() is only triggered by onSizeChanged() — which
-                            // only fires if the view is already laid out. On Ubuntu tabs
-                            // the view is already on screen but the session was just swapped
-                            // in, so onSizeChanged() never fires again. We fix this by
-                            // posting an explicit updateSize() after attach.
-                            view.post {
-                                val w = view.width
-                                val h = view.height
-                                if (w > 0 && h > 0) {
-                                    view.updateSize()
-                                } else {
-                                    // View not measured yet — wait for layout
-                                    view.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-                                        override fun onGlobalLayout() {
-                                            view.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                                            view.updateSize()
-                                        }
-                                    })
-                                }
-                            }
                             active.client.initBell(view.context)
                             // Wire hardware keyboard shortcuts to tab actions
                             val viewClient2 = view.mClient as? SimpleTerminalViewClient
