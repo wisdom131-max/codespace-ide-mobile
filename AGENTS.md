@@ -132,14 +132,14 @@ We use:  `context.filesDir/termux-prefix` — correct, just different path
 ### PRIORITY 1: Ubuntu tab (close to working — fix first)
 
 #### STEP 1 — Diagnose Ubuntu apt failure
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ DONE (2026-06-30)
 **What:** Read ProotInstaller.kt fresh, read launchArgs(), check proot command args
 **Test on device:** Open Ubuntu tab → run `apt update`
 **Expected error:** Either network, sources.list, or proot exec failure
 **Rule:** Read the file, understand exactly what proot command is executed, then fix
 
 #### STEP 2 — Fix Ubuntu apt sources.list
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ DONE (2026-06-30) — sources.list already correct in commit 2b93e4ef
 **File:** `ProotInstaller.kt`
 **What:** Confirm `sources.list` is written with correct Ubuntu 25.04 (questing) URLs:
 ```
@@ -150,11 +150,22 @@ deb http://ports.ubuntu.com/ubuntu-ports questing-security main restricted unive
 **Rule:** Only touch `writeEnvironment()` or the sources.list injection block
 
 #### STEP 3 — Fix proot launch args (if needed)
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ DONE (2026-06-30) — commit 8f0f5ba6
 **File:** `ProotInstaller.kt` → `launchArgs()`
 **What:** Verify proot is called with `-0` (fake root), correct `--rootfs=`, `-w /root`,
 correct `DEBIAN_FRONTEND=noninteractive`
 **Rule:** Only change what's broken, build, test
+
+
+### STEP 3 FINDINGS (2026-06-30 — commit 8f0f5ba6)
+Removed from proot args:
+- `--sysvipc` — Samsung 5.15 kernel blocks SysV IPC syscalls inside unprivileged namespaces
+- `-L` (LDSO interception) — conflicts with our nativeLibraryDir .so layout
+- `--bind=/proc/self/cwd:/proc/self/cwd` — self-referential bind causes confusion
+Changed:
+- `--kernel-release` from `6.17.0-android13-1` → `5.15.0-android13-4` (matches actual Samsung kernel)
+- VERSION bumped to `ubuntu-questing-v4.30.1-r2` (forces re-extraction on device)
+Build: ✅ green (8f0f5ba6)
 
 #### STEP 4 — Device test Ubuntu
 **Status:** ⬜ DEVICE TEST (human)
@@ -257,9 +268,9 @@ apt install -y nano git python3
 ---
 
 ## STEP STATUS SUMMARY
-- [ ] Step 1 — Diagnose Ubuntu apt
-- [ ] Step 2 — Fix Ubuntu sources.list
-- [ ] Step 3 — Fix proot launch args
+- [x] Step 1 — Diagnose Ubuntu apt ✅
+- [x] Step 2 — Fix Ubuntu sources.list ✅ (already correct)
+- [x] Step 3 — Fix proot launch args ✅ 8f0f5ba6
 - [ ] Step 4 — Device test Ubuntu (**HUMAN STEP**)
 - [ ] Step 5 — Fix Bash shellArgs() — remove LD_LIBRARY_PATH
 - [ ] Step 6 — Fix TerminalPane createTerminalSession args
