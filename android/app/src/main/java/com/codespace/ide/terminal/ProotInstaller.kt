@@ -34,7 +34,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r2"
+    private const val VERSION = "ubuntu-questing-v4.30.1-r3"
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
@@ -347,11 +347,11 @@ object ProotInstaller {
             "PROOT_LOADER=$loader",
             "PROOT_TMP_DIR=$tmpDir",
             "PROOT_NO_SECCOMP=1",
-            "LD_LIBRARY_PATH=$nativeDir",
-            // LD_PRELOAD libtermux-exec is intentionally NOT set here.
-            // Inside proot, the host nativeLibraryDir path is not accessible to the guest,
-            // causing "cannot be preloaded: ignored" noise on every session start.
-            // exec() interception is not needed inside the Ubuntu chroot.
+            // LD_LIBRARY_PATH=$nativeDir REMOVED — this was injecting libandroid-support.so
+            // (our app's AArch64 JNI .so) into the bash process inside proot, causing:
+            // "CANNOT LINK EXECUTABLE: library libandroid-support.so not found"
+            // proot itself finds its own libs via PROOT_LOADER. bash and Ubuntu binaries
+            // use their own rpath — they must NOT see the host nativeLibraryDir at all.
             "TMPDIR=$tmpDir",
             "HOME=/root",  // inside proot chroot, home is /root (not host filesDir)
             // Prevent dpkg/debconf from trying to open a terminal frontend (dialog, readline).
