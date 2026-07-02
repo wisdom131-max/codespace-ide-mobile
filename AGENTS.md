@@ -377,3 +377,89 @@ apt install -y nano git python3
 **Validated:** ubuntu-proot-test r14 (886f7e7d5f) builds green.
 **Bash tab:** TermuxBootstrapInstaller v2 uses copy-instead-of-symlink for multi-call binaries.
 
+
+## 2026-07-02 — r5: restored --link2symlink crash fix + ported dpkg/apt fixes from ubuntu-proot-test
+
+### Part 1 — regression fix (found while doing the port below, unrelated to it)
+
+While reviewing `ProotInstaller.kt` before porting the apt fixes, found that the confirmed
+Samsung/TECNO `symlinkat()` seccomp crash fix (r4, commit `70b415a`, removed
+`--link2symlink` from the proot args) had been **accidentally reverted**. Commit `9de8534`
+("revert: ProotInstaller.kt back to a86517fa — fixes belong in ubuntu-proot-test only")
+reverted one commit too far — past `70b415a` — while trying to undo an unrelated bad
+experiment, wiping out a real, already-verified fix along with it. All later work (the r14
+attempt and the final "revert to r3") never restored it, so `--link2symlink` has been back
+in the shipped app this whole time. **Fixed:** removed it again in r5, with a comment
+documenting exactly how it was lost so this doesn't happen a third time.
+
+### Part 2 — dpkg/apt fixes ported from ubuntu-proot-test
+
+Per user instruction ("Go"), ported the confirmed, on-device-verified apt/dpkg fixes from
+the `ubuntu-proot-test` test-bed repo into this app. Full debugging trail for these fixes
+lives in `ubuntu-proot-test`'s own AGENTS.md (multiple sessions); summary of what shipped:
+
+**1. `libdpkg_android_fix.so` — LD_PRELOAD shim (new file: `cpp/dpkg_android_fix.c`)**
+Freestanding (`-nostdlib -nodefaultlibs`, raw aarch64 syscalls, zero external deps — must
+load into Ubuntu's glibc process via LD_PRELOAD without pulling in Android libm/libdl).
+Fixes two real EPERM/EACCES failures dpkg hits on Android:
+- `link()` → EACCES (dpkg's status/status-old hardlink backup) → redirected to `rename()`.
+- `chown()`/`lchown()`/`fchown()` → EPERM in proot without real root → no-op.
+Built as a normal Android JNI shared lib, then copied into the guest rootfs at
+`usr/lib/libdpkg_android_fix.so` post-extraction, and LD_PRELOAD'd via
+`/etc/profile.d/99-dpkg-fix.sh` (guest-side only — setting LD_PRELOAD as a *host* env var
+passed to proot itself breaks `libproot.so`).
+CMakeLists.txt POST_BUILD step strips a stray `NEEDED libm.so` entry that the NDK's CMake
+toolchain auto-injects regardless of `-nostdlib` flags (confirmed via `readelf -d` during
+ubuntu-proot-test's own r17/r18 builds) — requires `patchelf`, now installed in
+`android-build.yml` CI.
+
+**2. Did NOT port ubuntu-proot-test's dpkg-split / update-alternatives / service stubbing**
+This is the important one. ubuntu-proot-test's *own* `install()` code (still, as of this
+writing) creates no-op stubs for `usr/bin/dpkg-split` and `usr/bin/update-alternatives`,
+and stubs `usr/sbin/service` alongside `ldconfig`/`invoke-rc.d`/etc. On-device debugging
+in that repo proved these specific three stubs (dpkg-split, update-alternatives, service)
+were the actual root cause of "apt install silently does nothing" — dpkg-split in
+particular made every single install a no-op without ever opening the .deb, going all the
+way back to that repo's r10. The real fix was simply to stop overwriting them: the
+Questing rootfs tarball already ships correct real binaries for all three before our own
+code stomps on them. **This app never had that stubbing bug** (confirmed — grepped this
+file before making any changes, no `dpkg-split`/`update-alternatives`/`service` stub logic
+existed here), so there was nothing to remove; this note exists so nobody "helpfully" adds
+that stubbing pattern here later by copying it from ubuntu-proot-test without checking its
+own AGENTS.md first.
+Left `ldconfig`/`ldconfig.real`/`update-initramfs`/`systemd-tmpfiles`/`invoke-rc.d`/
+`policy-rc.d` untouched too — this app doesn't stub them either, and they weren't part of
+the confirmed dpkg-provided-binary audit (that only covered `dpkg-divert`,
+`dpkg-statoverride`, `dpkg-trigger`, `dpkg-query`, `dpkg-deb`, `dpkg-split`,
+`update-alternatives`, `service`). If a future session finds this app *does* stub any of
+those, treat it exactly like dpkg-split/update-alternatives/service: audit before trusting
+the stub, since "no-op it, never verified" was the actual root cause of this entire saga.
+
+**3. Five shadow-utils wrapper scripts** (`useradd`, `usermod`, `groupadd`, `userdel`,
+`groupdel`) — installed to `usr/sbin/*` post-extraction, original binary preserved as
+`*.real`. Root cause: these tools lock `/etc/passwd`/`/etc/group` via `link()` to a
+`.lock` file then explicitly check the resulting **nlink count** to confirm it's a real
+hardlink. The `dpkg_android_fix.so` `link()→rename()` shim makes the call succeed but
+produces nlink=1, not the nlink=2 a genuine hardlink has — so shadow-utils correctly
+detects it's not a real lock and refuses. Not fixable at the syscall-shim level; these
+wrappers try the real binary first and only fall back to direct file edits on a genuine
+lock failure.
+**Important caveat:** the actual wrapper scripts were never committed to `ubuntu-proot-test`'s
+own repo — they were applied live, interactively, on the user's device only, and are
+documented in prose (with example bugs found/fixed) in that repo's status reports. The
+versions shipped here were **reconstructed from those prose descriptions**, not copied
+from verified source. Shell-syntax-checked (`sh -n`) clean on all 5, but **not yet
+independently confirmed on-device in this repo**. Two known bugs from the original
+ubuntu-proot-test iteration were deliberately avoided while writing these: (a) `useradd`'s
+group resolution must convert a group *name* to its numeric GID before writing
+`/etc/passwd` — writing the name directly corrupts the line for glibc's NSS parser; (b)
+never use `args="$@"; set -- $args` — that POSIX word-splits and silently truncates any
+multi-word argument like `-c "test comment"`. All args here are parsed directly from
+`"$@"`/`"$1"`, never re-split through an unquoted variable.
+
+### Status
+Version bumped to r5 (forces fresh rootfs extraction + re-application of all baked-in
+config on any device already on r3/r4). CI build triggered; not yet installed/tested on
+the user's TECNO KL4. Per my own standing limitation (no Android emulator/ADB access in
+this sandbox — see memory), on-device confirmation is a manual step for the user once the
+build goes green.
