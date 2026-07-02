@@ -37,7 +37,15 @@ add_library(dpkg_android_fix SHARED dpkg_android_fix.c)
 # Zero external dependencies: compile freestanding so Ubuntu's glibc ld.so can
 # load this via LD_PRELOAD without needing Android's libm/libdl/libc. Uses raw
 # aarch64 syscalls instead of libc wrappers.
-target_compile_options(dpkg_android_fix PRIVATE -nostdlib -nodefaultlibs -fPIC -ffreestanding)
+# -fno-stack-protector is required: the NDK clang toolchain enables stack-
+# protector instrumentation by default for any function with a stack array
+# (here, __copy_file()'s 8KB buf[]). That instrumentation calls
+# __stack_chk_fail() from libc at function epilogue -- but this target is
+# -nostdlib/-nodefaultlibs (freestanding, zero libc deps for LD_PRELOAD into
+# glibc), so that symbol is never defined -> "undefined symbol: __stack_chk_fail"
+# at link time. Disabling the canary is safe here: this is a tiny, fixed-size,
+# non-attacker-controlled-length copy loop, not parsing untrusted input.
+target_compile_options(dpkg_android_fix PRIVATE -nostdlib -nodefaultlibs -fPIC -ffreestanding -fno-stack-protector -fno-builtin)
 target_link_options(dpkg_android_fix PRIVATE -nostdlib -nodefaultlibs)
 
 # The NDK's CMake toolchain file auto-appends "-lm" to the final link line via its
