@@ -29,14 +29,9 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.codespace.ide.terminal.BusyboxInstaller
-import com.codespace.ide.terminal.TermuxBootstrapInstaller
-import com.codespace.ide.terminal.DeviceCompatibility
-import com.codespace.ide.terminal.OllamaSetup
 import com.codespace.ide.terminal.ProotInstaller
 import android.content.ServiceConnection
 import com.codespace.ide.terminal.TerminalService
-import com.codespace.ide.terminal.TerminalModeManager
 import com.codespace.ide.terminal.SshProfileStore
 import com.codespace.ide.terminal.TextExpansionStore
 import com.termux.terminal.TerminalSession
@@ -369,63 +364,22 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false):
         return Pair(session, client)
     }
 
-    // Use libbusybox.so from nativeLibraryDir — always executable on Android 14 (no W^X/noexec).
-    // This is the same trick Termux uses: ship the binary as a .so, Android extracts it to
-    // nativeLibraryDir which is always marked executable by PackageManagerService.
-    val busybox = BusyboxInstaller.shellPath(context)
+    // Non-Ubuntu path is ONLY ever used as an inert placeholder — e.g. to hold a PTY open
+    // and display progress text (via writeToDisplay's direct emulator buffer append) while
+    // the real Ubuntu proot session installs/launches in the background. It is never
+    // exposed to the user as a selectable shell. We deliberately removed the old
+    // busybox/ash and Termux-bootstrap/bash dual-shell system (see AGENTS.md) — Ubuntu proot
+    // is now the only terminal environment the app ships. Use the OS's own /system/bin/sh
+    // so no bundled binary is needed at all for this placeholder.
     val home = File(context.filesDir, "home").also { it.mkdirs() }.absolutePath
-    val bin  = BusyboxInstaller.binDir(context).absolutePath
-    // Build env the same way Termux does (TermuxShellEnvironment + AndroidShellEnvironment):
-    // Pass through Android system vars, set LANG/COLORTERM, add LD_PRELOAD for exec() compat.
-    val nativeDir = context.applicationInfo.nativeLibraryDir
-    val ldPreload  = "$nativeDir/libtermux-exec.so"
-    // uid-based username for USER env var (Termux does this via getpwuid)
-    val uid = android.os.Process.myUid()
-    val userName = try {
-        android.os.Process.myPid().let { "u0_a${uid - 10000}" }
-    } catch (_: Exception) { "vncode" }
-
-    val envBuilder = mutableListOf(
+    val env = arrayOf(
         "HOME=$home",
         "PWD=$home",
-        "PATH=$bin:/system/bin:/system/xbin",
         "TERM=xterm-256color",
-        "COLORTERM=truecolor",
-        "LANG=en_US.UTF-8",
-        "SHELL=$busybox",
-        "BUSYBOX=$busybox",
-        "TMPDIR=${context.cacheDir.absolutePath}",
-        "USER=vncode",
-        "LOGNAME=vncode"
+        "PATH=/system/bin:/system/xbin"
     )
-    // LD_PRELOAD: intercepts exec() calls — Termux's secret weapon for Android compat.
-    if (java.io.File(ldPreload).exists()) envBuilder.add("LD_PRELOAD=$ldPreload")
-    // Pass through Android system environment vars exactly as Termux does
-    for (key in listOf("ANDROID_DATA","ANDROID_ROOT","ANDROID_STORAGE","ANDROID_RUNTIME_ROOT",
-                       "ANDROID_ART_ROOT","ANDROID_I18N_ROOT","ANDROID_TZDATA_ROOT",
-                       "EXTERNAL_STORAGE","BOOTCLASSPATH","DEX2OATBOOTCLASSPATH")) {
-        System.getenv(key)?.let { envBuilder.add("$key=$it") }
-    }
-    val env = envBuilder.toTypedArray()
-    // argv[0] = "-ash" — POSIX leading-dash login shell convention.
-    // ash IS the applet name in this busybox build (not bash).
-    // Termux does: processName = (isLoginShell ? "-" : "") + basename(executable)
-    // Use Termux bootstrap bash if installed, otherwise fall back to busybox ash.
-    // TermuxBootstrapInstaller.installIfNeeded() is called from LaunchedEffect in TerminalPane.
-    return if (TermuxBootstrapInstaller.isInstalled(context)) {
-        val (shell, bashEnv) = TermuxBootstrapInstaller.shellArgs(context)
-        // --rcfile skips /etc/profile (which resolves to wrong Termux path on Samsung).
-        // Samsung kernel blocks --login via seccomp on /data/data/com.termux path.
-        val rcFile = java.io.File(context.filesDir, "home/.bashrc").absolutePath
-        // argv[0] must be "bash" — TerminalSession passes args[0] as argv[0] to execve.
-        // Use -bash (login shell convention) so bash sources etc/profile automatically.
-        // etc/profile is now fully patched (v6) to use $PREFIX, so --login is safe.
-        val session = TerminalSession(shell, home, arrayOf("-bash"), bashEnv, 4000, client)
-        Pair(session, client)
-    } else {
-        val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
-        Pair(session, client)
-    }
+    val session = TerminalSession("/system/bin/sh", home, arrayOf("sh"), env, 4000, client)
+    return Pair(session, client)
 }
 
 
@@ -439,6 +393,9 @@ internal class TerminalState(
 ) {
     var activeId by androidx.compose.runtime.mutableStateOf(initialActiveId)
     var pinnedId by androidx.compose.runtime.mutableStateOf<String?>(null)  // pinned mirror session
+    // Guards the one-time Ubuntu bootstrap so it only runs once even if this state is
+    // shared across multiple TerminalPane composables (split panels).
+    var ubuntuBootstrapStarted by androidx.compose.runtime.mutableStateOf(false)
 
     val active: TabSession? get() = tabs.firstOrNull { it.id == activeId }
     val pinned: TabSession? get() = tabs.firstOrNull { it.id == (pinnedId ?: activeId) }
@@ -447,15 +404,11 @@ internal class TerminalState(
 @androidx.compose.runtime.Composable
 internal fun rememberTerminalState(context: android.content.Context): TerminalState {
     return androidx.compose.runtime.remember {
-        val terminalMode = TerminalModeManager(context)
-        val deviceCompat = DeviceCompatibility(context)
+        // App ships Ubuntu proot as the only terminal environment. The initial tab starts
+        // as an inert placeholder (see createTerminalSession) and gets upgraded to the real
+        // Ubuntu proot session by the bootstrap LaunchedEffect in TerminalPane below.
         val (session, client) = createTerminalSession(context)  // service not yet bound at init time
-        val defaultName = when (terminalMode.currentMode()) {
-            TerminalModeManager.MODE_UBUNTU -> "ubuntu"
-            TerminalModeManager.MODE_OFFLINE -> "offline"
-            else -> if (deviceCompat.shouldUseOfflineOnly()) "offline" else "ollama"
-        }
-        val tabs = androidx.compose.runtime.mutableStateListOf(TabSession("1", defaultName, session, client))
+        val tabs = androidx.compose.runtime.mutableStateListOf(TabSession("1", "Ubuntu", session, client))
         TerminalState(tabs, "1")
     }
 }
@@ -478,8 +431,6 @@ internal fun TerminalPane(
     val screenWidthDp  = configuration.screenWidthDp   // read to subscribe to config changes
     @Suppress("UNUSED_VARIABLE")
     val screenHeightDp = configuration.screenHeightDp
-    val deviceCompat = remember { DeviceCompatibility(context) }
-    val terminalMode = remember { TerminalModeManager(context) }
     var bootstrapReady by remember { mutableStateOf(false) }
     var showMenu        by remember { mutableStateOf(false) }
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
@@ -501,12 +452,8 @@ internal fun TerminalPane(
     val tabs = sharedState.tabs
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            BusyboxInstaller.ensureOfflineShell(context)
-            // Extract Termux bootstrap (bash, curl, apt) on first launch.
-            // Streaming ZIP extraction — safe on 3 GB device, no full-file load.
-            TermuxBootstrapInstaller.installIfNeeded(context)
-        }
+        // Ubuntu proot install/launch progress renders directly inside the terminal tab
+        // itself (see addUbuntuTab below) — no separate loading-screen gate needed.
         bootstrapReady = true
     }
 
@@ -561,15 +508,8 @@ internal fun TerminalPane(
         onDispose { tab?.client?.onTextChanged = null }
     }
 
-    fun addTab() {
-        val id = System.currentTimeMillis().toString()
-        val (session, client) = createTerminalSession(context)  // service not yet bound at init time
-        tabs.add(TabSession(id, "ash ${tabs.size + 1}", session, client))
-        activeId = id
-    }
-
     fun renameTab(id: String, newName: String) {
-        val trimmed = newName.trim().ifBlank { "ash" }
+        val trimmed = newName.trim().ifBlank { "Ubuntu" }
         val idx = tabs.indexOfFirst { it.id == id }
         if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
@@ -580,18 +520,33 @@ internal fun TerminalPane(
         currentView.value?.post { currentView.value?.onScreenUpdated() }
     }
 
-    fun addUbuntuTab() {
+    // Ubuntu proot is the ONLY terminal environment this app ships (bash/ash removed —
+    // see AGENTS.md). This single function handles both cases:
+    //  - replaceTabId == null: user tapped "+" / "New Ubuntu Terminal" — add another
+    //    independent proot session tab. If Ubuntu is already installed this is instant
+    //    (no progress screen needed).
+    //  - replaceTabId != null: upgrade an existing placeholder tab in place (used once,
+    //    for the very first tab on app launch, by the bootstrap LaunchedEffect below).
+    fun addUbuntuTab(replaceTabId: String? = null) {
         val ctx = context
-        // If Ubuntu is already installed and a tab exists, just switch to it — don't re-download
-        val existingUbuntu = tabs.indexOfFirst { it.name == "Ubuntu" }
-        if (existingUbuntu >= 0 && ProotInstaller.isInstalled(ctx)) {
-            activeId = tabs[existingUbuntu].id
+
+        // Fast path: already installed, just opening another tab — fork immediately.
+        if (replaceTabId == null && ProotInstaller.isInstalled(ctx)) {
+            val id = System.currentTimeMillis().toString()
+            val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(ctx, isUbuntu = true))
+            tabs.add(TabSession(id, "Ubuntu", session, client))
+            activeId = id
             return
         }
-        // Create the tab immediately with a shell session so we can write progress to it
-        val id = System.currentTimeMillis().toString()
-        val (progressSession, progressClient) = createTerminalSession(ctx, isUbuntu = false)
-        tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
+
+        // Slow path: first-time install, or upgrading the initial placeholder tab.
+        val id = replaceTabId ?: System.currentTimeMillis().toString()
+        val existing = replaceTabId?.let { rid -> tabs.firstOrNull { it.id == rid } }
+        val (progressSession, progressClient) = existing?.let { Pair(it.session, it.client) }
+            ?: createTerminalSession(ctx, isUbuntu = false)
+        if (existing == null) {
+            tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
+        }
         activeId = id
         progressClient.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
         writeToDisplay(progressSession, "\r\n[Ubuntu] Checking installation...\r\n")
@@ -650,6 +605,19 @@ internal fun TerminalPane(
                 activeId = id
             }
         }.apply { isDaemon = false; name = "UbuntuSetupThread"; start() }  // non-daemon: survives app backgrounding during extraction
+    }
+
+    fun addTab() = addUbuntuTab(replaceTabId = null)
+
+    // One-time: upgrade the initial placeholder tab (created synchronously in
+    // rememberTerminalState) into the real Ubuntu proot session. Guarded by
+    // sharedState.ubuntuBootstrapStarted so split panels sharing this state don't
+    // race to install Ubuntu twice.
+    LaunchedEffect(Unit) {
+        if (!sharedState.ubuntuBootstrapStarted) {
+            sharedState.ubuntuBootstrapStarted = true
+            tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+        }
     }
 
     fun closeTab(id: String) {
@@ -730,12 +698,8 @@ internal fun TerminalPane(
                         text = { Text("TERMINALS", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                         onClick = {}, enabled = false)
                     DropdownMenuItem(
-                        leadingIcon = { Text("${'$'}", fontSize = 13.sp, color = Color(0xFF89B4FA)) },
-                        text = { Text("New Bash Terminal", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; addTab() })
-                    DropdownMenuItem(
                         leadingIcon = { Text("🐧", fontSize = 13.sp) },
-                        text = { Text("Open Ubuntu Linux", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        text = { Text("New Ubuntu Terminal", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = { showMenu = false; addUbuntuTab() })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
                     // ── AI & TOOLS ─────────────────────────────────────────────
@@ -755,10 +719,6 @@ internal fun TerminalPane(
                             }, 3000)
                         })
                     DropdownMenuItem(
-                        leadingIcon = { Text("📦", fontSize = 13.sp) },
-                        text = { Text("Setup Offline Tools", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; BusyboxInstaller.ensureOfflineShell(context); OllamaSetup(context).installProfile(); android.widget.Toast.makeText(context, "Offline shell ready", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
                         text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = {
@@ -774,20 +734,6 @@ internal fun TerminalPane(
                             active?.session?.write("history | tail -20\n")
                             android.widget.Toast.makeText(context, "Review history above — copy commands to a .sh file", android.widget.Toast.LENGTH_LONG).show()
                         })
-                    HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
-                    // ── DEFAULT MODE ───────────────────────────────────────────
-                    DropdownMenuItem(
-                        leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
-                        text = { Text("DEFAULT MODE", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
-                        onClick = {}, enabled = false)
-                    DropdownMenuItem(
-                        leadingIcon = { Text("⚡", fontSize = 13.sp) },
-                        text = { Text("Set Default: Offline / Bash", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_OLLAMA); android.widget.Toast.makeText(context, "Default: Offline / Bash", android.widget.Toast.LENGTH_SHORT).show() })
-                    DropdownMenuItem(
-                        leadingIcon = { Text("🐧", fontSize = 13.sp) },
-                        text = { Text("Set Default: Ubuntu Mode", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; terminalMode.setMode(TerminalModeManager.MODE_UBUNTU); android.widget.Toast.makeText(context, "Default: Ubuntu", android.widget.Toast.LENGTH_SHORT).show() })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
                     // ── MANAGE ─────────────────────────────────────────────────
                     DropdownMenuItem(
@@ -1181,8 +1127,10 @@ internal fun TerminalPane(
             SshManagerSheet(
                 onDismiss = { showSshManager = false },
                 onConnect = { label, cmd ->
+                    // Ubuntu proot is the only terminal environment now — openssh-client
+                    // lives in the rootfs (apt install openssh-client), not on the host.
                     val id = System.currentTimeMillis().toString()
-                    val (session, client) = createTerminalSession(context, isUbuntu = false)
+                    val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(context, isUbuntu = true))
                     tabs.add(TabSession(id, label, session, client))
                     activeId = id
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
