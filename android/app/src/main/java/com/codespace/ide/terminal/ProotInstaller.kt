@@ -305,7 +305,11 @@ object ProotInstaller {
                     "#!/bin/sh\n" +
                     "# dpkg Android/Samsung-5.15 fix - persists across every shell.\n" +
                     "# Fixes link()->EACCES (status-old backup) and chown()->EPERM.\n" +
-                    "export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so\n"
+                    "# Guarded: the shim is arm64-v8a only (see cpp/CMakeLists.txt) - on\n" +
+                    "# other ABIs the file won't exist, so skip rather than break every shell.\n" +
+                    "if [ -f /usr/lib/libdpkg_android_fix.so ]; then\n" +
+                    "  export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so\n" +
+                    "fi\n"
                 )
                 File(profileDDir, "99-dpkg-fix.sh").setExecutable(true, false)
 

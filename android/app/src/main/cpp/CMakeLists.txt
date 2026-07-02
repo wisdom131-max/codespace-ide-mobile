@@ -28,6 +28,11 @@ set_target_properties(android-shmem PROPERTIES IMPORTED_LOCATION
 # without real root). Ported from ubuntu-proot-test after on-device verification
 # (nano, gcc toolchain, postgresql all installed cleanly with this shim + the real
 # dpkg-split/update-alternatives/service binaries — see AGENTS.md).
+# aarch64-only: dpkg_android_fix.c uses raw aarch64 syscall asm (x0/x8 registers),
+# which don't exist on armeabi-v7a. The user's device is arm64-v8a only; skip this
+# library entirely for other ABIs rather than adding a second asm dialect untested
+# on real hardware.
+if(ANDROID_ABI STREQUAL "arm64-v8a")
 add_library(dpkg_android_fix SHARED dpkg_android_fix.c)
 # Zero external dependencies: compile freestanding so Ubuntu's glibc ld.so can
 # load this via LD_PRELOAD without needing Android's libm/libdl/libc. Uses raw
@@ -48,4 +53,5 @@ if(PATCHELF_EXE)
     )
 else()
     message(WARNING "patchelf not found — dpkg_android_fix.so may still have NEEDED libm.so injected by the NDK toolchain")
+endif()
 endif()
