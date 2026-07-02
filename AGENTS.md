@@ -517,3 +517,40 @@ commit — every individual fix here was verified either against the real shippe
 package or in the `ubuntu-proot-test` live sessions, but this is the first time they're
 combined in this app's own CI build. Needs a clean install + `apt install nano`/`gcc`
 cycle to confirm the dpkg-preconfigure crash is actually gone.
+
+## r7 — Audited against the full debug-status doc; closed the last gap (2026-07-02)
+
+Cross-checked every fix in the uploaded `dpkg-terminal-fix-status-3.md` debug report
+(3 live debug sessions) against what's actually shipped in this app. Downloaded the real
+Ubuntu questing `.deb`s (`apache2_2.4.64-1ubuntu3.5_arm64`, `openssh-server_10.0p1-5ubuntu5_arm64`)
+to verify against ground truth rather than trusting descriptions alone.
+
+**Confirmed already correctly implemented (no changes needed):**
+- `useradd` wrapper already resolves group *names* to numeric GIDs before writing
+  `/etc/passwd` (the exact critical bug the doc calls out — already avoided).
+- No wrapper uses the `args="$@"; set -- $args` anti-pattern (word-splits and truncates
+  multi-word args) — all wrappers parse `"$@"` directly.
+- `apache2`'s real init script (verified against the actual downloaded package) already
+  has a proper `apache_wait_start()` liveness poll (`kill -0` for up to 20s) built in —
+  the doc's apache2 "false positive" bug does not apply to this package version. Confirms
+  the r6 decision to leave apache2 untouched was correct.
+- `ssh`'s real init script (verified against the actual downloaded package): confirmed
+  blank `Default-Stop:` and no liveness check in the stock version — both bugs are real,
+  and `ssh-initd.patched` already fixes both correctly (diffed byte-for-byte against the
+  real package to confirm).
+
+**One gap found and closed:** the doc's "Bug #9" self-heal check was a dedicated,
+independent check for an empty `Default-Stop` LSB field — separate from the Bug #6
+liveness-check marker check, because a future edit could plausibly restore the liveness
+fix but not the LSB header fix (or vice versa) if only one marker is checked. r6 only had
+the whole-file restore keyed off the liveness-check marker. r7 adds the standalone check
+as defense-in-depth, matching the doc's approach exactly:
+```sh
+if [ -f /etc/init.d/ssh ] && grep -q "^# Default-Stop:[[:space:]]*$" /etc/init.d/ssh; then
+    sed -i "s/^# Default-Stop:.*$/# Default-Stop:\t\t0 1 6/" /etc/init.d/ssh
+fi
+```
+
+### Status
+Version bumped to r7. Verified the generated `99-dpkg-fix.sh` (including the new Bug #9
+check with its `\t\t` GNU-sed tab escapes) passes `sh -n`. Not yet device-tested.

@@ -34,7 +34,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r6"
+    private const val VERSION = "ubuntu-questing-v4.30.1-r7"
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
@@ -482,6 +482,15 @@ object ProotInstaller {
                     "        cp /root/persistent-fixes/ssh-initd.patched /etc/init.d/ssh\n" +
                     "        chmod 755 /etc/init.d/ssh\n" +
                     "    fi\n" +
+                    "fi\n" +
+                    "\n" +
+                    "# Standalone Default-Stop check, independent of the marker check above.\n" +
+                    "# No insserv on this platform -> update-rc.d reads the LSB header directly\n" +
+                    "# and silently skips K-links (shutdown symlinks) if Default-Stop is blank --\n" +
+                    "# this catches that case even if the file otherwise has the liveness-check\n" +
+                    "# marker already (e.g. a future edit reintroduces just this one field).\n" +
+                    "if [ -f /etc/init.d/ssh ] && grep -q \"^# Default-Stop:[[:space:]]*\$\" /etc/init.d/ssh 2>/dev/null; then\n" +
+                    "    sed -i \"s/^# Default-Stop:.*\$/# Default-Stop:\\t\\t0 1 6/\" /etc/init.d/ssh\n" +
                     "fi\n"
                 )
                 File(profileDDir, "99-dpkg-fix.sh").setExecutable(true, false)
