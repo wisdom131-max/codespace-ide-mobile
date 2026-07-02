@@ -34,7 +34,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r5"
+    private const val VERSION = "ubuntu-questing-v4.30.1-r6"
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
@@ -236,9 +236,9 @@ object ProotInstaller {
                 sourcesDir.mkdirs()
                 File(sourcesDir, "sources.list").writeText(
                     "# Ubuntu 25.04 (Questing) — written by VN Code\n" +
-                    "deb http://ports.ubuntu.com/ubuntu-ports questing main restricted universe multiverse\n" +
-                    "deb http://ports.ubuntu.com/ubuntu-ports questing-updates main restricted universe multiverse\n" +
-                    "deb http://ports.ubuntu.com/ubuntu-ports questing-security main restricted universe multiverse\n"
+                    "deb [trusted=yes] http://ports.ubuntu.com/ubuntu-ports questing main restricted universe multiverse\n" +
+                    "deb [trusted=yes] http://ports.ubuntu.com/ubuntu-ports questing-updates main restricted universe multiverse\n" +
+                    "deb [trusted=yes] http://ports.ubuntu.com/ubuntu-ports questing-security main restricted universe multiverse\n"
                 )
                 // Also remove any .sources files that may override sources.list
                 File(rootfs, "etc/apt/sources.list.d").listFiles()?.forEach { f ->
@@ -246,25 +246,148 @@ object ProotInstaller {
                         f.delete()
                     }
                 }
-                // Write /etc/dpkg/dpkg.cfg to force unsafe-io permanently inside rootfs.
-                // Samsung 5.15 kernel blocks linkat/renameat2 inside proot — dpkg uses
-                // these for atomic status file renames. force-unsafe-io makes dpkg use
-                // direct write instead, matching what Termux does for OEM kernels.
+                // Write /etc/dpkg/dpkg.cfg with the full option set device-verified in
+                // ubuntu-proot-test (see AGENTS.md r6): force-unsafe-io alone got dpkg
+                // running, but force-confnew/force-overwrite/no-debsig/no-triggers were
+                // needed for clean multi-package upgrades and reinstalls without manual
+                // prompts (which can't be answered — no controlling terminal in proot).
                 val dpkgCfgDir = File(rootfs, "etc/dpkg")
                 dpkgCfgDir.mkdirs()
                 File(dpkgCfgDir, "dpkg.cfg").writeText(
-                    "# Written by CodeSpace IDE \u2014 OEM kernel workaround\nforce-unsafe-io\n"
+                    "# Written by CodeSpace IDE — OEM kernel workaround\n" +
+                    "force-unsafe-io\n" +
+                    "force-confnew\n" +
+                    "force-overwrite\n" +
+                    "no-debsig\n" +
+                    "no-triggers\n"
                 )
 
-                // Also write /etc/apt/apt.conf.d/01dpkg-options to pass --force-unsafe-io
-                // through apt automatically, so the user never has to pass flags manually.
+                // Also write /etc/apt/apt.conf.d/01dpkg-options to pass the same flags
+                // through apt automatically. DPkg::Lock::Timeout "0" skips the dpkg lock
+                // wait entirely — flock() may itself be a blocked syscall on Samsung 5.15,
+                // so waiting on it can hang rather than fail fast.
                 File(aptConfDir, "01dpkg-options").writeText(
                     "DPkg::Options {\n" +
                     "   \"--force-unsafe-io\";\n" +
-                    "};\n"
+                    "   \"--force-confnew\";\n" +
+                    "   \"--force-overwrite\";\n" +
+                    "};\n" +
+                    "DPkg::Lock::Timeout \"0\";\n" +
+                    "DPkg::NoDebsig \"true\";\n"
                 )
 
-                Log.d(TAG, "Baked DNS + apt config + dpkg unsafe-io workaround into rootfs")
+                // Fix dpkg database permissions. "Permission denied" creating
+                // /var/lib/dpkg/status-old means dpkg can't write to its own database
+                // directory — the rootfs was extracted by an Android process, so files
+                // are owned by the Android app UID but proot's guest root has no write
+                // permission on them. Force the whole dpkg database world-writable.
+                val dpkgDbDir = File(rootfs, "var/lib/dpkg")
+                dpkgDbDir.mkdirs()
+                dpkgDbDir.setWritable(true, false)
+                dpkgDbDir.setReadable(true, false)
+                dpkgDbDir.setExecutable(true, false)
+                val dpkgStatusFile = File(dpkgDbDir, "status")
+                if (!dpkgStatusFile.exists()) dpkgStatusFile.createNewFile()
+                dpkgStatusFile.setWritable(true, false)
+                listOf("updates", "info", "parts", "triggers").forEach { sub ->
+                    File(dpkgDbDir, sub).mkdirs()
+                    File(dpkgDbDir, sub).setWritable(true, false)
+                    File(dpkgDbDir, sub).setExecutable(true, false)
+                }
+                listOf("var/lib/apt/lists", "var/lib/apt/lists/partial",
+                       "var/cache/apt/archives", "var/cache/apt/archives/partial").forEach { d ->
+                    File(rootfs, d).mkdirs()
+                    File(rootfs, d).setWritable(true, false)
+                    File(rootfs, d).setExecutable(true, false)
+                }
+
+                // CRITICAL FIX (matches the exact bug reported live — dpkg-preconfigure
+                // crashing with "cannot fetch initial working directory: Function not
+                // implemented"): dpkg-preconfigure calls getcwd() via Perl at two points
+                // during every package install. Samsung kernel 5.15 blocks SYS_getcwd
+                // inside proot — binding /proc/self/cwd (see launchArgs below) helps the
+                // top-level shell but does NOT cover getcwd() calls made by subprocesses
+                // dpkg forks with a different real host cwd context, which is exactly
+                // what dpkg-preconfigure's Perl runtime does. Making it a no-op skips the
+                // entire Debconf pre-configuration stage — non-essential for package
+                // installs in a headless proot environment. Same approach used by
+                // proot-distro and UserLAnd for this exact class of kernel restriction.
+                val dpkgPreconfigure = File(rootfs, "usr/sbin/dpkg-preconfigure")
+                dpkgPreconfigure.parentFile?.mkdirs()
+                dpkgPreconfigure.writeText("#!/bin/sh\n# no-op: getcwd() fails on Samsung 5.15 kernel inside proot\nexit 0\n")
+                dpkgPreconfigure.setExecutable(true, false)
+
+                // dpkg triggers call ldconfig, systemd-tmpfiles, invoke-rc.d after every
+                // package install. These use syscalls blocked on Samsung 5.15 (unshare,
+                // mount, pivot_root) and crash silently, leaving dpkg exit code 100 with
+                // no error text. No-op them — same approach as proot-distro/UserLAnd/Andronix.
+                // NOTE: dpkg-split, update-alternatives, and usr/sbin/service are
+                // deliberately NOT in this list (see the comment further down this file) —
+                // they are real, working binaries and stubbing them was previously the
+                // actual root cause of silent install failures, not a fix.
+                val noopScript = "#!/bin/sh\nexit 0\n"
+                listOf(
+                    "sbin/ldconfig",             // MOST CRITICAL — called after every lib install
+                    "sbin/ldconfig.real",        // Ubuntu: ldconfig is a symlink to ldconfig.real
+                    "usr/sbin/update-initramfs", // tries mount syscalls — crashes in proot
+                    "usr/bin/systemd-tmpfiles",  // systemd — crashes immediately in proot
+                    "usr/sbin/invoke-rc.d"       // tries to start daemons — always fails in proot
+                ).forEach { rel ->
+                    val f = File(rootfs, rel)
+                    f.parentFile?.mkdirs()
+                    f.writeText(noopScript)
+                    f.setExecutable(true, false)
+                }
+                // policy-rc.d must return 101 ("action not allowed") so dpkg skips
+                // attempting to start any bundled service during install.
+                File(rootfs, "usr/sbin/policy-rc.d").let {
+                    it.parentFile?.mkdirs()
+                    it.writeText("#!/bin/sh\nexit 101\n")
+                    it.setExecutable(true, false)
+                }
+                // Skip systemd/initramfs files entirely — their post-install triggers crash proot
+                File(rootfs, "etc/dpkg/dpkg.cfg.d").mkdirs()
+                File(rootfs, "etc/dpkg/dpkg.cfg.d/01-proot-excludes").writeText(
+                    "path-exclude /lib/systemd/system/*\n" +
+                    "path-exclude /etc/systemd/*\n" +
+                    "path-exclude /usr/share/initramfs-tools/*\n" +
+                    "path-exclude /etc/initramfs-tools/*\n"
+                )
+
+                // Back up the real dpkg-split/update-alternatives/service binaries right
+                // after extraction (they are never stubbed — see above) so the self-heal
+                // check in 99-dpkg-fix.sh can restore them if anything ever reverts one
+                // to a stub again (a package reinstall, a future regression).
+                val persistentFixes = File(rootfs, "root/persistent-fixes")
+                persistentFixes.mkdirs()
+                listOf(
+                    "usr/bin/dpkg-split"          to "dpkg-split.real",
+                    "usr/bin/update-alternatives" to "update-alternatives.real",
+                    "usr/sbin/service"            to "service.real"
+                ).forEach { (rel, backupName) ->
+                    val src = File(rootfs, rel)
+                    if (src.exists()) {
+                        runCatching { src.copyTo(File(persistentFixes, backupName), overwrite = true) }
+                            .onFailure { Log.w(TAG, "Backup $rel failed: ${it.message}") }
+                    }
+                }
+
+                // ssh init-script fix, applied by 99-dpkg-fix.sh once openssh-server is
+                // apt-installed (not present in the base rootfs). Patched against the
+                // REAL openssh-server_10.0p1-5ubuntu5 init script pulled from the Ubuntu
+                // questing archive (not guessed) — fixes a blank Default-Stop LSB header
+                // (silently skips shutdown symlinks) and a missing post-start liveness
+                // check (false "[ OK ]" reported even when sshd's bind() fails, since
+                // start-stop-daemon's exit code only reflects a successful fork).
+                runCatching {
+                    context.assets.open("rootfs-fixes/ssh-initd.patched").use { input ->
+                        File(persistentFixes, "ssh-initd.patched").outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "ssh-initd.patched asset copy failed: ${it.message}") }
+
+                Log.d(TAG, "Baked DNS + apt config + dpkg fixes (preconfigure/permissions/triggers) into rootfs")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to bake DNS/apt config: ${e.message}")
             }
@@ -303,12 +426,62 @@ object ProotInstaller {
                 profileDDir.mkdirs()
                 File(profileDDir, "99-dpkg-fix.sh").writeText(
                     "#!/bin/sh\n" +
-                    "# dpkg Android/Samsung-5.15 fix - persists across every shell.\n" +
+                    "# dpkg Android/Samsung-5.15 self-heal fix - persists across every shell.\n" +
+                    "# Consolidates every device-verified fix from the ubuntu-proot-test debug\n" +
+                    "# sessions (see AGENTS.md). Runs on every shell start so that if any of\n" +
+                    "# these get reverted (a package reinstall, a manual mistake, a future\n" +
+                    "# rootfs bug), the environment repairs itself without a full re-extraction.\n" +
+                    "\n" +
                     "# Fixes link()->EACCES (status-old backup) and chown()->EPERM.\n" +
                     "# Guarded: the shim is arm64-v8a only (see cpp/CMakeLists.txt) - on\n" +
                     "# other ABIs the file won't exist, so skip rather than break every shell.\n" +
                     "if [ -f /usr/lib/libdpkg_android_fix.so ]; then\n" +
                     "  export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so\n" +
+                    "fi\n" +
+                    "\n" +
+                    "# dpkg-split, update-alternatives, service must NEVER be no-op stubs --\n" +
+                    "# each is a real, working binary; stubbing any of them causes SILENT\n" +
+                    "# no-op \"success\" that is extremely hard to diagnose. Restore from the\n" +
+                    "# backup taken at extraction time if one is ever found stubbed.\n" +
+                    "_restore_if_stub() {\n" +
+                    "    live=\"\$1\"; backup=\"\$2\"\n" +
+                    "    [ -f \"\$backup\" ] || return 0\n" +
+                    "    if [ -f \"\$live\" ]; then\n" +
+                    "        size=\$(wc -c < \"\$live\" 2>/dev/null || echo 0)\n" +
+                    "        head2=\$(head -c 2 \"\$live\" 2>/dev/null)\n" +
+                    "        if [ \"\$head2\" = \"#!\" ] && [ \"\$size\" -lt 200 ]; then\n" +
+                    "            cp \"\$backup\" \"\$live\"; chmod 755 \"\$live\"\n" +
+                    "        fi\n" +
+                    "    else\n" +
+                    "        cp \"\$backup\" \"\$live\"; chmod 755 \"\$live\"\n" +
+                    "    fi\n" +
+                    "}\n" +
+                    "_restore_if_stub /usr/bin/dpkg-split          /root/persistent-fixes/dpkg-split.real\n" +
+                    "_restore_if_stub /usr/bin/update-alternatives /root/persistent-fixes/update-alternatives.real\n" +
+                    "_restore_if_stub /usr/sbin/service            /root/persistent-fixes/service.real\n" +
+                    "\n" +
+                    "# groupadd/useradd/usermod/groupdel/userdel must stay wrapped (not the raw\n" +
+                    "# .real binary) so the lock-file EACCES fallback stays available. Each\n" +
+                    "# wrapper's own script content was backed up at bake time.\n" +
+                    "_restore_wrapper() {\n" +
+                    "    name=\"\$1\"; live=\"/usr/sbin/\$name\"; backup=\"/root/persistent-fixes/\$name.wrapper\"\n" +
+                    "    [ -f \"\$backup\" ] || return 0\n" +
+                    "    if ! grep -q \"nlink lock-file workaround\" \"\$live\" 2>/dev/null; then\n" +
+                    "        cp \"\$backup\" \"\$live\"; chmod 755 \"\$live\"\n" +
+                    "    fi\n" +
+                    "}\n" +
+                    "for w in groupadd useradd usermod groupdel userdel; do\n" +
+                    "    _restore_wrapper \"\$w\"\n" +
+                    "done\n" +
+                    "\n" +
+                    "# ssh init-script self-heal: false \"[ OK ]\" on a failed bind + blank\n" +
+                    "# Default-Stop LSB header (silently skips shutdown symlinks). Only\n" +
+                    "# applies once openssh-server is apt-installed.\n" +
+                    "if [ -f /etc/init.d/ssh ] && ! grep -q \"sshd exited immediately\" /etc/init.d/ssh 2>/dev/null; then\n" +
+                    "    if [ -f /root/persistent-fixes/ssh-initd.patched ]; then\n" +
+                    "        cp /root/persistent-fixes/ssh-initd.patched /etc/init.d/ssh\n" +
+                    "        chmod 755 /etc/init.d/ssh\n" +
+                    "    fi\n" +
                     "fi\n"
                 )
                 File(profileDDir, "99-dpkg-fix.sh").setExecutable(true, false)
@@ -370,6 +543,15 @@ object ProotInstaller {
             }
             original.parentFile?.mkdirs()
             original.writeText(script)
+            // Back up the wrapper's own script content for 99-dpkg-fix.sh's self-heal
+            // check -- without this, there's no way to reconstruct the wrapper if it's
+            // ever overwritten (e.g. a package reinstall replacing it with .real).
+            runCatching {
+                val persistentFixes = File(rootfs, "root/persistent-fixes")
+                persistentFixes.mkdirs()
+                val backup = File(persistentFixes, "${original.name}.wrapper")
+                backup.writeText(script)
+            }
             original.setExecutable(true, false)
         }
 

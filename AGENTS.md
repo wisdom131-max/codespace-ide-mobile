@@ -463,3 +463,57 @@ config on any device already on r3/r4). CI build triggered; not yet installed/te
 the user's TECNO KL4. Per my own standing limitation (no Android emulator/ADB access in
 this sandbox — see memory), on-device confirmation is a manual step for the user once the
 build goes green.
+
+## r6 — Closed the gap with ubuntu-proot-test's full fix set (2026-07-02)
+
+The user hit the exact `dpkg-preconfigure` crash live:
+```
+sh: 0: getcwd() failed: Function not implemented
+cannot fetch initial working directory: Function not implemented at /usr/sbin/dpkg-preconfigure line 82.
+Error: Sub-process /usr/bin/dpkg returned an error code (100)
+```
+This confirmed r5 was missing several fixes already found and verified in
+`ubuntu-proot-test`. r6 ports the rest of that fix set over, verified against the same
+sources used there (real Ubuntu questing package archive, not guessed):
+
+1. **`dpkg-preconfigure` no-op'd** — the exact fix for the crash above. It calls `getcwd()`
+   via Perl at two points during every install; binding `/proc/self/cwd` (already in
+   `launchArgs`) only covers the top-level shell's cwd, not subprocess forks with a
+   different real host cwd context, which is what dpkg-preconfigure's Perl runtime hits.
+   Skipping the whole Debconf pre-configuration stage is safe for headless installs.
+2. **`/var/lib/dpkg` + apt state dirs made world-writable** — the rootfs is extracted by
+   an Android process; proot's guest root otherwise can't write `status-old` etc.
+3. **`dpkg.cfg` / `01dpkg-options` expanded** — added `force-confnew`, `force-overwrite`,
+   `no-debsig`, `no-triggers`, `DPkg::Lock::Timeout "0"` (flock() may itself be blocked),
+   `DPkg::NoDebsig`. r5 only had `force-unsafe-io`.
+4. **`ldconfig`/`ldconfig.real`/`systemd-tmpfiles`/`invoke-rc.d` no-op'd, `policy-rc.d`
+   returns 101** — these are dpkg post-install triggers that crash on blocked syscalls
+   (unshare/mount/pivot_root) with no error text, previously left completely unhandled.
+5. **`sources.list` now uses `[trusted=yes]`** — apt was already configured to allow
+   unauthenticated repos via `apt.conf.d`, but `[trusted=yes]` per-line skips invoking
+   `gpgv` at all, avoiding its "exited unexpectedly" crash outright rather than just
+   tolerating the resulting warning.
+6. **Real-binary self-heal**: `dpkg-split`/`update-alternatives`/`service` backed up to
+   `root/persistent-fixes/*.real` right after extraction (they were already correctly left
+   un-stubbed in r5 — this just adds automatic recovery if anything ever reverts one).
+7. **Shadow-utils wrapper self-heal**: `installWrapper()` now also backs up each wrapper's
+   own script text to `root/persistent-fixes/NAME.wrapper`, and `99-dpkg-fix.sh` restores
+   any wrapper found reverted back to a raw binary.
+8. **`ssh` init-script fix** — pulled the real `openssh-server_10.0p1-5ubuntu5` init
+   script from the Ubuntu questing archive and patched it directly (not guessed): fixes a
+   blank `Default-Stop` LSB header (silently skips shutdown symlinks) and a missing
+   post-start liveness check (`start-stop-daemon`'s exit code only reflects a successful
+   fork, so a later `bind()` failure was reported as a false `[ OK ]`). Shipped as
+   `assets/rootfs-fixes/ssh-initd.patched`, applied by `99-dpkg-fix.sh` once
+   openssh-server is apt-installed (not present in the base rootfs).
+9. **Checked `apache2`'s real init script too** (`2.4.64-1ubuntu3`) — it already has a
+   working liveness poll in `do_start()`. No fix needed/applied; left untouched.
+10. **`99-dpkg-fix.sh` rewritten** as a full self-heal script (was previously just the
+    LD_PRELOAD export) — covers all of the above restore checks, runs on every shell.
+
+### Status
+Version bumped to r6 (forces fresh rootfs extraction). Not yet device-tested at this
+commit — every individual fix here was verified either against the real shipped Ubuntu
+package or in the `ubuntu-proot-test` live sessions, but this is the first time they're
+combined in this app's own CI build. Needs a clean install + `apt install nano`/`gcc`
+cycle to confirm the dpkg-preconfigure crash is actually gone.
