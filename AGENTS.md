@@ -554,3 +554,55 @@ fi
 ### Status
 Version bumped to r7. Verified the generated `99-dpkg-fix.sh` (including the new Bug #9
 check with its `\t\t` GNU-sed tab escapes) passes `sh -n`. Not yet device-tested.
+
+## Signal 11 (SIGSEGV) crash reported in Ubuntu terminal — investigation started (2026-07-02)
+
+User reported this exact text in the Ubuntu tab:
+
+```
+[Process completed (signal 11) - press Enter]
+```
+
+This string comes directly from `TerminalSession.java`'s `MainThreadHandler`
+(`exitDescription += " (signal " + (-exitCode) + ")"` when `exitCode < 0`), so this is
+confirmed to be a real native SIGSEGV in the child process tree (proot or something it
+exec'd — almost certainly `bash`), not a normal shell exit.
+
+**Root cause not yet isolated.** No specific reproduction command was captured. Rather
+than guessing at the fix blind, spun up a dedicated isolation harness:
+
+- New repo: **`ubuntu-proot-bash-test`** — a minimal single-activity app (cloned from
+  `ubuntu-proot-test`'s proven-working state) that launches straight into `bash --login`
+  under proot with none of this app's extra layers (TerminalService binding, cgroup
+  migration via `setProcessGroup`, multi-tab session lifecycle, split-panel session
+  sharing). See that repo's `AGENTS.md` for the full stress-test checklist and port-back
+  criteria.
+- Plan: run the stress checklist there first. If it survives, the bug is architectural —
+  look at `setTerminalShellPid`'s cgroup migration and the `addUbuntuTab` session-swap
+  race first. If it also crashes there, the bug is lower-level (proot / pty JNI / kernel
+  seccomp interaction) and needs proot verbose tracing (`-v 9`) to pin down.
+- **Nothing has been ported back yet** — this section will be updated once the isolation
+  test has a result.
+
+## Terminal environment simplified to Ubuntu-only (2026-07-02)
+
+Per explicit request, removed the entire secondary "bash" terminal system so Ubuntu proot
+is the only environment the app ships:
+
+- Deleted the dual-shell fallback in `createTerminalSession()` (busybox/ash +
+  Termux-bootstrap/bash). The non-Ubuntu branch is now only used internally as an inert
+  placeholder session (`/system/bin/sh`, no bundled binary) to display install-progress
+  text before the real Ubuntu proot session takes over — never exposed to the user.
+- `TerminalService.createSession()`'s non-Ubuntu branch removed the same way.
+- The very first tab on app launch now boots straight into Ubuntu automatically (no more
+  defaulting to an ash/bash/ollama tab based on `TerminalModeManager`/`DeviceCompatibility`
+  mode guessing).
+- `addTab()` ("+" button, hardware-keyboard new-tab shortcut) and all "new terminal" menu
+  entries now always open another independent Ubuntu proot session tab — instant if
+  already installed, or the full install-with-progress flow if not.
+- Removed dead UI: "New Bash Terminal", "Setup Offline Tools", and the "DEFAULT MODE"
+  Offline/Bash vs Ubuntu toggle menu section.
+- Still pending cleanup: delete the now-unused `TermuxBootstrapInstaller.kt`,
+  `BusyboxInstaller.kt`, `TerminalModeManager.kt` files and their remaining references in
+  `MainActivity.kt` / `ProjectShellScreen.kt` / `TerminalService.kt`, and reroute the SSH
+  Manager feature (currently spawns a non-Ubuntu placeholder shell) to run inside Ubuntu.
