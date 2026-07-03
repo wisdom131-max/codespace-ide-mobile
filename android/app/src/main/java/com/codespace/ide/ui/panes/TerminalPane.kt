@@ -421,6 +421,14 @@ internal fun TerminalPane(
     externalState: TerminalState? = null,          // if provided, uses shared state
 ) {
     val context      = LocalContext.current
+
+    // ── Moved up: needed by the lifecycle observer (ON_STOP handler) below.
+    // Use shared state if provided, otherwise own state
+    val sharedState = externalState ?: rememberTerminalState(context)
+    val tabs = sharedState.tabs
+    // Service binding — declared early so the ON_STOP lifecycle handler can call killAllSessions()
+    var boundService by remember { mutableStateOf<TerminalService?>(null) }
+
     // ── Activity visibility tracker — mirrors Termux's mActivity.isVisible() check in
     //    onTextChanged. Without this, terminal output triggers wasted onScreenUpdated()
     //    posts even when the app is minimized, burning CPU on a 3GB device and attracting
@@ -487,10 +495,6 @@ internal fun TerminalPane(
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
-    // Use shared state if provided, otherwise own state
-    val sharedState = externalState ?: rememberTerminalState(context)
-    val tabs = sharedState.tabs
-
     LaunchedEffect(Unit) {
         // Ubuntu proot install/launch progress renders directly inside the terminal tab
         // itself (see addUbuntuTab below) — no separate loading-screen gate needed.
@@ -503,7 +507,6 @@ internal fun TerminalPane(
     // is left completely unprotected — OEM power manager sends signal 31 and kills it.
     // Bind to TerminalService so sessions are forked from Service context (not Activity).
     // This matches Termux's architecture: phantom process killer spares children of FGS.
-    var boundService by remember { mutableStateOf<TerminalService?>(null) }
     DisposableEffect(Unit) {
         TerminalService.start(context, "Terminal session active")
         val conn = object : android.content.ServiceConnection {
