@@ -123,8 +123,16 @@ public final class TerminalSession extends TerminalOutput {
     public void initializeEmulator(int columns, int rows, int cellWidthPixels, int cellHeightPixels) {
         mEmulator = new TerminalEmulator(this, columns, rows, cellWidthPixels, cellHeightPixels, mTranscriptRows, mClient);
 
+        // Null guard (2026-07-03): if mShellPath or mCwd is null, log and use safe defaults
+        // instead of passing null to JNI.createSubprocess which crashes with SIGSEGV in CheckJNI.
+        String shellPath = (mShellPath != null) ? mShellPath : "/system/bin/sh";
+        String cwd = (mCwd != null) ? mCwd : "/";
+        if (mShellPath == null || mCwd == null) {
+            android.util.Log.e("TerminalSession", "initializeEmulator: null parameter detected — mShellPath=" + mShellPath + " mCwd=" + mCwd + " — using defaults");
+        }
+
         int[] processId = new int[1];
-        mTerminalFileDescriptor = JNI.createSubprocess(mShellPath, mCwd, mArgs, mEnv, processId, rows, columns, cellWidthPixels, cellHeightPixels);
+        mTerminalFileDescriptor = JNI.createSubprocess(shellPath, cwd, mArgs, mEnv, processId, rows, columns, cellWidthPixels, cellHeightPixels);
         mShellPid = processId[0];
         mClient.setTerminalShellPid(this, mShellPid);
 
