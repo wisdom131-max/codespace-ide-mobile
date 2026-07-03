@@ -2,6 +2,7 @@ package com.codespace.ide
 
 import android.app.Application
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
@@ -61,6 +62,45 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             JNI.installCrashHandler(path)
         } catch (e: Throwable) {
             Log.e("CodeSpaceApp", "Failed to install native crash handler: ${e.message}")
+        }
+    }
+
+    /**
+     * App-level PARTIAL_WAKE_LOCK — manually toggled by the user from the gear menu.
+     *
+     * NOT auto-acquired from onCreate() — that caused the TECNO crash loop (16 SIGKILLs
+     * in 90 seconds because TECNO HiOS kills apps that acquire WakeLocks on startup).
+     * Now matches Termux: the user explicitly toggles it when they need extra protection
+     * (e.g. long-running terminal tasks).
+     */
+    private var appWakeLock: PowerManager.WakeLock? = null
+
+    val isAppWakeLockHeld: Boolean get() = appWakeLock?.isHeld == true
+
+    fun acquireAppWakeLock() {
+        if (appWakeLock?.isHeld == true) return
+        try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            appWakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "CodeSpaceIDE::AppWakeLock"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.d("CodeSpaceApp", "App WakeLock acquired (manual)")
+        } catch (e: Throwable) {
+            Log.e("CodeSpaceApp", "Failed to acquire app WakeLock: ${e.message}")
+        }
+    }
+
+    fun releaseAppWakeLock() {
+        try {
+            appWakeLock?.let { if (it.isHeld) it.release() }
+            appWakeLock = null
+            Log.d("CodeSpaceApp", "App WakeLock released (manual)")
+        } catch (e: Throwable) {
+            Log.e("CodeSpaceApp", "Failed to release app WakeLock: ${e.message}")
         }
     }
 
