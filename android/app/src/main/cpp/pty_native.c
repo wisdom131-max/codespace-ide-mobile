@@ -240,13 +240,22 @@ Java_com_codespace_ide_terminal_NativePty_createSubprocess(
     }
 
     int procId = 0;
-    char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
-    if (!cmd_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for cmd");
-    char const* cwd_utf8 = (*env)->GetStringUTFChars(env, cwd, NULL);
-    if (!cwd_utf8) { (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8); return throw_runtime_exception(env, "GetStringUTFChars() failed for cwd"); }
-    int ptm = create_subprocess(env, cmd_utf8, cwd_utf8, argv, envp, &procId, rows, cols, 0, 0);
-    (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
-    (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8);
+    // NULL GUARD (2026-07-03): same fix as Termux JNI — null jstring crashes CheckJNI
+    const char* cmd_utf8 = NULL;
+    if (cmd) {
+        cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
+        if (!cmd_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for cmd");
+    }
+    const char* cwd_utf8 = NULL;
+    if (cwd) {
+        cwd_utf8 = (*env)->GetStringUTFChars(env, cwd, NULL);
+        if (!cwd_utf8) { if (cmd_utf8) (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8); return throw_runtime_exception(env, "GetStringUTFChars() failed for cwd"); }
+    }
+    const char* effective_cmd = cmd_utf8 ? cmd_utf8 : "/system/bin/sh";
+    const char* effective_cwd = cwd_utf8 ? cwd_utf8 : "/";
+    int ptm = create_subprocess(env, effective_cmd, effective_cwd, argv, envp, &procId, rows, cols, 0, 0);
+    if (cmd_utf8) (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
+    if (cwd_utf8) (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8);
 
     if (argv) { for (char** t = argv; *t; ++t) free(*t); free(argv); }
     if (envp) { for (char** t = envp; *t; ++t) free(*t); free(envp); }
@@ -317,13 +326,24 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
     }
 
     int procId = 0;
-    char const* cwd_utf8 = (*env)->GetStringUTFChars(env, cwd, NULL);
-    if (!cwd_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for cwd");
-    char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
-    if (!cmd_utf8) { (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8); return throw_runtime_exception(env, "GetStringUTFChars() failed for cmd"); }
-    int ptm = create_subprocess(env, cmd_utf8, cwd_utf8, argv, envp, &procId, rows, columns, cell_width, cell_height);
-    (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
-    (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8);
+    // NULL GUARD (2026-07-03): If cwd or cmd jstring is null, GetStringUTFChars()
+    // crashes inside CheckJNI with SIGSEGV (fault addr 0x3c) BEFORE returning NULL.
+    // Root cause of the crash loop: 16 SIGKILLs in 90s, process uptime 1s.
+    const char* cwd_utf8 = NULL;
+    if (cwd) {
+        cwd_utf8 = (*env)->GetStringUTFChars(env, cwd, NULL);
+        if (!cwd_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for cwd");
+    }
+    const char* cmd_utf8 = NULL;
+    if (cmd) {
+        cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
+        if (!cmd_utf8) { if (cwd_utf8) (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8); return throw_runtime_exception(env, "GetStringUTFChars() failed for cmd"); }
+    }
+    const char* effective_cmd = cmd_utf8 ? cmd_utf8 : "/system/bin/sh";
+    const char* effective_cwd = cwd_utf8 ? cwd_utf8 : "/";
+    int ptm = create_subprocess(env, effective_cmd, effective_cwd, argv, envp, &procId, rows, columns, cell_width, cell_height);
+    if (cmd_utf8) (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
+    if (cwd_utf8) (*env)->ReleaseStringUTFChars(env, cwd, cwd_utf8);
 
     if (argv) { for (char** tmp = argv; *tmp; ++tmp) free(*tmp); free(argv); }
     if (envp) { for (char** tmp = envp; *tmp; ++tmp) free(*tmp); free(envp); }
