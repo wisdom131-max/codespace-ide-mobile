@@ -690,13 +690,18 @@ internal fun TerminalPane(
                 tabs.clear()
                 tabs.addAll(rebuiltTabs)
                 activeId = rebuiltTabs.first().id
-            } catch (e: Exception) {
-                // Session reattach failed (sessions may be dead/corrupted after process kill).
-                // Clear the stale tabs and fall through to a fresh Ubuntu launch instead of
-                // crashing — this is the "app opens then closes immediately on reopen" fix.
-                android.util.Log.e("TerminalPane", "Session reattach failed, starting fresh", e)
+            } catch (e: Throwable) {
+                // Session reattach failed (sessions may be dead/corrupted after OEM kill,
+                // or OOM on 3GB device with multiple surviving proot trees).
+                // KILL all old sessions before creating a new one — without this, every
+                // failed reattach stacks another proot+bash+rootfs-mount tree on top of
+                // the old ones, causing OOM "opens then instantly closes" on 3GB devices.
+                android.util.Log.e("TerminalPane", "Session reattach failed, killing old sessions and starting fresh", e)
                 tabs.clear()
-                svc.getLiveUbuntuSessions() // prune dead sessions from the service too
+                try {
+                    val stale = svc.getLiveUbuntuSessions()
+                    stale.forEach { try { it.finishIfRunning() } catch (_: Throwable) {} }
+                } catch (_: Throwable) {}
                 addUbuntuTab(replaceTabId = null)
             }
         } else {
