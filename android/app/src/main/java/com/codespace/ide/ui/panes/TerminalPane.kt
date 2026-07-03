@@ -613,10 +613,38 @@ internal fun TerminalPane(
     // rememberTerminalState) into the real Ubuntu proot session. Guarded by
     // sharedState.ubuntuBootstrapStarted so split panels sharing this state don't
     // race to install Ubuntu twice.
-    LaunchedEffect(Unit) {
-        if (!sharedState.ubuntuBootstrapStarted) {
-            sharedState.ubuntuBootstrapStarted = true
-            tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+    //
+    // FIXED 2026-07-03 — session-stacking leak: this used to unconditionally call
+    // addUbuntuTab() (spawn a brand new real proot+bash session) on every fresh
+    // Composition, with no check for an already-running session. Since `remember`
+    // state resets completely whenever the Activity is destroyed/recreated (which
+    // TECNO HiOS does on a plain minimize while TerminalService/the process survive),
+    // every reopen after minimizing spawned ANOTHER live Ubuntu session on top of
+    // whatever was already running — never cleaned up unless the user manually closed
+    // the tab. Stacking multiple live proot+bash+rootfs-mount trees is a very
+    // plausible OOM trigger on a 3GB device, and it fires at exactly the moment of
+    // reopening — matching the reported "opens then instantly closes" symptom.
+    //
+    // Fix: wait for the service binding, then check TerminalService.findLiveUbuntuSession()
+    // first. If a live session already exists (survived from before this Activity was
+    // recreated), REATTACH to it via updateTerminalSessionClient() instead of forking a
+    // duplicate. Only fall through to addUbuntuTab() (real install/fork path) if nothing
+    // is already running.
+    LaunchedEffect(boundService) {
+        val svc = boundService ?: return@LaunchedEffect  // wait until service is actually bound
+        if (sharedState.ubuntuBootstrapStarted) return@LaunchedEffect
+        sharedState.ubuntuBootstrapStarted = true
+
+        val existing = svc.findLiveUbuntuSession()
+        val placeholder = tabs.firstOrNull()
+        if (existing != null && placeholder != null) {
+            val newClient = SimpleTerminalSessionClient().apply { appContext = context }
+            existing.updateTerminalSessionClient(newClient)
+            val idx = tabs.indexOfFirst { it.id == placeholder.id }
+            if (idx >= 0) tabs[idx] = TabSession(placeholder.id, "Ubuntu", existing, newClient)
+            activeId = placeholder.id
+        } else {
+            placeholder?.let { addUbuntuTab(replaceTabId = it.id) }
         }
     }
 
