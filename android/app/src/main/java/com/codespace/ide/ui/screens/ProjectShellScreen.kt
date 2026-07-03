@@ -1091,7 +1091,7 @@ fun ProjectShellScreen(
                         }
                         val gearItems = listOf(
                             "Color Theme" to { showColorTheme = true; showGearMenu = false },
-                            "Toggle Sidebar" to { showSidebar = !showSidebar; showGearMenu = false },
+                            "Toggle Sidebar" to { activePanel = if (activePanel == null) SidePanel.EXPLORER else null; showGearMenu = false },
                             "Toggle Terminal" to { showBottomPanel = !showBottomPanel; showGearMenu = false },
                             "Toggle AI Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
                             "Font Size +" to { editorFontSize = (editorFontSize + 1).coerceAtMost(32); showGearMenu = false },
