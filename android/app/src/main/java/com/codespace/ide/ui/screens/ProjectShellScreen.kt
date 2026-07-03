@@ -986,20 +986,32 @@ fun ProjectShellScreen(
             )
         }
 
-        // Command Palette
+        // Command Palette — centered VS Code-style dropdown, not full width
         if (showCommandPalette) {
+            val cmdFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+            LaunchedEffect(showCommandPalette) {
+                if (showCommandPalette) {
+                    kotlinx.coroutines.delay(80) // let the dialog compose before requesting focus
+                    cmdFocusRequester.requestFocus()
+                }
+            }
             Box(
                 Modifier.fillMaxSize()
                     .background(Color(0x88000000))
-                    .clickable { showCommandPalette = false }
+                    .pointerInput(Unit) {
+                        detectTapGestures { showCommandPalette = false; commandQuery = "" }
+                    }
             ) {
                 Card(
                     Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 36.dp, start = 16.dp, end = 16.dp)
-                        .fillMaxWidth()
-                        .heightIn(max = 400.dp)
-                        .clickable(enabled = false) {},
+                        .padding(top = 48.dp)
+                        .fillMaxWidth(0.9f)
+                        .widthIn(max = 560.dp)
+                        .heightIn(max = 320.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures { /* swallow taps so they don't reach the dismiss layer behind */ }
+                        },
                     colors = CardDefaults.cardColors(containerColor = MenuBg),
                     elevation = CardDefaults.cardElevation(12.dp),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -1009,12 +1021,18 @@ fun ProjectShellScreen(
                             value = commandQuery,
                             onValueChange = { commandQuery = it },
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = MenuText, fontFamily = FontFamily.Default),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .focusRequester(cmdFocusRequester),
                             decorationBox = { inner ->
-                                if (commandQuery.isEmpty()) Text("> Type a command or file name…", fontSize = 14.sp, color = MenuText.copy(alpha = 0.4f))
-                                inner()
+                                Box {
+                                    if (commandQuery.isEmpty()) Text("> Type a command or file name…", fontSize = 14.sp, color = MenuText.copy(alpha = 0.4f))
+                                    inner()
+                                }
                             },
                             singleLine = true,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MenuText),
                         )
                         HorizontalDivider(color = DividerColor)
                         val filtered = listOf(
@@ -1022,15 +1040,19 @@ fun ProjectShellScreen(
                             "Toggle Sidebar", "Toggle Terminal", "Select Color Theme",
                             "Go to File", "Find in Files", "Run Program", "Split Terminal",
                         ).filter { commandQuery.isEmpty() || it.contains(commandQuery, ignoreCase = true) }
-                        filtered.take(8).forEach { item ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
-                                    .clickable { handleMenuAction(item); showCommandPalette = false; commandQuery = "" }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                        // LazyColumn so the list scrolls properly (incl. after rotation, when
+                        // available height shrinks and more items overflow the visible area)
+                        LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                            items(filtered) { item ->
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
+                                        .clickable { handleMenuAction(item); showCommandPalette = false; commandQuery = "" }
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }
