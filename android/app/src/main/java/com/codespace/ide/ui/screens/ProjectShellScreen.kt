@@ -493,6 +493,34 @@ fun ProjectShellScreen(
         }
     }
 
+    // FIXED 2026-07-03: the hardware/gesture back action had NO handler at all here --
+    // only specific in-app UI elements (the "Exit" menu item, a specific icon) called
+    // onBack() directly. The system back button/gesture did nothing, which is exactly
+    // "the back button to return to the home screen doesn't work." Wire a real BackHandler:
+    // close whichever overlay/menu/dialog is topmost first (natural back-stack feel, so
+    // back doesn't jump straight to the home screen while a menu is open), otherwise call
+    // onBack() to actually leave to the home screen.
+    BackHandler {
+        when {
+            showCommandPalette      -> showCommandPalette = false
+            showConnectorsSheet     -> showConnectorsSheet = false
+            showNotifDrawer         -> showNotifDrawer = false
+            showTerminalThemePicker -> showTerminalThemePicker = false
+            showPanelMenu           -> showPanelMenu = false
+            showExplorerMore        -> showExplorerMore = false
+            showMoreMenu            -> showMoreMenu = false
+            showPersonMenu          -> showPersonMenu = false
+            showGearMenu            -> showGearMenu = false
+            showRunMenu             -> showRunMenu = false
+            showColorTheme          -> showColorTheme = false
+            showChatPanel           -> showChatPanel = false
+            showReplaceRow          -> showReplaceRow = false
+            showFindBar             -> showFindBar = false
+            openMenuBar != null     -> openMenuBar = null
+            else                    -> onBack()
+        }
+    }
+
     Box(
         Modifier.fillMaxSize().background(BgColor)
             .onGloballyPositioned { totalWidth = it.size.width.toFloat(); totalHeight = it.size.height.toFloat() }
