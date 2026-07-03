@@ -439,20 +439,6 @@ internal fun TerminalPane(
     androidx.lifecycle.LifecycleEventObserver { _, event ->
         when (event) {
             androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> isActivityVisible = false
-            androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
-                // CRITICAL for 3GB devices: kill all proot/bash sessions when the activity
-                // goes to background. Proot processes consume ~500MB+ each, and TECNO HiOS
-                // SIGKILLs the app when memory pressure gets too high. Without this, the
-                // proot process survives across minimize, and on reopen the app tries to
-                // reattach + create new sessions → OOM → crash loop.
-                //
-                // Tradeoff: terminal sessions don't persist across minimize. On 3GB devices,
-                // stability > session persistence. On reopen, addUbuntuTab() starts fresh.
-                boundService?.killAllSessions()
-                // Reset bootstrap flag so the LaunchedEffect re-runs on reopen and creates
-                // a fresh Ubuntu session (since we just killed all the old ones).
-                sharedState.ubuntuBootstrapStarted = false
-            }
             androidx.lifecycle.Lifecycle.Event.ON_RESUME -> isActivityVisible = true
             else -> {}
         }
