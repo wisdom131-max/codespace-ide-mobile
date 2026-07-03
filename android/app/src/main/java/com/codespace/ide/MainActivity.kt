@@ -17,6 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -92,6 +93,15 @@ class MainActivity : ComponentActivity() {
         // user just taps "Copy" and pastes it back to us.
         val lastCrash = readLastCrashLog()
 
+        // FIXED 2026-07-03: "terminal fills the screen on open, fixes itself after rotating."
+        // enableEdgeToEdge() + the SplashScreen API can leave the FIRST WindowInsets dispatch
+        // to the freshly-created Compose hierarchy stale/incomplete (a known interaction
+        // between the two APIs) -- Compose's content lays out as if there are zero system-bar
+        // insets to subtract, so the terminal/editor area renders oversized until something
+        // (like a rotation) forces Android to redeliver a fresh WindowInsets pass. Force that
+        // redelivery ourselves right after the content is set, instead of waiting on the user
+        // to accidentally trigger it via rotation.
+        window.decorView.post { ViewCompat.requestApplyInsets(window.decorView) }
         setContent {
             var crashLogText by remember { mutableStateOf(lastCrash) }
             CodeSpaceApp(tokenStore = tokenStore)
