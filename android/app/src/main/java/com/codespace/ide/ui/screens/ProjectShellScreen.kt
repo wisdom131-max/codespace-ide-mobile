@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
@@ -345,9 +346,6 @@ fun ProjectShellScreen(
     val KeyboardToolbarBg = t.KeyboardToolbarBg
     val restoredState = remember(projectId) { sessionStateStore.loadShellState(projectId) }
     val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
-    var showOnboarding by remember {
-        mutableStateOf(!prefs.getBoolean("onboarding_seen", false))
-    }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
     var showSplitTerminal  by remember { mutableStateOf(false) }
@@ -533,10 +531,15 @@ fun ProjectShellScreen(
                     .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Left: back button
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive,
-                    modifier = Modifier.size(20.dp).clickable { onBack() })
+                // Left: back button — ArrowBack icon with proper 44dp touch target
+                Spacer(Modifier.width(4.dp))
+                Box(
+                    Modifier.size(44.dp).clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TabTextInactive,
+                        modifier = Modifier.size(22.dp))
+                }
                 // Center: Workspace title (clickable opens command palette)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Row(
@@ -966,14 +969,6 @@ fun ProjectShellScreen(
                 Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
             }
     } // end Column
-
-    // ── First-launch onboarding walkthrough (overlay, outside Column) ──
-    if (showOnboarding) {
-        OnboardingWalkthrough(onDone = {
-            showOnboarding = false
-            prefs.edit().putBoolean("onboarding_seen", true).apply()
-        })
-    }
 
         // ── All overlays — direct children of root Box so they cover full screen ──
 
