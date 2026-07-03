@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
      *  BLOCKING by design now (see readLastCrashLog) -- throws on any failure so the
      *  caller knows NOT to delete the local copy yet. */
     private fun uploadCrashLogToAgent(text: String) {
-        val url = URL("https://superagent-7c842a7e.base44.app/functions/reportCrash")
+        val url = URL("https://superagent-4bfc55af.base44.app/functions/reportCrash")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true
