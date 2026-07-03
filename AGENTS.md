@@ -745,3 +745,33 @@ Three separate bugs now addressed in the same debugging arc: (1) missing proot
 `/proc/self/cwd` bind mount, (2) no native-signal crash visibility, (3) service/WakeLock
 torn down on OEM-triggered onTaskRemoved. Waiting on user to confirm the minimize/reopen
 cycle is stable on the latest build.
+
+## Fixed: rotation/multitasking "interrupts" the Ubuntu download (2026-07-03)
+
+`ProotInstaller.install()` had zero protection against concurrent invocation. Two real
+ways to trigger a second overlapping call while the first-run ~250MB download/extract
+was still in progress:
+1. Tapping "+" for another Ubuntu tab mid-install — `addUbuntuTab()`'s fast path only
+   skips to a plain new session if `isInstalled()` is already true, which it isn't
+   mid-download, so it falls through and calls `install()` again.
+2. Any Compose/Activity state recreation re-firing the bootstrap `LaunchedEffect`
+   (defensive — `configChanges` already covers plain rotation at the manifest level,
+   but this closes the gap regardless of the actual trigger).
+
+Both would open a second `HttpURLConnection` to the exact same `cacheDir/ubuntu.tar.xz`
+and interleave writes into it — corrupting the download and producing exactly the
+reported symptom: progress visibly jumping backward / resetting mid-download (it still
+eventually finished because of the range-resume retry logic quietly papering over the
+corruption on a later attempt).
+
+**Fix:** added `installJob`/`installLock` guard in `ProotInstaller`. Only one thread
+ever actually downloads/extracts at a time; any concurrent caller just waits on the
+lock and re-checks `isInstalled()` once the first finishes, instead of racing on the
+same file. Pushed as `cc2eaa8`.
+
+### Status
+Four bugs now fixed in this arc: (1) proot `/proc/self/cwd` bind mount, (2) native
+crash handler for signal-level crash visibility, (3) `onTaskRemoved` no longer tears
+down the service/WakeLock on OEM-triggered minimize, (4) concurrent-install guard for
+seamless downloads across rotation/multitasking. All green on CI. Waiting on user
+confirmation across a full test pass.
