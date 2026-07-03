@@ -680,15 +680,25 @@ internal fun TerminalPane(
         // Service/process survive).
         val existingSessions = svc.getLiveUbuntuSessions()
         if (existingSessions.isNotEmpty()) {
-            val rebuiltTabs = existingSessions.mapIndexed { index, session ->
-                val newClient = SimpleTerminalSessionClient().apply { appContext = context }
-                session.updateTerminalSessionClient(newClient)
-                val name = if (existingSessions.size > 1) "Ubuntu ${index + 1}" else "Ubuntu"
-                TabSession("resumed-$index-${session.hashCode()}", name, session, newClient)
+            try {
+                val rebuiltTabs = existingSessions.mapIndexed { index, session ->
+                    val newClient = SimpleTerminalSessionClient().apply { appContext = context }
+                    session.updateTerminalSessionClient(newClient)
+                    val name = if (existingSessions.size > 1) "Ubuntu ${index + 1}" else "Ubuntu"
+                    TabSession("resumed-$index-${session.hashCode()}", name, session, newClient)
+                }
+                tabs.clear()
+                tabs.addAll(rebuiltTabs)
+                activeId = rebuiltTabs.first().id
+            } catch (e: Exception) {
+                // Session reattach failed (sessions may be dead/corrupted after process kill).
+                // Clear the stale tabs and fall through to a fresh Ubuntu launch instead of
+                // crashing — this is the "app opens then closes immediately on reopen" fix.
+                android.util.Log.e("TerminalPane", "Session reattach failed, starting fresh", e)
+                tabs.clear()
+                svc.getLiveUbuntuSessions() // prune dead sessions from the service too
+                addUbuntuTab(replaceTabId = null)
             }
-            tabs.clear()
-            tabs.addAll(rebuiltTabs)
-            activeId = rebuiltTabs.first().id
         } else {
             tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
         }
