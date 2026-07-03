@@ -606,3 +606,58 @@ is the only environment the app ships:
   `BusyboxInstaller.kt`, `TerminalModeManager.kt` files and their remaining references in
   `MainActivity.kt` / `ProjectShellScreen.kt` / `TerminalService.kt`, and reroute the SSH
   Manager feature (currently spawns a non-Ubuntu placeholder shell) to run inside Ubuntu.
+
+## Signal 11 root-caused + crash-reporting pipeline added (2026-07-03)
+
+**Signal 11 (SIGSEGV) — CONFIRMED FIXED.** Root cause found by diffing this app against
+the isolated `ubuntu-proot-bash-test` repo (proven stable on the same TECNO KL4 device):
+
+1. This app set `PROOT_NO_SECCOMP=1` in proot's env vars (added way back in `e30db19` for
+   an unrelated execve bug that looked like a seccomp issue at the time). The test app had
+   already removed this exact flag in an earlier fix round (r24) after confirming Termux's
+   own proot-distro never sets it — forcing it routes every syscall through a far-less-tested
+   ptrace fallback path in proot. That fix never got ported back here. **Removed.**
+2. This app's `libproot.so`/`libtalloc.so` were a different build (375400 bytes) than the
+   test app's proven-stable ones (239456 bytes) — leftover from this app's own custom
+   static-proot CI experiments. **Replaced with the exact binaries from the test app.**
+
+User confirmed: `apt update` and `apt install nano` now both work cleanly. Consider this
+fixed unless it resurfaces.
+
+### New bug found immediately after: app closes instantly when reopened after minimizing
+
+This is a real Android-level crash (not a terminal child-process crash) — happens on
+*reopen*, not on minimize itself. Likely process-death-under-memory-pressure (3GB RAM +
+proot + Ubuntu rootfs is heavy) followed by a crash somewhere in the cold-start path, but
+**not yet confirmed** — we have no ADB/logcat access to this physical device, so the exact
+exception was invisible to us until now.
+
+Two things shipped to fix this blind spot for good, plus two defensive hardenings while we
+wait for a real trace:
+
+1. **Crash logger + network streaming (the actual fix for "how do I give you the log").**
+   `CodeSpaceApplication.installCrashLogger()` installs a
+   `Thread.setDefaultUncaughtExceptionHandler` as the very first thing in `onCreate()`.
+   On any uncaught exception it:
+   - Writes the full stack trace to `filesDir/crash_logs/` (local fallback, read by
+     `MainActivity` on next successful launch and shown in a copy-to-clipboard dialog —
+     works with zero connectivity).
+   - **POSTs it directly to this Superagent's `reportCrash` backend function**
+     (`https://superagent-7c842a7e.base44.app/functions/reportCrash`), which stores it in
+     a `CrashLog` entity. The agent reads this back with `read_entities` the instant the
+     user says "it crashed again" — **no file transfer, no ADB, no app-has-to-open-again
+     requirement.** This is the important one: it fires from inside the crash handler
+     itself, before the process dies, so it works even in a crash-loop where the app never
+     gets far enough to show any UI.
+   - Both are best-effort / fully guarded — the crash logger can never itself cause or
+     mask the real crash; it always chains to the previous handler afterward.
+2. Hardened `TerminalService.onStartCommand()`'s `startForeground()` call with try/catch —
+   it was the one unguarded call in the whole cold-start path, and a transient AMS race
+   right after the OS kills+relaunches the process is plausible here.
+3. Removed the dead `BusyboxInstaller.installIfNeeded()` call from `MainActivity` (unused
+   since the Ubuntu-only refactor above — one less thing running on every cold start).
+
+### Status
+Both fixes pushed and built green. Waiting on user to reproduce the reopen-crash — next
+occurrence will land in the `CrashLog` entity automatically and give us the real
+stack trace instead of guesswork.

@@ -9,9 +9,13 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.codespace.ide.terminal.TerminalService
 import dagger.hilt.android.HiltAndroidApp
+import org.json.JSONObject
 import java.io.File
+import java.io.OutputStreamWriter
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,22 +77,64 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
     private fun installCrashLogger() {
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+            val sw = StringWriter()
+            throwable.printStackTrace(PrintWriter(sw))
+            val stackTrace = sw.toString()
+
+            // 1. Local file fallback (works even with zero connectivity) — MainActivity
+            //    reads this on next successful launch and shows a copy/paste dialog.
             try {
                 val dir = File(filesDir, "crash_logs").apply { mkdirs() }
-                val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
-                val sw = StringWriter()
-                throwable.printStackTrace(PrintWriter(sw))
                 val header = "Thread: " + thread.name + "\nTime: " + stamp + "\n\n"
-                File(dir, "crash_$stamp.txt").writeText(header + sw.toString())
-                // Keep only the 5 most recent crash logs
+                File(dir, "crash_$stamp.txt").writeText(header + stackTrace)
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(5)?.forEach { it.delete() }
-            } catch (_: Throwable) {
-                // Never let the crash logger itself interfere with the real crash handling
-            }
+            } catch (_: Throwable) { /* never let logging interfere with the real crash */ }
+
+            // 2. Stream it straight to the agent over the network — this is what actually
+            //    solves "the app refuses to open again, how do I get you the log": no
+            //    local file, no dialog, no ADB needed at all. Best-effort, short timeout —
+            //    the process is dying regardless, we just don't want to hang it forever.
+            try {
+                reportCrashOverNetwork(thread.name, stamp, stackTrace)
+            } catch (_: Throwable) { /* best-effort only */ }
+
             // Chain to the original handler so normal Android crash behavior (dialog,
             // process kill, ANR reporting) still happens exactly as before.
             previousHandler?.uncaughtException(thread, throwable)
         }
+    }
+
+    /**
+     * POSTs the crash directly to the CodeSpace IDE Superagent's reportCrash backend
+     * function, which stores it in the CrashLog entity. The agent can read it back with
+     * read_entities the moment the user says "it crashed again" — no file transfer step.
+     * Blocking call on the crashing thread is intentional: the process is about to die
+     * either way, and a 4s timeout is cheap insurance against losing the only copy of a
+     * crash we can't otherwise see (no ADB/logcat access to this device).
+     */
+    private fun reportCrashOverNetwork(threadName: String, stamp: String, stackTrace: String) {
+        val url = URL("https://superagent-7c842a7e.base44.app/functions/reportCrash")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 4000
+        conn.readTimeout = 4000
+        conn.setRequestProperty("Content-Type", "application/json")
+
+        val body = JSONObject().apply {
+            put("app_package", packageName)
+            put("device_model", Build.MODEL)
+            put("android_version", Build.VERSION.RELEASE)
+            put("thread_name", threadName)
+            put("stack_trace", stackTrace)
+            put("app_version", BuildConfig.VERSION_NAME)
+            put("device_timestamp", stamp)
+        }
+
+        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+        conn.responseCode // triggers the request; we don't care about the response body
+        conn.disconnect()
     }
 
     /**
