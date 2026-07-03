@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
@@ -212,6 +213,24 @@ class MainActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateSystemUIForOrientation(newConfig.orientation)
+    }
+
+    // FIXED 2026-07-03: "back button didn't work, couldn't get to home screen to create a
+    // new project" -- happens specifically while the terminal has focus. Traced through
+    // Termux's own TerminalView.java (decompiled): a focused TerminalView is a legitimate
+    // KeyEvent.Callback, and depending on IME/selection state it can consume KEYCODE_BACK
+    // before it ever reaches the Activity's onBackPressed()/OnBackPressedDispatcher, so our
+    // Compose BackHandler in ProjectShellScreen never fires. Activity.dispatchKeyEvent() runs
+    // BEFORE the event is routed to any child view, so intercepting BACK here guarantees the
+    // dispatcher (and therefore the BackHandler) always gets it, regardless of what has focus.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                onBackPressedDispatcher.onBackPressed()
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun updateSystemUIForOrientation(orientation: Int) {
