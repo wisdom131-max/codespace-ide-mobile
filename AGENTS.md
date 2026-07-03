@@ -714,3 +714,34 @@ build green (`ea56ad9`).
 Both the proot bind-mount fix and native crash handler are live in the current build.
 Next crash of ANY kind (Kotlin exception or native signal) should land in `CrashLog`
 automatically — no ADB, no reopening-the-app-to-see-a-dialog requirement anymore.
+
+## Real root cause of "app refuses to open after minimizing" found (2026-07-03)
+
+Finally traced this one instead of guessing. `TerminalService.onTaskRemoved()` was
+calling `actionReleaseWakeLock()` + `stopSelf()` unconditionally — copied from a naive
+reading of the Termux pattern. Problem: TECNO HiOS (and other aggressive Chinese OEM
+skins) auto-clears backgrounded apps from Recents on a **plain home-press/minimize**,
+not just an explicit swipe-to-close from the task switcher. That means ordinary
+minimizing was silently firing `onTaskRemoved`, which killed the foreground service and
+released the WakeLock every time — tearing down every live terminal session behind the
+user's back. Reopening the app afterward was a full cold start trying to rebind to
+sessions that no longer existed, which is what looked like the app "refusing to open."
+
+**Fix:** `onTaskRemoved()` is now a no-op (beyond the mandatory `super` call). The
+service only tears down on a genuine `onDestroy()` — explicit force-stop, the system
+actually killing the service under real memory pressure, or the user manually stopping
+it via the notification action. Pushed as `9ffb9b1`.
+
+### Note on "redownloading rootfs again"
+`ProotInstaller.isInstalled()` correctly gates the ~250MB download/extract behind a
+version-file + binary-existence check, and `VERSION` hasn't changed in any of today's
+commits — so this isn't a regression from the fixes above. A redownload only happens if
+`filesDir` was actually wiped (full app data clear, or an uninstall/reinstall cycle) —
+expected, one-time behavior after that, not a bug to chase further unless it happens
+again on an app that was NOT reinstalled/cleared.
+
+### Status
+Three separate bugs now addressed in the same debugging arc: (1) missing proot
+`/proc/self/cwd` bind mount, (2) no native-signal crash visibility, (3) service/WakeLock
+torn down on OEM-triggered onTaskRemoved. Waiting on user to confirm the minimize/reopen
+cycle is stable on the latest build.
