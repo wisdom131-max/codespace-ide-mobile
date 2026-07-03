@@ -496,11 +496,34 @@ multi-word argument like `-c "test comment"`. All args here are parsed directly 
 - ✅ Session leak guard: kill stale sessions before reattaching
 - ✅ Catch Throwable not Exception for OOM handling
 
+### CURRENT ISSUE — CRASH ON MINIMIZE WITH UBUNTU (July 3, build #830)
+**User-confirmed diagnosis:**
+- App works fine minimize/reopen when Ubuntu is NOT downloaded ✅
+- App crashes (SIGKILL) on minimize/reopen AFTER Ubuntu is downloaded ❌
+- WakeLock setting (on/off) does not affect the outcome — it's NOT a WakeLock issue
+
+**Root cause:** Memory pressure from proot process
+- Ubuntu proot process consumes significant memory on 3GB device
+- On minimize: app process + proot process = too much memory → TECNO SIGKILL
+- On reopen: tries to reattach to old proot + create new placeholder → OOM → crash loop
+- The reattach logic in TerminalPane (lines 692-738) tries to reuse old sessions, but
+  the memory pressure kills the app before it can complete
+
+**Fix plan (next build):**
+1. Add `killAllSessions()` to TerminalService — finishes all live proot/bash sessions
+2. Call it from TerminalPane's lifecycle observer on `ON_STOP` (activity going to background)
+3. This kills proot processes immediately when minimized, freeing ~500MB+ of memory
+4. On reopen: `getLiveUbuntuSessions()` returns empty → `addUbuntuTab()` starts fresh
+5. Tradeoff: terminal sessions don't persist across minimize (acceptable on 3GB — stability > persistence)
+6. Also stop the foreground service on minimize (no sessions = no need for FGS)
+7. Service restarts from DisposableEffect on reopen
+
 ### KNOWN ISSUES
 - Terminal bash tab still falls back to busybox ash (not native bash) — pending fix
 - Ubuntu proot: dpkg/apt install still blocked by Samsung kernel chdir restriction
-- Terminal session persistence across Activity recreation not yet implemented
 - Terminal redraw on keystrokes may still have issues
+- Terminal session persistence across minimize: INTENTIONALLY NOT IMPLEMENTED on 3GB devices
+  (killing sessions on minimize is the stability fix — see CURRENT ISSUE above)
 
 ### DEVICE SPECS (from bugreport July 3)
 - TECNO KL4, Android 14, kernel 5.15.180-android13, arm64-v8a, 3GB RAM
