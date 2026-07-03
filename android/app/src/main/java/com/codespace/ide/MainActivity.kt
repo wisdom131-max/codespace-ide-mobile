@@ -56,34 +56,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         updateSystemUIForOrientation(resources.configuration.orientation)
 
-        // ── Storage permissions ───────────────────────────────────────────────
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ needs MANAGE_EXTERNAL_STORAGE for full file access
-            if (!Environment.isExternalStorageManager()) {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:$packageName")
-                }
-                startActivity(intent)
-            }
-        } else {
-            val permissions = arrayOf(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            )
-            val notGranted = permissions.filter {
-                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-            }
-            if (notGranted.isNotEmpty()) {
-                ActivityCompat.requestPermissions(this, notGranted.toTypedArray(), 1001)
-            }
-        }
-
-        // ── Battery optimization exemption ────────────────────────────────────
-        // Without this, aggressive OEM power managers (TECNO, Infinix, Samsung)
-        // send SIGRTMIN (signal 31) to kill terminal processes within seconds.
-        // This is exactly the "[Process completed (signal 31)]" crash we see.
-        // We request exemption on first launch — user just taps "Allow".
-        requestBatteryOptimizationExemption()
+        // ── Storage permissions + battery optimization ───────────────────────
+        // FIXED 2026-07-03: these were calling startActivity() in onCreate() BEFORE
+        // setContent() — the settings screen appeared on top of the splash screen,
+        // making the app look like it was hanging on a blank screen. Now deferred to
+        // a LaunchedEffect inside the Compose tree, so the UI renders FIRST and the
+        // permission prompts appear as overlays afterward (natural Android flow).
+        // The actual permission requests are in the Compose LaunchedEffect below.
 
         // BusyboxInstaller removed (2026-07-03): Ubuntu proot is the only terminal
         // environment this app ships now — busybox/ash is fully dead code (see AGENTS.md).
@@ -105,6 +84,35 @@ class MainActivity : ComponentActivity() {
         window.decorView.post { ViewCompat.requestApplyInsets(window.decorView) }
         setContent {
             var crashLogText by remember { mutableStateOf(lastCrash) }
+
+            // Deferred permission requests — run AFTER first frame is rendered so
+            // the splash screen dismisses immediately and the user sees the app UI
+            // before the settings screens appear as overlays.
+            LaunchedEffect(Unit) {
+                // Storage permission (Android 11+)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    if (!Environment.isExternalStorageManager()) {
+                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        startActivity(intent)
+                    }
+                } else {
+                    val permissions = arrayOf(
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    )
+                    val notGranted = permissions.filter {
+                        ContextCompat.checkSelfPermission(this@MainActivity, it) != PackageManager.PERMISSION_GRANTED
+                    }
+                    if (notGranted.isNotEmpty()) {
+                        ActivityCompat.requestPermissions(this@MainActivity, notGranted.toTypedArray(), 1001)
+                    }
+                }
+                // Battery optimization exemption
+                requestBatteryOptimizationExemption()
+            }
+
             CodeSpaceApp(tokenStore = tokenStore)
             if (crashLogText != null) {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
