@@ -317,6 +317,8 @@ fun ProjectShellScreen(
     onSelectTheme: (String) -> Unit = {},
     onToggleTheme: () -> Unit,
     onBack: () -> Unit,
+    onSignOut: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     tokenStore: SecureTokenStore,
     sessionStateStore: SessionStateStore,
 ) {
@@ -1060,19 +1062,94 @@ fun ProjectShellScreen(
             }
         }
 
+        // Gear / Settings menu — VS Code-style bottom-left dropdown
+        if (showGearMenu) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color(0x44000000))
+                    .pointerInput(Unit) {
+                        detectTapGestures { showGearMenu = false }
+                    }
+            ) {
+                Card(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 52.dp, bottom = 56.dp)
+                        .width(240.dp)
+                        .heightIn(max = 360.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures { /* swallow taps inside the card */ }
+                        },
+                    colors = CardDefaults.cardColors(containerColor = MenuBg),
+                    elevation = CardDefaults.cardElevation(8.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                ) {
+                    LazyColumn(Modifier.padding(4.dp)) {
+                        item {
+                            Text("Settings", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
+                        }
+                        val gearItems = listOf(
+                            "Color Theme" to { showColorTheme = true; showGearMenu = false },
+                            "Toggle Sidebar" to { showSidebar = !showSidebar; showGearMenu = false },
+                            "Toggle Terminal" to { showBottomPanel = !showBottomPanel; showGearMenu = false },
+                            "Toggle AI Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
+                            "Font Size +" to { editorFontSize = (editorFontSize + 1).coerceAtMost(32); showGearMenu = false },
+                            "Font Size -" to { editorFontSize = (editorFontSize - 1).coerceAtLeast(8); showGearMenu = false },
+                        )
+                        items(gearItems) { (label, action) ->
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { action() }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(label, fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                        item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { showGearMenu = false; onOpenSettings() }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Open Settings Page", fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { showGearMenu = false; onSignOut() }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Sign Out", fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Person / Account menu
         if (showPersonMenu) {
             Box(
                 Modifier.fillMaxSize()
                     .background(Color(0x44000000))
-                    .clickable { showPersonMenu = false }
+                    .pointerInput(Unit) {
+                        detectTapGestures { showPersonMenu = false }
+                    }
             ) {
                 Card(
                     Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 52.dp, bottom = 56.dp)
                         .width(220.dp)
-                        .clickable(enabled = false) {},
+                        .pointerInput(Unit) {
+                            detectTapGestures { /* swallow taps inside the card */ }
+                        },
                     colors = CardDefaults.cardColors(containerColor = MenuBg),
                     elevation = CardDefaults.cardElevation(8.dp),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -1081,9 +1158,12 @@ fun ProjectShellScreen(
                         Text("Signed in as", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(8.dp))
                         Text("Wisdom Ijezie", fontSize = 13.sp, color = MenuText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
                         HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 8.dp))
-                        listOf("Settings", "Sign Out").forEach { item ->
+                        listOf(
+                            "Settings" to { showPersonMenu = false; onOpenSettings() },
+                            "Sign Out" to { showPersonMenu = false; onSignOut() }
+                        ).forEach { (item, action) ->
                             Row(
-                                Modifier.fillMaxWidth().clickable { showPersonMenu = false }.padding(horizontal = 8.dp, vertical = 10.dp)
+                                Modifier.fillMaxWidth().clickable { action() }.padding(horizontal = 8.dp, vertical = 10.dp)
                             ) {
                                 Text(item, fontSize = 13.sp, color = MenuText)
                             }
