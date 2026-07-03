@@ -661,3 +661,56 @@ wait for a real trace:
 Both fixes pushed and built green. Waiting on user to reproduce the reopen-crash — next
 occurrence will land in the `CrashLog` entity automatically and give us the real
 stack trace instead of guesswork.
+
+## proot execve/chmod/chdir "Function not implemented" — root cause found and fixed (2026-07-03)
+
+User hit this reopening the app and launching a new Ubuntu tab:
+```
+proot error: execve("/usr/bin/env"): Function not implemented
+proot error: can't chmod '.../cache/proot-tmp/proot-20505-hfLnxp': Function not implemented
+proot error: can't chdir to '/root': Function not implemented
+```
+
+**Root cause:** `--bind=/proc/self/cwd:/proc/self/cwd` — the established fix for Samsung/
+TECNO kernel 5.15 blocking `SYS_getcwd` via seccomp — was silently dropped from
+`ProotInstaller.launchArgs()` in commit `8f0f5ba` (2026-06-30, ironically titled "Samsung
+fix") during an unrelated cleanup of `--sysvipc`/`-L`/`--kernel-release`. A stale comment
+in the file (`"binding /proc/self/cwd (see launchArgs below) helps..."`) kept pointing at
+code that no longer existed — that's what gave it away on re-audit. `-w /root` alone sets
+proot's *own* notion of cwd but doesn't fix the underlying blocked syscall that proot's own
+bookkeeping (and dpkg/debconf/perl inside the guest) still hits directly.
+
+**Fix:** restored the bind mount in `launchArgs()`. Pushed, built green
+(`e31a83c`).
+
+## Native crash handler added — closes the gap where device crashes produced zero logs (2026-07-03)
+
+After the fix above, user reported the app "worked fine but still crashed" tapping open a
+new Ubuntu tab. Checked the `CrashLog` backend entity (the network-streaming crash logger
+added the day before) — **empty**. That's diagnostic: a `Thread.UncaughtExceptionHandler`
+(JVM-level) NEVER sees native signal crashes (SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE) — those
+go straight to the kernel/debuggerd and bypass Java entirely. This is exactly the same
+crash *class* as the original "signal 11" bug, just resurfacing in a new spot.
+
+**Fix, two parts:**
+1. `pty_native.c`: installs a real `sigaction` handler for SIGSEGV/SIGABRT/SIGBUS/SIGILL/
+   SIGFPE via a new JNI method `JNI.installCrashHandler(path)`. On crash it writes signal
+   number, code, pid, tid, and fault address to a fixed file using ONLY async-signal-safe
+   calls (`open`/`write`/`close` — no malloc, no snprintf/locking), then restores the
+   default handler and re-raises so Android's normal tombstone/debuggerd path is completely
+   unaffected. Called from `CodeSpaceApplication.installNativeCrashHandler()` right after
+   `installCrashLogger()` in `onCreate()`.
+2. Can't safely POST from inside a signal handler, so `MainActivity.readLastCrashLog()` now
+   reads **every** file in `crash_logs/` (both the JVM logger's timestamped files and the
+   native handler's fixed `native_crash_pending.txt`), combines them, uploads to the same
+   `reportCrash` backend function on a background thread, and still shows the local
+   copy-paste dialog as a fallback for zero-connectivity cases.
+
+Hit one build break during this (unescaped `\n` in a `joinToString` separator, first
+attempt used literal newlines instead of the escape sequence) — fixed same session,
+build green (`ea56ad9`).
+
+### Status
+Both the proot bind-mount fix and native crash handler are live in the current build.
+Next crash of ANY kind (Kotlin exception or native signal) should land in `CrashLog`
+automatically — no ADB, no reopening-the-app-to-see-a-dialog requirement anymore.
