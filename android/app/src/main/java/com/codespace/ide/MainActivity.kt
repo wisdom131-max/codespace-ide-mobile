@@ -148,32 +148,24 @@ class MainActivity : ComponentActivity() {
             val combined = files.sortedByDescending { it.lastModified() }
                 .joinToString("\n\n---\n\n") { it.readText() }
 
-            // BLOCKING upload, done BEFORE deleting the files, and BEFORE setContent().
+            // Upload in a BACKGROUND thread — NOT on the main thread.
+            // The previous version did a blocking network call (uploadCrashLogToAgent)
+            // right here on the main thread during onCreate(). On Android, network I/O
+            // on the main thread throws NetworkOnMainThreadException (caught, but the
+            // 6-second timeout also causes ANR if it somehow doesn't throw). This was
+            // a major contributor to "app opens then closes immediately on reopen after
+            // minimize": if crash logs existed from a previous crash, every reopen
+            // would block/throw on the network call before the UI could render.
             //
-            // Previous version deleted the local files immediately, then fired the upload
-            // in a daemon Thread in the background. That silently lost every crash log on
-            // this device: if the SAME bug crashes the app again quickly on the very next
-            // launch (which is exactly what's been happening -- "shows Setting up terminal
-            // for a split second then closes", repeatable every time), the daemon thread's
-            // network POST (DNS + TLS + response, easily 1-3s on mobile data) never got a
-            // chance to finish before the process died again, and the on-disk copy was
-            // ALREADY deleted -- so the evidence was destroyed before we ever saw it. That's
-            // why CrashLog stayed empty through multiple confirmed device crashes.
-            //
-            // Fix: upload synchronously right here (still early in onCreate(), before any
-            // Compose renders -- a 1-3s startup delay is an acceptable tradeoff for actually
-            // seeing the crash), and only delete the local files after the upload attempt
-            // completes. If upload fails (no network yet, timeout, etc.) the files are kept
-            // so the NEXT launch gets another chance instead of losing them.
-            val uploaded = try {
-                uploadCrashLogToAgent(combined)
-                true
-            } catch (_: Exception) {
-                false
-            }
-            if (uploaded) {
-                files.forEach { it.delete() }
-            }
+            // Now: read the local file (fast), return the text immediately so the dialog
+            // can show, and upload + delete in the background. If the upload fails, the
+            // files stay on disk for the next attempt.
+            Thread {
+                try {
+                    uploadCrashLogToAgent(combined)
+                    files.forEach { it.delete() }
+                } catch (_: Exception) { /* keep files for next attempt */ }
+            }.start()
 
             combined
         } catch (_: Exception) {
@@ -274,8 +266,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestBatteryOptimizationExemption() {
+        // Only ask ONCE — repeated intents on every onCreate() can interfere with startup
+        // and cause the "app flashes then closes" symptom on some OEM devices.
+        val prefs = getSharedPreferences("app_prefs", 0)
+        if (prefs.getBoolean("battery_optimization_requested", false)) return
+
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            prefs.edit().putBoolean("battery_optimization_requested", true).apply()
             try {
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
