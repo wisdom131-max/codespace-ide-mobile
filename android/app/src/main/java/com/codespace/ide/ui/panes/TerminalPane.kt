@@ -396,6 +396,13 @@ internal class TerminalState(
     // Guards the one-time Ubuntu bootstrap so it only runs once even if this state is
     // shared across multiple TerminalPane composables (split panels).
     var ubuntuBootstrapStarted by androidx.compose.runtime.mutableStateOf(false)
+    // Compact, Termux-style first-install status. Non-null shows a small indeterminate
+    // dialog (see real Termux's TermuxInstaller.installBootstrapPackages(), which uses
+    // ProgressDialog.show(activity, null, message, true, false) -- a small centered
+    // spinner dialog, NEVER a full-screen overlay or a wall of scrolling text). Only set
+    // during an actual first-time download+extract; null the rest of the time, including
+    // on every ordinary already-installed launch, matching Termux's clean fast-path.
+    var installDialogMessage by androidx.compose.runtime.mutableStateOf<String?>(null)
 
     val active: TabSession? get() = tabs.firstOrNull { it.id == activeId }
     val pinned: TabSession? get() = tabs.firstOrNull { it.id == (pinnedId ?: activeId) }
@@ -563,7 +570,16 @@ internal fun TerminalPane(
         }
         activeId = id
         progressClient.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
-        writeToDisplay(progressSession, "\r\n[Ubuntu] Checking installation...\r\n")
+        val isFirstTimeInstall = !ProotInstaller.isInstalled(ctx)
+        // FIXED 2026-07-03: this used to dump ~15 lines (progress spam + a full binary
+        // pre-flight diagnostic block) straight into the terminal's scrollback on EVERY
+        // launch, install or not -- that's the "fills the screen" complaint. Real Termux
+        // (TermuxInstaller.installBootstrapPackages(), confirmed via decompile) shows a
+        // small indeterminate ProgressDialog ONLY during an actual first-time bootstrap
+        // extraction, and launches straight into the shell with zero extra text otherwise.
+        // Mirror that: route status to a compact dialog (installDialogMessage below, see
+        // TerminalState) instead of the terminal, and only show it for a real first install.
+        if (isFirstTimeInstall) sharedState.installDialogMessage = "Preparing Ubuntu setup…"
         // Start foreground service BEFORE extraction — this raises process OOM priority so
         // Samsung's memory manager won't kill us mid-extraction (plain background threads
         // have the lowest OOM score and get killed first on 3 GB devices under memory pressure).
@@ -572,42 +588,37 @@ internal fun TerminalPane(
         Thread {
             try {
                 // Ensure Termux proot binaries are extracted from assets
-                writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
                 ProotInstaller.ensureBinaries(ctx)
-                if (!ProotInstaller.isInstalled(ctx)) {
-                    writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
-                    writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
+                if (isFirstTimeInstall) {
                     ProotInstaller.install(ctx) { msg ->
-                        // Mirror progress to the foreground notification so Android sees activity
+                        // Mirror progress to the foreground notification so Android sees
+                        // activity, and to the compact dialog -- never to the terminal itself.
                         TerminalService.updateProgress(ctx, msg.take(60))
-                        writeToDisplay(progressSession, "  $msg\r\n")
+                        sharedState.installDialogMessage = msg
                     }
-                    writeToDisplay(progressSession, "\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
-                } else {
-                    writeToDisplay(progressSession, "[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
                 }
-                // Pre-flight: write binary info to terminal for diagnosis
+                // Pre-flight binary diagnostics — logcat only now (was written straight into
+                // the terminal on every launch; kept here for adb debugging, not user-facing).
                 val nativeDir = ctx.applicationInfo.nativeLibraryDir
-                val prootBin = java.io.File(nativeDir, "libproot.so")
+                val prootBin  = java.io.File(nativeDir, "libproot.so")
                 val loaderBin = java.io.File(nativeDir, "libproot-loader.so")
                 val tallocBin = java.io.File(nativeDir, "libtalloc.so")
                 val shmemBin  = java.io.File(nativeDir, "libandroid-shmem.so")
-                writeToDisplay(progressSession, "[Ubuntu] nativeLibraryDir: $nativeDir\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] proot:   exists=${prootBin.exists()} canExec=${prootBin.canExecute()} size=${prootBin.length()}\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] loader:  exists=${loaderBin.exists()} canExec=${loaderBin.canExecute()} size=${loaderBin.length()}\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] talloc:  exists=${tallocBin.exists()} size=${tallocBin.length()}\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] shmem:   exists=${shmemBin.exists()} size=${shmemBin.length()}\r\n")
                 val rootfsDir = ProotInstaller.rootfsDir(ctx)
-                val bashBin = java.io.File(rootfsDir, "usr/bin/bash")
-                writeToDisplay(progressSession, "[Ubuntu] rootfs:  ${rootfsDir.absolutePath}\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] bash:    exists=${bashBin.exists()} size=${bashBin.length()}\r\n")
-                writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
+                val bashBin   = java.io.File(rootfsDir, "usr/bin/bash")
+                android.util.Log.d(
+                    "TerminalPane",
+                    "nativeLibraryDir=$nativeDir proot=${prootBin.exists()}/${prootBin.canExecute()} " +
+                    "loader=${loaderBin.exists()} talloc=${tallocBin.exists()} shmem=${shmemBin.exists()} " +
+                    "rootfs=${rootfsDir.absolutePath} bash=${bashBin.exists()}"
+                )
             } finally {
                 // Do NOT stop TerminalService here — it must stay alive for the proot session.
                 // TerminalService is stopped only when TerminalPane is disposed (all tabs closed).
                 TerminalService.updateProgress(ctx, "Ubuntu terminal active")
             }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
+                sharedState.installDialogMessage = null  // dismiss the compact dialog, if shown
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
                 progressSession.finishIfRunning()
