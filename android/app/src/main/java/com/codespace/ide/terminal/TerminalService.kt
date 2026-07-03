@@ -52,6 +52,31 @@ class TerminalService : Service() {
 
     val isWakeLockHeld: Boolean get() = wakeLock?.isHeld == true
 
+    // ── Session leak guard (fixed 2026-07-03) ──────────────────────────────────
+    // createSession() forks a real proot+bash process tree and previously had ZERO
+    // tracking here. Every time the Activity/Compose tree got torn down and recreated
+    // (OEM killing the Activity while this Service survives — exactly what TECNO HiOS
+    // does on a plain minimize) the bootstrap effect in TerminalPane spawned ANOTHER
+    // real Ubuntu proot session on top of whatever was already running, because there
+    // was no way to discover/reuse an existing live session from a fresh Activity.
+    // Old sessions were NEVER finished unless the user manually tapped "close tab" —
+    // so orphaned proot+bash+rootfs-mount process trees stacked up across every
+    // minimize/reopen cycle. On a 3GB device, this is a very plausible OOM trigger,
+    // and it fires at exactly the moment of reopening — matching the reported "opens
+    // then instantly closes" symptom. Track every live session here so callers can
+    // reuse one instead of leaking duplicates, and so a real onDestroy() can clean
+    // up anything left running.
+    private val liveSessions = java.util.Collections.synchronizedList(
+        mutableListOf<TerminalSession>()
+    )
+
+    /** Returns an existing, still-running Ubuntu session if one exists, so a freshly
+     *  recreated Activity/Compose tree can REATTACH instead of forking a duplicate. */
+    fun findLiveUbuntuSession(): TerminalSession? = synchronized(liveSessions) {
+        liveSessions.removeAll { it.isRunning.not() }  // prune finished sessions first
+        liveSessions.firstOrNull { it.isRunning }
+    }
+
     // ── LocalBinder — allows TerminalPane to call createSession() from Service context ──
     // This is the KEY architectural fix: Termux forks all shells from inside the Service,
     // not from Activity. Android's phantom process killer sees Service as parent → not phantom.
@@ -92,6 +117,13 @@ class TerminalService : Service() {
     }
 
     override fun onDestroy() {
+        // Genuine teardown (force-stop, real system kill, or explicit notification stop) —
+        // finish any sessions still tracked here so we don't leave orphaned proot/bash
+        // process trees running past the service's own lifetime.
+        synchronized(liveSessions) {
+            liveSessions.forEach { try { it.finishIfRunning() } catch (_: Exception) {} }
+            liveSessions.clear()
+        }
         actionReleaseWakeLock()
         super.onDestroy()
     }
@@ -205,6 +237,7 @@ class TerminalService : Service() {
         if (isUbuntu) {
             val (proot, args, envVars) = ProotInstaller.launchArgs(this)
             val session = TerminalSession(proot, "/", args, envVars, 4000, client)
+            liveSessions.add(session)
             return Pair(session, client)
         }
 
