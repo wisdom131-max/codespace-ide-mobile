@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
@@ -530,10 +531,15 @@ fun ProjectShellScreen(
                     .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Left: back button
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive,
-                    modifier = Modifier.size(20.dp).clickable { onBack() })
+                // Left: back button — proper ArrowBack + 44dp touch target
+                Spacer(Modifier.width(4.dp))
+                Box(
+                    Modifier.size(44.dp).clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TabTextInactive,
+                        modifier = Modifier.size(22.dp))
+                }
                 // Center: Workspace title (clickable opens command palette)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Row(
