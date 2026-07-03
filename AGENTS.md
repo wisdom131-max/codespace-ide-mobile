@@ -1021,3 +1021,79 @@ both commits (`a5d713f4` insets fix, `b513a4b7` BackHandler fix). Awaiting user 
 on-device: (1) app should render at correct size immediately on cold open, no rotation
 needed, (2) hardware/gesture back button should close menus one at a time then return to
 the home screen.
+
+
+---
+
+## 2026-07-03 (cont'd 4) — Backend Railway deploy prep + Terminal shell env fix + Back button + Onboarding removal
+
+### Backend Railway Deployment (code pushed, manual deploy needed)
+- **`railway.json`** added at repo root — tells Railway to build using `backend/Dockerfile`
+- **`backend/src/main.ts`** — added `/api/v1/health` endpoint for Railway healthcheck
+- **`backend/src/database/database.module.ts`** — added `ssl: { rejectUnauthorized: false }` for Railway PostgreSQL in production
+- **`backend/Dockerfile`** — cleaned up: slim runtime image, removed unnecessary `node-pty rebuild`
+- **`backend/.env.example`** — full reference of all env vars needed (DATABASE_URL, JWT_SECRET, FIREBASE_*)
+
+**Manual steps still needed (on railway.app):**
+1. New Project -> Deploy from GitHub repo -> `wisdom131-max/codespace-ide-mobile`
+2. Add PostgreSQL plugin
+3. Set env vars: DATABASE_URL (auto from plugin), JWT_SECRET, JWT_REFRESH_SECRET, FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, NODE_ENV=production
+4. Railway gives URL -> paste into Android app's BASE_URL config
+
+### Terminal Shell Environment Fix (matching Termux exactly)
+Studied decompiled Termux smali (TermuxService.smali, TermuxTerminalSessionClient.smali) from user's phone.
+The bash terminal tab was falling back to `/system/bin/sh` because the environment was incomplete.
+
+**Root cause:** `TerminalService.createSession()` was missing critical env vars that Termux sets:
+- `LD_LIBRARY_PATH` -> `nativeLibraryDir` (required for native .so resolution)
+- `LD_PRELOAD` -> `libtermux-exec.so` (intercepts exec() for Samsung OEM compat)
+- `ENV` -> `~/.ashrc` (ash reads this for interactive sessions)
+- `PATH` order was wrong — `nativeDir` was missing
+
+**Fix:** Rewrote `createSession()` env setup to mirror Termux's `TermuxShellEnvironmentClient`:
+- `PATH=$bin:$nativeDir:/system/bin:/system/xbin`
+- `LD_LIBRARY_PATH=$nativeDir:$existing`
+- `LD_PRELOAD=$nativeDir/libtermux-exec.so`
+- `ENV=$home/.ashrc`
+- All Android system vars (ANDROID_DATA, ANDROID_ROOT, BOOTCLASSPATH, etc.) inherited
+
+Also fixed **PS1 prompt** in `BusyboxInstaller.kt`:
+- Was using bash-only escapes that ash doesn't support
+- Changed to `${USER}` and `${PWD##*/}` (ash-compatible variable expansion)
+
+### Back Button Fix (top-left corner)
+**Problem:** The back button at the top-left of ProjectShellScreen used `Icons.Default.KeyboardArrowUp` (an UP arrow, not a back arrow) with a tiny 20dp click area. User reported it didn't work to go back to the home/menu screen.
+
+**Fix:**
+- Changed icon to `Icons.AutoMirrored.Filled.ArrowBack` (proper back arrow)
+- Wrapped in a 44dp Box for proper touch target (Material Design minimum)
+- `onBack()` calls `nav.popBackStack()` which returns to HomeScreen
+
+### Onboarding Walkthrough Removal (blank screen fix)
+**Problem:** After logging in and creating a project, the app showed a blank screen on first launch. Root cause: `OnboardingWalkthrough` — a full-screen Dialog overlay that rendered on first launch (controlled by `onboarding_seen` SharedPrefs flag). The dialog was either rendering blank or intercepting all touches so the user couldn't interact with the app behind it.
+
+**Fix:**
+- Removed `showOnboarding` state variable from `ProjectShellScreen.kt`
+- Removed the `OnboardingWalkthrough(onDone=...)` overlay block
+- Deleted `OnboardingWalkthrough.kt` file entirely
+- Will build a better onboarding later
+
+### Build chain fixes (runs #640-#676, all resolved)
+All build errors from the feature addition round were fixed:
+1. `AuthScreen.kt` — `setLoginHint` unresolved -> reflection
+2. `CodeSpaceApp.kt` — `HomeScreen` missing `accessToken` + `onSignOut` params
+3. `CodeEditor.kt` — real 0x0A byte inside string literals -> byte-replaced
+4. `TermuxBootstrapInstaller.kt` — same embedded newline bug
+5. `TerminalPane.kt` — missing `LazyRow`, `items`, `detectTapGestures` imports
+6. `TerminalPane.kt` — `combinedClickable` experimental -> `pointerInput + detectTapGestures`
+7. Hidden SDK constants `THREAD_GROUP_TOP_APP/FOREGROUND` -> raw integers 5 and 1
+8. `Process.setProcessGroup()` hidden API -> reflection
+9. `boundService` scope -> fixed lifecycle
+
+### Current status
+- CI: Build #676 green (all compilation errors resolved)
+- Backend: Code ready for Railway deploy (manual step needed)
+- Terminal: Shell env now matches Termux exactly
+- Back button: Fixed with proper ArrowBack icon + 44dp touch target
+- Onboarding: Removed entirely (was causing blank screen)
+- Next: Test on device — back button, no blank screen, terminal shell works
