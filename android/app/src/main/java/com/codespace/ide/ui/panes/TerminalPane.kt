@@ -830,6 +830,38 @@ internal fun TerminalPane(
             }
         }
 
+        // First-time Ubuntu install dialog — small centered spinner + single status line,
+        // matches real Termux's TermuxInstaller ProgressDialog exactly (indeterminate,
+        // non-cancelable while running). Never full-screen, never a scrolling text wall,
+        // and only ever shown for an actual first-time download+extract (see addUbuntuTab).
+        sharedState.installDialogMessage?.let { statusMsg ->
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { /* non-cancelable while install is running */ },
+                properties = androidx.compose.ui.window.DialogProperties(
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false,
+                )
+            ) {
+                androidx.compose.material3.Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color = Color(0xFF252526),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 3.dp,
+                            color = Color(0xFF4FC3F7),
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Text(statusMsg, color = Color(0xFFEEEEEE), fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
         // Rename dialog
         if (renameTargetId != null) {
             AlertDialog(
