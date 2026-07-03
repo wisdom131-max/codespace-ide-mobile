@@ -1527,7 +1527,7 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                         if (view.mTermSession != mirrorTab.session) {
                             view.attachSession(mirrorTab.session)
                             mirrorTab.client.onTextChanged = {
-                                if (isActivityVisible) view.post { view.onScreenUpdated() }
+                                if (view.isShown) view.post { view.onScreenUpdated() }
                             }
                             view.requestFocus()
                         }
