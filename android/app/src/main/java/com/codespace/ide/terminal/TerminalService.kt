@@ -72,9 +72,22 @@ class TerminalService : Service() {
 
     /** Returns an existing, still-running Ubuntu session if one exists, so a freshly
      *  recreated Activity/Compose tree can REATTACH instead of forking a duplicate. */
-    fun findLiveUbuntuSession(): TerminalSession? = synchronized(liveSessions) {
+    fun findLiveUbuntuSession(): TerminalSession? = getLiveUbuntuSessions().firstOrNull()
+
+    /**
+     * Returns ALL still-running sessions tracked by this Service — mirrors real Termux's
+     * TermuxService.getTermuxSessions(), which is the actual source of truth the Activity
+     * rebuilds its ENTIRE tab list from on every (re)connect, rather than trusting its own
+     * (Compose-`remember`-scoped, and therefore reset-on-recreate) tab state. Confirmed by
+     * decompiling the reference Termux APK (v0.118.3) from the user's Drive: TermuxService
+     * keeps `List<TermuxSession> mTermuxSessions` as the single source of truth, and
+     * setTermuxTerminalSessionClient()/unsetTermuxTerminalSessionClient() swap the UI client
+     * onto EVERY session in that list on connect/disconnect — never just one. Reattaching
+     * only the first session (as an earlier version of this fix did) would silently orphan
+     * any additional open Ubuntu tabs across a minimize/reopen cycle. */
+    fun getLiveUbuntuSessions(): List<TerminalSession> = synchronized(liveSessions) {
         liveSessions.removeAll { it.isRunning.not() }  // prune finished sessions first
-        liveSessions.firstOrNull { it.isRunning }
+        liveSessions.toList()
     }
 
     // ── LocalBinder — allows TerminalPane to call createSession() from Service context ──
