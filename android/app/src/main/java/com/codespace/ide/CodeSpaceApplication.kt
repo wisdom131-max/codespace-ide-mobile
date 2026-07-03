@@ -177,7 +177,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
                 startService(intent)
             }
             Log.d("CodeSpaceApp", "TerminalService started from Application.onCreate()")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("CodeSpaceApp", "Failed to start TerminalService early: ${e.message}")
         }
     }
@@ -194,7 +194,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
                 acquire()
             }
             Log.d("CodeSpaceApp", "App-level WakeLock acquired — OEM signal 31 prevention active")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("CodeSpaceApp", "Failed to acquire app WakeLock: ${e.message}")
         }
     }
