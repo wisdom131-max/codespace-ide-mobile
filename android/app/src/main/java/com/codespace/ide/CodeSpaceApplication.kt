@@ -113,13 +113,17 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(5)?.forEach { it.delete() }
             } catch (_: Throwable) { /* never let logging interfere with the real crash */ }
 
-            // 2. Stream it straight to the agent over the network — this is what actually
-            //    solves "the app refuses to open again, how do I get you the log": no
-            //    local file, no dialog, no ADB needed at all. Best-effort, short timeout —
-            //    the process is dying regardless, we just don't want to hang it forever.
-            try {
-                reportCrashOverNetwork(thread.name, stamp, stackTrace)
-            } catch (_: Throwable) { /* best-effort only */ }
+            // 2. Stream it to the agent on a BACKGROUND thread — doing network I/O on
+            //    the crashing thread (often the main thread) throws
+            //    NetworkOnMainThreadException, which was silently swallowed by the
+            //    catch block, meaning crash logs were NEVER uploaded. Now we spawn a
+            //    daemon thread so the network call actually executes, and the crashing
+            //    thread can proceed to chain the original handler immediately.
+            Thread {
+                try {
+                    reportCrashOverNetwork(thread.name, stamp, stackTrace)
+                } catch (_: Throwable) { /* best-effort only */ }
+            }.start()
 
             // Chain to the original handler so normal Android crash behavior (dialog,
             // process kill, ANR reporting) still happens exactly as before.
