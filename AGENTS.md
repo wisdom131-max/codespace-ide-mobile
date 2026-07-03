@@ -23,6 +23,77 @@
 
 ---
 
+# CURRENT SPRINT — 2026-07-03 (LATEST — SUPERSEDES MASTER PLAN BELOW FOR ACTIVE WORK)
+
+## Completed Today (2026-07-03)
+
+### Crash Fixes (builds #809–#811, #813 ✅)
+| Fix | Build | Commit | Description |
+|-----|-------|--------|-------------|
+| Kill stale sessions on reattach failure | #809 | f0eb7360c1 | `getLiveUbuntuSessions()` catch block now calls `finishIfRunning()` on all old sessions before creating a new one |
+| Catch Throwable not Exception | #809 | f0eb7360c1 | `OutOfMemoryError` is an `Error`, not `Exception` — old catch block let it through, causing instant crash with zero log |
+| Kill placeholder sh session | #810 | 680e5a0ec9 | `rememberTerminalState` forks a `/system/bin/sh` on every Activity recreate — was never killed when reattaching to surviving sessions |
+| Catch Throwable in startup | #811 | f48b71e2eb | `acquireAppWakeLock()` and `startTerminalServiceEarly()` were catching `Exception` not `Throwable` |
+| Termux onTextChanged visibility guard | #813 | 2efb1c3014 | Added `isActivityVisible` check (from decompiled Termux smali line 113) to skip redraws when minimized |
+
+### Root Cause of "Opens Then Instantly Closes on Reopen"
+The "debug stuff" (WakeLock + early FGS + not stopping service on dispose) changed the app from dying-on-minimize to **surviving**. On reopen:
+1. `getLiveUbuntuSessions()` returns surviving sessions
+2. Reattach fails (OOM on 3GB with multiple proot trees) → catch block creates NEW session without killing old ones → session stacking → OOM
+3. `catch (e: Exception)` missed `OutOfMemoryError` → instant crash with zero log
+4. Blocking network call in `readLastCrashLog()` on main thread → ANR on every reopen if crash logs existed
+
+### Crash Log Infrastructure
+- `CrashLog` entity created on agent backend
+- `reportCrash` backend function deployed — stores crash logs to entity
+- Agent can read crash logs via `read_entities("CrashLog")` — no screenshot needed
+- App uploads crash logs automatically on next successful launch (2-3 seconds is enough)
+
+### Other Fixes
+- Back button: ArrowBack icon, 44dp touch target, BackHandler with overlay-closing logic
+- Onboarding walkthrough: removed (was blocking UI on first launch)
+- Command palette: centered, LazyColumn scrollable, proper text focus
+- Settings gear icon: restored, popup menu re-bound to `activePanel` state
+- Shell environment: bash/ash startup aligned with decompiled Termux smali (LD_LIBRARY_PATH, LD_PRELOAD, ENV, PATH)
+
+---
+
+## Active Issues (2026-07-03)
+
+### ISSUE 1: Blank Screen on Initial Launch (STILL PRESENT after OnboardingWalkthrough removal)
+**Status:** 🔍 INVESTIGATING
+**Symptom:** User sees blank/white screen when opening the app, even after removing OnboardingWalkthrough
+**Screenshots:** `Screenshot_20260703-172435.png` and `Screenshot_20260703-172448.png` (command palette IS working, terminal IS visible — "blank" is likely the splash screen or empty editor area)
+**Suspected causes:**
+1. **Splash screen hanging** — `installSplashScreen()` + storage permission intent + battery optimization intent in `onCreate()` delay first frame
+2. **Storage permission intent** — `startActivity(MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)` fires on EVERY launch if not granted, interrupting UI rendering
+3. **Empty editor area** — when no file is open and no side panel selected, main area shows watermark + "Open Explorer" text — user may interpret as "blank"
+**Next step:** Move storage/battery intents to `LaunchedEffect` (post-render), add a welcome/explorer default panel
+
+### ISSUE 2: Crash on Reopen After Minimize (FIXED — NEEDS DEVICE TEST)
+**Status:** ⬜ DEVICE TEST (human)
+**What to test:** Open app → minimize → wait 5 seconds → reopen
+**Expected:** App reattaches to surviving Ubuntu session or starts fresh (no crash)
+**If it crashes:** Crash log will upload automatically on next successful launch (2-3 sec open)
+
+### ISSUE 3: No Crash Logs Received Yet
+**Status:** ⬜ Waiting for device test
+**Note:** Interactive bug report from developer settings does NOT go to the agent — it stays on device. Only the automatic crash log upload (via `reportCrash` backend function) reaches the agent. User can also copy/paste stack trace from the crash dialog.
+
+---
+
+## Next Steps (Priority Order)
+
+1. **Fix blank screen** — Move storage/battery intents to post-render, default to Explorer panel
+2. **Device test crash fix** — Test build #811+ on device (minimize/reopen)
+3. **Verify crash log upload** — Check `read_entities("CrashLog")` after device test
+4. **Bake DNS + apt config into proot init** — Permanent fix for apt in Ubuntu tab
+5. **Expand pre-install** — wget, git, python3
+6. **Fix terminal session persistence** — Save/restore terminal sessions across app restarts
+7. **UI rebrand** — VS Code features, app icon, Play Store prep
+
+---
+
 # MASTER PLAN — 2026-06-30 (AUTHORITATIVE — SUPERSEDES ALL PREVIOUS PLANS)
 
 ## What Wisdom wants
@@ -341,17 +412,22 @@ apt install -y nano git python3
 
 ---
 
-## STEP STATUS SUMMARY
+## STEP STATUS SUMMARY (updated 2026-07-03)
 - [x] Step 1 — Diagnose Ubuntu apt ✅
 - [x] Step 2 — Fix Ubuntu sources.list ✅ (already correct)
 - [x] Step 3 — Fix proot launch args ✅ 8f0f5ba6
 - [x] Step 3b — Remove LD_LIBRARY_PATH from proot envVars ✅ a86517fa
-- [ ] Step 4 — Device test Ubuntu (**HUMAN STEP**)
-- [ ] Step 5 — Fix Bash shellArgs() — remove LD_LIBRARY_PATH
-- [ ] Step 6 — Fix TerminalPane createTerminalSession args
-- [ ] Step 7 — Device test Bash (**HUMAN STEP**)
+- [x] Step 4 — Device test Ubuntu (was ✅, needs re-test with crash fixes)
+- [x] Step 5 — Fix Bash shellArgs() ✅ (aligned with decompiled Termux smali)
+- [x] Step 6 — Fix TerminalPane createTerminalSession ✅
+- [ ] Step 7 — Device test Bash + crash fix (**HUMAN STEP** — test build #811+)
 - [ ] Step 8 — Build ExtensionsPane
 - [ ] Step 9 — Terminal menu cleanup
+- [x] Crash fix — Session stacking OOM on reopen ✅ (#809-#811)
+- [x] Crash fix — Blocking network on main thread ✅ (#809)
+- [x] Crash fix — Placeholder sh session leak ✅ (#810)
+- [x] Redraw fix — Termux visibility guard on onTextChanged ✅ (#813)
+- [ ] Blank screen fix — Splash screen / empty editor area (IN PROGRESS)
 
 
 ---
