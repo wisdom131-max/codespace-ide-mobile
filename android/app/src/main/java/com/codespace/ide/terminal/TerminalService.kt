@@ -135,6 +135,23 @@ class TerminalService : Service() {
         return START_STICKY
     }
 
+    /**
+     * Kills ALL live terminal sessions (proot/bash process trees) and clears the tracking list.
+     * Called when the Activity goes to background (ON_STOP) to free memory on 3GB devices.
+     * Without this, proot processes survive across minimize/reopen cycles and cause OOM crashes
+     * because TECNO HiOS kills the app when memory pressure gets too high.
+     *
+     * Tradeoff: terminal sessions don't persist across minimize. On 3GB devices, stability
+     * is more important than session persistence. On reopen, addUbuntuTab() starts a fresh session.
+     */
+    fun killAllSessions() {
+        synchronized(liveSessions) {
+            liveSessions.forEach { try { it.finishIfRunning() } catch (_: Throwable) {} }
+            liveSessions.clear()
+        }
+        android.util.Log.d("TerminalService", "All sessions killed (minimize cleanup)")
+    }
+
     override fun onDestroy() {
         // Genuine teardown (force-stop, real system kill, or explicit notification stop) —
         // finish any sessions still tracked here so we don't leave orphaned proot/bash
