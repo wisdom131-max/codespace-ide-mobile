@@ -32,7 +32,14 @@ import android.content.pm.PackageManager
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.ui.CodeSpaceApp
 import dagger.hilt.android.AndroidEntryPoint
+import org.json.JSONObject
 import java.io.File
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -114,18 +121,61 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Reads the newest file from filesDir/crash_logs/, if any, and deletes it after reading
-     *  so the dialog doesn't repeat on the next launch. */
+    /**
+     * Reads ALL files from filesDir/crash_logs/ (both the JVM crash logger's timestamped
+     * files AND the native signal handler's native_crash_pending.txt -- see
+     * CodeSpaceApplication for both), combines them, uploads the combined text to the
+     * agent's reportCrash function in the background (covers native crashes, which can't
+     * safely make a network call from inside a signal handler), and deletes the files so
+     * the dialog doesn't repeat on the next launch.
+     */
     private fun readLastCrashLog(): String? {
         return try {
             val dir = File(filesDir, "crash_logs")
-            val latest = dir.listFiles()?.maxByOrNull { it.lastModified() } ?: return null
-            val text = latest.readText()
-            dir.listFiles()?.forEach { it.delete() }
-            text
+            val files = dir.listFiles()?.filter { it.isFile && it.length() > 0 } ?: return null
+            if (files.isEmpty()) return null
+            val combined = files.sortedByDescending { it.lastModified() }
+                .joinToString("
+
+---
+
+") { it.readText() }
+            files.forEach { it.delete() }
+
+            Thread {
+                try { uploadCrashLogToAgent(combined) } catch (_: Exception) { /* best-effort */ }
+            }.apply { isDaemon = true }.start()
+
+            combined
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** Same reportCrash endpoint the JVM crash logger POSTs to -- this is the path that
+     *  actually gets a native-signal crash (which has no Java stack trace) to the agent. */
+    private fun uploadCrashLogToAgent(text: String) {
+        val url = URL("https://superagent-7c842a7e.base44.app/functions/reportCrash")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 6000
+        conn.readTimeout = 6000
+        conn.setRequestProperty("Content-Type", "application/json")
+
+        val body = JSONObject().apply {
+            put("app_package", packageName)
+            put("device_model", Build.MODEL)
+            put("android_version", Build.VERSION.RELEASE)
+            put("thread_name", "recovered_on_next_launch")
+            put("stack_trace", text)
+            put("app_version", BuildConfig.VERSION_NAME)
+            put("device_timestamp", SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date()))
+        }
+
+        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+        conn.responseCode
+        conn.disconnect()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

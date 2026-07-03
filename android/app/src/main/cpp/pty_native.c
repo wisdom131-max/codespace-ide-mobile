@@ -10,6 +10,93 @@
 #include <termios.h>
 #include <unistd.h>
 
+// ── Native crash handler ──────────────────────────────────────────────────
+// Added 2026-07-03: a JVM-level Thread.UncaughtExceptionHandler (see
+// CodeSpaceApplication.installCrashLogger()) does NOT catch native signal
+// crashes (SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE) -- those are handled by the
+// kernel/Bionic's own debuggerd path and never reach Java at all. This is
+// exactly the class of crash this app has hit before ("signal 11" in the
+// Ubuntu terminal) and was suspected again when a JVM crash log never showed
+// up for a real device crash. This installs our own sigaction for the common
+// crash signals, writes minimal info to a fixed file path using ONLY
+// async-signal-safe calls (write/open/close -- no malloc, no snprintf-heavy
+// locking), then re-raises with the default handler restored so Android's
+// normal tombstone/debuggerd path still runs unmodified.
+#include <sys/syscall.h>
+#include <time.h>
+
+static char g_crash_path[512] = {0};
+
+static void write_uint(int fd, unsigned long v) {
+    char buf[24];
+    int i = sizeof(buf);
+    buf[--i] = '\0';
+    if (v == 0) { buf[--i] = '0'; }
+    while (v > 0 && i > 0) { buf[--i] = (char)('0' + (v % 10)); v /= 10; }
+    write(fd, buf + i, strlen(buf + i));
+}
+
+static void write_hex(int fd, unsigned long v) {
+    static const char hex[] = "0123456789abcdef";
+    char buf[20];
+    int i = sizeof(buf);
+    buf[--i] = '\0';
+    if (v == 0) { buf[--i] = '0'; }
+    while (v > 0 && i > 0) { buf[--i] = hex[v & 0xf]; v >>= 4; }
+    write(fd, "0x", 2);
+    write(fd, buf + i, strlen(buf + i));
+}
+
+#define WRITE_LIT(fd, lit) write((fd), (lit), sizeof(lit) - 1)
+
+static void native_crash_handler(int sig, siginfo_t* info, void* ucontext) {
+    (void) ucontext;
+    if (g_crash_path[0] != '\0') {
+        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+        if (fd >= 0) {
+            WRITE_LIT(fd, "=== NATIVE CRASH (signal, no Java stack trace available) ===\n");
+            WRITE_LIT(fd, "signal=");
+            write_uint(fd, (unsigned long) sig);
+            WRITE_LIT(fd, " code=");
+            write_uint(fd, (unsigned long) (info ? info->si_code : -1));
+            WRITE_LIT(fd, " pid=");
+            write_uint(fd, (unsigned long) getpid());
+            WRITE_LIT(fd, " tid=");
+            write_uint(fd, (unsigned long) syscall(SYS_gettid));
+            WRITE_LIT(fd, " fault_addr=");
+            write_hex(fd, (unsigned long) (info ? (unsigned long) info->si_addr : 0));
+            WRITE_LIT(fd, "\n");
+            close(fd);
+        }
+    }
+    // Restore default handler and re-raise -- lets debuggerd still produce a
+    // real tombstone exactly as before; we're only adding a side-channel record.
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+JNIEXPORT void JNICALL Java_com_termux_terminal_JNI_installCrashHandler(JNIEnv* env, jclass clazz, jstring path)
+{
+    const char* cpath = (*env)->GetStringUTFChars(env, path, NULL);
+    if (cpath) {
+        strncpy(g_crash_path, cpath, sizeof(g_crash_path) - 1);
+        (*env)->ReleaseStringUTFChars(env, path, cpath);
+    }
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = native_crash_handler;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGFPE, &sa, NULL);
+}
+// ── End native crash handler ──────────────────────────────────────────────
+
 // Copied verbatim from Termux terminal-emulator/src/main/jni/termux.c
 // Replaces the old forkpty()-based implementation which had Android signal
 // handling bugs, no setsid(), no FD cleanup, and no IUTF8/flow-control fix.

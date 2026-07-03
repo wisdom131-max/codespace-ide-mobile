@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.codespace.ide.terminal.TerminalService
+import com.termux.terminal.JNI
 import dagger.hilt.android.HiltAndroidApp
 import org.json.JSONObject
 import java.io.File
@@ -57,8 +58,29 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
+        installNativeCrashHandler()
         acquireAppWakeLock()
         startTerminalServiceEarly()
+    }
+
+    /**
+     * Covers the crash class installCrashLogger() CANNOT see: native signal crashes
+     * (SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE) never reach a JVM UncaughtExceptionHandler at
+     * all -- they're handled by the kernel/debuggerd directly. This is exactly the "signal
+     * 11" crash class this app has hit before, so a real device crash going completely
+     * unlogged (empty CrashLog on the backend after a confirmed device crash) points
+     * straight at this gap. See pty_native.c's native_crash_handler for what gets written
+     * (minimal, async-signal-safe only) and MainActivity.readAndUploadCrashLogs() for how
+     * it gets picked up and streamed to the agent on the next successful launch.
+     */
+    private fun installNativeCrashHandler() {
+        try {
+            val dir = File(filesDir, "crash_logs").apply { mkdirs() }
+            val path = File(dir, "native_crash_pending.txt").absolutePath
+            JNI.installCrashHandler(path)
+        } catch (e: Throwable) {
+            Log.e("CodeSpaceApp", "Failed to install native crash handler: ${e.message}")
+        }
     }
 
     /**
