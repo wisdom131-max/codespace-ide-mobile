@@ -118,11 +118,17 @@ class TerminalService : Service() {
             ACTION_WAKE_LOCK   -> actionAcquireWakeLock()
             ACTION_WAKE_UNLOCK -> actionReleaseWakeLock()
             else -> {
-                // Auto-acquire WakeLock on every start — foreground service alone is NOT enough
-                // on Samsung/TECNO OEM devices. Without WakeLock, OEM power manager sends
-                // SIGRTMIN (signal 31) and kills terminal processes immediately.
-                // This is the ONLY reliable fix for "signal 31 on all tabs" on this device.
-                actionAcquireWakeLock()
+                // CRITICAL: Do NOT auto-acquire WakeLock here.
+                //
+                // TECNO HiOS power management kills apps that acquire WakeLocks immediately
+                // after process restart. This was the remaining trigger for the crash loop
+                // after removing the app-level WakeLock from Application.onCreate().
+                //
+                // The WakeLock is now purely user-toggled:
+                // - Gear menu: "App WakeLock: ON/OFF"
+                // - Notification action: ACTION_WAKE_LOCK / ACTION_WAKE_UNLOCK
+                //
+                // Termux does NOT auto-acquire either — the user explicitly enables it.
             }
         }
 
