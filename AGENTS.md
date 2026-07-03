@@ -803,3 +803,49 @@ JVM exception — a different class of bug requiring a different diagnostic appr
 Five fixes now shipped in this arc. Waiting on user to reopen the app after a
 minimize cycle — if CrashLog gets an entry this time, we finally have a real stack
 trace to work from instead of guessing.
+
+
+---
+
+## 2026-07-03 (cont'd) — REAL REASON crash logs were never seen: wrong agent endpoint
+
+User reported the previous debugging session's own conclusion ("crash log upload race
+fix") didn't actually solve anything — the crash-on-resume-after-minimize was still
+happening, and no crash ever surfaced to be analyzed.
+
+### Root cause
+`reportCrash` in both `CodeSpaceApplication.kt` (JVM uncaught-exception path) AND
+`MainActivity.kt` (native-crash recovery path) was POSTing to
+`https://superagent-7c842a7e.base44.app/functions/reportCrash` — **a different Superagent
+agent instance entirely**, not the one now debugging this app. That endpoint is real and
+does respond (confirmed: returns HTTP 400 without a stack_trace, 200 with one) — it just
+belongs to a different agent/app that this session has no read access to. So every crash
+report from every test cycle across the last several fixes (bind-mount, native handler,
+onTaskRemoved, concurrent-install guard, sync-upload-before-delete) really was being
+uploaded successfully — just into a CrashLog entity on a completely different app that
+nobody was reading. That's the real explanation for "the app closed too fast to get a
+log" — the log was never missing, it was just going to the wrong place the whole time.
+
+### Fix
+- Created a `CrashLog` entity + deployed a `reportCrash` function on THIS Superagent
+  (`superagent-4bfc55af.base44.app`), which this session can read directly via
+  `read_entities` / `aggregate_entities` at any time going forward.
+- Updated both hardcoded URLs (`CodeSpaceApplication.kt` and `MainActivity.kt`) to point
+  here instead. Swept the whole repo for any other reference to the old endpoint —
+  confirmed clean (only this historical AGENTS.md log still mentions it, intentionally).
+- Verified the new endpoint end-to-end with a live test POST before wiring the app to it.
+
+### Standing lesson
+**Never trust "the crash log is empty" as evidence a crash isn't happening or that a fix
+worked** without first confirming the reporting endpoint the app is compiled against
+actually matches the agent/app currently being used to read it back. Cross-agent/cross-app
+endpoint drift is invisible in code review unless you actually curl the URL and check
+which app owns it.
+
+### Status
+All 5 previous fixes from earlier today (proot cwd-bind, native crash handler,
+onTaskRemoved no-op, concurrent-install guard, sync-upload-before-delete) are still
+believed correct in principle and remain in place — none of them were reverted. The gap
+was purely in visibility. Waiting on user to reproduce the minimize/reopen crash again;
+this time, if it happens, `CrashLog` on THIS agent should actually receive it, and I can
+read it directly with no round-trip needed.
