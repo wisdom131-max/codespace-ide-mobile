@@ -135,11 +135,7 @@ class MainActivity : ComponentActivity() {
             val files = dir.listFiles()?.filter { it.isFile && it.length() > 0 } ?: return null
             if (files.isEmpty()) return null
             val combined = files.sortedByDescending { it.lastModified() }
-                .joinToString("
-
----
-
-") { it.readText() }
+                .joinToString("\n\n---\n\n") { it.readText() }
             files.forEach { it.delete() }
 
             Thread {
