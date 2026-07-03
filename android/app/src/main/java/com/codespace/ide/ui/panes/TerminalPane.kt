@@ -421,6 +421,25 @@ internal fun TerminalPane(
     externalState: TerminalState? = null,          // if provided, uses shared state
 ) {
     val context      = LocalContext.current
+    // ── Activity visibility tracker — mirrors Termux's mActivity.isVisible() check in
+    //    onTextChanged. Without this, terminal output triggers wasted onScreenUpdated()
+    //    posts even when the app is minimized, burning CPU on a 3GB device and attracting
+    //    OEM power manager kills. Confirmed from decompiled TermuxTerminalSessionClient.smali
+    //    line 113: "if (!mActivity.isVisible()) return;" before any redraw.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var isActivityVisible by remember { mutableStateOf(true) }
+    androidx.lifecycle.LifecycleEventObserver { _, event ->
+        when (event) {
+            androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> isActivityVisible = false
+            androidx.lifecycle.Lifecycle.Event.ON_RESUME -> isActivityVisible = true
+            else -> {}
+        }
+    }.also { observer ->
+        DisposableEffect(lifecycleOwner) {
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+    }
     // ── Font size state — persisted via SharedPreferences (Termux KEY_FONTSIZE pattern) ──
     // MIN=6, MAX=56, DEFAULT=13 — survives rotation, tab switches, process restarts
     val prefs = remember { context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE) }
@@ -511,7 +530,10 @@ internal fun TerminalPane(
 
     DisposableEffect(activeId) {
         val tab = tabs.firstOrNull { it.id == activeId }
-        tab?.client?.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
+        // Termux pattern: only redraw if activity is visible (smali line 113)
+        tab?.client?.onTextChanged = {
+            if (isActivityVisible) currentView.value?.post { currentView.value?.onScreenUpdated() }
+        }
         onDispose { tab?.client?.onTextChanged = null }
     }
 
@@ -569,7 +591,9 @@ internal fun TerminalPane(
             tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
         }
         activeId = id
-        progressClient.onTextChanged = { currentView.value?.post { currentView.value?.onScreenUpdated() } }
+        progressClient.onTextChanged = {
+            if (isActivityVisible) currentView.value?.post { currentView.value?.onScreenUpdated() }
+        }
         val isFirstTimeInstall = !ProotInstaller.isInstalled(ctx)
         writeToDisplay(progressSession, "\r\n[Ubuntu] Checking installation...\r\n")
         // Start foreground service BEFORE extraction — this raises process OOM priority so
@@ -1326,7 +1350,9 @@ internal fun TerminalPane(
                         // ALWAYS rewire callbacks on every recomposition — Termux pattern:
                         // TermuxTerminalSessionActivityClient re-sets client on every onStart().
                         // Stale callbacks cause screen-not-updating and cursor-blink bugs.
-                        active.client.onTextChanged = { view.post { view.onScreenUpdated() } }
+                        active.client.onTextChanged = {
+                            if (isActivityVisible) view.post { view.onScreenUpdated() }
+                        }
                         active.client.onTitleChanged = { title ->
                             if (!title.isNullOrBlank()) {
                                 val idx = tabs.indexOfFirst { it.id == active.id }
@@ -1500,7 +1526,9 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                         view.post { view.onScreenUpdated() }
                         if (view.mTermSession != mirrorTab.session) {
                             view.attachSession(mirrorTab.session)
-                            mirrorTab.client.onTextChanged = { view.post { view.onScreenUpdated() } }
+                            mirrorTab.client.onTextChanged = {
+                                if (isActivityVisible) view.post { view.onScreenUpdated() }
+                            }
                             view.requestFocus()
                         }
                     }
