@@ -988,3 +988,36 @@ since Ubuntu is already installed on this device.
 User said "after you fix that... we'll move to the next level" — awaiting their next
 instruction once they've confirmed the rotate/tab/progress-text fixes above actually hold
 on-device.
+
+
+---
+
+## 2026-07-03 (cont'd 3) — Fixed "terminal fills screen until rotate" + missing back button
+
+### Bug 1: terminal/editor renders oversized on first launch, self-corrects after rotating
+Root cause: `enableEdgeToEdge()` + the SplashScreen API (`installSplashScreen()`) can leave
+the FIRST `WindowInsets` dispatch to the freshly-created Compose hierarchy stale/incomplete
+— a known interaction between the two APIs. Compose lays out its first frame as if there
+are zero system-bar insets to subtract, so content renders oversized/full-bleed until
+something forces Android to redeliver a fresh insets pass — which a rotation always does,
+explaining why it "fixes itself" on rotate. Fix: in `MainActivity.onCreate()`, right after
+`setContent { ... }`, force `ViewCompat.requestApplyInsets(window.decorView)` ourselves so
+the correct layout is applied on the very first frame instead of waiting on the user to
+accidentally trigger it via rotation.
+
+### Bug 2: system back button/gesture did nothing
+`ProjectShellScreen.kt` imported `BackHandler` but never actually called it — only specific
+in-app UI elements (the "Exit" dropdown item, one toolbar icon) called `onBack()` directly.
+The hardware/gesture back action was completely unwired. Added a real `BackHandler` at the
+top of the screen that closes whichever overlay/menu/dialog is currently open first (command
+palette, connectors sheet, notif drawer, terminal theme picker, panel/explorer/more/person/
+gear/run menus, color theme picker, chat panel, find/replace bar, open menu-bar dropdown) —
+matching natural back-stack feel so back doesn't jump straight home while something's open —
+and falls through to `onBack()` (return to home screen) only when nothing else is open.
+
+### Status
+Both fixes pushed to `codespace-ide-mobile` (confirmed correct main app repo). CI green on
+both commits (`a5d713f4` insets fix, `b513a4b7` BackHandler fix). Awaiting user confirmation
+on-device: (1) app should render at correct size immediately on cold open, no rotation
+needed, (2) hardware/gesture back button should close menus one at a time then return to
+the home screen.
