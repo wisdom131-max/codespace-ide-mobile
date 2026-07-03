@@ -844,6 +844,20 @@ exit 0
             // -w sets the initial working directory inside proot to /root.
             // Without this getcwd() fails — proot can't map the host cwd into guest space.
             "-w", "/root",
+            // --bind=/proc/self/cwd:/proc/self/cwd — RESTORED (2026-07-03). This was
+            // silently dropped in commit 8f0f5ba (2026-06-30, "Samsung fix" cleanup) even
+            // though it's the actual fix for Samsung/TECNO kernel 5.15 blocking SYS_getcwd
+            // via seccomp (see AGENTS.md — confirmed multiple times independently). -w /root
+            // alone sets proot's OWN idea of cwd but does not fix the underlying blocked
+            // getcwd() syscall every guest process (dpkg, debconf, perl, and apparently
+            // proot's own chdir/chmod/execve bookkeeping) still hits directly. Losing this
+            // bind is the direct cause of:
+            //   proot error: execve("/usr/bin/env"): Function not implemented
+            //   proot error: can't chmod '.../proot-tmp/proot-NNNNN-xxxxx': Function not implemented
+            //   proot error: can't chdir to '/root': Function not implemented
+            // reported after reopening the app (fresh proot invocation, cwd resolution
+            // hits the blocked syscall again since the bind was gone).
+            "--bind=/proc/self/cwd:/proc/self/cwd",
             "/usr/bin/env", "-i",
             "HOME=/root",
             "USER=root",
