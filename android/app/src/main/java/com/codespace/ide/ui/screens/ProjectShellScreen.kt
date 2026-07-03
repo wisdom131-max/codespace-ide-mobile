@@ -363,6 +363,7 @@ fun ProjectShellScreen(
     var aiPanelWidth       by remember { mutableFloatStateOf(300f) }
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
     var showCommandPalette by remember { mutableStateOf(false) }
+    var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     var showFindBar        by remember { mutableStateOf(false) }
     var findQuery          by remember { mutableStateOf("") }
@@ -1096,6 +1097,18 @@ fun ProjectShellScreen(
                             "Toggle AI Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
                             "Font Size +" to { editorFontSize = (editorFontSize + 1).coerceAtMost(32); showGearMenu = false },
                             "Font Size -" to { editorFontSize = (editorFontSize - 1).coerceAtLeast(8); showGearMenu = false },
+                            "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
+                                appWakeLockOn = !appWakeLockOn
+                                val appCtx = context.applicationContext as com.codespace.ide.CodeSpaceApplication
+                                if (appWakeLockOn) {
+                                    appCtx.acquireAppWakeLock()
+                                    showNotification("App WakeLock ON — CPU stays active", "success")
+                                } else {
+                                    appCtx.releaseAppWakeLock()
+                                    showNotification("App WakeLock OFF", "info")
+                                }
+                                showGearMenu = false
+                            },
                         )
                         items(gearItems) { (label, action) ->
                             Row(
