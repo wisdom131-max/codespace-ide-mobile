@@ -345,9 +345,6 @@ fun ProjectShellScreen(
     val KeyboardToolbarBg = t.KeyboardToolbarBg
     val restoredState = remember(projectId) { sessionStateStore.loadShellState(projectId) }
     val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
-    var showOnboarding by remember {
-        mutableStateOf(!prefs.getBoolean("onboarding_seen", false))
-    }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
     var showSplitTerminal  by remember { mutableStateOf(false) }
@@ -966,14 +963,6 @@ fun ProjectShellScreen(
                 Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
             }
     } // end Column
-
-    // ── First-launch onboarding walkthrough (overlay, outside Column) ──
-    if (showOnboarding) {
-        OnboardingWalkthrough(onDone = {
-            showOnboarding = false
-            prefs.edit().putBoolean("onboarding_seen", true).apply()
-        })
-    }
 
         // ── All overlays — direct children of root Box so they cover full screen ──
 
