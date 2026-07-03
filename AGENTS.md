@@ -457,9 +457,9 @@ never use `args="$@"; set -- $args` — that POSIX word-splits and silently trun
 multi-word argument like `-c "test comment"`. All args here are parsed directly from
 `"$@"`/`"$1"`, never re-split through an unquoted variable.
 
-### Status (Updated July 3, 2026)
+### Status (Updated July 3, 2026 — Build #828)
 
-### CRASH LOOP FIX (build #823)
+### CRASH LOOP FIX (builds #823→#826)
 **Root cause identified via bugreport analysis:**
 - App was acquiring an app-level PARTIAL_WAKE_LOCK + starting foreground service from
   `Application.onCreate()` on EVERY process restart
@@ -469,11 +469,21 @@ multi-word argument like `-c "test comment"`. All args here are parsed directly 
 - **Fix:** Removed `acquireAppWakeLock()` and `startTerminalServiceEarly()` from
   `Application.onCreate()`. Now matches Termux pattern: service starts from
   `TerminalPane`'s `DisposableEffect` (after UI renders), not from Application
-- **Status:** Build #823 pushed, awaiting on-device test
+- **Status:** Builds #826-#828 green, awaiting on-device test
 
-### COMMAND PALETTE (build #824)
+### MANUAL APP WAKELOCK TOGGLE (builds #827-#828)
+- App WakeLock is now user-controlled, not auto-acquired
+- Gear menu shows "App WakeLock: ON/OFF" — tap to toggle
+- `acquireAppWakeLock()` / `releaseAppWakeLock()` methods in CodeSpaceApplication
+  are public, called from UI via `(context.applicationContext as CodeSpaceApplication)`
+- `isAppWakeLockHeld` property exposed for UI state
+- Default: OFF (no crash loop on startup)
+- Matches Termux pattern: user explicitly enables when needed for long-running tasks
+
+### COMMAND PALETTE (build #828)
 - Reduced size: 75% width (max 380dp), max 240dp height, 13sp font, tighter padding
 - Previous: 90% width (max 560dp), max 320dp height, 14sp font
+- Scrollable via LazyColumn, text input focus fixed
 
 ### PREVIOUS FIXES (builds #809-#822, July 3)
 - ✅ Settings gear icon menu restored (popup menu + state wiring)
@@ -497,6 +507,12 @@ multi-word argument like `-c "test comment"`. All args here are parsed directly 
 - MemTotal: 2,855,472 kB, MemFree: ~46MB, MemAvailable: ~1GB
 - SwapTotal: 2,147,160 kB, SwapFree: ~942MB
 - Committed_AS: ~98GB (massive overcommit from proot virtual mappings)
+
+### CRASH LOGGING
+- CrashLog entity + reportCrash backend function deployed
+- App writes crash to local file + uploads to backend on next successful launch
+- App needs to stay open ~2-3 seconds on next launch for upload to complete
+- Agent can read crash logs via `read_entities("CrashLog")`
 
 ## r6 — Closed the gap with ubuntu-proot-test's full fix set (2026-07-02)
 
