@@ -77,6 +77,7 @@ static void native_crash_handler(int sig, siginfo_t* info, void* ucontext) {
 
 JNIEXPORT void JNICALL Java_com_termux_terminal_JNI_installCrashHandler(JNIEnv* env, jclass clazz, jstring path)
 {
+    if (!path) return;  // NULL GUARD: null jstring crashes CheckJNI
     const char* cpath = (*env)->GetStringUTFChars(env, path, NULL);
     if (cpath) {
         strncpy(g_crash_path, cpath, sizeof(g_crash_path) - 1);
