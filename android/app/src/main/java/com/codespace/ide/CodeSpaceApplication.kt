@@ -136,7 +136,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
      * crash we can't otherwise see (no ADB/logcat access to this device).
      */
     private fun reportCrashOverNetwork(threadName: String, stamp: String, stackTrace: String) {
-        val url = URL("https://superagent-7c842a7e.base44.app/functions/reportCrash")
+        val url = URL("https://superagent-4bfc55af.base44.app/functions/reportCrash")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true
