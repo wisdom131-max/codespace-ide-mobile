@@ -9,6 +9,12 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.codespace.ide.terminal.TerminalService
 import dagger.hilt.android.HiltAndroidApp
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -46,8 +52,43 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        installCrashLogger()
         acquireAppWakeLock()
         startTerminalServiceEarly()
+    }
+
+    /**
+     * Writes any uncaught exception's full stack trace to a plain-text file in
+     * filesDir/crash_logs/ BEFORE letting the crash proceed normally.
+     *
+     * Why: this app has no ADB/logcat access available during remote debugging sessions
+     * (see AGENTS.md — "signal 11" and "app closes instantly on reopen" reports). Without
+     * this, a real Android-level crash (as opposed to a terminal child-process crash, which
+     * already prints its own message inside the terminal) is completely invisible to us.
+     *
+     * MainActivity reads and surfaces the latest file from this dir on next launch (see
+     * MainActivity.kt's crash-log dialog) so the user can copy/paste it back to us — no
+     * root, no ADB, no file manager needed.
+     */
+    private fun installCrashLogger() {
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val dir = File(filesDir, "crash_logs").apply { mkdirs() }
+                val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+                val sw = StringWriter()
+                throwable.printStackTrace(PrintWriter(sw))
+                val header = "Thread: " + thread.name + "\nTime: " + stamp + "\n\n"
+                File(dir, "crash_$stamp.txt").writeText(header + sw.toString())
+                // Keep only the 5 most recent crash logs
+                dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(5)?.forEach { it.delete() }
+            } catch (_: Throwable) {
+                // Never let the crash logger itself interfere with the real crash handling
+            }
+            // Chain to the original handler so normal Android crash behavior (dialog,
+            // process kill, ANR reporting) still happens exactly as before.
+            previousHandler?.uncaughtException(thread, throwable)
+        }
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.codespace.ide
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -15,13 +17,22 @@ import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import com.codespace.ide.data.SecureTokenStore
-import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.ui.CodeSpaceApp
 import dagger.hilt.android.AndroidEntryPoint
+import java.io.File
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -65,9 +76,55 @@ class MainActivity : ComponentActivity() {
         // We request exemption on first launch — user just taps "Allow".
         requestBatteryOptimizationExemption()
 
-        Thread { BusyboxInstaller.installIfNeeded(applicationContext) }.apply { isDaemon = true; start() }
+        // BusyboxInstaller removed (2026-07-03): Ubuntu proot is the only terminal
+        // environment this app ships now — busybox/ash is fully dead code (see AGENTS.md).
+
+        // Pull the most recent crash log (if any) written by CodeSpaceApplication's
+        // uncaught-exception handler on the PREVIOUS run. Lets us diagnose real Android
+        // crashes (as opposed to terminal child-process crashes) with no ADB needed —
+        // user just taps "Copy" and pastes it back to us.
+        val lastCrash = readLastCrashLog()
+
         setContent {
+            var crashLogText by remember { mutableStateOf(lastCrash) }
             CodeSpaceApp(tokenStore = tokenStore)
+            if (crashLogText != null) {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                AlertDialog(
+                    onDismissRequest = { crashLogText = null },
+                    title = { Text("App crashed last time it closed") },
+                    text = {
+                        Text(
+                            crashLogText!!.take(3000),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("crash log", crashLogText))
+                            crashLogText = null
+                        }) { Text("Copy") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { crashLogText = null }) { Text("Dismiss") }
+                    }
+                )
+            }
+        }
+    }
+
+    /** Reads the newest file from filesDir/crash_logs/, if any, and deletes it after reading
+     *  so the dialog doesn't repeat on the next launch. */
+    private fun readLastCrashLog(): String? {
+        return try {
+            val dir = File(filesDir, "crash_logs")
+            val latest = dir.listFiles()?.maxByOrNull { it.lastModified() } ?: return null
+            val text = latest.readText()
+            dir.listFiles()?.forEach { it.delete() }
+            text
+        } catch (_: Exception) {
+            null
         }
     }
 

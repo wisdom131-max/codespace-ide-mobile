@@ -66,7 +66,15 @@ class TerminalService : Service() {
         // Boost service thread priority — reduces chance of OEM scheduler deprioritizing it.
         // THREAD_PRIORITY_FOREGROUND = -2 (higher than default 0, same as UI thread).
         Process.setThreadPriority(Process.THREAD_PRIORITY_FOREGROUND)
-        startForeground(NOTIF_ID, buildNotification(text))
+        try {
+            startForeground(NOTIF_ID, buildNotification(text))
+        } catch (e: Exception) {
+            // Defensive: if this throws (e.g. a transient AMS race right after process
+            // restart from a killed background state), don't take the whole app down —
+            // log it and continue. The service can still function; worst case it loses
+            // FGS priority for this cycle instead of crashing on relaunch.
+            android.util.Log.e("TerminalService", "startForeground() failed: ${e.message}", e)
+        }
 
         when (intent?.action) {
             ACTION_WAKE_LOCK   -> actionAcquireWakeLock()
