@@ -40,6 +40,19 @@ object ProotInstaller {
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
     private const val XZ_MEMORY_LIMIT_KIB = 96 * 1024  // 96 MB
 
+    // ── concurrent-install guard ────────────────────────────────────────────
+    // install() used to have NO protection against being called twice concurrently.
+    // addUbuntuTab()'s bootstrap can re-fire (e.g. if Compose state gets recreated
+    // mid-download for any reason -- rotation on some OEM firmwares, process
+    // restarts, a second tab tapped while setup is still running) and, without this
+    // guard, a second thread would open a SECOND HttpURLConnection to the exact same
+    // cacheDir/ubuntu.tar.xz file and interleave writes with the first, corrupting the
+    // download and making it look like the download "restarts"/"interrupts itself."
+    // Now: only one thread ever actually downloads/extracts; anyone else just waits
+    // on the shared lock and re-checks isInstalled() once the first finishes.
+    @Volatile private var installJob: Thread? = null
+    private val installLock = Object()
+
     // ── public helpers ────────────────────────────────────────────────────────
 
     fun rootfsDir(context: Context): File = File(context.filesDir, "ubuntu-rootfs")
@@ -69,6 +82,18 @@ object ProotInstaller {
         if (isInstalled(context)) {
             Log.d(TAG, "Ubuntu rootfs already installed")
             return
+        }
+
+        synchronized(installLock) {
+            while (installJob != null && installJob!!.isAlive) {
+                onProgress("Another setup is already in progress, waiting for it to finish...")
+                installLock.wait(1000)
+            }
+            if (isInstalled(context)) {
+                Log.d(TAG, "Ubuntu rootfs finished installing while we were waiting")
+                return
+            }
+            installJob = Thread.currentThread()
         }
 
         try {
@@ -509,6 +534,13 @@ object ProotInstaller {
         } catch (e: Exception) {
             Log.e(TAG, "Rootfs install failed: ${e.message}", e)
             onProgress("Failed: ${e.message}")
+        } finally {
+            // Release the concurrent-install guard so any thread waiting on installLock
+            // (see top of this function) wakes up and re-checks isInstalled().
+            synchronized(installLock) {
+                installJob = null
+                installLock.notifyAll()
+            }
         }
     }
 
