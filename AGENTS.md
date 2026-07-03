@@ -849,3 +849,79 @@ believed correct in principle and remain in place — none of them were reverted
 was purely in visibility. Waiting on user to reproduce the minimize/reopen crash again;
 this time, if it happens, `CrashLog` on THIS agent should actually receive it, and I can
 read it directly with no round-trip needed.
+
+
+---
+
+## 2026-07-03 (cont'd) — Multi-session study from real Termux APK + session-stacking leak fix + install-guard spam fix
+
+### Forensic study: how real Termux handles multiple sessions
+Decompiled the reference `termux-app_v0.118.3+github-debug_arm64-v8a` APK from the
+user's Google Drive (`Termux/` folder) with jadx to see the actual, battle-tested
+pattern for session lifecycle across Activity recreation:
+
+- `TermuxService` holds `final List<TermuxSession> mTermuxSessions` — the Service is
+  the SINGLE SOURCE OF TRUTH for what sessions exist, never the Activity.
+- `createTermuxSession()` always goes through the Service and appends to that list.
+- `setTermuxTerminalSessionClient(client)` — called when the Activity (re)binds — loops
+  over **every** session in `mTermuxSessions` and calls
+  `session.getTerminalSession().updateTerminalSessionClient(client)` on each one. Never
+  just the first/most-recent session.
+- `unsetTermuxTerminalSessionClient()` — called on unbind — swaps every session back to
+  a no-op `mTermuxTerminalSessionClientBase` so callbacks don't NPE with no UI attached,
+  but the underlying process keeps running untouched.
+- The Activity's job on launch/reconnect is to ask the Service for its existing list
+  and rebuild the tab UI from THAT — never to blindly create new sessions.
+
+### Bug found + fixed: session-stacking leak on Activity recreation
+Our `TerminalService.createSession()` had **zero** tracking of what it created, and
+nothing but a manual "close tab" tap ever called `finishIfRunning()`. Since Compose
+`remember` state resets completely whenever the Activity is destroyed/recreated (which
+TECNO HiOS does on a plain minimize while the Service/process survive), every reopen
+spawned ANOTHER real Ubuntu proot+bash+rootfs-mount session on top of whatever was
+already running, silently orphaned. Stacking multiple live proot session trees is a
+very plausible OOM trigger on a 3GB device, firing exactly at the moment of reopening —
+matching the reported "opens then instantly closes" symptom.
+
+Fix (mirrors the real Termux pattern above):
+- `TerminalService` now tracks `liveSessions` and exposes `getLiveUbuntuSessions()`
+  (all still-running sessions, pruned of finished ones) and cleans them up for real in
+  `onDestroy()`.
+- `TerminalPane`'s bootstrap effect now waits for the service bind, asks for
+  `getLiveUbuntuSessions()`, and if any exist, rebuilds the ENTIRE tab list from them
+  (via `TerminalSession.updateTerminalSessionClient()` — same real Termux API) instead
+  of ever creating a duplicate. Only falls through to the install/fork path if nothing
+  is already running.
+
+### Bug found + fixed: install-guard spam ("fills the screen", "progress bar doesn't show")
+A different session earlier the same day added a concurrent-install guard in
+`ProotInstaller.install()` (commit cc2eaa8f) to stop two threads racing on the same
+download file. Correct in principle, but its "waiting" loop called
+`onProgress("Another setup is already in progress, waiting for it to finish...")` on
+**every single 1-second iteration**, and `addUbuntuTab()` always created a **new**,
+separate placeholder tab for every trigger — so tapping "+" (or any other duplicate
+bootstrap trigger) mid-install produced a tab that only ever repeated that one line
+forever, while the REAL "Downloading... X%" progress was quietly running in a
+different, original tab the user wasn't necessarily looking at. That's the "fills the
+screen" / "the download progress bar doesn't show" complaint.
+
+Fix:
+- The wait loop now announces once, not every second.
+- `ProotInstaller.installingTabId` tracks which tab owns the real install.
+- `addUbuntuTab()` checks `ProotInstaller.isInstallRunning()` first and, if set, just
+  switches `activeId` to the existing installing tab instead of spawning a duplicate —
+  so the user always lands on the tab with real progress, never a spam clone.
+
+### Confirmed for the user: no, this does NOT redownload Ubuntu per tab
+`addUbuntuTab()`'s fast path checks `ProotInstaller.isInstalled(ctx)` before ever
+touching the network — once installed, every subsequent tab (new or reattached) just
+forks a new proot session against the already-extracted rootfs. Download only ever
+happens once per device install.
+
+### Status
+All fixes pushed to `codespace-ide-mobile` (confirmed to be the MAIN app, not a test
+repo — `ubuntu-proot-test` and `ubuntu-proot-bash-test` are the isolated test repos).
+Build green. Waiting on user to test: (1) rotate during an active Ubuntu download —
+should no longer interrupt/spam, (2) minimize and reopen — should reattach to the
+live session instead of stacking a new one, (3) tap "+" mid-install — should jump to
+the real progress tab instead of cloning a spam tab.
