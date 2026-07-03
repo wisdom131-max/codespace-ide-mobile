@@ -635,16 +635,27 @@ internal fun TerminalPane(
         if (sharedState.ubuntuBootstrapStarted) return@LaunchedEffect
         sharedState.ubuntuBootstrapStarted = true
 
-        val existing = svc.findLiveUbuntuSession()
-        val placeholder = tabs.firstOrNull()
-        if (existing != null && placeholder != null) {
-            val newClient = SimpleTerminalSessionClient().apply { appContext = context }
-            existing.updateTerminalSessionClient(newClient)
-            val idx = tabs.indexOfFirst { it.id == placeholder.id }
-            if (idx >= 0) tabs[idx] = TabSession(placeholder.id, "Ubuntu", existing, newClient)
-            activeId = placeholder.id
+        // Rebuild the ENTIRE tab list from every live session the Service already has,
+        // not just one — matches real Termux's TermuxService.getTermuxSessions() pattern
+        // (confirmed via decompile of the reference APK): the Service's session list is
+        // the single source of truth, and reconnecting swaps a fresh UI client onto EVERY
+        // session, never just the first. Reattaching only one session would silently
+        // orphan any additional Ubuntu tabs that were open before this Activity was
+        // torn down and recreated (e.g. OEM killing the Activity on minimize while the
+        // Service/process survive).
+        val existingSessions = svc.getLiveUbuntuSessions()
+        if (existingSessions.isNotEmpty()) {
+            val rebuiltTabs = existingSessions.mapIndexed { index, session ->
+                val newClient = SimpleTerminalSessionClient().apply { appContext = context }
+                session.updateTerminalSessionClient(newClient)
+                val name = if (existingSessions.size > 1) "Ubuntu ${index + 1}" else "Ubuntu"
+                TabSession("resumed-$index-${session.hashCode()}", name, session, newClient)
+            }
+            tabs.clear()
+            tabs.addAll(rebuiltTabs)
+            activeId = rebuiltTabs.first().id
         } else {
-            placeholder?.let { addUbuntuTab(replaceTabId = it.id) }
+            tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
         }
     }
 
