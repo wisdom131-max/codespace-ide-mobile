@@ -18,7 +18,7 @@
 ---
 
 # AI Agent / Copilot — Project Context
-> Read this FIRST before touching any code. Updated June 30, 2026.
+> Read this FIRST before touching any code. Updated July 3, 2026.
 
 
 ---
@@ -457,12 +457,46 @@ never use `args="$@"; set -- $args` — that POSIX word-splits and silently trun
 multi-word argument like `-c "test comment"`. All args here are parsed directly from
 `"$@"`/`"$1"`, never re-split through an unquoted variable.
 
-### Status
-Version bumped to r5 (forces fresh rootfs extraction + re-application of all baked-in
-config on any device already on r3/r4). CI build triggered; not yet installed/tested on
-the user's TECNO KL4. Per my own standing limitation (no Android emulator/ADB access in
-this sandbox — see memory), on-device confirmation is a manual step for the user once the
-build goes green.
+### Status (Updated July 3, 2026)
+
+### CRASH LOOP FIX (build #823)
+**Root cause identified via bugreport analysis:**
+- App was acquiring an app-level PARTIAL_WAKE_LOCK + starting foreground service from
+  `Application.onCreate()` on EVERY process restart
+- TECNO HiOS power management (`Hiber/proxyWakeLock`) kills apps that aggressively
+  acquire WakeLocks + FGS immediately on startup — 16 SIGKILLs in 90 seconds
+- The app-level WakeLock (held for entire app lifetime) was the unusual thing Termux doesn't do
+- **Fix:** Removed `acquireAppWakeLock()` and `startTerminalServiceEarly()` from
+  `Application.onCreate()`. Now matches Termux pattern: service starts from
+  `TerminalPane`'s `DisposableEffect` (after UI renders), not from Application
+- **Status:** Build #823 pushed, awaiting on-device test
+
+### COMMAND PALETTE (build #824)
+- Reduced size: 75% width (max 380dp), max 240dp height, 13sp font, tighter padding
+- Previous: 90% width (max 560dp), max 320dp height, 14sp font
+
+### PREVIOUS FIXES (builds #809-#822, July 3)
+- ✅ Settings gear icon menu restored (popup menu + state wiring)
+- ✅ App crash-on-resume fixed (removed blocking network calls from lifecycle methods)
+- ✅ Command palette scrollable via LazyColumn + text input focus fixed
+- ✅ Back button uses ArrowBack icon with 44dp touch target
+- ✅ Onboarding walkthrough permanently removed
+- ✅ CrashLog entity + reportCrash backend function deployed
+- ✅ JNI null-guard for cmd/cwd in createSubprocess (defensive, from June tombstones)
+- ✅ Session leak guard: kill stale sessions before reattaching
+- ✅ Catch Throwable not Exception for OOM handling
+
+### KNOWN ISSUES
+- Terminal bash tab still falls back to busybox ash (not native bash) — pending fix
+- Ubuntu proot: dpkg/apt install still blocked by Samsung kernel chdir restriction
+- Terminal session persistence across Activity recreation not yet implemented
+- Terminal redraw on keystrokes may still have issues
+
+### DEVICE SPECS (from bugreport July 3)
+- TECNO KL4, Android 14, kernel 5.15.180-android13, arm64-v8a, 3GB RAM
+- MemTotal: 2,855,472 kB, MemFree: ~46MB, MemAvailable: ~1GB
+- SwapTotal: 2,147,160 kB, SwapFree: ~942MB
+- Committed_AS: ~98GB (massive overcommit from proot virtual mappings)
 
 ## r6 — Closed the gap with ubuntu-proot-test's full fix set (2026-07-02)
 
