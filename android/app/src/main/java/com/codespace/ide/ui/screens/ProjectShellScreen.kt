@@ -348,7 +348,11 @@ fun ProjectShellScreen(
     val KeyboardToolbarBg = t.KeyboardToolbarBg
     val restoredState = remember(projectId) { sessionStateStore.loadShellState(projectId) }
     val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
-    var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
+    // FIXED 2026-07-03: default to EXPLORER panel when no restored state —
+    // without this, the editor area shows only a watermark on first launch,
+    // which looks like a "blank screen" (the OnboardingWalkthrough removal
+    // exposed this — the overlay was hiding the empty editor area).
+    var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) } ?: SidePanel.EXPLORER) }
     var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
     var showSplitTerminal  by remember { mutableStateOf(false) }
     var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
