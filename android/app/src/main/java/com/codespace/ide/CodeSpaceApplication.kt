@@ -144,39 +144,4 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         conn.disconnect()
     }
 
-    /**
-     * Start TerminalService from Application.onCreate() — before any Activity renders.
-     * This closes the window between app start and first Compose frame where no FGS is running.
-     * The service is a foreground service (low impact) and stays alive for the app lifetime.
-     */
-    private fun startTerminalServiceEarly() {
-        try {
-            val intent = Intent(this, TerminalService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            Log.d("CodeSpaceApp", "TerminalService started from Application.onCreate()")
-        } catch (e: Throwable) {
-            Log.e("CodeSpaceApp", "Failed to start TerminalService early: ${e.message}")
-        }
-    }
-
-    private fun acquireAppWakeLock() {
-        try {
-            val pm = getSystemService(POWER_SERVICE) as PowerManager
-            appWakeLock = pm.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "CodeSpaceIDE::AppWakeLock"
-            ).apply {
-                setReferenceCounted(false)
-                // No timeout — held for app lifetime. Android releases it when process dies.
-                acquire()
-            }
-            Log.d("CodeSpaceApp", "App-level WakeLock acquired — OEM signal 31 prevention active")
-        } catch (e: Throwable) {
-            Log.e("CodeSpaceApp", "Failed to acquire app WakeLock: ${e.message}")
-        }
-    }
 }
