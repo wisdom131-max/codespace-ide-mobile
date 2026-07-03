@@ -438,6 +438,13 @@ internal fun TerminalPane(
     val screenWidthDp  = configuration.screenWidthDp   // read to subscribe to config changes
     @Suppress("UNUSED_VARIABLE")
     val screenHeightDp = configuration.screenHeightDp
+    // FIXED 2026-07-03: "rotating added a new tab I never tapped." The tab-strip "+" icon
+    // sits exactly where a finger resting on the glass during a physical rotate gesture
+    // ends up once the layout reflows for the new orientation -- Android can dispatch that
+    // as a genuine ghost-tap on whatever is now under the finger. Track the last orientation
+    // flip and have addTab() ignore any call landing within the same short window.
+    var lastOrientationChangeAt by remember { mutableStateOf(0L) }
+    LaunchedEffect(configuration.orientation) { lastOrientationChangeAt = System.currentTimeMillis() }
     var bootstrapReady by remember { mutableStateOf(false) }
     var showMenu        by remember { mutableStateOf(false) }
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
@@ -633,7 +640,15 @@ internal fun TerminalPane(
         }.apply { isDaemon = false; name = "UbuntuSetupThread"; start() }  // non-daemon: survives app backgrounding during extraction
     }
 
-    fun addTab() = addUbuntuTab(replaceTabId = null)
+    fun addTab() {
+        // Swallow ghost-taps landing within 600ms of a rotation (see lastOrientationChangeAt
+        // above) -- this is what was silently spawning an extra Ubuntu tab on rotate.
+        if (System.currentTimeMillis() - lastOrientationChangeAt < 600) {
+            android.util.Log.d("TerminalPane", "addTab() ignored — within 600ms of a rotation (ghost-tap guard)")
+            return
+        }
+        addUbuntuTab(replaceTabId = null)
+    }
 
     // One-time: upgrade the initial placeholder tab (created synchronously in
     // rememberTerminalState) into the real Ubuntu proot session. Guarded by
