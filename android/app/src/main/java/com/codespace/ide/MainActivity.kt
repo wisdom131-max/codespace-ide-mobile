@@ -136,11 +136,33 @@ class MainActivity : ComponentActivity() {
             if (files.isEmpty()) return null
             val combined = files.sortedByDescending { it.lastModified() }
                 .joinToString("\n\n---\n\n") { it.readText() }
-            files.forEach { it.delete() }
 
-            Thread {
-                try { uploadCrashLogToAgent(combined) } catch (_: Exception) { /* best-effort */ }
-            }.apply { isDaemon = true }.start()
+            // BLOCKING upload, done BEFORE deleting the files, and BEFORE setContent().
+            //
+            // Previous version deleted the local files immediately, then fired the upload
+            // in a daemon Thread in the background. That silently lost every crash log on
+            // this device: if the SAME bug crashes the app again quickly on the very next
+            // launch (which is exactly what's been happening -- "shows Setting up terminal
+            // for a split second then closes", repeatable every time), the daemon thread's
+            // network POST (DNS + TLS + response, easily 1-3s on mobile data) never got a
+            // chance to finish before the process died again, and the on-disk copy was
+            // ALREADY deleted -- so the evidence was destroyed before we ever saw it. That's
+            // why CrashLog stayed empty through multiple confirmed device crashes.
+            //
+            // Fix: upload synchronously right here (still early in onCreate(), before any
+            // Compose renders -- a 1-3s startup delay is an acceptable tradeoff for actually
+            // seeing the crash), and only delete the local files after the upload attempt
+            // completes. If upload fails (no network yet, timeout, etc.) the files are kept
+            // so the NEXT launch gets another chance instead of losing them.
+            val uploaded = try {
+                uploadCrashLogToAgent(combined)
+                true
+            } catch (_: Exception) {
+                false
+            }
+            if (uploaded) {
+                files.forEach { it.delete() }
+            }
 
             combined
         } catch (_: Exception) {
@@ -149,7 +171,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Same reportCrash endpoint the JVM crash logger POSTs to -- this is the path that
-     *  actually gets a native-signal crash (which has no Java stack trace) to the agent. */
+     *  actually gets a native-signal crash (which has no Java stack trace) to the agent.
+     *  BLOCKING by design now (see readLastCrashLog) -- throws on any failure so the
+     *  caller knows NOT to delete the local copy yet. */
     private fun uploadCrashLogToAgent(text: String) {
         val url = URL("https://superagent-7c842a7e.base44.app/functions/reportCrash")
         val conn = url.openConnection() as HttpURLConnection
@@ -170,8 +194,9 @@ class MainActivity : ComponentActivity() {
         }
 
         OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
-        conn.responseCode
+        val code = conn.responseCode
         conn.disconnect()
+        if (code !in 200..299) throw java.io.IOException("reportCrash returned HTTP $code")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
