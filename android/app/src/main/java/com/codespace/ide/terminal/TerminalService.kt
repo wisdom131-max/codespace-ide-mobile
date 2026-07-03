@@ -97,8 +97,24 @@ class TerminalService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        actionReleaseWakeLock()
-        stopSelf()
+        // INTENTIONALLY A NO-OP as of 2026-07-03. This used to call
+        // actionReleaseWakeLock() + stopSelf() here (matching a naive reading of Termux's
+        // pattern), which tore down the foreground service and released the WakeLock the
+        // instant the task left Recents.
+        //
+        // The bug: TECNO HiOS (and several other aggressive Chinese OEM skins) auto-clears
+        // backgrounded apps from Recents on a plain home-press / minimize -- NOT just on an
+        // explicit user swipe-to-close. That silently fired onTaskRemoved on ordinary
+        // minimize, killing the service + WakeLock every time, which is the direct cause of
+        // "app refuses to open / restarts broken after minimizing": the whole process (and
+        // all live terminal sessions TerminalPane still holds references to) gets torn down
+        // behind the user's back, and reopening is a full cold start trying to rebind to
+        // sessions that no longer exist.
+        //
+        // Real Termux does NOT unconditionally stopSelf() here either -- persistence across
+        // task removal is the whole point of a foreground service. Only a genuine
+        // onDestroy() (explicit force-stop, service killed by the system, or the user
+        // stopping it via the notification action) should release the WakeLock now.
         super.onTaskRemoved(rootIntent)
     }
 
