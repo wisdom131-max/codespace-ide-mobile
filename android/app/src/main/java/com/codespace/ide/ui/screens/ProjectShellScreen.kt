@@ -1007,10 +1007,10 @@ fun ProjectShellScreen(
                 Card(
                     Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 48.dp)
-                        .fillMaxWidth(0.9f)
-                        .widthIn(max = 560.dp)
-                        .heightIn(max = 320.dp)
+                        .padding(top = 36.dp)
+                        .fillMaxWidth(0.75f)
+                        .widthIn(max = 380.dp)
+                        .heightIn(max = 240.dp)
                         .pointerInput(Unit) {
                             detectTapGestures { /* swallow taps so they don't reach the dismiss layer behind */ }
                         },
@@ -1022,14 +1022,14 @@ fun ProjectShellScreen(
                         androidx.compose.foundation.text.BasicTextField(
                             value = commandQuery,
                             onValueChange = { commandQuery = it },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = MenuText, fontFamily = FontFamily.Default),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MenuText, fontFamily = FontFamily.Default),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                                 .focusRequester(cmdFocusRequester),
                             decorationBox = { inner ->
                                 Box {
-                                    if (commandQuery.isEmpty()) Text("> Type a command or file name…", fontSize = 14.sp, color = MenuText.copy(alpha = 0.4f))
+                                    if (commandQuery.isEmpty()) Text("> Type a command or file name…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
                                     inner()
                                 }
                             },
