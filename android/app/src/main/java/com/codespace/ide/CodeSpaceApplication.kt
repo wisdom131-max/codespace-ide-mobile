@@ -1,13 +1,10 @@
 package com.codespace.ide
 
 import android.app.Application
-import android.content.Intent
 import android.os.Build
-import android.os.PowerManager
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import com.codespace.ide.terminal.TerminalService
 import com.termux.terminal.JNI
 import dagger.hilt.android.HiltAndroidApp
 import org.json.JSONObject
@@ -31,36 +28,20 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .setWorkerFactory(workerFactory)
             .build()
 
-    /**
-     * App-level PARTIAL_WAKE_LOCK — held for the entire app lifetime.
-     *
-     * WHY THIS IS NECESSARY on TECNO KL4 / Samsung OEM devices:
-     *
-     * Android's foreground service + WakeLock normally prevents signal 31. But TECNO's OEM
-     * power manager operates at the cgroup/kernel level and targets ALL child processes of
-     * apps it considers "background", including native proot/ash children.
-     *
-     * The problem with service-level WakeLock:
-     *   - TerminalService.start() is called from Compose DisposableEffect (after first frame)
-     *   - There is a window between app start and first frame where no WakeLock is held
-     *   - If the service is restarted (START_STICKY after kill), there is another gap
-     *   - Recompositions can briefly dispose/re-compose TerminalPane → stop()/start() gap
-     *
-     * Solution: hold the WakeLock from Application.onCreate() — before ANY activity or
-     * service starts. The lock is never explicitly released while the app process is alive.
-     * Android automatically releases all WakeLocks when the process dies.
-     *
-     * This matches what aggressive-OEM-compatible apps (GPS trackers, BT audio) do.
-     * Termux does NOT do this (their users have cleaner OEMs), but TECNO requires it.
-     */
-    private var appWakeLock: PowerManager.WakeLock? = null
-
     override fun onCreate() {
         super.onCreate()
+        // CRITICAL: Do NOT acquire WakeLocks or start foreground service here.
+        //
+        // TECNO HiOS power management kills apps that acquire WakeLocks + start FGS
+        // immediately on process startup — especially on restart after being killed.
+        // This was the root cause of the 16x crash loop: each restart acquired 2
+        // WakeLocks + started FGS within 1 second → TECNO SIGKILL'd it → repeat.
+        //
+        // Termux does NOT do this — it only starts the service + WakeLock when a
+        // terminal session is actually being created (from the Activity, not Application).
+        // We match that pattern: service starts from TerminalPane's DisposableEffect.
         installCrashLogger()
         installNativeCrashHandler()
-        acquireAppWakeLock()
-        startTerminalServiceEarly()
     }
 
     /**
