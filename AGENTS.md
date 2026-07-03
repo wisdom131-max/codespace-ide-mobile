@@ -775,3 +775,31 @@ crash handler for signal-level crash visibility, (3) `onTaskRemoved` no longer t
 down the service/WakeLock on OEM-triggered minimize, (4) concurrent-install guard for
 seamless downloads across rotation/multitasking. All green on CI. Waiting on user
 confirmation across a full test pass.
+
+## Fixed: crash logs were being destroyed before upload could finish (2026-07-03)
+
+Direct response to the repeatable "shows Setting up terminal for a split second then
+closes" report on reopen after minimize. Despite the app clearly crashing on-device
+every cycle, CrashLog stayed completely empty. Root cause: `readLastCrashLog()` in
+MainActivity deleted the local `crash_logs/` files **immediately**, then fired the
+upload in a fire-and-forget daemon `Thread` in the background. Since the app crashes
+again quickly on the very next launch (same bug, every time), that daemon thread's
+network POST never got the ~1-3s it needed to complete before the process died again
+— so the on-disk evidence was destroyed before we ever saw it, every single cycle.
+
+**Fix:** upload is now synchronous/blocking (still early in `onCreate()`, before any
+Compose renders), and local files are only deleted after a confirmed HTTP 2xx
+response. If upload fails, files stay on disk so the next launch gets another shot.
+Pushed as `9ceb579`.
+
+**Important:** this fixes visibility, not the crash itself. If the crash is a native
+signal, this should finally surface it in `CrashLog` on the next reopen attempt. If
+CrashLog is STILL empty after this, that points to an uncatchable OS-level kill
+(ANR force-kill or OOM/phantom-process-kill sending SIGKILL) rather than a signal or
+JVM exception — a different class of bug requiring a different diagnostic approach
+(main-thread blocking-work audit, not crash-handler instrumentation).
+
+### Status
+Five fixes now shipped in this arc. Waiting on user to reopen the app after a
+minimize cycle — if CrashLog gets an entry this time, we finally have a real stack
+trace to work from instead of guessing.
