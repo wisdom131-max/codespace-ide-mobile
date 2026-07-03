@@ -680,6 +680,10 @@ internal fun TerminalPane(
         // Service/process survive).
         val existingSessions = svc.getLiveUbuntuSessions()
         if (existingSessions.isNotEmpty()) {
+            // Kill the placeholder /system/bin/sh session created by rememberTerminalState —
+            // it's not in the Service's liveSessions list, so getLiveUbuntuSessions() won't
+            // clean it up. Without this, every Activity recreate leaks a sh process.
+            tabs.forEach { try { it.session.finishIfRunning() } catch (_: Throwable) {} }
             try {
                 val rebuiltTabs = existingSessions.mapIndexed { index, session ->
                     val newClient = SimpleTerminalSessionClient().apply { appContext = context }
