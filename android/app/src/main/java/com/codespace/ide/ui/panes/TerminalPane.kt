@@ -539,6 +539,20 @@ internal fun TerminalPane(
             return
         }
 
+        // FIXED 2026-07-03: an install is already actively running (e.g. user tapped "+"
+        // for another tab while the first-run download/extract is still going). Jump
+        // straight to that tab — which already shows the real % progress — instead of
+        // spawning a second, duplicate progress tab that would only ever show a repeating
+        // "waiting..." line with no real information. This was the "fills the screen and
+        // the real progress bar doesn't show" complaint.
+        if (replaceTabId == null && ProotInstaller.isInstallRunning()) {
+            val runningId = ProotInstaller.installingTabId
+            if (runningId != null && tabs.any { it.id == runningId }) {
+                activeId = runningId
+                return
+            }
+        }
+
         // Slow path: first-time install, or upgrading the initial placeholder tab.
         val id = replaceTabId ?: System.currentTimeMillis().toString()
         val existing = replaceTabId?.let { rid -> tabs.firstOrNull { it.id == rid } }
@@ -554,6 +568,7 @@ internal fun TerminalPane(
         // Samsung's memory manager won't kill us mid-extraction (plain background threads
         // have the lowest OOM score and get killed first on 3 GB devices under memory pressure).
         TerminalService.start(ctx, "Setting up Ubuntu...")
+        ProotInstaller.installingTabId = id
         Thread {
             try {
                 // Ensure Termux proot binaries are extracted from assets
