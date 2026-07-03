@@ -53,6 +53,14 @@ object ProotInstaller {
     @Volatile private var installJob: Thread? = null
     private val installLock = Object()
 
+    // Which UI tab (TabSession.id, set by TerminalPane) currently owns the real install
+    // progress display. Lets a second caller (e.g. tapping "+" for another tab while the
+    // first-run install is still going) jump straight to the tab already showing real
+    // progress, instead of spawning a duplicate tab that only ever repeats "waiting...".
+    @Volatile var installingTabId: String? = null
+
+    fun isInstallRunning(): Boolean = installJob?.isAlive == true
+
     // ── public helpers ────────────────────────────────────────────────────────
 
     fun rootfsDir(context: Context): File = File(context.filesDir, "ubuntu-rootfs")
@@ -85,8 +93,20 @@ object ProotInstaller {
         }
 
         synchronized(installLock) {
+            // FIXED 2026-07-03: this used to call onProgress() on every single 1s loop
+            // iteration, spamming the exact same "waiting..." line into whatever tab
+            // triggered the duplicate call, over and over, with zero real information —
+            // this is the "fills the screen" / "progress bar doesn't show" complaint.
+            // Announce it ONCE, then just wait quietly; the real % progress is already
+            // visible in whichever tab actually owns the install (see installingTabId,
+            // which TerminalPane now uses to jump straight to that tab instead of
+            // spawning a duplicate one in the first place).
+            var announced = false
             while (installJob != null && installJob!!.isAlive) {
-                onProgress("Another setup is already in progress, waiting for it to finish...")
+                if (!announced) {
+                    onProgress("Ubuntu setup already running in another tab — waiting for it to finish...")
+                    announced = true
+                }
                 installLock.wait(1000)
             }
             if (isInstalled(context)) {
@@ -539,6 +559,7 @@ object ProotInstaller {
             // (see top of this function) wakes up and re-checks isInstalled().
             synchronized(installLock) {
                 installJob = null
+                installingTabId = null
                 installLock.notifyAll()
             }
         }
