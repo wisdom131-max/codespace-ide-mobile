@@ -858,7 +858,17 @@ exit 0
         val envVars = arrayOf(
             "PROOT_LOADER=$loader",
             "PROOT_TMP_DIR=$tmpDir",
-            "PROOT_NO_SECCOMP=1",
+            // PROOT_NO_SECCOMP=1 REMOVED — this was added early on (e30db19) when an
+            // unrelated execve bug made it LOOK like the seccomp accelerator was at fault.
+            // ubuntu-proot-bash-test (isolated bash-only harness, no dpkg/multi-tab/service
+            // complexity) proved stable on this exact device WITHOUT this flag, matching
+            // Termux's own proot-distro which never sets it either. Forcing PROOT_NO_SECCOMP
+            // makes proot fall back to a different, far-less-tested internal ptrace code
+            // path for every single syscall — a very plausible source of the "signal 11"
+            // (SIGSEGV) crash reported in this app's Ubuntu terminal but NOT reproducible
+            // in the isolated test app. Also swapped in the exact libproot.so/libtalloc.so
+            // binaries validated by that test app (this app's own custom static proot build
+            // differed in size/hash — one more variable removed).
             // LD_LIBRARY_PATH=$nativeDir REMOVED — this was injecting libandroid-support.so
             // (our app's AArch64 JNI .so) into the bash process inside proot, causing:
             // "CANNOT LINK EXECUTABLE: library libandroid-support.so not found"
