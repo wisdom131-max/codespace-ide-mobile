@@ -960,7 +960,7 @@ internal fun TerminalPane(
                                     "echo \"\"\n" +
                                     "echo \"\\033[1;36m  Type the number and press Enter:\"\n" +
                                     "read choice\n" +
-                                    "case \\$choice in\n" +
+                                    "case \$choice in\n" +
                                     "  1) ollama pull qwen2.5-coder:1.5b && MODEL=qwen2.5-coder:1.5b;;\n" +
                                     "  2) ollama pull llama3.2:1b && MODEL=llama3.2:1b;;\n" +
                                     "  3) ollama pull qwen2.5-coder:7b && MODEL=qwen2.5-coder:7b;;\n" +
@@ -972,15 +972,15 @@ internal fun TerminalPane(
                                     "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
                                     "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
                                     "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
-                                    "  echo \"export ANTHROPIC_MODEL=\\$MODEL\" >> ~/.bashrc\n" +
+                                    "  echo \"export ANTHROPIC_MODEL=\$MODEL\" >> ~/.bashrc\n" +
                                     "  source ~/.bashrc\n" +
                                     "}\n" +
                                     "clear\n" +
                                     "echo \"\\033[1;32m Offline Setup Complete!\\033[0m\"\n" +
                                     "echo \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  \\$MODEL (runs on-device)\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[Claude]\\033[0m Run:    claude --model \\$MODEL\"\n" +
-                                    "echo \"\\033[1;32m Type: claude --model \\$MODEL\\033[0m\"\n"
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  \$MODEL (runs on-device)\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[Claude]\\033[0m Run:    claude --model \$MODEL\"\n" +
+                                    "echo \"\\033[1;32m Type: claude --model \$MODEL\\033[0m\"\n"
                                 )
                             }, 3000)
                         })
