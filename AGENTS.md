@@ -1540,3 +1540,30 @@ Fix: iterate by index instead — `(0 until scopes.length()).joinToString(",") {
 scopes.optString(idx) }`. Scanned the rest of the new `agent/` package (AgentTools,
 AgentEntityManager, AgentMemory, AgentScheduler) for the same JSONArray-as-Iterable
 mistake — this was the only occurrence.
+
+## 2026-07-04 — VS Code FEATURE PARITY PUSH (full implementation)
+
+### Directive
+User wants everything the in-app agent capability system + VS Code UI parity work
+was scoped to actually be IMPLEMENTED, not just planned. Explicitly asked to:
+1. Wire AiAssistantPane into the UI (was defined but never rendered)
+2. Make bottom panel tabs (Problems, Output, Debug Console, Ports) real, not stubs
+3. Study the real VS Code UI (via the GitHub Codespace web UI) for exact button
+   positions/behavior and mirror that UX in the Android app
+4. Keep this file + Drive backup docs current as the plan progresses
+
+### Plan (this session)
+1. [in progress] Inspect github.dev Codespace UI via Browserbase for reference —
+   Activity Bar icon order, panel tab layout, Command Palette behavior, status bar.
+2. Wire `AiAssistantPane` to the Activity Bar (new icon, right-side panel,
+   draggable width, matches VS Code's Copilot Chat panel UX).
+3. Implement real Problems panel — parse compiler/lint diagnostics, list with
+   file:line jump-to-source.
+4. Implement real Output panel — channel dropdown (Build, Git, Extension Host
+   equivalent), scrollable log view.
+5. Implement real Debug Console — input line + output log, wired to running
+   debug session if one exists.
+6. Implement real Ports panel — list forwarded ports (e.g. Remotion's :3000),
+   open-in-browser action.
+
+Status of each step tracked below as they land.
