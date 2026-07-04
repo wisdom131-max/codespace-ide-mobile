@@ -744,7 +744,20 @@ internal fun TerminalPane(
             //    during the critical Activity recreation window. Show "Tap to start" instead.
             //    The app stabilizes first, then the user taps to launch proot when ready.
             if (ProotInstaller.isInstalled(context)) {
-                showTapToStart = true
+                // Distinguish first boot after install from reopen after minimize:
+                // - First boot (ubuntu_first_boot_completed=false): auto-start proot.
+                //   The app is stable with plenty of memory — no crash risk.
+                // - Reopen after minimize (ubuntu_first_boot_completed=true): show
+                //   tap-to-start button. Proot startup during Activity recreation
+                //   causes OOM/SIGKILL on 3GB devices.
+                val bootPrefs = context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE)
+                if (bootPrefs.getBoolean("ubuntu_first_boot_completed", false)) {
+                    showTapToStart = true
+                } else {
+                    // First boot after install — auto-start and mark as done
+                    bootPrefs.edit().putBoolean("ubuntu_first_boot_completed", true).apply()
+                    tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+                }
             } else {
                 tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
             }
