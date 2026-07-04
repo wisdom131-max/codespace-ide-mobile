@@ -39,6 +39,7 @@ private enum class PreviewMode(val label: String) {
     MARKDOWN("Markdown"),
     SVG("SVG"),
     BROWSER("Browser"),
+    REMOTION("Remotion"),
 }
 
 private val BgDark      = Color(0xFF1E1E1E)
@@ -173,40 +174,47 @@ fun PreviewPane(
         }
 
         // ── Browser address bar (only in BROWSER mode) ────────────────────
-        if (activeMode == PreviewMode.BROWSER) {
+        if (activeMode == PreviewMode.BROWSER || activeMode == PreviewMode.REMOTION) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .background(Surface)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Icon(Icons.Default.Lock, null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                Icon(
+                    if (activeMode == PreviewMode.REMOTION) Icons.Default.Movie else Icons.Default.Lock,
+                    null, tint = TextMuted, modifier = Modifier.size(16.dp)
+                )
                 OutlinedTextField(
                     value = browserInput,
                     onValueChange = { browserInput = it },
                     modifier = Modifier
-                        .weight(1f)
-                        .height(36.dp),
+                        .weight(1f),
                     singleLine = true,
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         color = TextPrimary,
                     ),
+                    placeholder = { Text("http://localhost:3000", fontSize = 13.sp, color = TextMuted) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Accent,
                         unfocusedBorderColor = Border,
                         cursorColor = Accent,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
                     ),
                 )
                 Button(
-                    onClick = { browserUrl = browserInput; webViewRef?.loadUrl(browserInput) },
-                    modifier = Modifier.height(36.dp),
+                    onClick = {
+                        browserUrl = browserInput
+                        webViewRef?.loadUrl(browserInput)
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Text("Go", fontSize = 12.sp)
+                    Text("Go", fontSize = 13.sp)
                 }
             }
         }
@@ -250,6 +258,8 @@ fun PreviewPane(
                             "Open any .svg file. Rendered centered on a dark background. No JS.")
                         PreviewGuideRow("Browser", Color(0xFFFF79C6),
                             "Type any URL in the address bar and tap Go. Default is localhost:3000 — start your dev server in the terminal first, then switch here to see it live.")
+                        PreviewGuideRow("Remotion", Color(0xFFCE9178),
+                            "Connects to Remotion Studio running in Ubuntu proot. Start it with 'npx remotion studio' in the terminal, then tap Go to preview video compositions, render clips, and see live previews.")
                         Divider(color = Color(0xFF3C3C3C))
                         Row(
                             modifier = Modifier
@@ -280,6 +290,7 @@ fun PreviewPane(
                 PreviewMode.MARKDOWN -> MarkdownPreview(content, onWebView = { webViewRef = it }, onLoading = { isLoading = it })
                 PreviewMode.SVG      -> SvgPreview(content, onWebView = { webViewRef = it })
                 PreviewMode.BROWSER  -> BrowserPreview(browserUrl, onWebView = { webViewRef = it }, onTitle = { pageTitle = it }, onLoading = { isLoading = it })
+                PreviewMode.REMOTION -> RemotionPreview(browserUrl, onWebView = { webViewRef = it }, onTitle = { pageTitle = it }, onLoading = { isLoading = it })
             }
         }
     }
@@ -511,6 +522,69 @@ private fun BrowserPreview(
     )
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Remotion Preview — connects to Remotion dev server running in Ubuntu proot
+// Shows the Remotion Studio UI where users can preview video compositions
+// ─────────────────────────────────────────────────────────────────────────────
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun RemotionPreview(
+    url: String,
+    onWebView: (WebView) -> Unit,
+    onTitle: (String) -> Unit,
+    onLoading: (Boolean) -> Unit,
+) {
+    // Default Remotion Studio runs on port 3000
+    val remotionUrl = if (url.isBlank()) "http://localhost:3000" else url
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
+                settings.mediaPlaybackRequiresUserGesture = false
+                settings.allowFileAccess = true
+                settings.allowContentAccess = true
+                webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        onLoading(true)
+                    }
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        onLoading(false)
+                        onTitle(view?.title ?: "Remotion Studio")
+                    }
+                    override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                        onLoading(false)
+                        val errHtml = """<html><body style="background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
+                            <div>
+                            <div style="font-size:48px;margin-bottom:16px;">🎬</div>
+                            <h2 style="color:#f48771;">Remotion Studio not running</h2>
+                            <p style="color:#9cdcfe;">Start it in the terminal:</p>
+                            <pre style="background:#252526;padding:12px;border-radius:6px;color:#4ec9b0;display:inline-block;text-align:left;">npx remotion studio</pre>
+                            <p style="color:#717171;font-size:13px;margin-top:12px;">Then tap Go to connect.</p>
+                            </div></body></html>"""
+                        view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
+                    }
+                }
+                webChromeClient = object : WebChromeClient() {
+                    override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
+                }
+                onWebView(this)
+            }
+        },
+        update = { wv ->
+            if (wv.url != remotionUrl) wv.loadUrl(remotionUrl)
+            onWebView(wv)
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewGuideRow — used inside the how-to-use dialog
