@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import java.io.File
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -770,6 +771,13 @@ internal fun TerminalPane(
             showTapToStart = false
             tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
         }
+    }
+
+    // Back button during loading screen: skip the delay and start terminal immediately
+    BackHandler(enabled = showTapToStart) {
+        showTapToStart = false
+        autoStartCountdownDone = true
+        tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
     }
 
     fun closeTab(id: String) {
