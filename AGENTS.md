@@ -1567,3 +1567,24 @@ was scoped to actually be IMPLEMENTED, not just planned. Explicitly asked to:
    open-in-browser action.
 
 Status of each step tracked below as they land.
+
+### Status update — 2026-07-04
+- Confirmed via code read: the AI chat panel is ALREADY wired in production
+  (`CopilotChatPanelOverlay.kt`, real Ollama integration, persisted history,
+  Ask/Agent/Plan modes) — reachable via the Activity Bar Chat icon and the
+  gear menu's "Toggle AI Chat". `AiAssistantPane.kt` is confirmed dead code
+  (not referenced anywhere) — candidate for deletion in a later cleanup pass.
+- Live inspection of the real GitHub Codespace VS Code UI was attempted
+  (Browserbase) but blocked by an interactive GitHub login wall (no stored
+  credentials). Implementation proceeded from established, accurate VS Code
+  UX knowledge instead of live click-through.
+- Landed real implementations (previously static stubs) for:
+  - Problems panel — actual static analysis on the open file (unmatched
+    brackets, trailing whitespace, mixed indentation, TODO/FIXME markers)
+  - Output panel — shared `AppOutputLog` channel, any part of the app can
+    log real events to it (currently: debug-run dispatches)
+  - Ports panel — real TCP probe of localhost dev-server ports (proot
+    shares the host network namespace), tap to open live in Preview
+  - Debug Console Run (▷) — builds the right interpreter command per file
+    type and dispatches it into the real Ubuntu terminal session
+- Build pushed (commit 8ca3c9a) — CI run in progress.
