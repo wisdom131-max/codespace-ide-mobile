@@ -466,6 +466,8 @@ internal fun TerminalPane(
     var lastOrientationChangeAt by remember { mutableStateOf(0L) }
     LaunchedEffect(configuration.orientation) { lastOrientationChangeAt = System.currentTimeMillis() }
     var bootstrapReady by remember { mutableStateOf(false) }
+    var showTapToStart by remember { mutableStateOf(false) }
+    var autoStartCountdownDone by remember { mutableStateOf(false) }
     var showMenu        by remember { mutableStateOf(false) }
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
     var renameValue     by remember { mutableStateOf("") }
@@ -736,6 +738,36 @@ internal fun TerminalPane(
                 addUbuntuTab(replaceTabId = null)
             }
         } else {
+            // No existing sessions found. Two cases:
+            // 1. First boot after install (ubuntu_first_boot_completed=false) → auto-start immediately.
+            //    The app is fresh and stable — no crash risk.
+            // 2. Reopen after minimize (ubuntu_first_boot_completed=true) → DON'T fork proot
+            //    instantly. Show a brief loading state (~8s) to let the app fully stabilize
+            //    after Activity recreation, THEN auto-fork proot. Forking immediately on
+            //    reopen was causing OOM/SIGKILL on 3GB devices — a short delay avoids it
+            //    without requiring the user to tap anything.
+            if (ProotInstaller.isInstalled(context)) {
+                val bootPrefs = context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE)
+                if (bootPrefs.getBoolean("ubuntu_first_boot_completed", false)) {
+                    showTapToStart = true
+                } else {
+                    bootPrefs.edit().putBoolean("ubuntu_first_boot_completed", true).apply()
+                    tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+                }
+            } else {
+                tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+            }
+        }
+    }
+
+    // Auto-start countdown: on reopen, wait ~8s for the app to stabilize after Activity
+    // recreation before forking proot. This replaces the manual "tap to start" button —
+    // same fix (delay the fork), but automatic instead of requiring user interaction.
+    LaunchedEffect(showTapToStart) {
+        if (showTapToStart && !autoStartCountdownDone) {
+            kotlinx.coroutines.delay(8000)
+            autoStartCountdownDone = true
+            showTapToStart = false
             tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
         }
     }
@@ -1306,8 +1338,25 @@ internal fun TerminalPane(
             TextExpansionSheet(onDismiss = { showTextExpansions = false })
         }
 
+        // ── Auto-start loading screen ──────────────────────────────────────
+        // Shown briefly on reopen after minimize (Ubuntu already installed, no live
+        // session). Gives the app ~8s to stabilize after Activity recreation before
+        // auto-forking proot — avoids the OOM/SIGKILL that happened when forking
+        // proot immediately on reopen on 3GB devices. No tap needed, just a short wait.
+        if (showTapToStart && active != null) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0xFF1E1E1E)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = Color(0xFF89B4FA))
+                    Text("Starting terminal...", color = Color(0xFF969696), fontSize = 13.sp)
+                }
+            }
+        }
+
         // Terminal view
-        if (active != null) {
+        if (active != null && !showTapToStart) {
             key(active.id) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
