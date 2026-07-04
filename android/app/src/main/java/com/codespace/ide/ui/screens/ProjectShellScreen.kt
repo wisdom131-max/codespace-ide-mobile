@@ -915,8 +915,7 @@ fun ProjectShellScreen(
                                                 debugMessages.add("> $cmd")
                                                 debugMessages.add("[debug] Dispatched to Terminal tab — switch there to see live output.")
                                                 AppOutputLog.log("Running ${path.substringAfterLast('/')}", "debug")
-                                                terminalCommandToRun = "$cmd
-"
+                                                terminalCommandToRun = cmd + "\r"
                                                 showBottomPanel = true
                                                 activeBottomTab = BottomTab.TERMINAL
                                             }
