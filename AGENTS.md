@@ -1347,3 +1347,74 @@ The app process needs time to stabilize. 8-second delay is the minimum.
 - Back button navigates to Home screen
 - Preview pane loads internet content (cleartext traffic enabled)
 - Terminal menu has "Setup Ollama + Claude Code" button
+
+
+---
+
+## 2026-07-04 — FULL AGENT CAPABILITY PLAN (Superagent Parity)
+
+### Goal
+Make any AI launched in the app (via terminal Claude Code OR in-app chat panel) a full agent
+with capabilities matching Base44 Superagent:
+
+### Capability Matrix
+| Superagent Feature | App Implementation | Status |
+|---|---|---|
+| File read/write | Terminal + chat panel tools | Terminal: ✅ Chat: TODO |
+| Command execution (bash) | Terminal sessions | ✅ (via Claude Code) |
+| Git push/pull/commit | git config in proot + token injection | TODO |
+| Secret detection & storage | Encrypted SharedPreferences + pattern scan | TODO |
+| Web search | curl to search APIs in proot | TODO |
+| Remotion video creation | npx remotion render commands | TODO (Remotion tab exists) |
+| Memory/identity persistence | Files in proot ~/.agent/ | TODO |
+| OAuth connectors (Gmail, etc.) | Token storage + API calls | TODO |
+| Entity/database management | Backend API calls | TODO |
+| Automations (scheduled tasks) | cron in proot | TODO |
+| Skills (reusable scripts) | Scripts in ~/.agent/skills/ | TODO |
+| Image generation | External API calls | TODO |
+
+### Architecture
+```
+User
+├── Terminal (Claude Code)
+│   ├── Full file system access (read/write/edit/search)
+│   ├── Run any command (bash, npm, git, remotion)
+│   ├── Git: push/pull/commit with stored credentials
+│   ├── Remotion: npx remotion render <composition>
+│   ├── Secret detection: scan files for API keys, tokens
+│   ├── Memory: ~/.agent/memory.md, ~/.agent/identity.md
+│   └── Skills: ~/.agent/skills/*.sh (reusable scripts)
+│
+├── In-App Chat Panel (Ollama with tool calling)
+│   ├── Tool: run_command → writes to terminal, captures output
+│   ├── Tool: read_file → reads from app file system
+│   ├── Tool: write_file → writes to app file system
+│   ├── Tool: list_files → lists directory contents
+│   ├── Tool: git_operation → runs git commands
+│   ├── Tool: render_remotion → runs Remotion render
+│   ├── Tool: search_files → grep through files
+│   ├── Tool: save_secret → stores in encrypted prefs
+│   ├── Tool: get_secret → retrieves from encrypted prefs
+│   └── Tool: web_search → curl to search API
+│
+└── Shared Resources
+    ├── ~/.agent/CLAUDE.md (system prompt for Claude Code)
+    ├── ~/.agent/memory.md (persistent memory)
+    ├── ~/.agent/skills/ (reusable scripts)
+    ├── ~/.git-credentials (GitHub token for push/pull)
+    └── Encrypted SharedPreferences (API keys, tokens)
+```
+
+### Implementation Plan
+1. **Enhanced setup script** — git config, Remotion install, CLAUDE.md, agent directory
+2. **AgentTools.kt** — tool definitions + execution logic for chat panel
+3. **CopilotChatPanelOverlay.kt** — integrate Ollama tool calling API
+4. **SecretManager.kt** — encrypted storage + pattern detection
+5. **ConnectorManager.kt** — OAuth token storage + API calls (Gmail, Calendar)
+
+### Key Design Decisions
+- Git credentials injected from app's GitHub PAT login (already stored)
+- Ollama tool calling API (v0.3.0+) used for chat panel agent mode
+- Secrets stored in Android EncryptedSharedPreferences (API 23+, minSdk 26 ✓)
+- Agent system prompt (CLAUDE.md) tells AI about all available tools
+- Memory persists in proot file system (~/.agent/ directory)
