@@ -18,7 +18,7 @@
 ---
 
 # AI Agent / Copilot — Project Context
-> Read this FIRST before touching any code. Updated July 3, 2026.
+> Read this FIRST before touching any code. Updated July 4, 2026.
 
 
 ---
@@ -346,19 +346,86 @@ apt install -y nano git python3
 - [x] Step 2 — Fix Ubuntu sources.list ✅ (already correct)
 - [x] Step 3 — Fix proot launch args ✅ 8f0f5ba6
 - [x] Step 3b — Remove LD_LIBRARY_PATH from proot envVars ✅ a86517fa
-- [ ] Step 4 — Device test Ubuntu (**HUMAN STEP**)
+- [x] Step 4 — Device test Ubuntu ✅ (confirmed working July 4, build #839)
 - [ ] Step 5 — Fix Bash shellArgs() — remove LD_LIBRARY_PATH
 - [ ] Step 6 — Fix TerminalPane createTerminalSession args
 - [ ] Step 7 — Device test Bash (**HUMAN STEP**)
 - [ ] Step 8 — Build ExtensionsPane
 - [ ] Step 9 — Terminal menu cleanup
+- [ ] Step 10 — Remotion video creator (**NEW — IN PROGRESS**)
+
+---
+
+## 2026-07-04 — CRASH FIX CONFIRMED + BACK BUTTON FIX
+
+### Crash fix (builds #836–#839)
+**Root cause:** On 3GB RAM devices (TECNO), reopening the app after minimize triggers
+Activity recreation. Immediately forking proot during this window causes OOM/SIGKILL —
+the proot/ptrace startup adds ~500MB+ virtual memory on top of the recreating Activity.
+
+**Confirmed fix (build #839):** Delay proot fork by ~8 seconds on reopen after minimize.
+- First boot after Ubuntu install: auto-starts immediately (no delay, app is stable)
+- Reopen after minimize: shows "Starting terminal..." spinner for ~8s, then auto-starts
+- Back button during loading: skips delay and starts terminal immediately
+- Reopen with live proot session: reattaches immediately (no delay)
+
+**User confirmed:** Build #837 (manual tap-to-start) worked. Build #839 replaced the
+manual tap with automatic 8s delay — same fix, better UX.
+
+**Key files changed:** `TerminalPane.kt` — added `showTapToStart`, `autoStartCountdownDone`
+state vars, `LaunchedEffect(showTapToStart)` with 8s delay, loading screen UI, BackHandler.
+
+### Back button fix (build #840)
+**Problem:** Back button stopped working after the crash fix. When the app starts directly
+on the project screen (via `sessionStateStore.lastProjectId()`), `nav.popBackStack()` returns
+false because the project screen IS the start destination — there's nothing to pop back to.
+
+**Fix:**
+1. `CodeSpaceApp.kt`: `onBack` now navigates to HOME when `popBackStack()` fails
+2. `TerminalPane.kt`: BackHandler during loading screen skips delay and starts terminal
+
+### SharedPreferences flag
+`terminal_prefs.ubuntu_first_boot_completed` — distinguishes first boot (auto-start) from
+reopen after minimize (delayed start). Set to `true` after first successful proot launch.
 
 
 ---
 
 ## BACKLOG — HARD
 
-- [ ] **Remotion video creator** — render videos clip-by-clip using Remotion (React-based), then merge clips into final video using FFmpeg; avoids memory/timeout issues from rendering full video at once; ideal for YouTube content, code walkthroughs, and project demos from within the IDE
+- [x] ~~**Remotion video creator**~~ — **MOVED TO STEP 10 (IN PROGRESS)**
+
+---
+
+## STEP 10 — REMOTION VIDEO CREATOR (2026-07-04 — IN PROGRESS)
+
+### Goal
+Render videos clip-by-clip using Remotion (React-based), then merge clips into final video
+using FFmpeg. Avoids memory/timeout issues from rendering full video at once. Ideal for
+YouTube content, code walkthroughs, and project demos from within the IDE.
+
+### Architecture
+- **New panel:** `RemotionPane.kt` — accessible from the VS Code-style activity bar
+- **Remotion runtime:** Runs inside the Ubuntu proot environment (Node.js + npx remotion)
+- **Clip-based rendering:** Each clip rendered individually, then merged via FFmpeg
+- **Templates:** Pre-built templates for code walkthroughs, project demos, tutorials
+- **Output:** MP4 files saved to user's project directory, shareable via Android intents
+
+### Implementation plan
+1. Create `RemotionPane.kt` — UI for composing video clips, preview, render button
+2. Install Node.js + Remotion in Ubuntu proot (via apt + npm)
+3. Create clip templates (React components) stored in project workspace
+4. Wire render command → terminal session (npx remotion render <clip> <output>)
+5. FFmpeg merge step → combine clips into final video
+6. Share intent — "Share video" button using Android FileProvider
+
+### Dependencies (Ubuntu proot)
+```bash
+apt install -y nodejs npm ffmpeg
+npm install -g remotion @remotion/cli
+```
+
+### Status: PLANNING — next step after back button fix is confirmed
 
 ## 2026-06-30 — ProotInstaller r14: Os.symlink + SYMLINKS.txt file-based pattern
 
