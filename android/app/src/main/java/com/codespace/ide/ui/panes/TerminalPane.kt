@@ -869,44 +869,37 @@ internal fun TerminalPane(
                         onClick = {}, enabled = false)
                     DropdownMenuItem(
                         leadingIcon = { Text("🤖", fontSize = 13.sp) },
-                        text = { Text("Setup Ollama + Claude Code", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        text = { Text("Setup Ollama AI", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             addUbuntuTab()
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 val ubuntuTab = tabs.lastOrNull()
-                                // Based on AbuZar-Ansarii/Claude-Ollama-VScode approach:
-                                // 1. Install Ollama binary in proot (arm64)
-                                // 2. Pull nemotron-3-super:cloud (cloud-offloaded model — minimal RAM)
-                                // 3. Set up env vars for Claude Code to connect to Ollama
-                                // 4. Install Claude Code (npm)
-                                // 5. Show ready message
+                                // Termux-style Ollama setup (from AbuZar-Ansarii/Claude-Ollama-VScode):
+                                // 1. Install ollama binary
+                                // 2. Start server
+                                // 3. Pull nemotron-3-super:cloud (cloud-offloaded — minimal RAM)
                                 ubuntuTab?.session?.write(
-                                    "echo \"\\033[1;34m[Setup]\\033[0m Step 1/4: Installing Ollama...\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Installing Ollama...\"\n" +
                                     "if ! command -v ollama &>/dev/null; then\n" +
                                     "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \"\n" +
                                     "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \"\n" +
                                     "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \"\n" +
-                                    "  echo \"\\033[1;32m[Setup]\\033[0m Ollama binary installed.\"\n" +
+                                    "  echo \"\\033[1;32m[Ollama]\\033[0m Installed.\"\n" +
                                     "else\n" +
-                                    "  echo \"\\033[1;32m[Setup]\\033[0m Ollama already installed.\"\n" +
+                                    "  echo \"\\033[1;32m[Ollama]\\033[0m Already installed.\"\n" +
                                     "fi\n" +
-                                    "echo \"\\033[1;34m[Setup]\\033[0m Step 2/4: Starting Ollama server...\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Starting server on :11434...\"\n" +
                                     "ollama serve &\n" +
-                                    "sleep 3\n" +
-                                    "echo \"\\033[1;34m[Setup]\\033[0m Step 3/4: Pulling nemotron-3-super:cloud (cloud model, minimal RAM)...\"\n" +
+                                    "sleep 2\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Pulling nemotron-3-super:cloud...\"\n" +
                                     "ollama pull nemotron-3-super:cloud\n" +
-                                    "echo \"\\033[1;34m[Setup]\\033[0m Step 4/4: Installing Claude Code...\"\n" +
-                                    "npm install -g @anthropic-ai/claude-code 2>/dev/null\n" +
-                                    "echo 'export ANTHROPIC_BASE_URL=\"http://localhost:11434\"' >> ~/.bashrc\n" +
-                                    "echo 'export ANTHROPIC_AUTH_TOKEN=\"ollama\"' >> ~/.bashrc\n" +
-                                    "source ~/.bashrc\n" +
                                     "clear\n" +
-                                    "echo \"\\033[1;32m[Setup] Complete!\\033[0m\"\n" +
+                                    "echo \"\\033[1;32m[Ollama] Ready!\\033[0m\"\n" +
                                     "echo \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model: nemotron-3-super:cloud\"\n" +
-                                    "echo \"\\033[1;34m[Claude]\\033[0m Run: claude --model nemotron-3-super:cloud\"\n" +
-                                    "echo \"\\033[1;34m[Chat]\\033[0m Or use the AI Chat panel (chat icon in top bar)\"\n"
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  nemotron-3-super:cloud\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Try:    ollama run nemotron-3-super:cloud\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Or use the AI Chat panel (chat icon ↑)\"\n"
                                 )
                             }, 3000)
                         })
