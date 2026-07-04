@@ -869,37 +869,65 @@ internal fun TerminalPane(
                         onClick = {}, enabled = false)
                     DropdownMenuItem(
                         leadingIcon = { Text("🤖", fontSize = 13.sp) },
-                        text = { Text("Setup Ollama AI", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        text = { Text("Setup Ollama + Claude Code", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             addUbuntuTab()
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 val ubuntuTab = tabs.lastOrNull()
-                                // Termux-style Ollama setup (from AbuZar-Ansarii/Claude-Ollama-VScode):
-                                // 1. Install ollama binary
-                                // 2. Start server
-                                // 3. Pull nemotron-3-super:cloud (cloud-offloaded — minimal RAM)
+                                // Full setup based on AbuZar-Ansarii/Claude-Ollama-VScode:
+                                // 1. Install Ollama binary (arm64)
+                                // 2. Start ollama serve (local server on :11434)
+                                // 3. Pull nemotron-3-super:cloud (cloud inference, minimal RAM)
+                                // 4. Install Claude Code (npm) — gives AI full environment access
+                                // 5. Set env vars so Claude Code connects to local Ollama
+                                // Result: claude --model nemotron-3-super:cloud has full
+                                //         file system + terminal access inside Ubuntu proot
                                 ubuntuTab?.session?.write(
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Installing Ollama...\"\n" +
+                                    "echo \"\\033[1;34m[1/5]\\033[0m Installing Ollama...\"\n" +
                                     "if ! command -v ollama &>/dev/null; then\n" +
                                     "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \"\n" +
                                     "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \"\n" +
                                     "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \"\n" +
-                                    "  echo \"\\033[1;32m[Ollama]\\033[0m Installed.\"\n" +
+                                    "  echo \"\\033[1;32m  ✓ Ollama installed\\033[0m\"\n" +
                                     "else\n" +
-                                    "  echo \"\\033[1;32m[Ollama]\\033[0m Already installed.\"\n" +
+                                    "  echo \"\\033[1;32m  ✓ Ollama already installed\\033[0m\"\n" +
                                     "fi\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Starting server on :11434...\"\n" +
+                                    "echo \"\\033[1;34m[2/5]\\033[0m Starting Ollama server on :11434...\"\n" +
                                     "ollama serve &\n" +
                                     "sleep 2\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Pulling nemotron-3-super:cloud...\"\n" +
+                                    "echo \"\\033[1;32m  ✓ Server running\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[3/5]\\033[0m Pulling nemotron-3-super:cloud...\"\n" +
                                     "ollama pull nemotron-3-super:cloud\n" +
+                                    "echo \"\\033[1;32m  ✓ Model ready\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[4/5]\\033[0m Installing Claude Code...\"\n" +
+                                    "npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
+                                    "echo \"\\033[1;32m  ✓ Claude Code installed\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[5/5]\\033[0m Configuring environment...\"\n" +
+                                    "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
+                                    "  echo 'export ANTHROPIC_BASE_URL=\\"http://localhost:11434\"\"' >> ~/.bashrc\n" +
+                                    "  echo 'export ANTHROPIC_AUTH_TOKEN=\\"ollama\"\"' >> ~/.bashrc\n" +
+                                    "  echo 'export ANTHROPIC_MODEL=\\"nemotron-3-super:cloud\"\"' >> ~/.bashrc\n" +
+                                    "  source ~/.bashrc\n" +
+                                    "}\n" +
+                                    "echo \"\\033[1;32m  ✓ Environment configured\\033[0m\"\n" +
                                     "clear\n" +
-                                    "echo \"\\033[1;32m[Ollama] Ready!\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  nemotron-3-super:cloud\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Try:    ollama run nemotron-3-super:cloud\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Or use the AI Chat panel (chat icon ↑)\"\n"
+                                    "echo \"\\033[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"\n" +
+                                    "echo \"\\033[1;32m  ✅ Setup Complete!\\033[0m\"\n" +
+                                    "echo \"\\033[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"\n" +
+                                    "echo \"\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Server:  http://localhost:11434\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:   nemotron-3-super:cloud\"\n" +
+                                    "echo \"\\033[1;34m[Claude]\\033[0m Run:     claude --model nemotron-3-super:cloud\"\n" +
+                                    "echo \"\"\n" +
+                                    "echo \"\\033[1;33mClaude Code has full access to this environment:\"\n" +
+                                    "echo \"  • Read & write files\"\n" +
+                                    "echo \"  • Run terminal commands\"\n" +
+                                    "echo \"  • Edit code\"\n" +
+                                    "echo \"  • Search the file system\"\n" +
+                                    "echo \"  • Install packages\"\n" +
+                                    "echo \"\"\n" +
+                                    "echo \"\\033[1;32mType: claude --model nemotron-3-super:cloud\\033[0m\"\n"
                                 )
                             }, 3000)
                         })
