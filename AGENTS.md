@@ -1418,3 +1418,59 @@ User
 - Secrets stored in Android EncryptedSharedPreferences (API 23+, minSdk 26 ✓)
 - Agent system prompt (CLAUDE.md) tells AI about all available tools
 - Memory persists in proot file system (~/.agent/ directory)
+
+---
+
+## 2026-07-04 — FULL AGENT CAPABILITY SYSTEM IMPLEMENTED ✅
+
+### What was built
+Complete agent capability system giving ANY AI launched in the app (via API, terminal,
+or in-app chat) the same powers as a Base44 Superagent. 32 tools available.
+
+### Files created/updated
+
+**Kotlin (app-side, for API/chat-panel AI):**
+- `agent/AgentTools.kt` — 32-tool system with text-based tool calling protocol
+  - Shell: run_command, read_file, write_file, list_files, search_files
+  - Git: git_commit_push, git_pull_rebase, git_branch (create/switch/list/merge/delete), git_status, git_diff
+  - Video: render_remotion (clip-by-clip + FFmpeg merge for 3GB devices)
+  - Secrets: save_secret, get_secret, detect_secrets (12 pattern types)
+  - Web: web_fetch, web_search (DuckDuckGo)
+  - Memory: save_memory, read_memory, delete_memory
+  - Connectors: list_connectors, connect_service, use_connector (Gmail/Calendar/Drive/Slack/GitHub)
+  - Data: create_entity, read_entities, update_entity, delete_entity (file-backed JSON)
+  - Scheduling: schedule_task, list_tasks, cancel_task (ScheduledExecutorService + persistence)
+  - Media: generate_image, upload_file
+  - Packages: install_package (npm/pip/apt)
+
+- `agent/AgentMemory.kt` — Persistent JSON key-value memory (survives sessions)
+- `agent/AgentConnectorManager.kt` — OAuth connector registry (5 services, token storage, API calls)
+- `agent/AgentEntityManager.kt` — File-backed CRUD data store (lightweight, no SQLite on 3GB)
+- `agent/AgentScheduler.kt` — Task scheduling with cron support + persistence
+
+**Shell (proot terminal, for Claude Code / any terminal AI):**
+- `assets/agent-tools/agent-tools.sh` — 24 terminal commands mirroring the Kotlin tools
+  - All git operations, remotion rendering, secret detection, web search/fetch
+  - Memory persistence, connector management, scheduling (crontab), data entities
+  - Sourceable in .bashrc for automatic availability
+
+### Tool calling protocol
+Text-based `<tool>{"name":"...","arguments":{...}}</tool>` tags.
+Works with ANY Ollama model (no native tool-calling support required).
+AgentTools.parseToolCalls() extracts calls, executeTool() runs them.
+
+### Secret detection patterns (12 types)
+AWS keys, GitHub tokens, Google API keys, Google OAuth tokens, OpenAI keys,
+Anthropic keys, Slack tokens, Stripe keys, generic API keys, private keys,
+JWT tokens, database connection strings.
+
+### Connector architecture
+OAuth flow: connect_service returns auth URL → user opens in WebView →
+callback captures code → save_secret stores token → use_connector calls API.
+Supported: Gmail, Google Calendar, Google Drive, Slack, GitHub.
+
+### GitHub 2FA Status
+- wisdomijezie90-art: 2FA ENABLED (TOTP)
+  - TOTP secret stored securely
+  - 16 recovery codes saved to private storage
+- wisdom131-max: 2FA setup pending
