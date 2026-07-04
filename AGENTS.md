@@ -1524,3 +1524,19 @@ Connect Superagent to the GitHub Codespace on the phone so it can:
 ### AGENTS.md update protocol
 Always update this file BEFORE answering user questions about the codebase.
 This ensures all context is persisted for future sessions.
+
+## Fixed: Build #863/#864 — AgentConnectorManager.kt:97 compile error (2026-07-04)
+
+Picked this up from another AI's session that ran out of tokens mid-fix (they'd
+already correctly fixed AgentScheduler.kt's `*/` block-comment issue, but that fix
+alone wasn't enough — a second, unrelated compile error was still failing the build).
+
+Error: `scopes.joinToString(",") { it.toString() }` where `scopes` is an
+`org.json.JSONArray` parameter. Android's `org.json.JSONArray` does NOT implement
+`Iterable`, so Kotlin's `joinToString` extension never resolves on it — compiler
+correctly rejected it as "Unresolved reference."
+
+Fix: iterate by index instead — `(0 until scopes.length()).joinToString(",") { idx ->
+scopes.optString(idx) }`. Scanned the rest of the new `agent/` package (AgentTools,
+AgentEntityManager, AgentMemory, AgentScheduler) for the same JSONArray-as-Iterable
+mistake — this was the only occurrence.

@@ -92,9 +92,11 @@ object AgentConnectorManager {
         val conn = CONNECTORS[service]
             ?: return "Unknown service: $service. Available: ${CONNECTORS.keys.joinToString(", ")}"
 
-        // Build OAuth URL — the app's WebView will open this and capture the callback
+        // Build OAuth URL — the app's WebView will open this and capture the callback.
+        // org.json.JSONArray on Android does NOT implement Iterable, so joinToString{}
+        // doesn't resolve on it directly -- iterate by index instead.
         val scopeStr = if (scopes != null && scopes.length() > 0) {
-            scopes.joinToString(",") { it.toString() }
+            (0 until scopes.length()).joinToString(",") { idx -> scopes.optString(idx) }
         } else {
             conn.scopesParam
         }
