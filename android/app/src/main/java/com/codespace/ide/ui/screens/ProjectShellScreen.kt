@@ -46,6 +46,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.codespace.ide.terminal.TerminalEnhancementManager
 import com.codespace.ide.ui.panes.*
+import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.diagnostics.LintChecker
+import com.codespace.ide.diagnostics.Problem
+import com.codespace.ide.diagnostics.PortsScanner
+import com.codespace.ide.diagnostics.ForwardedPort
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
 private data class IdeColors(
@@ -374,6 +379,7 @@ fun ProjectShellScreen(
     var showChatPanel      by remember { mutableStateOf(false) }
     var chatInput          by remember { mutableStateOf("") }
     var terminalCommandToRun by remember { mutableStateOf<String?>(null) }
+    var previewPort by remember { mutableStateOf<Int?>(null) }
     var showGearMenu       by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
     var showPanelMenu      by remember { mutableStateOf(false) }
@@ -883,7 +889,10 @@ fun ProjectShellScreen(
                                     onCommandConsumed = { terminalCommandToRun = null },
                                     externalState = sharedTerminalState,
                                 )
-                                BottomTab.PROBLEMS -> ProblemsPanel()
+                                BottomTab.PROBLEMS -> ProblemsPanel(
+                                    activeFilePath = activeEditorTab,
+                                    onJumpToSource = { showBottomPanel = false },
+                                )
                                 BottomTab.OUTPUT   -> OutputPanel()
                                 BottomTab.DEBUG    -> DebugConsolePanel(
                                     messages = debugMessages,
@@ -894,11 +903,34 @@ fun ProjectShellScreen(
                                             debugInput.value = ""
                                         }
                                     },
+                                    onRun = {
+                                        val path = activeEditorTab
+                                        if (path.isNullOrBlank()) {
+                                            debugMessages.add("[debug] No file open — open a file first, then press Run.")
+                                        } else {
+                                            val cmd = buildRunCommand(path)
+                                            if (cmd == null) {
+                                                debugMessages.add("[debug] Don't know how to run '${path.substringAfterLast('/')}' — unsupported file type.")
+                                            } else {
+                                                debugMessages.add("> $cmd")
+                                                debugMessages.add("[debug] Dispatched to Terminal tab — switch there to see live output.")
+                                                AppOutputLog.log("Running ${path.substringAfterLast('/')}", "debug")
+                                                terminalCommandToRun = "$cmd
+"
+                                                showBottomPanel = true
+                                                activeBottomTab = BottomTab.TERMINAL
+                                            }
+                                        }
+                                    },
                                 )
-                                BottomTab.PORTS    -> PortsPanel()
+                                BottomTab.PORTS    -> PortsPanel(onOpenInPreview = { port ->
+                                    previewPort = port
+                                    activeBottomTab = BottomTab.PREVIEW
+                                })
                                 BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
                                 BottomTab.PREVIEW  -> PreviewPane(
                                     activeFilePath = activeEditorTab ?: "",
+                                    initialPort = previewPort,
                                 )
                             }
                         }
@@ -1189,28 +1221,82 @@ fun ProjectShellScreen(
     } // end root Box
 }
 
-@Composable private fun ProblemsPanel() {
+/**
+ * Maps a file path to the shell command that actually runs it inside the
+ * Ubuntu proot environment, mirroring VS Code's "Run" (▷) behavior for a
+ * given language. Returns null for file types with no direct runner (the
+ * user still has the Terminal for anything custom).
+ */
+private fun buildRunCommand(path: String): String? {
+    val quoted = "\"$path\""
+    return when {
+        path.endsWith(".py")               -> "python3 $quoted"
+        path.endsWith(".js") || path.endsWith(".mjs") -> "node $quoted"
+        path.endsWith(".ts")               -> "npx ts-node $quoted"
+        path.endsWith(".sh")               -> "bash $quoted"
+        path.endsWith(".rb")               -> "ruby $quoted"
+        path.endsWith(".go")               -> "go run $quoted"
+        path.endsWith(".rs")               -> "rustc $quoted -o /tmp/rust_out && /tmp/rust_out"
+        path.endsWith(".c")                -> "gcc $quoted -o /tmp/c_out && /tmp/c_out"
+        path.endsWith(".cpp") || path.endsWith(".cc") -> "g++ $quoted -o /tmp/cpp_out && /tmp/cpp_out"
+        path.endsWith(".php")              -> "php $quoted"
+        else -> null
+    }
+}
+
+@Composable private fun ProblemsPanel(activeFilePath: String?, onJumpToSource: () -> Unit) {
+    val problems = remember(activeFilePath) {
+        if (activeFilePath.isNullOrBlank()) emptyList()
+        else try { LintChecker.check(activeFilePath, loadFileContent(activeFilePath)) } catch (_: Exception) { emptyList() }
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("PROBLEMS", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
+            Text("PROBLEMS" + if (problems.isNotEmpty()) " (${problems.size})" else "", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
             Icon(Icons.Default.FilterList, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
         }
         HorizontalDivider(color = Color(0xFFE0E0E0))
-        Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-            Text("✓  No problems detected in the workspace.", fontSize = 13.sp, color = Color(0xFF717171))
+        if (activeFilePath.isNullOrBlank()) {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                Text("Open a file to see problems detected in it.", fontSize = 13.sp, color = Color(0xFF717171))
+            }
+        } else if (problems.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                Text("✓  No problems detected in ${activeFilePath.substringAfterLast('/')}.", fontSize = 13.sp, color = Color(0xFF717171))
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(problems) { p ->
+                    val (icon, tint) = when (p.severity) {
+                        Problem.Severity.ERROR   -> Icons.Default.Cancel to Color(0xFFE51400)
+                        Problem.Severity.WARNING -> Icons.Default.Warning to Color(0xFFCCA700)
+                        Problem.Severity.INFO    -> Icons.Default.Info to Color(0xFF007ACC)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onJumpToSource() }.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(p.message, fontSize = 12.sp, color = Color(0xFF424242), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${activeFilePath.substringAfterLast('/')}:${p.line}", fontSize = 11.sp, color = Color(0xFF9E9E9E))
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable private fun OutputPanel() {
-    val logs = remember { mutableStateListOf("[info]  Visual Node Code started","[info]  Gradle build started","[info]  BUILD SUCCESSFUL","[info]  APK: app-prod-arm64-v8a-debug.apk") }
+    val logs = AppOutputLog.lines
+    val listState = rememberLazyListState()
+    LaunchedEffect(logs.size) { if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("OUTPUT", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { logs.clear() })
+            Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { AppOutputLog.clear() })
         }
         HorizontalDivider(color = Color(0xFFE0E0E0))
-        LazyColumn(Modifier.fillMaxSize().padding(8.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = listState) {
             items(logs) { log -> Text(log, fontSize = 12.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp)) }
         }
     }
@@ -1220,11 +1306,12 @@ fun ProjectShellScreen(
     messages: SnapshotStateList<String>,
     input: MutableState<String>,
     onSend: (String) -> Unit,
+    onRun: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("DEBUG CONSOLE", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp).clickable { messages.add("[debug] Run request queued") })
+            Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp).clickable { onRun() })
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { messages.clear(); messages.add("Debugger ready. Press Run to start.") })
         }
@@ -1242,18 +1329,74 @@ fun ProjectShellScreen(
     }
 }
 
-@Composable private fun PortsPanel() {
+@Composable private fun PortsPanel(onOpenInPreview: (Int) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var ports by remember { mutableStateOf<List<ForwardedPort>>(emptyList()) }
+    var scanning by remember { mutableStateOf(true) }
+    var customPorts by remember { mutableStateOf(listOf<Int>()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var addPortText by remember { mutableStateOf("") }
+
+    suspend fun rescan() {
+        scanning = true
+        ports = PortsScanner.scan(customPorts)
+        scanning = false
+    }
+    LaunchedEffect(customPorts) { rescan() }
+
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("PORTS", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.Add, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
+            if (scanning) {
+                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = Color(0xFF717171))
+                Spacer(Modifier.width(8.dp))
+            }
+            Icon(Icons.Default.Refresh, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { scope.launch { rescan() } })
+            Spacer(Modifier.width(12.dp))
+            Icon(Icons.Default.Add, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { showAddDialog = true })
         }
         HorizontalDivider(color = Color(0xFFE0E0E0))
-        Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-            Text("No forwarded ports. Tap + to forward a local server port.", fontSize = 13.sp, color = Color(0xFF717171))
+        if (ports.isEmpty() && !scanning) {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                Text("No forwarded ports detected. Start a dev server (e.g. Remotion on :3000) then tap ⟳, or tap + to check a specific port.", fontSize = 13.sp, color = Color(0xFF717171))
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(ports) { p ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onOpenInPreview(p.port) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(8.dp).background(Color(0xFF89D185), androidx.compose.foundation.shape.CircleShape))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${p.port}", fontSize = 13.sp, color = Color(0xFF212121), fontFamily = FontFamily.Monospace)
+                            Text(p.label, fontSize = 11.sp, color = Color(0xFF717171))
+                        }
+                        Icon(Icons.Default.OpenInBrowser, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
         }
     }
 
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Forward a port") },
+            text = {
+                OutlinedTextField(value = addPortText, onValueChange = { addPortText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Port number") }, singleLine = true)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    addPortText.toIntOrNull()?.let { customPorts = customPorts + it }
+                    addPortText = ""; showAddDialog = false
+                }) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Cancel") } }
+        )
+    }
 }
 
 // ConnectorRow moved to ConnectorsHubSheet.kt

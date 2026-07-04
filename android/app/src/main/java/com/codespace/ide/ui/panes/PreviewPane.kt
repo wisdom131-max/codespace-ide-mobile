@@ -53,6 +53,7 @@ private val Accent      = Color(0xFF007ACC)
 @Composable
 fun PreviewPane(
     activeFilePath: String = "",
+    initialPort: Int? = null,
 ) {
     // Read file content from disk whenever path changes
     val content by produceState(initialValue = "", key1 = activeFilePath) {
@@ -80,13 +81,14 @@ fun PreviewPane(
         else                                   -> PreviewMode.HTML
     }
 
-    var activeMode by remember(activeFilePath) { mutableStateOf(defaultMode) }
+    var activeMode by remember(activeFilePath, initialPort) { mutableStateOf(if (initialPort != null) PreviewMode.BROWSER else defaultMode) }
     var showGuide by remember { mutableStateOf(false) }
-    var browserUrl by remember { mutableStateOf("http://localhost:3000") }
-    var browserInput by remember { mutableStateOf("http://localhost:3000") }
+    var browserUrl by remember(initialPort) { mutableStateOf(initialPort?.let { "http://localhost:$it" } ?: "http://localhost:3000") }
+    var browserInput by remember(initialPort) { mutableStateOf(initialPort?.let { "http://localhost:$it" } ?: "http://localhost:3000") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var pageTitle by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(initialPort) { if (initialPort != null) webViewRef?.loadUrl("http://localhost:$initialPort") }
 
     Column(
         Modifier
