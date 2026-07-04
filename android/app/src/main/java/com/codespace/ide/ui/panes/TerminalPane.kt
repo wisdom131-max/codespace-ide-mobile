@@ -923,6 +923,67 @@ internal fun TerminalPane(
                                 )
                             }, 3000)
                         })
+
+                    DropdownMenuItem(
+                        leadingIcon = { Text("📱", fontSize = 13.sp) },
+                        text = { Text("Setup Ollama (Offline Models)", color = Color(0xFFA6E3A1), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            addUbuntuTab()
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                val ubuntuTab = tabs.lastOrNull()
+                                // Offline Ollama setup — models run fully on-device
+                                // For phones with enough RAM (6GB+)
+                                // Smaller models that fit in RAM:
+                                //   - qwen2.5-coder:1.5b (~1GB RAM)
+                                //   - llama3.2:1b (~0.8GB RAM)
+                                //   - qwen2.5-coder:7b (~5GB RAM, needs 8GB+ phone)
+                                ubuntuTab?.session?.write(
+                                    "echo \"\\033[1;34m[1/4]\\033[0m Installing Ollama...\"\n" +
+                                    "if ! command -v ollama &>/dev/null; then\n" +
+                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \"\n" +
+                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \"\n" +
+                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \"\n" +
+                                    "  echo \"\\033[1;32m  done\\033[0m\"\n" +
+                                    "else\n" +
+                                    "  echo \"\\033[1;32m  already installed\\033[0m\"\n" +
+                                    "fi\n" +
+                                    "echo \"\\033[1;34m[2/4]\\033[0m Starting Ollama server...\"\n" +
+                                    "ollama serve &\n" +
+                                    "sleep 2\n" +
+                                    "echo \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[3/4]\\033[0m Choose a model to pull:\"\n" +
+                                    "echo \"\\033[1;33m  1. qwen2.5-coder:1.5b  (~1GB RAM, best for coding)\\033[0m\"\n" +
+                                    "echo \"\\033[1;33m  2. llama3.2:1b         (~0.8GB RAM, general chat)\\033[0m\"\n" +
+                                    "echo \"\\033[1;33m  3. qwen2.5-coder:7b   (~5GB RAM, needs 8GB+ phone)\\033[0m\"\n" +
+                                    "echo \"\\033[1;33m  4. tinyllama           (~0.6GB RAM, lightweight)\\033[0m\"\n" +
+                                    "echo \"\"\n" +
+                                    "echo \"\\033[1;36m  Type the number and press Enter:\"\n" +
+                                    "read choice\n" +
+                                    "case \\$choice in\n" +
+                                    "  1) ollama pull qwen2.5-coder:1.5b && MODEL=qwen2.5-coder:1.5b;;\n" +
+                                    "  2) ollama pull llama3.2:1b && MODEL=llama3.2:1b;;\n" +
+                                    "  3) ollama pull qwen2.5-coder:7b && MODEL=qwen2.5-coder:7b;;\n" +
+                                    "  4) ollama pull tinyllama && MODEL=tinyllama;;\n" +
+                                    "  *) echo \"Invalid choice\" && exit 1;;\n" +
+                                    "esac\n" +
+                                    "echo \"\\033[1;34m[4/4]\\033[0m Installing Claude Code...\"\n" +
+                                    "npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
+                                    "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
+                                    "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
+                                    "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
+                                    "  echo \"export ANTHROPIC_MODEL=\\$MODEL\" >> ~/.bashrc\n" +
+                                    "  source ~/.bashrc\n" +
+                                    "}\n" +
+                                    "clear\n" +
+                                    "echo \"\\033[1;32m Offline Setup Complete!\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  \\$MODEL (runs on-device)\\033[0m\"\n" +
+                                    "echo \"\\033[1;34m[Claude]\\033[0m Run:    claude --model \\$MODEL\"\n" +
+                                    "echo \"\\033[1;32m Type: claude --model \\$MODEL\\033[0m\"\n"
+                                )
+                            }, 3000)
+                        })
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
                         text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
