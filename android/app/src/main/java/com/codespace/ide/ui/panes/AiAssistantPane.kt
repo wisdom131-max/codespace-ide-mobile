@@ -111,8 +111,8 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
-    var selectedModel by remember { mutableStateOf("nemotron-mini") }
-    val models = listOf("nemotron-mini", "qwen2.5-coder:1.5b", "copilot")
+    var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
+    val models = listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "copilot")
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
