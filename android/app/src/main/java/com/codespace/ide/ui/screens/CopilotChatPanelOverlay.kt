@@ -124,8 +124,8 @@ internal fun CopilotChatPanelOverlay(onClose: () -> Unit) {
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var ollamaUrl     by remember { mutableStateOf(OLLAMA_CS) }
-    var availModels   by remember { mutableStateOf(listOf("nemotron-mini", "qwen2.5-coder:1.5b", "llama3")) }
-    var selectedModel by remember { mutableStateOf("nemotron-mini") }
+    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2")) }
+    var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
     val messages = remember {
         mutableStateListOf<ChatMsg>().apply { addAll(loadHistory(context)) }
@@ -138,13 +138,13 @@ internal fun CopilotChatPanelOverlay(onClose: () -> Unit) {
         if (cs.isNotEmpty()) {
             ollamaUrl = OLLAMA_CS
             availModels = cs
-            selectedModel = cs.firstOrNull { it.contains("nemotron") } ?: cs.first()
+            selectedModel = cs.firstOrNull { it.contains("nemotron-3-super") } ?: cs.firstOrNull { it.contains("nemotron") } ?: cs.first()
         } else {
             val local = fetchModels(OLLAMA_LOCAL)
             if (local.isNotEmpty()) {
                 ollamaUrl = OLLAMA_LOCAL
                 availModels = local
-                selectedModel = local.firstOrNull { it.contains("nemotron") } ?: local.first()
+                selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
             }
         }
     }
