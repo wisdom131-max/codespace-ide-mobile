@@ -869,13 +869,32 @@ internal fun TerminalPane(
                         onClick = {}, enabled = false)
                     DropdownMenuItem(
                         leadingIcon = { Text("🤖", fontSize = 13.sp) },
-                        text = { Text("Run Ollama AI (in Ubuntu)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        text = { Text("Setup & Run Ollama AI", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             addUbuntuTab()
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 val ubuntuTab = tabs.lastOrNull()
-                                ubuntuTab?.session?.write("ollama serve &\nclear\necho \"Ollama running on :11434 — try: ollama run llama3\"\n")
+                                ubuntuTab?.session?.write(
+                                    "if ! command -v ollama &>/dev/null; then\n" +
+                                    "  echo \"\\033[1;34m[Ollama]\\033[0m Downloading Ollama for arm64...\"\n" +
+                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \"\n" +
+                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \"\n" +
+                                    "  chmod +x /usr/local/bin/ollama && \"\n" +
+                                    "  rm /tmp/ollama.tgz && \"\n" +
+                                    "  echo \"\\033[1;32m[Ollama]\\033[0m Installed successfully!\"\n" +
+                                    "else\n" +
+                                    "  echo \"\\033[1;32m[Ollama]\\033[0m Already installed.\"\n" +
+                                    "fi\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Starting server on port 11434...\"\n" +
+                                    "ollama serve &\n" +
+                                    "sleep 2\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Pulling nemotron-mini (small model, ~500MB)...\"\n" +
+                                    "ollama pull nemotron-mini\n" +
+                                    "clear\n" +
+                                    "echo \"\\033[1;32m[Ollama]\\033[0m Ready! Try: ollama run nemotron-mini\"\n" +
+                                    "echo \"\\033[1;34m[Ollama]\\033[0m Server running on http://localhost:11434\"\n"
+                                )
                             }, 3000)
                         })
                     DropdownMenuItem(
