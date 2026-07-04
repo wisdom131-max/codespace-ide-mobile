@@ -466,7 +466,6 @@ internal fun TerminalPane(
     var lastOrientationChangeAt by remember { mutableStateOf(0L) }
     LaunchedEffect(configuration.orientation) { lastOrientationChangeAt = System.currentTimeMillis() }
     var bootstrapReady by remember { mutableStateOf(false) }
-    var showTapToStart by remember { mutableStateOf(false) }
     var showMenu        by remember { mutableStateOf(false) }
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
     var renameValue     by remember { mutableStateOf("") }
@@ -737,30 +736,7 @@ internal fun TerminalPane(
                 addUbuntuTab(replaceTabId = null)
             }
         } else {
-            // No existing sessions found. Two cases:
-            // 1. First launch (Ubuntu not installed yet) → auto-start install
-            // 2. Reopen after minimize (Ubuntu already installed) → DON'T auto-fork proot.
-            //    The proot startup consumes ~500MB+ and causes OOM/SIGKILL on 3GB devices
-            //    during the critical Activity recreation window. Show "Tap to start" instead.
-            //    The app stabilizes first, then the user taps to launch proot when ready.
-            if (ProotInstaller.isInstalled(context)) {
-                // Distinguish first boot after install from reopen after minimize:
-                // - First boot (ubuntu_first_boot_completed=false): auto-start proot.
-                //   The app is stable with plenty of memory — no crash risk.
-                // - Reopen after minimize (ubuntu_first_boot_completed=true): show
-                //   tap-to-start button. Proot startup during Activity recreation
-                //   causes OOM/SIGKILL on 3GB devices.
-                val bootPrefs = context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE)
-                if (bootPrefs.getBoolean("ubuntu_first_boot_completed", false)) {
-                    showTapToStart = true
-                } else {
-                    // First boot after install — auto-start and mark as done
-                    bootPrefs.edit().putBoolean("ubuntu_first_boot_completed", true).apply()
-                    tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
-                }
-            } else {
-                tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
-            }
+            tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
         }
     }
 
@@ -1330,51 +1306,8 @@ internal fun TerminalPane(
             TextExpansionSheet(onDismiss = { showTextExpansions = false })
         }
 
-        // ── Tap to start terminal ──────────────────────────────────────────
-        // Shown on reopen after minimize (when Ubuntu is already installed but no
-        // proot session is running). Prevents OOM crash from auto-forking proot
-        // during Activity recreation on 3GB devices.
-        if (showTapToStart && active != null) {
-            Box(
-                Modifier.fillMaxSize().background(Color(0xFF1E1E1E)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(">_", color = Color(0xFF89B4FA), fontSize = 40.sp,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold)
-                    Text(
-                        "Ubuntu is ready",
-                        color = Color(0xFFCCCCCC),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        "Tap to start terminal session",
-                        color = Color(0xFF666666),
-                        fontSize = 13.sp
-                    )
-                    Button(
-                        onClick = {
-                            showTapToStart = false
-                            tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
-                        },
-                        modifier = Modifier.padding(top = 8.dp),
-                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF007ACC)
-                        )
-                    ) {
-                        Text("Start Terminal", color = Color.White, fontSize = 14.sp)
-                    }
-                }
-            }
-        }
-
         // Terminal view
-        if (active != null && !showTapToStart) {
+        if (active != null) {
             key(active.id) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
