@@ -39,10 +39,9 @@ private data class ChatMsg(val role: String, val text: String)
 private const val PREFS_CHAT = "copilot_chat"
 private const val KEY_MSGS   = "messages_v2"
 
-// Ollama endpoint — tries localhost first (when Ollama running in terminal tab)
+// Ollama runs locally — same as Termux setup (pkg install ollama; ollama serve)
+// nemotron-3-super:cloud offloads inference to NVIDIA cloud, but server is local
 private const val OLLAMA_LOCAL = "http://localhost:11434"
-// Codespace fallback (Wisdom's Codespace port-forwarded Ollama)
-private const val OLLAMA_CS    = "https://turbo-system-xrw4697pr99x3rjj-11434.app.github.dev"
 
 private val http = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS)
@@ -123,7 +122,7 @@ internal fun CopilotChatPanelOverlay(onClose: () -> Unit) {
     var chatLoading   by remember { mutableStateOf(false) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
-    var ollamaUrl     by remember { mutableStateOf(OLLAMA_CS) }
+    var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
     var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2")) }
     var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
@@ -132,20 +131,13 @@ internal fun CopilotChatPanelOverlay(onClose: () -> Unit) {
     }
 
     // Auto-detect running Ollama models on open
-    // Try cloud (Codespace) first — local Ollama won't run on 3GB devices
+    // Ollama runs locally (Termux-style) — server started by "Setup Ollama AI" button
     LaunchedEffect(Unit) {
-        val cs = fetchModels(OLLAMA_CS)
-        if (cs.isNotEmpty()) {
-            ollamaUrl = OLLAMA_CS
-            availModels = cs
-            selectedModel = cs.firstOrNull { it.contains("nemotron-3-super") } ?: cs.firstOrNull { it.contains("nemotron") } ?: cs.first()
-        } else {
-            val local = fetchModels(OLLAMA_LOCAL)
-            if (local.isNotEmpty()) {
-                ollamaUrl = OLLAMA_LOCAL
-                availModels = local
-                selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
-            }
+        val local = fetchModels(OLLAMA_LOCAL)
+        if (local.isNotEmpty()) {
+            ollamaUrl = OLLAMA_LOCAL
+            availModels = local
+            selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
         }
     }
 
