@@ -1237,3 +1237,113 @@ All build errors from the feature addition round were fixed:
 - Back button: Fixed with proper ArrowBack icon + 44dp touch target
 - Onboarding: Removed entirely (was causing blank screen)
 - Next: Test on device — back button, no blank screen, terminal shell works
+
+
+---
+
+## 2026-07-04 — Ollama + Claude Code Setup (Termux-style, local only)
+
+### Reference
+Based on [AbuZar-Ansarii/Claude-Ollama-VScode](https://github.com/AbuZar-Ansarii/Claude-Ollama-VScode).
+Only the Termux/Ollama part was used — no VS Code (code-server) component.
+
+### Architecture
+```
+App (proot Ubuntu)
+├── Ollama binary (arm64, installed in /usr/local/bin)
+│   ├── ollama serve → localhost:11434
+│   └── Model: nemotron-3-super:cloud
+│       └── :cloud tag = inference offloaded to NVIDIA cloud (minimal local RAM)
+│       └── Requires FREE ollama.com account (ollama signin)
+├── Claude Code (npm install -g @anthropic-ai/claude-code)
+│   ├── ANTHROPIC_BASE_URL=http://localhost:11434
+│   ├── ANTHROPIC_AUTH_TOKEN=ollama
+│   └── ANTHROPIC_MODEL=nemotron-3-super:cloud
+│   └── Full agent access: read/write files, run commands, edit code, search FS
+└── AI Chat panel (in-app)
+    ├── Connects to localhost:11434 (NOT Codespace)
+    └── Default model: nemotron-3-super:cloud
+```
+
+### What changed (builds #848–#856)
+1. **TerminalPane.kt** — "Setup Ollama + Claude Code" button (6-step automated setup):
+   - Step 1: Download + install ollama-linux-arm64 binary from GitHub releases
+   - Step 2: `ollama serve` in background on port 11434
+   - Step 3: `ollama signin` (interactive — user enters ollama.com credentials)
+   - Step 4: `ollama pull nemotron-3-super:cloud`
+   - Step 5: `npm install -g @anthropic-ai/claude-code`
+   - Step 6: Write ANTHROPIC_BASE_URL/AUTH_TOKEN/MODEL to ~/.bashrc
+
+2. **CopilotChatPanelOverlay.kt** — Removed Codespace URL entirely:
+   - Deleted `OLLAMA_CS` constant (was `https://turbo-system-xrw4697pr99x3rjj-11434.app.github.dev`)
+   - Only `OLLAMA_LOCAL = "http://localhost:11434"` remains
+   - Auto-detect now checks local only (no Codespace fallback)
+   - Default model: `nemotron-3-super:cloud`
+
+3. **AiAssistantPane.kt** — Same: local Ollama only, no Codespace
+   - Renamed `callCodespaceModel` → `callOllama`
+   - Replaced `CODESPACE_URL` → `OLLAMA_URL = "http://localhost:11434"`
+
+### IMPORTANT: Ollama cloud models require an account
+- Regular models (`llama3.2`, `qwen2.5-coder`) — no account needed
+- Cloud models (anything `:cloud`) — **requires free ollama.com account**
+- Run `ollama signin` to authenticate
+- Free tier: ~50 cloud requests/month
+- Paid tier available for more usage
+
+### Build fixes applied
+- Build #854: Kotlin string escaping broken (`\"` in echo commands for .bashrc exports)
+- Build #855: Same escaping issue persisted
+- Build #856: Fixed — simplified the export lines to use `\"` properly + added signin step
+- **Build #856: GREEN ✅**
+
+### Current build status
+- Latest green: **#856** (commit `1e52611d69`)
+- All Codespace URLs removed from the codebase
+- Ollama setup is fully local (Termux-style)
+
+### Next steps
+1. User installs #856, taps "Setup Ollama + Claude Code"
+2. Creates account at ollama.com (if not already)
+3. Completes `ollama signin` in terminal when prompted
+4. Tests `claude --model nemotron-3-super:cloud` — should have full file/command access
+5. Tests AI Chat panel — should connect to localhost:11434
+6. If cloud model is too slow or hits free tier limits, consider local model alternative
+
+
+---
+
+## 2026-07-04 — Crash Loop Fix Summary (builds #823–#845)
+
+### Root Cause (CORRECTED)
+NOT JNI null pointer (that was June's issue). July's crash loop was SIGKILL from TECNO HiOS
+power management (`Hiber/proxyWakeLock` module). The app acquired PARTIAL_WAKE_LOCK + started
+foreground service from `Application.onCreate()` on EVERY process restart. TECNO kills apps
+that aggressively acquire WakeLocks + FGS immediately on startup. 16 SIGKILLs in 90 seconds.
+
+### Fix (builds #823–#839)
+1. Removed `acquireAppWakeLock()` and `startTerminalServiceEarly()` from `Application.onCreate()`
+2. Service initialization moved to `TerminalPane`'s `DisposableEffect` (matches Termux pattern)
+3. Build #834: Kill proot sessions on minimize — did NOT fix (crash is on STARTUP not leftover)
+4. Build #836-#837: "Tap to start" button — user confirmed this worked
+5. Build #839: Replaced manual tap with automatic **8-second delay** on reopen
+   - First boot after install: auto-starts immediately (no delay)
+   - Reopen after minimize: 8s stabilization delay before auto-forking proot
+6. Build #843-#844: Fixed back button + enabled cleartext traffic for WebView
+
+### Key lesson
+On 3GB RAM devices, NEVER fork proot immediately on activity reattachment.
+The app process needs time to stabilize. 8-second delay is the minimum.
+
+### Build #845 status
+- Back button: routes to Home screen, skips 8s spinner
+- WebView: `usesCleartextTraffic="true"` for local dev servers
+- Remotion: new tab connected to localhost:3000
+- Ollama: automated setup button (download binary, install, pull model)
+- Crash loop: RESOLVED by 8s delay on reopen
+
+### Confirmed working
+- App survives minimize → reopen without crash (8s delay)
+- Back button navigates to Home screen
+- Preview pane loads internet content (cleartext traffic enabled)
+- Terminal menu has "Setup Ollama + Claude Code" button
