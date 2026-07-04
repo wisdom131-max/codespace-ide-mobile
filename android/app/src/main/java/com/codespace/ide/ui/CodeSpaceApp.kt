@@ -129,7 +129,13 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore) {
                     currentTheme      = themeName,
                     onSelectTheme     = { saveTheme(it) },
                     onToggleTheme     = { saveTheme(if (themeName.contains("Light")) "Dark (Default)" else "Light (Default)") },
-                    onBack            = { nav.popBackStack() },
+                    onBack            = {
+                        if (!nav.popBackStack()) {
+                            nav.navigate(Routes.HOME) {
+                                popUpTo(nav.graph.startDestinationId) { inclusive = true }
+                            }
+                        }
+                    },
                     onSignOut         = {
                         tokenStore.clear()
                         accessToken = ""
