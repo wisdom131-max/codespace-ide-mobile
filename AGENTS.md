@@ -1474,3 +1474,53 @@ Supported: Gmail, Google Calendar, Google Drive, Slack, GitHub.
   - TOTP secret stored securely
   - 16 recovery codes saved to private storage
 - wisdom131-max: 2FA setup pending
+
+---
+
+## 2026-07-04 — BUILD FAILURES #861, #862 — FIX IN PROGRESS
+
+### Build #861 — FAILED
+Error: AgentTools.kt compilation errors (initial version had unresolved references)
+
+### Build #862 — FAILED
+Error: AgentScheduler.kt line 40 — `*/` in Kotlin block comment interpreted as comment end
+Root cause: Comment contained `"*/N * * * *"` (cron notation), Kotlin parsed `*/` as end of `/** ... */`
+Fix: Replaced block comment with single-line `//` comments (no `*/` possible)
+All other agent files compile clean — only AgentScheduler.kt had the issue.
+
+### Fix being pushed: Build #863
+- AgentScheduler.kt: replaced `/** ... */` comment containing `*/` with `//` line comments
+- No other files changed
+
+---
+
+## 2026-07-04 — GITHUB CODESPACE CONNECTION PLAN
+
+### User Request
+Connect Superagent to the GitHub Codespace on the phone so it can:
+- See what each button in the app does
+- Verify functions are working
+- Understand the UI structure
+- Help debug build failures faster
+
+### Codespace Info
+- Name: urban-umbrella-774x47p55px394p
+- Owner: wisdom131-max
+- Used for: development on phone
+
+### Connection Options
+1. **GitHub API (current)** — Clone repo, read source files, understand UI from code
+2. **Browserbase** — Open Codespace web interface (codespaces.githubusercontent.com) in browser
+3. **GitHub Codespaces API** — Get codespace status, machine type, running state
+4. **SSH tunnel** — Not practical from sandbox
+
+### What was done
+- Cloned repo to sandbox for code analysis
+- Can read any source file to understand button behaviors
+- Can trace UI → ViewModel → Service connections from code
+- Browserbase can open the Codespace web UI for visual inspection
+- Build failures can be diagnosed from GitHub Actions logs via API
+
+### AGENTS.md update protocol
+Always update this file BEFORE answering user questions about the codebase.
+This ensures all context is persisted for future sessions.

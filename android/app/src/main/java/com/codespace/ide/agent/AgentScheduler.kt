@@ -34,13 +34,11 @@ object AgentScheduler {
         tasksFile(context).writeText(tasks.toString(2))
     }
 
-    /**
-     * Schedule a task. Cron expression format: "minute hour day month dayOfWeek"
-     * For simplicity on mobile, we support:
-     *  - "*/N * * * *" — every N minutes
-     *  - "0 H * * *"   — daily at H:00 (hour in UTC)
-     *  - "@once"       — one-time (runs immediately, 5s delay)
-     */
+    // Schedule a task. Cron expression format: minute hour day month dayOfWeek
+    // For simplicity on mobile, we support:
+    //  - every N minutes (cron starts with star-slash-N)
+    //  - daily at H:00 (cron: 0 H star star star)
+    //  - one-time (cron: @once, runs immediately with 5s delay)
     fun schedule(name: String, cron: String, command: String, context: Context): String {
         val tasks = readTasks(context)
         val task = JSONObject()
