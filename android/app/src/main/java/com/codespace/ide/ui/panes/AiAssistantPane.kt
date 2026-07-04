@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit
 
 private const val PREFS_NAME = "ai_chat_history"
 private const val KEY_HISTORY = "chat_history"
-private const val CODESPACE_URL = "https://turbo-system-xrw4697pr99x3rjj-11434.app.github.dev"
+private const val OLLAMA_URL = "http://localhost:11434"
 
 private val httpClient = OkHttpClient.Builder()
     .connectTimeout(30, TimeUnit.SECONDS)
@@ -60,7 +60,7 @@ private fun loadHistory(context: Context): List<ChatMessage> {
     } catch (e: Exception) { emptyList() }
 }
 
-private suspend fun callCodespaceModel(
+private suspend fun callOllama(
     model: String,
     messages: List<ChatMessage>,
 ): String {
@@ -73,12 +73,12 @@ private suspend fun callCodespaceModel(
         .put("messages", messagesJson)
         .toString()
     val request = Request.Builder()
-        .url("$CODESPACE_URL/v1/chat/completions")
+        .url("$OLLAMA_URL/v1/chat/completions")
         .header("Content-Type", "application/json")
         .post(body.toRequestBody("application/json".toMediaType()))
         .build()
     val response = withContext(Dispatchers.IO) { httpClient.newCall(request).execute() }
-    if (!response.isSuccessful) throw Exception("Codespace returned ${response.code}. Make sure Ollama is running.")
+    if (!response.isSuccessful) throw Exception("Ollama error ${response.code}. Make sure Ollama is running. Tap \"Setup Ollama AI\" in terminal menu first.")
     val json = JSONObject(response.body?.string() ?: "")
     return json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
 }
@@ -136,7 +136,7 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                     if (key.isBlank()) throw Exception("No GitHub token found. Go to Settings and add your GitHub token.")
                     callCopilot(key, messages.toList())
                 }
-                else -> callCodespaceModel(selectedModel, messages.toList())
+                else -> callOllama(selectedModel, messages.toList())
             }
             messages.add(ChatMessage("assistant", reply))
         } catch (e: Exception) {
