@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.terminal.McpShellProfile
 import android.content.ServiceConnection
 import com.codespace.ide.terminal.TerminalService
 import com.codespace.ide.terminal.SshProfileStore
@@ -498,6 +499,8 @@ internal fun TerminalPane(
     // This matches Termux's architecture: phantom process killer spares children of FGS.
     DisposableEffect(Unit) {
         TerminalService.start(context, "Terminal session active")
+        // Start Agent API server + install agent shell profile for terminal AI
+        McpShellProfile.install(context)
         val conn = object : android.content.ServiceConnection {
             override fun onServiceConnected(name: android.content.ComponentName, binder: android.os.IBinder) {
                 boundService = (binder as TerminalService.LocalBinder).service
@@ -513,6 +516,7 @@ internal fun TerminalPane(
         )
         onDispose {
             try { context.unbindService(conn) } catch (_: Exception) {}
+            McpShellProfile.stop()
         }
     }
 
@@ -567,6 +571,8 @@ internal fun TerminalPane(
 
         // Fast path: already installed, just opening another tab — fork immediately.
         if (replaceTabId == null && ProotInstaller.isInstalled(ctx)) {
+            // Ensure agent tools are available in this new terminal tab
+            McpShellProfile.install(ctx)
             val id = System.currentTimeMillis().toString()
             val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(ctx, isUbuntu = true))
             tabs.add(TabSession(id, "Ubuntu", session, client))
