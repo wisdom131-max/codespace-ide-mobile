@@ -317,7 +317,12 @@ private fun HtmlPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
-    val html = remember(content, language) {
+    // Detect React/JSX content
+    val isReact = content.contains("import React") || content.contains("from 'react'") ||
+                  content.contains("from "react"") || content.contains("ReactDOM") ||
+                  content.contains("useState") || content.contains("jsx")
+    
+    val html = remember(content, language, isReact) {
         when (language) {
             Language.CSS -> """
                 <!DOCTYPE html><html><head>
@@ -342,9 +347,38 @@ private fun HtmlPreview(
                 try{ $content }catch(e){ out.textContent+='Error: '+e.message; }
                 </script></body></html>
             """.trimIndent()
-            else -> content.ifBlank {
-                """<!DOCTYPE html><html><body style="background:#1e1e1e;color:#717171;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
-                   <p>Open an HTML file to preview it here.</p></body></html>"""
+            else -> {
+                if (isReact) {
+                    // React/JSX support via Babel standalone
+                    val reactCode = content
+                        .replace("import React from 'react'", "")
+                        .replace("import React from "react"", "")
+                        .replace("import ReactDOM from 'react-dom'", "")
+                        .replace("import ReactDOM from "react-dom"", "")
+                        .replace("import { useState, useEffect, useRef } from 'react'", "")
+                        .replace("import { useState, useEffect, useRef } from "react"", "")
+                        .replace("import './", "// import './")
+                        .replace("export default ", "// export default ")
+                    """<!DOCTYPE html><html><head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+                    <style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1e1e1e;color:#d4d4d4;}
+                    *{box-sizing:border-box;}</style>
+                    </head><body>
+                    <div id="root"></div>
+                    <script type="text/babel">
+                    const { useState, useEffect, useRef } = React;
+                    $reactCode
+                    </script>
+                    </body></html>"""
+                } else {
+                    content.ifBlank {
+                        """<!DOCTYPE html><html><body style="background:#1e1e1e;color:#717171;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                        <p>Open an HTML file to preview it here.</p></body></html>"""
+                    }
+                }
             }
         }
     }
