@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -34,6 +35,20 @@ import androidx.documentfile.provider.DocumentFile
 import android.content.ClipboardManager
 import android.content.ClipData
 import java.io.File
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.os.Build
+import android.provider.MediaStore
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
@@ -49,6 +64,7 @@ private val BlueBtn      = Color(0xFF007ACC)
 
 private const val PREFS_WORKSPACE = "workspace_prefs"
 private const val KEY_WORKSPACE   = "workspace_path"
+private const val KEY_WORKSPACE_ROOTS = "workspace_roots"
 
 private fun saveWorkspacePath(context: Context, path: String) {
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
@@ -58,6 +74,47 @@ private fun saveWorkspacePath(context: Context, path: String) {
 private fun loadWorkspacePath(context: Context): String? =
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
         .getString(KEY_WORKSPACE, null)
+
+// ── Multi-root workspace support ──
+private fun saveWorkspaceRoots(context: Context, roots: List<String>) {
+    context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+        .edit().putString(KEY_WORKSPACE_ROOTS, roots.joinToString("|||")).apply()
+}
+
+private fun loadWorkspaceRoots(context: Context): List<String> {
+    val raw = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+        .getString(KEY_WORKSPACE_ROOTS, null) ?: return emptyList()
+    return raw.split("|||").filter { it.isNotBlank() }
+}
+
+// ── Device quick-access folders ──
+private val DEVICE_FOLDERS = listOf(
+    "Pictures" to "/storage/emulated/0/Pictures",
+    "DCIM (Camera)" to "/storage/emulated/0/DCIM",
+    "Downloads" to "/storage/emulated/0/Download",
+    "Documents" to "/storage/emulated/0/Documents",
+    "Music" to "/storage/emulated/0/Music",
+    "Movies" to "/storage/emulated/0/Movies",
+)
+
+private fun isImageFile(name: String): Boolean {
+    val ext = name.substringAfterLast(".", "").lowercase()
+    return ext in listOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "svg")
+}
+
+private fun loadImageBitmap(path: String): androidx.compose.ui.graphics.ImageBitmap? {
+    return try {
+        val file = File(path)
+        if (!file.exists() || file.length() > 10 * 1024 * 1024) return null // 10MB limit
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(file)
+            ImageDecoder.decodeBitmap(source).asImageBitmap()
+        } else {
+            @Suppress("DEPRECATION")
+            BitmapFactory.decodeFile(path).asImageBitmap()
+        }
+    } catch (_: Exception) { null }
+}
 
 data class FsNode(
     val file: File,
@@ -84,6 +141,29 @@ fun ExplorerSidePanel(
         workspacePath?.let { File(it) }
     }
 
+    // ── Multi-root workspace ──
+    var workspaceRoots by remember {
+        mutableStateOf(loadWorkspaceRoots(context))
+    }
+    var showDeviceFolders by remember { mutableStateOf(false) }
+
+    // ── Image preview state ──
+    var previewImagePath by remember { mutableStateOf<String?>(null) }
+    val previewAlpha = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    // Track preview lifecycle
+    LaunchedEffect(previewImagePath) {
+        if (previewImagePath != null) {
+            previewAlpha.snapTo(0f)
+            previewAlpha.animateTo(1f, tween(200))
+            // Auto-dismiss after 3 seconds if still showing
+            delay(3000)
+            previewAlpha.animateTo(0f, tween(400))
+            previewImagePath = null
+        }
+    }
+
     val expanded      = remember { mutableStateMapOf<String, Boolean>() }
     var selected      by remember { mutableStateOf<String?>(null) }
     var contextFile   by remember { mutableStateOf<File?>(null) }
@@ -101,7 +181,7 @@ fun ExplorerSidePanel(
     var clipboardCut  by remember { mutableStateOf(false) }
     var gitStatus     by remember { mutableStateOf<Map<String, Char>>(emptyMap()) }
 
-    // Folder picker launcher
+    // Folder picker launcher — adds to multi-root workspace
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
@@ -126,6 +206,11 @@ fun ExplorerSidePanel(
             realPath?.let {
                 workspacePath = it
                 saveWorkspacePath(context, it)
+                // Add to multi-root list (avoid duplicates)
+                if (it !in workspaceRoots) {
+                    workspaceRoots = workspaceRoots + it
+                    saveWorkspaceRoots(context, workspaceRoots)
+                }
                 expanded.clear()
                 refresh++
             }
@@ -278,6 +363,16 @@ fun ExplorerSidePanel(
                 Icon(Icons.Default.List, null, tint = if (showOutline) IconColor else MutedColor,
                     modifier = Modifier.size(16.dp).clickable { showOutline = !showOutline })
                 Spacer(Modifier.width(6.dp))
+                // Add folder to workspace (multi-root)
+                Icon(Icons.Default.Add, null, tint = MutedColor,
+                    modifier = Modifier.size(16.dp).clickable {
+                        folderPicker.launch(null)
+                    })
+                Spacer(Modifier.width(6.dp))
+                // Device folders quick toggle
+                Icon(Icons.Default.PhoneAndroid, null, tint = if (showDeviceFolders) IconColor else MutedColor,
+                    modifier = Modifier.size(16.dp).clickable { showDeviceFolders = !showDeviceFolders })
+                Spacer(Modifier.width(6.dp))
                 // Change folder
                 Icon(Icons.Default.OpenInNew, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
@@ -299,6 +394,50 @@ fun ExplorerSidePanel(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
             )
+        }
+
+        // ── Device folders quick-access panel ──
+        if (showDeviceFolders) {
+            Column(Modifier.fillMaxWidth().background(Color(0xFFF8F8F8))) {
+                Text("  Device Folders", fontSize = 10.sp, color = MutedColor,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+                DEVICE_FOLDERS.forEach { (label, path) ->
+                    val exists = File(path).exists()
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(enabled = exists) {
+                                workspacePath = path
+                                saveWorkspacePath(context, path)
+                                if (path !in workspaceRoots) {
+                                    workspaceRoots = workspaceRoots + path
+                                    saveWorkspaceRoots(context, workspaceRoots)
+                                }
+                                showDeviceFolders = false
+                                expanded.clear()
+                                refresh++
+                            }
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            when (label) {
+                                "DCIM (Camera)" -> Icons.Default.PhotoCamera
+                                "Downloads" -> Icons.Default.Download
+                                "Documents" -> Icons.Default.Article
+                                "Music" -> Icons.Default.MusicNote
+                                "Movies" -> Icons.Default.Movie
+                                else -> Icons.Default.Image
+                            },
+                            null, tint = if (exists) IconColor else Color(0xFFCCCCCC),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(label, fontSize = 11.sp,
+                            color = if (exists) TextColor else Color(0xFFCCCCCC))
+                    }
+                }
+                HorizontalDivider(color = DividerColor, thickness = 1.dp)
+            }
         }
 
         // ── Open Editors section ──────────────────────────────────────────
@@ -368,10 +507,56 @@ fun ExplorerSidePanel(
                         // Quick pick: use /storage/emulated/0
                         workspacePath = "/storage/emulated/0"
                         saveWorkspacePath(context, "/storage/emulated/0")
+                        if ("/storage/emulated/0" !in workspaceRoots) {
+                            workspaceRoots = workspaceRoots + "/storage/emulated/0"
+                            saveWorkspaceRoots(context, workspaceRoots)
+                        }
                         refresh++
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Use Phone Storage") }
+                Spacer(Modifier.height(12.dp))
+                // ── Device folder quick-access ──
+                Text("Quick Access", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                DEVICE_FOLDERS.forEach { (label, path) ->
+                    val exists = File(path).exists()
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(enabled = exists) {
+                                workspacePath = path
+                                saveWorkspacePath(context, path)
+                                if (path !in workspaceRoots) {
+                                    workspaceRoots = workspaceRoots + path
+                                    saveWorkspaceRoots(context, workspaceRoots)
+                                }
+                                refresh++
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            when (label) {
+                                "DCIM (Camera)" -> Icons.Default.PhotoCamera
+                                "Downloads" -> Icons.Default.Download
+                                "Documents" -> Icons.Default.Article
+                                "Music" -> Icons.Default.MusicNote
+                                "Movies" -> Icons.Default.Movie
+                                else -> Icons.Default.Image
+                            },
+                            null, tint = if (exists) IconColor else Color(0xFFCCCCCC),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, fontSize = 12.sp,
+                            color = if (exists) TextColor else Color(0xFFCCCCCC))
+                        Spacer(Modifier.weight(1f))
+                        if (exists) {
+                            Text(File(path).listFiles()?.size?.toString() ?: "0",
+                                fontSize = 10.sp, color = MutedColor)
+                        }
+                    }
+                }
             }
         } else {
             // ── File tree ─────────────────────────────────────────────────
@@ -398,9 +583,41 @@ fun ExplorerSidePanel(
                     modifier = Modifier.fillMaxWidth())
             }
 
+            // ── Multi-root workspace folders ──
+            if (workspaceRoots.size > 1 || (workspaceRoots.isNotEmpty() && workspaceRoots[0] != workspacePath)) {
+                workspaceRoots.filter { it != workspacePath && File(it).exists() }.forEach { rootPath ->
+                    val rootFile = File(rootPath)
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(Color(0xFFF0F0F0))
+                            .clickable {
+                                workspacePath = rootPath
+                                saveWorkspacePath(context, rootPath)
+                                expanded.clear()
+                                refresh++
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Folder, null, tint = FolderColor, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(rootFile.name, fontSize = 11.sp, color = MutedColor, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.Close, null, tint = MutedColor,
+                            modifier = Modifier.size(12.dp).clickable {
+                                workspaceRoots = workspaceRoots - rootPath
+                                saveWorkspaceRoots(context, workspaceRoots)
+                            })
+                    }
+                }
+                HorizontalDivider(color = DividerColor, thickness = 1.dp)
+            }
+
             LazyColumn(Modifier.fillMaxSize()) {
                 items(nodes) { node ->
                     val isSelected = selected == node.file.absolutePath
+                    // Image preview state for this node
+                    val isImage = !node.file.isDirectory && isImageFile(node.file.name)
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -417,6 +634,10 @@ fun ExplorerSidePanel(
                                     }
                                 },
                                 onLongClick = {
+                                    if (isImage) {
+                                        // Show image preview popup
+                                        previewImagePath = node.file.absolutePath
+                                    }
                                     contextFile = node.file
                                     showCtxMenu = true
                                 }
@@ -438,9 +659,30 @@ fun ExplorerSidePanel(
                             Icon(Icons.Default.Description, null,
                                 tint = FolderColor, modifier = Modifier.size(16.dp))
                         } else {
-                            Spacer(Modifier.width(18.dp))
-                            Icon(fileIcon(node.file.name), null,
-                                tint = IconColor, modifier = Modifier.size(16.dp))
+                            if (isImage) {
+                                // Show small thumbnail for image files
+                                val thumbBitmap = remember(node.file.absolutePath) {
+                                    loadImageBitmap(node.file.absolutePath)
+                                }
+                                if (thumbBitmap != null) {
+                                    Image(
+                                        bitmap = thumbBitmap,
+                                        contentDescription = node.file.name,
+                                        modifier = Modifier.size(20.dp)
+                                            .clip(RoundedCornerShape(2.dp)),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                } else {
+                                    Spacer(Modifier.width(18.dp))
+                                    Icon(fileIcon(node.file.name), null,
+                                        tint = IconColor, modifier = Modifier.size(16.dp))
+                                }
+                            } else {
+                                Spacer(Modifier.width(18.dp))
+                                Icon(fileIcon(node.file.name), null,
+                                    tint = IconColor, modifier = Modifier.size(16.dp))
+                            }
                         }
                         Spacer(Modifier.width(6.dp))
                         Text(
@@ -540,8 +782,10 @@ fun ExplorerSidePanel(
             title = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column {
+                    val isImg = isImageFile(f.name)
                     listOf(
                         "Open"            to Icons.Default.OpenInNew,
+                        "Preview"         to Icons.Default.Image,
                         "Rename"          to Icons.Default.Edit,
                         "Copy"            to Icons.Default.ContentCopy,
                         "Cut"             to Icons.Default.ContentCut,
@@ -561,6 +805,7 @@ fun ExplorerSidePanel(
                                     when (label) {
                                         "Open"   -> if (!f.isDirectory) onOpenFile(f.absolutePath)
                                                    else { expanded[f.absolutePath] = true; refresh++ }
+                                        "Preview" -> if (isImg) { previewImagePath = f.absolutePath; showCtxMenu = false }
                                         "Rename" -> { nameInput = f.name; showRename = true }
                                         "Copy"   -> { clipboardFile = f; clipboardCut = false }
                                         "Cut"    -> { clipboardFile = f; clipboardCut = true }
@@ -624,6 +869,50 @@ fun ExplorerSidePanel(
                 TextButton(onClick = { showCtxMenu = false }) { Text("Close") }
             },
         )
+    }
+
+    // ── Image preview popup (long-press on image file) ──
+    if (previewImagePath != null) {
+        val imgBitmap = remember(previewImagePath) { loadImageBitmap(previewImagePath!!) }
+        Dialog(
+            onDismissRequest = { scope.launch { previewAlpha.animateTo(0f, tween(200)); previewImagePath = null } },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(0.85f)
+                    .fillMaxHeight(0.6f)
+                    .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                    .alpha(previewAlpha.value)
+                    .clickable { scope.launch { previewAlpha.animateTo(0f, tween(200)); previewImagePath = null } },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (imgBitmap != null) {
+                        Image(
+                            bitmap = imgBitmap,
+                            contentDescription = "Image preview",
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .fillMaxHeight(0.85f),
+                            contentScale = ContentScale.Fit,
+                        )
+                    } else {
+                        Icon(Icons.Default.Image, null, tint = Color(0xFF888888),
+                            modifier = Modifier.size(48.dp))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        File(previewImagePath!!).name,
+                        fontSize = 12.sp, color = Color(0xFFCCCCCC),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "${File(previewImagePath!!).length() / 1024} KB",
+                        fontSize = 10.sp, color = Color(0xFF888888),
+                    )
+                }
+            }
+        }
     }
 
     // ── New File dialog ───────────────────────────────────────────────────
