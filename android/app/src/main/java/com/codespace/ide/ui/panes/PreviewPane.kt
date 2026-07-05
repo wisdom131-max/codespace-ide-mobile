@@ -352,11 +352,11 @@ private fun HtmlPreview(
                     // React/JSX support via Babel standalone
                     val reactCode = content
                         .replace("import React from 'react'", "")
-                        .replace("import React from "react"", "")
+                        .replace("import React from \"react\"", "")
                         .replace("import ReactDOM from 'react-dom'", "")
-                        .replace("import ReactDOM from "react-dom"", "")
+                        .replace("import ReactDOM from \"react-dom\"", "")
                         .replace("import { useState, useEffect, useRef } from 'react'", "")
-                        .replace("import { useState, useEffect, useRef } from "react"", "")
+                        .replace("import { useState, useEffect, useRef } from \"react\"", "")
                         .replace("import './", "// import './")
                         .replace("export default ", "// export default ")
                     """<!DOCTYPE html><html><head>
