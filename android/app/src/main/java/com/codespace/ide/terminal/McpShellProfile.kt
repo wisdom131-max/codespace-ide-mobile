@@ -259,5 +259,7 @@ Server: http://localhost:$API_PORT
         appendLine("  exit 1")
         appendLine("fi")
         appendLine("")
-        appendLine("echo \$resp | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get(\"result\",\"[no result]\"))' 2>/dev/null || echo \$resp")
+        appendLine("echo \$resp | head -5")
     }
+
+}
