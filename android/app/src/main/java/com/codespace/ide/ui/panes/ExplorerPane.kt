@@ -285,7 +285,7 @@ fun ExplorerSidePanel(
                 Spacer(Modifier.width(6.dp))
                 Text(workspaceRoot.name, fontSize = 13.sp,
                     color = TextColor, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f))
+                    modifier = Modifier.fillMaxWidth())
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
@@ -665,7 +665,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         color = if (active) Color.White else MutedColor)
                 }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.fillMaxWidth())
             // Search button
             if (searching) {
                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
@@ -764,7 +764,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("RUN AND DEBUG", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.fillMaxWidth())
             Icon(Icons.Default.MoreVert, "More", tint = MutedColor,
                 modifier = Modifier.size(18.dp).clickable { onMoreMenu() })
         }
@@ -775,7 +775,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
-                OutlinedButton(onClick = { showConfigMenu = true }, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { showConfigMenu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(selectedConfig, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
@@ -853,7 +853,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 item {
                     Row(Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) {
                         Text("Click + to add a watch expression", fontSize = 11.sp, color = MutedColor)
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.fillMaxWidth())
                         Icon(Icons.Default.Add, "Add", tint = IconColor, modifier = Modifier.size(14.dp).clickable { })
                     }
                 }
@@ -1022,7 +1022,7 @@ private fun SectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit
                     ) {
                         Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4EC9B0), modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.fillMaxWidth()) {
                             Text(pkg, color = Color(0xFFCCCCCC), fontSize = 13.sp)
                         }
                         Text("installed", color = Color(0xFF4EC9B0), fontSize = 10.sp)
@@ -1063,7 +1063,7 @@ private fun SectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.fillMaxWidth()) {
                             Text(pkg, color = Color(0xFFCCCCCC), fontSize = 13.sp)
                             Text(desc, color = Color(0xFF717171), fontSize = 11.sp)
                         }
@@ -1302,7 +1302,7 @@ fun McpPanel() {
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                 letterSpacing = 1.sp
             )
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.fillMaxWidth())
             Text(
                 "${installedIds.size} installed",
                 fontSize = 10.sp,
@@ -1406,7 +1406,7 @@ fun McpPanel() {
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.fillMaxWidth()) {
                             Text(mcp.name, color = Color(0xFFCCCCCC), fontSize = 13.sp,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
                             Text(mcp.description, color = Color(0xFF717171), fontSize = 11.sp, maxLines = if (isExpanded) Int.MAX_VALUE else 1,
