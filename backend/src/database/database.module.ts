@@ -10,7 +10,7 @@ import { Project } from '../repos/project.entity';
       type: 'postgres',
       url: process.env.DATABASE_URL,
       entities: [User, RefreshToken, Project],
-      synchronize: true,   // auto-create/update tables on startup
+      synchronize: process.env.NODE_ENV !== 'production',  // only sync in dev
       autoLoadEntities: true,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
       retryAttempts: 10,
