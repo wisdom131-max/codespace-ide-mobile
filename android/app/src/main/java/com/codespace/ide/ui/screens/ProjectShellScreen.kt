@@ -759,7 +759,14 @@ fun ProjectShellScreen(
                                     if (activeEditorTab == tabPath) activeEditorTab = editorTabs.lastOrNull()
                                 },
                             )
-                            SidePanel.SEARCH     -> SearchPanel()
+                            SidePanel.SEARCH     -> SearchPanel(
+                                onOpenFileAtLine = { path, line ->
+                                    if (!editorTabs.contains(path)) editorTabs.add(path)
+                                    activeEditorTab = path
+                                    activePanel = null
+                                    showNotification("Opened " + path.substringAfterLast("/") + ":" + line, "success")
+                                },
+                            )
                             SidePanel.GIT        -> GitSidePanel()
                             SidePanel.RUN        -> RunDebugPanel(onMoreMenu = { showRunMenu = true })
                             SidePanel.EXTENSIONS -> {
@@ -1354,6 +1361,12 @@ fun ProjectShellScreen(
                             "New File", "New Folder", "Save File", "Open File",
                             "Toggle Sidebar", "Toggle Terminal", "Select Color Theme",
                             "Go to File", "Find in Files", "Run Program", "Split Terminal",
+                            "Explorer", "Search", "Source Control", "Run & Debug", "Extensions",
+                            "Git: Commit", "Git: Push", "Git: Pull", "Git: Stage All",
+                            "Format Document", "Command Palette",
+                            "Close All Editors", "Close Editor",
+                            "Open Folder", "Refresh Explorer", "Collapse All in Explorer",
+                            "Toggle Word Wrap", "Go to Line",
                         ).filter { commandQuery.isEmpty() || it.contains(commandQuery, ignoreCase = true) }
                         // LazyColumn so the list scrolls properly (incl. after rotation, when
                         // available height shrinks and more items overflow the visible area)

@@ -743,6 +743,11 @@ fun ExplorerSidePanel(
     }
 }
 
+private fun String.matchesSimpleGlob(pattern: String): Boolean {
+    val regex = pattern.replace(".", "\.").replace("*", ".*").replace("?", ".")
+    return try { Regex(regex, RegexOption.IGNORE_CASE).matches(this) } catch (_: Exception) { this.contains(pattern, ignoreCase = true) }
+}
+
 private fun fileIcon(name: String) = when {
     name.endsWith(".kt") || name.endsWith(".kts") -> Icons.Default.Code
     name.endsWith(".java")  -> Icons.Default.Code
@@ -763,7 +768,7 @@ private fun fileIcon(name: String) = when {
 // ── Stub panels ──────────────────────────────────────────────────────────────
 private data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
 
-@Composable fun SearchPanel() {
+@Composable fun SearchPanel(onOpenFileAtLine: ((String, Int) -> Unit)? = null) {
     var searchQuery  by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
     var caseSensitive by remember { mutableStateOf(false) }
@@ -772,6 +777,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var results       by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searching     by remember { mutableStateOf(false) }
     var expandedFiles by remember { mutableStateOf(setOf<String>()) }
+    var includePattern by remember { mutableStateOf("") }
+    var excludePattern by remember { mutableStateOf("") }
+    var showFilters by remember { mutableStateOf(false) }
+    var totalReplaced by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
@@ -803,7 +812,9 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             if (!f.name.startsWith(".") && f.name != "build" && f.name != "node_modules") {
                                 walk(f)
                             }
-                        } else if (f.extension.lowercase() in extensions || f.extension.isEmpty()) {
+                        } else if ((f.extension.lowercase() in extensions || f.extension.isEmpty()) &&
+                                   (includePattern.isBlank() || f.name.matchesSimpleGlob(includePattern)) &&
+                                   (excludePattern.isBlank() || !f.name.matchesSimpleGlob(excludePattern))) {
                             filesScanned++
                             try {
                                 f.useLines { lines ->
@@ -887,6 +898,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 }
             }
             Spacer(Modifier.fillMaxWidth())
+            // Filter toggle (show/hide include/exclude)
+            Icon(Icons.Default.FilterList, null, tint = if (showFilters) IconColor else MutedColor,
+                modifier = Modifier.size(16.dp).clickable { showFilters = !showFilters })
+            Spacer(Modifier.width(8.dp))
             // Search button
             if (searching) {
                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
@@ -894,6 +909,65 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 Text("Search", fontSize = 11.sp, color = IconColor, fontWeight = FontWeight.Medium,
                     modifier = Modifier.clickable { performSearch(searchQuery) }.padding(4.dp))
             }
+            // Replace All button
+            if (replaceQuery.isNotEmpty() && results.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Text("Replace All", fontSize = 11.sp, color = Color(0xFFE53935), fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable {
+                        scope.launch {
+                            val wsPath = loadWorkspacePath(context)
+                            val wsRoot = wsPath?.let { File(it) }
+                            if (wsRoot != null) {
+                                var count = 0
+                                results.groupBy { it.file }.forEach { (filePath, fileResults) ->
+                                    try {
+                                        val f = File(filePath)
+                                        val content = f.readText()
+                                        val newContent = if (useRegex) {
+                                            try {
+                                                val regex = if (caseSensitive) Regex(searchQuery) else Regex(searchQuery, RegexOption.IGNORE_CASE)
+                                                regex.replace(content, replaceQuery).also { count += fileResults.size }
+                                            } catch (_: Exception) { content }
+                                        } else if (matchWholeWord) {
+                                            val regex = if (caseSensitive) Regex("\\b" + Regex.escape(searchQuery) + "\\b")
+                                                       else Regex("\\b" + Regex.escape(searchQuery) + "\\b", RegexOption.IGNORE_CASE)
+                                            regex.replace(content, replaceQuery).also { count += fileResults.size }
+                                        } else {
+                                            content.replace(searchQuery, replaceQuery, !caseSensitive).also { count += fileResults.size }
+                                        }
+                                        f.writeText(newContent)
+                                    } catch (_: Exception) {}
+                                }
+                                totalReplaced = count
+                                performSearch(searchQuery)
+                            }
+                        }
+                    }.padding(4.dp))
+            }
+        }
+
+        // Include/Exclude filters
+        if (showFilters) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedTextField(
+                    value = includePattern, onValueChange = { includePattern = it },
+                    label = { Text("include", fontSize = 10.sp) }, singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = TextColor),
+                )
+                OutlinedTextField(
+                    value = excludePattern, onValueChange = { excludePattern = it },
+                    label = { Text("exclude", fontSize = 10.sp) }, singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = TextColor),
+                )
+            }
+        }
+
+        // Replace result indicator
+        if (totalReplaced > 0) {
+            Text("Replaced " + totalReplaced + " occurrences", fontSize = 11.sp, color = Color(0xFF73C991),
+                modifier = Modifier.padding(top = 4.dp))
         }
 
         // Results count
@@ -940,11 +1014,13 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     }
                 }
                 if (isExpanded) {
-                    items(fileResults, key = { r: SearchResult -> "${r.file}_${r.lineNum}" }) { result ->
+                    items(fileResults, key = { r: SearchResult -> r.file + "_" + r.lineNum }) { result ->
                         Row(
-                            Modifier.fillMaxWidth().padding(start = 36.dp, top = 2.dp, bottom = 2.dp),
+                            Modifier.fillMaxWidth()
+                                .clickable { onOpenFileAtLine?.invoke(result.file, result.lineNum) }
+                                .padding(start = 36.dp, top = 2.dp, bottom = 2.dp),
                         ) {
-                            Text("${result.lineNum}: ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                            Text(result.lineNum.toString() + ": ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
                             Text(result.lineText, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
