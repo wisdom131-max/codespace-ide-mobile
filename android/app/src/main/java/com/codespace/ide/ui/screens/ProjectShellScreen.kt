@@ -762,21 +762,78 @@ fun ProjectShellScreen(
                                 .horizontalScroll(rememberScrollState()),
                             verticalAlignment = Alignment.Bottom,
                         ) {
+                            var tabContextMenuFor by remember { mutableStateOf<String?>(null) }
                             editorTabs.forEach { tab ->
                                 val isActive = tab == activeEditorTab
-                                Column(Modifier.clickable { activeEditorTab = tab }.background(if (isActive) TabActiveBg else TabInactiveBg)) {
-                                    Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(tab.substringAfterLast("/"), fontSize = 13.sp,
-                                            color = if (isActive) TabText else TabTextInactive, maxLines = 1)
-                                        Spacer(Modifier.width(6.dp))
-                                        Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                                            modifier = Modifier.size(14.dp).clickable {
+                                Box {
+                                    Column(Modifier.clickable { activeEditorTab = tab }
+                                        .combinedClickable(
+                                            onClick = { activeEditorTab = tab },
+                                            onLongClick = { tabContextMenuFor = tab },
+                                        )
+                                        .background(if (isActive) TabActiveBg else TabInactiveBg)) {
+                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(tab.substringAfterLast("/"), fontSize = 13.sp,
+                                                color = if (isActive) TabText else TabTextInactive, maxLines = 1)
+                                            Spacer(Modifier.width(6.dp))
+                                            Icon(Icons.Default.Close, null, tint = TabTextInactive,
+                                                modifier = Modifier.size(14.dp).clickable {
+                                                    editorTabs.remove(tab)
+                                                    if (activeEditorTab == tab) activeEditorTab = editorTabs.lastOrNull()
+                                                })
+                                        }
+                                        if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(TabActiveIndicator))
+                                        else Spacer(Modifier.height(1.dp))
+                                    }
+                                    DropdownMenu(
+                                        expanded = tabContextMenuFor == tab,
+                                        onDismissRequest = { tabContextMenuFor = null },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Close", fontSize = 13.sp) },
+                                            onClick = {
                                                 editorTabs.remove(tab)
                                                 if (activeEditorTab == tab) activeEditorTab = editorTabs.lastOrNull()
-                                            })
+                                                tabContextMenuFor = null
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Close Others", fontSize = 13.sp) },
+                                            onClick = {
+                                                editorTabs.removeAll { it != tab }
+                                                activeEditorTab = tab
+                                                tabContextMenuFor = null
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Close All", fontSize = 13.sp) },
+                                            onClick = {
+                                                editorTabs.clear()
+                                                activeEditorTab = null
+                                                tabContextMenuFor = null
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Close Saved", fontSize = 13.sp) },
+                                            onClick = {
+                                                // Keep only dirty tabs — since we auto-save, all are "saved"
+                                                // This closes all tabs (none are unsaved in our model)
+                                                editorTabs.clear()
+                                                activeEditorTab = null
+                                                tabContextMenuFor = null
+                                            },
+                                        )
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text("Copy Path", fontSize = 13.sp) },
+                                            onClick = {
+                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("path", tab))
+                                                Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
+                                                tabContextMenuFor = null
+                                            },
+                                        )
                                     }
-                                    if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(TabActiveIndicator))
-                                    else Spacer(Modifier.height(1.dp))
                                 }
                                 Box(Modifier.width(1.dp).height(35.dp).background(DividerColor))
                             }
@@ -798,7 +855,58 @@ fun ProjectShellScreen(
                         HorizontalDivider(color = DividerColor)
                     }
 
-                    // Quick actions row removed — Run/Debug/Terminal/Split moved to menu bar
+                    // ── Editor toolbar — quick action icons ───────────────────
+                    if (activeEditorTab != null) {
+                        Row(
+                            Modifier.fillMaxWidth().height(28.dp).background(BgColor)
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // Find
+                            Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar; showReplaceRow = false }, contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Search, null, tint = if (showFindBar) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
+                            }
+                            // Replace
+                            Box(Modifier.size(28.dp).clickable { showFindBar = true; showReplaceRow = !showReplaceRow }, contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.FindReplace, null, tint = if (showReplaceRow) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
+                            Spacer(Modifier.width(4.dp))
+                            // Zoom out
+                            Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize - 1).coerceAtLeast(8) }, contentAlignment = Alignment.Center) {
+                                Text("−", fontSize = 16.sp, color = TabTextInactive)
+                            }
+                            Text("${'$'}editorFontSize", fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 2.dp))
+                            // Zoom in
+                            Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize + 1).coerceAtMost(32) }, contentAlignment = Alignment.Center) {
+                                Text("+", fontSize = 16.sp, color = TabTextInactive)
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
+                            Spacer(Modifier.width(4.dp))
+                            // Word wrap toggle
+                            Box(Modifier.size(28.dp).clickable { wordWrap = !wordWrap }, contentAlignment = Alignment.Center) {
+                                Text("↵", fontSize = 14.sp, color = if (wordWrap) TabActiveIndicator else TabTextInactive)
+                            }
+                            // Go to line
+                            Box(Modifier.size(28.dp).clickable { showGoToLine = true }, contentAlignment = Alignment.Center) {
+                                Text(":${'$'}", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            // Match count for find
+                            if (showFindBar && findQuery.isNotEmpty()) {
+                                val active = activeEditorTab
+                                if (active != null) {
+                                    val content = try { java.io.File(active).readText() } catch (_: Exception) { "" }
+                                    val count = content.split(findQuery).size - 1
+                                    Text("${'$'}count ${'$'}{if (count == 1) "match" else "matches"}", fontSize = 10.sp, color = TabTextInactive)
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = DividerColor)
+                    }
 
                     // Find & Replace bar
                     if (showFindBar) {
@@ -839,9 +947,36 @@ fun ProjectShellScreen(
                                         placeholder = { Text("Replace", fontSize = 12.sp) },
                                         singleLine = true, modifier = Modifier.weight(1f).height(36.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    OutlinedButton(onClick = {}, modifier = Modifier.height(36.dp)) { Text("Replace", fontSize = 11.sp) }
+                                    OutlinedButton(onClick = {
+                                        val active = activeEditorTab
+                                        if (active != null && findQuery.isNotEmpty()) {
+                                            try {
+                                                val content = java.io.File(active).readText()
+                                                val idx = content.indexOf(findQuery)
+                                                if (idx >= 0) {
+                                                    val newContent = content.substring(0, idx) + replaceQuery + content.substring(idx + findQuery.length)
+                                                    java.io.File(active).writeText(newContent)
+                                                    showNotification("Replaced 1 occurrence", "info")
+                                                }
+                                            } catch (e: Exception) {
+                                                showNotification("Replace failed: ${'$'}{e.message}", "error")
+                                            }
+                                        }
+                                    }, modifier = Modifier.height(36.dp)) { Text("Replace", fontSize = 11.sp) }
                                     Spacer(Modifier.width(4.dp))
-                                    OutlinedButton(onClick = {}, modifier = Modifier.height(36.dp)) { Text("All", fontSize = 11.sp) }
+                                    OutlinedButton(onClick = {
+                                        val active = activeEditorTab
+                                        if (active != null && findQuery.isNotEmpty()) {
+                                            try {
+                                                val content = java.io.File(active).readText()
+                                                val newContent = content.replace(findQuery, replaceQuery)
+                                                java.io.File(active).writeText(newContent)
+                                                showNotification("Replaced ${'$'}{content.split(findQuery).size - 1} occurrences", "info")
+                                            } catch (e: Exception) {
+                                                showNotification("Replace failed: ${'$'}{e.message}", "error")
+                                            }
+                                        }
+                                    }, modifier = Modifier.height(36.dp)) { Text("All", fontSize = 11.sp) }
                                 }
                             } else {
                                 TextButton(onClick = { showReplaceRow = true }) { Text("Replace", fontSize = 12.sp) }
