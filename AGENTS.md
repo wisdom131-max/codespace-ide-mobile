@@ -1799,3 +1799,54 @@ Root Box
 5. Test bracket matching — verify it detects nested brackets correctly
 6. Add bracket match visual highlight (currently computes positions but doesn't render highlight)
 7. Add code folding (collapse/expand functions and blocks)
+
+
+---
+
+## 2026-07-05 — FULL VS CODE ACTIVITY BAR PANELS + BUILD FIXES
+
+### Source Control Panel — Complete Rewrite (SourceControlPane.kt)
+- **Per-file stage/unstage**: click file row to stage, click staged file to unstage
+- **+/- buttons**: explicit stage/unstage icons per file
+- **Discard changes**: red X button per unstaged file (`git checkout --`)
+- **Staged Changes + Changes sections**: VS Code pattern with collapsible headers + counts
+- **Branch selector dropdown**: shows current branch, tap to switch (`git checkout`)
+- **Ahead/behind indicator**: shows up/down arrows with commit counts
+- **Stage all / Unstage all**: bulk actions in section headers
+- **File status colors**: M=yellow, A=green, U=green(untracked), D=red
+- **File-type icons**: code/markdown/image/archive/shell icons per extension
+- **Commit button**: disabled until message + staged changes exist
+- **Push button**: standalone push to remote
+- **Pull (sync)**: header sync icon runs `git pull`
+- **Refresh**: header refresh icon re-reads git status
+
+### Search Panel — Enhanced (ExplorerPane.kt)
+- **Include/Exclude file filters**: glob pattern inputs (e.g. `*.kt`, `!*.json`)
+- **Filter toggle button**: show/hide include/exclude inputs
+- **Replace All across files**: replaces in all matching files, shows count
+- **Click result to open**: clicking a search result opens the file in editor
+- **Replace result indicator**: shows total occurrences replaced
+
+### Command Palette — Expanded
+- Git commands: Commit, Push, Pull, Stage All
+- Editor commands: Close All Editors, Close Editor, Format Document, Toggle Word Wrap, Go to Line
+- Panel switching: Explorer, Search, Source Control, Run & Debug, Extensions
+- Explorer commands: Open Folder, Refresh Explorer, Collapse All
+
+### Build Fixes (July 5)
+- **Hilt 2.51.1 -> 2.52**: Maven Central stopped resolving 2.51.1 plugin artifact
+- **Padding positional args**: `padding(start=, end=)` -> `padding(16.dp, 4.dp, 8.dp, 4.dp)` (Compose BOM 2024.06.00 compatibility)
+- **Regex escape fixes**: `\s` and `\.` in Kotlin string literals (Illegal escape errors)
+- **Toast import**: Added `import android.widget.Toast` to ProjectShellScreen.kt
+- **combinedClickable**: Added `@OptIn(ExperimentalFoundationApi::class)` + import
+
+### Current Build Status
+- Last successful build: commit `b4c77256` (before editor panel changes)
+- Fixes pushed: commit `a10b572` — all compilation errors addressed
+- Pending: green build verification, then device test
+
+### What's Next (User Request — July 5)
+1. **Multi-root workspace explorer**: VS Code-style — add multiple top-level folders to explorer
+2. **Device file access**: Browse device files (pictures, downloads, etc.) from explorer
+3. **Image preview on long-press**: Hold an image file -> popup shows the actual image, fades on release
+4. **Green build**: All compilation errors fixed, waiting for CI confirmation
