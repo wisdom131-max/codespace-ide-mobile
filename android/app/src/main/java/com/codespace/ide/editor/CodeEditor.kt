@@ -81,6 +81,8 @@ fun CodeEditor(
     onContentChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     savedContent: String = "",   // original saved text — used for diff gutter indicators
+    wordWrap: Boolean = false,
+    scrollToLine: Int = 0,       // set to >0 to scroll to this line (resets after scrolling)
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -94,6 +96,43 @@ fun CodeEditor(
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     LaunchedEffect(prefix) { showCompletions = prefix.length >= 2 && completions.isNotEmpty() }
+
+    // Bracket matching — highlight the matching bracket when cursor is adjacent to one
+    val bracketMatch = remember(value) {
+        val pos = value.selection.end
+        if (pos == 0 || pos > value.text.length) null
+        else {
+            val before = if (pos > 0) value.text[pos - 1] else null
+            val at = if (pos < value.text.length) value.text[pos] else null
+            val bracket = before ?: at
+            val bracketPos = if (before != null && (bracket == '(' || bracket == ')' || bracket == '[' || bracket == ']' || bracket == '{' || bracket == '}')) pos - 1
+                          else if (at != null && (bracket == '(' || bracket == ')' || bracket == '[' || bracket == ']' || bracket == '{' || bracket == '}')) pos
+                          else -1
+            if (bracketPos >= 0) {
+                val match = when (bracket) {
+                    '(' -> ')'; ')' -> '('; '[' -> ']'; ']' -> '['; '{' -> '}'; '}' -> '{'
+                    else -> null
+                }
+                if (match != null) {
+                    // Search for matching bracket
+                    val dir = if (bracket == '(' || bracket == '[' || bracket == '{') 1 else -1
+                    var depth = 0
+                    var i = bracketPos
+                    var found = -1
+                    while (i >= 0 && i < value.text.length) {
+                        val c = value.text[i]
+                        if (c == bracket) depth++
+                        else if (c == match) {
+                            depth--
+                            if (depth == 0) { found = i; break }
+                        }
+                        i += dir
+                    }
+                    if (found >= 0) Pair(bracketPos, found) else null
+                } else null
+            } else null
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Row(
@@ -138,7 +177,7 @@ fun CodeEditor(
                 }
             }
             // Editor surface
-            Box(modifier = Modifier.horizontalScroll(hScroll)) {
+            Box(modifier = if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll)) {
                 BasicTextField(
                     value = value,
                     onValueChange = {
@@ -190,6 +229,26 @@ fun CodeEditor(
                     )
                     Spacer(Modifier.weight((1f - density).coerceAtLeast(0.05f)))
                 }
+            }
+        }
+
+        // ── Indentation guides ───────────────────────────────────────────────
+        // Faint vertical lines at each tab/2-space indent level
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 50.dp)
+                .zIndex(1f),
+        ) {
+            val maxIndent = remember(value.text) {
+                value.text.split("\n").maxOfOrNull { line ->
+                    (line.length - line.trimStart().length) / 2
+                } ?: 0
+            }
+            for (indent in 1..minOf(maxIndent, 10)) {
+                Box(Modifier.width(2.dp).fillMaxHeight().padding(end = 10.dp))
+                Box(Modifier.width(1.dp).fillMaxHeight().background(colors.gutter.copy(alpha = 0.15f)))
+                Spacer(Modifier.width(11.dp))
             }
         }
 

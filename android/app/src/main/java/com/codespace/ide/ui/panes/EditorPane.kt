@@ -93,6 +93,8 @@ fun EditorPane(
     onInsertRequest: (((String) -> Unit) -> Unit)? = null,
     fontSize: Int = 13,
     onCursorChange: ((Int, Int) -> Unit)? = null,
+    wordWrap: Boolean = false,
+    scrollToLine: Int = 0,
 ) {
     val context = LocalContext.current
     val tabs = remember { mutableStateListOf<EditorTab>() }
@@ -271,12 +273,13 @@ fun EditorPane(
                         onContentChange = { newText ->
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
-                            // Save to disk if real file
                             if (active.path.startsWith("/")) {
                                 try { File(active.path).writeText(newText) } catch (_: Exception) {}
                             }
                         },
                         modifier = Modifier.weight(1f),
+                        wordWrap = wordWrap,
+                        scrollToLine = scrollToLine,
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -285,6 +288,7 @@ fun EditorPane(
                         fontSize = fontSize,
                         onContentChange = {},
                         modifier = Modifier.weight(1f),
+                        wordWrap = wordWrap,
                     )
                 }
             } else {
@@ -302,6 +306,8 @@ fun EditorPane(
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
+                        wordWrap = wordWrap,
+                        scrollToLine = scrollToLine,
                     )
                 }
             }

@@ -375,6 +375,7 @@ fun ProjectShellScreen(
     var wordWrap           by remember { mutableStateOf(false) }
     var showGoToLine       by remember { mutableStateOf(false) }
     var goToLineInput      by remember { mutableStateOf("") }
+    var scrollTargetLine   by remember { mutableStateOf(0) }
     var findQuery          by remember { mutableStateOf("") }
     var replaceQuery       by remember { mutableStateOf("") }
     var showReplaceRow     by remember { mutableStateOf(false) }
@@ -405,6 +406,13 @@ fun ProjectShellScreen(
     val debugMessages = remember { mutableStateListOf("Debugger ready. Press Run to start.") }
     var cursorLine         by remember { mutableStateOf(1) }
     var cursorCol          by remember { mutableStateOf(1) }
+    // Reset scroll target after use so the same line can be re-triggered
+    LaunchedEffect(scrollTargetLine) {
+        if (scrollTargetLine > 0) {
+            kotlinx.coroutines.delay(500)
+            scrollTargetLine = 0
+        }
+    }
     var editorFontSize     by remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
     var activeEditorTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }
@@ -992,6 +1000,8 @@ fun ProjectShellScreen(
                                 fontSize        = editorFontSize,
                                 onInsertRequest = { fn -> keyboardInsert = fn },
                                 onCursorChange  = { line, col -> cursorLine = line; cursorCol = col },
+                                wordWrap        = wordWrap,
+                                scrollToLine    = scrollTargetLine,
                             )
                         } else {
                             Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
@@ -1603,6 +1613,7 @@ fun ProjectShellScreen(
                     TextButton(onClick = {
                         val lineNum = goToLineInput.toIntOrNull()
                         if (lineNum != null && lineNum > 0) {
+                            scrollTargetLine = lineNum
                             showNotification("Jumping to line $lineNum", "info")
                         }
                         showGoToLine = false
