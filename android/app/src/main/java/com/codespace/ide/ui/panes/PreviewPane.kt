@@ -319,7 +319,7 @@ private fun HtmlPreview(
 ) {
     // Detect React/JSX content
     val isReact = content.contains("import React") || content.contains("from 'react'") ||
-                  content.contains("from "react"") || content.contains("ReactDOM") ||
+                  content.contains("from \"react\"") || content.contains("ReactDOM") ||
                   content.contains("useState") || content.contains("jsx")
     
     val html = remember(content, language, isReact) {
