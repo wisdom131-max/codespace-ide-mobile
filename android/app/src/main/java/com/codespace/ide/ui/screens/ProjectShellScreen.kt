@@ -3,6 +3,8 @@ package com.codespace.ide.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -316,6 +318,7 @@ private val MENU_BAR = listOf(
 )
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun ProjectShellScreen(
     projectId: String,
     isDark: Boolean,
