@@ -71,6 +71,9 @@ fun ExplorerSidePanel(
     onOpenFile: (String) -> Unit,
     onMoreMenu: () -> Unit,
     onOpenInTerminal: (String) -> Unit = {},
+    openTabs: List<String> = emptyList(),
+    activeFilePath: String? = null,
+    onCloseTab: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
 
@@ -91,6 +94,12 @@ fun ExplorerSidePanel(
     var showDelete    by remember { mutableStateOf(false) }
     var nameInput     by remember { mutableStateOf("") }
     var refresh       by remember { mutableStateOf(0) }
+    var filterQuery   by remember { mutableStateOf("") }
+    var sortByType    by remember { mutableStateOf(false) }
+    var showOutline   by remember { mutableStateOf(false) }
+    var clipboardFile by remember { mutableStateOf<File?>(null) }
+    var clipboardCut  by remember { mutableStateOf(false) }
+    var gitStatus     by remember { mutableStateOf<Map<String, Char>>(emptyMap()) }
 
     // Folder picker launcher
     val folderPicker = rememberLauncherForActivityResult(
@@ -164,7 +173,15 @@ fun ExplorerSidePanel(
         if (isExp) {
             val children = dir.listFiles()
                 ?.filter { !it.name.trimEnd().startsWith(".") }
-                ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() })
+                ?.filter { f ->
+                    if (filterQuery.isBlank()) true
+                    else f.name.contains(filterQuery, ignoreCase = true) ||
+                         (f.isDirectory && f.walkTopDown().any { it.name.contains(filterQuery, ignoreCase = true) })
+                }
+                ?.sortedWith(
+                    if (sortByType) compareByDescending<File> { it.isDirectory }.thenBy { it.extension }.thenBy { it.name }
+                    else compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() }
+                )
                 ?: emptyList()
             children.forEach { child ->
                 if (child.isDirectory) nodes.addAll(buildNodes(child, depth + 1))
@@ -174,7 +191,31 @@ fun ExplorerSidePanel(
         return nodes
     }
 
-    val nodes = remember(workspacePath, expanded.toMap(), refresh) {
+    // Read git status for badges
+    LaunchedEffect(workspacePath, refresh) {
+        if (workspacePath != null) {
+            try {
+                val gitDir = File(workspacePath, ".git")
+                if (gitDir.exists()) {
+                    val statusMap = mutableMapOf<String, Char>()
+                    val process = ProcessBuilder("sh", "-c", "cd '" + workspacePath + "' && git status --porcelain 2>/dev/null")
+                        .redirectErrorStream(true).start()
+                    val output = process.inputStream.bufferedReader().readText()
+                    process.waitFor()
+                    for (line in output.lines()) {
+                        if (line.length < 4) continue
+                        val status = line[0]
+                        val filePath = line.substring(3).trim()
+                        val absPath = File(workspacePath, filePath).absolutePath
+                        statusMap[absPath] = status
+                    }
+                    gitStatus = statusMap
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    val nodes = remember(workspacePath, expanded.toMap(), refresh, filterQuery, sortByType) {
         val root = workspaceRoot ?: return@remember emptyList()
         if (!root.exists()) return@remember emptyList()
         val children = root.listFiles()
@@ -197,7 +238,7 @@ fun ExplorerSidePanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (workspaceRoot != null) workspaceRoot.name.uppercase()
+                if (showOutline) "OUTLINE" else if (workspaceRoot != null) workspaceRoot.name.uppercase()
                 else "EXPLORER",
                 fontSize = 11.sp, color = MutedColor,
                 fontWeight = FontWeight.Bold,
@@ -210,17 +251,33 @@ fun ExplorerSidePanel(
                     modifier = Modifier.size(16.dp).clickable {
                         contextFile = workspaceRoot; showNewFile = true; nameInput = ""
                     })
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 // New Folder
                 Icon(Icons.Default.CreateNewFolder, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
                         contextFile = workspaceRoot; showNewFolder = true; nameInput = ""
                     })
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 // Refresh
                 Icon(Icons.Default.Refresh, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable { refresh++ })
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
+                // Collapse All
+                Icon(Icons.Default.UnfoldLess, null, tint = MutedColor,
+                    modifier = Modifier.size(16.dp).clickable {
+                        expanded.clear()
+                        refresh++
+                    })
+                Spacer(Modifier.width(6.dp))
+                // Sort toggle (N=name, T=type)
+                Box(Modifier.clickable { sortByType = !sortByType }.padding(2.dp)) {
+                    Text(if (sortByType) "T" else "N", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(6.dp))
+                // Outline toggle
+                Icon(Icons.Default.List, null, tint = if (showOutline) IconColor else MutedColor,
+                    modifier = Modifier.size(16.dp).clickable { showOutline = !showOutline })
+                Spacer(Modifier.width(6.dp))
                 // Change folder
                 Icon(Icons.Default.OpenInNew, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
@@ -230,6 +287,59 @@ fun ExplorerSidePanel(
             Spacer(Modifier.width(8.dp))
         }
         HorizontalDivider(color = DividerColor)
+
+        // ── Filter input ──────────────────────────────────────────────────
+        if (workspaceRoot != null) {
+            OutlinedTextField(
+                value = filterQuery,
+                onValueChange = { filterQuery = it },
+                placeholder = { Text("Filter files...", fontSize = 12.sp, color = MutedColor) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = MutedColor, modifier = Modifier.size(14.dp)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
+            )
+        }
+
+        // ── Open Editors section ──────────────────────────────────────────
+        if (workspaceRoot != null && openTabs.isNotEmpty()) {
+            Column {
+                Row(
+                    Modifier.fillMaxWidth().height(24.dp)
+                        .background(Color(0xFFF0F0F0))
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("OPEN EDITORS", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text(openTabs.size.toString(), fontSize = 10.sp, color = MutedColor)
+                }
+                openTabs.forEach { tabPath ->
+                    val isActive = tabPath == activeFilePath
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(if (isActive) SelectedBg else Color.Transparent)
+                            .clickable { onOpenFile(tabPath) }
+                            .padding(start = 16.dp, end = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(fileIcon(tabPath.substringAfterLast("/")), null, tint = IconColor, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            tabPath.substringAfterLast("/"),
+                            fontSize = 12.sp, color = TextColor,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(Icons.Default.Close, null, tint = MutedColor,
+                            modifier = Modifier.size(14.dp).clickable { onCloseTab?.invoke(tabPath) })
+                    }
+                }
+                HorizontalDivider(color = DividerColor, thickness = 1.dp)
+            }
+        }
 
         // ── No workspace selected ─────────────────────────────────────────
         if (workspaceRoot == null) {
@@ -339,6 +449,83 @@ fun ExplorerSidePanel(
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        // Git status badge
+                        val gitChar = gitStatus[node.file.absolutePath]
+                        if (gitChar != null) {
+                            Text(
+                                gitChar.toString(),
+                                fontSize = 11.sp,
+                                color = when (gitChar) {
+                                    'M' -> Color(0xFFE2C08D)
+                                    'A' -> Color(0xFF73C991)
+                                    'U' -> Color(0xFF73C991)
+                                    'D' -> Color(0xFFF48771)
+                                    else -> MutedColor
+                                },
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(end = 4.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── Outline view ──────────────────────────────────────────────
+            if (showOutline && activeFilePath != null) {
+                HorizontalDivider(color = DividerColor)
+                Row(
+                    Modifier.fillMaxWidth().height(24.dp)
+                        .background(Color(0xFFF0F0F0))
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("OUTLINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text(activeFilePath!!.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
+                }
+                val outlineItems = remember(activeFilePath) {
+                    if (activeFilePath != null) {
+                        try {
+                            val content = File(activeFilePath).readText()
+                            val items = mutableListOf<Triple<String, Int, String>>()
+                            val classRegex = Regex("^(class|object|data class|enum class|sealed class|interface)\\s+(\\w+)")
+                            val funRegex = Regex("^\s*(fun|private fun|public fun|internal fun)\\s+(\\w+)")
+                            val varRegex = Regex("^\s*(val|var|private val|public val|private var)\\s+(\\w+)")
+                            content.lines().forEachIndexed { idx, line ->
+                                val cMatch = classRegex.find(line.trim())
+                                if (cMatch != null) { items.add(Triple(cMatch.groupValues[2], idx + 1, "class")); return@forEachIndexed }
+                                val fMatch = funRegex.find(line.trim())
+                                if (fMatch != null) { items.add(Triple(fMatch.groupValues[2], idx + 1, "fun")); return@forEachIndexed }
+                                val vMatch = varRegex.find(line.trim())
+                                if (vMatch != null) { items.add(Triple(vMatch.groupValues[2], idx + 1, "var")) }
+                            }
+                            items
+                        } catch (_: Exception) { emptyList() }
+                    } else emptyList()
+                }
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
+                    items(outlineItems) { (name, line, kind) ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { onOpenFile(activeFilePath ?: return@clickable) }
+                                .padding(start = 16.dp, end = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                when (kind) {
+                                    "class" -> Icons.Default.Code
+                                    "fun" -> Icons.Default.Functions
+                                    else -> Icons.Default.TextFields
+                                },
+                                null, tint = IconColor, modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(name, fontSize = 12.sp, color = TextColor, maxLines = 1)
+                            Spacer(Modifier.weight(1f))
+                            Text(":" + line, fontSize = 10.sp, color = MutedColor)
+                        }
                     }
                 }
             }
@@ -356,8 +543,13 @@ fun ExplorerSidePanel(
                     listOf(
                         "Open"            to Icons.Default.OpenInNew,
                         "Rename"          to Icons.Default.Edit,
+                        "Copy"            to Icons.Default.ContentCopy,
+                        "Cut"             to Icons.Default.ContentCut,
+                        "Paste"           to Icons.Default.ContentPaste,
+                        "Duplicate"       to Icons.Default.FileCopy,
                         "Delete"          to Icons.Default.Delete,
                         "Copy Path"       to Icons.Default.ContentCopy,
+                        "Share"           to Icons.Default.Share,
                         "Open in Terminal" to Icons.Default.Computer,
                         "New File Here"   to Icons.Default.Add,
                         "New Folder Here" to Icons.Default.CreateNewFolder,
@@ -370,6 +562,27 @@ fun ExplorerSidePanel(
                                         "Open"   -> if (!f.isDirectory) onOpenFile(f.absolutePath)
                                                    else { expanded[f.absolutePath] = true; refresh++ }
                                         "Rename" -> { nameInput = f.name; showRename = true }
+                                        "Copy"   -> { clipboardFile = f; clipboardCut = false }
+                                        "Cut"    -> { clipboardFile = f; clipboardCut = true }
+                                        "Paste"  -> {
+                                            val src = clipboardFile
+                                            val targetDir = if (f.isDirectory) f else f.parentFile
+                                            if (src != null && targetDir != null) {
+                                                val dest = File(targetDir, src.name)
+                                                if (clipboardCut) src.renameTo(dest)
+                                                else src.copyTo(dest, overwrite = false)
+                                                clipboardFile = null
+                                                refresh++
+                                            }
+                                        }
+                                        "Duplicate" -> {
+                                            val targetDir = f.parentFile
+                                            if (targetDir != null) {
+                                                val dest = File(targetDir, f.nameWithoutExtension + "_copy." + f.extension)
+                                                f.copyTo(dest, overwrite = false)
+                                                refresh++
+                                            }
+                                        }
                                         "Delete" -> showDelete = true
                                         "New File Here" -> {
                                             contextFile = if (f.isDirectory) f else f.parentFile
@@ -384,6 +597,14 @@ fun ExplorerSidePanel(
                                                 Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                             clipboard.setPrimaryClip(
                                                 android.content.ClipData.newPlainText("path", f.absolutePath))
+                                        }
+                                        "Share" -> {
+                                            val shareIntent = Intent().apply {
+                                                action = Intent.ACTION_SEND
+                                                type = "*/*"
+                                                putExtra(Intent.EXTRA_STREAM, Uri.fromFile(f))
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share " + f.name))
                                         }
                                         "Open in Terminal" -> onOpenInTerminal(if (f.isDirectory) f.absolutePath else f.parent ?: f.absolutePath)
                                     }

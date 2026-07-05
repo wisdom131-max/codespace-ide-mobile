@@ -692,13 +692,15 @@ fun ProjectShellScreen(
                         .border(1.dp, DividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    val gitBadgeCount = 0  // TODO: count changed files
+                    val runBadgeCount = 0   // TODO: count errors
                     listOf(
-                        SidePanel.EXPLORER to Icons.Default.Description,
-                        SidePanel.SEARCH   to Icons.Default.Search,
-                        SidePanel.GIT      to Icons.Default.AccountTree,
-                        SidePanel.RUN      to Icons.Default.BugReport,
-                        SidePanel.EXTENSIONS to Icons.Default.Extension,
-                    ).forEach { (panel, icon) ->
+                        Triple(SidePanel.EXPLORER, Icons.Default.Description, 0),
+                        Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
+                        Triple(SidePanel.GIT, Icons.Default.AccountTree, gitBadgeCount),
+                        Triple(SidePanel.RUN, Icons.Default.BugReport, runBadgeCount),
+                        Triple(SidePanel.EXTENSIONS, Icons.Default.Extension, 0),
+                    ).forEach { (panel, icon, badge) ->
                         val isActive = activePanel == panel
                         Box(
                             Modifier.fillMaxWidth().height(48.dp)
@@ -707,6 +709,16 @@ fun ProjectShellScreen(
                         ) {
                             if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
                             Icon(icon, null, tint = if (isActive) ActivityBarIconActive else ActivityBarIcon, modifier = Modifier.size(24.dp))
+                            // Badge count
+                            if (badge > 0) {
+                                Box(
+                                    Modifier.align(Alignment.BottomEnd)
+                                        .background(Color(0xFF007ACC), androidx.compose.foundation.shape.CircleShape)
+                                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                                ) {
+                                    Text(badge.toString(), fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
 
@@ -739,6 +751,12 @@ fun ProjectShellScreen(
                                     activeBottomTab = BottomTab.TERMINAL
                                     terminalCommandToRun = "cd \"$path\"\r"
                                     showNotification("Opened terminal at workspace path", "success")
+                                },
+                                openTabs = editorTabs.toList(),
+                                activeFilePath = activeEditorTab,
+                                onCloseTab = { tabPath ->
+                                    editorTabs.remove(tabPath)
+                                    if (activeEditorTab == tabPath) activeEditorTab = editorTabs.lastOrNull()
                                 },
                             )
                             SidePanel.SEARCH     -> SearchPanel()
