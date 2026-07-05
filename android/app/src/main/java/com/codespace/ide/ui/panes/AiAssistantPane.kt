@@ -162,7 +162,7 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                 Box(
                     Modifier
                         .background(
-                            if (isSelected) Color(0xFF007ACC) else Color(0xFFEEEEEE),
+                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             RoundedCornerShape(16.dp)
                         )
                         .clickable(onClick = { selectedModel = model })
@@ -171,7 +171,7 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                     Text(
                         model,
                         fontSize = 12.sp,
-                        color = if (isSelected) Color.White else Color(0xFF333333),
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                     )
                 }
@@ -195,14 +195,14 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                 ) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isUser) Color(0xFF007ACC) else Color(0xFFF0F0F0),
+                        color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                         modifier = Modifier.widthIn(max = 280.dp),
                     ) {
                         Text(
                             msg.content,
                             Modifier.padding(12.dp),
                             fontSize = 13.sp,
-                            color = if (isUser) Color.White else Color(0xFF1A1A1A),
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -234,8 +234,14 @@ fun AiAssistantPane(tokenStore: SecureTokenStore) {
                 onClick = { scope.launch { sendMessage(input) } },
                 enabled = !loading && input.isNotBlank(),
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color(0xFF007ACC))
+                Icon(Icons.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
+}
+
+
+@Composable
+fun AiAssistantSidePanel(tokenStore: SecureTokenStore) {
+    AiAssistantPane(tokenStore = tokenStore)
 }

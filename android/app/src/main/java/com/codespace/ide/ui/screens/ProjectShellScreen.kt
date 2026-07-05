@@ -252,7 +252,7 @@ private fun ideColors(themeName: String): IdeColors {
     }
 }
 
-private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS }
+private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
 
 // NotifItem moved to NotificationDrawerOverlay.kt
 private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW }
@@ -372,6 +372,9 @@ fun ProjectShellScreen(
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     var showFindBar        by remember { mutableStateOf(false) }
+    var wordWrap           by remember { mutableStateOf(false) }
+    var showGoToLine       by remember { mutableStateOf(false) }
+    var goToLineInput      by remember { mutableStateOf("") }
     var findQuery          by remember { mutableStateOf("") }
     var replaceQuery       by remember { mutableStateOf("") }
     var showReplaceRow     by remember { mutableStateOf(false) }
@@ -462,6 +465,30 @@ fun ProjectShellScreen(
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
             "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
             "Find"               -> { showFindBar = true; showReplaceRow = false }
+            "Replace"            -> { showFindBar = true; showReplaceRow = true }
+            "Go to Line"         -> { showGoToLine = true }
+            "Explorer"           -> activePanel = SidePanel.EXPLORER
+            "Search"             -> activePanel = SidePanel.SEARCH
+            "Source Control"     -> activePanel = SidePanel.GIT
+            "Run & Debug"        -> activePanel = SidePanel.RUN
+            "Extensions"         -> activePanel = SidePanel.EXTENSIONS
+            "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
+            "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
+            "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
+            "Toggle Sidebar"     -> { activePanel = if (activePanel == null) SidePanel.EXPLORER else null }
+            "Zoom In"            -> { editorFontSize = (editorFontSize + 2).coerceAtMost(32) }
+            "Zoom Out"           -> { editorFontSize = (editorFontSize - 2).coerceAtLeast(8) }
+            "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
+            "Split Terminal"     -> { showSplitTerminal = true }
+            "Kill Terminal"      -> { showSplitTerminal = false }
+            "Clear"              -> { /* TODO: clear terminal */ }
+            "Auto Save"          -> { showNotification("Auto Save toggled", "info") }
+            "Save"               -> { showNotification("File saved", "success") }
+            "About Visual Node Code" -> { showNotification("CodeSpace IDE v1.0.0 — VS Code for Android", "info") }
+            "Documentation"      -> { showNotification("Opening docs...", "info") }
+            "Keyboard Shortcuts" -> { showCommandPalette = true }
+            "Preferences"        -> { showColorTheme = true }
+            "Color Theme"        -> { showColorTheme = true }
             "Replace"            -> { showFindBar = true; showReplaceRow = true }
             "Find in Files"      -> activePanel = SidePanel.SEARCH
             "Go to File"         -> showCommandPalette = true
@@ -582,7 +609,7 @@ fun ProjectShellScreen(
                         .clickable { showChatPanel = !showChatPanel }
                         .padding(4.dp)
                 ) {
-                    Icon(Icons.Default.Chat, null, tint = if (showChatPanel) Color.White else TabTextInactive, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Psychology, null, tint = if (showChatPanel) Color.White else TabTextInactive, modifier = Modifier.size(20.dp))
                 }
                 Spacer(Modifier.width(8.dp))
                 // Notification bell with unread badge
@@ -605,7 +632,53 @@ fun ProjectShellScreen(
                 Spacer(Modifier.width(8.dp))
             }
 
-            // Menu bar removed — all actions accessible via command palette
+            // ── Menu bar — VS Code style File/Edit/View/etc dropdowns
+            Row(
+                Modifier.fillMaxWidth().height(26.dp).background(BgColor),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MENU_BAR.forEach { menuItem ->
+                    Box {
+                        val isOpen = openMenuBar == menuItem.label
+                        Text(
+                            menuItem.label,
+                            fontSize = 12.sp,
+                            color = if (isOpen) MenuText else MenuText.copy(alpha = 0.85f),
+                            modifier = Modifier
+                                .background(if (isOpen) MenuBg else Color.Transparent)
+                                .clickable { openMenuBar = if (isOpen) null else menuItem.label }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = isOpen,
+                            onDismissRequest = { openMenuBar = null },
+                        ) {
+                            menuItem.items.forEach { action ->
+                                if (action.divider) {
+                                    HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                                } else {
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = {
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text(action.label, fontSize = 12.sp, color = MenuText)
+                                                if (action.shortcut.isNotEmpty()) {
+                                                    Text(action.shortcut, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f))
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            handleMenuAction(action.label)
+                                            openMenuBar = null
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Text(currentTheme, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(end = 8.dp))
+            }
 
             // ── Main body
             Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -687,9 +760,8 @@ fun ProjectShellScreen(
                     )
                 }
 
-                // Editor Column + right Chat Panel
-                val editorWeight = if (showChatPanel) 0.55f else 1f
-                Column(Modifier.weight(editorWeight).fillMaxHeight()) {
+                // Editor Column
+                Column(Modifier.weight(1f).fillMaxHeight()) {
 
                     // Editor tab bar
                     if (editorTabs.isNotEmpty()) {
@@ -1003,14 +1075,49 @@ fun ProjectShellScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
             }
-    } // end Column
+    } // end Editor Column
 
-        // ── All overlays — direct children of root Box so they cover full screen ──
-
-        // Copilot Chat Panel
-        if (showChatPanel) {
-            CopilotChatPanelOverlay(onClose = { showChatPanel = false })
-        }
+                // ── AI Chat Panel (right side, draggable) ──
+                if (showChatPanel) {
+                    val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
+                    // Drag handle on left edge of chat panel
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(DividerColor)
+                            .pointerInput(Unit) {
+                                detectDragGestures { _, dragAmount ->
+                                    val nw = aiPanelWidth - dragAmount.x
+                                    if (nw < 60f) {
+                                        showChatPanel = false
+                                        aiPanelWidth = 300f
+                                    } else {
+                                        aiPanelWidth = nw.coerceIn(60f, totalWidth * 0.8f)
+                                    }
+                                }
+                            }
+                    )
+                    // Chat panel content
+                    Box(Modifier.width(chatWidth).fillMaxHeight().background(PanelBg)) {
+                        CopilotChatPanelInline(
+                            onClose = { showChatPanel = false },
+                            colors = ChatPanelColors(
+                                background = BgColor,
+                                surface = PanelBg,
+                                text = TabText,
+                                textSecondary = TabTextInactive,
+                                accent = TabActiveIndicator,
+                                userBubble = TabActiveIndicator,
+                                assistantBubble = PanelBg,
+                                inputBg = PanelBg,
+                                divider = DividerColor,
+                                headerBg = PanelBg,
+                                scrim = Color(0x66000000),
+                            ),
+                        )
+                    }
+                }
 
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
@@ -1126,7 +1233,7 @@ fun ProjectShellScreen(
                             "Color Theme" to { showColorTheme = true; showGearMenu = false },
                             "Toggle Sidebar" to { activePanel = if (activePanel == null) SidePanel.EXPLORER else null; showGearMenu = false },
                             "Toggle Terminal" to { showBottomPanel = !showBottomPanel; showGearMenu = false },
-                            "Toggle AI Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
+                            "Toggle Copilot Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
                             "Font Size +" to { editorFontSize = (editorFontSize + 1).coerceAtMost(32); showGearMenu = false },
                             "Font Size -" to { editorFontSize = (editorFontSize - 1).coerceAtLeast(8); showGearMenu = false },
                             "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
@@ -1218,6 +1325,155 @@ fun ProjectShellScreen(
             }
         }
 
+
+        // ── Color Theme Picker Dialog ──────────────────────────────────────
+        if (showColorTheme) {
+            val allThemes = listOf(
+                "Dark (Default)", "Dark Modern", "Dracula", "AMOLED Black",
+                "Monokai", "One Dark Pro", "GitHub Dark", "Tokyo Night",
+                "Nord", "Catppuccin",
+                "Light (Default)", "Light Modern", "GitHub Light",
+                "Quiet Light", "Solarized Light", "Eye Care",
+            )
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color(0x88000000))
+                    .pointerInput(Unit) { detectTapGestures { showColorTheme = false } }
+            ) {
+                Card(
+                    Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth(0.9f)
+                        .fillMaxHeight(0.7f)
+                        .pointerInput(Unit) { detectTapGestures { /* swallow */ } },
+                    colors = CardDefaults.cardColors(containerColor = MenuBg),
+                    elevation = CardDefaults.cardElevation(12.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                ) {
+                    Column(Modifier.fillMaxSize()) {
+                        // Header
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Select Color Theme", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MenuText)
+                            Icon(Icons.Default.Close, "Close", tint = MenuText.copy(alpha = 0.6f),
+                                modifier = Modifier.size(20.dp).clickable { showColorTheme = false })
+                        }
+                        HorizontalDivider(color = DividerColor)
+                        // Theme grid
+                        LazyColumn(
+                            Modifier.fillMaxSize().padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            // Dark themes section
+                            item {
+                                Text("Dark Themes", fontSize = 11.sp, color = SectionHeaderText,
+                                    modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
+                            }
+                            val darkThemes = allThemes.filter { !it.contains("Light") && !it.contains("Eye Care") }
+                            items(darkThemes) { themeName ->
+                                val isSelected = themeName == currentTheme
+                                val ti = ideColors(themeName)
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .background(if (isSelected) CmdSelectedBg else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                        .clickable { onSelectTheme(themeName); showColorTheme = false }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    // Color preview swatches
+                                    Row(Modifier.width(60.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Box(Modifier.size(16.dp).background(ti.BgColor, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                        Box(Modifier.size(16.dp).background(ti.ActivityBarIconActive, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                        Box(Modifier.size(16.dp).background(ti.TabActiveIndicator, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(themeName, fontSize = 13.sp,
+                                        color = if (isSelected) CmdSelectedText else MenuText,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal)
+                                    Spacer(Modifier.weight(1f))
+                                    if (isSelected) {
+                                        Icon(Icons.Default.Check, "Selected", tint = CmdSelectedText, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                            // Light themes section
+                            item {
+                                Text("Light Themes", fontSize = 11.sp, color = SectionHeaderText,
+                                    modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp))
+                            }
+                            val lightThemes = allThemes.filter { it.contains("Light") || it == "Eye Care" }
+                            items(lightThemes) { themeName ->
+                                val isSelected = themeName == currentTheme
+                                val ti = ideColors(themeName)
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .background(if (isSelected) CmdSelectedBg else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                        .clickable { onSelectTheme(themeName); showColorTheme = false }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(Modifier.width(60.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Box(Modifier.size(16.dp).background(ti.BgColor, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                        Box(Modifier.size(16.dp).background(ti.ActivityBarIconActive, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                        Box(Modifier.size(16.dp).background(ti.TabActiveIndicator, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(themeName, fontSize = 13.sp,
+                                        color = if (isSelected) CmdSelectedText else MenuText,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal)
+                                    Spacer(Modifier.weight(1f))
+                                    if (isSelected) {
+                                        Icon(Icons.Default.Check, "Selected", tint = CmdSelectedText, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Go to Line dialog ─────────────────────────────────────────────
+        if (showGoToLine) {
+            AlertDialog(
+                onDismissRequest = { showGoToLine = false },
+                title = { Text("Go to Line", color = MenuText) },
+                text = {
+                    OutlinedTextField(
+                        value = goToLineInput,
+                        onValueChange = { goToLineInput = it.filter { c -> c.isDigit() } },
+                        label = { Text("Line number") },
+                        singleLine = true,
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MenuText,
+                            unfocusedTextColor = MenuText,
+                            focusedLabelColor = TabActiveIndicator,
+                            unfocusedLabelColor = TabTextInactive,
+                            focusedBorderColor = TabActiveIndicator,
+                            unfocusedBorderColor = DividerColor,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val lineNum = goToLineInput.toIntOrNull()
+                        if (lineNum != null && lineNum > 0) {
+                            showNotification("Jumping to line $lineNum", "info")
+                        }
+                        showGoToLine = false
+                        goToLineInput = ""
+                    }) { Text("Go") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showGoToLine = false; goToLineInput = "" }) { Text("Cancel") }
+                },
+                containerColor = MenuBg,
+                titleContentColor = MenuText,
+            )
+        }
     } // end root Box
 }
 
