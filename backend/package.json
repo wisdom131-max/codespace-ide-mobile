@@ -31,7 +31,6 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "ioredis": "^5.4.1",
-    "node-pty": "^1.0.0",
     "octokit": "^3.2.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -53,5 +52,8 @@
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.0.0"
   }
 }

@@ -25,9 +25,18 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
       client.disconnect(true);
       return;
     }
-    // Lazy import keeps node-pty optional in environments without native build.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pty = require('node-pty');
+    // Lazy import — node-pty is an optional dependency.
+    // In environments where native compilation fails (e.g. Railway), 
+    // the terminal gateway still loads but PTY sessions are unavailable.
+    let pty: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      pty = require('node-pty');
+    } catch (err) {
+      client.emit('error', { type: 'error', message: 'Terminal not available on this server (node-pty not installed)' });
+      client.disconnect(true);
+      return;
+    }
     const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
     const term: IPty = pty.spawn(shell, [], {
       name: 'xterm-256color',
