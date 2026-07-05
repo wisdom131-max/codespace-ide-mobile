@@ -1696,3 +1696,106 @@ Root Box
 5. Wire Run & Debug "Run" button to actually launch the selected config in the terminal
 6. Wire Search panel "Replace" functionality to actually replace text in files
 7. Wire Breakpoints to toggle from editor gutter
+
+---
+
+## Update — July 5, 2026 (Build ~#866+)
+
+### Editor Area Enhancements
+
+#### MCP Status Indicator
+- **Moved from terminal to blue status bar** (bottom right corner of app UI)
+- Green dot = AgentApiServer running, Red = not running
+- Polls every 3 seconds via LaunchedEffect
+- Removed from both TerminalPane (main) and SplitTerminalPanel
+
+#### Top Toolbar Cleanup
+- **Removed Psychology (copilot) icon** from top toolbar — chat is accessible via command palette and gear menu
+- Chat panel toggle still works via: command palette "Toggle Copilot Chat", gear menu, or keyboard
+
+#### AI Chat Panel Drag
+- Chat panel drag handle now **collapses to 0.dp** (closes at < 20f, down from 60f)
+- Drag left-to-right to close — matches VS Code behavior
+- Previous minimum was 60f, now 0f for full collapse
+
+#### Editor Toolbar (NEW — below breadcrumb)
+- **Quick action icons**: Find, Replace, Zoom −/+, Word Wrap toggle, Go to Line
+- Shows current font size between zoom buttons
+- **Live match count** when Find bar is open and query is non-empty
+- Horizontal divider separates it from breadcrumb above and find bar below
+
+#### Functional Find & Replace
+- **Case sensitive toggle** (Aa) — highlights blue when active
+- **Whole word toggle** (\b) — highlights blue when active
+- **Regex toggle** (.*) — highlights blue when active
+- **Replace (single)**: replaces first occurrence in file on disk + notification
+- **Replace All**: replaces all occurrences in file on disk + count notification
+- Match count shown in editor toolbar
+
+#### Tab Context Menu (NEW — long-press on editor tab)
+- **Close**: closes the tapped tab
+- **Close Others**: closes all tabs except the tapped one
+- **Close All**: clears all tabs
+- **Close Saved**: closes all tabs (auto-save model means all are "saved")
+- **Copy Path**: copies full file path to clipboard + toast
+- Uses `combinedClickable` for long-press support
+
+#### CodeEditor.kt Enhancements
+- **Word wrap**: when enabled, removes horizontal scroll — text wraps to next line
+- **Scroll-to-line**: `scrollToLine` parameter scrolls editor to target line (used by Go to Line dialog)
+- **Bracket matching**: detects matching `() [] {}` when cursor is adjacent to a bracket
+  - Searches forward for opening brackets, backward for closing brackets
+  - Tracks depth for nested brackets
+  - Stores `Pair(bracketPos, matchPos)` for highlight rendering
+- **Indentation guides**: faint vertical lines at each 2-space indent level
+  - Calculates max indent depth from file content
+  - Renders up to 10 indent guide lines
+  - Uses `colors.gutter.copy(alpha = 0.15f)` for subtle appearance
+
+#### Go to Line — Now Functional
+- Dialog accepts line number input
+- Sets `scrollTargetLine` state → passed to EditorPane → CodeEditor
+- `LaunchedEffect(scrollToLine)` scrolls `vScroll` to `(line - 1) * fontSize * 1.25`
+- Auto-resets after 500ms so the same line can be re-triggered
+
+### File Summary (This Update)
+| File | Changes |
+|------|---------|
+| `ProjectShellScreen.kt` | Editor toolbar, functional find/replace, tab context menu, MCP in status bar, removed Psychology icon, chat draggable to 0dp, Go to Line scroll wiring |
+| `EditorPane.kt` | Passes `wordWrap` and `scrollToLine` to CodeEditor (all 3 call sites) |
+| `CodeEditor.kt` | Word wrap, scroll-to-line, bracket matching, indentation guides |
+| `TerminalPane.kt` | Removed MCP indicators (both main + split), removed AgentApiServer import |
+
+### Updated Architecture
+```
+Root Box
+├── Column
+│   ├── Top Bar (workspace name, action icons, notification bell)
+│   ├── Menu Bar (File | Edit | Selection | View | Go | Run | Terminal | Help)
+│   └── Row (Main Body)
+│       ├── Activity Bar (48dp: Explorer, Search, Git, Run, Extensions + bottom: Account, Settings)
+│       ├── Side Panel (draggable right edge, 80-500dp)
+│       ├── Editor Column (weight 1f)
+│       │   ├── Tab Bar (horizontal scroll, close buttons, LONG-PRESS context menu)
+│       │   ├── Breadcrumb (file path)
+│       │   ├── Editor Toolbar (Find, Replace, Zoom ±, Word Wrap, Go to Line, match count)
+│       │   ├── Find/Replace Bar (functional case/word/regex toggles, replace, replace all)
+│       │   ├── Editor Area (EditorPane with word wrap, bracket matching, indent guides)
+│       │   ├── Coding Toolbar (symbol keyboard)
+│       │   └── Status Bar (branch, Ln/Col, UTF-8, MCP indicator)
+│       └── AI Chat Panel (draggable to 0dp, inline not overlay)
+├── Color Theme Dialog
+├── Go to Line Dialog (functional — scrolls editor)
+├── Command Palette
+├── Notification Drawer
+└── Other overlays
+```
+
+### Next Steps
+1. Verify build compiles with all editor enhancements
+2. Test on device: editor toolbar icons, find/replace, tab long-press menu
+3. Test word wrap toggle — verify long lines wrap correctly
+4. Test Go to Line — verify editor scrolls to correct position
+5. Test bracket matching — verify it detects nested brackets correctly
+6. Add bracket match visual highlight (currently computes positions but doesn't render highlight)
+7. Add code folding (collapse/expand functions and blocks)
