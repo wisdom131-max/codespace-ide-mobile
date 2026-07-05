@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.McpShellProfile
-import com.codespace.ide.agent.AgentApiServer
 import android.content.ServiceConnection
 import com.codespace.ide.terminal.TerminalService
 import com.codespace.ide.terminal.SshProfileStore
@@ -477,14 +476,6 @@ internal fun TerminalPane(
     var showSshManager    by remember { mutableStateOf(false) }
     var showTextExpansions by remember { mutableStateOf(false) }
     var showExtraKeys     by remember { mutableStateOf(false) }
-    // MCP Agent API connection status: red=disconnected, green=connected, yellow=connecting
-    var mcpStatus by remember { mutableStateOf(if (AgentApiServer.isRunning()) 1 else 0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            mcpStatus = if (AgentApiServer.isRunning()) 1 else 0
-            kotlinx.coroutines.delay(3000)
-        }
-    }
     var isRootMode        by remember { mutableStateOf(false) }
     var acEnabled         by remember { mutableStateOf(false) }
     var showCustomCmds    by remember { mutableStateOf(false) }
@@ -1484,7 +1475,7 @@ internal fun TerminalPane(
             }
         }
 
-        // Terminal view with MCP status indicator overlay
+        // Terminal view
         if (active != null && !showTapToStart) {
             key(active.id) {
                 Box(Modifier.fillMaxSize()) {
@@ -1574,37 +1565,6 @@ internal fun TerminalPane(
                         }
                     }
                 )
-                    // MCP Agent API status indicator — bottom right corner
-                    // Green = connected, Red = not connected, Yellow = connecting
-                    Box(
-                        Modifier.align(Alignment.BottomEnd).padding(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier
-                                .background(Color(0xCC1A1A1A), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                        ) {
-                            Box(
-                                Modifier.size(7.dp)
-                                    .background(
-                                        when (mcpStatus) {
-                                            1 -> Color(0xFF4CAF50) // green
-                                            0 -> Color(0xFFF44336) // red
-                                            else -> Color(0xFFFFEB3B) // yellow
-                                        },
-                                        androidx.compose.foundation.shape.CircleShape
-                                    )
-                            )
-                            Text(
-                                "MCP",
-                                color = Color(0xFF888888),
-                                fontSize = 9.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            )
-                        }
-                    }
                 } // close Box
             }
         }
@@ -1625,14 +1585,6 @@ internal fun TerminalPane(
 internal fun SplitTerminalPanel(sharedState: TerminalState) {
     val context  = androidx.compose.ui.platform.LocalContext.current
     val prefs    = remember { context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE) }
-    // MCP status for split panel
-    var splitMcpStatus by remember { mutableStateOf(if (AgentApiServer.isRunning()) 1 else 0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            splitMcpStatus = if (AgentApiServer.isRunning()) 1 else 0
-            kotlinx.coroutines.delay(3000)
-        }
-    }
     var terminalFontSize by remember { mutableStateOf(prefs.getInt("KEY_FONTSIZE", SimpleTerminalViewClient.DEFAULT_FONTSIZE).coerceIn(SimpleTerminalViewClient.MIN_FONTSIZE, SimpleTerminalViewClient.MAX_FONTSIZE)) }
     // Observe rotation / config changes
     val configuration  = androidx.compose.ui.platform.LocalConfiguration.current
@@ -1756,32 +1708,6 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                         }
                     }
                 )
-                    // MCP status indicator — bottom right
-                    Box(
-                        Modifier.align(Alignment.BottomEnd).padding(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier
-                                .background(Color(0xCC1A1A1A), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                        ) {
-                            Box(
-                                Modifier.size(7.dp)
-                                    .background(
-                                        when (splitMcpStatus) {
-                                            1 -> Color(0xFF4CAF50)
-                                            0 -> Color(0xFFF44336)
-                                            else -> Color(0xFFFFEB3B)
-                                        },
-                                        androidx.compose.foundation.shape.CircleShape
-                                    )
-                            )
-                            Text("MCP", color = Color(0xFF888888), fontSize = 9.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                        }
-                    }
                 } // close Box
             }
         } else {

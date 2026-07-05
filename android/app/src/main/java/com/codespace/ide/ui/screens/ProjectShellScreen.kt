@@ -603,15 +603,7 @@ fun ProjectShellScreen(
                     modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT })
                 Spacer(Modifier.width(8.dp))
 
-                Box(
-                    Modifier
-                        .background(if (showChatPanel) Color(0xFF007ACC) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                        .clickable { showChatPanel = !showChatPanel }
-                        .padding(4.dp)
-                ) {
-                    Icon(Icons.Default.Psychology, null, tint = if (showChatPanel) Color.White else TabTextInactive, modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.width(8.dp))
+
                 // Notification bell with unread badge
                 Box(Modifier.size(28.dp).clickable {
                     showNotifDrawer = !showNotifDrawer
@@ -1074,13 +1066,28 @@ fun ProjectShellScreen(
                 Text("Ln 1, Col 1", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
                 Spacer(Modifier.width(8.dp))
                 Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                // MCP Agent API status indicator
+                val mcpConnected = remember { mutableStateOf(com.codespace.ide.agent.AgentApiServer.isRunning()) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        mcpConnected.value = com.codespace.ide.agent.AgentApiServer.isRunning()
+                        kotlinx.coroutines.delay(3000)
+                    }
+                }
+                Box(Modifier.size(7.dp).background(
+                    if (mcpConnected.value) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    CircleShape
+                ))
+                Spacer(Modifier.width(3.dp))
+                Text("MCP", fontSize = 9.sp, color = Color.White.copy(alpha = 0.7f))
             }
     } // end Editor Column
 
                 // ── AI Chat Panel (right side, draggable) ──
                 if (showChatPanel) {
                     val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
-                    // Drag handle on left edge of chat panel
+                    // Drag handle on left edge of chat panel — drag left→right to collapse to 0.dp
                     Box(
                         Modifier
                             .width(4.dp)
@@ -1089,11 +1096,11 @@ fun ProjectShellScreen(
                             .pointerInput(Unit) {
                                 detectDragGestures { _, dragAmount ->
                                     val nw = aiPanelWidth - dragAmount.x
-                                    if (nw < 60f) {
+                                    if (nw < 20f) {
                                         showChatPanel = false
                                         aiPanelWidth = 300f
                                     } else {
-                                        aiPanelWidth = nw.coerceIn(60f, totalWidth * 0.8f)
+                                        aiPanelWidth = nw.coerceIn(0f, totalWidth * 0.8f)
                                     }
                                 }
                             }
