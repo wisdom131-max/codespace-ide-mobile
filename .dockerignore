@@ -1,7 +1,0 @@
-android/
-artifacts/
-incoming_files/
-.agents/
-*.md
-.git
-.gitignore
