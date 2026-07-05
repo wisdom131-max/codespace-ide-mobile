@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.documentfile.provider.DocumentFile
 import android.content.ClipboardManager
 import android.content.ClipData
@@ -539,6 +540,8 @@ private fun fileIcon(name: String) = when {
 }
 
 // ── Stub panels ──────────────────────────────────────────────────────────────
+private data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
+
 @Composable fun SearchPanel() {
     var searchQuery  by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
@@ -558,8 +561,6 @@ private fun fileIcon(name: String) = when {
         focusRequester.requestFocus()
         keyboardController?.show()
     }
-
-    data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
 
     fun performSearch(query: String) {
         if (query.isBlank()) { results = emptyList(); return }
@@ -718,9 +719,9 @@ private fun fileIcon(name: String) = when {
                     }
                 }
                 if (isExpanded) {
-                    items(fileResults, key = { "${it.file}_${it.lineNum}" }) { result ->
+                    items(fileResults, key = { r: SearchResult -> "${r.file}_${r.lineNum}" }) { result ->
                         Row(
-                            Modifier.fillMaxWidth().padding(start = 36.dp, vertical = 2.dp),
+                            Modifier.fillMaxWidth().padding(start = 36.dp, top = 2.dp, bottom = 2.dp),
                         ) {
                             Text("${result.lineNum}: ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
                             Text(result.lineText, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
@@ -832,8 +833,9 @@ private fun fileIcon(name: String) = when {
             item { SectionHeader("VARIABLES", showVariables) { showVariables = !showVariables } }
             if (showVariables) {
                 if (isRunning && variables.isNotEmpty()) {
-                    items(variables) { (name, value) ->
-                        Row(Modifier.padding(start = 24.dp, vertical = 2.dp)) {
+                    items(variables) { item ->
+                        val (name, value) = item
+                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
                             Icon(Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(name, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
@@ -842,14 +844,14 @@ private fun fileIcon(name: String) = when {
                         }
                     }
                 } else {
-                    item { Text(if (!isRunning) "Not started" else "No variables", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, vertical = 4.dp)) }
+                    item { Text(if (!isRunning) "Not started" else "No variables", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
                 }
             }
 
             item { SectionHeader("WATCH", showWatch) { showWatch = !showWatch } }
             if (showWatch) {
                 item {
-                    Row(Modifier.padding(start = 24.dp, vertical = 4.dp)) {
+                    Row(Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) {
                         Text("Click + to add a watch expression", fontSize = 11.sp, color = MutedColor)
                         Spacer(Modifier.weight(1f))
                         Icon(Icons.Default.Add, "Add", tint = IconColor, modifier = Modifier.size(14.dp).clickable { })
@@ -861,7 +863,7 @@ private fun fileIcon(name: String) = when {
             if (showCallStack) {
                 if (isRunning && callStack.isNotEmpty()) {
                     items(callStack) { frame ->
-                        Row(Modifier.padding(start = 24.dp, vertical = 2.dp)) {
+                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
                             Icon(Icons.Default.Code, null, tint = IconColor, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(frame, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
@@ -869,17 +871,18 @@ private fun fileIcon(name: String) = when {
                         }
                     }
                 } else {
-                    item { Text("Not paused", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, vertical = 4.dp)) }
+                    item { Text("Not paused", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
                 }
             }
 
             item { SectionHeader("BREAKPOINTS", showBreakpoints) { showBreakpoints = !showBreakpoints } }
             if (showBreakpoints) {
                 if (breakpoints.isEmpty()) {
-                    item { Text("No breakpoints set", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, vertical = 4.dp)) }
+                    item { Text("No breakpoints set", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
                 } else {
-                    items(breakpoints) { (file, line) ->
-                        Row(Modifier.padding(start = 24.dp, vertical = 2.dp)) {
+                    items(breakpoints) { item ->
+                            val (file, line) = item
+                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
                             Icon(Icons.Default.RadioButtonChecked, "Breakpoint", tint = Color(0xFFE53935), modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("${file.substringAfterLast("/")}:$line", fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)

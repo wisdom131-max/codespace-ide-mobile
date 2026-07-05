@@ -28,6 +28,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import com.codespace.ide.agent.AgentTools
 import java.util.concurrent.TimeUnit
 
 // Theme colors passed from parent — matches the app's current theme
@@ -112,32 +113,61 @@ private suspend fun chat(
     model: String,
     messages: List<ChatMsg>,
     mode: ChatMode,
+    context: Context,
 ): String = withContext(Dispatchers.IO) {
     val systemPrompt = when (mode) {
         ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely."
-        ChatMode.AGENT -> "You are an autonomous coding agent inside CodeSpace IDE. You can read/write files and run terminal commands. Describe each action you take step by step."
+        ChatMode.AGENT -> "You are an autonomous coding agent inside CodeSpace IDE. " +
+            "You have full access to the user's environment. " +
+            AgentTools.TOOLS_DESCRIPTION
         ChatMode.PLAN  -> "You are a planning assistant inside CodeSpace IDE. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution."
     }
-    val msgs = JSONArray()
-    msgs.put(JSONObject().put("role", "system").put("content", systemPrompt))
-    messages.forEach { msgs.put(JSONObject().put("role", it.role).put("content", it.text)) }
 
-    val body = JSONObject()
-        .put("model", model)
-        .put("messages", msgs)
-        .put("stream", false)
-        .toString()
+    // Build conversation as mutable JSON array
+    val convMsgs = JSONArray()
+    convMsgs.put(JSONObject().put("role", "system").put("content", systemPrompt))
+    messages.forEach { convMsgs.put(JSONObject().put("role", it.role).put("content", it.text)) }
 
-    val resp = http.newCall(
-        Request.Builder()
-            .url("$baseUrl/api/chat")
-            .header("Content-Type", "application/json")
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
-    ).execute()
-    if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
-    val json = JSONObject(resp.body?.string() ?: "")
-    json.getJSONObject("message").getString("content")
+    // Agentic loop: call model -> parse tool calls -> execute -> feed results -> repeat
+    val maxIterations = 10
+    for (iteration in 0 until maxIterations) {
+        val body = JSONObject()
+            .put("model", model)
+            .put("messages", convMsgs)
+            .put("stream", false)
+            .toString()
+
+        val resp = http.newCall(
+            Request.Builder()
+                .url("$baseUrl/api/chat")
+                .header("Content-Type", "application/json")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+        ).execute()
+        if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
+        val json = JSONObject(resp.body?.string() ?: "")
+        val content = json.getJSONObject("message").getString("content")
+
+        if (mode == ChatMode.AGENT && AgentTools.hasToolCalls(content)) {
+            // Add assistant response to conversation
+            convMsgs.put(JSONObject().put("role", "assistant").put("content", content))
+
+            // Parse and execute all tool calls
+            val toolCalls = AgentTools.parseToolCalls(content)
+            val toolResults = StringBuilder()
+            for ((toolName, toolArgs) in toolCalls) {
+                val result = AgentTools.executeTool(toolName, toolArgs, context)
+                toolResults.append("[Tool: $toolName] Result:\n$result\n\n")
+            }
+
+            // Feed tool results back as user message
+            convMsgs.put(JSONObject().put("role", "user").put("content",
+                "Tool execution results:\n$toolResults\nContinue with the next step or give a final summary if done."))
+        } else {
+            return@withContext content
+        }
+    }
+    "Agent reached maximum tool iterations (10). The task may require more steps."
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -187,7 +217,7 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -454,7 +484,7 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
