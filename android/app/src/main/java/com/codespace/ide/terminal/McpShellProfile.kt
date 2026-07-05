@@ -237,30 +237,31 @@ GET  /health       — Health check
 Server: http://localhost:$API_PORT
 """.trim()
 
-    private fun buildBinScript(): String = """#!/bin/bash
-# agent — CLI wrapper for CodeSpace AgentApiServer
-# Usage: agent <tool_name> '<json_args>'
-AGENT_API_URL="\${AGENT_API_URL:-http://localhost:$API_PORT}"
-
-if [ -z "\$1" ]; then
-  echo "Usage: agent <tool_name> '<json_args>'"
-  echo "Run 'agent_tools' to list available tools"
-  exit 1
-fi
-
-tool="\$1"; shift
-args="\${1:-{}}"
-
-resp=\$(curl -s -X POST "\$AGENT_API_URL/tool/\$tool" \\
-  -H 'Content-Type: application/json' \\
-  -d "\$args" 2>/dev/null)
-
-if [ \$? -ne 0 ]; then
-  echo "[agent] API server not reachable at \$AGENT_API_URL"
-  echo "Make sure the terminal session is active in CodeSpace IDE."
-  exit 1
-fi
-
-echo "\$resp" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('result','[no result]'))" 2>/dev/null || echo "\$resp"
-"""
+    private fun buildBinScript(): String = buildString {
+    appendLine("#!/bin/bash")
+    appendLine("# agent — CLI wrapper for CodeSpace AgentApiServer")
+    appendLine("# Usage: agent <tool_name> '<json_args>'")
+    appendLine("AGENT_API_URL=\${AGENT_API_URL:-http://localhost:$API_PORT}")
+    appendLine("")
+    appendLine("if [ -z \"\$1\" ]; then")
+    appendLine("  echo \"Usage: agent <tool_name> '<json_args>'\"")
+    appendLine("  echo 'Run agent_tools to list available tools'")
+    appendLine("  exit 1")
+    appendLine("fi")
+    appendLine("")
+    appendLine("tool=\"\$1\"; shift")
+    appendLine("args=\"\${1:-{}}\"")
+    appendLine("")
+    appendLine("resp=\$(curl -s -X POST \"\$AGENT_API_URL/tool/\$tool\" \")
+    appendLine("  -H 'Content-Type: application/json' \")
+    appendLine("  -d \"\$args\" 2>/dev/null)")
+    appendLine("")
+    appendLine("if [ \$? -ne 0 ]; then")
+    appendLine("  echo \"[agent] API server not reachable at \$AGENT_API_URL\"")
+    appendLine("  echo 'Make sure the terminal session is active in CodeSpace IDE.'")
+    appendLine("  exit 1")
+    appendLine("fi")
+    appendLine("")
+    appendLine("echo \"\$resp\" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get(\"result\",\"[no result]\"))' 2>/dev/null || echo \"\$resp\"")
+    }
 }
