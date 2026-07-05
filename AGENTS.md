@@ -1850,3 +1850,65 @@ Root Box
 2. **Device file access**: Browse device files (pictures, downloads, etc.) from explorer
 3. **Image preview on long-press**: Hold an image file -> popup shows the actual image, fades on release
 4. **Green build**: All compilation errors fixed, waiting for CI confirmation
+
+---
+
+## 2026-07-05 — UNIVERSAL PREVIEW + REACT/JSX SUPPORT + DASHBOARD INTERACTIVE MODE
+
+### PreviewPane — Now a Universal Live Preview (PreviewPane.kt)
+The preview tab is no longer just for dashboards — it's a universal live preview for ANY code the user or AI writes.
+
+**Supported preview types:**
+1. **HTML/CSS/JS** — Any `.html` file renders live with full CSS + JS support
+2. **React/JSX** — Auto-detected (import React, useState, ReactDOM, jsx keywords). Renders via:
+   - React 18 UMD (development build)
+   - Babel Standalone for JSX transpilation in-browser
+   - Import/export statements stripped for browser compatibility
+   - useState/useEffect/useRef injected from React
+   - Works with any `.jsx`, `.tsx`, or `.js` file containing React code
+3. **Markdown** — Any `.md` file rendered to HTML with GitHub-flavored styling
+4. **SVG** — Any `.svg` file rendered inline
+5. **Browser/Local Server** — Connects to local dev servers (Remotion Studio, localhost:3000, etc.)
+   - `usesCleartextTraffic="true"` in AndroidManifest allows HTTP + local servers
+6. **Dashboard (Interactive)** — Drag-and-drop dashboard builder with Chart.js
+   - Add widgets: Stat Card, Chart (bar/line/pie), Progress Bar, Table, Activity Feed, Icon Grid
+   - Drag widgets to reposition, X to remove
+   - Export dashboard as standalone HTML file
+   - AI can generate a JSON spec file → auto-renders as interactive dashboard
+
+**How AI-generated content flows into preview:**
+- AI writes an HTML file → user opens it → renders live
+- AI writes a React component → user opens it → auto-detected and rendered with Babel
+- AI writes a dashboard JSON spec → user opens it → rendered as interactive dashboard
+- AI generates any UI → it appears in the preview tab for interaction
+
+### Dashboard JSON Spec Format (for AI-generated dashboards)
+```json
+{
+  "title": "My Dashboard",
+  "widgets": [
+    {"type": "stat", "title": "Revenue", "value": "$45,231", "label": "This month", "trend": "12.5%", "trendDirection": "up"},
+    {"type": "chart", "title": "Sales", "chartType": "bar", "color": "#e94560", "labels": ["Mon","Tue","Wed"], "data": [30,50,45]},
+    {"type": "progress", "title": "Build", "percent": 75, "label": "3 tasks left", "color": "#4ecca3"},
+    {"type": "table", "title": "Files", "headers": ["Name","Size"], "rows": [["main.kt","12KB"]]},
+    {"type": "activity", "title": "Activity", "items": [{"color":"#4ecca3","text":"Build succeeded","time":"2m"}]},
+    {"type": "icons", "title": "Actions", "icons": [{"icon":"📁","label":"Files","color":"#3a86ff"}]}
+  ]
+}
+```
+
+### Build Fixes (July 5)
+- **Kotlin string interpolation**: Rewrote `generateDefaultDashboard()` and `generateDashboardFromJson()` using string concatenation instead of triple-quoted strings with JS `$` signs (Kotlin interpreted `${...}` in JS as template expressions)
+- **Nested double quotes**: Escaped `\"` in React detection strings (`from "react"` → `from \"react\"`)
+- **JSONObject/JSONArray imports**: Fixed from bare `JSONObject` to `org.json.JSONObject`
+
+### Current Build Status
+- ✅ Build passing (commit `98a0a28`)
+- APK available from GitHub Actions run #28738434547
+
+### What's Next
+1. **Multi-root workspace explorer**: Add multiple top-level folders (VS Code multi-root workspace pattern)
+2. **Auto-refresh preview on file save**: Live reload when editor saves
+3. **Device file access**: Browse device files (pictures, downloads) from explorer
+4. **Image preview on long-press**: Hold image file → popup shows actual image
+5. **AI → Preview pipeline**: AI writes file → auto-opens in preview tab
