@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as argon2 from 'argon2';
+import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { RefreshToken } from './refresh-token.entity';
@@ -81,7 +81,7 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const existing = await this.users.findByEmail(dto.email);
     if (existing) throw new ConflictException('Email already registered');
-    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+    const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.users.create({
       email: dto.email,
       displayName: dto.displayName,
@@ -94,7 +94,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.users.findByEmail(dto.email);
     if (!user?.passwordHash) throw new UnauthorizedException('Invalid credentials');
-    const ok = await argon2.verify(user.passwordHash, dto.password);
+    const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
     return this.issueTokens(user.id, user.email, user.role, dto.deviceId);
   }

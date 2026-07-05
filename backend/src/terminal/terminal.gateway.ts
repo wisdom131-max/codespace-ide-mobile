@@ -7,7 +7,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
-import type { IPty } from 'node-pty';
+import { IPty } from './pty-types';
 
 /**
  * WebSocket PTY gateway. Spawns a constrained shell (or proxies SSH/Docker exec) and
