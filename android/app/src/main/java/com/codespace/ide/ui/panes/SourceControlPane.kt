@@ -261,7 +261,7 @@ private fun ChangeRow(change: GitChange, onStage: () -> Unit, onUnstage: () -> U
     val statusLetter = when (change.statusCode) {
         'M' -> "M"; 'A' -> "A"; 'U' -> "U"; '?' -> "U"; 'D' -> "D"; else -> " "
     }
-    Row(Modifier.fillMaxWidth().clickable { if (isStaged) onUnstage() else onStage() }.padding(start = 16.dp, end = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().clickable { if (isStaged) onUnstage() else onStage() }.padding(16.dp, 4.dp, 8.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(statusLetter, fontSize = 11.sp, color = statusColor, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.width(16.dp))
         Icon(fileIconFor(change.file), null, tint = IconColor, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))

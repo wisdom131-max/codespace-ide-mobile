@@ -322,7 +322,7 @@ fun ExplorerSidePanel(
                         Modifier.fillMaxWidth()
                             .background(if (isActive) SelectedBg else Color.Transparent)
                             .clickable { onOpenFile(tabPath) }
-                            .padding(start = 16.dp, end = 8.dp, vertical = 4.dp),
+                            .padding(16.dp, 4.dp, 8.dp, 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(fileIcon(tabPath.substringAfterLast("/")), null, tint = IconColor, modifier = Modifier.size(14.dp))
@@ -491,8 +491,8 @@ fun ExplorerSidePanel(
                             val content = File(activeFilePath).readText()
                             val items = mutableListOf<Triple<String, Int, String>>()
                             val classRegex = Regex("^(class|object|data class|enum class|sealed class|interface)\\s+(\\w+)")
-                            val funRegex = Regex("^\s*(fun|private fun|public fun|internal fun)\\s+(\\w+)")
-                            val varRegex = Regex("^\s*(val|var|private val|public val|private var)\\s+(\\w+)")
+                            val funRegex = Regex("^\\s*(fun|private fun|public fun|internal fun)\\s+(\\w+)")
+                            val varRegex = Regex("^\\s*(val|var|private val|public val|private var)\\s+(\\w+)")
                             content.lines().forEachIndexed { idx, line ->
                                 val cMatch = classRegex.find(line.trim())
                                 if (cMatch != null) { items.add(Triple(cMatch.groupValues[2], idx + 1, "class")); return@forEachIndexed }
@@ -510,7 +510,7 @@ fun ExplorerSidePanel(
                         Row(
                             Modifier.fillMaxWidth()
                                 .clickable { onOpenFile(activeFilePath ?: return@clickable) }
-                                .padding(start = 16.dp, end = 8.dp, vertical = 3.dp),
+                                .padding(16.dp, 3.dp, 8.dp, 3.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
@@ -744,7 +744,7 @@ fun ExplorerSidePanel(
 }
 
 private fun String.matchesSimpleGlob(pattern: String): Boolean {
-    val regex = pattern.replace(".", "\.").replace("*", ".*").replace("?", ".")
+    val regex = pattern.replace(".", "\\.").replace("*", ".*").replace("?", ".")
     return try { Regex(regex, RegexOption.IGNORE_CASE).matches(this) } catch (_: Exception) { this.contains(pattern, ignoreCase = true) }
 }
 
