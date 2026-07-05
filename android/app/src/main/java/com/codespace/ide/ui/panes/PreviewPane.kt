@@ -28,8 +28,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.domain.Language
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import JSONObject
-import JSONArray
+import org.json.JSONObject
+import org.json.JSONArray
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
