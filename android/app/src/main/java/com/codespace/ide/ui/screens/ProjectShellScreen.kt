@@ -936,7 +936,8 @@ fun ProjectShellScreen(
                                 if (active != null) {
                                     val content = try { java.io.File(active).readText() } catch (_: Exception) { "" }
                                     val count = content.split(findQuery).size - 1
-                                    Text("${'$'}count ${'$'}{if (count == 1) "match" else "matches"}", fontSize = 10.sp, color = TabTextInactive)
+                                    val matchWord = if (count == 1) "match" else "matches"
+                                    Text(count.toString() + " " + matchWord, fontSize = 10.sp, color = TabTextInactive)
                                     Spacer(Modifier.width(8.dp))
                                 }
                             }
