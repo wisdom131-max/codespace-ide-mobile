@@ -542,47 +542,367 @@ private fun fileIcon(name: String) = when {
 @Composable fun SearchPanel() {
     var searchQuery  by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
+    var caseSensitive by remember { mutableStateOf(false) }
+    var useRegex      by remember { mutableStateOf(false) }
+    var matchWholeWord by remember { mutableStateOf(false) }
+    var results       by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var searching     by remember { mutableStateOf(false) }
+    var expandedFiles by remember { mutableStateOf(setOf<String>()) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         keyboardController?.show()
     }
-    Column(Modifier.fillMaxSize().padding(8.dp)) {
-        OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it },
-            label = { Text("Search") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester))
-        OutlinedTextField(value = replaceQuery, onValueChange = { replaceQuery = it },
-            label = { Text("Replace") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-        Row(Modifier.padding(top = 8.dp)) {
-            listOf("Aa", "\b", ".*").forEach { opt ->
-                Box(Modifier.border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 6.dp, vertical = 4.dp)) {
-                    Text(opt, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+
+    data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
+
+    fun performSearch(query: String) {
+        if (query.isBlank()) { results = emptyList(); return }
+        searching = true
+        scope.launch {
+            val wsPath = loadWorkspacePath(context)
+            val wsRoot = wsPath?.let { File(it) }
+            val allResults = mutableListOf<SearchResult>()
+            if (wsRoot != null && wsRoot.exists()) {
+                val extensions = setOf("kt", "java", "xml", "gradle", "kts", "py", "js", "ts", "json", "md", "txt", "yml", "yaml", "sh", "html", "css")
+                val maxFiles = 500
+                var filesScanned = 0
+                fun walk(dir: File) {
+                    if (filesScanned >= maxFiles) return
+                    val files = dir.listFiles() ?: return
+                    for (f in files) {
+                        if (filesScanned >= maxFiles) break
+                        if (f.isDirectory) {
+                            if (!f.name.startsWith(".") && f.name != "build" && f.name != "node_modules") {
+                                walk(f)
+                            }
+                        } else if (f.extension.lowercase() in extensions || f.extension.isEmpty()) {
+                            filesScanned++
+                            try {
+                                f.useLines { lines ->
+                                    lines.forEachIndexed { idx, line ->
+                                        val matched = if (useRegex) {
+                                            try {
+                                                val regex = if (caseSensitive) Regex(query) else Regex(query, RegexOption.IGNORE_CASE)
+                                                regex.containsMatchIn(line)
+                                            } catch (_: Exception) { false }
+                                        } else if (matchWholeWord) {
+                                            val regex = if (caseSensitive) Regex("\\b${Regex.escape(query)}\\b") else Regex("\\b${Regex.escape(query)}\\b", RegexOption.IGNORE_CASE)
+                                            regex.containsMatchIn(line)
+                                        } else if (caseSensitive) {
+                                            line.contains(query)
+                                        } else {
+                                            line.contains(query, ignoreCase = true)
+                                        }
+                                        if (matched) {
+                                            val matchStart = if (caseSensitive) line.indexOf(query) else line.indexOf(query, ignoreCase = true)
+                                            if (matchStart >= 0) {
+                                                allResults.add(SearchResult(f.absolutePath, idx + 1, line.trim(), matchStart..(matchStart + query.length - 1)))
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
                 }
-                Spacer(Modifier.width(4.dp))
+                walk(wsRoot)
+            }
+            results = allResults
+            searching = false
+        }
+    }
+
+    val grouped = results.groupBy { it.file }
+
+    Column(Modifier.fillMaxSize().padding(8.dp)) {
+        // Search input
+        OutlinedTextField(
+            value = searchQuery, onValueChange = { searchQuery = it },
+            label = { Text("Search") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    Icon(Icons.Default.Close, "Clear", tint = MutedColor,
+                        modifier = Modifier.size(16.dp).clickable { searchQuery = ""; results = emptyList() })
+                }
+            },
+        )
+        // Replace input
+        OutlinedTextField(
+            value = replaceQuery, onValueChange = { replaceQuery = it },
+            label = { Text("Replace") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        // Toggle buttons — case sensitive, whole word, regex
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val toggles = listOf(
+                "Aa" to caseSensitive,
+                "\b" to matchWholeWord,
+                ".*" to useRegex,
+            )
+            toggles.forEachIndexed { idx, (label, active) ->
+                Box(
+                    Modifier
+                        .background(if (active) IconColor else Color.Transparent, RoundedCornerShape(3.dp))
+                        .border(1.dp, if (active) IconColor else DividerColor, RoundedCornerShape(3.dp))
+                        .clickable {
+                            when (idx) {
+                                0 -> caseSensitive = !caseSensitive
+                                1 -> matchWholeWord = !matchWholeWord
+                                2 -> useRegex = !useRegex
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(label, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        color = if (active) Color.White else MutedColor)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            // Search button
+            if (searching) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
+            } else {
+                Text("Search", fontSize = 11.sp, color = IconColor, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { performSearch(searchQuery) }.padding(4.dp))
             }
         }
-        Text("No results", fontSize = 13.sp, color = Color(0xFF717171),
-            modifier = Modifier.padding(top = 16.dp))
+
+        // Results count
+        if (results.isNotEmpty()) {
+            Text("${results.size} results in ${grouped.size} files",
+                fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(top = 8.dp))
+        }
+
+        // Results list
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp),
+        ) {
+            if (results.isEmpty() && !searching && searchQuery.isNotEmpty()) {
+                item {
+                    Text("No results found", fontSize = 13.sp, color = MutedColor,
+                        modifier = Modifier.padding(top = 16.dp))
+                }
+            }
+            grouped.forEach { (filePath, fileResults) ->
+                val isExpanded = filePath in expandedFiles
+                item(key = "header_$filePath") {
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            expandedFiles = if (isExpanded) expandedFiles - filePath else expandedFiles + filePath
+                        }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                            null, tint = MutedColor, modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.Description, null, tint = IconColor, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            filePath.substringAfterLast("/"),
+                            fontSize = 12.sp, color = TextColor, fontWeight = FontWeight.Medium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("${fileResults.size}", fontSize = 10.sp, color = MutedColor,
+                            modifier = Modifier.background(DividerColor, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+                    }
+                }
+                if (isExpanded) {
+                    items(fileResults, key = { "${it.file}_${it.lineNum}" }) { result ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 36.dp, vertical = 2.dp),
+                        ) {
+                            Text("${result.lineNum}: ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                            Text(result.lineText, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable fun GitSidePanel() { SourceControlPane() }
 
 @Composable fun RunDebugPanel(onMoreMenu: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("RUN AND DEBUG", fontSize = 11.sp, color = Color(0xFF717171))
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {}) { Text("▶ Run") }
-            OutlinedButton(onClick = {}) { Text("⏹ Stop") }
+    var selectedConfig by remember { mutableStateOf("Kotlin Application") }
+    var showConfigMenu by remember { mutableStateOf(false) }
+    var isRunning      by remember { mutableStateOf(false) }
+    var variables      by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    var callStack      by remember { mutableStateOf(listOf<String>()) }
+    var breakpoints    by remember { mutableStateOf(listOf<Pair<String, Int>>()) }
+    var showVariables  by remember { mutableStateOf(true) }
+    var showWatch      by remember { mutableStateOf(false) }
+    var showCallStack  by remember { mutableStateOf(true) }
+    var showBreakpoints by remember { mutableStateOf(true) }
+
+    val configs = listOf(
+        "Kotlin Application",
+        "Android App (Debug)",
+        "Android App (Release)",
+        "Gradle Build",
+        "JUnit Tests",
+        "Terminal Script",
+    )
+
+    Column(Modifier.fillMaxSize()) {
+        // Header
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("RUN AND DEBUG", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Default.MoreVert, "More", tint = MutedColor,
+                modifier = Modifier.size(18.dp).clickable { onMoreMenu() })
         }
-        Spacer(Modifier.height(16.dp))
-        Text("VARIABLES", fontSize = 11.sp, color = Color(0xFF717171))
-        Text("No active debug session.", fontSize = 13.sp, color = Color(0xFFAAAAAA),
-            modifier = Modifier.padding(top = 8.dp))
+
+        // Config selector + run/stop buttons
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box {
+                OutlinedButton(onClick = { showConfigMenu = true }, modifier = Modifier.weight(1f)) {
+                    Text(selectedConfig, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
+                }
+                DropdownMenu(expanded = showConfigMenu, onDismissRequest = { showConfigMenu = false }) {
+                    configs.forEach { config ->
+                        DropdownMenuItem(
+                            text = { Text(config, fontSize = 12.sp) },
+                            onClick = { selectedConfig = config; showConfigMenu = false },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            if (!isRunning) {
+                FilledIconButton(
+                    onClick = {
+                        isRunning = true
+                        variables = listOf(
+                            "this" to "MainActivity@8a3f",
+                            "args" to "String[0]",
+                            "workspace" to "/storage/emulated/0/CodeSpace",
+                        )
+                        callStack = listOf(
+                            "MainActivity.onCreate() - line 42",
+                            "setContentView() - line 58",
+                            "TerminalManager.start() - line 124",
+                        )
+                    },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Default.PlayArrow, "Run", tint = Color.White)
+                }
+            } else {
+                FilledIconButton(
+                    onClick = {
+                        isRunning = false
+                        variables = emptyList()
+                        callStack = emptyList()
+                    },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFFE53935)),
+                ) {
+                    Icon(Icons.Default.Stop, "Stop", tint = Color.White)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(color = DividerColor)
+        Spacer(Modifier.height(4.dp))
+
+        // Collapsible sections
+        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            item { SectionHeader("VARIABLES", showVariables) { showVariables = !showVariables } }
+            if (showVariables) {
+                if (isRunning && variables.isNotEmpty()) {
+                    items(variables) { (name, value) ->
+                        Row(Modifier.padding(start = 24.dp, vertical = 2.dp)) {
+                            Icon(Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(name, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
+                            Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                            Text(value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                } else {
+                    item { Text(if (!isRunning) "Not started" else "No variables", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, vertical = 4.dp)) }
+                }
+            }
+
+            item { SectionHeader("WATCH", showWatch) { showWatch = !showWatch } }
+            if (showWatch) {
+                item {
+                    Row(Modifier.padding(start = 24.dp, vertical = 4.dp)) {
+                        Text("Click + to add a watch expression", fontSize = 11.sp, color = MutedColor)
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Default.Add, "Add", tint = IconColor, modifier = Modifier.size(14.dp).clickable { })
+                    }
+                }
+            }
+
+            item { SectionHeader("CALL STACK", showCallStack) { showCallStack = !showCallStack } }
+            if (showCallStack) {
+                if (isRunning && callStack.isNotEmpty()) {
+                    items(callStack) { frame ->
+                        Row(Modifier.padding(start = 24.dp, vertical = 2.dp)) {
+                            Icon(Icons.Default.Code, null, tint = IconColor, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(frame, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                } else {
+                    item { Text("Not paused", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, vertical = 4.dp)) }
+                }
+            }
+
+            item { SectionHeader("BREAKPOINTS", showBreakpoints) { showBreakpoints = !showBreakpoints } }
+            if (showBreakpoints) {
+                if (breakpoints.isEmpty()) {
+                    item { Text("No breakpoints set", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, vertical = 4.dp)) }
+                } else {
+                    items(breakpoints) { (file, line) ->
+                        Row(Modifier.padding(start = 24.dp, vertical = 2.dp)) {
+                            Icon(Icons.Default.RadioButtonChecked, "Breakpoint", tint = Color(0xFFE53935), modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("${file.substringAfterLast("/")}:$line", fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onToggle() }.padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+            null, tint = MutedColor, modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(title, fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
     }
 }
 
