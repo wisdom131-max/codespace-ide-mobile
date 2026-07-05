@@ -1588,3 +1588,111 @@ Status of each step tracked below as they land.
   - Debug Console Run (▷) — builds the right interpreter command per file
     type and dispatches it into the real Ubuntu terminal session
 - Build pushed (commit 8ca3c9a) — CI run in progress.
+
+---
+
+## 2026-07-05 — VS CODE UI PARITY: COLOR THEMES, INLINE AI PANEL, SEARCH & DEBUG
+
+### Commits
+- `1dc142b` — Color theme picker, inline draggable AI panel, menu bar, gear fixes
+- `68c1cd9` — Functional Search panel + VS Code-style Run & Debug panel
+
+### Build Status
+- Build #28731080985 (commit 1dc142b): ✅ SUCCESS (6m9s)
+- Build #28731276085 (commit 68c1cd9): IN PROGRESS
+
+### Changes
+
+#### AI Chat Panel (CopilotChatPanelOverlay.kt + ProjectShellScreen.kt)
+- **Removed SmartToy icon** from activity bar (user feedback: "childish")
+- **Replaced floating overlay with inline right-side panel** — renders inside the layout Row, not as a full-screen overlay
+- **Draggable from left edge** — drag left to widen, drag right to narrow, drag past 60dp closes the panel. Mirror of how the explorer panel's right-edge drag handle works
+- **Changed icon to Psychology** (Icons.Default.Psychology) — professional, matches VS Code Copilot aesthetic. Used in both the top-bar toggle and the panel header
+- **All colors now flow from active theme** via `ChatPanelColors` — no more hardcoded Catppuccin colors
+- **Ask/Agent/Plan mode tabs** with distinct icons (QuestionAnswer, AutoMode, ListAlt)
+- **Model picker dropdown** — shows available Ollama models, auto-detects local models on launch
+- **CopilotChatPanelInline** added as a non-overlay composable (no scrim, no full-screen Box)
+- `aiPanelWidth` state variable (float, default 300f) controls the draggable width
+- Top-right toggle: `showChatPanel` state, Psychology icon with blue highlight when active
+
+#### Color Theme Picker (ProjectShellScreen.kt)
+- Full dialog with **16 themes**: Dark (Default), Dark Modern, Dracula, AMOLED Black, Monokai, One Dark Pro, GitHub Dark, Tokyo Night, Nord, Catppuccin Mocha, Light (Default), Light Modern, GitHub Light, Quiet Light, Solarized Light, Eye Care
+- Each theme shows **live color preview swatches** (background, accent, indicator colors)
+- Dark and Light sections with checkmark on the active theme
+- Clicking a theme calls `onSelectTheme()` to switch the active `ThemePreset` instantly
+- Dialog triggered from gear menu → "Color Theme" and command palette → "Preferences: Color Theme"
+
+#### Menu Bar (ProjectShellScreen.kt)
+- **Restored VS Code menu bar**: File, Edit, Selection, View, Go, Run, Terminal, Help
+- Each menu has a dropdown with actions and keyboard shortcuts displayed
+- All actions wired to `handleMenuAction` → `handleCommandAction`
+- Current theme name displayed on the right side of the menu bar
+- `MenuBarItem` and `MenuAction` data classes define the menu structure
+- `openMenuBar` state tracks which dropdown is open
+
+#### Gear Menu Fixes (ProjectShellScreen.kt)
+- **Toggle Word Wrap** now shows ON/OFF state and actually toggles `wordWrap` state
+- **Go to Line** shows a dialog with line number input (not just a notification)
+- **Color Theme** opens the new theme picker dialog (not a notification)
+
+#### Search Panel (ExplorerPane.kt)
+- **Actual file content search** across the workspace — scans .kt, .java, .xml, .gradle, .kts, .py, .js, .ts, .json, .md, .txt, .yml, .yaml, .sh, .html, .css files
+- **Case sensitive toggle** (Aa button) — highlights when active
+- **Whole word toggle** (\b button) — uses regex word boundary matching
+- **Regex toggle** (.* button) — enables regex pattern matching
+- **Results grouped by file** with expand/collapse — file name, result count badge
+- Expanded files show **line numbers and matched line text** in monospace
+- Results count summary: "N results in M files"
+- File scan limit of 500 files to prevent OOM on 3GB device
+- Skips hidden directories, `build/`, and `node_modules/`
+
+#### Run & Debug Panel (ExplorerPane.kt)
+- **Launch configuration dropdown**: Kotlin Application, Android App (Debug/Release), Gradle Build, JUnit Tests, Terminal Script
+- **Run/Stop buttons** with state management — Run (green play), Stop (red stop)
+- **Collapsible Variables section** — shows variable name = value pairs when running
+- **Collapsible Watch section** — placeholder with "Click + to add a watch expression"
+- **Collapsible Call Stack section** — shows function frames with file:line references
+- **Collapsible Breakpoints section** — shows file:line entries with red dot icons
+- `SectionHeader` composable for expand/collapse UI (chevron + title)
+- More menu (...) in header connects to `onMoreMenu` callback
+
+### File Summary
+| File | Changes |
+|------|---------|
+| `ProjectShellScreen.kt` | Menu bar, color theme dialog, inline chat panel, gear menu fixes, Psychology icon, handleMenuAction |
+| `CopilotChatPanelOverlay.kt` | New `CopilotChatPanelInline` composable, Psychology icon, Ask/Agent/Plan tabs, model picker |
+| `ExplorerPane.kt` | Functional SearchPanel (file content search), VS Code-style RunDebugPanel with collapsible sections |
+| `AiAssistantPane.kt` | Replaced hardcoded light colors with MaterialTheme.colorScheme |
+
+### Current Architecture
+```
+Root Box
+├── Column
+│   ├── Top Bar (workspace name, action icons, Psychology chat toggle, notification bell)
+│   ├── Menu Bar (File | Edit | Selection | View | Go | Run | Terminal | Help)
+│   └── Row (Main Body)
+│       ├── Activity Bar (48dp: Explorer, Search, Git, Run, Extensions + bottom: Account, Settings)
+│       ├── Side Panel (draggable right edge, 80-500dp)
+│       ├── Editor Column (weight 1f)
+│       │   ├── Tab Bar (horizontal scroll, close buttons)
+│       │   ├── Breadcrumb (file path)
+│       │   ├── Editor Area (EditorPane or watermark)
+│       │   ├── Coding Toolbar (symbol keyboard)
+│       │   ├── Find/Replace Bar
+│       │   └── Status Bar (branch, errors, warnings, Ln/Col, encoding, language)
+│       └── AI Chat Panel (draggable left edge, 60-600dp, inline not overlay)
+├── Color Theme Dialog
+├── Go to Line Dialog
+├── Command Palette
+├── Notification Drawer
+└── Other overlays
+```
+
+### Next Steps
+1. Monitor build #28731276085 — verify SearchPanel + RunDebugPanel compile cleanly
+2. Test on device: drag the AI panel from right to left, verify it collapses to 0dp
+3. Test color theme switching — verify all 16 themes render correctly
+4. Test search panel — verify file content search works on workspace files
+5. Wire Run & Debug "Run" button to actually launch the selected config in the terminal
+6. Wire Search panel "Replace" functionality to actually replace text in files
+7. Wire Breakpoints to toggle from editor gutter
