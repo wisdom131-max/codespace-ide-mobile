@@ -2043,3 +2043,35 @@ real `.sh` file from recent history.
 Work ONE item at a time, in the order above unless Wisdom says otherwise. Confirm each fix is verified (build
 green + Wisdom tests on device) before starting the next. Update this section in place as items are completed —
 do not delete completed items, mark them ✅ with the date/build number instead.
+
+---
+
+## 2026-07-06 (cont'd) — BACKLOG SPLIT: EASY vs HARD — EXECUTION ORDER
+
+Wisdom asked to split the 17-item backlog above into EASY (batch now, all at once) and HARD (one at a time,
+after easy batch verified). This section is the authoritative split — update status inline as each completes.
+
+### EASY BATCH — IN PROGRESS (2026-07-06)
+- [ ] #3  Fix image-tap crash → preview instead of editor
+- [ ] #5  Remove redundant "Filter files..." search bar
+- [ ] #6  Terminal tab-bar cleanup (duplicate root@localhost label + row sizing)
+- [ ] #8  New "Show/Hide Quick Actions" toggle in terminal 3-dot menu
+- [ ] #9  Remove duplicate tab-name breadcrumb row in Preview (all sub-tabs)
+- [ ] #10 Shrink Browser/Remotion address bar to fill empty space
+- [ ] #13 Fix Ollama setup script bugs (missing `echo -e`, stray `&& "` quote corruption)
+- [ ] #15 Fix "Start MCP Server (npm)" — mislabeled/wrong tool
+- [ ] #16 Fix "Make Script from History" — actually generate + save a .sh file
+
+### HARD BATCH — QUEUED (start after easy batch verified on device)
+- [ ] #1  Per-project workspace state isolation
+- [ ] #2  Image picker + folder copy
+- [ ] #4  PDF viewer + zip/archive browsing
+- [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
+- [ ] #11 Real fullscreen toggle across ALL Preview sub-tabs (centered, back/X button)
+- [ ] #12 Ollama/Claude launch flow rebuild (persistence, no re-pull/re-tab, model picker w/ warnings,
+        sign in/out with persistent memory)
+- [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+Rule: mark each `[x]` with commit hash when done. Do not start HARD batch until every EASY item is `[x]` and
+Wisdom has confirmed a green build on device.
