@@ -1912,3 +1912,134 @@ The preview tab is no longer just for dashboards — it's a universal live previ
 3. **Device file access**: Browse device files (pictures, downloads) from explorer
 4. **Image preview on long-press**: Hold image file → popup shows actual image
 5. **AI → Preview pipeline**: AI writes file → auto-opens in preview tab
+
+---
+
+## 2026-07-06 — FULL UI/UX + AGENT AUDIT SESSION — MASTER TODO LIST (AUTHORITATIVE, WORK ONE AT A TIME)
+
+Wisdom did a full walkthrough of the app (screenshots + live discussion) and I (agent) audited the actual code
+behind several buttons/flows to confirm what's real vs. placeholder. This is the current backlog — work through
+in order, confirm each with Wisdom before moving to the next, update this section as items complete.
+
+### 1. Per-project workspace state isolation
+Workspace preferences currently leak across projects. Must be scoped per-project so switching projects doesn't
+carry over stale state.
+
+### 2. Image picker + folder copy
+Add ability to pick images from device storage and copy them into a project folder in the explorer.
+
+### 3. Fix image-tap crash
+Tapping an image file in the explorer currently opens the text editor (crash). Should trigger an image preview
+instead, never the code editor.
+
+### 4. PDF viewer + zip/archive browsing
+Add native PDF rendering and the ability to browse inside zip/archive files without extracting first.
+
+### 5. Remove redundant "Filter files..." search bar
+Explorer has a duplicate/unnecessary filter search bar — remove it.
+
+### 6. Terminal tab-bar cleanup
+- Duplicate "root@localhost" label bug (same pattern as other duplicate-label bugs found this session)
+- Tab-bar row is oversized — shrink to match the row above it
+
+### 7. Quick Actions row (STT/Root/Zsh+OMZ/A-/A+ etc.) — portrait mode + resize behavior
+- In portrait, this row is too wide and steals vertical space the terminal output should get — terminal must
+  get priority/stretch.
+- When the bottom panel is dragged down toward 0dp, this row (and similar UI) should fold/collapse smoothly
+  ("flow") instead of the current abrupt/broken behavior.
+
+### 8. New "Show/Hide Quick Actions" toggle
+Add next to the existing "Show/Hide Extra Keys" toggle in the terminal's 3-dot menu.
+
+### 9. Remove duplicate tab-name breadcrumb row in Preview pane
+Dashboard, HTML, Markdown, SVG, Browser, Remotion sub-tabs all currently repeat their own name in a second row
+right below the tab bar — pure dead space, same bug pattern as #6. Remove for all sub-tabs.
+
+### 10. Shrink Browser/Remotion address bar to fill empty space
+The URL/address input box in the Browser tab (and same issue in Remotion tab) is oversized and leaves an
+awkward empty gap in the toolbar row. Shrink and re-fit so no wasted space.
+
+### 11. Real fullscreen toggle for Preview sub-tabs
+The icon next to the "?" help icon and refresh icon (currently just "open externally") should instead expand
+the active preview to fill the entire app window edge-to-edge. Must work identically across ALL Preview
+sub-tabs (Browser, Dashboard, Remotion, HTML, Markdown, SVG) — content centered, plus a back/X button so the
+user is never stuck in fullscreen with no way out.
+
+### 12. Ollama/Claude launch flow — rebuild for persistence (CRITICAL — confirmed root cause)
+**Current broken behavior (confirmed in code, `TerminalPane.kt` "Setup Ollama..." menu items):**
+- Every tap opens a BRAND NEW Ubuntu terminal tab
+- Starts a NEW `ollama serve &` process every time (risk of multiple concurrent servers on a 3GB device)
+- Re-runs `ollama pull nemotron-3-super:cloud` unconditionally every time — no "already pulled" check
+- Re-writes env config every time
+- Ollama binary install itself IS already guarded correctly (`if ! command -v ollama`) — only the pull/serve/tab
+  spawning is the problem.
+
+**Required redesign:**
+- First-ever run: full setup (install binary, start server, sign in, pull chosen model once, install Claude
+  Code, configure env). Save a persistent "setup complete" flag + which model was chosen.
+- Every run after: single **"Launch Coding Agent"** button — checks if server already running (reuse, never
+  spawn a duplicate), reuses existing terminal tab if one's open, runs `claude --model <chosen>` directly. No
+  re-pull, no re-tab, no re-install.
+- Hard guard: never allow two `ollama serve` processes at once on this device.
+- Model picker still shown on first pull — list device-compatible models FIRST, heavier models after with a
+  ⚠️ warning (e.g. "needs 8GB+ phone") attached.
+- Opt-in (default OFF) toggle for stronger devices to run multiple models/tabs concurrently — Wisdom's own
+  device stays single-instance always.
+- Add explicit **"Sign in to Ollama"** / **"Sign out of Ollama"** actions, independent of setup flow.
+  `AgentMemory.kt` is a separate persistent JSON store unrelated to the Ollama account session — confirmed
+  signing out will NOT wipe agent memory.
+
+### 13. Fix Ollama setup script bugs (confirmed root cause, both "Setup Ollama + Claude Code" AND
+"Setup Ollama (Offline Models)" have the identical bug)
+- All `echo "\033[...]"` lines are missing `-e` — escape codes print as literal text instead of ANSI colors.
+- The `curl ... && "` / `tar ... && "` / `chmod ... && "` lines in the install block end with a stray `&& "`
+  (an extra double-quote) instead of a proper line continuation. This corrupts bash's quote-balancing and
+  eventually crashes with `bash: syntax error near unexpected token '('` once it reaches a line containing a
+  literal `(` (e.g. "qwen2.5-coder:1.5b (~1GB RAM...)"). Confirmed via live screenshot repro (2026-07-06).
+
+### 14. Connectors — currently non-functional, needs real OAuth (CONFIRMED GAP)
+`AgentConnectorManager.kt` has good scaffolding for Gmail/Google Calendar/Google Drive/Slack/GitHub but is NOT
+actually usable:
+- `client_id` defaults to literal string `"CLIENT_ID_NOT_SET"` — no OAuth app registered for any service
+- No WebView-based auth flow — just returns a URL as text and asks the user to manually paste back a code
+- `tokenUrl` is defined per-connector but the code-to-token exchange call is never implemented anywhere
+- The visible "Connectors" UI sheet (`ConnectorsHubSheet.kt`) doesn't even list Gmail/Calendar/Drive/Slack —
+  only shows GitHub/SSH/AI Providers/Services, and ALL of those rows are stub `onClick = { onDismiss() }` —
+  they do nothing.
+**Required:** register real OAuth apps (Google Cloud Console project for Gmail/Calendar/Drive, Slack app,
+GitHub OAuth app), build a real WebView auth flow with redirect capture, implement the actual
+authorization-code → access-token exchange, and wire the Connectors UI to real state (connected/disconnected)
+instead of dismiss-only stubs.
+
+### 15. Fix "Start MCP Server (npm)" menu item — mislabeled/wrong tool
+Currently runs `npx -y @modelcontextprotocol/server-filesystem $HOME` — an unrelated generic filesystem-only
+MCP package. This is NOT connected to the app's own local `AgentApiServer` (32-tool agent system on :8765),
+which is already auto-started via `McpShellProfile.install()` on every terminal session anyway. Fix: either
+remove this button (redundant — the real agent API is already always running) or repoint it to something
+actually useful.
+
+### 16. Fix "Make Script from History" — currently fake automation
+Just runs `history | tail -20` and tells the user to copy-paste manually. Should actually generate and save a
+real `.sh` file from recent history.
+
+### 17. Dashboard chart/icon sizing — pending Wisdom's specifics, revisit next session.
+
+---
+
+### AUDIT NOTES — What's confirmed SOLID (do not rebuild, just extend)
+- **AgentApiServer** (`agent/AgentApiServer.kt`, port 8765) — genuinely wired, auto-starts per terminal session
+  via `McpShellProfile.install()` (confirmed call sites in `TerminalPane.kt` lines ~503/575). Exposes 32 real
+  tools: shell, full git, Remotion render, secrets, web fetch/search, memory (`AgentMemory.kt`), entities
+  (`AgentEntityManager.kt`), task scheduling (`AgentScheduler.kt`), image gen, file upload, package installs.
+  `.bashrc` gets `agent`, `agent_run`, `agent_git`, `agent_mem_*`, etc. shortcuts auto-injected. This is the
+  correct foundation for "any AI launched has full agent access" — just needs Connectors (#14) to close the
+  last real gap.
+- **Terminal 3-dot menu audit (2026-07-06):** of 10 items — New Ubuntu Terminal, SSH Manager, Text Expansions,
+  Show/Hide Extra Keys, Color Scheme picker, Close This Tab all confirmed working. Setup Ollama (both variants),
+  Start MCP Server, and Make Script from History are the 4 broken/half-baked ones tracked above (#12, #13, #15,
+  #16).
+
+### EXECUTION RULE FOR THIS BACKLOG
+Work ONE item at a time, in the order above unless Wisdom says otherwise. Confirm each fix is verified (build
+green + Wisdom tests on device) before starting the next. Update this section in place as items are completed —
+do not delete completed items, mark them ✅ with the date/build number instead.
