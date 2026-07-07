@@ -2364,3 +2364,81 @@ will check back rather than polling continuously).
 - [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
 - [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
 - [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+---
+
+## 2026-07-07 (later still) — HARD BATCH #2: AI + Git access audit — SHIPPED
+
+### What Wisdom asked
+1. Check whether "any AI launched" in the app can actually access the app (files/terminal/git) — is it wired properly.
+2. Check whether Git is wired / usable — add GitHub sign-in to the gear/settings menu.
+
+### Audit findings
+- **Git was completely non-functional.** `SourceControlPane.runGit()` hardcoded
+  `/data/data/com.termux/files/usr/bin/git` (a different app's private directory —
+  this app has no permission to read or exec it; leftover from the pre-Ubuntu-refactor
+  Termux-based architecture) and fell back to bare `"git"`, which was never on the
+  Android host PATH either. `AgentTools.gitRun()`/`runCommand()` had the identical bug —
+  bare host `ProcessBuilder`, no proot. **git/npm/apt/etc. only exist inside the Ubuntu
+  proot rootfs** — none of this ever had a chance of working.
+- **AgentApiServer** (local HTTP server on `:8765`, exposes all 32 `AgentTools` to any
+  terminal-launched AI — Claude Code, Ollama CLI, llama.cpp) was fully built but
+  `AgentApiServer.start()` was never called anywhere in the codebase.
+- **Two competing AI chat UIs existed.** `AiAssistantPane.kt` had zero call sites
+  anywhere — pure dead code, not reachable from any screen, despite an earlier
+  session's summary claiming it was wired into the activity bar (it was not, or the
+  wiring was lost). `CopilotChatPanelInline`/`Overlay` (triggered by the animated bot
+  icon) is the one actually rendered — confirmed with Wisdom. It already had
+  `AgentTools` wired into AGENT mode's tool-calling loop, but was missing the real
+  GitHub Copilot Chat Completions API path that `AiAssistantPane.kt` had.
+- GitHub sign-in: confirmed zero code exists for this anywhere yet.
+
+### Fix (commit `ab8e162`)
+- Added `ProotInstaller.execOnce(context, command, workdir)` — one-shot,
+  non-interactive proot invocation reusing the exact same binary/bind-mounts/env as
+  the interactive terminal (`launchArgs`), swapping the final `/bin/bash --login` for
+  `/bin/bash -lc <command>`, run via plain `ProcessBuilder` (pipes, no PTY needed for
+  captured output).
+- Added `ProotInstaller.guestToHostPath()` / `hostToGuestPath()` — proot is just a
+  bind-mount overlay, so pure file I/O can hit the host path directly; only *running
+  binaries* needs the proot wrapper. `hostToGuestPath` maps whatever host folder the
+  Explorer's device folder picker handed to `SourceControlPane` (rootfs-internal,
+  `/storage/emulated/0/...`, or `/sdcard/...`) onto its guest-side equivalent.
+- Rewired `SourceControlPane.runGit()` and all of `AgentTools`' git_*/run_command tools
+  through `execOnce`.
+- `TerminalService.createSession(isUbuntu=true)` now calls `AgentApiServer.start()`;
+  `killAllSessions()`/`onDestroy()` call `AgentApiServer.stop()`.
+- Deleted `AiAssistantPane.kt` (dead code, zero call sites). Ported its
+  `callCopilotApi()` (real GitHub Copilot Chat Completions call using the GitHub
+  token saved in Settings/`SecureTokenStore`) into `CopilotChatPanelOverlay.kt` as a
+  `"copilot"` model option alongside the local Ollama models — same AGENT-mode tool
+  loop wraps around either backend. Threaded `tokenStore: SecureTokenStore?` into
+  `CopilotChatPanelInline`/`Overlay`, wired from `ProjectShellScreen`.
+  `AnimatedBotIcon`'s float/blink/thinking-glow animation was not touched.
+
+### Status: pushed to main (`ab8e162`), CI run in progress (`28848102049`) — not babysitting to green.
+
+### Still needed (next up)
+- [ ] **GitHub sign-in** — nothing exists yet. Plan: GitHub OAuth **Device Flow**
+      (no redirect URI/deep link infra needed — show a code, user enters it at
+      github.com/login/device on any device, we poll for the token) triggered from
+      the gear/Settings menu, token stored in `SecureTokenStore`, then used as the
+      git credential for push/pull (e.g. via a `git credential` helper or embedding
+      `https://<token>@github.com/...` in the remote URL) so Source Control can
+      actually authenticate.
+- [ ] AGENT mode's tool loop needs on-device verification now that execution is fixed
+      (git_status/git_commit_push/run_command through a live Ubuntu terminal session).
+- [ ] `getRepoDir()` default in `AgentTools.kt` still falls back to `/root` if the AI
+      omits `repo_dir` — fine as a sane default, just note that all path arguments
+      the AI passes to file/git tools must be guest-side paths (e.g. `/root/...` or
+      `/sdcard/...`), not arbitrary host Android paths.
+
+### Updated HARD BATCH remaining
+- [x] #1  Per-project workspace state isolation — DONE, commit `972cdb9`
+- [x] #(new) AI tool access + Git proot wiring + Copilot Chat merge — DONE, commit `ab8e162`
+- [ ] GitHub sign-in (Device Flow) — next
+- [ ] #2  Image picker + folder copy
+- [ ] #4  PDF viewer (standalone; archive/zip browsing already shipped via `ArchiveViewer.kt`)
+- [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
+- [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
