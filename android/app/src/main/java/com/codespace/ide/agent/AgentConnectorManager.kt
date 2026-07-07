@@ -1,125 +1,97 @@
 package com.codespace.ide.agent
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import com.codespace.ide.data.ConnectorsApiClient
 import com.codespace.ide.data.SecureTokenStore
 import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * AgentConnectorManager — OAuth connector system for external services.
- * Mirrors Superagent's connector capability (Gmail, Calendar, Slack, etc.)
+ * AgentConnectorManager — OAuth connector system for external services, used by the in-app
+ * AI agent's tool-calling loop (AgentTools.kt: list_connectors / connect_service / use_connector).
  *
- * Available connectors and their OAuth endpoints:
- *  - gmail:     Google Gmail API
- *  - gcalendar: Google Calendar API
- *  - gdrive:    Google Drive API
- *  - slack:     Slack API
- *  - github:    GitHub API
+ * REWRITTEN 2026-07-07: the previous implementation used Google's OOB ("out-of-band") OAuth
+ * flow, which Google deprecated/killed in 2022, and asked the AI to manually "exchange" a
+ * pasted code for a token with no real exchange step ever implemented. It never actually
+ * worked for any service. This version calls the real backend (backend/src/connectors/*.ts,
+ * deployed on Railway) which holds real OAuth client secrets and does a proper
+ * authorization-code -> access-token exchange server-side.
  *
- * Tokens are stored encrypted via SecureTokenStore.
- * OAuth flow: returns auth URL -> user opens in WebView -> callback captures token.
+ * GitHub is intentionally NOT handled here — GitHub sign-in is a separate, already-working
+ * system (GitHubAuth.kt's Device Flow, wired into Settings > Accounts and used for git
+ * push/pull auth). Keeping two different "GitHub connector" code paths would be confusing;
+ * point users there instead.
  */
 object AgentConnectorManager {
 
-    data class Connector(
-        val id: String,
-        val name: String,
-        val authUrl: String,
-        val tokenUrl: String,
-        val scopesParam: String,
-        val apiBase: String,
-        val description: String
+    /** Services the backend actually supports (see backend/src/connectors/connector-registry.ts). */
+    private val SERVICES = listOf("gmail", "gcalendar", "gdrive", "slack")
+
+    private val DISPLAY_NAMES = mapOf(
+        "gmail" to "Gmail",
+        "gcalendar" to "Google Calendar",
+        "gdrive" to "Google Drive",
+        "slack" to "Slack",
     )
 
-    // Connector registry — add more services here
-    private val CONNECTORS = mapOf(
-        "gmail" to Connector(
-            "gmail", "Gmail",
-            "https://accounts.google.com/o/oauth2/v2/auth",
-            "https://oauth2.googleapis.com/token",
-            "https://www.googleapis.com/auth/gmail",
-            "https://gmail.googleapis.com/gmail/v1",
-            "Read and send Gmail messages"
-        ),
-        "gcalendar" to Connector(
-            "gcalendar", "Google Calendar",
-            "https://accounts.google.com/o/oauth2/v2/auth",
-            "https://oauth2.googleapis.com/token",
-            "https://www.googleapis.com/auth/calendar",
-            "https://www.googleapis.com/calendar/v3",
-            "View and manage calendar events"
-        ),
-        "gdrive" to Connector(
-            "gdrive", "Google Drive",
-            "https://accounts.google.com/o/oauth2/v2/auth",
-            "https://oauth2.googleapis.com/token",
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/drive/v3",
-            "Read and write Google Drive files"
-        ),
-        "slack" to Connector(
-            "slack", "Slack",
-            "https://slack.com/oauth/v2/authorize",
-            "https://slack.com/api/oauth.v2.access",
-            "",
-            "https://slack.com/api",
-            "Send and read Slack messages"
-        ),
-        "github" to Connector(
-            "github", "GitHub",
-            "https://github.com/login/oauth/authorize",
-            "https://github.com/login/oauth/access_token",
-            "",
-            "https://api.github.com",
-            "Full GitHub API access"
-        )
-    )
+    private fun requireAccessToken(context: Context): String? =
+        SecureTokenStore(context).lastAccessToken?.takeIf { it.isNotBlank() }
 
     fun listConnectors(context: Context): String {
-        val store = SecureTokenStore(context)
-        val sb = StringBuilder("Available connectors:\n")
-        for ((id, conn) in CONNECTORS) {
-            val token = store.aiKey("connector_${id}_token")
-            val status = if (token != null) "[CONNECTED]" else "[available]"
-            sb.append("  $status ${conn.name} ($id): ${conn.description}\n")
-        }
-        return sb.toString().trim()
+        val token = requireAccessToken(context)
+            ?: return "Not signed in to CodeSpace IDE — sign in first (cloud sync auth), then connectors become available."
+
+        val result = ConnectorsApiClient.fetchStatus(token)
+        return result.fold(
+            onSuccess = { statuses ->
+                val sb = StringBuilder("Available connectors:\n")
+                for (s in statuses) {
+                    val status = when {
+                        s.connected -> "[CONNECTED]"
+                        !s.configured -> "[not set up by owner yet]"
+                        else -> "[available]"
+                    }
+                    sb.append("  $status ${s.name} (${s.id})\n")
+                }
+                sb.append("\nGitHub: use Settings > Accounts > Sign in with GitHub (separate system).")
+                sb.toString().trim()
+            },
+            onFailure = { e -> "Couldn't reach the connectors backend: ${e.message}" },
+        )
     }
 
+    /**
+     * Kicks off the real OAuth flow: fetches a provider-hosted consent URL from the backend
+     * and opens it in the system browser (Google/Slack block embedded WebViews for OAuth —
+     * "disallowed_useragent" — so this must be a real browser tab, not an in-app WebView).
+     * The backend's /connectors/callback page confirms success; re-run list_connectors
+     * afterward (or reopen the Connectors sheet) to see the updated CONNECTED status —
+     * there's no separate "paste the code back" step anymore.
+     */
     fun connectService(service: String, scopes: JSONArray?, context: Context): String {
-        val conn = CONNECTORS[service]
-            ?: return "Unknown service: $service. Available: ${CONNECTORS.keys.joinToString(", ")}"
-
-        // Build OAuth URL — the app's WebView will open this and capture the callback.
-        // org.json.JSONArray on Android does NOT implement Iterable, so joinToString{}
-        // doesn't resolve on it directly -- iterate by index instead.
-        val scopeStr = if (scopes != null && scopes.length() > 0) {
-            (0 until scopes.length()).joinToString(",") { idx -> scopes.optString(idx) }
-        } else {
-            conn.scopesParam
+        if (service !in SERVICES) {
+            return "Unknown or unsupported service: $service. Available: ${SERVICES.joinToString(", ")}. " +
+                "For GitHub, use Settings > Accounts > Sign in with GitHub instead."
         }
+        val token = requireAccessToken(context)
+            ?: return "Not signed in to CodeSpace IDE — sign in first, then try connecting ${DISPLAY_NAMES[service]} again."
 
-        val clientId = SecureTokenStore(context).aiKey("connector_${service}_client_id")
-            ?: "CLIENT_ID_NOT_SET"
-
-        val authUrl = when (service) {
-            "gmail", "gcalendar", "gdrive" -> {
-                "${conn.authUrl}?client_id=$clientId&redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&scope=$scopeStr"
-            }
-            "slack" -> {
-                "${conn.authUrl}?client_id=$clientId&scope=chat:write,channels:read&user_scope=chat:write"
-            }
-            "github" -> {
-                "${conn.authUrl}?client_id=$clientId&scope=repo,read:user,user:email"
-            }
-            else -> conn.authUrl
-        }
-
-        return "To connect ${conn.name}, open this URL in a browser:\n$authUrl\n\n" +
-               "After authorization, paste the code here and I'll exchange it for a token.\n" +
-               "Use: <tool>{\"name\":\"save_secret\",\"arguments\":{\"key\":\"connector_${service}_token\",\"value\":\"YOUR_CODE\"}}</tool>"
+        val result = ConnectorsApiClient.fetchAuthUrl(token, service)
+        return result.fold(
+            onSuccess = { authUrl ->
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    "Opened the ${DISPLAY_NAMES[service]} sign-in page in your browser. " +
+                        "Finish signing in there, then come back — it'll show as connected."
+                } catch (e: Exception) {
+                    "Got the sign-in link but couldn't open a browser automatically: ${e.message}\n$authUrl"
+                }
+            },
+            onFailure = { e -> "Couldn't start connecting ${DISPLAY_NAMES[service]}: ${e.message}" },
+        )
     }
 
     fun useConnector(
@@ -129,44 +101,16 @@ object AgentConnectorManager {
         body: String,
         context: Context
     ): String {
-        val conn = CONNECTORS[service]
-            ?: return "Unknown service: $service"
-
-        val token = SecureTokenStore(context).aiKey("connector_${service}_token")
-            ?: return "${conn.name} is not connected. Use connect_service first."
-
-        return try {
-            val url = "${conn.apiBase}$endpoint"
-            val httpConn = URL(url).openConnection() as HttpURLConnection
-            httpConn.requestMethod = method.uppercase()
-            httpConn.connectTimeout = 15000
-            httpConn.readTimeout = 30000
-
-            // Auth header
-            when (service) {
-                "gmail", "gcalendar", "gdrive" -> httpConn.setRequestProperty("Authorization", "Bearer $token")
-                "slack" -> httpConn.setRequestProperty("Authorization", "Bearer $token")
-                "github" -> {
-                    httpConn.setRequestProperty("Authorization", "token $token")
-                    httpConn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                }
-            }
-
-            if (method.uppercase() in listOf("POST", "PUT", "PATCH")) {
-                httpConn.setRequestProperty("Content-Type", "application/json")
-                httpConn.doOutput = true
-                httpConn.outputStream.use { it.write(body.toByteArray()) }
-            }
-
-            val code = httpConn.responseCode
-            val respBody = if (code in 200..299) {
-                httpConn.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                httpConn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $code"
-            }
-            "HTTP $code\n${respBody.take(6000)}"
-        } catch (e: Exception) {
-            "Connector call failed: ${e.message}"
+        if (service !in SERVICES) {
+            return "Unknown or unsupported service: $service. Available: ${SERVICES.joinToString(", ")}."
         }
+        val token = requireAccessToken(context)
+            ?: return "Not signed in to CodeSpace IDE — sign in first."
+
+        val result = ConnectorsApiClient.proxyCall(token, service, method, endpoint, body)
+        return result.fold(
+            onSuccess = { it.take(6000) },
+            onFailure = { e -> "Connector call failed: ${e.message}" },
+        )
     }
 }
