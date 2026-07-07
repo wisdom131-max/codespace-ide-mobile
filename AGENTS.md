@@ -2453,3 +2453,39 @@ Wisdom clarified: "my own copilot" = the app's own local-AI chat panel (Ollama-b
 and `tokenStore` threading back out of `CopilotChatPanelOverlay.kt`/`CopilotChatPanelInline`.
 Chat panel is Ollama-only again. The proot/git fixes and `AgentApiServer` auto-start from
 that same batch are untouched — those stay. Commit `15e72aa`.
+
+---
+
+## 2026-07-07 (later) — Real BYOK per-provider API keys wired into the live chat panel
+
+Wisdom confirmed: any AI, whether local (Ollama) or via API key, should be usable in
+the same chat panel with the same tool access — not Ollama-only.
+
+Found a **third** dead AI system while doing this: `com.codespace.ide.ai`
+(`AiRegistry`/`AiProvider`/`Providers.kt`) was fully Hilt-wired but had **zero call
+sites** anywhere in the UI — and was silently wrong regardless: every provider
+(OpenAI/Claude/Gemini/DeepSeek) routed to `GitHubCopilotProvider`, and Ollama/OpenRouter
+both expected a "GitHub Codespace URL" instead of doing anything local. Settings'
+existing BYOK key UI (`AiProviderId` enum, `SecureTokenStore.aiKey`) was already correct
+and saving keys fine — it just had nothing real downstream. Deleted the broken dead
+system (`AiProvider.kt`, `AiRegistry.kt`, `Providers.kt`, `PromptBuilder.kt`).
+
+Wired real, correctly-shaped per-vendor calls directly into
+`CopilotChatPanelOverlay.kt`/`CopilotChatPanelInline` (the one live panel):
+- OpenAI / DeepSeek / OpenRouter — shared OpenAI-compatible `/v1/chat/completions` helper.
+- Claude — Anthropic Messages API (`x-api-key`, separate `system` field, block-list response).
+- Gemini — Google Generative Language API (`contents`/`parts`, assistant role `"model"`).
+
+Model picker shows `"openai:gpt-4o"` etc. for any provider with a key already saved in
+Settings, alongside local Ollama models — same AGENT-mode `AgentTools` loop wraps around
+whichever one answers. Commit `bfa61ae`.
+
+### Net effect of today's three AI-chat commits (ab8e162 → 15e72aa → bfa61ae)
+- Only ONE real, live chat panel exists now: `CopilotChatPanelOverlay`/`Inline`
+  (bot icon in the top bar). Both `AiAssistantPane.kt` and `com.codespace.ide.ai.*`
+  (two separate dead/wrong systems) are gone.
+- It supports local Ollama models AND BYOK API keys (OpenAI/Claude/Gemini/DeepSeek/OpenRouter)
+  from Settings, side by side in one model picker.
+- All of them get the same AgentTools tool-calling loop (files/git/terminal/etc.) in AGENT mode.
+- GitHub-account-tied Copilot (the hosted GitHub product) is intentionally NOT included —
+  Wisdom didn't want that one, specifically.
