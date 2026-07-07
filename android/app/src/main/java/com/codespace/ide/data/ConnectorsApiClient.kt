@@ -9,7 +9,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Thin client for the real backend OAuth Connectors API (backend/src/connectors/*.ts on
+ * Thin client for the real backend OAuth Connectors API (backend/src/connectors/ (TypeScript files) on
  * Railway). Replaces the old AgentConnectorManager OOB-flow logic, which never worked
  * (Google killed the OOB flow in 2022 and there was never a real code->token exchange).
  *

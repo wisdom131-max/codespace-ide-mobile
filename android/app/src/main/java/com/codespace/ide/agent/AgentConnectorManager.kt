@@ -14,7 +14,7 @@ import org.json.JSONArray
  * REWRITTEN 2026-07-07: the previous implementation used Google's OOB ("out-of-band") OAuth
  * flow, which Google deprecated/killed in 2022, and asked the AI to manually "exchange" a
  * pasted code for a token with no real exchange step ever implemented. It never actually
- * worked for any service. This version calls the real backend (backend/src/connectors/*.ts,
+ * worked for any service. This version calls the real backend (backend/src/connectors/ (TypeScript files),
  * deployed on Railway) which holds real OAuth client secrets and does a proper
  * authorization-code -> access-token exchange server-side.
  *
