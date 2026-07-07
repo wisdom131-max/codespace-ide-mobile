@@ -67,7 +67,7 @@ private fun loadProjectsLocal(context: Context): List<Project> {
 
 // ── Cloud sync helpers ─────────────────────────────────────────────────────────
 
-private const val API_BASE = "https://api.codespace-ide.app/api/v1"
+private const val API_BASE = "https://codespace-ide-mobile-production.up.railway.app/api/v1"
 
 private suspend fun fetchProjectsFromCloud(accessToken: String): List<Project>? =
     withContext(Dispatchers.IO) {
