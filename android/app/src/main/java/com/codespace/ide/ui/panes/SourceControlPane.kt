@@ -70,12 +70,14 @@ private fun runGit(dir: File, vararg args: String): String {
     } catch (e: Exception) { "Error: ${e.message}" }
 }
 
-private fun loadWorkspacePath(context: Context): String? =
+// Scoped by projectId to match ExplorerPane's per-project workspace isolation (HARD BATCH #1) —
+// otherwise Git operations would run against whichever project's folder was last browsed.
+private fun loadWorkspacePath(context: Context, projectId: String): String? =
     context.getSharedPreferences("workspace_prefs", Context.MODE_PRIVATE)
-        .getString("workspace_path", null)
+        .getString("workspace_path_$projectId", null)
 
 @Composable
-fun SourceControlPane() {
+fun SourceControlPane(projectId: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -91,8 +93,8 @@ fun SourceControlPane() {
     var showChanges by remember { mutableStateOf(true) }
     var refresh by remember { mutableStateOf(0) }
 
-    val repoDir = remember {
-        val wsPath = loadWorkspacePath(context)
+    val repoDir = remember(projectId) {
+        val wsPath = loadWorkspacePath(context, projectId)
         var dir = wsPath?.let { File(it) }
         while (dir != null && !File(dir, ".git").exists()) { dir = dir.parentFile }
         dir ?: File("/storage/emulated/0")

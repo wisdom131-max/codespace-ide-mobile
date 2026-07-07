@@ -66,24 +66,26 @@ private const val PREFS_WORKSPACE = "workspace_prefs"
 private const val KEY_WORKSPACE   = "workspace_path"
 private const val KEY_WORKSPACE_ROOTS = "workspace_roots"
 
-private fun saveWorkspacePath(context: Context, path: String) {
+// Per-project workspace state isolation: every key is scoped by projectId so switching
+// projects never leaks another project's last-browsed folder/roots (fixes HARD BATCH #1).
+private fun saveWorkspacePath(context: Context, projectId: String, path: String) {
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .edit().putString(KEY_WORKSPACE, path).apply()
+        .edit().putString("${KEY_WORKSPACE}_$projectId", path).apply()
 }
 
-private fun loadWorkspacePath(context: Context): String? =
+private fun loadWorkspacePath(context: Context, projectId: String): String? =
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .getString(KEY_WORKSPACE, null)
+        .getString("${KEY_WORKSPACE}_$projectId", null)
 
 // ── Multi-root workspace support ──
-private fun saveWorkspaceRoots(context: Context, roots: List<String>) {
+private fun saveWorkspaceRoots(context: Context, projectId: String, roots: List<String>) {
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .edit().putString(KEY_WORKSPACE_ROOTS, roots.joinToString("|||")).apply()
+        .edit().putString("${KEY_WORKSPACE_ROOTS}_$projectId", roots.joinToString("|||")).apply()
 }
 
-private fun loadWorkspaceRoots(context: Context): List<String> {
+private fun loadWorkspaceRoots(context: Context, projectId: String): List<String> {
     val raw = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .getString(KEY_WORKSPACE_ROOTS, null) ?: return emptyList()
+        .getString("${KEY_WORKSPACE_ROOTS}_$projectId", null) ?: return emptyList()
     return raw.split("|||").filter { it.isNotBlank() }
 }
 
@@ -130,6 +132,7 @@ data class FsNode(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExplorerSidePanel(
+    projectId: String,
     onOpenFile: (String) -> Unit,
     onMoreMenu: () -> Unit,
     onOpenInTerminal: (String) -> Unit = {},
@@ -139,8 +142,8 @@ fun ExplorerSidePanel(
 ) {
     val context = LocalContext.current
 
-    var workspacePath by remember {
-        mutableStateOf(loadWorkspacePath(context))
+    var workspacePath by remember(projectId) {
+        mutableStateOf(loadWorkspacePath(context, projectId))
     }
     val workspaceRoot = remember(workspacePath) {
         workspacePath?.let { File(it) }
@@ -148,7 +151,7 @@ fun ExplorerSidePanel(
 
     // ── Multi-root workspace ──
     var workspaceRoots by remember {
-        mutableStateOf(loadWorkspaceRoots(context))
+        mutableStateOf(loadWorkspaceRoots(context, projectId))
     }
     var showDeviceFolders by remember { mutableStateOf(false) }
 
@@ -211,11 +214,11 @@ fun ExplorerSidePanel(
 
             realPath?.let {
                 workspacePath = it
-                saveWorkspacePath(context, it)
+                saveWorkspacePath(context, projectId, it)
                 // Add to multi-root list (avoid duplicates)
                 if (it !in workspaceRoots) {
                     workspaceRoots = workspaceRoots + it
-                    saveWorkspaceRoots(context, workspaceRoots)
+                    saveWorkspaceRoots(context, projectId, workspaceRoots)
                 }
                 expanded.clear()
                 refresh++
@@ -405,10 +408,10 @@ fun ExplorerSidePanel(
                         Modifier.fillMaxWidth()
                             .clickable(enabled = exists) {
                                 workspacePath = path
-                                saveWorkspacePath(context, path)
+                                saveWorkspacePath(context, projectId, path)
                                 if (path !in workspaceRoots) {
                                     workspaceRoots = workspaceRoots + path
-                                    saveWorkspaceRoots(context, workspaceRoots)
+                                    saveWorkspaceRoots(context, projectId, workspaceRoots)
                                 }
                                 showDeviceFolders = false
                                 expanded.clear()
@@ -504,10 +507,10 @@ fun ExplorerSidePanel(
                     onClick = {
                         // Quick pick: use /storage/emulated/0
                         workspacePath = "/storage/emulated/0"
-                        saveWorkspacePath(context, "/storage/emulated/0")
+                        saveWorkspacePath(context, projectId, "/storage/emulated/0")
                         if ("/storage/emulated/0" !in workspaceRoots) {
                             workspaceRoots = workspaceRoots + "/storage/emulated/0"
-                            saveWorkspaceRoots(context, workspaceRoots)
+                            saveWorkspaceRoots(context, projectId, workspaceRoots)
                         }
                         refresh++
                     },
@@ -523,10 +526,10 @@ fun ExplorerSidePanel(
                         Modifier.fillMaxWidth()
                             .clickable(enabled = exists) {
                                 workspacePath = path
-                                saveWorkspacePath(context, path)
+                                saveWorkspacePath(context, projectId, path)
                                 if (path !in workspaceRoots) {
                                     workspaceRoots = workspaceRoots + path
-                                    saveWorkspaceRoots(context, workspaceRoots)
+                                    saveWorkspaceRoots(context, projectId, workspaceRoots)
                                 }
                                 refresh++
                             }
@@ -590,7 +593,7 @@ fun ExplorerSidePanel(
                             .background(Color(0xFFF0F0F0))
                             .clickable {
                                 workspacePath = rootPath
-                                saveWorkspacePath(context, rootPath)
+                                saveWorkspacePath(context, projectId, rootPath)
                                 expanded.clear()
                                 refresh++
                             }
@@ -604,7 +607,7 @@ fun ExplorerSidePanel(
                         Icon(Icons.Default.Close, null, tint = MutedColor,
                             modifier = Modifier.size(12.dp).clickable {
                                 workspaceRoots = workspaceRoots - rootPath
-                                saveWorkspaceRoots(context, workspaceRoots)
+                                saveWorkspaceRoots(context, projectId, workspaceRoots)
                             })
                     }
                 }
@@ -1076,7 +1079,7 @@ private fun fileIcon(name: String) = when {
 // ── Stub panels ──────────────────────────────────────────────────────────────
 private data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
 
-@Composable fun SearchPanel(onOpenFileAtLine: ((String, Int) -> Unit)? = null) {
+@Composable fun SearchPanel(projectId: String, onOpenFileAtLine: ((String, Int) -> Unit)? = null) {
     var searchQuery  by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
     var caseSensitive by remember { mutableStateOf(false) }
@@ -1104,7 +1107,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         if (query.isBlank()) { results = emptyList(); return }
         searching = true
         scope.launch {
-            val wsPath = loadWorkspacePath(context)
+            val wsPath = loadWorkspacePath(context, projectId)
             val wsRoot = wsPath?.let { File(it) }
             val allResults = mutableListOf<SearchResult>()
             if (wsRoot != null && wsRoot.exists()) {
@@ -1223,7 +1226,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 Text("Replace All", fontSize = 11.sp, color = Color(0xFFE53935), fontWeight = FontWeight.Medium,
                     modifier = Modifier.clickable {
                         scope.launch {
-                            val wsPath = loadWorkspacePath(context)
+                            val wsPath = loadWorkspacePath(context, projectId)
                             val wsRoot = wsPath?.let { File(it) }
                             if (wsRoot != null) {
                                 var count = 0
@@ -1339,7 +1342,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     }
 }
 
-@Composable fun GitSidePanel() { SourceControlPane() }
+@Composable fun GitSidePanel(projectId: String) { SourceControlPane(projectId) }
 
 @Composable fun RunDebugPanel(onMoreMenu: () -> Unit) {
     var selectedConfig by remember { mutableStateOf("Kotlin Application") }

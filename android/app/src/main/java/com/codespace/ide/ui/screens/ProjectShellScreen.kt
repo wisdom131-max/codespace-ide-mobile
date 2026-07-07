@@ -745,6 +745,7 @@ fun ProjectShellScreen(
                     Column(Modifier.width(spWidth).fillMaxHeight().background(BgColor)) {
                         when (activePanel) {
                             SidePanel.EXPLORER -> ExplorerSidePanel(
+                                projectId = projectId,
                                 onOpenFile = { path ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     activeEditorTab = path
@@ -766,6 +767,7 @@ fun ProjectShellScreen(
                                 },
                             )
                             SidePanel.SEARCH     -> SearchPanel(
+                                projectId = projectId,
                                 onOpenFileAtLine = { path, line ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     activeEditorTab = path
@@ -773,7 +775,7 @@ fun ProjectShellScreen(
                                     showNotification("Opened " + path.substringAfterLast("/") + ":" + line, "success")
                                 },
                             )
-                            SidePanel.GIT        -> GitSidePanel()
+                            SidePanel.GIT        -> GitSidePanel(projectId)
                             SidePanel.RUN        -> RunDebugPanel(onMoreMenu = { showRunMenu = true })
                             SidePanel.EXTENSIONS -> {
                                     ExtensionsPanel()
