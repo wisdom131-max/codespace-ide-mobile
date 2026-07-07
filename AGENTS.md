@@ -2622,3 +2622,39 @@ needed for #12.
 - [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange) — only
       remaining sizeable item
 - [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+---
+
+## 2026-07-07 — Backend deployment confirmed live + fixed a real cloud-sync bug
+
+### Discovery: NestJS backend was already deployed (from an earlier session)
+Verified directly against Railway — the backend is live and healthy, not pending as prior
+notes assumed:
+- URL: https://codespace-ide-mobile-production.up.railway.app
+- `/api/v1/health` → 200 `{"status":"ok"}`
+- `/api/v1/ready` → 200 `{"status":"ready"}`
+- `/api/v1/projects` (no auth) → 401 Unauthorized (route wired + guarded correctly, not 404)
+- Postgres provisioned on Railway, all required env vars set (DATABASE_URL, JWT_SECRET,
+  OWNER_EMAIL, FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY) — see Google Drive
+  `credentials-and-keys.md` for the Railway project/service/token reference.
+
+### 🐛 Found and fixed: cloud project sync was silently broken
+`AuthScreen.kt` correctly pointed at the live Railway URL for Google Sign-In. But
+`HomeScreen.kt`'s `API_BASE` constant was still hardcoded to `https://api.codespace-ide.app/api/v1`
+— a placeholder custom domain with no DNS/server behind it. Every cloud sync call
+(`fetchProjectsFromCloud`, `pushProjectToCloud`, `deleteProjectFromCloud`) was silently failing
+and falling back to local SharedPreferences, meaning **cross-device project sync has never
+actually worked**, despite being reported as implemented in earlier sessions.
+
+Fixed: `API_BASE` now points to `https://codespace-ide-mobile-production.up.railway.app/api/v1`,
+matching `AuthScreen.kt` and the real deployed backend. Pushed (`e58e81d6`).
+
+### Status: backend deployment is DONE and confirmed live. Cloud sync should now actually work
+end-to-end — needs an on-device test (sign in, create a project, check it appears after
+reinstall/on another device) to fully confirm.
+
+### Updated priority list
+- [x] NestJS backend deployed to Railway — CONFIRMED LIVE (not previously verified end-to-end)
+- [x] Cloud project sync — API_BASE bug fixed, should now work (needs device verification)
+- [ ] #14 Real OAuth for Connectors (Gmail/Calendar/Drive/Slack) — next up, biggest remaining lift
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
