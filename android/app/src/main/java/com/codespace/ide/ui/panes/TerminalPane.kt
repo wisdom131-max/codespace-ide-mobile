@@ -476,6 +476,7 @@ internal fun TerminalPane(
     var showSshManager    by remember { mutableStateOf(false) }
     var showTextExpansions by remember { mutableStateOf(false) }
     var showExtraKeys     by remember { mutableStateOf(false) }
+    var showQuickActions by remember { mutableStateOf(true) }
     var isRootMode        by remember { mutableStateOf(false) }
     var acEnabled         by remember { mutableStateOf(false) }
     var showCustomCmds    by remember { mutableStateOf(false) }
@@ -802,28 +803,18 @@ internal fun TerminalPane(
 
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
         // Tab bar
-        Row(Modifier.fillMaxWidth().background(Color(0xFF252526)), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(28.dp).background(Color(0xFF252526)), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 tabs.forEach { tab ->
                     val isActive = tab.id == activeId
-                    // PiP: grab last non-blank line from session buffer for mini preview
-                    val pipPreview = remember(tab.id) {
-                        derivedStateOf {
-                            try {
-                                val txt = tab.session.getEmulator()?.screen
-                                    ?.getTranscriptText()?.trim() ?: ""
-                                // Last meaningful line (non-blank, max 28 chars)
-                                txt.lines().lastOrNull { it.isNotBlank() }
-                                    ?.trim()?.take(28) ?: ""
-                            } catch (_: Exception) { "" }
-                        }
-                    }
                     Column(
                         Modifier
                             .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
                             .clickable { activeId = tab.id }
+                            .height(28.dp)
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                             .widthIn(min = 60.dp, max = 140.dp),
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         // Tab title + controls
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -838,18 +829,9 @@ internal fun TerminalPane(
                                     modifier = Modifier.size(10.dp).clickable { closeTab(tab.id) })
                             }
                         }
-                        // PiP mini preview — live last line from terminal
-                        if (!isActive && pipPreview.value.isNotBlank()) {
-                            Text(
-                                pipPreview.value,
-                                color = Color(0xFF4EC9B0),
-                                fontSize = 8.sp,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                modifier = Modifier.padding(top = 1.dp),
-                            )
-                        }
+                        // (PiP mini-preview second line removed 2026-07-06 — it made this row
+                        // taller than the tab strip above it and duplicated info already visible
+                        // the instant you tap the tab.)
                     }
                 }
             }
@@ -889,43 +871,43 @@ internal fun TerminalPane(
                                 // 5. Install Claude Code (npm) — full environment access
                                 // 6. Set env vars so Claude Code connects to local Ollama
                                 ubuntuTab?.session?.write(
-                                    "echo \"\\033[1;34m[1/6]\\033[0m Installing Ollama...\"\n" +
+                                    "echo -e \"\\033[1;34m[1/6]\\033[0m Installing Ollama...\"\n" +
                                     "if ! command -v ollama &>/dev/null; then\n" +
-                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \"\n" +
-                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \"\n" +
-                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \"\n" +
-                                    "  echo \"\\033[1;32m  done\\033[0m\"\n" +
+                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \\\n" +
+                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \\\n" +
+                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \\\n" +
+                                    "  echo -e \"\\033[1;32m  done\\033[0m\"\n" +
                                     "else\n" +
-                                    "  echo \"\\033[1;32m  already installed\\033[0m\"\n" +
+                                    "  echo -e \"\\033[1;32m  already installed\\033[0m\"\n" +
                                     "fi\n" +
-                                    "echo \"\\033[1;34m[2/6]\\033[0m Starting Ollama server...\"\n" +
+                                    "echo -e \"\\033[1;34m[2/6]\\033[0m Starting Ollama server...\"\n" +
                                     "ollama serve &\n" +
                                     "sleep 2\n" +
-                                    "echo \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[3/6]\\033[0m Sign in to Ollama (needed for cloud models)...\"\n" +
-                                    "echo \"\\033[1;33m  Create a free account at ollama.com first, then:\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[3/6]\\033[0m Sign in to Ollama (needed for cloud models)...\"\n" +
+                                    "echo -e \"\\033[1;33m  Create a free account at ollama.com first, then:\\033[0m\"\n" +
                                     "ollama signin\n" +
-                                    "echo \"\\033[1;34m[4/6]\\033[0m Pulling nemotron-3-super:cloud...\"\n" +
+                                    "echo -e \"\\033[1;34m[4/6]\\033[0m Pulling nemotron-3-super:cloud...\"\n" +
                                     "ollama pull nemotron-3-super:cloud\n" +
-                                    "echo \"\\033[1;32m  model ready\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[5/6]\\033[0m Installing Claude Code...\"\n" +
+                                    "echo -e \"\\033[1;32m  model ready\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[5/6]\\033[0m Installing Claude Code...\"\n" +
                                     "npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
-                                    "echo \"\\033[1;32m  claude code installed\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[6/6]\\033[0m Configuring environment...\"\n" +
+                                    "echo -e \"\\033[1;32m  claude code installed\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[6/6]\\033[0m Configuring environment...\"\n" +
                                     "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
                                     "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
                                     "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
                                     "  echo \"export ANTHROPIC_MODEL=nemotron-3-super:cloud\" >> ~/.bashrc\n" +
                                     "  source ~/.bashrc\n" +
                                     "}\n" +
-                                    "echo \"\\033[1;32m  done\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;32m  done\\033[0m\"\n" +
                                     "clear\n" +
-                                    "echo \"\\033[1;32m Setup Complete!\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  nemotron-3-super:cloud\"\n" +
-                                    "echo \"\\033[1;34m[Claude]\\033[0m Run:    claude --model nemotron-3-super:cloud\"\n" +
-                                    "echo \"\\033[1;33m[Claude]\\033[0m Claude Code can: read/write files, run commands, edit code\\033[0m\"\n" +
-                                    "echo \"\\033[1;32m Type: claude --model nemotron-3-super:cloud\\033[0m\"\n"
+                                    "echo -e \"\\033[1;32m Setup Complete!\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
+                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Model:  nemotron-3-super:cloud\"\n" +
+                                    "echo -e \"\\033[1;34m[Claude]\\033[0m Run:    claude --model nemotron-3-super:cloud\"\n" +
+                                    "echo -e \"\\033[1;33m[Claude]\\033[0m Claude Code can: read/write files, run commands, edit code\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;32m Type: claude --model nemotron-3-super:cloud\\033[0m\"\n"
                                 )
                             }, 3000)
                         })
@@ -945,26 +927,26 @@ internal fun TerminalPane(
                                 //   - llama3.2:1b (~0.8GB RAM)
                                 //   - qwen2.5-coder:7b (~5GB RAM, needs 8GB+ phone)
                                 ubuntuTab?.session?.write(
-                                    "echo \"\\033[1;34m[1/4]\\033[0m Installing Ollama...\"\n" +
+                                    "echo -e \"\\033[1;34m[1/4]\\033[0m Installing Ollama...\"\n" +
                                     "if ! command -v ollama &>/dev/null; then\n" +
-                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \"\n" +
-                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \"\n" +
-                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \"\n" +
-                                    "  echo \"\\033[1;32m  done\\033[0m\"\n" +
+                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \\\n" +
+                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \\\n" +
+                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \\\n" +
+                                    "  echo -e \"\\033[1;32m  done\\033[0m\"\n" +
                                     "else\n" +
-                                    "  echo \"\\033[1;32m  already installed\\033[0m\"\n" +
+                                    "  echo -e \"\\033[1;32m  already installed\\033[0m\"\n" +
                                     "fi\n" +
-                                    "echo \"\\033[1;34m[2/4]\\033[0m Starting Ollama server...\"\n" +
+                                    "echo -e \"\\033[1;34m[2/4]\\033[0m Starting Ollama server...\"\n" +
                                     "ollama serve &\n" +
                                     "sleep 2\n" +
-                                    "echo \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[3/4]\\033[0m Choose a model to pull:\"\n" +
-                                    "echo \"\\033[1;33m  1. qwen2.5-coder:1.5b  (~1GB RAM, best for coding)\\033[0m\"\n" +
-                                    "echo \"\\033[1;33m  2. llama3.2:1b         (~0.8GB RAM, general chat)\\033[0m\"\n" +
-                                    "echo \"\\033[1;33m  3. qwen2.5-coder:7b   (~5GB RAM, needs 8GB+ phone)\\033[0m\"\n" +
-                                    "echo \"\\033[1;33m  4. tinyllama           (~0.6GB RAM, lightweight)\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[3/4]\\033[0m Choose a model to pull:\"\n" +
+                                    "echo -e \"\\033[1;33m  1. qwen2.5-coder:1.5b  (~1GB RAM, best for coding)\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;33m  2. llama3.2:1b         (~0.8GB RAM, general chat)\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;33m  3. qwen2.5-coder:7b   (~5GB RAM, needs 8GB+ phone)\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;33m  4. tinyllama           (~0.6GB RAM, lightweight)\\033[0m\"\n" +
                                     "echo \"\"\n" +
-                                    "echo \"\\033[1;36m  Type the number and press Enter:\"\n" +
+                                    "echo -e \"\\033[1;36m  Type the number and press Enter:\"\n" +
                                     "read choice\n" +
                                     "case \$choice in\n" +
                                     "  1) ollama pull qwen2.5-coder:1.5b && MODEL=qwen2.5-coder:1.5b;;\n" +
@@ -973,7 +955,7 @@ internal fun TerminalPane(
                                     "  4) ollama pull tinyllama && MODEL=tinyllama;;\n" +
                                     "  *) echo \"Invalid choice\" && exit 1;;\n" +
                                     "esac\n" +
-                                    "echo \"\\033[1;34m[4/4]\\033[0m Installing Claude Code...\"\n" +
+                                    "echo -e \"\\033[1;34m[4/4]\\033[0m Installing Claude Code...\"\n" +
                                     "npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
                                     "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
                                     "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
@@ -982,29 +964,38 @@ internal fun TerminalPane(
                                     "  source ~/.bashrc\n" +
                                     "}\n" +
                                     "clear\n" +
-                                    "echo \"\\033[1;32m Offline Setup Complete!\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo \"\\033[1;34m[Ollama]\\033[0m Model:  \$MODEL (runs on-device)\\033[0m\"\n" +
-                                    "echo \"\\033[1;34m[Claude]\\033[0m Run:    claude --model \$MODEL\"\n" +
-                                    "echo \"\\033[1;32m Type: claude --model \$MODEL\\033[0m\"\n"
+                                    "echo -e \"\\033[1;32m Offline Setup Complete!\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
+                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Model:  \$MODEL (runs on-device)\\033[0m\"\n" +
+                                    "echo -e \"\\033[1;34m[Claude]\\033[0m Run:    claude --model \$MODEL\"\n" +
+                                    "echo -e \"\\033[1;32m Type: claude --model \$MODEL\\033[0m\"\n"
                                 )
                             }, 3000)
                         })
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
-                        text = { Text("Start MCP Server (npm)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        text = { Text("Show Agent Tools (32)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
-                            active?.session?.write("npx -y @modelcontextprotocol/server-filesystem \${HOME}\n")
-                            android.widget.Toast.makeText(context, "Starting MCP filesystem server…", android.widget.Toast.LENGTH_SHORT).show()
+                            // The real local agent API (AgentApiServer, port 8765) is already auto-started
+                            // for this session via McpShellProfile — no separate "start" step needed.
+                            // This just lists the 32 tools any AI in this terminal can call via `agent <tool>`.
+                            active?.session?.write("agent_tools\n")
+                            android.widget.Toast.makeText(context, "Listing available agent tools…", android.widget.Toast.LENGTH_SHORT).show()
                         })
                     DropdownMenuItem(
                         leadingIcon = { Text("📜", fontSize = 13.sp) },
                         text = { Text("Make Script from History", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
-                            active?.session?.write("history | tail -20\n")
-                            android.widget.Toast.makeText(context, "Review history above — copy commands to a .sh file", android.widget.Toast.LENGTH_LONG).show()
+                            // Actually writes the last 20 commands to a real, executable .sh file
+                            // instead of just printing history and telling the user to copy it manually.
+                            val cmd = "hist_file=~/script_\$(date +%Y%m%d_%H%M%S).sh; " +
+                                "history | tail -21 | head -20 | sed -E 's/^[ ]*[0-9]+[ ]*//' > \"\$hist_file\"; " +
+                                "chmod +x \"\$hist_file\"; " +
+                                "echo -e \"\\033[1;32mSaved:\\033[0m \$hist_file\"; cat \"\$hist_file\"\n"
+                            active?.session?.write(cmd)
+                            android.widget.Toast.makeText(context, "Saving script from recent history…", android.widget.Toast.LENGTH_SHORT).show()
                         })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
                     // ── MANAGE ─────────────────────────────────────────────────
@@ -1024,6 +1015,10 @@ internal fun TerminalPane(
                         leadingIcon = { Text(if (showExtraKeys) "▲" else "▼", fontSize = 13.sp, color = Color(0xFF969696)) },
                         text = { Text(if (showExtraKeys) "Hide Extra Keys" else "Show Extra Keys", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = { showMenu = false; showExtraKeys = !showExtraKeys })
+                    DropdownMenuItem(
+                        leadingIcon = { Text(if (showQuickActions) "▲" else "▼", fontSize = 13.sp, color = Color(0xFF969696)) },
+                        text = { Text(if (showQuickActions) "Hide Quick Actions" else "Show Quick Actions", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; showQuickActions = !showQuickActions })
                     DropdownMenuItem(
                         leadingIcon = { Text("🎨", fontSize = 13.sp, color = Color(0xFFCCCCCC)) },
                         text = { Text("Color Scheme: ${activeScheme.name}", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
@@ -1057,6 +1052,7 @@ internal fun TerminalPane(
         }
 
         // ── NewTermux-style toolbar row ────────────────────────────
+        if (showQuickActions) {
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF161616)).padding(horizontal = 6.dp, vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1192,6 +1188,7 @@ internal fun TerminalPane(
                     .clickable { showCustomCmds = !showCustomCmds }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Cmds", color = if (showCustomCmds) Color(0xFFBB86FC) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+        }
         }
         HorizontalDivider(color = Color(0xFF2A2A2A))
 

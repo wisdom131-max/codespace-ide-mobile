@@ -178,67 +178,75 @@ fun PreviewPane(
             }
         }
 
-        // ── Browser address bar (only in BROWSER mode) ────────────────────
+        // ── Browser address bar (BROWSER + REMOTION modes) ─────────────────
+        // Compact pill design 2026-07-06 — the default Material3 OutlinedTextField reserves a
+        // lot of built-in vertical padding (meant for floating labels), which made this bar look
+        // oversized and left dead empty space in the toolbar row. Swapped for a tight, fixed-height
+        // pill (matches the STT/Root/Zsh quick-actions row styling elsewhere in the app) that fills
+        // the space it actually needs instead of leaving a gap.
         if (activeMode == PreviewMode.BROWSER || activeMode == PreviewMode.REMOTION) {
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .height(32.dp)
                     .background(Surface)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
                     if (activeMode == PreviewMode.REMOTION) Icons.Default.Movie else Icons.Default.Lock,
-                    null, tint = TextMuted, modifier = Modifier.size(16.dp)
+                    null, tint = TextMuted, modifier = Modifier.size(14.dp)
                 )
-                OutlinedTextField(
-                    value = browserInput,
-                    onValueChange = { browserInput = it },
-                    modifier = Modifier
-                        .weight(1f),
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 13.sp,
-                        color = TextPrimary,
-                    ),
-                    placeholder = { Text("http://localhost:3000", fontSize = 13.sp, color = TextMuted) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Accent,
-                        unfocusedBorderColor = Border,
-                        cursorColor = Accent,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                    ),
-                )
-                Button(
-                    onClick = {
-                        browserUrl = browserInput
-                        webViewRef?.loadUrl(browserInput)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(BgDark)
+                        .border(1.dp, Border, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    Text("Go", fontSize = 13.sp)
+                    if (browserInput.isEmpty()) {
+                        Text("http://localhost:3000", fontSize = 12.sp, color = TextMuted)
+                    }
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = browserInput,
+                        onValueChange = { browserInput = it },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextPrimary),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = {
+                            browserUrl = browserInput
+                            webViewRef?.loadUrl(browserInput)
+                        }),
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Accent)
+                        .clickable {
+                            browserUrl = browserInput
+                            webViewRef?.loadUrl(browserInput)
+                        }
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Go", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
                 }
             }
         }
 
         Divider(color = Border, thickness = 1.dp)
 
-        // ── Page title strip ─────────────────────────────────────────────
-        if (pageTitle.isNotBlank() && activeMode != PreviewMode.BROWSER) {
-            Text(
-                pageTitle,
-                fontSize = 10.sp,
-                color = TextMuted,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Surface)
-                    .padding(horizontal = 12.dp, vertical = 2.dp),
-                maxLines = 1,
-            )
-        }
+        // (Redundant "page title" strip removed 2026-07-06 — it repeated info already visible
+        // in the mode tab pill above and the editor tab/filename, adding a dead breadcrumb row
+        // under every Preview sub-tab for no benefit.)
 
         // ── How-to-use guide dialog ─────────────────────────────────────
         if (showGuide) {

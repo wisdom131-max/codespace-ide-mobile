@@ -383,18 +383,10 @@ fun ExplorerSidePanel(
         }
         HorizontalDivider(color = DividerColor)
 
-        // ── Filter input ──────────────────────────────────────────────────
-        if (workspaceRoot != null) {
-            OutlinedTextField(
-                value = filterQuery,
-                onValueChange = { filterQuery = it },
-                placeholder = { Text("Filter files...", fontSize = 12.sp, color = MutedColor) },
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = MutedColor, modifier = Modifier.size(14.dp)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
-            )
-        }
+        // Redundant "Filter files..." bar removed 2026-07-06 — the app already has a
+        // dedicated Search pane (magnifying glass in the activity bar) for this. filterQuery
+        // state is kept (harmless, unused input surface) in case a compact inline filter is
+        // reintroduced later, but no UI row is rendered here anymore.
 
         // ── Device folders quick-access panel ──
         if (showDeviceFolders) {
@@ -629,6 +621,9 @@ fun ExplorerSidePanel(
                                         expanded[node.file.absolutePath] =
                                             !(expanded[node.file.absolutePath] ?: false)
                                         refresh++
+                                    } else if (isImage) {
+                                        // Images must never open in the text editor — show preview instead.
+                                        previewImagePath = node.file.absolutePath
                                     } else {
                                         onOpenFile(node.file.absolutePath)
                                     }
