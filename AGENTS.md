@@ -2291,3 +2291,39 @@ chaining multiple items in one go.
 ### Status: PLANNED — writing this to AGENTS.md per Wisdom's request before implementing.
 Next step once confirmed: implement the "Setup Remotion" menu item in `TerminalPane.kt`
 following this exact plan, push, verify green CI.
+
+---
+
+## 2026-07-07 (later same session) — REMOTION SETUP: SHIPPED
+
+Implemented exactly per the plan above, plus Wisdom's chunked-render requirement gathered
+after the plan was written:
+
+- **"Setup Remotion" menu item** (`TerminalPane.kt`, AI & TOOLS menu) — guarded install:
+  Node.js 18+ check (apt first, NodeSource 20.x fallback if apt's version is too old),
+  guarded `ffmpeg` install, guarded global `@remotion/cli` install.
+- **Idempotent project scaffold** at `~/remotion-project` — hand-written `package.json`,
+  `tsconfig.json`, `src/Root.tsx`, `src/MyVideo.tsx` (placeholder composition), `src/index.ts`,
+  `remotion.config.ts` — no interactive `create-video` prompts to get stuck on. Only scaffolds
+  if the directory doesn't already exist; re-running "Setup Remotion" skips everything already
+  in place and just re-launches the studio.
+- **`render_chunked.sh`** (written into the scaffolded project) — Wisdom's requirement: a
+  30min+ video rendered in one process risks OOM on this device. This script renders in small
+  `--frames=start-end` segments (default 150 frames / 5s per chunk, configurable), then merges
+  with `ffmpeg -f concat -c copy` (stream copy, no re-encode — keeps the merge itself fast and
+  near-zero RAM, and preserves continuous audio/video flow across chunk boundaries). It's
+  resumable: re-running skips any chunk whose output file already exists, so a mid-render crash
+  only loses the current chunk, not the whole video — same resilience pattern as the rootfs
+  chunked-extraction fix.
+  Usage: `./render_chunked.sh MyVideo 54000 150 30` (30min @ 30fps, 5s chunks).
+- **"Launch Remotion Studio" menu item** — lightweight relaunch for after the first setup:
+  checks if Remotion Studio is already running on `:3000` (`pgrep -f "remotion studio"`) before
+  starting a new one, then just `cd`s into the existing project. No reinstall, no rescaffold.
+- Both menu items track a `remotion_setup_complete` flag in SharedPreferences
+  (`remotion_prefs`), same persistence pattern as the Ollama rebuild (item #12).
+- No changes needed to `PreviewPane.kt` — its Remotion WebView already points at
+  `localhost:3000`, which is exactly where `npx remotion studio` serves from.
+
+### Status: pushed to `codespace-ide-mobile` main — build in progress at time of writing (not
+verified green yet; per Wisdom's instruction, not every build needs to be watched live —
+will check back rather than polling continuously).
