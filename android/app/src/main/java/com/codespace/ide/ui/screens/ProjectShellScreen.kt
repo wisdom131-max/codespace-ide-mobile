@@ -1306,7 +1306,6 @@ fun ProjectShellScreen(
                                 headerBg = PanelBg,
                                 scrim = Color(0x66000000),
                             ),
-                            tokenStore = tokenStore,
                         )
                     }
                 }

@@ -38,7 +38,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import com.codespace.ide.agent.AgentTools
-import com.codespace.ide.data.SecureTokenStore
 import java.util.concurrent.TimeUnit
 
 // Theme colors passed from parent — matches the app's current theme
@@ -118,35 +117,12 @@ private suspend fun fetchModels(baseUrl: String): List<String> = withContext(Dis
     } catch (_: Exception) { emptyList() }
 }
 
-// Real GitHub Copilot Chat Completions API — ported over from the retired standalone
-// AiAssistantPane.kt now that CopilotChatPanelInline/Overlay is the one actual chat panel.
-// Uses the GitHub token stashed in Settings (tokenStore), same lookup AiAssistantPane used.
-private suspend fun callCopilotApi(apiKey: String, convMsgs: JSONArray): String = withContext(Dispatchers.IO) {
-    val body = JSONObject()
-        .put("model", "gpt-4o")
-        .put("messages", convMsgs)
-        .toString()
-    val request = Request.Builder()
-        .url("https://api.githubcopilot.com/chat/completions")
-        .header("Authorization", "Bearer $apiKey")
-        .header("Content-Type", "application/json")
-        .header("Editor-Version", "vscode/1.85.0")
-        .header("Copilot-Integration-Id", "vscode-chat")
-        .post(body.toRequestBody("application/json".toMediaType()))
-        .build()
-    val response = http.newCall(request).execute()
-    if (!response.isSuccessful) throw Exception("GitHub Copilot error (${response.code}). Check your GitHub token in Settings.")
-    val json = JSONObject(response.body?.string() ?: "")
-    json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-}
-
 private suspend fun chat(
     baseUrl: String,
     model: String,
     messages: List<ChatMsg>,
     mode: ChatMode,
     context: Context,
-    tokenStore: SecureTokenStore? = null,
 ): String = withContext(Dispatchers.IO) {
     val systemPrompt = when (mode) {
         ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely."
@@ -164,31 +140,22 @@ private suspend fun chat(
     // Agentic loop: call model -> parse tool calls -> execute -> feed results -> repeat
     val maxIterations = 10
     for (iteration in 0 until maxIterations) {
-        // "copilot" routes to the real GitHub Copilot Chat Completions API (needs a GitHub
-        // token saved in Settings); every other model name goes to the local Ollama server —
-        // same agentic tool loop wraps around either backend.
-        val content = if (model == "copilot") {
-            val key = tokenStore?.aiKey("OPENAI") ?: tokenStore?.aiKey("OPENROUTER")
-            if (key.isNullOrBlank()) throw Exception("No GitHub token found. Go to Settings and add your GitHub token.")
-            callCopilotApi(key, convMsgs)
-        } else {
-            val body = JSONObject()
-                .put("model", model)
-                .put("messages", convMsgs)
-                .put("stream", false)
-                .toString()
+        val body = JSONObject()
+            .put("model", model)
+            .put("messages", convMsgs)
+            .put("stream", false)
+            .toString()
 
-            val resp = http.newCall(
-                Request.Builder()
-                    .url("$baseUrl/api/chat")
-                    .header("Content-Type", "application/json")
-                    .post(body.toRequestBody("application/json".toMediaType()))
-                    .build()
-            ).execute()
-            if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
-            val json = JSONObject(resp.body?.string() ?: "")
-            json.getJSONObject("message").getString("content")
-        }
+        val resp = http.newCall(
+            Request.Builder()
+                .url("$baseUrl/api/chat")
+                .header("Content-Type", "application/json")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+        ).execute()
+        if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
+        val json = JSONObject(resp.body?.string() ?: "")
+        val content = json.getJSONObject("message").getString("content")
 
         if (mode == ChatMode.AGENT && AgentTools.hasToolCalls(content)) {
             // Add assistant response to conversation
@@ -217,7 +184,6 @@ private suspend fun chat(
 internal fun CopilotChatPanelOverlay(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
-    tokenStore: SecureTokenStore? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -229,7 +195,7 @@ internal fun CopilotChatPanelOverlay(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
-    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2", "copilot")) }
+    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2")) }
     var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
     val messages = remember {
@@ -242,7 +208,7 @@ internal fun CopilotChatPanelOverlay(
         val local = fetchModels(OLLAMA_LOCAL)
         if (local.isNotEmpty()) {
             ollamaUrl = OLLAMA_LOCAL
-            availModels = local + "copilot"
+            availModels = local
             selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
         }
     }
@@ -260,7 +226,7 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -559,7 +525,6 @@ internal fun AnimatedBotIcon(
 internal fun CopilotChatPanelInline(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
-    tokenStore: SecureTokenStore? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -571,7 +536,7 @@ internal fun CopilotChatPanelInline(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
-    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2", "copilot")) }
+    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2")) }
     var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
     val messages = remember {
@@ -582,7 +547,7 @@ internal fun CopilotChatPanelInline(
         val local = fetchModels(OLLAMA_LOCAL)
         if (local.isNotEmpty()) {
             ollamaUrl = OLLAMA_LOCAL
-            availModels = local + "copilot"
+            availModels = local
             selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
         }
     }
@@ -600,7 +565,7 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
