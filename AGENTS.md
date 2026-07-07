@@ -2327,3 +2327,40 @@ after the plan was written:
 ### Status: pushed to `codespace-ide-mobile` main — build in progress at time of writing (not
 verified green yet; per Wisdom's instruction, not every build needs to be watched live —
 will check back rather than polling continuously).
+
+---
+
+## 2026-07-07 (later) — HARD BATCH #1: Per-project workspace state isolation — SHIPPED
+
+### Root cause (confirmed by reading ExplorerPane.kt, SourceControlPane.kt, ProjectShellScreen.kt)
+- `SessionStateStore.kt` (open tabs, active file, panel layout, font size) was **already**
+  correctly scoped per-project — not the source of the leak.
+- The actual leak: `ExplorerPane.kt`'s `saveWorkspacePath`/`loadWorkspacePath`/
+  `saveWorkspaceRoots`/`loadWorkspaceRoots` read/wrote a single global SharedPreferences key
+  (`workspace_path`, `workspace_roots` in `workspace_prefs`) with **no projectId at all**.
+  `ExplorerSidePanel`, `SearchPanel`, and `GitSidePanel`/`SourceControlPane` never received a
+  `projectId` parameter from `ProjectShellScreen` — they all read/wrote the same flat key.
+  Result: browsing a folder in Project A's Explorer, then switching to Project B, showed
+  Project A's last-browsed folder/roots; Source Control's `git status` also ran against
+  whichever project's path was saved last, not the currently open project.
+
+### Fix (commit `972cdb9`)
+- Scoped every `workspace_prefs` key by `projectId`: `workspace_path_$projectId`,
+  `workspace_roots_$projectId` — in both `ExplorerPane.kt` and `SourceControlPane.kt` (kept as
+  two separate private helper functions, key format matched so behavior stays consistent).
+- Threaded `projectId: String` through `ExplorerSidePanel`, `SearchPanel`, `GitSidePanel`,
+  `SourceControlPane`; keyed all `remember{}` blocks that hold workspace state by `projectId`
+  so recomposition doesn't carry stale state across a project switch either.
+- Wired `projectId` (already available as a `ProjectShellScreen` parameter) into all three
+  side-panel call sites.
+
+### Status: pushed to `codespace-ide-mobile` main (`972cdb9`), CI run in progress
+(run `28846859799`) — per Wisdom's instruction, not checking it live to green, will check back.
+
+### Updated HARD BATCH remaining
+- [x] #1  Per-project workspace state isolation — DONE, commit `972cdb9`
+- [ ] #2  Image picker + folder copy
+- [ ] #4  PDF viewer (standalone; archive/zip browsing already shipped via `ArchiveViewer.kt`)
+- [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
+- [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
