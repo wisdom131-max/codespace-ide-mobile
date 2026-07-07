@@ -1,8 +1,11 @@
 package com.codespace.ide.ui.screens
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.biometric.BiometricManager
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,6 +19,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,15 +38,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.codespace.ide.data.GitHubAuth
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.domain.AiProviderId
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +63,14 @@ fun SettingsScreen(
     tokenStore: SecureTokenStore,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
+
+    // ── GitHub sign-in (Device Flow) state ──────────────────────────────────
+    var githubUsername by remember { mutableStateOf(tokenStore.githubUsername) }
+    var githubDeviceCode by remember { mutableStateOf<GitHubAuth.DeviceCode?>(null) }
+    var githubStatus by remember { mutableStateOf("") } // "", "waiting", "error:<msg>"
+    var githubJob by remember { mutableStateOf<Job?>(null) }
 
     // ── AI provider key state ────────────────────────────────────────────────
     val keyMap = remember {
@@ -87,6 +105,48 @@ fun SettingsScreen(
             BiometricManager.Authenticators.BIOMETRIC_WEAK or
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
         ) == BiometricManager.BIOMETRIC_SUCCESS
+    }
+
+    // ── GitHub device-code dialog ────────────────────────────────────────────
+    githubDeviceCode?.let { device ->
+        AlertDialog(
+            onDismissRequest = { /* must Cancel explicitly — polling is still running */ },
+            title = { Text("Connect GitHub") },
+            text = {
+                Column {
+                    Text("1. Open this on any device:")
+                    Text(device.verificationUri, style = MaterialTheme.typography.bodyMedium)
+                    Text("2. Enter this code:", modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        device.userCode,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                    )
+                    Text("Waiting for you to approve…", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(device.userCode)) }) {
+                        Text("Copy code")
+                    }
+                    TextButton(onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(device.verificationUri))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }) { Text("Open GitHub") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    githubJob?.cancel()
+                    githubDeviceCode = null
+                    githubStatus = ""
+                }) { Text("Cancel") }
+            },
+        )
     }
 
     // ── Clear-data dialog ────────────────────────────────────────────────────
@@ -199,6 +259,63 @@ fun SettingsScreen(
                     },
                     trailingContent = {
                         Switch(checked = false, onCheckedChange = {}, enabled = false)
+                    },
+                )
+            }
+            HorizontalDivider()
+
+            // ── Accounts ────────────────────────────────────────────────────
+            Text("Accounts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            if (githubUsername != null) {
+                ListItem(
+                    headlineContent = { Text("GitHub") },
+                    supportingContent = { Text("✓ Connected as $githubUsername") },
+                    trailingContent = {
+                        TextButton(onClick = {
+                            tokenStore.githubToken = null
+                            tokenStore.githubUsername = null
+                            githubUsername = null
+                            savedMsg = "✓ Signed out of GitHub"
+                        }) { Text("Sign out") }
+                    },
+                )
+            } else {
+                ListItem(
+                    headlineContent = { Text("GitHub") },
+                    supportingContent = {
+                        Text(
+                            when {
+                                githubStatus == "waiting" -> "Waiting for you to approve on github.com…"
+                                githubStatus.startsWith("error:") -> githubStatus.removePrefix("error:")
+                                else -> "Not connected — needed for Source Control push/pull"
+                            }
+                        )
+                    },
+                    trailingContent = {
+                        if (githubStatus == "waiting") {
+                            CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                        } else {
+                            Button(onClick = {
+                                githubStatus = "waiting"
+                                githubJob = scope.launch {
+                                    try {
+                                        val device = GitHubAuth.requestDeviceCode()
+                                        githubDeviceCode = device
+                                        val token = GitHubAuth.pollForToken(device)
+                                        val username = GitHubAuth.fetchUsername(token)
+                                        tokenStore.githubToken = token
+                                        tokenStore.githubUsername = username
+                                        githubUsername = username
+                                        githubDeviceCode = null
+                                        githubStatus = ""
+                                        savedMsg = "✓ Connected to GitHub as $username"
+                                    } catch (e: Exception) {
+                                        githubDeviceCode = null
+                                        githubStatus = "error:${e.message ?: "Sign-in failed"}"
+                                    }
+                                }
+                            }) { Text("Sign in") }
+                        }
                     },
                 )
             }

@@ -64,7 +64,19 @@ private fun runGit(context: Context, dir: File, vararg args: String): String {
         ?: return "Error: '${dir.absolutePath}' isn't reachable from the Ubuntu terminal. " +
             "Git only works on folders inside Ubuntu (/root/...) or shared storage (/storage/emulated/0/...)."
     val quoted = args.joinToString(" ") { a -> "'" + a.replace("'", "'\''") + "'" }
-    return ProotInstaller.execOnce(context, "git $quoted", guestPath)
+
+    // If signed in via GitHub Settings, inject the OAuth token as a one-off HTTP Basic Auth
+    // header (git -c http.extraheader) so push/pull/fetch/clone actually authenticate — without
+    // touching the remote URL or needing an interactive credential prompt inside proot.
+    val githubToken = com.codespace.ide.data.SecureTokenStore(context).githubToken
+    val authFlag = if (!githubToken.isNullOrBlank()) {
+        val basic = android.util.Base64.encodeToString(
+            "x-access-token:$githubToken".toByteArray(), android.util.Base64.NO_WRAP
+        )
+        "-c http.extraheader=\"Authorization: Basic $basic\" "
+    } else ""
+
+    return ProotInstaller.execOnce(context, "git $authFlag$quoted", guestPath)
 }
 
 // Scoped by projectId to match ExplorerPane's per-project workspace isolation (HARD BATCH #1) —

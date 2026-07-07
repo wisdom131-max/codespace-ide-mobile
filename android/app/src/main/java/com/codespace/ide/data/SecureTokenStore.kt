@@ -48,6 +48,18 @@ class SecureTokenStore @Inject constructor(
     fun setAiKey(provider: String, key: String?) =
         prefs.edit().putString("ai_$provider", key).apply()
 
+    /** GitHub OAuth device-flow access token — used both for Source Control (git push/pull
+     *  auth) and to identify who's signed in. Null when signed out. */
+    var githubToken: String?
+        get() = prefs.getString(KEY_GITHUB_TOKEN, null)
+        set(value) = if (value != null) prefs.edit().putString(KEY_GITHUB_TOKEN, value).apply()
+                     else prefs.edit().remove(KEY_GITHUB_TOKEN).apply()
+
+    var githubUsername: String?
+        get() = prefs.getString(KEY_GITHUB_USER, null)
+        set(value) = if (value != null) prefs.edit().putString(KEY_GITHUB_USER, value).apply()
+                     else prefs.edit().remove(KEY_GITHUB_USER).apply()
+
     /** Last JWT access token — stored so HomeScreen can warm-start without re-auth */
     var lastAccessToken: String?
         get() = prefs.getString(KEY_ACCESS, null)
@@ -61,5 +73,7 @@ class SecureTokenStore @Inject constructor(
         const val KEY_ROLE           = "user_role"
         const val KEY_BIOMETRIC_LOCK = "biometric_lock_enabled"
         const val KEY_ACCESS         = "last_access_token"
+        const val KEY_GITHUB_TOKEN   = "github_oauth_token"
+        const val KEY_GITHUB_USER    = "github_username"
     }
 }
