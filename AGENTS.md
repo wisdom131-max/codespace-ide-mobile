@@ -2489,3 +2489,31 @@ whichever one answers. Commit `bfa61ae`.
 - All of them get the same AgentTools tool-calling loop (files/git/terminal/etc.) in AGENT mode.
 - GitHub-account-tied Copilot (the hosted GitHub product) is intentionally NOT included —
   Wisdom didn't want that one, specifically.
+
+---
+
+## 2026-07-07 (even later) — GitHub sign-in (Device Flow) shipped, needs a Client ID to activate
+
+Built the missing piece from the AI/Git audit: GitHub OAuth Device Flow sign-in — no
+redirect URI, no client secret, just a short code the user enters at
+github.com/login/device on any browser/device while the app polls in the background.
+
+- `GitHubAuth.kt` (new, `com.codespace.ide.data`) — `requestDeviceCode()`,
+  `pollForToken()`, `fetchUsername()`.
+- `SecureTokenStore` — added `githubToken`/`githubUsername` (same encrypted store as
+  AI provider keys).
+- `SettingsScreen.kt` — new "Accounts" section: Sign in -> dialog with the code +
+  "Open GitHub"/"Copy code" -> polls -> "Connected as <username>" + Sign out.
+- `SourceControlPane.runGit()` — when signed in, injects the token as a one-off
+  `git -c http.extraheader="Authorization: Basic <base64>"` on every git call, so
+  push/pull/fetch/clone actually authenticate.
+
+### ACTION NEEDED FROM WISDOM (blocks this from working)
+`GitHubAuth.CLIENT_ID` is currently a placeholder string. To activate:
+1. github.com/settings/developers -> New OAuth App (any name/homepage URL; callback
+   URL can be anything, e.g. https://github.com — never hit by this flow).
+2. After creating, click "Enable Device Flow".
+3. Send me the **Client ID** (not the secret — device flow needs no secret) and I'll
+   drop it in.
+
+Commit `4ca0856`.
