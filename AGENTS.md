@@ -2442,3 +2442,14 @@ will check back rather than polling continuously).
 - [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
 - [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
 - [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+---
+
+## 2026-07-07 (correction) — Removed GitHub Copilot API, kept local-only chat panel
+
+Wisdom clarified: "my own copilot" = the app's own local-AI chat panel (Ollama-backed,
+`AgentTools` tool loop), not GitHub's actual hosted Copilot service. Reverted the
+`callCopilotApi()` addition from the batch above — pulled the `"copilot"` model option
+and `tokenStore` threading back out of `CopilotChatPanelOverlay.kt`/`CopilotChatPanelInline`.
+Chat panel is Ollama-only again. The proot/git fixes and `AgentApiServer` auto-start from
+that same batch are untouched — those stay. Commit `15e72aa`.
