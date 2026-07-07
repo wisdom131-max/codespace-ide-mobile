@@ -2578,3 +2578,47 @@ Wisdom asked to knock out the smaller HARD batch items first.
       logical target
 - [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
 - [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+---
+
+## 2026-07-07 — Correction: #12 was already SHIPPED (doc drift) + #4 PDF viewer SHIPPED
+
+### Correction — #12 Ollama/Claude launch flow rebuild
+Re-audited `TerminalPane.kt` directly and found the full #12 redesign was already implemented
+in code (guarded install `ollamaInstallScript()`, guarded server `ollamaServerGuardScript()`
+with `pgrep` hard-guard against a second `ollama serve`, guarded pull `ollamaPullGuardScript()`,
+persistent `setup_complete`/`chosen_model`/`ollama_tab_id` in `ollamaPrefs`, tab reuse on
+"Launch Coding Agent", separate "Sign in to Ollama"/"Sign out of Ollama" actions, opt-in
+"Multi-Instance Mode (advanced)" toggle, model picker listing device-compatible models first
+with ⚠️ warnings on heavier ones). This was simply never marked `[x]` in this file's backlog
+tracker — the checklist below has been corrected to reflect reality. No code changes were
+needed for #12.
+
+### ✅ #4 — PDF viewer (new `PdfViewerDialog.kt`, wired into `ExplorerPane.kt`)
+- Uses Android's built-in `android.graphics.pdf.PdfRenderer` (API 21+) — no external PDF
+  library, no extra APK size or storage cost, consistent with the "minimal dependencies on a
+  storage-constrained device" rule.
+- Renders **one page at a time** as a bitmap (not the whole document into memory) since this
+  targets low-RAM phones. Page render capped at 2x native point size — sharp enough for a
+  phone screen without ballooning memory.
+- Prev/Next navigation with a page counter in the header, pinch-to-zoom + pan on the current
+  page (`detectTransformGestures`).
+- Tapping a `.pdf` in the Explorer now opens `PdfViewerDialog` instead of the text editor
+  (same pattern as the existing image-tap and archive-tap special cases). Wired into both the
+  tree row tap handler and the long-press context menu ("Open"/"Preview").
+- Archive/zip browsing (the other half of the original #4 backlog item) was already shipped
+  earlier via `ArchiveViewer.kt` — untouched here.
+
+### Status: pushed to main (`1ebeec25` new file, `a6bc1f1d` ExplorerPane.kt update) — CI running.
+
+### Updated HARD BATCH remaining
+- [x] #1  Per-project workspace state isolation — DONE, commit `972cdb9`
+- [x] AI tool access + Git proot wiring + Copilot Chat merge — DONE, commit `ab8e162`
+- [x] GitHub sign-in (Device Flow) — DONE, Client ID activated
+- [x] #2  Image picker + folder copy — DONE
+- [x] #7  Quick Actions row scroll + smooth panel collapse — DONE
+- [x] #12 Ollama/Claude launch flow rebuild — confirmed already DONE (doc drift, corrected above)
+- [x] #4  PDF viewer — DONE (this entry)
+- [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange) — only
+      remaining sizeable item
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
