@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -109,6 +110,38 @@ private fun isArchiveFile(name: String): Boolean {
     return ext in listOf("zip", "apk", "jar", "aar")
 }
 
+private fun queryDisplayName(context: Context, uri: Uri): String? {
+    return try {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) cursor.getString(idx) else null
+            } else null
+        }
+    } catch (e: Exception) { null }
+}
+
+/** Copies a picked image Uri into targetDir, avoiding filename collisions. Returns the new File or null. */
+private fun copyImageUriToFolder(context: Context, uri: Uri, targetDir: File): File? {
+    return try {
+        val rawName = queryDisplayName(context, uri) ?: "image_${System.currentTimeMillis()}.jpg"
+        var dest = File(targetDir, rawName)
+        if (dest.exists()) {
+            val base = rawName.substringBeforeLast(".", rawName)
+            val ext  = rawName.substringAfterLast(".", "")
+            var i = 1
+            while (dest.exists()) {
+                dest = File(targetDir, if (ext.isNotEmpty()) "${base}_$i.$ext" else "${base}_$i")
+                i++
+            }
+        }
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            dest.outputStream().use { output -> input.copyTo(output) }
+        }
+        dest
+    } catch (e: Exception) { null }
+}
+
 private fun loadImageBitmap(path: String): androidx.compose.ui.graphics.ImageBitmap? {
     return try {
         val file = File(path)
@@ -189,6 +222,8 @@ fun ExplorerSidePanel(
     var clipboardFile by remember { mutableStateOf<File?>(null) }
     var clipboardCut  by remember { mutableStateOf(false) }
     var gitStatus     by remember { mutableStateOf<Map<String, Char>>(emptyMap()) }
+    var pendingImageTargetDir by remember { mutableStateOf<File?>(null) }
+    var importingImages by remember { mutableStateOf(false) }
 
     // Folder picker launcher — adds to multi-root workspace
     val folderPicker = rememberLauncherForActivityResult(
@@ -224,6 +259,28 @@ fun ExplorerSidePanel(
                 refresh++
             }
         }
+    }
+
+    // Image picker — pick one or more images from device storage (Photos/Files) and
+    // copy them into whichever folder was long-pressed ("Import Image(s) Here"), or the
+    // project root if launched from the toolbar button.
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(50)
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            val targetDir = pendingImageTargetDir ?: workspaceRoot
+            if (targetDir != null) {
+                importingImages = true
+                scope.launch {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        uris.forEach { uri -> copyImageUriToFolder(context, uri, targetDir) }
+                    }
+                    importingImages = false
+                    refresh++
+                }
+            }
+        }
+        pendingImageTargetDir = null
     }
 
     // Create Document launcher — opens Android file picker to create a new file
@@ -351,6 +408,19 @@ fun ExplorerSidePanel(
                     modifier = Modifier.size(16.dp).clickable {
                         contextFile = workspaceRoot; showNewFolder = true; nameInput = ""
                     })
+                Spacer(Modifier.width(6.dp))
+                // Import Image(s) — pick from device Photos/Files, copy into project root
+                if (importingImages) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.AddPhotoAlternate, null, tint = MutedColor,
+                        modifier = Modifier.size(16.dp).clickable {
+                            pendingImageTargetDir = workspaceRoot
+                            imagePickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        })
+                }
                 Spacer(Modifier.width(6.dp))
                 // Refresh
                 Icon(Icons.Default.Refresh, null, tint = MutedColor,
@@ -807,6 +877,7 @@ fun ExplorerSidePanel(
                         "Open in Terminal" to Icons.Default.Computer,
                         "New File Here"   to Icons.Default.Add,
                         "New Folder Here" to Icons.Default.CreateNewFolder,
+                        "Import Image(s) Here" to Icons.Default.AddPhotoAlternate,
                     ).forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
@@ -850,6 +921,12 @@ fun ExplorerSidePanel(
                                         "New Folder Here" -> {
                                             contextFile = if (f.isDirectory) f else f.parentFile
                                             nameInput = ""; showNewFolder = true
+                                        }
+                                        "Import Image(s) Here" -> {
+                                            pendingImageTargetDir = if (f.isDirectory) f else f.parentFile
+                                            imagePickerLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
                                         }
                                         "Copy Path" -> {
                                             val clipboard = context.getSystemService(
@@ -2152,3 +2229,4 @@ fun McpPanel() {
         }
     }
 }
+
