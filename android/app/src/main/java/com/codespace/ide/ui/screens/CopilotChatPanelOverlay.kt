@@ -448,8 +448,6 @@ internal fun CopilotChatPanelOverlay(
 }
 
 
-// ── Inline (non-overlay) version — renders inside the layout, not on top ──
-@Composable
 /**
  * The Copilot bot icon — idles with a gentle float+blink so it reads as "alive", and switches
  * to a faster, more energetic float + pulsing glow while [isThinking] (i.e. chatLoading) is true,
@@ -522,6 +520,8 @@ internal fun AnimatedBotIcon(
     }
 }
 
+// ── Inline (non-overlay) version — renders inside the layout, not on top ──
+@Composable
 internal fun CopilotChatPanelInline(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
