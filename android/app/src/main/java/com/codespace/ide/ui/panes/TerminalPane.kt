@@ -515,6 +515,210 @@ internal fun ollamaLaunchScript(model: String): String =
     "echo -e \"\\033[1;32mLaunching Claude Code ($model)...\\033[0m\"\n" +
     "claude --model $model\n"
 
+
+// Guarded Node.js + ffmpeg + @remotion/cli install, idempotent project scaffold (no
+// interactive create-video prompts — hand-written minimal project instead), and a
+// chunked-render helper script for long videos. Mirrors the Ollama install pattern:
+// safe to re-run — every step checks "already have this?" before doing anything.
+// Wisdom's chunked-render requirement (item raised 2026-07-07): rendering a full
+// 30min+ video in one process risks OOM on this device, so render_chunked.sh renders
+// in small --frames=start-end segments and stitches them with `ffmpeg -c copy` (no
+// re-encode) — resumable, and keeps peak RAM bounded regardless of total video length.
+internal fun remotionSetupScript(): String = """
+echo -e "\033[1;34m[1/5]\033[0m Checking Node.js (need 18+)..."
+NODE_OK=0
+if command -v node &>/dev/null; then
+  NODE_MAJOR=${'$'}(node -v | sed 's/v//' | cut -d. -f1)
+  if [ "${'$'}NODE_MAJOR" -ge 18 ] 2>/dev/null; then NODE_OK=1; fi
+fi
+if [ "${'$'}NODE_OK" -eq 0 ]; then
+  echo -e "\033[1;36m  Installing Node.js via apt...\033[0m"
+  apt install -y nodejs npm 2>&1 | tail -5
+  NODE_MAJOR=${'$'}(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
+  if [ -z "${'$'}NODE_MAJOR" ] || [ "${'$'}NODE_MAJOR" -lt 18 ] 2>/dev/null; then
+    echo -e "\033[1;33m  apt Node too old/missing — trying NodeSource (Node 20)...\033[0m"
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>&1 | tail -10
+    apt install -y nodejs 2>&1 | tail -5
+  fi
+  echo -e "\033[1;32m  Node: ${'$'}(node -v 2>/dev/null)\033[0m"
+else
+  echo -e "\033[1;32m  Already have Node ${'$'}(node -v)\033[0m"
+fi
+
+echo -e "\033[1;34m[2/5]\033[0m Checking ffmpeg..."
+if ! command -v ffmpeg &>/dev/null; then
+  apt install -y ffmpeg 2>&1 | tail -5
+else
+  echo -e "\033[1;32m  Already installed\033[0m"
+fi
+
+echo -e "\033[1;34m[3/5]\033[0m Checking @remotion/cli..."
+if ! npm list -g @remotion/cli &>/dev/null; then
+  npm install -g @remotion/cli 2>&1 | tail -5
+else
+  echo -e "\033[1;32m  Already installed\033[0m"
+fi
+
+echo -e "\033[1;34m[4/5]\033[0m Checking Remotion project (~/remotion-project)..."
+if [ ! -d ~/remotion-project ]; then
+  echo -e "\033[1;36m  Scaffolding a minimal project (no interactive prompts)...\033[0m"
+  mkdir -p ~/remotion-project/src ~/remotion-project/out/chunks
+  cat > ~/remotion-project/package.json <<'PKGEOF'
+{
+  "name": "remotion-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "remotion studio",
+    "render": "remotion render"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.0",
+    "remotion": "4.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "5.4.0"
+  }
+}
+PKGEOF
+  cat > ~/remotion-project/tsconfig.json <<'TSCEOF'
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "commonjs",
+    "jsx": "react",
+    "esModuleInterop": true,
+    "strict": false,
+    "skipLibCheck": true
+  }
+}
+TSCEOF
+  cat > ~/remotion-project/src/Root.tsx <<'ROOTEOF'
+import { Composition } from 'remotion';
+import { MyVideo } from './MyVideo';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="MyVideo"
+      component={MyVideo}
+      durationInFrames={150}
+      fps={30}
+      width={1280}
+      height={720}
+    />
+  );
+};
+ROOTEOF
+  cat > ~/remotion-project/src/MyVideo.tsx <<'VIDEOEOF'
+import { AbsoluteFill, useCurrentFrame, interpolate } from 'remotion';
+
+export const MyVideo = () => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: 'clamp' });
+  return (
+    <AbsoluteFill style={{ backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ fontSize: 80, opacity }}>Hello Remotion — edit src/MyVideo.tsx</div>
+    </AbsoluteFill>
+  );
+};
+VIDEOEOF
+  cat > ~/remotion-project/src/index.ts <<'IDXEOF'
+import { registerRoot } from 'remotion';
+import { RemotionRoot } from './Root';
+
+registerRoot(RemotionRoot);
+IDXEOF
+  cat > ~/remotion-project/remotion.config.ts <<'CFGEOF'
+import { Config } from '@remotion/cli/config';
+
+Config.setVideoImageFormat('jpeg');
+Config.setOverwriteOutput(true);
+CFGEOF
+  cat > ~/remotion-project/render_chunked.sh <<'RCEOF'
+#!/bin/bash
+# Chunked Remotion render — avoids OOM crashes on long (e.g. 30min+) videos by
+# rendering in small frame-range segments, then stitching with ffmpeg concat
+# (stream copy, no re-encode, so the merge itself is fast and near-zero RAM).
+# Resumable: re-running skips chunks that already have an output file, same
+# philosophy as the rootfs chunked-extraction fix (crash mid-way loses only
+# the current chunk, not the whole render).
+#
+# Usage: ./render_chunked.sh <compositionId> <totalFrames> [chunkFrames] [fps]
+# Example (30 min @ 30fps = 54000 frames, 5s chunks = 150 frames):
+#   ./render_chunked.sh MyVideo 54000 150 30
+
+COMP=${'$'}{1:?Usage: render_chunked.sh <compositionId> <totalFrames> [chunkFrames] [fps]}
+TOTAL=${'$'}{2:?total frame count required}
+CHUNK=${'$'}{3:-150}
+FPS=${'$'}{4:-30}
+
+mkdir -p out/chunks
+START=0
+INDEX=0
+
+echo "=== Chunked render: ${'$'}COMP, ${'$'}TOTAL frames, ${'$'}CHUNK frames/chunk, ${'$'}{FPS}fps ==="
+
+while [ ${'$'}START -lt ${'$'}TOTAL ]; do
+  END=${'$'}((START + CHUNK - 1))
+  if [ ${'$'}END -ge ${'$'}TOTAL ]; then END=${'$'}((TOTAL - 1)); fi
+  OUTFILE=${'$'}(printf "out/chunks/chunk_%04d.mp4" ${'$'}INDEX)
+
+  if [ -f "${'$'}OUTFILE" ]; then
+    echo "[chunk ${'$'}INDEX] already rendered — skipping (resume)"
+  else
+    echo "[chunk ${'$'}INDEX] frames ${'$'}START-${'$'}END -> ${'$'}OUTFILE"
+    npx remotion render "${'$'}COMP" --frames=${'$'}START-${'$'}END "${'$'}OUTFILE"
+    # Brief pause between chunks lets the device settle (same GC-breathing-room
+    # pattern used during rootfs extraction) before starting the next render.
+    sleep 2
+  fi
+
+  START=${'$'}((END + 1))
+  INDEX=${'$'}((INDEX + 1))
+done
+
+echo "=== Merging ${'$'}INDEX chunks (stream copy, keeps continuous flow/audio in sync) ==="
+rm -f out/filelist.txt
+for f in out/chunks/chunk_*.mp4; do
+  echo "file '${'$'}f'" >> out/filelist.txt
+done
+ffmpeg -y -f concat -safe 0 -i out/filelist.txt -c copy out/final_output.mp4
+
+if [ -f out/final_output.mp4 ]; then
+  echo "=== Done: out/final_output.mp4 ==="
+else
+  echo "=== Merge failed — check ffmpeg output above ==="
+fi
+RCEOF
+  chmod +x ~/remotion-project/render_chunked.sh
+  cd ~/remotion-project && npm install 2>&1 | tail -10
+  echo -e "\033[1;32m  Project scaffolded at ~/remotion-project\033[0m"
+else
+  echo -e "\033[1;32m  Already scaffolded\033[0m"
+fi
+
+echo -e "\033[1;34m[5/5]\033[0m Launching Remotion Studio..."
+cd ~/remotion-project
+echo -e "\033[1;32mSetup complete!\033[0m"
+echo -e "\033[1;33m  Studio:         npx remotion studio\033[0m"
+echo -e "\033[1;33m  Chunked render: ./render_chunked.sh MyVideo <totalFrames> [chunkFrames] [fps]\033[0m"
+echo -e "\033[1;33m  Example (30min @30fps, 5s chunks): ./render_chunked.sh MyVideo 54000 150 30\033[0m"
+npx remotion studio
+""".trimIndent()
+
+// Every run after first-time setup: no reinstall, no rescaffold — just guard the dev
+// server (checks if Remotion Studio is already up on :3000 before starting another) and
+// jump straight back into the existing project.
+internal fun remotionRelaunchScript(): String =
+    "echo -e \"\\033[1;34m[Remotion]\\033[0m Checking Remotion Studio...\"\n" +
+    "if pgrep -f \"remotion studio\" >/dev/null 2>&1; then\n" +
+    "  echo -e \"\\033[1;32m  Already running on :3000 — reusing.\\033[0m\"\n" +
+    "else\n" +
+    "  cd ~/remotion-project && npx remotion studio\n" +
+    "fi\n"
 @Composable
 internal fun TerminalPane(
     initialCommand: String? = null,
@@ -587,6 +791,8 @@ internal fun TerminalPane(
     val ollamaPrefs = remember { context.getSharedPreferences("ollama_prefs", android.content.Context.MODE_PRIVATE) }
     var showOllamaModelPicker by remember { mutableStateOf(false) }
     var ollamaMultiInstance by remember { mutableStateOf(ollamaPrefs.getBoolean("multi_instance", false)) }
+    // Remotion persistent state — same one-time-setup pattern as Ollama (2026-07-07)
+    val remotionPrefs = remember { context.getSharedPreferences("remotion_prefs", android.content.Context.MODE_PRIVATE) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1011,6 +1217,26 @@ internal fun TerminalPane(
                             ollamaMultiInstance = !ollamaMultiInstance
                             ollamaPrefs.edit().putBoolean("multi_instance", ollamaMultiInstance).apply()
                             showMenu = false
+                        })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🎬", fontSize = 13.sp) },
+                        text = { Text("Setup Remotion", color = Color(0xFFA6E3A1), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            android.widget.Toast.makeText(context, "Setting up Remotion (Node + ffmpeg + project scaffold)…", android.widget.Toast.LENGTH_SHORT).show()
+                            active?.session?.write(remotionSetupScript())
+                            remotionPrefs.edit().putBoolean("setup_complete", true).apply()
+                        })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🎞️", fontSize = 13.sp) },
+                        text = { Text("Launch Remotion Studio", color = Color(0xFFA6E3A1), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            if (!remotionPrefs.getBoolean("setup_complete", false)) {
+                                android.widget.Toast.makeText(context, "Run \"Setup Remotion\" first — it only needs to run once", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                active?.session?.write(remotionRelaunchScript())
+                            }
                         })
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
@@ -1794,5 +2020,6 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
 
 
