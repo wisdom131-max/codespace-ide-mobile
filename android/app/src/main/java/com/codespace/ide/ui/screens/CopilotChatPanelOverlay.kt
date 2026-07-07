@@ -513,6 +513,9 @@ internal fun CopilotChatPanelInline(
                     Text(
                         selectedModel.take(12),
                         color = colors.accent, fontSize = 10.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier
                             .background(colors.surface, RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
