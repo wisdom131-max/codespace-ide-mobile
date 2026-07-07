@@ -1357,9 +1357,15 @@ internal fun TerminalPane(
         }
 
         // ── NewTermux-style toolbar row ────────────────────────────
+        // Fixed single-line height + horizontal scroll: in portrait, this row must never wrap to a
+        // second line (which would steal vertical space the terminal output needs) and must never
+        // silently clip buttons off the right edge either — scrolling keeps every action reachable
+        // while staying a single compact row no matter how narrow the screen is.
         if (showQuickActions) {
         Row(
-            Modifier.fillMaxWidth().background(Color(0xFF161616)).padding(horizontal = 6.dp, vertical = 3.dp),
+            Modifier.fillMaxWidth().height(34.dp).background(Color(0xFF161616))
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 6.dp, vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1469,7 +1475,7 @@ internal fun TerminalPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Export", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(16.dp))
             // Pkg update shortcut
             Box(
                 Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
@@ -2020,6 +2026,7 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
 
 
 
