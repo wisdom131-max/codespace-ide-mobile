@@ -2092,3 +2092,56 @@ Actions build (run 28834334650). Wisdom should pull the new APK and confirm on-d
 HARD batch. Next up when resumed: work HARD items one at a time, in the order listed in the "HARD BATCH"
 checklist above, starting with #1 (per-project workspace state isolation) unless Wisdom wants to jump to
 #12 (Ollama/Claude launch flow rebuild) first since that's the most user-facing pain point.
+
+---
+
+## 2026-07-07 — Archive/APK viewer shipped + AI Chat panel rework (in progress, on hold)
+
+### ✅ NEW #18 — APK/ZIP "disassemble" viewer — SHIPPED (commit `17f0518`, green build 28835042968)
+Tapping a `.zip`/`.apk`/`.jar`/`.aar` in Explorer now opens a fullscreen archive browser
+(`ArchiveViewer.kt`) instead of dumping binary bytes into the text editor: lazy-expandable
+file tree via `ZipFile`, tap a text-ish entry (xml/json/txt/smali/etc) to preview raw content,
+tap a binary entry (dex/arsc/so) to see size + "Extract to Downloads" (streamed copy, no
+readBytes — safe for large classes.dex on 3GB devices). The actual "disassemble" step: tapping
+`AndroidManifest.xml` specifically decodes Android's compiled binary XML format into readable
+XML text via a new pure-Kotlin `AxmlDecoder.kt` (no subprocess/native toolchain — parses the
+ResChunk_header/string-pool/XML-element chunk format directly, so it's completely unaffected
+by the Samsung kernel's proot/subprocess restrictions). Full smali disassembly of classes.dex
+is NOT included yet (would need bundling dexlib2/baksmali as a pure-JVM dependency — bigger,
+separate task if Wisdom wants it later).
+
+### 🔧 AI Chat panel — bug found + partial fix attempt, NEEDS REDO per Wisdom's actual spec
+**Bug diagnosed:** the AI Chat panel was a separate floating right-side region with its own
+`showChatPanel`/`aiPanelWidth` state, competing for horizontal space with the Explorer side
+panel instead of being coordinated with it. On a narrow phone screen this squeezed the chat
+header down to a sliver, forcing the model-name text ("nemotron-3-super") to wrap one
+character per line vertically, with the editor content visible bleeding through behind it.
+
+**First fix attempt (commit `ae52714`, green build 28835233311) — WRONG APPROACH:** folded
+`SidePanel.AI_CHAT` into the same left-side Activity Bar / mutually-exclusive panel system as
+Explorer/Search/Git. This is NOT what Wisdom wants — he wants it as its own dedicated
+**right-docked** panel, separate from Explorer's left side. This needs to be redone.
+
+**Correct spec (confirmed by Wisdom, 2026-07-07):**
+1. Panel docks on the **right** edge of the screen (own region, not sharing Explorer's slot).
+2. Drag handle on its left edge, mirroring Explorer's mechanics but flipped: drag **right→left
+   widens** it, drag **left→right collapses/closes** it.
+3. Remove the AI Chat entry from the Activity Bar / quick-actions icon column entirely.
+4. Add a **new button in the top-right toolbar** (next to the laptop/play/split/bell icons) as
+   the primary way to open/close it.
+5. Keep the existing **gear-icon menu entry** ("Toggle Copilot Chat") — Wisdom used this
+   before and wants it preserved as a secondary way in.
+6. **New custom icon**: Wisdom supplied a purple/blue robot-head icon sheet (5 pose variants),
+   saved to `android/app/src/main/assets/design-assets/copilot_bot_icon_sheet.png`. Replaces
+   the current generic `Icons.Default.Psychology` brain icon everywhere the bot is shown
+   (toolbar button + panel header).
+7. **Idle/working animation**: the icon should have a subtle continuous "floating" bob
+   animation plus a blink, at all times — and a distinct, more active animation state while
+   the AI is actually generating a response (chatLoading == true), so it visibly looks like
+   it's "thinking"/working.
+8. Model-name badge text wrap bug already hardened with `maxLines=1` + ellipsis — keep as is
+   regardless of panel position fix.
+
+**Status: ON HOLD.** Wisdom is still adding more requests to the batch. Do NOT implement further
+until he says "done" — then work the full backlog (this item + the HARD batch below) EASIEST
+to HARDEST, one at a time, confirming a green build before moving to the next.
