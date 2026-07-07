@@ -2739,13 +2739,16 @@ under "OAuth Connectors — LIVE as of 2026-07-07".
 `/api/v1/connectors/gmail/auth-url` etc. can now mint real Google OAuth URLs and complete the
 code→token exchange. Blocked only on the Android-side wiring.
 
-## Remaining for #14
-1. ~~Google OAuth Client ID + Secret on Railway~~ ✅ DONE
-2. Rebuild `ConnectorsHubSheet.kt` (Android) to call the new backend endpoints (`GET
-   /connectors`, `GET /connectors/:service/auth-url`, `POST /connectors/:service/call`, `DELETE
-   /connectors/:service`) instead of the old dead `AgentConnectorManager.kt` local OAuth logic.
-   Remove the dead code once verified working end-to-end.
-3. On-device test: connect Gmail from the app, confirm a real API call through
-   `POST /connectors/gmail/call` round-trips correctly.
+## Remaining for #14 (corrected — Android side was already done)
+1. ~~Google OAuth Client ID + Secret on Railway~~ ✅ DONE (2026-07-07)
+2. ~~Rebuild `ConnectorsHubSheet.kt` + `AgentConnectorManager.kt` + `ConnectorsApiClient.kt`
+   to call the real backend~~ ✅ ALREADY DONE — commit `b90b7a260f` (2026-07-07 11:33, actually
+   landed BEFORE the credentials were set). Hit one build error (unclosed KDoc comment from a
+   literal `/*` inside `backend/src/connectors/*.ts` path text in a doc comment), fixed in
+   `de01fa90e9`. CI run 953+ green since.
+3. ONLY REMAINING STEP for #14: on-device test — install latest build, open Connectors sheet,
+   tap Gmail, complete the browser OAuth flow, confirm it flips to "Connected" and a real call
+   via `POST /connectors/gmail/call` round-trips. This requires Wisdom's physical device.
 4. #17 (Dashboard chart/icon sizing) remains the only other open HARD batch item, still
-   pending Wisdom's specifics.
+   pending Wisdom's specifics — needs him to describe the exact sizing issue before work starts.
+
