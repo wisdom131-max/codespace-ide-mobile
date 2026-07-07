@@ -2713,3 +2713,39 @@ are in the `credentials-and-keys.md` file on Google Drive under "OAuth Connector
    old local `AgentConnectorManager.kt` OAuth logic; remove the dead code once verified working.
 3. #17 (Dashboard chart/icon sizing) is still the only other open HARD batch item, blocked on
    Wisdom's specifics.
+
+
+---
+
+# UPDATE — 2026-07-07: Real OAuth Connectors (#14) — GOOGLE CREDENTIALS LIVE ✅
+
+## What happened
+Wisdom manually created a fresh "Web application" OAuth 2.0 Client ID in Google Cloud project
+`codespace-ide-2026` (the earlier same-named "Web client 2" had no downloadable secret, so it
+was deleted and recreated). Downloaded the client secret JSON at creation time (the only window
+Google gives you), and provided both values.
+
+Both were set directly on Railway via the Railway GraphQL API (`variableUpsert` mutation) on
+the `codespace-ide-mobile` production service:
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+
+Confirmed live via a `variables` query against the same service/environment — both present,
+backend reads env at request time so **no redeploy was needed**. Full values (Client ID,
+Client Secret, redirect URI) are logged in the `credentials-and-keys.md` file on Google Drive
+under "OAuth Connectors — LIVE as of 2026-07-07".
+
+## Status: 🟢 Backend-side OAuth is now fully live
+`/api/v1/connectors/gmail/auth-url` etc. can now mint real Google OAuth URLs and complete the
+code→token exchange. Blocked only on the Android-side wiring.
+
+## Remaining for #14
+1. ~~Google OAuth Client ID + Secret on Railway~~ ✅ DONE
+2. Rebuild `ConnectorsHubSheet.kt` (Android) to call the new backend endpoints (`GET
+   /connectors`, `GET /connectors/:service/auth-url`, `POST /connectors/:service/call`, `DELETE
+   /connectors/:service`) instead of the old dead `AgentConnectorManager.kt` local OAuth logic.
+   Remove the dead code once verified working end-to-end.
+3. On-device test: connect Gmail from the app, confirm a real API call through
+   `POST /connectors/gmail/call` round-trips correctly.
+4. #17 (Dashboard chart/icon sizing) remains the only other open HARD batch item, still
+   pending Wisdom's specifics.
