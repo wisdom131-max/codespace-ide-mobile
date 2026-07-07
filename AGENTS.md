@@ -2073,7 +2073,7 @@ after easy batch verified). This section is the authoritative split — update s
 - [ ] #2  Image picker + folder copy
 - [ ] #4  PDF viewer + zip/archive browsing
 - [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
-- [ ] #11 Real fullscreen toggle across ALL Preview sub-tabs (centered, back/X button)
+- [x] #11 Real fullscreen toggle across ALL Preview sub-tabs (centered, back/X button) — DONE, commit `fd0b169`
 - [ ] #12 Ollama/Claude launch flow rebuild (persistence, no re-pull/re-tab, model picker w/ warnings,
         sign in/out with persistent memory)
 - [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
@@ -2142,6 +2142,101 @@ Explorer/Search/Git. This is NOT what Wisdom wants — he wants it as its own de
 8. Model-name badge text wrap bug already hardened with `maxLines=1` + ellipsis — keep as is
    regardless of panel position fix.
 
-**Status: ON HOLD.** Wisdom is still adding more requests to the batch. Do NOT implement further
-until he says "done" — then work the full backlog (this item + the HARD batch below) EASIEST
-to HARDEST, one at a time, confirming a green build before moving to the next.
+**Status: SUPERSEDED — see "2026-07-07 — AI Chat panel redo + fullscreen toggle SHIPPED" section
+below for the actual completed implementation.**
+
+---
+
+## 2026-07-07 — AI Chat panel redo + fullscreen toggle SHIPPED (commits `fd0b169`, `d48d763`)
+
+Both items picked from the HARD batch because they depend heavily on screenshots/visual context
+Wisdom gave earlier in chat — flagged as "hard for another AI to understand without the
+screenshots", so done now while that context was fresh, ahead of #1/#2/#4/#7 etc.
+
+### ✅ AI Chat panel — redone correctly per the confirmed spec (superseding the wrong `ae52714` attempt)
+- Reverted the wrong approach: removed `SidePanel.AI_CHAT` from the left Activity Bar's
+  mutually-exclusive panel list and from the `when (activePanel)` dispatch in
+  `ProjectShellScreen.kt`. It no longer competes with Explorer/Search/Git/Run for the same
+  left-side slot.
+- Restored as its own **independent right-docked panel** with dedicated state:
+  `showChatPanel: Boolean` + `aiPanelWidth: Float`, rendered in its own `Box` after the main
+  editor `Column`, right before the Notification Drawer in the composition.
+- Drag handle is a 4dp-wide `Box` on the panel's left edge using `detectDragGestures`: dragging
+  right→left increases `aiPanelWidth` (widens), dragging left→right decreases it and closes the
+  panel entirely once width drops below 20f. Width is coerced to `0f..totalWidth * 0.8f`.
+- Removed the AI Chat icon from the Activity Bar column entirely (per spec item 3).
+- Added a **new toggle button in the top-right toolbar** — sits after the VerticalSplit icon and
+  before the notification bell — using the new `AnimatedBotIcon` composable, `onClick` flips
+  `showChatPanel`.
+- The existing gear-menu "Toggle Copilot Chat" entry is kept and now drives the same
+  `showChatPanel` state (previously it was wrongly wired to `activePanel` during the bad attempt).
+- Back-button handling: added `showChatPanel -> showChatPanel = false` to the existing
+  BackHandler `when` chain so system back closes the panel before backing out of the project.
+
+### ✅ Custom animated bot icon — replaces the generic brain icon everywhere
+- Wisdom's 5-pose sprite sheet (`design-assets/copilot_bot_icon_sheet.png`, 1024×538) was
+  auto-cropped (PIL, non-white-background bbox detection) down to just the clean front-facing
+  pose, padded to a square, saved as `res/drawable-nodpi/copilot_bot.png` (216×216).
+  `drawable-nodpi` used deliberately since it's a fixed-size raster illustration, not something
+  that needs per-density variants.
+- New composable `AnimatedBotIcon(modifier, isThinking: Boolean)` in
+  `CopilotChatPanelOverlay.kt`:
+  - Continuous idle **float bob**: `graphicsLayer { translationY }` driven by
+    `rememberInfiniteTransition` + `animateFloat`, reversing between -1..1, 1400ms period
+    (550ms when `isThinking`).
+  - Periodic **blink**: a `LaunchedEffect` loop toggles a `blinking` flag every ~2.6s (0.9s when
+    thinking) for 110ms, animated via `animateFloatAsState` to briefly squash `scaleY` to 0.82 —
+    simulates a blink without needing separate eyes-closed sprite frames (only one clean pose was
+    cropped from the sheet; full frame-swap animation would need all 5 poses individually
+    sliced/aligned, bigger follow-up task if Wisdom wants true sprite animation later).
+  - **Thinking glow**: when `isThinking == true`, a soft `Color(0xFF5B6EF5)` circle pulses behind
+    the icon (`glowAlpha` animated 0.15↔0.55) so it visibly reads as "working" while
+    `chatLoading` is true.
+  - Used in 3 places: the new toolbar button, the chat panel header (replacing
+    `Icons.Default.Psychology`), and the empty-state icon shown before any messages exist.
+
+### ✅ Real fullscreen toggle for Preview pane — works across ALL sub-tabs
+- The top-bar icon was previously `Icons.Default.OpenInNew` with **no `onClick` handler at all**
+  (dead button, labelled "Open in browser" but did nothing) — this was the button Wisdom
+  circled in his screenshot. Replaced with `Icons.Default.Fullscreen` + a real
+  `isFullscreen` boolean state + working `clickable`.
+- Refactored: extracted the mode-dispatch block (`when (activeMode) { HTML -> ..., MARKDOWN ->
+  ..., SVG -> ..., BROWSER -> ..., DASHBOARD -> ..., REMOTION -> ... }`) out of the inline
+  `Column` into a new shared private composable `PreviewBody(...)`, so the exact same render
+  path is used both inline and fullscreen — no risk of the two views drifting apart.
+- Tapping the icon opens a window-filling `Dialog` (`DialogProperties(usePlatformDefaultWidth =
+  false, decorFitsSystemWindows = false)`) containing: a 44dp header with the active mode's
+  label centered, and an explicit `Icons.Default.Close` (X) button on the right to dismiss —
+  Wisdom's "back/X button" requirement — then `PreviewBody` filling the remaining space,
+  centered. Works identically for every sub-tab since they all render through the same
+  `PreviewBody` function.
+
+### Build note for future reference
+First push (`fd0b169`) broke CI: a text-insertion script landed the new `AnimatedBotIcon`
+composable's doc-comment + `@Composable` annotation *between* the pre-existing `@Composable`
+annotation and `CopilotChatPanelInline`'s `fun` line, so `AnimatedBotIcon` ended up with two
+stacked `@Composable` annotations (Kotlin: "this annotation is not repeatable") while
+`CopilotChatPanelInline` was left with none, cascading into ~15 "Composable invocations can
+only happen from a @Composable function" errors. Fixed same session in `d48d763` — confirmed
+green on GitHub Actions run `28837075143`. **Lesson: when inserting a new composable right
+before an existing one via text markers, always re-check the existing item's own annotation
+line didn't get orphaned by the insertion point.**
+
+### Status: ✅ SHIPPED — confirmed green CI build. Wisdom should pull latest and verify on-device.
+
+### Updated HARD BATCH remaining (in no particular order, pick any next session)
+- [ ] #1  Per-project workspace state isolation
+- [ ] #2  Image picker + folder copy
+- [ ] #4  PDF viewer + zip/archive browsing (note: archive/APK viewing already shipped via
+        `ArchiveViewer.kt` — #4 remaining scope is just the standalone PDF viewer now)
+- [ ] #7  Quick Actions row portrait sizing + smooth resize "flow" on drag-to-0dp
+- [ ] #12 Ollama/Claude launch flow rebuild (persistence, no re-pull/re-tab, model picker w/
+        compatibility warnings, sign in/out with persistent memory) — flagged by Wisdom as the
+        most user-facing pain point, good candidate to start next
+- [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+Note: Wisdom is low on Superagent message credits this month (23/25 used as of this session) —
+next session may be credit-constrained, so pick ONE hard item, ship it fully (implement, commit,
+push, verify green CI), update this file + Google Drive copy, then stop and report rather than
+chaining multiple items in one go.
