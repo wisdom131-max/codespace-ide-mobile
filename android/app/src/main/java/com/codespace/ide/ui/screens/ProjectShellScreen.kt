@@ -39,6 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.sp
@@ -372,6 +375,7 @@ fun ProjectShellScreen(
     var showChatPanel      by remember { mutableStateOf(false) }
     var aiPanelWidth       by remember { mutableFloatStateOf(300f) }
     var bottomPanelHeight  by remember { mutableFloatStateOf(300f) }
+    var isDraggingBottomPanel by remember { mutableStateOf(false) }
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
     var showCommandPalette by remember { mutableStateOf(false) }
     var appWakeLockOn by remember { mutableStateOf(false) }
@@ -1090,10 +1094,23 @@ fun ProjectShellScreen(
                         Box(
                             Modifier.fillMaxWidth().height(4.dp).background(DividerColor)
                                 .pointerInput(Unit) {
-                                    detectDragGestures { _, dragAmount ->
+                                    detectDragGestures(
+                                        onDragStart = { isDraggingBottomPanel = true },
+                                        onDragEnd = {
+                                            isDraggingBottomPanel = false
+                                            // Only fully collapse (and reset to a sane default height for
+                                            // next time it's reopened) once the finger is lifted below the
+                                            // threshold — while dragging, we let it "flow" all the way down
+                                            // to 0 instead of snapping/vanishing mid-drag.
+                                            if (bottomPanelHeight < 60f) {
+                                                showBottomPanel = false
+                                                bottomPanelHeight = 260f
+                                            }
+                                        },
+                                        onDragCancel = { isDraggingBottomPanel = false },
+                                    ) { _, dragAmount ->
                                         val nh = bottomPanelHeight - dragAmount.y
-                                        if (nh < 60f) showBottomPanel = false
-                                        else bottomPanelHeight = nh.coerceIn(60f, totalHeight * 0.92f)
+                                        bottomPanelHeight = nh.coerceIn(0f, totalHeight * 0.92f)
                                     }
                                 }
                         )
@@ -1128,8 +1145,16 @@ fun ProjectShellScreen(
                             Spacer(Modifier.width(4.dp))
                         }
                         HorizontalDivider(color = DividerColor)
-                        val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(60.dp, 600.dp)
-                        Box(Modifier.fillMaxWidth().height(bh).background(PanelBg)) {
+                        val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(0.dp, 600.dp)
+                        // While actively dragging, follow the finger 1:1 (snap — no animation lag).
+                        // Otherwise (icon-triggered resize, programmatic changes) animate smoothly so the
+                        // panel "flows" open/closed instead of jumping.
+                        val animatedBh by animateDpAsState(
+                            targetValue = bh,
+                            animationSpec = if (isDraggingBottomPanel) snap() else tween(180),
+                            label = "bottomPanelHeight",
+                        )
+                        Box(Modifier.fillMaxWidth().height(animatedBh).background(PanelBg)) {
                             when (activeBottomTab) {
                                 BottomTab.TERMINAL -> TerminalPane(
                                     initialCommand = terminalCommandToRun,
@@ -1855,3 +1880,4 @@ private fun buildRunCommand(path: String): String? {
 }
 
 // ConnectorRow moved to ConnectorsHubSheet.kt
+
