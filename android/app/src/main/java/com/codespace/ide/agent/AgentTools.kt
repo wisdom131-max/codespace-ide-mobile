@@ -2,6 +2,7 @@ package com.codespace.ide.agent
 
 import android.content.Context
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -145,7 +146,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     fun executeTool(name: String, args: JSONObject, context: Context): String {
         return try {
             when (name) {
-                "run_command" -> runCommand(args.getString("command"), args.optString("workdir", null))
+                "run_command" -> runCommand(args.getString("command"), args.optString("workdir", null), context)
                 "read_file" -> readFile(args.getString("path"))
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"))
                 "list_files" -> listFiles(args.getString("path"))
@@ -185,16 +186,11 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     // ── Shell & Files ────────────────────────────────────────────────────
-    private fun runCommand(command: String, workdir: String?): String {
-        val parts = command.split("\\s+".toRegex())
-        val builder = ProcessBuilder(*parts.toTypedArray()).redirectErrorStream(true)
-        workdir?.let { File(it).takeIf { f -> f.exists() }?.let { dir -> builder.directory(dir) } }
-        val proc = builder.start()
-        val output = proc.inputStream.bufferedReader().use { it.readText() }
-        val exitCode = proc.waitFor()
-        return if (exitCode == 0) {
-            if (output.isBlank()) "(command completed, no output)" else output.take(4000)
-        } else "Exit code $exitCode\n$output".take(4000)
+    // Runs INSIDE the Ubuntu proot rootfs (git, npm, apt, etc. only exist there — the bare
+    // host ProcessBuilder this used to call never had those binaries on PATH). workdir, if
+    // given, must be a guest-side path (e.g. "/root/myproject"), not a host Android path.
+    private fun runCommand(command: String, workdir: String?, context: Context): String {
+        return com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, workdir).take(4000)
     }
 
     private fun readFile(path: String): String {
@@ -244,56 +240,56 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     // ── Git (full access) ────────────────────────────────────────────────
-    private fun gitRun(vararg args: String, repo: File): String {
-        val cmd = listOf("git") + args
-        val proc = ProcessBuilder(cmd).directory(repo).redirectErrorStream(true).start()
-        val out = proc.inputStream.bufferedReader().use { it.readText() }
-        proc.waitFor()
-        return out.trim()
+    // git only exists inside the Ubuntu proot rootfs, never on the bare Android host — must
+    // route through ProotInstaller.execOnce, same as runCommand above. repoDir/repo.absolutePath
+    // here is expected to be a guest-side path (e.g. "/root/myproject").
+    private fun gitRun(vararg args: String, repo: File, context: Context): String {
+        val quoted = args.joinToString(" ") { a -> "'" + a.replace("'", "'\\''") + "'" }
+        return ProotInstaller.execOnce(context, "git $quoted", repo.path)
     }
 
     private fun getRepoDir(repoDir: String?, context: Context): File =
-        File(repoDir ?: context.filesDir.absolutePath)
+        File(repoDir ?: "/root")
 
     private fun gitCommitPush(message: String, repoDir: String?, context: Context): String {
         val repo = getRepoDir(repoDir, context)
-        if (!File(repo, ".git").exists()) return "Not a git repository: ${repo.absolutePath}"
-        val add = gitRun("add", "-A", repo = repo)
-        val commit = gitRun("commit", "-m", message, repo = repo)
-        val push = gitRun("push", repo = repo)
+        if (!ProotInstaller.guestToHostPath(context, "${repo.path}/.git").exists()) return "Not a git repository: ${repo.path}"
+        val add = gitRun("add", "-A", repo = repo, context = context)
+        val commit = gitRun("commit", "-m", message, repo = repo, context = context)
+        val push = gitRun("push", repo = repo, context = context)
         return "git add: $add\ngit commit: $commit\ngit push: $push".take(4000)
     }
 
     private fun gitPullRebase(repoDir: String?, context: Context): String {
         val repo = getRepoDir(repoDir, context)
-        if (!File(repo, ".git").exists()) return "Not a git repository: ${repo.absolutePath}"
-        return "git pull --rebase: ${gitRun("pull", "--rebase", repo = repo)}".take(4000)
+        if (!ProotInstaller.guestToHostPath(context, "${repo.path}/.git").exists()) return "Not a git repository: ${repo.path}"
+        return "git pull --rebase: ${gitRun("pull", "--rebase", repo = repo, context = context)}".take(4000)
     }
 
     private fun gitBranch(action: String, name: String, repoDir: String?, context: Context): String {
         val repo = getRepoDir(repoDir, context)
-        if (!File(repo, ".git").exists()) return "Not a git repository: ${repo.absolutePath}"
+        if (!ProotInstaller.guestToHostPath(context, "${repo.path}/.git").exists()) return "Not a git repository: ${repo.path}"
         return when (action) {
-            "create" -> { gitRun("checkout", "-b", name, repo = repo); "Created and switched to branch '$name'" }
-            "switch" -> { gitRun("checkout", name, repo = repo); "Switched to branch '$name'" }
-            "list" -> gitRun("branch", "-a", repo = repo).take(4000)
-            "merge" -> "Merged '$name': ${gitRun("merge", name, repo = repo)}".take(4000)
-            "delete" -> { gitRun("branch", "-d", name, repo = repo); "Deleted branch '$name'" }
+            "create" -> { gitRun("checkout", "-b", name, repo = repo, context = context); "Created and switched to branch '$name'" }
+            "switch" -> { gitRun("checkout", name, repo = repo, context = context); "Switched to branch '$name'" }
+            "list" -> gitRun("branch", "-a", repo = repo, context = context).take(4000)
+            "merge" -> "Merged '$name': ${gitRun("merge", name, repo = repo, context = context)}".take(4000)
+            "delete" -> { gitRun("branch", "-d", name, repo = repo, context = context); "Deleted branch '$name'" }
             else -> "Unknown branch action: $action. Use: create, switch, list, merge, delete"
         }
     }
 
     private fun gitStatus(repoDir: String?, context: Context): String {
         val repo = getRepoDir(repoDir, context)
-        if (!File(repo, ".git").exists()) return "Not a git repository: ${repo.absolutePath}"
-        return gitRun("status", "--short", repo = repo).take(4000)
+        if (!ProotInstaller.guestToHostPath(context, "${repo.path}/.git").exists()) return "Not a git repository: ${repo.path}"
+        return gitRun("status", "--short", repo = repo, context = context).take(4000)
     }
 
     private fun gitDiff(staged: Boolean, repoDir: String?, context: Context): String {
         val repo = getRepoDir(repoDir, context)
-        if (!File(repo, ".git").exists()) return "Not a git repository: ${repo.absolutePath}"
+        if (!ProotInstaller.guestToHostPath(context, "${repo.path}/.git").exists()) return "Not a git repository: ${repo.path}"
         val args = if (staged) arrayOf("diff", "--cached") else arrayOf("diff")
-        return gitRun(*args, repo = repo).take(4000)
+        return gitRun(*args, repo = repo, context = context).take(4000)
     }
 
     // ── Remotion (clip-by-clip + FFmpeg merge for 3GB devices) ───────────

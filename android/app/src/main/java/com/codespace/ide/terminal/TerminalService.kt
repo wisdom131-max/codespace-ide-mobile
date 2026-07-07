@@ -149,6 +149,7 @@ class TerminalService : Service() {
             liveSessions.forEach { try { it.finishIfRunning() } catch (_: Throwable) {} }
             liveSessions.clear()
         }
+        com.codespace.ide.agent.AgentApiServer.stop()
         android.util.Log.d("TerminalService", "All sessions killed (minimize cleanup)")
     }
 
@@ -160,6 +161,7 @@ class TerminalService : Service() {
             liveSessions.forEach { try { it.finishIfRunning() } catch (_: Exception) {} }
             liveSessions.clear()
         }
+        com.codespace.ide.agent.AgentApiServer.stop()
         actionReleaseWakeLock()
         super.onDestroy()
     }
@@ -274,6 +276,11 @@ class TerminalService : Service() {
             val (proot, args, envVars) = ProotInstaller.launchArgs(this)
             val session = TerminalSession(proot, "/", args, envVars, 4000, client)
             liveSessions.add(session)
+            // Give ANY AI launched inside the terminal (Claude Code, Ollama CLI, llama.cpp,
+            // etc.) the same 32 AgentTools the chat panel uses, via localhost:8765 — was built
+            // (AgentApiServer.kt) but never actually started anywhere. Safe to call repeatedly;
+            // start() no-ops if already running.
+            com.codespace.ide.agent.AgentApiServer.start(applicationContext)
             return Pair(session, client)
         }
 

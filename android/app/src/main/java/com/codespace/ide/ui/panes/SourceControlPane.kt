@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.codespace.ide.terminal.ProotInstaller
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -50,24 +51,20 @@ private data class GitChange(
     val isStaged: Boolean,
 )
 
-private fun runGit(dir: File, vararg args: String): String {
-    return try {
-        val gitBin = if (File("/data/data/com.termux/files/usr/bin/git").exists())
-            "/data/data/com.termux/files/usr/bin/git" else "git"
-        val pb = ProcessBuilder(gitBin, *args).directory(dir).redirectErrorStream(true)
-        pb.environment().apply {
-            val prefix = "/data/data/com.termux/files/usr"
-            put("PREFIX", prefix)
-            put("HOME", "/data/data/com.termux/files/home")
-            put("PATH", "$prefix/bin:/system/bin:/system/xbin")
-            put("LD_LIBRARY_PATH", "$prefix/lib")
-        }
-        val process = pb.start()
-        val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val output = reader.readText()
-        process.waitFor()
-        output.trim()
-    } catch (e: Exception) { "Error: ${e.message}" }
+// git only exists inside the Ubuntu proot rootfs — never on the bare Android host. This used
+// to try /data/data/com.termux/files/usr/bin/git (a different app's private directory this app
+// has no permission to read/exec, leftover from the pre-Ubuntu-refactor Termux-based
+// architecture) and fall back to a bare "git" that was never on the host PATH either, so
+// Source Control never actually worked. Now routes through ProotInstaller.execOnce, the same
+// proot invocation the interactive terminal uses, after mapping the host-side folder (from
+// Explorer's workspace path, which can be anywhere the device folder browser reaches) to its
+// guest-side path.
+private fun runGit(context: Context, dir: File, vararg args: String): String {
+    val guestPath = ProotInstaller.hostToGuestPath(context, dir.absolutePath)
+        ?: return "Error: '${dir.absolutePath}' isn't reachable from the Ubuntu terminal. " +
+            "Git only works on folders inside Ubuntu (/root/...) or shared storage (/storage/emulated/0/...)."
+    val quoted = args.joinToString(" ") { a -> "'" + a.replace("'", "'\''") + "'" }
+    return ProotInstaller.execOnce(context, "git $quoted", guestPath)
 }
 
 // Scoped by projectId to match ExplorerPane's per-project workspace isolation (HARD BATCH #1) —
@@ -105,11 +102,11 @@ fun SourceControlPane(projectId: String) {
             loading = true
             withContext(Dispatchers.IO) {
                 try {
-                    branch = runGit(repoDir, "branch", "--show-current")
-                    val branchList = runGit(repoDir, "branch", "--list", "--format=%(refname:short)")
+                    branch = runGit(context, repoDir, "branch", "--show-current")
+                    val branchList = runGit(context, repoDir, "branch", "--list", "--format=%(refname:short)")
                     branches = if (!branchList.startsWith("Error")) branchList.lines().filter { it.isNotBlank() } else emptyList()
 
-                    val trackInfo = runGit(repoDir, "status", "-sb")
+                    val trackInfo = runGit(context, repoDir, "status", "-sb")
                     val trackLine = trackInfo.lines().firstOrNull()
                     if (trackLine != null && trackLine.contains("ahead")) {
                         val ahead = Regex("ahead (\\d+)").find(trackLine)?.groupValues?.get(1) ?: "0"
@@ -117,7 +114,7 @@ fun SourceControlPane(projectId: String) {
                         aheadBehind = if (behind != "0") "down$behind up$ahead" else "up$ahead"
                     } else { aheadBehind = "" }
 
-                    val statusOutput = runGit(repoDir, "status", "--porcelain=v1")
+                    val statusOutput = runGit(context, repoDir, "status", "--porcelain=v1")
                     val staged = mutableListOf<GitChange>()
                     val unstaged = mutableListOf<GitChange>()
 
@@ -142,11 +139,11 @@ fun SourceControlPane(projectId: String) {
 
     LaunchedEffect(refresh) { refreshStatus() }
 
-    fun stageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "add", file) }; refreshStatus() } }
-    fun unstageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "reset", "HEAD", file) }; refreshStatus() } }
-    fun discardFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "checkout", "--", file) }; refreshStatus() } }
-    fun stageAll() { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "add", ".") }; refreshStatus() } }
-    fun unstageAll() { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "reset", "HEAD") }; refreshStatus() } }
+    fun stageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", file) }; refreshStatus() } }
+    fun unstageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "reset", "HEAD", file) }; refreshStatus() } }
+    fun discardFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "checkout", "--", file) }; refreshStatus() } }
+    fun stageAll() { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }; refreshStatus() } }
+    fun unstageAll() { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "reset", "HEAD") }; refreshStatus() } }
 
     Column(Modifier.fillMaxSize().background(BgColor)) {
         // Header
@@ -158,7 +155,7 @@ fun SourceControlPane(projectId: String) {
             Icon(Icons.Default.Refresh, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable { refresh++ })
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Default.Sync, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
-                scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "pull") }; refreshStatus() }
+                scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }; refreshStatus() }
             })
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Default.MoreVert, null, tint = MutedColor, modifier = Modifier.size(16.dp))
@@ -183,7 +180,7 @@ fun SourceControlPane(projectId: String) {
                     branches.forEach { b ->
                         DropdownMenuItem(text = { Text(if (b == branch) ">> $b" else b, fontSize = 12.sp) }, onClick = {
                             showBranchMenu = false
-                            scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "checkout", b) }; refreshStatus() }
+                            scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "checkout", b) }; refreshStatus() }
                         })
                     }
                 }
@@ -204,12 +201,12 @@ fun SourceControlPane(projectId: String) {
         // Commit + Push
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Button(
-                onClick = { if (message.isNotBlank()) { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "commit", "-m", message) }; message = ""; refreshStatus() } } },
+                onClick = { if (message.isNotBlank()) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "commit", "-m", message) }; message = ""; refreshStatus() } } },
                 modifier = Modifier.weight(1f),
                 enabled = message.isNotBlank() && stagedChanges.isNotEmpty(),
             ) { Text("Commit", fontSize = 11.sp) }
             OutlinedButton(
-                onClick = { scope.launch { withContext(Dispatchers.IO) { runGit(repoDir, "push") }; refreshStatus() } },
+                onClick = { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }; refreshStatus() } },
                 modifier = Modifier.weight(1f),
             ) { Text("Push", fontSize = 11.sp) }
         }

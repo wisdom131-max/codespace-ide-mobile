@@ -65,6 +65,35 @@ object ProotInstaller {
 
     fun rootfsDir(context: Context): File = File(context.filesDir, "ubuntu-rootfs")
 
+    /**
+     * Maps a guest-side path (as seen inside the proot rootfs, e.g. "/root/myproject") to the
+     * real host-side File backing it (e.g. .../files/ubuntu-rootfs/root/myproject). proot is
+     * just a namespace/bind-mount overlay — the underlying files physically live on the host,
+     * so plain host File I/O against this mapped path works fine without going through proot
+     * at all (only running guest ELF binaries needs the proot wrapper — see execOnce above).
+     */
+    fun guestToHostPath(context: Context, guestPath: String): File =
+        File(rootfsDir(context), guestPath.removePrefix("/"))
+
+    /**
+     * Reverse of guestToHostPath: maps a real Android host path (e.g. one picked via the
+     * Explorer's device folder browser) to the guest-side path proot/git/bash would see it as,
+     * so SourceControlPane can run git against ANY folder the Explorer lets you open — not just
+     * ones already known to be inside the Ubuntu rootfs. Returns null if the path isn't
+     * reachable from inside proot at all (no bind-mount covers it) — see launchArgs binds.
+     */
+    fun hostToGuestPath(context: Context, hostPath: String): String? {
+        val rootfs = rootfsDir(context).absolutePath
+        return when {
+            hostPath == rootfs -> "/"
+            hostPath.startsWith("$rootfs/") -> "/" + hostPath.removePrefix("$rootfs/")
+            hostPath == "/storage/emulated/0" -> "/sdcard"
+            hostPath.startsWith("/storage/emulated/0/") -> "/sdcard/" + hostPath.removePrefix("/storage/emulated/0/")
+            hostPath == "/sdcard" || hostPath.startsWith("/sdcard/") -> hostPath
+            else -> null // not bind-mounted into the proot guest — e.g. other app-private dirs
+        }
+    }
+
     fun isInstalled(context: Context): Boolean {
         val versionFile = File(context.filesDir, ".ubuntu_version")
         return versionFile.exists() &&
@@ -958,6 +987,47 @@ exit 0
         )
 
         return Triple(proot, args, envVars)
+    }
+
+    /**
+     * One-shot, non-interactive command execution inside the Ubuntu proot rootfs, using the
+     * SAME proot binary/bind-mounts/env as the interactive terminal (launchArgs above) — just
+     * swapping the final "/bin/bash --login" for "/bin/bash -lc <command>" and running it via
+     * plain ProcessBuilder (pipes) instead of a PTY session, since we only need captured output.
+     *
+     * This exists because AgentTools and SourceControlPane historically ran bare ProcessBuilder
+     * commands (e.g. "git", or leftover /data/data/com.termux/... paths) directly against the
+     * Android host — which never had those binaries. Everything (git, npm, apt, etc.) only
+     * exists inside the Ubuntu rootfs, so any command-execution tool must go through proot.
+     * See AGENTS.md "AI tool access + Git wiring audit" entry.
+     */
+    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60): String {
+        val (proot, baseArgs, envVars) = launchArgs(context)
+        // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -lc <command>.
+        val headArgs = baseArgs.dropLast(2).toTypedArray()
+        val cd = if (workdir != null) "cd "$workdir" 2>/dev/null; " else ""
+        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
+        return try {
+            val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
+            pb.redirectErrorStream(true)
+            val envMap = pb.environment()
+            envVars.forEach { kv ->
+                val idx = kv.indexOf('=')
+                if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
+            }
+            val process = pb.start()
+            val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                return "Timed out after ${timeoutSeconds}s running: $command"
+            }
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            val exit = process.exitValue()
+            if (exit == 0) output.trim().ifBlank { "(command completed, no output)" }
+            else "Exit code $exit\n${output.trim()}"
+        } catch (e: Exception) {
+            "Error running command in Ubuntu rootfs: ${e.message}"
+        }
     }
 }
 
