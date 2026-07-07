@@ -1,6 +1,13 @@
 package com.codespace.ide.ui.screens
 
 import android.content.Context
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,7 +22,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -441,6 +450,78 @@ internal fun CopilotChatPanelOverlay(
 
 // ── Inline (non-overlay) version — renders inside the layout, not on top ──
 @Composable
+/**
+ * The Copilot bot icon — idles with a gentle float+blink so it reads as "alive", and switches
+ * to a faster, more energetic float + pulsing glow while [isThinking] (i.e. chatLoading) is true,
+ * so it visibly looks like it's working on a reply.
+ */
+@Composable
+internal fun AnimatedBotIcon(
+    modifier: Modifier = Modifier,
+    isThinking: Boolean = false,
+) {
+    val infinite = rememberInfiniteTransition(label = "bot-idle")
+
+    // Continuous float (bob up/down) — faster + taller amplitude while thinking
+    val floatOffset by infinite.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isThinking) 550 else 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "float",
+    )
+
+    // Periodic "blink" — a quick vertical squash, on a slow loop so it doesn't feel jittery
+    var blinking by remember { mutableStateOf(false) }
+    LaunchedEffect(isThinking) {
+        while (true) {
+            kotlinx.coroutines.delay(if (isThinking) 900L else 2600L)
+            blinking = true
+            kotlinx.coroutines.delay(110L)
+            blinking = false
+        }
+    }
+    val blinkScaleY by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (blinking) 0.82f else 1f,
+        animationSpec = tween(90),
+        label = "blink",
+    )
+
+    // Subtle glow pulse behind the icon while thinking
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.15f,
+        targetValue = if (isThinking) 0.55f else 0.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isThinking) 500 else 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "glow",
+    )
+
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (isThinking) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = glowAlpha }
+                    .background(Color(0xFF5B6EF5), androidx.compose.foundation.shape.CircleShape),
+            )
+        }
+        Image(
+            painter = painterResource(id = com.codespace.ide.R.drawable.copilot_bot),
+            contentDescription = "Copilot",
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = floatOffset * (if (isThinking) 4f else 2.5f)
+                    scaleY = blinkScaleY
+                },
+        )
+    }
+}
+
 internal fun CopilotChatPanelInline(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
@@ -504,7 +585,7 @@ internal fun CopilotChatPanelInline(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Psychology, null, tint = colors.accent, modifier = Modifier.size(18.dp))
+                AnimatedBotIcon(modifier = Modifier.size(22.dp), isThinking = chatLoading)
                 Spacer(Modifier.width(6.dp))
                 Text("Copilot Chat", color = colors.text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             }
@@ -589,7 +670,7 @@ internal fun CopilotChatPanelInline(
                         Modifier.fillMaxWidth().padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Icon(Icons.Default.Psychology, null, tint = colors.textSecondary.copy(alpha = 0.4f), modifier = Modifier.size(32.dp))
+                        AnimatedBotIcon(modifier = Modifier.size(40.dp))
                         Spacer(Modifier.height(8.dp))
                         Text("Ask me anything about your code", fontSize = 12.sp, color = colors.textSecondary)
                     }

@@ -30,6 +30,8 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import org.json.JSONObject
 import org.json.JSONArray
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
@@ -91,6 +93,7 @@ fun PreviewPane(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var pageTitle by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
     LaunchedEffect(initialPort) { if (initialPort != null) webViewRef?.loadUrl("http://localhost:$initialPort") }
 
     Column(
@@ -170,10 +173,10 @@ fun PreviewPane(
                         }
                 )
                 Icon(
-                    Icons.Default.OpenInNew,
-                    contentDescription = "Open in browser",
+                    Icons.Default.Fullscreen,
+                    contentDescription = "Fullscreen preview",
                     tint = TextMuted,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(18.dp).clickable { isFullscreen = true }
                 )
             }
         }
@@ -298,17 +301,101 @@ fun PreviewPane(
             )
         }
 
-        // ── WebView ──────────────────────────────────────────────────────
+        // ── Preview body ────────────────────────────────────────────────────
         Box(Modifier.fillMaxSize()) {
-            when (activeMode) {
-                PreviewMode.HTML     -> HtmlPreview(content, language, onWebView = { webViewRef = it }, onTitle = { pageTitle = it }, onLoading = { isLoading = it })
-                PreviewMode.MARKDOWN -> MarkdownPreview(content, onWebView = { webViewRef = it }, onLoading = { isLoading = it })
-                PreviewMode.SVG      -> SvgPreview(content, onWebView = { webViewRef = it })
-                PreviewMode.BROWSER  -> BrowserPreview(browserUrl, onWebView = { webViewRef = it }, onTitle = { pageTitle = it }, onLoading = { isLoading = it })
-                PreviewMode.DASHBOARD -> DashboardPreview(activeFilePath, onWebView = { webViewRef = it }, onTitle = { pageTitle = it }, onLoading = { isLoading = it })
-                PreviewMode.REMOTION -> RemotionPreview(browserUrl, onWebView = { webViewRef = it }, onTitle = { pageTitle = it }, onLoading = { isLoading = it })
+            PreviewBody(
+                activeMode = activeMode,
+                content = content,
+                language = language,
+                activeFilePath = activeFilePath,
+                browserUrl = browserUrl,
+                onWebView = { webViewRef = it },
+                onTitle = { pageTitle = it },
+                onLoading = { isLoading = it },
+            )
+        }
+    }
+
+    // ── Fullscreen overlay ───────────────────────────────────────────────────
+    // Tapping the fullscreen icon opens the SAME preview content in a window-filling Dialog —
+    // centered, with its own back/X so there's always a clear way out. Works identically for
+    // every sub-tab (HTML, Markdown, SVG, Browser, Dashboard, Remotion) since it just re-renders
+    // the shared PreviewBody at fillMaxSize.
+    if (isFullscreen) {
+        Dialog(
+            onDismissRequest = { isFullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(BgDark),
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .background(Surface)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            activeMode.label,
+                            fontSize = 13.sp,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Exit fullscreen",
+                        tint = TextMuted,
+                        modifier = Modifier
+                            .align(Alignment.CenterVertically)
+                            .size(22.dp)
+                            .clickable { isFullscreen = false },
+                    )
+                }
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    PreviewBody(
+                        activeMode = activeMode,
+                        content = content,
+                        language = language,
+                        activeFilePath = activeFilePath,
+                        browserUrl = browserUrl,
+                        onWebView = { webViewRef = it },
+                        onTitle = { pageTitle = it },
+                        onLoading = { isLoading = it },
+                    )
+                }
             }
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PreviewBody — mode dispatch, shared between the inline pane and the fullscreen Dialog so
+// both always render identically.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun PreviewBody(
+    activeMode: PreviewMode,
+    content: String,
+    language: Language,
+    activeFilePath: String,
+    browserUrl: String,
+    onWebView: (WebView) -> Unit,
+    onTitle: (String) -> Unit,
+    onLoading: (Boolean) -> Unit,
+) {
+    when (activeMode) {
+        PreviewMode.HTML      -> HtmlPreview(content, language, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
+        PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
+        PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        PreviewMode.DASHBOARD -> DashboardPreview(activeFilePath, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        PreviewMode.REMOTION  -> RemotionPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
     }
 }
 

@@ -369,6 +369,8 @@ fun ProjectShellScreen(
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
+    var showChatPanel      by remember { mutableStateOf(false) }
+    var aiPanelWidth       by remember { mutableFloatStateOf(300f) }
     var bottomPanelHeight  by remember { mutableFloatStateOf(300f) }
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
     var showCommandPalette by remember { mutableStateOf(false) }
@@ -558,6 +560,7 @@ fun ProjectShellScreen(
             showGearMenu            -> showGearMenu = false
             showRunMenu             -> showRunMenu = false
             showColorTheme          -> showColorTheme = false
+            showChatPanel           -> showChatPanel = false
             showReplaceRow          -> showReplaceRow = false
             showFindBar             -> showFindBar = false
             openMenuBar != null     -> openMenuBar = null
@@ -612,6 +615,11 @@ fun ProjectShellScreen(
                     modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT })
                 Spacer(Modifier.width(8.dp))
 
+                // Copilot Chat toggle — animated bot icon, primary way to open the chat panel
+                AnimatedBotIcon(
+                    modifier = Modifier.size(20.dp).clickable { showChatPanel = !showChatPanel },
+                )
+                Spacer(Modifier.width(8.dp))
 
                 // Notification bell with unread badge
                 Box(Modifier.size(28.dp).clickable {
@@ -697,7 +705,6 @@ fun ProjectShellScreen(
                         Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
                         Triple(SidePanel.GIT, Icons.Default.AccountTree, gitBadgeCount),
                         Triple(SidePanel.RUN, Icons.Default.BugReport, runBadgeCount),
-                        Triple(SidePanel.AI_CHAT, Icons.Default.Psychology, 0),
                         Triple(SidePanel.EXTENSIONS, Icons.Default.Extension, 0),
                     ).forEach { (panel, icon, badge) ->
                         val isActive = activePanel == panel
@@ -768,22 +775,6 @@ fun ProjectShellScreen(
                             )
                             SidePanel.GIT        -> GitSidePanel()
                             SidePanel.RUN        -> RunDebugPanel(onMoreMenu = { showRunMenu = true })
-                            SidePanel.AI_CHAT    -> CopilotChatPanelInline(
-                                onClose = { activePanel = null },
-                                colors = ChatPanelColors(
-                                    background = BgColor,
-                                    surface = PanelBg,
-                                    text = TabText,
-                                    textSecondary = TabTextInactive,
-                                    accent = TabActiveIndicator,
-                                    userBubble = TabActiveIndicator,
-                                    assistantBubble = PanelBg,
-                                    inputBg = PanelBg,
-                                    divider = DividerColor,
-                                    headerBg = PanelBg,
-                                    scrim = Color(0x66000000),
-                                ),
-                            )
                             SidePanel.EXTENSIONS -> {
                                     ExtensionsPanel()
                                     androidx.compose.material3.HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 1.dp)
@@ -1273,6 +1264,50 @@ fun ProjectShellScreen(
             }
     } // end Editor Column
 
+                // ── AI Chat Panel (right side, draggable, own region — not shared with Explorer) ──
+                if (showChatPanel) {
+                    val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
+                    // Drag handle on left edge of chat panel — mirrors Explorer's mechanics but
+                    // flipped: drag right→left widens (handle moves left, panel gets wider),
+                    // drag left→right shrinks it down to a full close.
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(DividerColor)
+                            .pointerInput(Unit) {
+                                detectDragGestures { _, dragAmount ->
+                                    val nw = aiPanelWidth - dragAmount.x
+                                    if (nw < 20f) {
+                                        showChatPanel = false
+                                        aiPanelWidth = 300f
+                                    } else {
+                                        aiPanelWidth = nw.coerceIn(0f, totalWidth * 0.8f)
+                                    }
+                                }
+                            }
+                    )
+                    // Chat panel content
+                    Box(Modifier.width(chatWidth).fillMaxHeight().background(PanelBg)) {
+                        CopilotChatPanelInline(
+                            onClose = { showChatPanel = false },
+                            colors = ChatPanelColors(
+                                background = BgColor,
+                                surface = PanelBg,
+                                text = TabText,
+                                textSecondary = TabTextInactive,
+                                accent = TabActiveIndicator,
+                                userBubble = TabActiveIndicator,
+                                assistantBubble = PanelBg,
+                                inputBg = PanelBg,
+                                divider = DividerColor,
+                                headerBg = PanelBg,
+                                scrim = Color(0x66000000),
+                            ),
+                        )
+                    }
+                }
+
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
             NotificationDrawerOverlay(
@@ -1393,7 +1428,7 @@ fun ProjectShellScreen(
                             "Color Theme" to { showColorTheme = true; showGearMenu = false },
                             "Toggle Sidebar" to { activePanel = if (activePanel == null) SidePanel.EXPLORER else null; showGearMenu = false },
                             "Toggle Terminal" to { showBottomPanel = !showBottomPanel; showGearMenu = false },
-                            "Toggle Copilot Chat" to { activePanel = if (activePanel == SidePanel.AI_CHAT) null else SidePanel.AI_CHAT; showGearMenu = false },
+                            "Toggle Copilot Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
                             "Font Size +" to { editorFontSize = (editorFontSize + 1).coerceAtMost(32); showGearMenu = false },
                             "Font Size -" to { editorFontSize = (editorFontSize - 1).coerceAtLeast(8); showGearMenu = false },
                             "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
