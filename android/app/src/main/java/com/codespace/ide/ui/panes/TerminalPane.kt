@@ -416,6 +416,105 @@ internal fun rememberTerminalState(context: android.content.Context): TerminalSt
 }
 
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ollama/Claude launch flow — rebuilt 2026-07-07 for persistence (item #12).
+// Old behavior: every tap did a full re-install/re-pull/re-tab. New behavior:
+// one-time setup (tracked via SharedPreferences "ollama_prefs"), then a single
+// lightweight "Launch Coding Agent" that reuses the server + tab.
+// ─────────────────────────────────────────────────────────────────────────────
+internal data class OllamaModelOption(
+    val id: String,
+    val label: String,
+    val ramNote: String,
+    val isCloud: Boolean,
+    val warn: Boolean,
+)
+
+internal val OLLAMA_MODELS = listOf(
+    OllamaModelOption("qwen2.5-coder:1.5b", "Qwen 2.5 Coder 1.5B", "~1GB RAM — best for coding, recommended", isCloud = false, warn = false),
+    OllamaModelOption("llama3.2:1b", "Llama 3.2 1B", "~0.8GB RAM — general chat", isCloud = false, warn = false),
+    OllamaModelOption("tinyllama", "TinyLlama", "~0.6GB RAM — lightest fallback", isCloud = false, warn = false),
+    OllamaModelOption("nemotron-3-super:cloud", "Nemotron 3 Super (Cloud)", "Cloud inference — needs free ollama.com sign-in", isCloud = true, warn = false),
+    OllamaModelOption("qwen2.5-coder:7b", "Qwen 2.5 Coder 7B", "~5GB RAM — needs 8GB+ phone", isCloud = false, warn = true),
+)
+
+// Tries every install method in turn, stops at the first that works. Each command is kept
+// on a single line (no backslash continuations) to avoid the quote-corruption bug documented
+// in item #13 (a stray "&& \"" landing at a line-continuation boundary).
+internal fun ollamaInstallScript(): String =
+    "echo -e \"\\033[1;34m[Install]\\033[0m Installing Ollama (trying every known method)...\"\n" +
+    "if command -v ollama &>/dev/null; then\n" +
+    "  echo -e \"\\033[1;32m  Already installed: \$(ollama --version 2>/dev/null | head -1)\\033[0m\"\n" +
+    "else\n" +
+    "  echo -e \"\\033[1;36m  Method 1/5: official install script...\\033[0m\"\n" +
+    "  curl -fsSL https://ollama.com/install.sh 2>/dev/null | sh 2>&1 | tail -8\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 2/5: direct arm64 binary via curl...\\033[0m\"; curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 3/5: direct arm64 binary via wget...\\033[0m\"; wget -q https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -O /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 4/5: raw binary asset (no tarball)...\\033[0m\"; curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64 -o /usr/local/bin/ollama 2>&1 | tail -5 && chmod +x /usr/local/bin/ollama; fi\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 5/5: mirror proxy (for restricted networks)...\\033[0m\"; curl -L https://ghproxy.com/https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if command -v ollama &>/dev/null; then echo -e \"\\033[1;32m  Ollama installed!\\033[0m\"; else echo -e \"\\033[1;31m  All 5 methods failed — check your connection and try again.\\033[0m\"; fi\n" +
+    "fi\n"
+
+// Hard guard: never start a second `ollama serve` on this device.
+internal fun ollamaServerGuardScript(): String =
+    "echo -e \"\\033[1;34m[Server]\\033[0m Checking Ollama server...\"\n" +
+    "if pgrep -f \"ollama serve\" >/dev/null 2>&1; then\n" +
+    "  echo -e \"\\033[1;32m  Already running on :11434 — reusing.\\033[0m\"\n" +
+    "else\n" +
+    "  nohup ollama serve >/tmp/ollama.log 2>&1 &\n" +
+    "  sleep 2\n" +
+    "  echo -e \"\\033[1;32m  Server started on :11434\\033[0m\"\n" +
+    "fi\n"
+
+internal fun ollamaClaudeGuardScript(): String =
+    "if ! command -v claude &>/dev/null; then\n" +
+    "  echo -e \"\\033[1;34m[Claude]\\033[0m Installing Claude Code...\"\n" +
+    "  npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
+    "else\n" +
+    "  echo -e \"\\033[1;32m  Claude Code already installed\\033[0m\"\n" +
+    "fi\n"
+
+internal fun ollamaEnvScript(model: String): String =
+    "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
+    "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
+    "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
+    "  echo \"export ANTHROPIC_MODEL=$model\" >> ~/.bashrc\n" +
+    "  source ~/.bashrc\n" +
+    "}\n"
+
+// Guarded pull — only pulls if not already present (no more unconditional re-pull every run).
+internal fun ollamaPullGuardScript(model: String): String =
+    "echo -e \"\\033[1;34m[Model]\\033[0m Checking $model...\"\n" +
+    "if ollama list 2>/dev/null | grep -q \"$model\"; then\n" +
+    "  echo -e \"\\033[1;32m  Already pulled\\033[0m\"\n" +
+    "else\n" +
+    "  ollama pull $model\n" +
+    "fi\n"
+
+// First-ever run: full setup, then launches straight into Claude Code.
+internal fun ollamaFullSetupScript(model: OllamaModelOption): String =
+    ollamaInstallScript() +
+    ollamaServerGuardScript() +
+    (if (model.isCloud)
+        "echo -e \"\\033[1;34m[Sign-in]\\033[0m Cloud model needs a free ollama.com account...\"\n" +
+        "ollama signin\n"
+    else "") +
+    ollamaPullGuardScript(model.id) +
+    ollamaClaudeGuardScript() +
+    ollamaEnvScript(model.id) +
+    "clear\n" +
+    "echo -e \"\\033[1;32mSetup complete! Launching Claude Code...\\033[0m\"\n" +
+    "claude --model ${model.id}\n"
+
+// Every run after: no install, no pull, no new tab (reused by caller) — just make sure the
+// server is up and jump straight to Claude Code.
+internal fun ollamaLaunchScript(model: String): String =
+    ollamaServerGuardScript() +
+    "clear\n" +
+    "echo -e \"\\033[1;32mLaunching Claude Code ($model)...\\033[0m\"\n" +
+    "claude --model $model\n"
+
 @Composable
 internal fun TerminalPane(
     initialCommand: String? = null,
@@ -484,6 +583,10 @@ internal fun TerminalPane(
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
+    // Ollama/Claude persistent state — see item #12 rebuild (2026-07-07)
+    val ollamaPrefs = remember { context.getSharedPreferences("ollama_prefs", android.content.Context.MODE_PRIVATE) }
+    var showOllamaModelPicker by remember { mutableStateOf(false) }
+    var ollamaMultiInstance by remember { mutableStateOf(ollamaPrefs.getBoolean("multi_instance", false)) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     LaunchedEffect(Unit) {
@@ -856,121 +959,58 @@ internal fun TerminalPane(
                         text = { Text("AI & TOOLS", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                         onClick = {}, enabled = false)
                     DropdownMenuItem(
-                        leadingIcon = { Text("🤖", fontSize = 13.sp) },
-                        text = { Text("Setup Ollama + Claude Code", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        leadingIcon = { Text("📥", fontSize = 13.sp) },
+                        text = { Text("Install Ollama", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
-                            addUbuntuTab()
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                val ubuntuTab = tabs.lastOrNull()
-                                // Based on AbuZar-Ansarii/Claude-Ollama-VScode:
-                                // 1. Install Ollama binary (arm64)
-                                // 2. Start ollama serve (local server :11434)
-                                // 3. Sign in to Ollama (needed for :cloud models)
-                                // 4. Pull nemotron-3-super:cloud (cloud inference, minimal RAM)
-                                // 5. Install Claude Code (npm) — full environment access
-                                // 6. Set env vars so Claude Code connects to local Ollama
-                                ubuntuTab?.session?.write(
-                                    "echo -e \"\\033[1;34m[1/6]\\033[0m Installing Ollama...\"\n" +
-                                    "if ! command -v ollama &>/dev/null; then\n" +
-                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \\\n" +
-                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \\\n" +
-                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \\\n" +
-                                    "  echo -e \"\\033[1;32m  done\\033[0m\"\n" +
-                                    "else\n" +
-                                    "  echo -e \"\\033[1;32m  already installed\\033[0m\"\n" +
-                                    "fi\n" +
-                                    "echo -e \"\\033[1;34m[2/6]\\033[0m Starting Ollama server...\"\n" +
-                                    "ollama serve &\n" +
-                                    "sleep 2\n" +
-                                    "echo -e \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[3/6]\\033[0m Sign in to Ollama (needed for cloud models)...\"\n" +
-                                    "echo -e \"\\033[1;33m  Create a free account at ollama.com first, then:\\033[0m\"\n" +
-                                    "ollama signin\n" +
-                                    "echo -e \"\\033[1;34m[4/6]\\033[0m Pulling nemotron-3-super:cloud...\"\n" +
-                                    "ollama pull nemotron-3-super:cloud\n" +
-                                    "echo -e \"\\033[1;32m  model ready\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[5/6]\\033[0m Installing Claude Code...\"\n" +
-                                    "npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
-                                    "echo -e \"\\033[1;32m  claude code installed\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[6/6]\\033[0m Configuring environment...\"\n" +
-                                    "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
-                                    "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
-                                    "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
-                                    "  echo \"export ANTHROPIC_MODEL=nemotron-3-super:cloud\" >> ~/.bashrc\n" +
-                                    "  source ~/.bashrc\n" +
-                                    "}\n" +
-                                    "echo -e \"\\033[1;32m  done\\033[0m\"\n" +
-                                    "clear\n" +
-                                    "echo -e \"\\033[1;32m Setup Complete!\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Model:  nemotron-3-super:cloud\"\n" +
-                                    "echo -e \"\\033[1;34m[Claude]\\033[0m Run:    claude --model nemotron-3-super:cloud\"\n" +
-                                    "echo -e \"\\033[1;33m[Claude]\\033[0m Claude Code can: read/write files, run commands, edit code\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;32m Type: claude --model nemotron-3-super:cloud\\033[0m\"\n"
-                                )
-                            }, 3000)
+                            android.widget.Toast.makeText(context, "Installing Ollama — trying every method until one works…", android.widget.Toast.LENGTH_SHORT).show()
+                            active?.session?.write(ollamaInstallScript())
                         })
-
                     DropdownMenuItem(
-                        leadingIcon = { Text("📱", fontSize = 13.sp) },
-                        text = { Text("Setup Ollama (Offline Models)", color = Color(0xFFA6E3A1), fontSize = 13.sp) },
+                        leadingIcon = { Text("🤖", fontSize = 13.sp) },
+                        text = { Text("Launch Coding Agent", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
-                            addUbuntuTab()
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                val ubuntuTab = tabs.lastOrNull()
-                                // Offline Ollama setup — models run fully on-device
-                                // For phones with enough RAM (6GB+)
-                                // Smaller models that fit in RAM:
-                                //   - qwen2.5-coder:1.5b (~1GB RAM)
-                                //   - llama3.2:1b (~0.8GB RAM)
-                                //   - qwen2.5-coder:7b (~5GB RAM, needs 8GB+ phone)
-                                ubuntuTab?.session?.write(
-                                    "echo -e \"\\033[1;34m[1/4]\\033[0m Installing Ollama...\"\n" +
-                                    "if ! command -v ollama &>/dev/null; then\n" +
-                                    "  curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 && \\\n" +
-                                    "  tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama && \\\n" +
-                                    "  chmod +x /usr/local/bin/ollama && rm /tmp/ollama.tgz && \\\n" +
-                                    "  echo -e \"\\033[1;32m  done\\033[0m\"\n" +
-                                    "else\n" +
-                                    "  echo -e \"\\033[1;32m  already installed\\033[0m\"\n" +
-                                    "fi\n" +
-                                    "echo -e \"\\033[1;34m[2/4]\\033[0m Starting Ollama server...\"\n" +
-                                    "ollama serve &\n" +
-                                    "sleep 2\n" +
-                                    "echo -e \"\\033[1;32m  server running on :11434\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[3/4]\\033[0m Choose a model to pull:\"\n" +
-                                    "echo -e \"\\033[1;33m  1. qwen2.5-coder:1.5b  (~1GB RAM, best for coding)\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;33m  2. llama3.2:1b         (~0.8GB RAM, general chat)\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;33m  3. qwen2.5-coder:7b   (~5GB RAM, needs 8GB+ phone)\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;33m  4. tinyllama           (~0.6GB RAM, lightweight)\\033[0m\"\n" +
-                                    "echo \"\"\n" +
-                                    "echo -e \"\\033[1;36m  Type the number and press Enter:\"\n" +
-                                    "read choice\n" +
-                                    "case \$choice in\n" +
-                                    "  1) ollama pull qwen2.5-coder:1.5b && MODEL=qwen2.5-coder:1.5b;;\n" +
-                                    "  2) ollama pull llama3.2:1b && MODEL=llama3.2:1b;;\n" +
-                                    "  3) ollama pull qwen2.5-coder:7b && MODEL=qwen2.5-coder:7b;;\n" +
-                                    "  4) ollama pull tinyllama && MODEL=tinyllama;;\n" +
-                                    "  *) echo \"Invalid choice\" && exit 1;;\n" +
-                                    "esac\n" +
-                                    "echo -e \"\\033[1;34m[4/4]\\033[0m Installing Claude Code...\"\n" +
-                                    "npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
-                                    "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
-                                    "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
-                                    "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
-                                    "  echo \"export ANTHROPIC_MODEL=\$MODEL\" >> ~/.bashrc\n" +
-                                    "  source ~/.bashrc\n" +
-                                    "}\n" +
-                                    "clear\n" +
-                                    "echo -e \"\\033[1;32m Offline Setup Complete!\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Server: http://localhost:11434\"\n" +
-                                    "echo -e \"\\033[1;34m[Ollama]\\033[0m Model:  \$MODEL (runs on-device)\\033[0m\"\n" +
-                                    "echo -e \"\\033[1;34m[Claude]\\033[0m Run:    claude --model \$MODEL\"\n" +
-                                    "echo -e \"\\033[1;32m Type: claude --model \$MODEL\\033[0m\"\n"
-                                )
-                            }, 3000)
+                            if (!ollamaPrefs.getBoolean("setup_complete", false)) {
+                                showOllamaModelPicker = true
+                            } else {
+                                val model = ollamaPrefs.getString("chosen_model", "qwen2.5-coder:1.5b") ?: "qwen2.5-coder:1.5b"
+                                val existingId = if (ollamaMultiInstance) null else ollamaPrefs.getString("ollama_tab_id", null)
+                                val existingTab = tabs.firstOrNull { it.id == existingId }
+                                if (existingTab != null) {
+                                    activeId = existingTab.id
+                                    existingTab.session.write(ollamaLaunchScript(model))
+                                } else {
+                                    addUbuntuTab()
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        val newTab = tabs.lastOrNull()
+                                        if (newTab != null) {
+                                            ollamaPrefs.edit().putString("ollama_tab_id", newTab.id).apply()
+                                            newTab.session.write(ollamaLaunchScript(model))
+                                        }
+                                    }, 3000)
+                                }
+                            }
+                        })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🔑", fontSize = 13.sp) },
+                        text = { Text("Sign in to Ollama", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = { showMenu = false; active?.session?.write("ollama signin\n") })
+                    DropdownMenuItem(
+                        leadingIcon = { Text("🚪", fontSize = 13.sp) },
+                        text = { Text("Sign out of Ollama", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            active?.session?.write("ollama signout\n")
+                            android.widget.Toast.makeText(context, "Signed out of Ollama — agent memory is unaffected", android.widget.Toast.LENGTH_SHORT).show()
+                        })
+                    DropdownMenuItem(
+                        leadingIcon = { Text(if (ollamaMultiInstance) "☑" else "☐", fontSize = 13.sp, color = Color(0xFF969696)) },
+                        text = { Text("Multi-Instance Mode (advanced)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        onClick = {
+                            ollamaMultiInstance = !ollamaMultiInstance
+                            ollamaPrefs.edit().putBoolean("multi_instance", ollamaMultiInstance).apply()
+                            showMenu = false
                         })
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
@@ -1048,6 +1088,45 @@ internal fun TerminalPane(
                 dismissButton = {
                     TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
                 },
+            )
+        }
+
+        // Ollama model picker — shown only on the very first "Launch Coding Agent" tap.
+        if (showOllamaModelPicker) {
+            AlertDialog(
+                onDismissRequest = { showOllamaModelPicker = false },
+                title = { Text("Choose a model") },
+                text = {
+                    Column {
+                        OLLAMA_MODELS.forEach { m ->
+                            Column(
+                                Modifier.fillMaxWidth().clickable {
+                                    showOllamaModelPicker = false
+                                    addUbuntuTab()
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        val newTab = tabs.lastOrNull()
+                                        if (newTab != null) {
+                                            ollamaPrefs.edit()
+                                                .putBoolean("setup_complete", true)
+                                                .putString("chosen_model", m.id)
+                                                .putString("ollama_tab_id", newTab.id)
+                                                .apply()
+                                            newTab.session.write(ollamaFullSetupScript(m))
+                                        }
+                                    }, 3000)
+                                }.padding(vertical = 8.dp)
+                            ) {
+                                Text(
+                                    (if (m.warn) "\u26a0\ufe0f " else "") + m.label + (if (m.isCloud) " (cloud)" else ""),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(m.ramNote, fontSize = 11.sp, color = Color(0xFF888888))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showOllamaModelPicker = false }) { Text("Cancel") } },
             )
         }
 
@@ -1715,4 +1794,5 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
 
