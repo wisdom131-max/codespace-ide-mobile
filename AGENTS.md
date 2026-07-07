@@ -2240,3 +2240,54 @@ Note: Wisdom is low on Superagent message credits this month (23/25 used as of t
 next session may be credit-constrained, so pick ONE hard item, ship it fully (implement, commit,
 push, verify green CI), update this file + Google Drive copy, then stop and report rather than
 chaining multiple items in one go.
+
+
+---
+
+## 2026-07-07 — REMOTION SETUP ROOT CAUSE + FIX PLAN (PLANNED, NOT YET IMPLEMENTED)
+
+### Root cause (confirmed by reading PreviewPane.kt + full repo tree)
+- `RemotionPane`/`PreviewMode.REMOTION` in `PreviewPane.kt` is **only a WebView** pointed at
+  `http://localhost:3000`, with a help card telling the user to manually type
+  `npx remotion studio` in the terminal. There is **no automated setup** anywhere in the repo —
+  no `RemotionPane.kt` install script, no Node.js install step, nothing.
+- Step 10 (Remotion Video Creator, from 2026-07-04) was documented as a plan
+  (`apt install -y nodejs npm ffmpeg && npm install -g remotion @remotion/cli`) but was **never
+  actually wired into a button/menu item** — it's still just a paragraph in this file.
+- Confirmed via `git grep`: no file in the repo runs `apt install nodejs`, `npm install -g
+  @remotion/cli`, or scaffolds a Remotion project anywhere.
+- Result: Wisdom's Ubuntu proot has no Node.js/npm at all, so `npx` doesn't exist yet —
+  `bash: npx: command not found` is the expected/correct error given nothing has installed it.
+- Extra wrinkle: even with Node installed, bare `npx remotion studio` **does not work in an empty
+  directory** — Remotion needs an actual scaffolded project (`package.json` with `remotion` +
+  `@remotion/cli` + `react`/`react-dom` deps, plus a `src/Root.tsx` composition entry). So
+  "install Node" alone would not fix this — a project also needs to exist.
+
+### Fix plan — mirrors the just-shipped Ollama "Install X" / guarded-setup pattern
+1. **New "Setup Remotion" menu item** (Terminal AI & TOOLS menu, next to the Ollama items):
+   - Guarded Node.js install: `command -v node` check first; if missing, try
+     `apt install -y nodejs npm` (fast path, now that apt/dpkg proot fixes are confirmed
+     working); if the apt-shipped Node is too old (<18, Remotion's minimum), fall back to the
+     NodeSource setup script (`curl -fsSL https://deb.nodesource.com/setup_20.x | bash -` then
+     `apt install -y nodejs`).
+   - Guarded `ffmpeg` install (`apt install -y ffmpeg`) — required for Remotion rendering.
+   - Guarded global CLI install: `npm install -g @remotion/cli` (only if not already present).
+   - **Idempotent project scaffold**: if `~/remotion-project` does not already exist, write a
+     minimal Remotion project by hand (package.json, tsconfig.json, `src/index.ts`,
+     `src/Root.tsx`, `remotion.config.ts`) via heredocs in the setup script — deterministic, no
+     interactive `create-video` prompts to get stuck on (matches the "resource-constrained
+     device" + "no risky interactive flows" rules).
+   - Final step: `cd ~/remotion-project && npx remotion studio` — starts the dev server on
+     `:3000`, which `RemotionPane`'s WebView is already wired to load. No changes needed on the
+     `PreviewPane.kt` side — it already points at the right URL.
+2. Same one-time-setup / guarded-relaunch pattern as Ollama: track a `remotion_setup_complete`
+   flag in SharedPreferences so re-tapping the button later doesn't redo the Node/ffmpeg/CLI
+   install — it just guards the server (checks if `remotion studio` is already running on :3000
+   before starting a new one) and `cd`s into the existing project.
+3. Add a lightweight "Open Remotion Project" action for the common case (server already set up,
+   just needs relaunching after a reboot/tab close) — reuses the same guarded-server-start
+   helper as the initial setup, no reinstall.
+
+### Status: PLANNED — writing this to AGENTS.md per Wisdom's request before implementing.
+Next step once confirmed: implement the "Setup Remotion" menu item in `TerminalPane.kt`
+following this exact plan, push, verify green CI.
