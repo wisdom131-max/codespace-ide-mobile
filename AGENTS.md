@@ -2658,3 +2658,58 @@ reinstall/on another device) to fully confirm.
 - [x] Cloud project sync — API_BASE bug fixed, should now work (needs device verification)
 - [ ] #14 Real OAuth for Connectors (Gmail/Calendar/Drive/Slack) — next up, biggest remaining lift
 - [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
+
+---
+
+# UPDATE — 2026-07-07: Real OAuth Connectors (#14) — backend built & deployed
+
+## What changed
+The old `AgentConnectorManager.kt` (Gmail/Calendar/Drive/Slack/GitHub "connector" system) was
+discovered to be non-functional — it used Google's OOB ("out-of-band") OAuth flow, which Google
+killed in 2022, and had no real authorization-code→access-token exchange step at all. It never
+actually worked for any service. (GitHub sign-in is unaffected — that's `GitHubAuth.kt`'s Device
+Flow, a completely separate, working system, used only for git push/pull auth.)
+
+## New architecture — backend/src/connectors/
+- Backend (NestJS, deployed on Railway) is the confidential OAuth client. It holds
+  `client_secret` values as env vars and does the code→token exchange server-side. The Android
+  app never sees or stores a client secret.
+- One shared callback URL for every service: `/api/v1/connectors/callback` — the target service
+  and user are identified via a signed JWT `state` param (10 min expiry), not the URL path, so
+  only ONE redirect URI needs registering per OAuth provider console.
+- Tokens (access + refresh) are encrypted at rest with AES-256-GCM before being stored in the
+  new `connector_tokens` Postgres table (key: `CONNECTOR_ENCRYPTION_KEY` env var, falls back to
+  a JWT_SECRET-derived key if unset).
+- Access tokens auto-refresh using the stored refresh token when within 60s of expiry.
+- Files: `connector-token.entity.ts`, `crypto.util.ts`, `connector-registry.ts`,
+  `connectors.service.ts`, `connectors.controller.ts`, `connectors.module.ts`.
+- Endpoints (all require JWT auth except the callback):
+  - `GET /connectors` — connection status per service
+  - `GET /connectors/:service/auth-url` — mint the Google/Slack authorization URL to open
+  - `GET /connectors/callback` — public, hit by the OAuth provider's redirect
+  - `POST /connectors/:service/call` — proxy an authenticated API call to the connected service
+  - `DELETE /connectors/:service` — disconnect (best-effort token revoke + delete row)
+
+## Infra note discovered while building this
+Production Postgres has `synchronize: false` and there are no TypeORM migrations set up in this
+repo. The `users`/`refresh_tokens`/`projects` tables already existed from earlier work, but the
+new `connector_tokens` table had to be created with a manual `CREATE TABLE` against the live
+Railway Postgres — this is DONE, but it means: **any future new `@Entity` needs its table
+created manually (or via a real migration) — it will NOT appear automatically after a deploy.**
+Worth setting up `migration:generate`/`migration:run` (scripts already exist in package.json)
+properly at some point so this stops being a manual step.
+
+## Status: 🟡 built & deployed, not yet usable
+TypeScript compiles clean, Railway deploy confirmed healthy, `/api/v1/connectors` route live and
+correctly gated behind auth. Blocked only on real OAuth app credentials (Google Cloud OAuth
+Client ID+Secret for Gmail/Calendar/Drive, optionally a Slack App Client ID+Secret) — these need
+Wisdom to grab them from the respective consoles since they require his login. Full instructions
+are in the `credentials-and-keys.md` file on Google Drive under "OAuth Connectors — NEXT STEPS".
+
+## Remaining after credentials are supplied
+1. Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and (if used)
+   `SLACK_CLIENT_ID`/`SLACK_CLIENT_SECRET` on Railway.
+2. Rebuild `ConnectorsHubSheet.kt` (Android) to call the new backend endpoints instead of the
+   old local `AgentConnectorManager.kt` OAuth logic; remove the dead code once verified working.
+3. #17 (Dashboard chart/icon sizing) is still the only other open HARD batch item, blocked on
+   Wisdom's specifics.
