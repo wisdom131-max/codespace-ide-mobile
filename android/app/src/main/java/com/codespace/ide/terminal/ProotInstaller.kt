@@ -1005,7 +1005,7 @@ exit 0
         val (proot, baseArgs, envVars) = launchArgs(context)
         // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -lc <command>.
         val headArgs = baseArgs.dropLast(2).toTypedArray()
-        val cd = if (workdir != null) "cd "$workdir" 2>/dev/null; " else ""
+        val cd = if (workdir != null) "cd \"$workdir\" 2>/dev/null; " else ""
         val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
