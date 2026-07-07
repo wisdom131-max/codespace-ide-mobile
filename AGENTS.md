@@ -2527,3 +2527,54 @@ and provided the Client ID: `Ov23liEA2inOMzi7bYrJ`. Dropped into
 `GitHubAuth.CLIENT_ID`. GitHub sign-in (Settings > Accounts > Sign in with GitHub)
 is now fully functional end-to-end for every user of the app — nothing further
 needed from Wisdom or any future user.
+
+---
+
+## 2026-07-07 — HARD BATCH #2 (small items): #2 Image picker + #7 Quick Actions/panel collapse — SHIPPED
+
+Wisdom asked to knock out the smaller HARD batch items first.
+
+### ✅ #2 — Image picker + folder copy (ExplorerPane.kt)
+- New `PickMultipleVisualMedia` launcher (Android Photo Picker — no storage permission
+  needed) wired to two entry points:
+  - Toolbar icon (next to New File / New Folder) — imports into the project root.
+  - Context menu "Import Image(s) Here" on any folder (or a file's parent folder) —
+    imports directly into that folder.
+- `copyImageUriToFolder()` streams each picked image into the target dir, resolves the
+  real filename via `MediaStore`/`OpenableColumns.DISPLAY_NAME`, and auto-renames on
+  collision (`name_1.jpg`, `name_2.jpg`, ...) instead of silently overwriting.
+- Runs on `Dispatchers.IO`, shows a small spinner in the toolbar while copying, then
+  refreshes the tree.
+
+### ✅ #7 — Quick Actions row + bottom panel collapse (TerminalPane.kt, ProjectShellScreen.kt)
+- Quick Actions row (STT/Root/Zsh+OMZ/A-/A+/Clear/Export/Pkg↑/AC/Cmds) now has
+  `horizontalScroll` and a fixed 34dp height — in portrait it stays a single compact
+  scrollable line instead of risking wrap/overflow eating vertical space from the
+  terminal output. Removed a `Spacer(Modifier.weight(1f))` that would have crashed
+  once the row became scrollable (weight + horizontalScroll in the same axis is illegal
+  in Compose) — replaced with a fixed 16dp gap.
+- Bottom panel drag-to-resize (`ProjectShellScreen.kt`) no longer snap-hides mid-drag:
+  previously `showBottomPanel = false` fired instantly the moment height dropped below
+  60f while still mid-gesture, causing a jarring pop. Now the panel height follows the
+  finger 1:1 all the way down to 0 (`onDragStart`/`onDragEnd`/`onDragCancel` track drag
+  state), and only converts to the fully-hidden state on release below threshold
+  (resetting to a sane 260f default for next time it's reopened).
+- Panel height is wrapped in `animateDpAsState` — `snap()` while actively dragging (so
+  it still tracks the finger with zero lag), `tween(180)` for any non-drag height change
+  (the fullscreen/restore icon, programmatic opens) so those "flow" smoothly instead of
+  jumping instantly.
+
+### Status: pushed to main (`484df35b` / `53c82a6f` / `12473f00`) — CI running, not babysitting.
+
+### Updated HARD BATCH remaining
+- [x] #1  Per-project workspace state isolation — DONE, commit `972cdb9`
+- [x] AI tool access + Git proot wiring + Copilot Chat merge — DONE, commit `ab8e162`
+- [x] GitHub sign-in (Device Flow) — DONE, Client ID activated
+- [x] #2  Image picker + folder copy — DONE (this entry)
+- [x] #7  Quick Actions row scroll + smooth panel collapse — DONE (this entry)
+- [ ] #4  PDF viewer (standalone; archive/zip browsing already shipped via `ArchiveViewer.kt`)
+- [ ] #12 Ollama/Claude launch flow rebuild (persistence, no re-pull/re-tab, model picker
+      w/ warnings, sign in/out with persistent memory) — most user-facing pain point, next
+      logical target
+- [ ] #14 Real OAuth for Connectors (register apps, WebView flow, token exchange)
+- [ ] #17 Dashboard chart/icon sizing — pending Wisdom's specifics
