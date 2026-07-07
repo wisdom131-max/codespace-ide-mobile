@@ -38,6 +38,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import com.codespace.ide.agent.AgentTools
+import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.domain.AiProviderId
 import java.util.concurrent.TimeUnit
 
 // Theme colors passed from parent — matches the app's current theme
@@ -117,12 +119,124 @@ private suspend fun fetchModels(baseUrl: String): List<String> = withContext(Dis
     } catch (_: Exception) { emptyList() }
 }
 
+// ── BYOK (bring-your-own-key) API providers ────────────────────────────────────
+// Real per-vendor calls, using whatever key the user pasted into Settings
+// (SecureTokenStore.aiKey, keyed by AiProviderId.name — same store Settings already
+// writes to). Model strings in the picker look like "openai:gpt-4o" — the prefix
+// picks which of these run; anything else (e.g. "qwen2.5-coder:7b") falls through to
+// the local Ollama call untouched.
+private val API_PROVIDER_PREFIXES = setOf("openai", "claude", "deepseek", "gemini", "openrouter")
+
+/** Every AiProviderId (besides Ollama, which is handled separately/locally) whose API key is
+ *  already saved in Settings shows up as a "prefix:model" entry in the model picker. */
+private fun apiModelEntries(tokenStore: SecureTokenStore?): List<String> {
+    if (tokenStore == null) return emptyList()
+    return AiProviderId.entries
+        .filter { it != AiProviderId.OLLAMA && !tokenStore.aiKey(it.name).isNullOrBlank() }
+        .map { val prefix = it.name.lowercase(); "$prefix:${defaultModelFor(prefix)}" }
+}
+
+private fun defaultModelFor(prefix: String): String = when (prefix) {
+    "openai"     -> "gpt-4o"
+    "claude"     -> "claude-3-5-sonnet-20241022"
+    "deepseek"   -> "deepseek-chat"
+    "gemini"     -> "gemini-1.5-flash"
+    "openrouter" -> "anthropic/claude-3.5-sonnet"
+    else         -> ""
+}
+
+/** convMsgs (JSONArray of {role, content}) minus the leading system entry — Claude/Gemini
+ *  take the system prompt as a separate top-level field, not as a message in the array. */
+private fun stripSystemMessage(convMsgs: JSONArray): JSONArray {
+    val out = JSONArray()
+    for (i in 0 until convMsgs.length()) {
+        val m = convMsgs.getJSONObject(i)
+        if (m.optString("role") != "system") out.put(m)
+    }
+    return out
+}
+
+// OpenAI, DeepSeek, and OpenRouter all speak the identical OpenAI-compatible
+// /v1/chat/completions shape — one function covers all three.
+private suspend fun callOpenAiCompatible(
+    url: String, apiKey: String, model: String, convMsgs: JSONArray,
+): String = withContext(Dispatchers.IO) {
+    val body = JSONObject().put("model", model).put("messages", convMsgs).toString()
+    val resp = http.newCall(
+        Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+    ).execute()
+    if (!resp.isSuccessful) throw Exception("API error (${resp.code}). Check your key in Settings.")
+    val json = JSONObject(resp.body?.string() ?: "")
+    json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+}
+
+// Anthropic's Messages API — different shape: x-api-key header, separate "system" field,
+// response content is a list of blocks rather than a single message string.
+private suspend fun callClaude(
+    apiKey: String, model: String, systemPrompt: String, convMsgs: JSONArray,
+): String = withContext(Dispatchers.IO) {
+    val body = JSONObject()
+        .put("model", model)
+        .put("max_tokens", 4096)
+        .put("system", systemPrompt)
+        .put("messages", stripSystemMessage(convMsgs))
+        .toString()
+    val resp = http.newCall(
+        Request.Builder()
+            .url("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", apiKey)
+            .header("anthropic-version", "2023-06-01")
+            .header("Content-Type", "application/json")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+    ).execute()
+    if (!resp.isSuccessful) throw Exception("Claude API error (${resp.code}). Check your key in Settings.")
+    val json = JSONObject(resp.body?.string() ?: "")
+    json.getJSONArray("content").getJSONObject(0).getString("text")
+}
+
+// Google's Generative Language API — "contents"/"parts" shape, assistant role is "model"
+// not "assistant", system prompt goes in "systemInstruction".
+private suspend fun callGemini(
+    apiKey: String, model: String, systemPrompt: String, convMsgs: JSONArray,
+): String = withContext(Dispatchers.IO) {
+    val contents = JSONArray()
+    val stripped = stripSystemMessage(convMsgs)
+    for (i in 0 until stripped.length()) {
+        val m = stripped.getJSONObject(i)
+        val role = if (m.optString("role") == "assistant") "model" else "user"
+        contents.put(
+            JSONObject().put("role", role)
+                .put("parts", JSONArray().put(JSONObject().put("text", m.optString("content"))))
+        )
+    }
+    val body = JSONObject()
+        .put("contents", contents)
+        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt))))
+        .toString()
+    val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+    val resp = http.newCall(
+        Request.Builder().url(url).header("Content-Type", "application/json")
+            .post(body.toRequestBody("application/json".toMediaType())).build()
+    ).execute()
+    if (!resp.isSuccessful) throw Exception("Gemini API error (${resp.code}). Check your key in Settings.")
+    val json = JSONObject(resp.body?.string() ?: "")
+    json.getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
+        .getJSONArray("parts").getJSONObject(0).getString("text")
+}
+
 private suspend fun chat(
     baseUrl: String,
     model: String,
     messages: List<ChatMsg>,
     mode: ChatMode,
     context: Context,
+    tokenStore: SecureTokenStore? = null,
 ): String = withContext(Dispatchers.IO) {
     val systemPrompt = when (mode) {
         ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely."
@@ -139,23 +253,45 @@ private suspend fun chat(
 
     // Agentic loop: call model -> parse tool calls -> execute -> feed results -> repeat
     val maxIterations = 10
-    for (iteration in 0 until maxIterations) {
-        val body = JSONObject()
-            .put("model", model)
-            .put("messages", convMsgs)
-            .put("stream", false)
-            .toString()
+    val colonIdx = model.indexOf(':')
+    val providerPrefix = if (colonIdx > 0) model.substring(0, colonIdx) else ""
+    val isApiProvider = providerPrefix in API_PROVIDER_PREFIXES
 
-        val resp = http.newCall(
-            Request.Builder()
-                .url("$baseUrl/api/chat")
-                .header("Content-Type", "application/json")
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
-        ).execute()
-        if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
-        val json = JSONObject(resp.body?.string() ?: "")
-        val content = json.getJSONObject("message").getString("content")
+    for (iteration in 0 until maxIterations) {
+        // "openai:gpt-4o", "claude:...", "deepseek:...", "gemini:...", "openrouter:..." route
+        // to the matching BYOK API using the key saved in Settings; everything else (plain
+        // Ollama tags like "qwen2.5-coder:7b") goes to the local Ollama server. Same tool loop
+        // wraps around whichever one answers.
+        val content = if (isApiProvider) {
+            val apiModel = model.substring(colonIdx + 1)
+            val key = tokenStore?.aiKey(providerPrefix.uppercase())
+            if (key.isNullOrBlank()) throw Exception("No ${providerPrefix} API key found. Add it in Settings.")
+            when (providerPrefix) {
+                "openai"     -> callOpenAiCompatible("https://api.openai.com/v1/chat/completions", key, apiModel, convMsgs)
+                "deepseek"   -> callOpenAiCompatible("https://api.deepseek.com/v1/chat/completions", key, apiModel, convMsgs)
+                "openrouter" -> callOpenAiCompatible("https://openrouter.ai/api/v1/chat/completions", key, apiModel, convMsgs)
+                "claude"     -> callClaude(key, apiModel, systemPrompt, convMsgs)
+                "gemini"     -> callGemini(key, apiModel, systemPrompt, convMsgs)
+                else         -> throw Exception("Unknown provider: $providerPrefix")
+            }
+        } else {
+            val body = JSONObject()
+                .put("model", model)
+                .put("messages", convMsgs)
+                .put("stream", false)
+                .toString()
+
+            val resp = http.newCall(
+                Request.Builder()
+                    .url("$baseUrl/api/chat")
+                    .header("Content-Type", "application/json")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute()
+            if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
+            val json = JSONObject(resp.body?.string() ?: "")
+            json.getJSONObject("message").getString("content")
+        }
 
         if (mode == ChatMode.AGENT && AgentTools.hasToolCalls(content)) {
             // Add assistant response to conversation
@@ -184,6 +320,7 @@ private suspend fun chat(
 internal fun CopilotChatPanelOverlay(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
+    tokenStore: SecureTokenStore? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -195,7 +332,11 @@ internal fun CopilotChatPanelOverlay(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
-    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2")) }
+    var availModels   by remember {
+        mutableStateOf(
+            listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2") + apiModelEntries(tokenStore)
+        )
+    }
     var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
     val messages = remember {
@@ -208,7 +349,7 @@ internal fun CopilotChatPanelOverlay(
         val local = fetchModels(OLLAMA_LOCAL)
         if (local.isNotEmpty()) {
             ollamaUrl = OLLAMA_LOCAL
-            availModels = local
+            availModels = local + apiModelEntries(tokenStore)
             selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
         }
     }
@@ -226,7 +367,7 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -525,6 +666,7 @@ internal fun AnimatedBotIcon(
 internal fun CopilotChatPanelInline(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
+    tokenStore: SecureTokenStore? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -536,7 +678,11 @@ internal fun CopilotChatPanelInline(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
-    var availModels   by remember { mutableStateOf(listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2")) }
+    var availModels   by remember {
+        mutableStateOf(
+            listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2") + apiModelEntries(tokenStore)
+        )
+    }
     var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
     val messages = remember {
@@ -547,7 +693,7 @@ internal fun CopilotChatPanelInline(
         val local = fetchModels(OLLAMA_LOCAL)
         if (local.isNotEmpty()) {
             ollamaUrl = OLLAMA_LOCAL
-            availModels = local
+            availModels = local + apiModelEntries(tokenStore)
             selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
         }
     }
@@ -565,7 +711,7 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
