@@ -110,6 +110,8 @@ private fun isArchiveFile(name: String): Boolean {
     return ext in listOf("zip", "apk", "jar", "aar")
 }
 
+private fun isPdfFile(name: String): Boolean = name.substringAfterLast(".", "").lowercase() == "pdf"
+
 private fun queryDisplayName(context: Context, uri: Uri): String? {
     return try {
         context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -191,6 +193,7 @@ fun ExplorerSidePanel(
     // ── Image preview state ──
     var previewImagePath by remember { mutableStateOf<String?>(null) }
     var previewArchivePath by remember { mutableStateOf<String?>(null) }
+    var previewPdfPath by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -690,6 +693,7 @@ fun ExplorerSidePanel(
                     // Image preview state for this node
                     val isImage = !node.file.isDirectory && isImageFile(node.file.name)
                     val isArchive = !node.file.isDirectory && isArchiveFile(node.file.name)
+                    val isPdf = !node.file.isDirectory && isPdfFile(node.file.name)
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -708,6 +712,9 @@ fun ExplorerSidePanel(
                                         // .zip/.apk are binary containers — browse them like ZArchiver/MT
                                         // Manager instead of dumping raw bytes into the text editor.
                                         previewArchivePath = node.file.absolutePath
+                                    } else if (isPdf) {
+                                        // PDFs are binary too — render with the native PdfRenderer viewer.
+                                        previewPdfPath = node.file.absolutePath
                                     } else {
                                         onOpenFile(node.file.absolutePath)
                                     }
@@ -863,6 +870,7 @@ fun ExplorerSidePanel(
                 Column {
                     val isImg = isImageFile(f.name)
                     val isArch = isArchiveFile(f.name)
+                    val isPdf = isPdfFile(f.name)
                     listOf(
                         "Open"            to Icons.Default.OpenInNew,
                         "Preview"         to Icons.Default.Image,
@@ -886,10 +894,12 @@ fun ExplorerSidePanel(
                                     when (label) {
                                         "Open"   -> if (f.isDirectory) { expanded[f.absolutePath] = true; refresh++ }
                                                    else if (isArch) previewArchivePath = f.absolutePath
+                                                   else if (isPdf) previewPdfPath = f.absolutePath
                                                    else onOpenFile(f.absolutePath)
                                         "Preview" -> when {
                                             isImg -> { previewImagePath = f.absolutePath; showCtxMenu = false }
                                             isArch -> { previewArchivePath = f.absolutePath; showCtxMenu = false }
+                                            isPdf -> { previewPdfPath = f.absolutePath; showCtxMenu = false }
                                         }
                                         "Rename" -> { nameInput = f.name; showRename = true }
                                         "Copy"   -> { clipboardFile = f; clipboardCut = false }
@@ -967,6 +977,14 @@ fun ExplorerSidePanel(
         ArchiveViewerDialog(
             archivePath = previewArchivePath!!,
             onDismiss = { previewArchivePath = null },
+        )
+    }
+
+    // ── PDF viewer (tap on .pdf) — native PdfRenderer, one page at a time ──
+    if (previewPdfPath != null) {
+        PdfViewerDialog(
+            pdfPath = previewPdfPath!!,
+            onDismiss = { previewPdfPath = null },
         )
     }
 
