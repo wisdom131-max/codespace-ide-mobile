@@ -2051,16 +2051,22 @@ do not delete completed items, mark them ✅ with the date/build number instead.
 Wisdom asked to split the 17-item backlog above into EASY (batch now, all at once) and HARD (one at a time,
 after easy batch verified). This section is the authoritative split — update status inline as each completes.
 
-### EASY BATCH — IN PROGRESS (2026-07-06)
-- [ ] #3  Fix image-tap crash → preview instead of editor
-- [ ] #5  Remove redundant "Filter files..." search bar
-- [ ] #6  Terminal tab-bar cleanup (duplicate root@localhost label + row sizing)
-- [ ] #8  New "Show/Hide Quick Actions" toggle in terminal 3-dot menu
-- [ ] #9  Remove duplicate tab-name breadcrumb row in Preview (all sub-tabs)
-- [ ] #10 Shrink Browser/Remotion address bar to fill empty space
-- [ ] #13 Fix Ollama setup script bugs (missing `echo -e`, stray `&& "` quote corruption)
-- [ ] #15 Fix "Start MCP Server (npm)" — mislabeled/wrong tool
-- [ ] #16 Fix "Make Script from History" — actually generate + save a .sh file
+### EASY BATCH — ✅ COMPLETE (build #206a67d, green CI run 28834334650, 2026-07-06)
+- [x] #3  Fix image-tap crash → preview instead of editor (ExplorerPane.kt onClick now checks isImage)
+- [x] #5  Remove redundant "Filter files..." search bar (ExplorerPane.kt — filterQuery state kept, unused)
+- [x] #6  Terminal tab-bar cleanup (removed PiP second line that caused mismatch, fixed row height to 28dp
+        to align with the 22dp BottomTab strip above it)
+- [x] #8  New "Show/Hide Quick Actions" toggle in terminal 3-dot menu (showQuickActions state, wraps the
+        STT/Root/Zsh+OMZ toolbar row)
+- [x] #9  Removed duplicate "page title" breadcrumb strip in PreviewPane.kt (all sub-tabs)
+- [x] #10 Shrunk Browser/Remotion address bar — replaced default Material3 OutlinedTextField (which
+        reserved big label padding) with a compact 32dp pill matching the app's toolbar styling
+- [x] #13 Fixed Ollama setup script bugs — 36x missing `echo -e` added, 6x stray `&& \"` quote-corruption
+        line-continuations fixed in both "Setup Ollama + Claude Code" and "Setup Ollama (Offline Models)"
+- [x] #15 "Start MCP Server (npm)" renamed to "Show Agent Tools (32)", now runs `agent_tools` against the
+        REAL already-running local AgentApiServer instead of spawning an unrelated generic MCP package
+- [x] #16 "Make Script from History" now actually writes a real executable `~/script_<timestamp>.sh` from
+        the last 20 commands instead of just printing history and telling the user to copy-paste
 
 ### HARD BATCH — QUEUED (start after easy batch verified on device)
 - [ ] #1  Per-project workspace state isolation
@@ -2075,3 +2081,14 @@ after easy batch verified). This section is the authoritative split — update s
 
 Rule: mark each `[x]` with commit hash when done. Do not start HARD batch until every EASY item is `[x]` and
 Wisdom has confirmed a green build on device.
+
+
+---
+
+## 2026-07-06/07 — EASY BATCH SHIPPED — starting HARD batch next session
+
+All 9 EASY items above are implemented, committed (`206a67d`), pushed, and verified via a green GitHub
+Actions build (run 28834334650). Wisdom should pull the new APK and confirm on-device before we start the
+HARD batch. Next up when resumed: work HARD items one at a time, in the order listed in the "HARD BATCH"
+checklist above, starting with #1 (per-project workspace state isolation) unless Wisdom wants to jump to
+#12 (Ollama/Claude launch flow rebuild) first since that's the most user-facing pain point.
