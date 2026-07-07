@@ -102,6 +102,11 @@ private fun isImageFile(name: String): Boolean {
     return ext in listOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "svg")
 }
 
+private fun isArchiveFile(name: String): Boolean {
+    val ext = name.substringAfterLast(".", "").lowercase()
+    return ext in listOf("zip", "apk", "jar", "aar")
+}
+
 private fun loadImageBitmap(path: String): androidx.compose.ui.graphics.ImageBitmap? {
     return try {
         val file = File(path)
@@ -149,6 +154,7 @@ fun ExplorerSidePanel(
 
     // ── Image preview state ──
     var previewImagePath by remember { mutableStateOf<String?>(null) }
+    var previewArchivePath by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -610,6 +616,7 @@ fun ExplorerSidePanel(
                     val isSelected = selected == node.file.absolutePath
                     // Image preview state for this node
                     val isImage = !node.file.isDirectory && isImageFile(node.file.name)
+                    val isArchive = !node.file.isDirectory && isArchiveFile(node.file.name)
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -624,6 +631,10 @@ fun ExplorerSidePanel(
                                     } else if (isImage) {
                                         // Images must never open in the text editor — show preview instead.
                                         previewImagePath = node.file.absolutePath
+                                    } else if (isArchive) {
+                                        // .zip/.apk are binary containers — browse them like ZArchiver/MT
+                                        // Manager instead of dumping raw bytes into the text editor.
+                                        previewArchivePath = node.file.absolutePath
                                     } else {
                                         onOpenFile(node.file.absolutePath)
                                     }
@@ -778,6 +789,7 @@ fun ExplorerSidePanel(
             text = {
                 Column {
                     val isImg = isImageFile(f.name)
+                    val isArch = isArchiveFile(f.name)
                     listOf(
                         "Open"            to Icons.Default.OpenInNew,
                         "Preview"         to Icons.Default.Image,
@@ -798,9 +810,13 @@ fun ExplorerSidePanel(
                                 .clickable {
                                     showCtxMenu = false
                                     when (label) {
-                                        "Open"   -> if (!f.isDirectory) onOpenFile(f.absolutePath)
-                                                   else { expanded[f.absolutePath] = true; refresh++ }
-                                        "Preview" -> if (isImg) { previewImagePath = f.absolutePath; showCtxMenu = false }
+                                        "Open"   -> if (f.isDirectory) { expanded[f.absolutePath] = true; refresh++ }
+                                                   else if (isArch) previewArchivePath = f.absolutePath
+                                                   else onOpenFile(f.absolutePath)
+                                        "Preview" -> when {
+                                            isImg -> { previewImagePath = f.absolutePath; showCtxMenu = false }
+                                            isArch -> { previewArchivePath = f.absolutePath; showCtxMenu = false }
+                                        }
                                         "Rename" -> { nameInput = f.name; showRename = true }
                                         "Copy"   -> { clipboardFile = f; clipboardCut = false }
                                         "Cut"    -> { clipboardFile = f; clipboardCut = true }
@@ -863,6 +879,14 @@ fun ExplorerSidePanel(
             dismissButton = {
                 TextButton(onClick = { showCtxMenu = false }) { Text("Close") }
             },
+        )
+    }
+
+    // ── Archive/APK browser (tap on .zip/.apk/.jar/.aar) ──
+    if (previewArchivePath != null) {
+        ArchiveViewerDialog(
+            archivePath = previewArchivePath!!,
+            onDismiss = { previewArchivePath = null },
         )
     }
 
