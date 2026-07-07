@@ -24,7 +24,7 @@ object GitHubAuth {
 
     // TODO: paste your GitHub OAuth App's Client ID here (see setup steps above). Client IDs
     // are public identifiers, safe to ship in the app — this is not the client secret.
-    const val CLIENT_ID = "REPLACE_WITH_GITHUB_OAUTH_CLIENT_ID"
+    const val CLIENT_ID = "Ov23liEA2inOMzi7bYrJ"
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

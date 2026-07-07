@@ -2517,3 +2517,13 @@ github.com/login/device on any browser/device while the app polls in the backgro
    drop it in.
 
 Commit `4ca0856`.
+
+---
+
+## 2026-07-07 (final) — GitHub OAuth Client ID activated
+
+Wisdom registered the "Visual Node Code" OAuth App on GitHub (Device Flow enabled)
+and provided the Client ID: `Ov23liEA2inOMzi7bYrJ`. Dropped into
+`GitHubAuth.CLIENT_ID`. GitHub sign-in (Settings > Accounts > Sign in with GitHub)
+is now fully functional end-to-end for every user of the app — nothing further
+needed from Wisdom or any future user.
