@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontFamily
@@ -178,6 +179,11 @@ fun ExplorerSidePanel(
     onCloseTab: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
+    // Activity itself doesn't recreate on rotation (configChanges="orientation|screenSize"
+    // in the manifest). Keying on orientation forces a full subtree rebuild so Android
+    // creates a fresh, correctly-sized window (and fresh scroll state) every rotation.
+    val orientation = LocalConfiguration.current.orientation
 
     var workspacePath by remember(projectId) {
         mutableStateOf(loadWorkspacePath(context, projectId))
@@ -922,6 +928,7 @@ fun ExplorerSidePanel(
     // ── Context menu (long press) ─────────────────────────────────────────
     if (showCtxMenu && contextFile != null) {
         val f = contextFile!!
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showCtxMenu = false },
             title = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -1033,6 +1040,7 @@ fun ExplorerSidePanel(
                 TextButton(onClick = { showCtxMenu = false }) { Text("Close") }
             },
         )
+        }
     }
 
     // ── Archive/APK browser (tap on .zip/.apk/.jar/.aar) ──
@@ -2310,4 +2318,5 @@ fun McpPanel() {
         }
     }
 }
+
 
