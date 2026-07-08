@@ -444,7 +444,7 @@ internal val OLLAMA_MODELS = listOf(
 // in item #13 (a stray "&& \"" landing at a line-continuation boundary).
 internal fun ollamaInstallScript(): String =
     "echo -e \"\\033[1;34m[Install]\\033[0m Installing Ollama (trying every known method)...\"\n" +
-    "if command -v ollama &>/dev/null; then\n" +
+    "if ollama --version &>/dev/null 2>&1; then\n" +
     "  echo -e \"\\033[1;32m  Already installed: \$(ollama --version 2>/dev/null | head -1)\\033[0m\"\n" +
     "else\n" +
     "  command -v curl &>/dev/null || { echo -e \"\\033[1;33m  curl missing \u2014 installing...\\033[0m\"; apt install -y curl 2>&1 | tail -3; }\n" +
@@ -452,11 +452,12 @@ internal fun ollamaInstallScript(): String =
     "  command -v tar &>/dev/null  || { echo -e \"\\033[1;33m  tar missing \u2014 installing...\\033[0m\";  apt install -y tar 2>&1 | tail -3; }\n" +
     "  echo -e \"\\033[1;36m  Method 1/5: official install script...\\033[0m\"\n" +
     "  curl -fsSL --retry 5 --retry-delay 3 https://ollama.com/install.sh 2>/dev/null | sh 2>&1 | tail -8\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 2/5: direct arm64 binary via curl...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 3/5: direct arm64 binary via wget...\\033[0m\"; wget -q -c --tries=5 --waitretry=3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -O /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 4/5: raw binary asset (no tarball)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64 -o /usr/local/bin/ollama 2>&1 | tail -5 && chmod +x /usr/local/bin/ollama; fi\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 5/5: mirror proxy (for restricted networks)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://ghproxy.com/https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if command -v ollama &>/dev/null; then echo -e \"\\033[1;32m  Ollama installed!\\033[0m\"; else echo -e \"\\033[1;31m  All 5 methods failed — check your connection and try again.\\033[0m\"; fi\n" +
+    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 2/5: direct arm64 binary via curl...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 3/5: direct arm64 binary via wget...\\033[0m\"; wget -q -c --tries=5 --waitretry=3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -O /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 4/5: raw binary asset (no tarball)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64 -o /usr/local/bin/ollama 2>&1 | tail -5 && chmod +x /usr/local/bin/ollama; fi\n" +
+    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 5/5: mirror proxy (for restricted networks)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://ghproxy.com/https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;32m  Ollama installed!\\033[0m\"; else echo -e \"\\033[1;31m  All 5 methods failed — check your connection and try again.\\033[0m\"; fi\n" +
+    "  rm -f /tmp/ollama.tgz /tmp/ollama.tar /tmp/ollama.tar.zst 2>/dev/null\n" +
     "fi\n"
 
 // ─────────────────────────────────────────────────────────────────────────────
