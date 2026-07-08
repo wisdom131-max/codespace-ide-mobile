@@ -431,21 +431,24 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     // ── Package management ───────────────────────────────────────────────
+    // fix(#13 hard-bucket, 2026-07-08): npm/pip3/apt binaries only exist inside the
+    // Ubuntu proot rootfs — they are NOT on the bare Android host PATH. This tool was
+    // the one remaining spot still calling a raw host ProcessBuilder for npm/pip (same
+    // root cause runCommand()/git tools elsewhere in this file already fixed — see their
+    // comments), so every AI-driven "install this package" request was silently failing
+    // (ProcessBuilder throws "No such file or directory", uncaught here) for npm/pip, and
+    // for apt didn't even attempt it — it just told the AI to ask a human to type it into
+    // a terminal manually, defeating the entire point of an AI package-install tool. Now
+    // routes all three through ProotInstaller.execOnce, the same bridge already proven
+    // correct for run_command/git — so the SAME 32 tools genuinely work identically for
+    // both the in-app chat panel and any terminal-launched AI (Claude Code, Ollama CLI).
     private fun installPackage(manager: String, pkg: String, projectDir: String?, context: Context): String {
-        val dir = projectDir ?: context.filesDir.absolutePath
-        return when (manager) {
-            "npm" -> {
-                val p = ProcessBuilder("npm", "install", pkg).directory(File(dir)).redirectErrorStream(true).start()
-                val o = p.inputStream.bufferedReader().use { it.readText() }; val e = p.waitFor()
-                if (e == 0) "npm install $pkg done.\n${o.take(2000)}" else "npm install failed ($e):\n${o.take(2000)}"
-            }
-            "pip" -> {
-                val p = ProcessBuilder("pip3", "install", pkg).directory(File(dir)).redirectErrorStream(true).start()
-                val o = p.inputStream.bufferedReader().use { it.readText() }; val e = p.waitFor()
-                if (e == 0) "pip install $pkg done.\n${o.take(2000)}" else "pip install failed ($e):\n${o.take(2000)}"
-            }
-            "apt" -> "Run in terminal (proot): apt install -y $pkg"
-            else -> "Unknown manager: $manager. Use: npm, pip, apt"
+        val command = when (manager) {
+            "npm" -> "npm install $pkg"
+            "pip" -> "pip3 install $pkg"
+            "apt" -> "apt-get install -y $pkg"
+            else -> return "Unknown manager: $manager. Use: npm, pip, apt"
         }
+        return ProotInstaller.execOnce(context, command, projectDir).take(4000)
     }
 }
