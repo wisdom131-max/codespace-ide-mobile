@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +127,10 @@ private fun iconFor(name: String): androidx.compose.ui.graphics.vector.ImageVect
 fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Rotation fix (#8): key the whole dialog subtree on orientation so both this
+    // outer Dialog and the nested text-viewer/binary-info dialogs it hosts get a
+    // fresh, correctly-sized window on rotation instead of a stuck stale one.
+    val orientation = LocalConfiguration.current.orientation
 
     var root by remember { mutableStateOf<ArchiveNode?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -210,6 +215,7 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
         }
     }
 
+    key(orientation) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(ArchBg)) {
             // ── Title bar ──────────────────────────────────────────────
@@ -341,6 +347,7 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
             )
         }
     }
+    }
 }
 
 private fun formatSize(bytes: Long): String = when {
@@ -362,3 +369,4 @@ private fun readTextStreaming(input: java.io.InputStream, maxSize: Int): String 
     }
     return buffer.toByteArray().toString(Charsets.UTF_8)
 }
+
