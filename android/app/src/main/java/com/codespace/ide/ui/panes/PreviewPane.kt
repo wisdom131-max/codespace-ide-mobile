@@ -25,6 +25,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.viewinterop.AndroidView
+import android.net.Uri
+import android.webkit.ValueCallback
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.codespace.ide.domain.Language
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -454,6 +458,50 @@ private fun PreviewBody(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared file-chooser bridge for every preview WebView (#9 hard-bucket fix).
+// WebView never implements onShowFileChooser out of the box, so any
+// <input type="file"> anywhere — a user-built upload form in HtmlPreview,
+// a real site with an upload form in BrowserPreview, a generated dashboard
+// with a CSV import, Remotion Studio's asset import — silently does nothing
+// when tapped. This bridges WebView's chooser callback to a real Android
+// document picker and feeds the result back into the page's JS callback.
+// Supports both single-file and native multi-file (<input multiple>) inputs.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun rememberOnShowFileChooser(): (ValueCallback<Array<Uri>>?, WebChromeClient.FileChooserParams?) -> Boolean {
+    var pending by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+
+    val singleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        pending?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
+        pending = null
+    }
+    val multiLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        pending?.onReceiveValue(if (uris.isNotEmpty()) uris.toTypedArray() else null)
+        pending = null
+    }
+
+    return onShowFileChooser@{ filePathCallback, params ->
+        if (filePathCallback == null) return@onShowFileChooser false
+        // A prior chooser that never got a result (e.g. page navigated away) must be
+        // released here, not just overwritten — WebView leaks/hangs otherwise.
+        pending?.onReceiveValue(null)
+        pending = filePathCallback
+
+        val acceptTypes = params?.acceptTypes?.filter { it.isNotBlank() && it != "*/*" } ?: emptyList()
+        val mime = if (acceptTypes.size == 1) acceptTypes[0] else "*/*"
+        val allowMultiple = params?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+
+        try {
+            if (allowMultiple) multiLauncher.launch(mime) else singleLauncher.launch(mime)
+        } catch (_: Exception) {
+            pending?.onReceiveValue(null)
+            pending = null
+        }
+        true
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HTML / CSS / JS Preview
 // Renders file content directly; injects CSS resets and JS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -466,6 +514,7 @@ private fun HtmlPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
+    val fileChooserHandler = rememberOnShowFileChooser()
     // Detect React/JSX content
     val isReact = content.contains("import React") || content.contains("from 'react'") ||
                   content.contains("from \"react\"") || content.contains("ReactDOM") ||
@@ -552,6 +601,10 @@ private fun HtmlPreview(
                     override fun onReceivedTitle(view: WebView?, title: String?) {
                         onTitle(title ?: "")
                     }
+                    override fun onShowFileChooser(
+                        view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: WebChromeClient.FileChooserParams?,
+                    ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
                 }
                 onWebView(this)
             }
@@ -676,6 +729,7 @@ private fun BrowserPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
+    val fileChooserHandler = rememberOnShowFileChooser()
     // codespace-ide fix (2026-07-08): raw video/audio URLs (e.g. http://localhost:3000/test.mp4)
     // loaded directly via loadUrl() don't reliably render inline in this WebView — sometimes a
     // blank page, sometimes nothing at all. Auto-detect known media extensions and wrap them in a
@@ -710,6 +764,10 @@ private fun BrowserPreview(
                 }
                 webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
+                    override fun onShowFileChooser(
+                        view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: WebChromeClient.FileChooserParams?,
+                    ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
                 }
                 onWebView(this)
             }
@@ -757,6 +815,7 @@ private fun RemotionPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
+    val fileChooserHandler = rememberOnShowFileChooser()
     // Default Remotion Studio runs on port 3000
     val remotionUrl = if (url.isBlank()) "http://localhost:3000" else url
 
@@ -796,6 +855,10 @@ private fun RemotionPreview(
                 }
                 webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
+                    override fun onShowFileChooser(
+                        view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: WebChromeClient.FileChooserParams?,
+                    ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
                 }
                 onWebView(this)
             }
@@ -843,6 +906,7 @@ private fun DashboardPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
+    val fileChooserHandler = rememberOnShowFileChooser()
     // Support: .html files with dashboard content, .json dashboard specs, or default template
     val dashboardHtml by produceState(initialValue = "", key1 = activeFilePath) {
         val dashFile = java.io.File(activeFilePath)
@@ -890,6 +954,10 @@ private fun DashboardPreview(
                     override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
                         return true
                     }
+                    override fun onShowFileChooser(
+                        view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: WebChromeClient.FileChooserParams?,
+                    ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
                 }
                 onWebView(this)
             }
