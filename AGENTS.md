@@ -3674,3 +3674,39 @@ needs a follow-up check.
 
 Hard bucket remaining: file upload chooser (#9), GitHub repo browsing OAuth (#11), AI package
 access bridging (#13), one-tap env setup (#14).
+
+---
+
+# UPDATE — 2026-07-08 (later): "Generate Image with AI" feature added (commit e9e7bd3)
+
+User wanted Gemini-generated images (avatar/thumbnail/etc.) saved straight into project
+folders via the Explorer, and asked whether to route requests through the local Nemotron
+model first for labeling. Decided against that — small local LLMs aren't reliable at
+structured request hand-off; Gemini alone handles one clearly-worded prompt fine.
+
+Shipped: new "Generate Image with AI Here" entry in ExplorerPane's folder context menu
+(next to "Import Image(s) Here"). New files `ImageGenService.kt` (generateGeminiImage()
+via classic generateContent + responseModalities:[TEXT,IMAGE], model
+`gemini-2.5-flash-image`; saveGeneratedImage(); suggestImageSubfolder() keyword heuristic)
+and `ImageGenDialog.kt` (small AlertDialog: prompt/subfolder/filename/preview/save) — kept
+separate from ExplorerPane.kt (already 2370+ lines) to avoid the 64KB bytecode limit.
+Reuses the existing BYOK Gemini key (tokenStore.aiKey("GEMINI")) — ExplorerSidePanel now
+takes an optional tokenStore param, threaded from ProjectShellScreen.
+
+**Important finding while building this**: `workspace_path_$projectId` (SharedPreferences,
+read by ExplorerPane/SourceControlPane/TerminalPane) is ALWAYS a real, directly-accessible
+host path today (e.g. `/storage/emulated/0/...`) — NOT a "/root/..."-style in-container
+proot guest path. The "/root/my-video" default-project references in earlier memory/docs
+don't reflect how ExplorerPane's folder picker actually saves paths; nothing in the current
+Explorer code translates a guest path to the rootfs host directory. `saveGeneratedImage()`
+and the #12 terminal auto-cd fix's `/root`-prefix check are written to be safe either way,
+but in practice today the /root branch is a no-op — every real workspace path takes the
+direct-host-path branch. Worth remembering before writing any future code that assumes
+"/root/..." project paths are directly `File()`-openable from the Android host — they
+are not, unless translated via `ProotInstaller.rootfsDir(context)` first (confirmed via
+the dpkg-package-list reader at ExplorerPane.kt ~line 1780, the one place that DOES do
+this translation correctly).
+
+Not yet on-device tested — model name and response field casing are per Google's current
+docs (July 2026: Nano Banana family, gemini-2.5-flash-image legacy vs gemini-3.1-flash-image
+current/Interactions-API-first) but unverified against a live key from this sandbox.
