@@ -3634,3 +3634,43 @@ an internal declaration can't expose private types in its signature. Confirmed v
 grep that `ChatSession` is only ever used inside this one file, so narrowed it to `private`
 (commit `a6bb9dc`) instead of loosening `ChatMode`/`ChatMsg` to internal. That was the real
 last blocker — CI is green as of this commit.
+
+---
+
+# UPDATE — 2026-07-08 (later still): #12 terminal cross-project state bleed — FIXED (commit 9096f1d)
+
+Investigated the session-scoping architecture per the master triage's own caveat ("needs
+confirming... before a fix can be written") and found a clean two-layer bug:
+
+1. **Compose layer** — `ProjectShellScreen.kt:369`: `val sharedTerminalState =
+   rememberTerminalState(context)` had NO key on `projectId`, while every other piece of
+   restorable state in the same file (`activePanel`, `showBottomPanel`, `activeBottomTab`)
+   was correctly written as `remember(projectId, restoredState)`. This one line was the sole
+   miss — Compose was handing back the identical `TerminalState` (same `tabs`, same live
+   `TerminalSession`/PTY object) regardless of which project was open. Not "mirroring" —
+   literally one shared PTY rendered in two places. Fixed with
+   `key(projectId) { rememberTerminalState(context) }`.
+2. **Service layer** — `TerminalService.kt`: `liveSessions` was a single flat, untagged list;
+   `createSession()` took no project param; `getLiveUbuntuSessions()` returned every session
+   across every project. Even with (1) fixed, reattaching after an Activity recreation (e.g.
+   OEM minimize-kill) would still rebuild the tab list from every project's sessions. Fixed by
+   tagging each tracked session with its `projectId` (new `TrackedSession` wrapper) and
+   filtering `getLiveUbuntuSessions(projectId)` / `findLiveUbuntuSession(projectId)` by it.
+
+Also added: newly created Ubuntu sessions now auto-`cd` into the project's own workspace
+directory on start, reusing the same `workspace_path_$projectId` SharedPreferences key
+ExplorerPane/SourceControlPane already read — but ONLY for real in-container `/root/...`
+paths. Shared-storage paths (`/storage/...`) are bind-mounted at `/sdcard` inside proot, not
+at their host path, so guessing a "translated" path risked cd-ing somewhere wrong; those are
+left at the default `/root` (unchanged prior behavior).
+
+Threaded `projectId` through all 3 `createSession()` call sites and 2 `getLiveUbuntuSessions()`
+call sites in `TerminalPane.kt`; both `TerminalPane()` calls in `ProjectShellScreen.kt` now
+pass `projectId` explicitly. `SplitTerminalPanel` needed no changes — it only mirrors
+`sharedState.tabs`, so it inherits the isolation for free.
+
+Pushed, not yet CI-checked (user asked not to babysit builds unless asked) — flag if this
+needs a follow-up check.
+
+Hard bucket remaining: file upload chooser (#9), GitHub repo browsing OAuth (#11), AI package
+access bridging (#13), one-tap env setup (#14).
