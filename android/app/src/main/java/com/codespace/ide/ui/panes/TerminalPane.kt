@@ -804,11 +804,19 @@ internal fun remotionRelaunchScript(): String =
     "else\n" +
     "  cd ~/remotion-project && npx remotion studio\n" +
     "fi\n"
+// Scoped by projectId to match ExplorerPane's / SourceControlPane's per-project workspace
+// isolation — reads the SAME saved path so a freshly created Ubuntu session for this
+// project can auto-cd into it (fix #12, 2026-07-08).
+private fun loadWorkspacePath(context: android.content.Context, projectId: String): String? =
+    context.getSharedPreferences("workspace_prefs", android.content.Context.MODE_PRIVATE)
+        .getString("workspace_path_$projectId", null)
+
 @Composable
 internal fun TerminalPane(
     initialCommand: String? = null,
     onCommandConsumed: () -> Unit = {},
     externalState: TerminalState? = null,          // if provided, uses shared state
+    projectId: String = "default",                 // fix #12: scopes session tracking/reattach
 ) {
     val context      = LocalContext.current
 
@@ -970,7 +978,7 @@ internal fun TerminalPane(
             // Ensure agent tools are available in this new terminal tab
             McpShellProfile.install(ctx)
             val id = System.currentTimeMillis().toString()
-            val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(ctx, isUbuntu = true))
+            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true))
             tabs.add(TabSession(id, "Ubuntu", session, client))
             activeId = id
             return
@@ -1066,7 +1074,7 @@ internal fun TerminalPane(
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
                 progressSession.finishIfRunning()
-                val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(ctx, isUbuntu = true))
+                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true))
                 if (idx >= 0) {
                     tabs[idx] = TabSession(id, "Ubuntu", session, client)
                 } else {
@@ -1121,7 +1129,7 @@ internal fun TerminalPane(
         // orphan any additional Ubuntu tabs that were open before this Activity was
         // torn down and recreated (e.g. OEM killing the Activity on minimize while the
         // Service/process survive).
-        val existingSessions = svc.getLiveUbuntuSessions()
+        val existingSessions = svc.getLiveUbuntuSessions(projectId)
         if (existingSessions.isNotEmpty()) {
             // Kill the placeholder /system/bin/sh session created by rememberTerminalState —
             // it's not in the Service's liveSessions list, so getLiveUbuntuSessions() won't
@@ -1146,7 +1154,7 @@ internal fun TerminalPane(
                 android.util.Log.e("TerminalPane", "Session reattach failed, killing old sessions and starting fresh", e)
                 tabs.clear()
                 try {
-                    val stale = svc.getLiveUbuntuSessions()
+                    val stale = svc.getLiveUbuntuSessions(projectId)
                     stale.forEach { try { it.finishIfRunning() } catch (_: Throwable) {} }
                 } catch (_: Throwable) {}
                 addUbuntuTab(replaceTabId = null)
@@ -1840,7 +1848,7 @@ internal fun TerminalPane(
                     // Ubuntu proot is the only terminal environment now — openssh-client
                     // lives in the rootfs (apt install openssh-client), not on the host.
                     val id = System.currentTimeMillis().toString()
-                    val (session, client) = (boundService?.createSession(isUbuntu = true) ?: createTerminalSession(context, isUbuntu = true))
+                    val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId) ?: createTerminalSession(context, isUbuntu = true))
                     tabs.add(TabSession(id, label, session, client))
                     activeId = id
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

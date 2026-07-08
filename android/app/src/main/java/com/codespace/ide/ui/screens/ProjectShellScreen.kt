@@ -365,8 +365,14 @@ fun ProjectShellScreen(
     var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
     var showSplitTerminal  by remember { mutableStateOf(false) }
     var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
-    // Shared terminal state — both TerminalPane and SplitTerminalPanel share this
-    val sharedTerminalState = rememberTerminalState(context)
+    // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
+    // FIX #12 (2026-07-08): this was previously unkeyed, so Compose handed back the SAME
+    // TerminalState (same tabs, same live TerminalSession/PTY) no matter which project was
+    // open — every other piece of restorable state in this file (activePanel, showBottomPanel,
+    // activeBottomTab below) was correctly keyed with `remember(projectId, ...)`, this one line
+    // was the sole miss. key(projectId) forces a fresh TerminalState per project, matching the
+    // now project-tagged session tracking in TerminalService. See AGENTS.md #12 for the writeup.
+    val sharedTerminalState = androidx.compose.runtime.key(projectId) { rememberTerminalState(context) }
     // Lifted up here (not inside PreviewPane) so switching to Terminal/Problems/etc. and back
     // to Preview doesn't reset the active sub-tab or the connected Browser/Remotion URL.
     val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()
@@ -1163,6 +1169,7 @@ fun ProjectShellScreen(
                                     initialCommand = terminalCommandToRun,
                                     onCommandConsumed = { terminalCommandToRun = null },
                                     externalState = sharedTerminalState,
+                                    projectId = projectId,
                                 )
                                 BottomTab.PROBLEMS -> ProblemsPanel(
                                     activeFilePath = activeEditorTab,
@@ -1245,7 +1252,7 @@ fun ProjectShellScreen(
                                     modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
                             }
                             HorizontalDivider(color = DividerColor)
-                            TerminalPane(externalState = sharedTerminalState)
+                            TerminalPane(externalState = sharedTerminalState, projectId = projectId)
                         }
                     }
                 }

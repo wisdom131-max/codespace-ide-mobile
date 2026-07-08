@@ -66,28 +66,34 @@ class TerminalService : Service() {
     // then instantly closes" symptom. Track every live session here so callers can
     // reuse one instead of leaking duplicates, and so a real onDestroy() can clean
     // up anything left running.
+    // Tag every tracked session with the projectId it belongs to (fix #12, 2026-07-08).
+    // Previously this was a single flat, UNTAGGED list — reattaching after an Activity
+    // recreation (e.g. OEM minimize-kill) rebuilt the tab list from EVERY live session
+    // across EVERY project, not just the one currently open. Combined with an unkeyed
+    // `remember` in ProjectShellScreen (same underlying bug, Compose side), this is what
+    // caused terminal state ("even unsent keystrokes") to bleed between different
+    // projects. See AGENTS.md #12 for the full root-cause writeup.
+    private data class TrackedSession(val session: TerminalSession, val projectId: String)
     private val liveSessions = java.util.Collections.synchronizedList(
-        mutableListOf<TerminalSession>()
+        mutableListOf<TrackedSession>()
     )
 
-    /** Returns an existing, still-running Ubuntu session if one exists, so a freshly
-     *  recreated Activity/Compose tree can REATTACH instead of forking a duplicate. */
-    fun findLiveUbuntuSession(): TerminalSession? = getLiveUbuntuSessions().firstOrNull()
+    /** Returns an existing, still-running Ubuntu session for THIS project, if one exists,
+     *  so a freshly recreated Activity/Compose tree can REATTACH instead of forking a
+     *  duplicate — scoped so it never reattaches another project's session by mistake. */
+    fun findLiveUbuntuSession(projectId: String): TerminalSession? =
+        getLiveUbuntuSessions(projectId).firstOrNull()
 
     /**
-     * Returns ALL still-running sessions tracked by this Service — mirrors real Termux's
-     * TermuxService.getTermuxSessions(), which is the actual source of truth the Activity
-     * rebuilds its ENTIRE tab list from on every (re)connect, rather than trusting its own
-     * (Compose-`remember`-scoped, and therefore reset-on-recreate) tab state. Confirmed by
-     * decompiling the reference Termux APK (v0.118.3) from the user's Drive: TermuxService
-     * keeps `List<TermuxSession> mTermuxSessions` as the single source of truth, and
-     * setTermuxTerminalSessionClient()/unsetTermuxTerminalSessionClient() swap the UI client
-     * onto EVERY session in that list on connect/disconnect — never just one. Reattaching
-     * only the first session (as an earlier version of this fix did) would silently orphan
-     * any additional open Ubuntu tabs across a minimize/reopen cycle. */
-    fun getLiveUbuntuSessions(): List<TerminalSession> = synchronized(liveSessions) {
-        liveSessions.removeAll { it.isRunning.not() }  // prune finished sessions first
-        liveSessions.toList()
+     * Returns ALL still-running sessions tracked by this Service FOR A SPECIFIC PROJECT —
+     * mirrors real Termux's TermuxService.getTermuxSessions() (the Activity rebuilds its
+     * ENTIRE tab list from this on every (re)connect, since Compose-`remember`-scoped tab
+     * state resets on recreation) but filtered by projectId so switching projects can never
+     * pull in — or accidentally kill — another project's sessions.
+     */
+    fun getLiveUbuntuSessions(projectId: String): List<TerminalSession> = synchronized(liveSessions) {
+        liveSessions.removeAll { !it.session.isRunning }  // prune finished sessions first
+        liveSessions.filter { it.projectId == projectId }.map { it.session }
     }
 
     // ── LocalBinder — allows TerminalPane to call createSession() from Service context ──
@@ -146,7 +152,7 @@ class TerminalService : Service() {
      */
     fun killAllSessions() {
         synchronized(liveSessions) {
-            liveSessions.forEach { try { it.finishIfRunning() } catch (_: Throwable) {} }
+            liveSessions.forEach { try { it.session.finishIfRunning() } catch (_: Throwable) {} }
             liveSessions.clear()
         }
         com.codespace.ide.agent.AgentApiServer.stop()
@@ -158,7 +164,7 @@ class TerminalService : Service() {
         // finish any sessions still tracked here so we don't leave orphaned proot/bash
         // process trees running past the service's own lifetime.
         synchronized(liveSessions) {
-            liveSessions.forEach { try { it.finishIfRunning() } catch (_: Exception) {} }
+            liveSessions.forEach { try { it.session.finishIfRunning() } catch (_: Exception) {} }
             liveSessions.clear()
         }
         com.codespace.ide.agent.AgentApiServer.stop()
@@ -268,19 +274,31 @@ class TerminalService : Service() {
     // Fork happens HERE, inside the Service. Parent PID = Service process.
     // Android phantom process killer does NOT kill children of foreground services.
     // This is the exact same pattern Termux uses (TermuxService.executeTermuxSessionCommand).
-    internal fun createSession(isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
+    internal fun createSession(
+        isUbuntu: Boolean = false,
+        projectId: String = "default",
+        workDir: String? = null,
+    ): Pair<TerminalSession, SimpleTerminalSessionClient> {
         val client = SimpleTerminalSessionClient()
         client.appContext = applicationContext
 
         if (isUbuntu) {
             val (proot, args, envVars) = ProotInstaller.launchArgs(this)
             val session = TerminalSession(proot, "/", args, envVars, 4000, client)
-            liveSessions.add(session)
+            liveSessions.add(TrackedSession(session, projectId))
             // Give ANY AI launched inside the terminal (Claude Code, Ollama CLI, llama.cpp,
             // etc.) the same 32 AgentTools the chat panel uses, via localhost:8765 — was built
             // (AgentApiServer.kt) but never actually started anywhere. Safe to call repeatedly;
             // start() no-ops if already running.
             com.codespace.ide.agent.AgentApiServer.start(applicationContext)
+            // Auto-cd into this project's own directory (fix #12, 2026-07-08) — only for
+            // real in-container paths (/root/...). Shared-storage paths (/storage/...) are
+            // bind-mounted at /sdcard inside proot, not at their host path, so guessing a
+            // "translated" path here would risk cd-ing somewhere wrong; leave those at the
+            // default /root instead (unchanged prior behavior for non-/root workspaces).
+            if (workDir != null && workDir.startsWith("/root") && workDir != "/root") {
+                session.write("cd \"$workDir\" 2>/dev/null && clear\n")
+            }
             return Pair(session, client)
         }
 
