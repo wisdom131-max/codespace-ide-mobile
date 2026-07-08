@@ -134,12 +134,15 @@ fun PreviewPane(
             .background(BgDark)
     ) {
         // ── Top bar ─────────────────────────────────────────────────────────
+        // heightIn(min=) instead of a fixed height() — at larger system font/display scale
+        // ("zoom" in device Settings > Display), a fixed height clipped the mode-tab labels
+        // and icons instead of growing to fit them.
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(36.dp)
+                .heightIn(min = 36.dp)
                 .background(Surface)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -237,15 +240,15 @@ fun PreviewPane(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(32.dp)
+                    .heightIn(min = 26.dp)
                     .background(Surface)
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
                     if (isRemotion) Icons.Default.Movie else Icons.Default.Lock,
-                    null, tint = TextMuted, modifier = Modifier.size(14.dp)
+                    null, tint = TextMuted, modifier = Modifier.size(13.dp)
                 )
                 Box(
                     Modifier
@@ -254,7 +257,7 @@ fun PreviewPane(
                         .clip(RoundedCornerShape(4.dp))
                         .background(BgDark)
                         .border(1.dp, Border, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     if (currentInput.isEmpty()) {
@@ -375,9 +378,9 @@ fun PreviewPane(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .heightIn(min = 44.dp)
                         .background(Surface)
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -466,7 +469,7 @@ private fun HtmlPreview(
         when (language) {
             Language.CSS -> """
                 <!DOCTYPE html><html><head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
                 <style>$content</style>
                 </head><body style="background:#fff;padding:16px;font-family:sans-serif;">
                 <h2>CSS Preview</h2><p class="demo">Sample paragraph</p>
@@ -476,7 +479,7 @@ private fun HtmlPreview(
             """.trimIndent()
             Language.JAVASCRIPT, Language.TYPESCRIPT -> """
                 <!DOCTYPE html><html><head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
                 <style>body{background:#1e1e1e;color:#d4d4d4;font-family:monospace;padding:16px;}</style>
                 </head><body>
                 <div id="output" style="white-space:pre-wrap;"></div>
@@ -500,7 +503,7 @@ private fun HtmlPreview(
                         .replace("import './", "// import './")
                         .replace("export default ", "// export default ")
                     """<!DOCTYPE html><html><head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
                     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
                     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
                     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -573,7 +576,7 @@ private fun MarkdownPreview(
 
     val html = """
         <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
         <style>
           body { background:#1e1e1e; color:#d4d4d4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
                  padding:20px; line-height:1.7; max-width:800px; margin:0 auto; }
@@ -632,7 +635,7 @@ private fun SvgPreview(
 ) {
     val html = """
         <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
         <style>body{background:#1e1e1e;display:flex;align-items:center;justify-content:center;
                min-height:100vh;margin:0;padding:16px;box-sizing:border-box;}
                svg{max-width:100%;max-height:80vh;}</style>
@@ -1063,7 +1066,7 @@ private fun generateDashboardFromJson(spec: JSONObject): String {
             .append(extraScript)
     }
 
-    return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0,user-scalable=no\">" +
+    return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0,minimum-scale=0.5,maximum-scale=6.0,user-scalable=yes\">" +
         "<title>" + title + "</title>" +
         "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js\"></script>" +
         "<style>" + DASHBOARD_STYLES + "</style></head><body>" +
@@ -1181,7 +1184,7 @@ setTimeout(function(){
 },300);
 })();
 """
-    return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0,user-scalable=no\">" +
+    return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0,minimum-scale=0.5,maximum-scale=6.0,user-scalable=yes\">" +
         "<title>Dashboard</title>" +
         "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js\"></script>" +
         "<style>" + DASHBOARD_STYLES + "</style></head><body>" +

@@ -227,6 +227,12 @@ fun ExplorerSidePanel(
     var clipboardFile by remember { mutableStateOf<File?>(null) }
     var clipboardCut  by remember { mutableStateOf(false) }
     var gitStatus     by remember { mutableStateOf<Map<String, Char>>(emptyMap()) }
+    // Local-vs-GitHub badge (UI bucket #6) — null = no .git at all or a .git with no
+    // "origin" remote configured (local-only project, e.g. the default /root/my-video).
+    // Non-null = "owner/repo" parsed from .git/config's [remote "origin"] url, shown as a
+    // small badge next to the folder name. Existing local projects are left untouched —
+    // this only reads state, it never creates or forces a remote.
+    var gitRemoteRepo by remember { mutableStateOf<String?>(null) }
     var pendingImageTargetDir by remember { mutableStateOf<File?>(null) }
     var importingImages by remember { mutableStateOf(false) }
 
@@ -366,8 +372,27 @@ fun ExplorerSidePanel(
                         statusMap[absPath] = status
                     }
                     gitStatus = statusMap
+
+                    // Parse .git/config for an "origin" remote pointing at GitHub — local-only
+                    // projects (like the default /root/my-video) simply have no such remote and
+                    // gitRemoteRepo stays null, so no badge is shown for them.
+                    val configFile = File(gitDir, "config")
+                    gitRemoteRepo = if (configFile.exists()) {
+                        val cfg = configFile.readText()
+                        val originBlock = Regex("\[remote "origin"]([\s\S]*?)(\[|$)").find(cfg)?.groupValues?.get(1)
+                        val urlLine = originBlock?.let { Regex("url\s*=\s*(.+)").find(it)?.groupValues?.get(1)?.trim() }
+                        urlLine?.let { url ->
+                            Regex("github\.com[:/]+([^/]+/[^/.\s]+)").find(url)?.groupValues?.get(1)
+                        }
+                    } else null
+                } else {
+                    gitRemoteRepo = null
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                gitRemoteRepo = null
+            }
+        } else {
+            gitRemoteRepo = null
         }
     }
 
@@ -398,9 +423,41 @@ fun ExplorerSidePanel(
                 else "EXPLORER",
                 fontSize = 11.sp, color = MutedColor,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 130.dp),
             )
+            // Local-vs-GitHub badge (UI bucket #6) — only rendered for the real explorer
+            // header, not the Outline mode, and only takes space when there's something to show.
+            if (!showOutline && workspaceRoot != null) {
+                Spacer(Modifier.width(6.dp))
+                if (gitRemoteRepo != null) {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0xFF2DA44E).copy(alpha = 0.12f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Cloud, null, tint = Color(0xFF2DA44E), modifier = Modifier.size(10.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text(gitRemoteRepo!!, fontSize = 9.sp, color = Color(0xFF2DA44E), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 90.dp))
+                    }
+                } else if (gitStatus.isNotEmpty() || File(workspaceRoot, ".git").exists()) {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MutedColor.copy(alpha = 0.12f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.CloudOff, null, tint = MutedColor, modifier = Modifier.size(10.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Local", fontSize = 9.sp, color = MutedColor)
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
             if (workspaceRoot != null) {
                 // New File
                 Icon(Icons.Default.Add, null, tint = MutedColor,
