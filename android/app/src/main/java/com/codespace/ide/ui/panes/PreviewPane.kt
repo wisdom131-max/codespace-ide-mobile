@@ -622,6 +622,12 @@ private fun BrowserPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
+    // codespace-ide fix (2026-07-08): raw video/audio URLs (e.g. http://localhost:3000/test.mp4)
+    // loaded directly via loadUrl() don't reliably render inline in this WebView — sometimes a
+    // blank page, sometimes nothing at all. Auto-detect known media extensions and wrap them in a
+    // minimal HTML page with a real <video>/<audio> tag instead, same trick documented as a manual
+    // workaround in the proot debug notes — now automatic, no hand-written wrapper file needed.
+    var lastLoadedUrl by remember { mutableStateOf("") }
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
@@ -632,6 +638,9 @@ private fun BrowserPreview(
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
+                // Without this, autoplay on the generated <video>/<audio> wrapper silently no-ops
+                // until the user taps once — looks exactly like "the video doesn't show".
+                settings.mediaPlaybackRequiresUserGesture = false
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { onLoading(true) }
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -652,7 +661,29 @@ private fun BrowserPreview(
             }
         },
         update = { wv ->
-            if (wv.url != url) wv.loadUrl(url)
+            if (lastLoadedUrl != url) {
+                lastLoadedUrl = url
+                val clean = url.substringBefore('?').substringBefore('#').lowercase()
+                val videoExts = listOf(".mp4", ".webm", ".mov", ".mkv", ".m4v")
+                val audioExts = listOf(".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac")
+                when {
+                    videoExts.any { clean.endsWith(it) } -> wv.loadDataWithBaseURL(
+                        url,
+                        """<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+                            <video src="$url" controls autoplay playsinline style="max-width:100%;max-height:100vh;"></video>
+                            </body></html>""",
+                        "text/html", "UTF-8", null,
+                    )
+                    audioExts.any { clean.endsWith(it) } -> wv.loadDataWithBaseURL(
+                        url,
+                        """<html><body style="margin:0;background:#1e1e1e;color:#ccc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+                            <audio src="$url" controls autoplay style="width:80%;"></audio>
+                            </body></html>""",
+                        "text/html", "UTF-8", null,
+                    )
+                    else -> wv.loadUrl(url)
+                }
+            }
             onWebView(wv)
         },
         modifier = Modifier.fillMaxSize(),
