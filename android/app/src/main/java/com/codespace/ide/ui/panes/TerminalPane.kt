@@ -447,14 +447,75 @@ internal fun ollamaInstallScript(): String =
     "if command -v ollama &>/dev/null; then\n" +
     "  echo -e \"\\033[1;32m  Already installed: \$(ollama --version 2>/dev/null | head -1)\\033[0m\"\n" +
     "else\n" +
+    "  command -v curl &>/dev/null || { echo -e \"\\033[1;33m  curl missing \u2014 installing...\\033[0m\"; apt install -y curl 2>&1 | tail -3; }\n" +
+    "  command -v wget &>/dev/null || { echo -e \"\\033[1;33m  wget missing \u2014 installing...\\033[0m\"; apt install -y wget 2>&1 | tail -3; }\n" +
+    "  command -v tar &>/dev/null  || { echo -e \"\\033[1;33m  tar missing \u2014 installing...\\033[0m\";  apt install -y tar 2>&1 | tail -3; }\n" +
     "  echo -e \"\\033[1;36m  Method 1/5: official install script...\\033[0m\"\n" +
-    "  curl -fsSL https://ollama.com/install.sh 2>/dev/null | sh 2>&1 | tail -8\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 2/5: direct arm64 binary via curl...\\033[0m\"; curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 3/5: direct arm64 binary via wget...\\033[0m\"; wget -q https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -O /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 4/5: raw binary asset (no tarball)...\\033[0m\"; curl -L https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64 -o /usr/local/bin/ollama 2>&1 | tail -5 && chmod +x /usr/local/bin/ollama; fi\n" +
-    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 5/5: mirror proxy (for restricted networks)...\\033[0m\"; curl -L https://ghproxy.com/https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  curl -fsSL --retry 5 --retry-delay 3 https://ollama.com/install.sh 2>/dev/null | sh 2>&1 | tail -8\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 2/5: direct arm64 binary via curl...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 3/5: direct arm64 binary via wget...\\033[0m\"; wget -q -c --tries=5 --waitretry=3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -O /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 4/5: raw binary asset (no tarball)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64 -o /usr/local/bin/ollama 2>&1 | tail -5 && chmod +x /usr/local/bin/ollama; fi\n" +
+    "  if ! command -v ollama &>/dev/null; then echo -e \"\\033[1;33m  Method 5/5: mirror proxy (for restricted networks)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://ghproxy.com/https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
     "  if command -v ollama &>/dev/null; then echo -e \"\\033[1;32m  Ollama installed!\\033[0m\"; else echo -e \"\\033[1;31m  All 5 methods failed — check your connection and try again.\\033[0m\"; fi\n" +
     "fi\n"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Voice / TTS models — added 2026-07-08 in response to the debug doc's TTS section.
+// Piper = fast, free, on-device, but flat/robotic (no pacing, no non-verbal sounds).
+// Bark-small = heavier generative model, actually supports [sighs]/[laughs]/[coughs]-style
+// non-verbal tags and real emotional pacing, but is CPU-only here (no GPU in proot) and may
+// be slow or memory-heavy on this device — offered as an explicit, clearly-labeled trade-off.
+// All downloads use curl -C - / wget -c (resume) + --retry so a dropped connection just
+// picks back up instead of restarting from zero — this is now the standard pattern for any
+// downloadable asset in the app, not just voices.
+// ─────────────────────────────────────────────────────────────────────────────
+internal data class VoiceModelOption(
+    val id: String,
+    val label: String,
+    val note: String,
+    val sizeNote: String,
+    val engine: String, // "piper" or "bark"
+)
+
+internal val VOICE_MODELS = listOf(
+    VoiceModelOption("en_US-lessac-medium", "Lessac (Medium)", "Fast, clear, robotic — good default", "~60MB", "piper"),
+    VoiceModelOption("en_US-lessac-high", "Lessac (High)", "Fast, crisper pronunciation — still no emotion", "~120MB", "piper"),
+    VoiceModelOption("en_US-amy-medium", "Amy (Medium)", "Alternate fast voice, female", "~60MB", "piper"),
+    VoiceModelOption("bark-small", "Bark (Emotional)", "\u26A0\uFE0F Real pacing + sighs/laughs/coughs, but slow & CPU-only — may be heavy on this device", "~1.7GB", "bark"),
+)
+
+private fun piperVoiceRepoPath(id: String): String = when (id) {
+    "en_US-lessac-medium" -> "en/en_US/lessac/medium/en_US-lessac-medium"
+    "en_US-lessac-high"   -> "en/en_US/lessac/high/en_US-lessac-high"
+    "en_US-amy-medium"    -> "en/en_US/amy/medium/en_US-amy-medium"
+    else -> "en/en_US/lessac/medium/en_US-lessac-medium"
+}
+
+internal fun voiceInstallScript(m: VoiceModelOption): String = when (m.engine) {
+    "piper" -> {
+        val repoPath = piperVoiceRepoPath(m.id)
+        "echo -e \"\u001b[1;34m[Voice]\u001b[0m Setting up Piper voice: ${m.label}...\"\n" +
+        "command -v pip3 &>/dev/null || { echo -e \"\u001b[1;33m  python3-pip missing \u2014 installing...\u001b[0m\"; apt install -y python3-pip 2>&1 | tail -3; }\n" +
+        "pip3 show piper-tts &>/dev/null || pip3 install piper-tts --break-system-packages 2>&1 | tail -8\n" +
+        "mkdir -p ~/remotion-project/audio && cd ~/remotion-project/audio\n" +
+        "echo -e \"\u001b[1;36m  Downloading voice model (resumable)...\u001b[0m\"\n" +
+        "curl -C - --retry 5 --retry-delay 3 -L -o ${m.id}.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/$repoPath.onnx 2>&1 | tail -5\n" +
+        "curl -C - --retry 5 --retry-delay 3 -L -o ${m.id}.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/$repoPath.onnx.json 2>&1 | tail -5\n" +
+        "echo -e \"\u001b[1;32m  Done. Test with: piper --model ${m.id}.onnx --output_file test.wav <<< 'hello there'\u001b[0m\"\n"
+    }
+    "bark" -> {
+        "echo -e \"\u001b[1;34m[Voice]\u001b[0m Setting up Bark (this is heavy \u2014 ~1.7GB + torch/transformers, may take a while)...\"\n" +
+        "command -v pip3 &>/dev/null || { echo -e \"\u001b[1;33m  python3-pip missing \u2014 installing...\u001b[0m\"; apt install -y python3-pip 2>&1 | tail -3; }\n" +
+        "pip3 show torch &>/dev/null || pip3 install --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -8\n" +
+        "pip3 show transformers &>/dev/null || pip3 install --break-system-packages transformers scipy accelerate 2>&1 | tail -8\n" +
+        // huggingface_hub (used internally by transformers' from_pretrained) already resumes
+        // partially-downloaded files automatically on retry — just re-run on failure.
+        "echo -e \"\u001b[1;36m  Downloading + caching bark-small (auto-resumes on retry if it drops)...\u001b[0m\"\n" +
+        "python3 -c \"from transformers import AutoProcessor, BarkModel; AutoProcessor.from_pretrained('suno/bark-small'); BarkModel.from_pretrained('suno/bark-small')\" 2>&1 | tail -15\n" +
+        "echo -e \"\u001b[1;32m  Bark-small ready. This is CPU-only here \u2014 expect generation to be noticeably slower than Piper.\u001b[0m\"\n"
+    }
+    else -> "echo 'Unknown voice model'\n"
+}
 
 // Hard guard: never start a second `ollama serve` on this device.
 internal fun ollamaServerGuardScript(): String =
@@ -790,6 +851,7 @@ internal fun TerminalPane(
     // Ollama/Claude persistent state — see item #12 rebuild (2026-07-07)
     val ollamaPrefs = remember { context.getSharedPreferences("ollama_prefs", android.content.Context.MODE_PRIVATE) }
     var showOllamaModelPicker by remember { mutableStateOf(false) }
+    var showVoiceModelPicker by remember { mutableStateOf(false) }
     var ollamaMultiInstance by remember { mutableStateOf(ollamaPrefs.getBoolean("multi_instance", false)) }
     // Remotion persistent state — same one-time-setup pattern as Ollama (2026-07-07)
     val remotionPrefs = remember { context.getSharedPreferences("remotion_prefs", android.content.Context.MODE_PRIVATE) }
@@ -1173,6 +1235,13 @@ internal fun TerminalPane(
                             active?.session?.write(ollamaInstallScript())
                         })
                     DropdownMenuItem(
+                        leadingIcon = { Text("\uD83C\uDF99\uFE0F", fontSize = 13.sp) },
+                        text = { Text("Install Voice (TTS)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
+                        onClick = {
+                            showMenu = false
+                            showVoiceModelPicker = true
+                        })
+                    DropdownMenuItem(
                         leadingIcon = { Text("🤖", fontSize = 13.sp) },
                         text = { Text("Launch Coding Agent", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
@@ -1353,6 +1422,32 @@ internal fun TerminalPane(
                 },
                 confirmButton = {},
                 dismissButton = { TextButton(onClick = { showOllamaModelPicker = false }) { Text("Cancel") } },
+            )
+        }
+
+        // Voice/TTS model picker — Piper (fast/free) vs Bark-small (emotional, heavier).
+        if (showVoiceModelPicker) {
+            AlertDialog(
+                onDismissRequest = { showVoiceModelPicker = false },
+                title = { Text("Choose a voice model") },
+                text = {
+                    Column {
+                        VOICE_MODELS.forEach { m ->
+                            Column(
+                                Modifier.fillMaxWidth().clickable {
+                                    showVoiceModelPicker = false
+                                    android.widget.Toast.makeText(context, "Setting up ${m.label} — resumes automatically if the connection drops…", android.widget.Toast.LENGTH_SHORT).show()
+                                    active?.session?.write(voiceInstallScript(m))
+                                }.padding(vertical = 8.dp)
+                            ) {
+                                Text(m.label + " \u2022 " + m.sizeNote, fontWeight = FontWeight.Medium)
+                                Text(m.note, fontSize = 11.sp, color = Color(0xFF888888))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showVoiceModelPicker = false }) { Text("Cancel") } },
             )
         }
 
