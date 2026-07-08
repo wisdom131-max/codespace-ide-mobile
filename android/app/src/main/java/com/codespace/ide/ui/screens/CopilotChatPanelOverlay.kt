@@ -114,7 +114,7 @@ private fun loadHistory(ctx: Context): List<ChatMsg> {
 // blob (fine at this scale — 50-message cap per session, sessions list itself is small).
 private const val KEY_SESSIONS = "sessions_v1"
 
-internal data class ChatSession(
+private data class ChatSession(
     val id: String,
     var title: String,
     val mode: ChatMode,
