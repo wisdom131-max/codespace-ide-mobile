@@ -177,6 +177,8 @@ fun ExplorerSidePanel(
     openTabs: List<String> = emptyList(),
     activeFilePath: String? = null,
     onCloseTab: ((String) -> Unit)? = null,
+    // fix/feature 2026-07-08: "Generate Image with AI Here" needs the user's Gemini key.
+    tokenStore: com.codespace.ide.data.SecureTokenStore? = null,
 ) {
     val context = LocalContext.current
     // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
@@ -244,6 +246,9 @@ fun ExplorerSidePanel(
     var gitRemoteRepo by remember { mutableStateOf<String?>(null) }
     var pendingImageTargetDir by remember { mutableStateOf<File?>(null) }
     var importingImages by remember { mutableStateOf(false) }
+    // "Generate Image with AI Here" (2026-07-08) — see ImageGenDialog.kt / ImageGenService.kt
+    var pendingAiImageTargetDir by remember { mutableStateOf<File?>(null) }
+    var showAiImageGen by remember { mutableStateOf(false) }
 
     // Folder picker launcher — adds to multi-root workspace
     val folderPicker = rememberLauncherForActivityResult(
@@ -973,6 +978,7 @@ fun ExplorerSidePanel(
                         "New File Here"   to Icons.Default.Add,
                         "New Folder Here" to Icons.Default.CreateNewFolder,
                         "Import Image(s) Here" to Icons.Default.AddPhotoAlternate,
+                        "Generate Image with AI Here" to Icons.Default.AutoAwesome,
                     ).forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
@@ -1030,6 +1036,10 @@ fun ExplorerSidePanel(
                                             imagePickerLauncher.launch(
                                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                             )
+                                        }
+                                        "Generate Image with AI Here" -> {
+                                            pendingAiImageTargetDir = if (f.isDirectory) f else f.parentFile
+                                            showAiImageGen = true
                                         }
                                         "Copy Path" -> {
                                             val clipboard = context.getSystemService(
@@ -1149,6 +1159,16 @@ fun ExplorerSidePanel(
                 }
             }
         }
+    }
+
+    // ── Generate Image with AI dialog ──────────────────────────────────────
+    if (showAiImageGen && pendingAiImageTargetDir != null) {
+        AiImageGenDialog(
+            targetDir = pendingAiImageTargetDir!!,
+            apiKey = tokenStore?.aiKey("GEMINI"),
+            onDismiss = { showAiImageGen = false; pendingAiImageTargetDir = null },
+            onSaved = { refresh++ },
+        )
     }
 
     // ── New File dialog ───────────────────────────────────────────────────

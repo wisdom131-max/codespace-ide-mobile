@@ -778,6 +778,7 @@ fun ProjectShellScreen(
                                     editorTabs.remove(tabPath)
                                     if (activeEditorTab == tabPath) activeEditorTab = editorTabs.lastOrNull()
                                 },
+                                tokenStore = tokenStore,
                             )
                             SidePanel.SEARCH     -> SearchPanel(
                                 projectId = projectId,
