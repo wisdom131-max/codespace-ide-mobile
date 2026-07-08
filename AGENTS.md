@@ -2752,3 +2752,542 @@ code→token exchange. Blocked only on the Android-side wiring.
 4. #17 (Dashboard chart/icon sizing) remains the only other open HARD batch item, still
    pending Wisdom's specifics — needs him to describe the exact sizing issue before work starts.
 
+
+# UPDATE — 2026-07-08: Massive proot Ubuntu environment session — Remotion/ffmpeg/Piper/Ollama/Claude Code all verified working + 8 new app-level bugs found
+
+## Context
+Wisdom ran a long manual debugging session directly inside the proot Ubuntu terminal (Claude Code, routed through an Ollama cloud model) to get the full video-rendering pipeline (Remotion + ffmpeg + Piper TTS) working end-to-end, plus get Claude Code and Ollama installed. Full raw log saved to Google Drive: `Codespace IDE — Dev Files/proot-environment-setup-status (2026-07-08).md` (Drive file id `1eoxxTDLaihlhAhwfzkVeMebK3SaCFx2S`). Full content also embedded below for permanent history.
+
+## What's now CONFIRMED WORKING inside the proot container (no further app changes needed for these)
+- Claude Code (native binary needed a manual postinstall run: `node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs`)
+- ffmpeg + Remotion's headless Chrome (needed `libnspr4` + `libnss3` installed explicitly — Chrome silently fails without them even though ffmpeg itself works)
+- Remotion render pipeline — single render confirmed (150 frames in ~11s)
+- **Chunked rendering** for long videos — custom `render_chunked.sh` script, fixed a path-doubling bug in the ffmpeg concat filelist, verified stable across a 23-chunk (1:53) stress test with zero OOM/memory drift, has resume support (skips already-rendered chunks)
+- Viewing rendered output — serve via `python3 -m http.server 3000` and view through the app's Browser/Preview tab (hardcoded to port 3000); raw video/audio needs wrapping in an HTML `<video>`/`<audio>` tag to render inline
+- Piper TTS voiceover generation — working, ~1s per sentence, tried two voices (lessac-medium female, ryan-high male — male still judged "a bit robotic"); Coqui XTTS-v2 considered for more natural voice but paused (4-5GB footprint, real OOM risk on this 2.7GB RAM device)
+- Audio mastering ffmpeg chain (volume/highpass/compressor/loudnorm/limiter) — documented, requires the `-3dB` pre-attenuation + limiter or it clips
+- Muxing voiceover into rendered video via `ffmpeg -c:v copy -map ...`
+- Ollama installation — multiple broken install paths (official installer's bundled zstd broken, BusyBox tar doesn't support `--use-compress-program`, a leftover **fake stub binary** was shadowing the real `zstd`) — real fix was manual GitHub release download + `/usr/bin/zstd` full path. Ollama cloud models (not local weights) used to fit device constraints. Confirmed: Claude Code is correctly routed through `ollama serve` → Nemotron cloud model via `ANTHROPIC_BASE_URL=http://localhost:11434`.
+
+## 8 NEW APP-LEVEL BUGS/REQUESTS FOUND (need code changes, not just container fixes)
+
+### Easiest
+1. **Source Control panel — wrong working directory.** Shows `fatal: not a git repository` / exit code 128 even though the actual project repo (`/root/my-video`) is completely healthy (`git status` works fine when run manually from the right directory). The panel must `cd` into the *currently open project's* actual root before running git commands, not a fixed/stale/cached path. **Confirmed via screenshot** (2026-07-08 10:35).
+2. **No GitHub remote was ever actually configured** despite an earlier claim that it was — `git remote -v` on `/root/my-video` returns empty. All commits exist only locally, nothing has ever reached GitHub for this project.
+
+### Medium
+3. **Universal file upload doesn't work anywhere in the app** (generalized from an earlier avatar/thumbnail-specific request). Root cause: the app's WebView never implements `onShowFileChooser`, so `<input type="file">` never opens a native picker — confirmed by testing a custom upload HTML page served on port 3000. No file (recording, image, etc.) can currently get from outside the sandbox into the container except by generating/downloading it from inside (curl/wget/on-device TTS). Three possible fixes: implement `onShowFileChooser`, build a native SAF file picker, or use the app's existing broad storage permission to browse/copy files directly.
+4. **File-type routing crashes the app.** Opening images (and likely audio/video/fonts/archives/binaries/databases) in the file explorer routes them to the text editor instead of a proper viewer and crashes instantly — there's no file-type detection at all. Full suspect list: `.png/.jpg/.jpeg/.gif/.webp/.bmp/.ico`, `.wav/.mp3/.m4a/.ogg/.flac`, `.mp4/.mov/.webm/.mkv`, `.ttf/.otf`, `.zip/.tar/.gz/.tar.zst`, `.dex/.class/.jar/.so/.bin` (`.apk` opens fine but `.dex` specifically fails and forces an external download), `.db/.sqlite`. PDF viewer exists already (shipped earlier) but is undersized/not full-screen — separate fix needed there too.
+5. **Copilot Chat panel positioning/sizing wrong**, confirmed via side-by-side screenshots against real VS Code: currently opens as a narrow overlay on the LEFT covering the explorer/editor, no resize, no persistent sessions list. Should dock on the RIGHT like the explorer panel (same drag-to-resize behavior), and reveal a "Sessions" list of past chats when dragged wider, with its own header controls (new session, search, filter, expand, close).
+6. **Local vs. GitHub-connected project distinction** — there's an existing default/demo project (`/root/my-video`, has the standard Remotion boilerplate plus every installed AI tool's config folder) that has no GitHub remote and Wisdom wants it *kept*, not deleted. Explorer/Source Control UI should visually flag (badge/icon + repo name) which open projects are GitHub-backed vs. local-only, so it's clear at a glance.
+
+### Hard
+7. **Terminal state bleeds between different projects (real architecture bug).** Switching projects, not just switching tabs within one project, causes the new project's terminal tabs to mirror whatever was in the previous project's terminal — including un-submitted (not yet Enter'd) keystrokes; deleting text in one deletes it in the "other." Needs diagnosis of whether terminal/PTY instances are scoped globally per app session instead of per-project. Fix must give each project a fully isolated terminal (separate shell process, cwd, input buffer) with zero shared state. **Not yet clarified:** whether the Browser/Preview tab's similar state-mirroring bug (typing a URL in one shows in another; port needs re-entry after switching away) shares this same root cause or is separate.
+8. **Backup/restore for the container — now the TOP PRIORITY, blocking everything else.** The app is built via GitHub Actions; every new build is differently signed, so Android forces a full uninstall before installing the next build. Uninstalling wipes the ENTIRE proot container (`/data/user/0/com.codespace.ide.debug/...`) — every tool documented above (Node, ffmpeg, Remotion, Piper, Ollama, Claude Code, every project) is destroyed with zero recovery path, since file export is already broken (see bug #3 above). **Nothing else should be tested until a backup/restore feature exists** — export container contents to shared storage before uninstalling, restore into the fresh install afterward.
+
+## Also fixed/confirmed during this session (real source bug, not container-related)
+- App crash `java.lang.ExceptionInInitializerError` in `AgentApiServer.kt`, traced to a malformed regex in `AgentTools.kt` line 128 (`Regex("<tool>(\{.*?})</tool>")` — opening brace escaped, closing brace wasn't). Since the regex is defined at class-init time, the bad pattern threw `PatternSyntaxException` at class-load, crashing the ENTIRE app on startup, not just one feature. Fix: escape both braces — `Regex("<tool>(\{.*?\})</tool>")`. **Needs to be applied if not already fixed on current HEAD — verify.**
+
+## Other outstanding items noted (lower priority, not yet scoped)
+- Coqui XTTS-v2 for more natural voice — paused pending disk cleanup, real OOM risk, Piper stays as fallback
+- Wiring real narration audio duration into Remotion's `durationInFrames` dynamically (currently hardcoded/manual per script)
+- Throwaway debug pages (`player.html`, `audio_test.html`, `male_test_v3.html`) should be replaced with one proper reusable player page
+- Cross-AI persistent memory/handoff system — a first pass exists (`~/AGENT_MEMORY.md` symlinked from `.cursorrules` etc.) but not yet adopted by all ~20 installed AI tool configs in the container (`.cline`, `.codeium`, `.continue`, `.copilot`, `.cursor`, `.gemini`, `.qwen`, etc.)
+- Consumer vs. developer permission tiers — container currently gives full unrestricted `/`, `/etc`, `/usr/bin` write access and unrestricted network to any AI agent session, intentional for now (developer's own device), but a restricted mode is planned for regular end users, not yet built
+
+## Suggested one-shot proot setup script (from the session, for baking into an automated setup flow)
+```bash
+#!/bin/bash
+set -e
+apt update
+apt install -y ffmpeg libnspr4 libnss3 python3-pip
+pip3 install piper-tts --break-system-packages
+npm install -g @anthropic-ai/claude-code @remotion/cli
+node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs
+claude --version   # verify
+ffmpeg -version | head -1   # verify
+# ... scaffold remotion-project, download voice model, etc.
+```
+
+## New item — emoji input restricted somewhere in the app (2026-07-08, reported by Wisdom, not yet diagnosed on-device)
+Wisdom reports the app "restricts my keyboard from using emojis" — the emoji key/panel isn't available or doesn't insert emoji in at least one text field. No explicit ASCII-only `InputFilter` or `KeyboardType.Ascii` restriction was found in a source scan of all Compose text fields (chat input, editor, commit message, auth screen) — those all look like plain unrestricted `KeyboardType.Text`/`Email`/`Number` fields, so emoji should work fine there.
+
+**Most likely cause:** the terminal (`TerminalPane.kt`, wrapping Termux's own `com.termux.view.TerminalView`). Termux's `TerminalView` is a legacy Android `View` (not Compose) with its own custom `InputConnection`/IME configuration, deliberately restrictive to disable autocorrect/suggestions for correct shell behavior — most soft keyboards (Gboard included) hide the emoji key entirely when an input field disables suggestions this way. This is a known, longstanding Termux-upstream limitation (not unique to this app) and is inherited here because this app intentionally mirrors Termux's `TerminalView` architecture (per standing rule).
+
+**Not yet confirmed:** whether Wisdom hit this specifically at the bash prompt (terminal tab) vs. somewhere else (AI chat box, editor). Needs on-device confirmation of exactly which screen before deciding whether this is a fixable app bug (Easiest/Medium) or an inherent terminal-emulator constraint to just document as a known limitation.
+
+---
+
+## FULL RAW SESSION LOG (verbatim, for permanent record)
+
+# Proot Ubuntu Environment — Setup & Debug Status
+
+**Container:** Ubuntu 25.10 (Questing Quokka), arm64
+**Host app:** `com.codespace.ide.debug` (codespace-ide-mobile)
+**Rootfs location:** `/data/user/0/com.codespace.ide.debug/files/ubuntu-rootfs`
+**Date:** July 2026
+
+This document summarizes every dependency, fix, and workaround needed to get a working video-rendering pipeline (Remotion + ffmpeg + Piper TTS) running inside this proot container, plus Claude Code. Intended for the app developer to bake into an automated setup/debug script.
+
+---
+
+## 1. Environment baseline
+
+| Component | Version | Status |
+|---|---|---|
+| Node.js | v20.19.4 | Pre-installed, sufficient |
+| npm | 9.2.0 | Pre-installed |
+| OS | Ubuntu 25.10 arm64 | Base rootfs |
+| Disk | 50GB total | Started at 9.4GB free, ended ~6.5GB free after installs |
+
+**Recommendation for app setup script:** check `df -h /` before large installs and warn the user if free space drops below ~3GB.
+
+---
+
+## 2. Claude Code
+
+**Issue:** Native binary not installed after global npm install.
+```
+Error: claude native binary not installed.
+Either postinstall did not run (--ignore-scripts, some pnpm configs)
+or the platform-native optional dependency was not downloaded (--omit=optional).
+```
+
+**Root cause:** npm postinstall script didn't run to fetch the platform-native binary.
+
+**Fix:**
+```bash
+node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs
+```
+
+**Verified working:** `claude --version` → `2.1.202 (Claude Code)`
+
+**Setup script should:** after `npm install -g @anthropic-ai/claude-code`, always run the postinstall manually and verify with `claude --version` rather than trusting npm install exit code alone.
+
+---
+
+## 3. ffmpeg + Chrome/headless-shell dependencies (for Remotion rendering)
+
+**Issue:** ffmpeg installs cleanly via apt (~162 dependency packages, ~108MB), but Remotion's bundled headless Chrome fails to launch afterward:
+```
+error while loading shared libraries: libnspr4.so: cannot open shared object file
+```
+
+**Fix — install ffmpeg first, then explicitly add Chrome's runtime libs:**
+```bash
+apt update
+apt install -y ffmpeg
+apt install -y libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+  libcups2t64 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+  libgbm1 libpango-1.0-0 libcairo2 libasound2t64
+```
+
+Most of the second list is already satisfied by ffmpeg's own dependency chain — only `libnspr4` and `libnss3` were actually missing in testing (~1.5MB download).
+
+**Setup script should:** bundle both apt calls together as a single "video pipeline" install step, since Chrome will silently fail without the second list even though ffmpeg itself works fine.
+
+---
+
+## 4. Remotion project
+
+Scaffolded manually (no interactive CLI prompts) at `~/remotion-project`:
+- `package.json` — `@remotion/cli@4.0.0`, `remotion@4.0.0`, React 18.2.0
+- `src/Root.tsx`, `src/MyVideo.tsx`, `src/index.ts` — minimal composition
+- `remotion.config.ts` — jpeg image format, overwrite output enabled
+
+**First render** downloads Chrome Headless Shell automatically (~30s, one-time):
+```
+Downloading from: https://remotion.media/chromium-headless-shell-linux-arm64-149.0.7790.0.zip
+```
+
+**Verified working:**
+```bash
+npx remotion render src/index.ts MyVideo out/test.mp4
+```
+→ Rendered 150 frames in ~11s, encoded in ~4s, output 293KB.
+
+---
+
+## 5. Chunked rendering (for long videos on low-RAM devices)
+
+Custom script `render_chunked.sh` renders in fixed-size frame chunks (default 150 frames = 5s at 30fps), sleeping 2s between chunks, then merges via ffmpeg concat (stream copy, no re-encode).
+
+**Usage:**
+```bash
+./render_chunked.sh <compositionId> <totalFrames> [chunkFrames] [fps]
+# Example: 30 min @ 30fps = 54000 frames, 5s chunks = 150 frames
+./render_chunked.sh MyVideo 54000 150 30
+```
+
+**Bug found & fixed:** the merge step wrote absolute-looking paths (`out/chunks/chunk_0000.mp4`) into `out/filelist.txt`, but ffmpeg's concat demuxer resolves relative paths **relative to the filelist's own directory**, causing a doubled path (`out/out/chunks/...`) and merge failure.
+
+**Fix applied to `render_chunked.sh`:**
+```bash
+# Before (broken):
+echo "file '$f'" >> out/filelist.txt
+
+# After (fixed) — strip leading "out/" since paths are relative to filelist location:
+echo "file '${f#out/}'" >> out/filelist.txt
+```
+
+**Verified working:** 6× 150-frame chunks (900 frames / 30s total) rendered individually with stable timing (~10-12s render + ~3-4s encode per chunk, no memory degradation across repeated Chrome launches), then merged cleanly into `out/final_output.mp4` (1.4MB, 30.21s, muxed at 126x realtime speed).
+
+**Setup script should:** ship `render_chunked.sh` with the path-stripping fix already applied — this bug will hit every user who renders anything beyond a single chunk.
+
+---
+
+## 6. Viewing rendered output (sandboxing workaround)
+
+**Problem:** the app's container filesystem lives in Android's sandboxed app storage (`/data/user/0/com.codespace.ide.debug/...`), invisible to Termux, file managers, or any other app — there is no `cp`-to-shared-storage path available without root.
+
+**Working solution:** serve files over local HTTP on **port 3000** (the app's built-in "Browser"/"Preview" panel appears hardcoded to this port) and view/play them there instead of trying to move files out.
+
+```bash
+cd ~/remotion-project/out
+python3 -m http.server 3000
+```
+Then open the app's Browser/Preview tab → `http://localhost:3000`.
+
+**Caveat found:** raw video/audio files loaded directly (e.g. `http://localhost:3000/test.mp4`) may not render inline in the webview — wrap in a minimal HTML page with a `<video>`/`<audio>` tag instead:
+```html
+<video src="test.mp4" controls autoplay style="width:100%;"></video>
+```
+
+**Caveat found:** relative paths reaching outside the server root (e.g. `../audio/voiceover.mp3` when serving from `out/`) return 404 — the referenced file must be copied into the same directory tree being served.
+
+**Setup script should:** consider having the app's built-in "Browser" panel serve from the project root (not just `out/`) so relative paths between `audio/`, `out/`, etc. resolve correctly without manual copying.
+
+---
+
+## 7. File upload into the container (webview limitation)
+
+**Problem attempted:** built a Python multipart-upload HTML form to get files (e.g. a voiceover recording) into the sandboxed container via the port-3000 webview's native file picker.
+
+**Result:** tapping the file input did nothing — the app's embedded webview does not implement Android's `onShowFileChooser` callback, so the native file/gallery picker never opens.
+
+**Setup script/app should:** if file upload into the container is a desired feature, the WebView component needs `onShowFileChooser` implemented (standard Android WebView requirement for `<input type="file">` to work at all). Without it, there is currently **no way** to get external files (recordings, images, etc.) into the container except by having code inside the container generate/download them directly (e.g. via `curl`/`wget` from a URL, or on-device generation like TTS).
+
+---
+
+## 8. Text-to-speech (Piper) — workaround for the upload limitation
+
+Since files can't be uploaded, voiceover audio is generated **inside** the container instead.
+
+**Issue:** `pip install piper-tts` fails with `ModuleNotFoundError: No module named 'cgi'` — actually this was a separate custom upload script issue, not Piper itself; Python 3.13 removed the stdlib `cgi` module used in earlier server code.
+
+**pip itself missing initially:**
+```bash
+apt install -y python3-pip
+pip3 install piper-tts --break-system-packages
+```
+(First attempt failed silently/incompletely — likely a network hiccup on mobile data; simple retry succeeded, pulling in `onnxruntime`, `numpy`, `protobuf`, `flatbuffers`, `pathvalidate`, ~72MB total.)
+
+**Voice model download** (~60MB, one-time):
+```bash
+mkdir -p ~/remotion-project/audio && cd ~/remotion-project/audio
+curl -L -o en_voice.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+curl -L -o en_voice.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+```
+
+**Generate speech:**
+```bash
+piper --model en_voice.onnx --output_file voiceover.wav < script.txt
+```
+
+Harmless warning on every run (proot has no GPU access, falls back to CPU automatically):
+```
+GPU device discovery failed: ... Permission denied, filesystem path: "/sys/class/drm"
+```
+
+**Verified working:** generated 139KB WAV from test sentence in ~1s.
+
+---
+
+## 9. Muxing voiceover into rendered video
+
+```bash
+ffmpeg -y -i out/final_output.mp4 -i audio/voiceover.mp3 \
+  -c:v copy -map 0:v:0 -map 1:a:0 -shortest out/final_with_voiceover.mp4
+```
+- `-c:v copy` avoids re-encoding video (fast, no quality loss)
+- `-map` selects video from input 0, audio from input 1 (discards video's original silent/placeholder audio track)
+- `-shortest` trims output to the shorter of the two streams — **note:** this means final video length is currently capped by voiceover length, so voiceover script length should be written to roughly match (or exceed) intended video duration.
+
+---
+
+## 10. Multi-minute chunked render — stress test confirmed
+
+Ran a real ~1:53 (3377 frames) chunked render — 23 chunks of 150 frames each — to check for memory degradation across many repeated Chrome headless launches.
+
+**Result: fully stable.** Render times per chunk stayed in the 8-13s range from chunk 0 through chunk 22 with no upward drift, no crashes, no OOM kills. This confirms the device can reliably handle long-form chunked rendering, not just short test clips.
+
+`render_chunked.sh` also has built-in **resume support** — re-running the same command skips any chunk whose output file already exists, so an interrupted long render can continue rather than restart from scratch. Confirmed working (chunks 0-5 were skipped as "already rendered" on a resumed run).
+
+---
+
+## 11. Piper TTS — multi-paragraph input bug (important)
+
+**Critical bug found:** Piper treats each line of stdin as a separate utterance and, when using `--output_file`, **overwrites the same file every line** — so feeding it a multi-paragraph script (with blank lines between paragraphs) silently produces an output file containing only the *last* paragraph, not the full script. This is easy to miss since Piper exits with no error.
+
+**Symptom:** generated audio duration was drastically shorter than expected (e.g. 22s instead of ~110s) with no error message.
+
+**Fix:** collapse the script to a single line before piping to Piper:
+```bash
+tr '\n' ' ' < script.txt | tr -s ' ' > script_oneline.txt
+piper --model voice.onnx --output_file voiceover.wav < script_oneline.txt
+```
+Sentence-ending punctuation (periods) is preserved, so Piper still paces/pauses correctly — it's specifically the *blank lines between paragraphs* that were causing per-paragraph overwrites.
+
+**Setup script/app should:** if the app has any script/text input flow feeding Piper, it must flatten multi-paragraph text to one line first, or every multi-paragraph narration will silently truncate to just the final paragraph.
+
+### Piper tuning flags (from `piper --help`, v1.4.2)
+```
+--length-scale LENGTH_SCALE       Phoneme length (higher = slower speech; default ~1.0)
+--noise-scale NOISE_SCALE         Generator noise / expressiveness (default ~0.667)
+--noise-w-scale NOISE_W_SCALE     Phoneme width noise / rhythm variation (default ~0.8)
+--sentence-silence SECONDS        Adds real silence between sentences (recommended: 0.3-0.5)
+```
+**Finding:** pushing `length_scale` to 1.15+ combined with noise adjustments made the voice sound *worse* (less natural), not better, in testing. Best result so far was the **default settings + `--sentence-silence 0.4` only** — don't over-tune these knobs without A/B listening each change individually.
+
+### Voice models tried
+| Voice | Size | Notes |
+|---|---|---|
+| `en_US-lessac-medium` | ~60MB | Default test voice, female, natural pacing |
+| `en_US-ryan-high` | ~115MB | Male, "high" quality tier, but spoke noticeably faster/flatter than Lessac at same script — did not clearly sound "more human" despite higher tier |
+
+**Not yet resolved:** male voice was judged "still a bit robotic" even after tuning. Next step (paused, pending disk cleanup) is trying **Coqui XTTS-v2** (~1.8-2GB model + ~1.5-2GB torch dependency, ~4-5GB combined) for meaningfully more natural speech. This is a real risk on a 2.7GB RAM device — flagged as a "try with caution" item, not a safe default.
+
+**Explicitly out of scope for this device:** expressive models like Bark (breathing, coughing, laughing, non-speech human sounds) require ~4-5GB+ and heavy inference — user was warned this risks OOM/SIGKILL crashes and deferred it deliberately rather than risk it.
+
+### Audio post-processing (mastering) chain
+Once TTS output exists, this ffmpeg chain cleans it up (removes rumble, evens volume, normalizes loudness to broadcast standard) without needing a better model:
+```bash
+ffmpeg -y -i voiceover.wav \
+  -af "volume=-3dB,highpass=f=80,acompressor=threshold=-18dB:ratio=3:attack=5:release=50,loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.95" \
+  voiceover_polished.wav
+```
+**Important:** the `volume=-3dB` prefix and `alimiter` suffix are required — an earlier attempt without them produced audible clipping (`Channel 0 clipping N times` warnings throughout the file). The `-3dB` pre-attenuation gives headroom before the compressor/normalizer, and the limiter is a hard safety ceiling. Don't run `highpass` + `acompressor` + `loudnorm` back-to-back without both of these guardrails.
+
+---
+
+## 12. Ollama installation — multiple layers of broken tooling
+
+This was the most failure-prone install of the session. Documenting every dead end so the app doesn't repeat them.
+
+**Attempt 1 — official installer script:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+**Failed:** `zstd: applet not found` followed by `tar: short read`. The installer's own bundled decompression step is broken in this environment.
+
+**Attempt 2 — manual download + tar with compress-program flag:**
+```bash
+tar --use-compress-program=unzstd -C /usr -xf ollama.tar.zst
+```
+**Failed:** `tar: unrecognized option '--use-compress-program=unzstd'` — the `tar` binary in this environment is **BusyBox's minimal tar**, which doesn't support that flag at all (confirmed via the BusyBox usage banner it printed).
+
+**Attempt 3 — unzstd/zstd decompress:**
+```bash
+unzstd ollama.tar.zst      # Failed: "unzstd: applet not found"
+zstd -d ollama.tar.zst     # Failed: "zstd: applet not found"
+```
+**Root cause found:** `which zstd` resolved to `/usr/local/bin/zstd` — a **broken/fake stub binary**, leftover residue from the failed official-installer attempt (same pattern as an earlier fake `ollama` binary that was just literal text "Not Found" saved with an executable name — this environment is prone to leaving these behind when a download silently fails but a file still gets written to a bin path).
+
+**Actual fix — call the real zstd binary by its full path, bypassing the shadowing fake one:**
+```bash
+/usr/bin/zstd -d ollama.tar.zst -o ollama.tar
+tar -C /usr -xf ollama.tar      # plain tar works fine on an actual .tar file
+```
+**Verified working:** `which ollama` → `/usr/bin/ollama`, `ollama --version` → `0.31.1`.
+
+**Setup script should:**
+1. Never trust the official install.sh in this environment — go straight to manual GitHub release download.
+2. Always check `which zstd` / `which ollama` / any critical binary resolves to a real file with real content before relying on it — this environment has a recurring pattern of dead/fake stub binaries left in `/usr/local/bin` from prior failed attempts shadowing the real ones in `/usr/bin`.
+3. Clean up install artifacts after extraction — `ollama.tar` + `ollama.tar.zst` together were ~3.5GB of dead weight left on disk, pushing usage to 93% before being noticed and deleted.
+
+### Sign-in flow (works correctly once installed)
+```bash
+ollama serve &
+ollama signin
+```
+Prints a connect URL with an embedded key — `xdg-open` fails (no browser installed in container, expected), but the fallback text output with the raw URL works fine. Opened manually in the app's port-3000 preview panel, signed in successfully.
+
+### Cloud model confirmed
+```bash
+ollama pull nemotron-3-nano:30b-cloud    # or nemotron-3-super:cloud
+```
+Cloud models download only a small manifest (not multi-GB weights) and run on Ollama's servers — appropriate choice for this device's storage/RAM constraints instead of a local model.
+
+---
+
+## 13. Claude Code routed through Ollama cloud model (confirmed working)
+
+Verified via environment inspection that Claude Code is correctly routed to a cloud model through Ollama's local proxy:
+```
+ANTHROPIC_BASE_URL=http://localhost:11434
+ANTHROPIC_MODEL=nemotron-3-super:cloud
+ANTHROPIC_AUTH_TOKEN=ollama
+```
+This confirms the `ollama serve` + local Ollama API + Claude Code integration is functioning as intended — Claude Code's requests are being served by the Nemotron cloud model via the local Ollama instance rather than Anthropic's API directly.
+
+**Note found during the same inspection — container permissions are intentionally broad:** the environment allows write access to `/`, `/etc`, `/usr/bin` and full unrestricted network access from any AI agent session. **This is confirmed intentional** (developer's own choice for ease of access during active development), not a bug — but flagged here for the record since a consumer-facing release of this app is planned with restricted permissions for regular users, keeping this broad access reserved for the developer only. This access-control tier is a known future work item, not yet built.
+
+---
+
+## 14. App crash — real source-code bug (not environment-related)
+
+App crashed with `java.lang.ExceptionInInitializerError` in `AgentApiServer.kt`. Root cause traced to a malformed regex in `AgentTools.kt` line 128:
+
+```kotlin
+// Broken — opening brace escaped, closing brace is not:
+Regex("<tool>(\\{.*?})</tool>")
+
+// Fix — escape both braces:
+Regex("<tool>(\\{.*?\\})</tool>")
+```
+
+Because this regex is defined at class-init time (likely a companion object / static field), the malformed pattern threw `PatternSyntaxException` the moment the class loaded, crashing the **entire app** on startup rather than failing gracefully in just one feature. This is a straightforward source-level bug for the app developer to patch — not fixable from inside the container/terminal.
+
+---
+
+## 15. App rebuild reality check — GitHub Actions builds, no update path
+
+**Critical context uncovered:** the app is built via GitHub Actions. Every new build produces a differently-signed APK, so Android refuses to install it alongside the existing app — the user must **fully uninstall the old app before installing the new build**. The AI building the app cannot test on-device at all; it can only read/modify source code. The user installs and tests every build personally.
+
+**Consequence:** uninstalling wipes the app's entire sandboxed data directory — meaning the whole container (everything documented in this file: Node, ffmpeg, Remotion, Piper, Ollama, Claude Code, all projects) is destroyed on every single fresh install, with **no existing way to back anything up first**, since file export was already confirmed broken (see Section 7 — WebView file picker doesn't work).
+
+**This is now the single highest-priority app fix.** A backup/restore feature (export container contents to shared storage before uninstalling; restore into a fresh install afterward) must exist before any other fix is installed and tested, or all work documented in this file will need to be manually rebuilt from scratch every time.
+
+---
+
+## 16. Universal file upload (generalized from earlier avatar/thumbnail request)
+
+Earlier request for upload into specific subfolders (`avatar/`, `thumbnail/`) was **generalized** — the fix must work for the whole file explorer, any folder, not hardcoded to named paths. Root cause remains the same as Section 7: WebView missing `onShowFileChooser`. Three acceptable solutions were given to the app-building AI: fix the WebView callback, build a native SAF-based file picker, or use existing broad storage permission to browse/copy files directly.
+
+---
+
+## 17. File-type crash — images (and other binaries) open in text editor and crash the app
+
+**Bug:** pasting or opening an image in the file explorer routes it to the text editor tab instead of an image viewer, crashing the app instantly. This indicates the file explorer has no file-type detection/routing — everything is assumed to be text.
+
+**Full list of file types confirmed or strongly suspected to crash or mishandle when opened** (compiled for the app-building AI to implement proper viewers for, instead of routing to the text editor or forcing an external download):
+- Images: `.png .jpg .jpeg .gif .webp .bmp .ico`
+- Audio: `.wav .mp3 .m4a .ogg .flac`
+- Video: `.mp4 .mov .webm .mkv`
+- Documents: `.pdf` (viewer exists but is poorly sized/organized — too small, not full-screen)
+- Fonts: `.ttf .otf`
+- Archives: `.zip .tar .gz .tar.zst`
+- Compiled/binary: `.dex .class .jar .so .bin` — **`.apk` opens fine, but `.dex` specifically fails and forces an external download to the phone instead of opening in-app**
+- Databases: `.db .sqlite`
+
+Requested fix: detect file type by extension/magic bytes and route to an appropriate in-app viewer per category (image viewer, audio/video player, hex viewer for raw binaries, archive browser, properly full-screen PDF viewer) instead of the text editor, and instead of forcing external downloads where in-app viewing is reasonable.
+
+---
+
+## 18. Source Control panel — wrong working directory (confirmed root cause)
+
+**Symptom:** opening the Source Control panel showed `Exit code 128`, proot `/proc/self/fd` warnings (harmless, unrelated), and:
+```
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set)
+```
+
+**Diagnosis:** manually confirmed the actual project's git repo is completely healthy:
+```bash
+cd /root/my-video && git status
+# → On branch master, clean staged changes, no errors
+```
+This proves the git repo itself is fine — the Source Control panel is failing because it's checking git status from the **wrong directory** (likely `/` or a stale/incorrect path) instead of the actual open project's root (`/root/my-video`).
+
+**Setup script/app should:** Source Control panel must resolve and `cd` into the currently-open project's actual root folder before running any git command — not a fixed or previously-cached path.
+
+---
+
+## 19. No GitHub remote ever configured (contradicts earlier claim)
+
+```bash
+cd /root/my-video && git remote -v
+# → (empty output)
+```
+Confirms **no GitHub remote has ever been configured** on this repo, despite the app-building AI previously being asked to "add GitHub" and claiming to have done so. All commits (once made) exist only locally — nothing has ever been pushed to GitHub. This is a concrete, provable discrepancy between what was claimed and what's actually configured.
+
+---
+
+## 20. GitHub integration requirement — multi-user OAuth, not hardcoded
+
+User wants proper multi-user GitHub integration, not a personal-account hardcoded fix:
+- Users sign in via GitHub OAuth (device flow or web flow — whichever fits mobile better)
+- Each user's own access token stored securely per-account, not a shared/hardcoded credential
+- After sign-in, user can see/access their own repos, clone one into the workspace, and commit/push back to their own account through the Source Control panel (once the directory bug in Section 18 is also fixed)
+
+---
+
+## 21. Local vs. GitHub-connected project distinction
+
+There's an existing default/starter project (`/root/my-video` — appears to be the app's built-in demo/template, containing standard Remotion boilerplate like `HelloWorld.tsx`/`Arc.tsx`/`Atom.tsx` plus every installed AI tool's config folder) that has no GitHub remote. **User wants this project kept, not deleted.**
+
+Requested: the file explorer/Source Control UI should visually distinguish local-only projects (no remote configured) from GitHub-connected ones (badge/icon + repo name), so it's clear at a glance which projects are backed up to GitHub and which exist only on-device.
+
+---
+
+## 22. Copilot Chat panel — wrong position, wrong sizing, not persistent
+
+**Current behavior (confirmed via screenshots):** the Copilot Chat panel opens as a narrow overlay on the **left side**, on top of the file explorer/editor area, rather than docking on the right like standard VS Code.
+
+**Reference behavior (VS Code, confirmed via screenshots):**
+- Chat panel docks on the **right-hand side**, alongside the editor, not overlapping it
+- Fully resizable/draggable — dragging it wider reveals a **"Sessions" list** showing past chat sessions that can be clicked back into
+- Has its own header controls (new session, search, filter, expand, close) independent of the main editor chrome
+
+**Fix requested:** reposition Copilot Chat to dock on the right side matching the file explorer's resize/drag behavior exactly, implement the sessions list on drag-to-reveal, and ensure exact sizing parity with how the explorer panel behaves.
+
+---
+
+## 23. Critical: terminal state bleeds between different projects
+
+**Confirmed behavior (corrected after initial report):** opening a *new tab within the same project* works correctly — each tab is independent, no issue there.
+
+**The actual bug:** switching to a **different project** causes that new project's terminal tabs to mirror whatever terminal tabs/content existed in the previous project. Typing unsent (not-yet-Enter'd) text in Project A's terminal and switching to Project B shows that same text in what should be Project B's own separate terminal — and deleting it in one deletes it in the other.
+
+**Diagnosis needed from app-building AI:** whether terminal tab instances are scoped globally per app-session instead of per-project (i.e., all projects sharing one PTY/shell instance pool instead of each project getting its own isolated set).
+
+**Requested fix:** each project must have its own fully isolated terminal sessions (separate shell process, separate working directory, separate input buffer) with zero shared state — including uncommitted keystrokes — between different projects' terminal tabs.
+
+**Not yet clarified:** whether the separate Browser/Preview tab-mirroring issue (typing a URL in one shows in the other; switching away and back loses state, requiring re-entry of the port) shares the same root cause as this terminal bug, or is a distinct issue — needs confirmation on whether that mirroring happens within one project or also only across different projects.
+
+---
+
+## 24. Outstanding / not yet done
+
+- [ ] **Backup/restore feature — now the top priority.** Nothing else should be shipped/tested until this exists, since every GitHub Actions rebuild requires a full uninstall that currently destroys all container data with no recovery path.
+- [ ] Universal file upload (Section 16) — root cause diagnosed, fix requested, not yet implemented/verified
+- [ ] File-type crash / viewer routing (Section 17) — full type list compiled, fix requested, not yet implemented/verified
+- [ ] Source Control wrong-directory bug (Section 18) — root cause fully diagnosed and proven, fix requested, not yet implemented/verified
+- [ ] GitHub OAuth multi-user integration (Sections 19-20) — requested, not yet implemented
+- [ ] Local vs. connected project distinction (Section 21) — requested, not yet implemented
+- [ ] Copilot Chat panel position/sizing/sessions (Section 22) — requested with VS Code reference screenshots, not yet implemented
+- [ ] Terminal cross-project state bleed (Section 23) — this is a serious architecture-level bug, requested, not yet implemented; root cause (global vs. per-project scoping) not yet confirmed by app-building AI
+- [ ] Browser/Preview tab mirroring — possibly same root cause as Section 23, or separate; needs clarification before a fix can be scoped
+- [ ] Coqui XTTS-v2 for more natural voice — paused pending disk cleanup; user wants to try despite RAM risk, with Piper as fallback if it fails
+- [ ] Wiring real narration audio duration to Remotion's `durationInFrames` dynamically (currently hardcoded, manually calculated per-script)
+- [ ] `player.html` / `audio_test.html` / `male_test_v3.html` are throwaway debug pages, not part of a permanent pipeline — should be replaced with one proper reusable player page
+- [ ] Cross-AI persistent memory/handoff system — initial version created (`~/AGENT_MEMORY.md`, symlinked from `.cursorrules` etc.) but not yet adopted by all ~20 installed AI tool configs found in the environment (`.cline`, `.codeium`, `.continue`, `.copilot`, `.cursor`, `.gemini`, `.qwen`, etc.) — only a handful were wired up as a first pass.
+- [ ] Consumer vs. developer permission tiers for the app — currently everyone gets full unrestricted container access (developer's intentional current design); a restricted mode for end users is planned but not yet built.
+
+---
+
+## Suggested one-shot setup script outline
+
+```bash
+#!/bin/bash
+set -e
+apt update
+apt install -y ffmpeg libnspr4 libnss3 python3-pip
+pip3 install piper-tts --break-system-packages
+npm install -g @anthropic-ai/claude-code @remotion/cli
+node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs
+claude --version   # verify
+ffmpeg -version | head -1   # verify
+# ... scaffold remotion-project, download voice model, etc.
+```
+
