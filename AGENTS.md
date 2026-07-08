@@ -3710,3 +3710,39 @@ this translation correctly).
 Not yet on-device tested — model name and response field casing are per Google's current
 docs (July 2026: Nano Banana family, gemini-2.5-flash-image legacy vs gemini-3.1-flash-image
 current/Interactions-API-first) but unverified against a live key from this sandbox.
+
+---
+
+# UPDATE — 2026-07-08 (later still): #13 "AI package access" — real bug found & fixed (commit 655a243)
+
+Went to verify #13 rather than assume — turned out the architecture question in the
+original triage ("does the in-app chat panel need bridging into the proot container?")
+was already resolved: both the in-app chat panel AND terminal-launched AI (Claude Code,
+Ollama CLI) call the exact same `AgentApiServer`/`AgentTools` — one shared set of 32
+tools, no split to bridge.
+
+The actual gap was a real bug inside `AgentTools.installPackage()`: `run_command` and the
+git tools already correctly route through `ProotInstaller.execOnce` (an earlier session's
+fix), but `install_package` was missed — npm/pip still called a raw host `ProcessBuilder`
+(npm/pip3 don't exist on the bare Android host PATH, so every AI-driven npm/pip install
+request silently failed), and apt didn't even attempt anything — it just returned a string
+telling the AI to relay "type this in a terminal" to the human, defeating the point of an
+AI package-install tool. Fixed by routing all three through `ProotInstaller.execOnce`,
+matching the already-proven run_command/git pattern.
+
+#13 status: DONE. Not yet on-device tested.
+
+## Hard bucket remaining
+- #10 file-type viewer routing — DONE (commits fb965ce/7114394, found via git log, no
+  action needed from me).
+- #9 file upload chooser — DONE (commit 6ca4aa2, same).
+- #11 GitHub repo browsing OAuth — blocked on a real GitHub OAuth web app (client secret)
+  + `oauth_accounts` table + Railway callback endpoint. Needs Wisdom to create the OAuth
+  app on github.com (Settings > Developer settings) and give me the Client ID/Secret —
+  no GCP account-access blocker here, this is a separate/easier credential to get than
+  the Google OAuth Connectors one.
+- #14 (doc-numbering: "one-tap automated environment setup") — untouched.
+- Separately, "#14" in commit messages (OAuth Connectors: Gmail/Calendar/Drive/Slack) is
+  code-complete per commit b90b7a2/5c8fb39/7807df5, blocked purely on getting the real
+  Google OAuth Client Secret — still unresolved as of this session (none of Wisdom's 3
+  known Google accounts have IAM access to the `codespace-ide-2026` GCP project).
