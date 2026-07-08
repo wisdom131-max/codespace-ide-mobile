@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -1830,6 +1831,9 @@ internal fun TerminalPane(
 
         // Color scheme picker dialog
         if (showSchemeMenu) {
+            // Rotation fix (#8): key on orientation so this Dialog gets a fresh,
+            // correctly-sized window on rotation instead of a stuck stale one.
+            key(configuration.orientation) {
             androidx.compose.ui.window.Dialog(onDismissRequest = { showSchemeMenu = false }) {
                 androidx.compose.material3.Card(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -1837,7 +1841,10 @@ internal fun TerminalPane(
                         containerColor = Color(0xFF252526)),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                 ) {
-                    Column(Modifier.padding(16.dp)) {
+                    // Was missing scroll entirely — with more schemes than fit on screen
+                    // (esp. landscape after rotation) the list just clipped with no way
+                    // to reach the rest. Bounded height + scroll fixes both issues.
+                    Column(Modifier.padding(16.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                         Text("Terminal Color Scheme", color = Color(0xFFCCCCCC), fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
                         TerminalSchemes.ALL.forEach { scheme ->
@@ -1866,6 +1873,7 @@ internal fun TerminalPane(
                         }
                     }
                 }
+            }
             }
         }
 
@@ -2134,6 +2142,7 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
         }
     }
 }
+
 
 
 
