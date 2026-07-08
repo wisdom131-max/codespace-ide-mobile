@@ -775,7 +775,7 @@ internal fun CopilotChatPanelInline(
         }
     }
     var activeSessionId by remember { mutableStateOf(sessions.first().id) }
-    val activeSession: ChatSession get() = sessions.find { it.id == activeSessionId } ?: sessions.first()
+    val activeSession: ChatSession = sessions.find { it.id == activeSessionId } ?: sessions.first()
 
     // Sessions sidebar visibility: auto-reveals once the panel is dragged wide enough,
     // but the chevron lets you pin it open/closed regardless of current width.
