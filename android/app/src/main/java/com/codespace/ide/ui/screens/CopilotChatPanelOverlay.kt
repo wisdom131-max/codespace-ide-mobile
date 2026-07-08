@@ -109,6 +109,88 @@ private fun loadHistory(ctx: Context): List<ChatMsg> {
     } catch (_: Exception) { emptyList() }
 }
 
+// ── Sessions (UI bucket #5) ─────────────────────────────────────────────────
+// Multiple named chat threads instead of one flat history. Persisted as a single JSON
+// blob (fine at this scale — 50-message cap per session, sessions list itself is small).
+private const val KEY_SESSIONS = "sessions_v1"
+
+internal data class ChatSession(
+    val id: String,
+    var title: String,
+    val mode: ChatMode,
+    val messages: MutableList<ChatMsg> = mutableListOf(),
+    var updatedAt: Long = System.currentTimeMillis(),
+)
+
+private fun newSession(mode: ChatMode = ChatMode.ASK): ChatSession =
+    ChatSession(id = java.util.UUID.randomUUID().toString(), title = "New chat", mode = mode)
+
+private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
+    val arr = JSONArray()
+    sessions.forEach { s ->
+        val msgsArr = JSONArray()
+        s.messages.takeLast(50).forEach { msgsArr.put(JSONObject().put("role", it.role).put("text", it.text)) }
+        arr.put(
+            JSONObject()
+                .put("id", s.id)
+                .put("title", s.title)
+                .put("mode", s.mode.name)
+                .put("updatedAt", s.updatedAt)
+                .put("messages", msgsArr)
+        )
+    }
+    ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+        .edit().putString(KEY_SESSIONS, arr.toString()).apply()
+}
+
+private fun loadSessions(ctx: Context): MutableList<ChatSession> {
+    val prefs = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+    val str = prefs.getString(KEY_SESSIONS, null)
+    if (str != null) {
+        return try {
+            val arr = JSONArray(str)
+            (0 until arr.length()).map {
+                val o = arr.getJSONObject(it)
+                val msgsArr = o.getJSONArray("messages")
+                val msgs = (0 until msgsArr.length()).map { j ->
+                    val m = msgsArr.getJSONObject(j)
+                    ChatMsg(m.getString("role"), m.getString("text"))
+                }.toMutableList()
+                ChatSession(
+                    id = o.getString("id"),
+                    title = o.getString("title"),
+                    mode = try { ChatMode.valueOf(o.getString("mode")) } catch (_: Exception) { ChatMode.ASK },
+                    messages = msgs,
+                    updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
+                )
+            }.sortedByDescending { it.updatedAt }.toMutableList()
+        } catch (_: Exception) { mutableListOf() }
+    }
+    // One-time migration: fold the old single-thread history (if any) into a session so
+    // existing conversations aren't lost when this feature ships.
+    val legacy = loadHistory(ctx)
+    return if (legacy.isNotEmpty()) {
+        val migrated = newSession().apply {
+            messages.addAll(legacy)
+            title = legacy.firstOrNull { it.role == "user" }?.text?.take(30) ?: "Previous chat"
+        }
+        mutableListOf(migrated)
+    } else {
+        mutableListOf()
+    }
+}
+
+private fun relativeTime(ts: Long): String {
+    val diffMs = System.currentTimeMillis() - ts
+    val mins = diffMs / 60000
+    return when {
+        mins < 1 -> "now"
+        mins < 60 -> "${mins}m"
+        mins < 60 * 24 -> "${mins / 60}h"
+        else -> "${mins / (60 * 24)}d"
+    }
+}
+
 private suspend fun fetchModels(baseUrl: String): List<String> = withContext(Dispatchers.IO) {
     try {
         val resp = http.newCall(Request.Builder().url("$baseUrl/api/tags").get().build()).execute()
@@ -685,8 +767,61 @@ internal fun CopilotChatPanelInline(
     }
     var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
 
+    // ── Sessions (UI bucket #5) ─────────────────────────────────────────
+    val sessions = remember {
+        mutableStateListOf<ChatSession>().apply {
+            val loaded = loadSessions(context)
+            addAll(if (loaded.isEmpty()) listOf(newSession()) else loaded)
+        }
+    }
+    var activeSessionId by remember { mutableStateOf(sessions.first().id) }
+    val activeSession: ChatSession get() = sessions.find { it.id == activeSessionId } ?: sessions.first()
+
+    // Sessions sidebar visibility: auto-reveals once the panel is dragged wide enough,
+    // but the chevron lets you pin it open/closed regardless of current width.
+    var sessionsPinned by remember { mutableStateOf<Boolean?>(null) } // null = auto (width-based)
+    var showSearch     by remember { mutableStateOf(false) }
+    var searchQuery    by remember { mutableStateOf("") }
+    var showFilterMenu by remember { mutableStateOf(false) }
+    var filterMode     by remember { mutableStateOf<ChatMode?>(null) } // null = All
+
     val messages = remember {
-        mutableStateListOf<ChatMsg>().apply { addAll(loadHistory(context)) }
+        mutableStateListOf<ChatMsg>().apply { addAll(activeSession.messages) }
+    }
+
+    fun persistSessions() {
+        activeSession.messages.clear()
+        activeSession.messages.addAll(messages)
+        activeSession.updatedAt = System.currentTimeMillis()
+        if (activeSession.title == "New chat") {
+            messages.firstOrNull { it.role == "user" }?.let { activeSession.title = it.text.take(30) }
+        }
+        saveSessions(context, sessions)
+    }
+
+    fun switchSession(id: String) {
+        // Save the outgoing session's messages before switching.
+        persistSessions()
+        activeSessionId = id
+        messages.clear()
+        messages.addAll(sessions.find { it.id == id }?.messages ?: emptyList())
+        mode = sessions.find { it.id == id }?.mode ?: ChatMode.ASK
+    }
+
+    fun startNewSession() {
+        persistSessions()
+        val s = newSession(mode)
+        sessions.add(0, s)
+        activeSessionId = s.id
+        messages.clear()
+    }
+
+    fun deleteSession(id: String) {
+        if (sessions.size <= 1) return // always keep at least one session around
+        val wasActive = id == activeSessionId
+        sessions.removeAll { it.id == id }
+        saveSessions(context, sessions)
+        if (wasActive) switchSession(sessions.first().id)
     }
 
     LaunchedEffect(Unit) {
@@ -713,17 +848,113 @@ internal fun CopilotChatPanelInline(
             try {
                 val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
                 messages.add(ChatMsg("assistant", reply))
-                saveHistory(context, messages.toList())
+                persistSessions()
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
                 messages.add(ChatMsg("assistant", "Error: ${e.message}"))
+                persistSessions()
             } finally {
                 chatLoading = false
             }
         }
     }
 
-    Column(Modifier.fillMaxSize().background(colors.background)) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val autoShowSessions = maxWidth > 460.dp
+        val showSessionsList = sessionsPinned ?: autoShowSessions
+
+        Row(Modifier.fillMaxSize().background(colors.background)) {
+            // ── Sessions sidebar ─────────────────────────────────────────
+            if (showSessionsList) {
+                Column(Modifier.width(160.dp).fillMaxHeight().background(colors.surface)) {
+                    // Sessions header — new / search / filter / expand(pin) / close controls
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("SESSIONS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.textSecondary)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Add, "New session", tint = colors.textSecondary,
+                                modifier = Modifier.size(14.dp).clickable { startNewSession() })
+                            Icon(Icons.Default.Search, "Search sessions", tint = if (showSearch) colors.accent else colors.textSecondary,
+                                modifier = Modifier.size(14.dp).clickable { showSearch = !showSearch })
+                            Box {
+                                Icon(Icons.Default.FilterList, "Filter sessions", tint = if (filterMode != null) colors.accent else colors.textSecondary,
+                                    modifier = Modifier.size(14.dp).clickable { showFilterMenu = true })
+                                DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
+                                    DropdownMenuItem(text = { Text("All", fontSize = 12.sp) }, onClick = { filterMode = null; showFilterMenu = false })
+                                    ChatMode.values().forEach { m ->
+                                        DropdownMenuItem(
+                                            text = { Text(m.name.lowercase().replaceFirstChar { it.titlecase() }, fontSize = 12.sp) },
+                                            onClick = { filterMode = m; showFilterMenu = false },
+                                        )
+                                    }
+                                }
+                            }
+                            // "Expand" pins the sidebar open even if the panel gets narrow again;
+                            // tapping it once more (now acting as "close") unpins/hides it.
+                            Icon(
+                                if (sessionsPinned == true) Icons.Default.UnfoldLess else Icons.Default.UnfoldMore,
+                                "Pin sessions list", tint = colors.textSecondary,
+                                modifier = Modifier.size(14.dp).clickable {
+                                    sessionsPinned = if (sessionsPinned == true) false else true
+                                },
+                            )
+                        }
+                    }
+                    if (showSearch) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            placeholder = { Text("Search…", fontSize = 11.sp, color = colors.textSecondary) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = colors.text),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp).height(44.dp),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.accent, unfocusedBorderColor = colors.divider,
+                                focusedContainerColor = colors.inputBg, unfocusedContainerColor = colors.inputBg,
+                            ),
+                        )
+                    }
+                    HorizontalDivider(color = colors.divider)
+                    val visibleSessions = sessions
+                        .filter { filterMode == null || it.mode == filterMode }
+                        .filter { searchQuery.isBlank() || it.title.contains(searchQuery, ignoreCase = true) ||
+                            it.messages.any { m -> m.text.contains(searchQuery, ignoreCase = true) } }
+                        .sortedByDescending { it.updatedAt }
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                        items(visibleSessions, key = { it.id }) { s ->
+                            val isActive = s.id == activeSessionId
+                            Column(
+                                Modifier.fillMaxWidth()
+                                    .background(if (isActive) colors.accent.copy(alpha = 0.15f) else Color.Transparent)
+                                    .clickable { switchSession(s.id) }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(s.title, fontSize = 11.sp, color = colors.text, fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    if (sessions.size > 1) {
+                                        Icon(Icons.Default.Close, "Delete session", tint = colors.textSecondary,
+                                            modifier = Modifier.size(12.dp).clickable { deleteSession(s.id) })
+                                    }
+                                }
+                                Text(
+                                    s.messages.lastOrNull()?.text?.take(40) ?: "No messages yet",
+                                    fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                                Text(relativeTime(s.updatedAt), fontSize = 8.sp, color = colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+                VerticalDivider(color = colors.divider)
+            }
+
+            // ── Chat column ───────────────────────────────────────────────
+            Column(Modifier.weight(1f).fillMaxHeight()) {
         // ── Header ────────────────────────────────────────────────────────
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -762,7 +993,7 @@ internal fun CopilotChatPanelInline(
                     Icons.Default.DeleteOutline, null,
                     tint = colors.textSecondary, modifier = Modifier.size(16.dp).clickable {
                         messages.clear()
-                        saveHistory(context, emptyList())
+                        persistSessions()
                     },
                 )
                 Spacer(Modifier.width(8.dp))
@@ -882,6 +1113,8 @@ internal fun CopilotChatPanelInline(
             ) {
                 Icon(Icons.Default.Send, contentDescription = "Send", tint = colors.accent)
             }
+        }
+            } // end chat column
         }
     }
 }
