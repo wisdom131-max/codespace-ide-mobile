@@ -3291,3 +3291,170 @@ ffmpeg -version | head -1   # verify
 # ... scaffold remotion-project, download voice model, etc.
 ```
 
+
+---
+
+# UPDATE — 2026-07-08: Doc drift correction + Backup/Restore (#15/#24 top priority) shipped
+
+## Drift correction — these were already fixed since the last status doc, just not marked done
+A user-provided "proot-environment-setup-status" debug doc (33.9KB) was reviewed section by
+section. Cross-checked against actual commit history and current source — several fixes it
+called for were **already shipped** in commits made after that doc was written, but the doc's
+own "Outstanding" checklist (and this file) hadn't been corrected to reflect it:
+- DONE — Section 14 (TOOL_REGEX crash) — fixed, commit `4e30a07`. Confirmed still correct in source.
+- DONE — Section 6 (video/audio not rendering in Browser preview) — fixed, commit `f66a0d2`.
+- DONE — Section 12 (Ollama install fooled by fake/broken stub binaries) — fixed, commit `363424b`.
+- DONE — #17 (dashboard chart/icon sizing) — fixed, commit `3b715d1`.
+- DONE — #14 (OAuth Connectors) backend done + Android-side wiring done, commit `b90b7a2` — only an
+  on-device test remains, per commit `7807df5`.
+- DONE — Voice/TTS model picker (Piper voices + Bark-small) + resumable downloads — commit `b65f75d`.
+- DONE — Terminal emoji keyboard key missing — fixed, commit `90c18ad`.
+
+Confirmed still genuinely NOT done (verified by grep against current source, not just doc claims):
+`onShowFileChooser` (file upload into container, Sections 7/16) — no implementation found.
+Source Control panel wrong-cwd bug (Section 18) — not found fixed. File-type viewer routing
+(Section 17, images/audio/video/archives crashing the text editor) — not found fixed beyond the
+PDF viewer shipped earlier. Copilot Chat panel position (Section 22), terminal cross-project
+state bleed (Section 23) — still open.
+
+## Backup/Restore — shipped (Section 15/24's explicitly flagged #1 priority)
+The debug doc was explicit: "nothing else should be shipped/tested until this exists," since
+every GitHub Actions rebuild forces a full uninstall (differently-signed APK each time) which
+wipes the entire proot container — Node, ffmpeg, Remotion, Piper, Ollama, Claude Code, all
+projects — with zero recovery path before this.
+
+**New: `BackupManager.kt`** (`android/app/src/main/java/com/codespace/ide/terminal/`)
+- Tars + gzips the whole Ubuntu rootfs (`context.filesDir/ubuntu-rootfs`) into
+  `/storage/emulated/0/CodespaceIDE/container-backup.tar.gz` — PUBLIC shared storage, using the
+  `MANAGE_EXTERNAL_STORAGE` permission already granted in the manifest, so the backup file lives
+  outside the app's sandbox and survives an uninstall.
+- Uses commons-compress (`TarArchiveOutputStream`/`TarArchiveInputStream` +
+  `GzipCompressorOutputStream`/`GzipCompressorInputStream`) — same library already used by
+  `ProotInstaller` for the initial rootfs download, so no new dependency was added.
+- Writes to a `.tmp` file and renames atomically on success, so an interrupted backup never
+  leaves a corrupt file that a later restore would silently fail on.
+- Preserves symlinks and executable bits on both backup and restore, mirroring the exact
+  extraction logic `ProotInstaller.install()` already uses for the base rootfs tarball.
+- Skips `proc/`, `sys/`, `dev/` — virtual mounts, never real files worth archiving.
+
+**`TerminalPane.kt`** — on a fresh install (`!ProotInstaller.isInstalled()`), checks
+`BackupManager.hasBackup()` FIRST. If a backup exists, restores from it instead of downloading a
+fresh ~250MB Ubuntu rootfs — this is the actual fix for "everything gets wiped on every
+rebuild," fully automatic, no user action needed beyond having backed up once.
+
+**`SettingsScreen.kt`** — new "Container Backup" section: shows current backup size/timestamp
+(or "No backup yet" warning), a "Back up now" button, and (once a backup exists) a "Restore"
+button gated behind a confirmation dialog since it overwrites the live container.
+
+### Not yet done / follow-ups
+- No automatic/scheduled backup — purely manual "Back up now" for this first pass.
+- Backup file can be large (rootfs + node_modules + any Ollama models pulled) — no compression
+  tuning or exclude-list yet; v1 backs up everything as-is.
+- Could not compile-check locally (no Android SDK in this sandbox) — pushed to CI as usual;
+  needs a green CI run before considering this fully verified.
+
+---
+
+# UPDATE — 2026-07-08 (later): Master backlog triage — UI / Hard / Easy
+
+Full backlog re-triaged with Wisdom directly (proot debug doc + live screenshots of the current
+app vs. a VS Code reference for the Copilot Chat panel + new bugs found today). Nothing below
+has been implemented yet — this is the categorized plan only, written so any AI picking this up
+cold can understand scope and root cause before touching code. Building starts only after this
+triage is confirmed.
+
+## EASY
+1. **Source Control wrong working directory** (doc Section 18) — root cause already proven:
+   `cd /root/my-video && git status` works fine standalone, but the Source Control panel runs
+   git commands from the wrong directory (looks like a fixed/stale path, not the actually-open
+   project's root). Fix: resolve + `cd` into the current project's real root before any git call.
+2. **Browser/Remotion port "mirroring"** — confirmed today, root cause narrowed: it only mirrors
+   when the Browser tab's port field is left EMPTY — if you manually type a port into it, it
+   stays independent. So the Browser tab's "no value yet" state is falling back to read the
+   Remotion tab's port instead of its own independent default/empty state. Needs the actual state
+   variables checked in the Preview/Browser pane code to confirm which one's reading from where.
+3. **Remotion connection doesn't persist across tab switches** — tapping Go connects to
+   localhost:3000, but switching to the Terminal tab and back resets it, requiring pressing Go
+   again. Root cause: connection state is scoped to the tab's visible lifecycle instead of
+   surviving in the background. Wisdom wants: once Go is pressed, stays connected until an
+   explicit "clear/disconnect" action, not just navigating away.
+4. **Missing "add image" option in subfolder long-press menus** — works fine at the project
+   root; every other long-press action works fine inside subfolders too — just the specific
+   "add image(s)" menu item isn't offered once you're inside a subfolder. Sounds like a path
+   check that only allows it at root; needs that restriction removed/generalized.
+
+## UI
+5. **Copilot Chat panel reposition** (doc Section 22) — currently opens as a narrow overlay on
+   the LEFT, on top of the explorer/editor (confirmed via screenshot). Reference (VS Code,
+   screenshot provided) docks it on the RIGHT, resizable/draggable like the explorer, and
+   dragging it wider reveals a "Sessions" list of past chats with its own header controls
+   (new session, search, filter, expand, close). Full rebuild of this panel's position + add
+   the Sessions list, not a small CSS-style tweak.
+6. **Local vs. GitHub-connected project badge** (doc Section 21) — visually distinguish
+   local-only projects (no git remote) from ones connected to a GitHub repo, in the
+   explorer/Source Control UI (badge/icon + repo name for connected ones). Existing default
+   project `/root/my-video` has no remote and should stay that way — just needs the badge, not
+   a forced remote.
+7. **Preview/Browser header + zoom refinements** — when the preview content is zoomed in, the
+   header/title bar that labels which panel you're in (e.g. "Browser", "Remotion") gets cut off
+   instead of staying visible — needs to resize/refill so the label is always legible regardless
+   of zoom level. Also: the URL/address input box is too large — shrink it to free vertical
+   space. Also: raise the max pinch-zoom level — current cap is too limited, Wisdom wants more
+   zoom range than what's currently allowed.
+8. **Popup/long-press menus not scrollable after rotation** — this is broader than just the
+   long-press context menu; Wisdom has hit this on "a lot of menus" across the app. After
+   rotating the device, a popup's scroll gets stuck, forcing a rotation back to portrait to
+   reach items further down the list. Needs an app-wide audit of popup/menu components to find
+   every instance of this pattern (likely a Compose scroll-state or height-calculation bug that
+   doesn't recompute properly across a configuration change), not just a single-component fix.
+
+## HARD
+9. **File upload into the container** (doc Sections 7/16) — WebView never implements
+   `onShowFileChooser`, so any `<input type="file">` anywhere (including a user-built upload
+   form) does nothing when tapped. Needs a native file-picker launcher wired into the WebView's
+   `WebChromeClient`, feeding the picked file back into both the JS callback and the actual
+   container filesystem.
+10. **File-type viewer routing** (doc Section 17) — opening any binary (image/audio/video/font/
+    archive/compiled binary/database file) in the file explorer routes it straight to the plain
+    text editor and crashes the app — there's no file-type detection at all beyond the PDF viewer
+    already shipped. Needs per-category in-app viewers: image viewer, audio/video player, hex
+    viewer for raw binaries, archive browser. `.dex` specifically fails and forces an external
+    download instead of opening in-app; `.apk` already works fine for comparison.
+11. **GitHub "browse & clone your own repos"** (doc Sections 19-20) — root cause fully found
+    this session, NOT just diagnosed: `backend/src/repos/repos.controller.ts`'s `tokenFor()` is a
+    stub that returns `process.env.GITHUB_TEST_TOKEN ?? ''` — literally a placeholder, with a
+    comment admitting "In production, resolve the user's stored GitHub token from oauth_accounts"
+    — that table/storage was never built. This is a SEPARATE feature from the working GitHub
+    Device Flow sign-in (`GitHubAuth.kt`, used for git push/pull in Source Control, confirmed
+    working). To actually build repo browsing needs: a real GitHub OAuth web app (authorization
+    code flow, needs a client secret — different from the secret-less Device Flow app already
+    configured), a callback endpoint on the Railway backend to catch the redirect + exchange the
+    code, and a real `oauth_accounts` table storing each user's token — same pattern as the
+    Gmail/Calendar/Drive/Slack connectors already built for #14.
+12. **Terminal state bleeding between different projects** (doc Section 23) — tabs within the
+    SAME project are correctly isolated. Switching to a DIFFERENT project mirrors whatever was
+    typed (even unsent keystrokes) in the previous project's terminal into the new one, and
+    deleting text in one deletes it in the other. Points to terminal sessions being scoped
+    globally per app-session instead of per-project (one shared PTY/shell pool instead of each
+    project getting its own isolated set). Needs confirming the actual scoping architecture
+    before a fix can be written.
+13. **AI package access for ALL AI surfaces** — Wisdom confirmed this means every AI surface in
+    the app: the in-app AI chat panel AND anything launched from the terminal (Claude Code,
+    Ollama, etc.). Terminal-launched tools already run inside the same Ubuntu proot container so
+    they should already see apt-installed packages — needs verifying, not assuming. The real
+    question is the in-app chat panel: if it runs natively on Android outside the proot
+    container (needs confirming from `AgentApiServer.kt`/`AgentTools.kt`), giving it access to
+    Ubuntu packages means bridging it into the container's filesystem/PATH somehow — a real
+    architecture piece, not a quick fix.
+14. **One-tap automated environment setup** (doc Section 25) — bundle the full known-working
+    setup sequence (ffmpeg + Chrome headless-shell deps, Remotion project scaffold, Piper TTS +
+    voice model download, Ollama install using the proven-working method — NOT the official
+    install.sh, which is confirmed broken in this environment — then Claude Code + its manual
+    postinstall step) into a single button/action, instead of retyping dozens of commands after
+    every container wipe. Ties directly into item... (backup/restore, already shipped, reduces
+    how often this is even needed, but doesn't eliminate the value of having it for a truly
+    fresh device/install).
+
+## Next step
+Confirm this triage with Wisdom, then start building — no code changes until he gives the go-ahead
+on order/priority within these three buckets.
