@@ -379,10 +379,10 @@ fun ExplorerSidePanel(
                     val configFile = File(gitDir, "config")
                     gitRemoteRepo = if (configFile.exists()) {
                         val cfg = configFile.readText()
-                        val originBlock = Regex("\[remote "origin"]([\s\S]*?)(\[|$)").find(cfg)?.groupValues?.get(1)
-                        val urlLine = originBlock?.let { Regex("url\s*=\s*(.+)").find(it)?.groupValues?.get(1)?.trim() }
+                        val originBlock = Regex("""\[remote "origin"]([\s\S]*?)(\[|$)""").find(cfg)?.groupValues?.get(1)
+                        val urlLine = originBlock?.let { Regex("""url\s*=\s*(.+)""").find(it)?.groupValues?.get(1)?.trim() }
                         urlLine?.let { url ->
-                            Regex("github\.com[:/]+([^/]+/[^/.\s]+)").find(url)?.groupValues?.get(1)
+                            Regex("""github\.com[:/]+([^/]+/[^/.\s]+)""").find(url)?.groupValues?.get(1)
                         }
                     } else null
                 } else {
