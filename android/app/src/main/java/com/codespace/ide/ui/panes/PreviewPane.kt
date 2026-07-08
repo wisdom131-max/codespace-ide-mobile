@@ -32,6 +32,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalConfiguration
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
@@ -81,6 +82,9 @@ fun PreviewPane(
     initialPort: Int? = null,
     externalState: PreviewState? = null,
 ) {
+    // Rotation fix (#8): key the fullscreen Dialog on orientation so it gets a fresh,
+    // correctly-sized window on rotation instead of being stuck at the pre-rotation size.
+    val orientation = LocalConfiguration.current.orientation
     // Read file content from disk whenever path changes
     val content by produceState(initialValue = "", key1 = activeFilePath) {
         value = if (activeFilePath.isNotBlank()) {
@@ -366,6 +370,7 @@ fun PreviewPane(
     // every sub-tab (HTML, Markdown, SVG, Browser, Dashboard, Remotion) since it just re-renders
     // the shared PreviewBody at fillMaxSize.
     if (isFullscreen) {
+        key(orientation) {
         Dialog(
             onDismissRequest = { isFullscreen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -415,6 +420,7 @@ fun PreviewPane(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -1202,3 +1208,4 @@ setTimeout(function(){
         "<script>" + js + "</script>" +
         "</body></html>"
 }
+
