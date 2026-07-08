@@ -3554,3 +3554,46 @@ not blocking on it before reporting — will check back rather than poll continu
 Hard bucket (file upload chooser, file-type viewer routing, GitHub repo browsing OAuth, terminal
 cross-project state bleed, AI package access bridging, one-tap env setup) is still fully
 untouched — see the master triage entry above for details on each.
+
+
+---
+
+# UPDATE — 2026-07-08 (later still): UI bucket #5 shipped (commit 3253dbb) — UI bucket now fully closed except #8
+
+Investigated #5 (Copilot Chat panel reposition) before touching code and found more doc drift:
+`CopilotChatPanelInline` (the composable actually wired into `ProjectShellScreen.kt`) was
+ALREADY docked on the right with a working drag-to-resize handle — the backlog's "currently a
+left overlay" description was stale. `CopilotChatPanelOverlay` (an older, unused Dialog-based
+version) is genuinely dead code, never invoked anywhere — left in place, not deleted, in case
+it's referenced by name later, but confirmed harmless.
+
+So the only real gap in #5 was the **Sessions list**, which is what got built:
+- New `ChatSession` model (id, title, mode, messages, updatedAt) persisted as JSON
+  (SharedPreferences `sessions_v1`). One-time migration folds the old single-thread history
+  into a session on first load — no existing conversations lost.
+- Sidebar auto-reveals once the panel is dragged past 460dp wide (`BoxWithConstraints`); a
+  chevron pins it open/closed regardless of width.
+- Sidebar header controls: new-session (+), search (matches title + message content), filter
+  (by Ask/Agent/Plan), pin/unpin. Each row: title, last-message snippet, relative time, delete
+  (x) — always keeps at least one session so the panel is never empty.
+
+Hit a real CI failure shipping this: the `ExplorerPane.kt` git-remote-badge regex (from the #6
+work two commits back) had corrupted escape sequences — an artifact of the edit script used to
+patch it, not a logic bug. `"origin"` collapsed to bare `"origin"` (prematurely closing the
+Kotlin string literal) and `\[`/`\s` collapsed to single backslashes (illegal Kotlin escapes).
+Fixed by switching those three regexes to Kotlin raw strings (`"""..."""`), which need no
+escaping at all — safer than trying to get backslash-counting right through a scripted edit.
+Pushed as a separate fix commit (`432e3fe5`) on top.
+
+## UI bucket final status
+- #5 Copilot Chat Sessions — DONE (3253dbb, this update)
+- #6 Local vs GitHub badge — DONE (89a6528)
+- #7 Preview header + zoom — DONE (89a6528)
+- #8 Popup/menu scroll-stuck-after-rotation audit — NOT STARTED. This is explicitly an
+  app-wide audit ("a lot of menus" per Wisdom), not a single-file fix like the others in this
+  bucket — deliberately deferred rather than rushed, needs its own focused pass across
+  ExplorerPane/SourceControlPane/TerminalPane/SshManagerSheet/TextExpansionSheet/ArchiveViewer/
+  HomeScreen/NotificationDrawerOverlay to find every affected popup/dropdown component.
+
+Hard bucket (file upload chooser, file-type viewer routing, GitHub repo browsing OAuth, terminal
+cross-project state bleed, AI package access bridging, one-tap env setup) still fully untouched.
