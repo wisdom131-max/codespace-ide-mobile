@@ -3625,3 +3625,12 @@ cross-project state bleed, AI package access bridging, one-tap env setup) still 
    of this bug exist.
 
 ### Status: fix pushed as commit `8cf0adf`, triggered build #975 — awaiting result.
+
+### FINAL: build #977 (commit a6bb9dc) is GREEN — confirmed via GitHub Actions API.
+
+There was actually a 4th bug hiding behind the first fix: `internal data class ChatSession`
+exposed `mode: ChatMode` and `messages: MutableList<ChatMsg>`, both private-in-file types —
+an internal declaration can't expose private types in its signature. Confirmed via repo-wide
+grep that `ChatSession` is only ever used inside this one file, so narrowed it to `private`
+(commit `a6bb9dc`) instead of loosening `ChatMode`/`ChatMsg` to internal. That was the real
+last blocker — CI is green as of this commit.
