@@ -3506,3 +3506,51 @@ zoom range, any other scrollable-menu instances found later) and the full Hard b
 (file upload chooser, file-type viewer routing, GitHub repo browsing OAuth, terminal
 cross-project state bleed, AI package access bridging, one-tap env setup) are all still
 untouched — see the full triage entry above for details on each.
+
+
+---
+
+# UPDATE — 2026-07-08 (later still): UI bucket #6/#7 shipped (commit 89a6528)
+
+Also fixed an earlier CI break the same session: commit ed11d61 (Easy batch #2/#3/#4) failed
+CI with a Kotlin visibility error — `PreviewState`/`rememberPreviewState` were `internal` while
+`PreviewMode` was `private`-in-file, and the public `PreviewPane()` function can't expose either
+in its signature. Fixed by making `PreviewMode`/`PreviewState`/`rememberPreviewState` all public
+(no modifier) to match `PreviewPane`'s own visibility. Confirmed green after the fix.
+
+Then picked up the UI bucket from the master triage:
+
+- **#7 Preview header + zoom — FIXED.** Three sub-issues, all in `PreviewPane.kt`:
+  1. Header/address-bar/fullscreen-header rows were fixed `height()` — at larger system
+     font/display scale (Settings > Display "zoom"), the label text clipped instead of the row
+     growing. Switched all three to `heightIn(min=)`.
+  2. Address bar pill shrunk from 32dp to 26dp default height — was eating more vertical space
+     than needed.
+  3. Pinch-zoom range: the 5 generic preview viewport `<meta>` tags had no explicit max (WebView
+     default), and the 2 Dashboard-mode tags had `user-scalable=no` — fully DISABLING zoom, not
+     just capping it. All 7 now explicitly set `minimum-scale=0.5, maximum-scale=6.0,
+     user-scalable=yes`.
+- **#6 Local vs GitHub project badge — FIXED.** `ExplorerPane.kt` now parses `.git/config`'s
+  `[remote "origin"]` url (if present) for a `github.com` owner/repo, alongside the existing
+  git-status check. Header shows a small green cloud badge with "owner/repo" when a GitHub
+  remote is configured, or a muted "Local" badge when there's a `.git` with no remote — no badge
+  at all if there's no `.git`. Purely reads existing state; never creates/forces a remote, so the
+  default `/root/my-video` project (no remote) is untouched.
+
+Pushed to main (commit `89a6528`, on top of the CI-fix commit `5f5a05d`). Build kicked off,
+not blocking on it before reporting — will check back rather than poll continuously.
+
+## Still open from the UI bucket
+- **#5 Copilot Chat panel reposition** — biggest remaining lift in this bucket: full rebuild
+  moving the panel from a left overlay to a right dock (resizable/draggable like the explorer)
+  plus a brand-new "Sessions" list (past chats, new/search/filter/expand/close controls). Not
+  started — needs a dedicated session given the size.
+- **#8 Popup/long-press menus not scrollable after rotation** — broader than the single
+  ExplorerPane long-press fix already shipped (Easy #4, commit ed11d61) which fixed a
+  no-scroll-at-all case. This item is specifically about scroll position/state getting stuck
+  after a configuration change (device rotation) on other menus across the app — needs an
+  app-wide audit to find every affected component, not done yet.
+
+Hard bucket (file upload chooser, file-type viewer routing, GitHub repo browsing OAuth, terminal
+cross-project state bleed, AI package access bridging, one-tap env setup) is still fully
+untouched — see the master triage entry above for details on each.
