@@ -47,6 +47,26 @@ private enum class PreviewMode(val label: String) {
     REMOTION("Remotion"),
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared preview state — lifted up to ProjectShellScreen so switching to a
+// different bottom tab (Terminal, Problems, etc.) and back doesn't reset the
+// active sub-tab or the connected URL. Also fixes Browser and Remotion sharing
+// one address bar (typing a port in one used to "mirror" into the other because
+// they were literally the same two variables) — each mode now gets its own.
+// ─────────────────────────────────────────────────────────────────────────────
+internal class PreviewState(initialMode: PreviewMode) {
+    var activeMode by androidx.compose.runtime.mutableStateOf(initialMode)
+    var browserUrl by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
+    var browserInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
+    var remotionUrl by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
+    var remotionInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
+}
+
+@Composable
+internal fun rememberPreviewState(): PreviewState {
+    return remember { PreviewState(PreviewMode.HTML) }
+}
+
 private val BgDark      = Color(0xFF1E1E1E)
 private val Surface     = Color(0xFF252526)
 private val Border      = Color(0xFF3C3C3C)
@@ -59,6 +79,7 @@ private val Accent      = Color(0xFF007ACC)
 fun PreviewPane(
     activeFilePath: String = "",
     initialPort: Int? = null,
+    externalState: PreviewState? = null,
 ) {
     // Read file content from disk whenever path changes
     val content by produceState(initialValue = "", key1 = activeFilePath) {
@@ -86,15 +107,26 @@ fun PreviewPane(
         else                                   -> PreviewMode.HTML
     }
 
-    var activeMode by remember(activeFilePath, initialPort) { mutableStateOf(if (initialPort != null) PreviewMode.BROWSER else defaultMode) }
+    // sharedState lives above this composable (in ProjectShellScreen), so switching bottom
+    // tabs away and back doesn't reset the active mode or the connected URL. Reads/writes
+    // below go straight through sharedState.X (Kotlin doesn't allow custom accessors on
+    // local variables, so we reference the shared property directly rather than aliasing it).
+    val sharedState = externalState ?: rememberPreviewState()
     var showGuide by remember { mutableStateOf(false) }
-    var browserUrl by remember(initialPort) { mutableStateOf(initialPort?.let { "http://localhost:$it" } ?: "http://localhost:3000") }
-    var browserInput by remember(initialPort) { mutableStateOf(initialPort?.let { "http://localhost:$it" } ?: "http://localhost:3000") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var pageTitle by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
-    LaunchedEffect(initialPort) { if (initialPort != null) webViewRef?.loadUrl("http://localhost:$initialPort") }
+    // First time this pane sees a deep-linked port (from the Ports panel), jump straight to
+    // Browser mode pointed at it. Only fires on an actual initialPort change, not every
+    // recomposition, so it doesn't fight with the user manually switching modes afterwards.
+    LaunchedEffect(initialPort) {
+        if (initialPort != null) {
+            sharedState.activeMode = PreviewMode.BROWSER
+            sharedState.browserUrl = "http://localhost:$initialPort"
+            sharedState.browserInput = "http://localhost:$initialPort"
+        }
+    }
 
     Column(
         Modifier
@@ -118,7 +150,7 @@ fun PreviewPane(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PreviewMode.entries.forEach { mode ->
-                    val active = mode == activeMode
+                    val active = mode == sharedState.activeMode
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
@@ -128,7 +160,7 @@ fun PreviewPane(
                                 color = if (active) Accent else Color.Transparent,
                                 shape = RoundedCornerShape(4.dp)
                             )
-                            .clickable { activeMode = mode }
+                            .clickable { sharedState.activeMode = mode }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -166,7 +198,7 @@ fun PreviewPane(
                     modifier = Modifier
                         .size(18.dp)
                         .clickable {
-                            when (activeMode) {
+                            when (sharedState.activeMode) {
                                 PreviewMode.BROWSER -> webViewRef?.reload()
                                 else -> webViewRef?.reload()
                             }
@@ -187,7 +219,21 @@ fun PreviewPane(
         // oversized and left dead empty space in the toolbar row. Swapped for a tight, fixed-height
         // pill (matches the STT/Root/Zsh quick-actions row styling elsewhere in the app) that fills
         // the space it actually needs instead of leaving a gap.
-        if (activeMode == PreviewMode.BROWSER || activeMode == PreviewMode.REMOTION) {
+        if (sharedState.activeMode == PreviewMode.BROWSER || sharedState.activeMode == PreviewMode.REMOTION) {
+            // Browser and Remotion each read/write their OWN url+input pair on sharedState —
+            // this is the actual fix for the "typing a port in one shows up in the other"
+            // mirroring bug, which happened because both modes used to share one pair of
+            // variables for what are really two independent connections.
+            val isRemotion = sharedState.activeMode == PreviewMode.REMOTION
+            val currentInput = if (isRemotion) sharedState.remotionInput else sharedState.browserInput
+            fun applyInput(v: String) {
+                if (isRemotion) sharedState.remotionInput = v else sharedState.browserInput = v
+            }
+            fun connect() {
+                if (isRemotion) sharedState.remotionUrl = sharedState.remotionInput
+                else sharedState.browserUrl = sharedState.browserInput
+                webViewRef?.loadUrl(currentInput)
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -198,7 +244,7 @@ fun PreviewPane(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
-                    if (activeMode == PreviewMode.REMOTION) Icons.Default.Movie else Icons.Default.Lock,
+                    if (isRemotion) Icons.Default.Movie else Icons.Default.Lock,
                     null, tint = TextMuted, modifier = Modifier.size(14.dp)
                 )
                 Box(
@@ -211,21 +257,18 @@ fun PreviewPane(
                         .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (browserInput.isEmpty()) {
+                    if (currentInput.isEmpty()) {
                         Text("http://localhost:3000", fontSize = 12.sp, color = TextMuted)
                     }
                     androidx.compose.foundation.text.BasicTextField(
-                        value = browserInput,
-                        onValueChange = { browserInput = it },
+                        value = currentInput,
+                        onValueChange = { applyInput(it) },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextPrimary),
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = {
-                            browserUrl = browserInput
-                            webViewRef?.loadUrl(browserInput)
-                        }),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = { connect() }),
                     )
                 }
                 Box(
@@ -233,10 +276,7 @@ fun PreviewPane(
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(4.dp))
                         .background(Accent)
-                        .clickable {
-                            browserUrl = browserInput
-                            webViewRef?.loadUrl(browserInput)
-                        }
+                        .clickable { connect() }
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -304,11 +344,12 @@ fun PreviewPane(
         // ── Preview body ────────────────────────────────────────────────────
         Box(Modifier.fillMaxSize()) {
             PreviewBody(
-                activeMode = activeMode,
+                activeMode = sharedState.activeMode,
                 content = content,
                 language = language,
                 activeFilePath = activeFilePath,
-                browserUrl = browserUrl,
+                browserUrl = sharedState.browserUrl,
+                remotionUrl = sharedState.remotionUrl,
                 onWebView = { webViewRef = it },
                 onTitle = { pageTitle = it },
                 onLoading = { isLoading = it },
@@ -341,7 +382,7 @@ fun PreviewPane(
                 ) {
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         Text(
-                            activeMode.label,
+                            sharedState.activeMode.label,
                             fontSize = 13.sp,
                             color = TextPrimary,
                             fontWeight = FontWeight.SemiBold,
@@ -359,11 +400,12 @@ fun PreviewPane(
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     PreviewBody(
-                        activeMode = activeMode,
+                        activeMode = sharedState.activeMode,
                         content = content,
                         language = language,
                         activeFilePath = activeFilePath,
-                        browserUrl = browserUrl,
+                        browserUrl = sharedState.browserUrl,
+                        remotionUrl = sharedState.remotionUrl,
                         onWebView = { webViewRef = it },
                         onTitle = { pageTitle = it },
                         onLoading = { isLoading = it },
@@ -385,6 +427,7 @@ private fun PreviewBody(
     language: Language,
     activeFilePath: String,
     browserUrl: String,
+    remotionUrl: String,
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
@@ -395,7 +438,9 @@ private fun PreviewBody(
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
         PreviewMode.DASHBOARD -> DashboardPreview(activeFilePath, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
-        PreviewMode.REMOTION  -> RemotionPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        // Independent from Browser's URL now — each mode has its own connection (this is the
+        // fix for the "Browser and Remotion port mirroring" bug).
+        PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
     }
 }
 

@@ -9,6 +9,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -867,7 +869,11 @@ fun ExplorerSidePanel(
             onDismissRequest = { showCtxMenu = false },
             title = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
-                Column {
+                Column(
+                    Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     val isImg = isImageFile(f.name)
                     val isArch = isArchiveFile(f.name)
                     val isPdf = isPdfFile(f.name)

@@ -367,6 +367,9 @@ fun ProjectShellScreen(
     var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this
     val sharedTerminalState = rememberTerminalState(context)
+    // Lifted up here (not inside PreviewPane) so switching to Terminal/Problems/etc. and back
+    // to Preview doesn't reset the active sub-tab or the connected Browser/Remotion URL.
+    val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()
 
     var activeBottomTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
@@ -1202,6 +1205,7 @@ fun ProjectShellScreen(
                                 BottomTab.PREVIEW  -> PreviewPane(
                                     activeFilePath = activeEditorTab ?: "",
                                     initialPort = previewPort,
+                                    externalState = sharedPreviewState,
                                 )
                             }
                         }
