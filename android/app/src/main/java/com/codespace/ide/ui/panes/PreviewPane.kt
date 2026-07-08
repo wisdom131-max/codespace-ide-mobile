@@ -38,7 +38,7 @@ import androidx.compose.ui.window.DialogProperties
 // Shown as BottomTab.PREVIEW in ProjectShellScreen
 // ─────────────────────────────────────────────────────────────────────────────
 
-private enum class PreviewMode(val label: String) {
+enum class PreviewMode(val label: String) {
     HTML("HTML"),
     MARKDOWN("Markdown"),
     SVG("SVG"),
@@ -54,7 +54,7 @@ private enum class PreviewMode(val label: String) {
 // one address bar (typing a port in one used to "mirror" into the other because
 // they were literally the same two variables) — each mode now gets its own.
 // ─────────────────────────────────────────────────────────────────────────────
-internal class PreviewState(initialMode: PreviewMode) {
+class PreviewState(initialMode: PreviewMode) {
     var activeMode by androidx.compose.runtime.mutableStateOf(initialMode)
     var browserUrl by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
     var browserInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
@@ -63,7 +63,7 @@ internal class PreviewState(initialMode: PreviewMode) {
 }
 
 @Composable
-internal fun rememberPreviewState(): PreviewState {
+fun rememberPreviewState(): PreviewState {
     return remember { PreviewState(PreviewMode.HTML) }
 }
 

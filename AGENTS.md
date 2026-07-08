@@ -3458,3 +3458,51 @@ triage is confirmed.
 ## Next step
 Confirm this triage with Wisdom, then start building — no code changes until he gives the go-ahead
 on order/priority within these three buckets.
+
+
+---
+
+# UPDATE — 2026-07-08 (later still): Easy batch #2/#3/#4 shipped (commit ed11d61)
+
+Picking up the master backlog triage from above, started with the Easy bucket:
+
+- **#1 Source Control wrong cwd** — checked the code before touching anything, turned out
+  already fixed in an old commit (`ab8e162`, HARD BATCH #2) — `SourceControlPane.kt` already
+  resolves the real project root and routes git through the proot container correctly. Debug
+  doc's diagnosis just predated that fix. Nothing to do.
+- **#2 Browser/Remotion port mirroring — FIXED.** Root cause: `PreviewPane.kt` had exactly ONE
+  pair of `browserUrl`/`browserInput` variables shared by both the Browser AND Remotion
+  sub-tabs — typing a port in one was quite literally editing the same variable the other mode
+  read from. Gave each mode its own independent url/input pair.
+- **#3 Remotion connection not persisting across tab switches — FIXED (same change).**
+  `ProjectShellScreen.kt`'s bottom panel uses a `when(activeBottomTab)` that only composes the
+  active tab's pane — switching to Terminal fully destroyed `PreviewPane`'s composable and all
+  its `remember` state, so switching back gave a fresh instance with everything reset. Fix:
+  introduced `PreviewState` (a plain class, same pattern as the existing `TerminalState`) +
+  `rememberPreviewState()`, instantiated once in `ProjectShellScreen` and passed into
+  `PreviewPane` as `externalState` — state now lives above the tab-switch point and survives it.
+  Bonus effect: since `RemotionPreview`'s WebView auto-reconnects to whatever URL is in state
+  when its WebView is (re)created, this means returning to the Remotion tab auto-reconnects
+  without needing to press Go again — the actual behavior Wisdom asked for.
+- **#4 Missing "Import Image(s) Here" in subfolders — FIXED, but the diagnosis was wrong.**
+  The menu item was never actually filtered out by path — checked `ExplorerPane.kt`, the
+  long-press context menu list is a flat 14-item `listOf(...)` with zero conditional filtering.
+  The real bug: the `AlertDialog`'s content `Column` had no scroll modifier at all, so once the
+  list overflowed the dialog's visible height, the bottom items (like "Import Image(s) Here",
+  last in the list) were just silently clipped with no way to reach them — this is the SAME root
+  cause as the separately-reported "long-press menus don't scroll" bug, not a separate issue.
+  Fixed by wrapping the Column in `heightIn(max = 420.dp) + verticalScroll(rememberScrollState())`.
+  Audited other popup/dropdown menus in the app (Terminal quick-actions menu, Source Control
+  branch picker) — those already use Material3's `DropdownMenu`, which scrolls internally by
+  default, so they were not affected and needed no change. The bottom-panel "..." menu in
+  `ProjectShellScreen.kt` (max 4 items) is short enough it isn't at risk and was left alone.
+
+Pushed to main (commit `ed11d61`). CI kicked off, not blocking on it before reporting status —
+will check back rather than poll continuously.
+
+## Still open from the triage
+UI bucket (Copilot Chat right-dock + Sessions list, local/GitHub project badge, Preview header +
+zoom range, any other scrollable-menu instances found later) and the full Hard bucket
+(file upload chooser, file-type viewer routing, GitHub repo browsing OAuth, terminal
+cross-project state bleed, AI package access bridging, one-tap env setup) are all still
+untouched — see the full triage entry above for details on each.
