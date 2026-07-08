@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.codespace.ide.data.GitHubAuth
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.domain.AiProviderId
+import com.codespace.ide.terminal.BackupManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -377,6 +378,71 @@ fun SettingsScreen(
                     savedMsg,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+
+            HorizontalDivider()
+
+            // ── Container Backup ─────────────────────────────────────────────
+            Text("Container Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            var backupInfo by remember { mutableStateOf(BackupManager.backupInfo()) }
+            var backupStatus by remember { mutableStateOf("") }
+            var backupRunning by remember { mutableStateOf(false) }
+            var showRestoreConfirm by remember { mutableStateOf(false) }
+
+            ListItem(
+                headlineContent = { Text("Ubuntu container (Node, ffmpeg, Remotion, Ollama, projects, etc.)") },
+                supportingContent = {
+                    Text(
+                        backupStatus.ifEmpty {
+                            backupInfo ?: "No backup yet — every app reinstall wipes your container without one"
+                        }
+                    )
+                },
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Button(
+                    enabled = !backupRunning,
+                    onClick = {
+                        backupRunning = true
+                        scope.launch {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                BackupManager.createBackup(context) { msg -> backupStatus = msg }
+                            }
+                            backupInfo = BackupManager.backupInfo()
+                            backupRunning = false
+                        }
+                    },
+                ) { Text(if (backupRunning) "Backing up…" else "Back up now") }
+                if (backupInfo != null) {
+                    OutlinedButton(
+                        enabled = !backupRunning,
+                        onClick = { showRestoreConfirm = true },
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) { Text("Restore") }
+                }
+            }
+
+            if (showRestoreConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showRestoreConfirm = false },
+                    title = { Text("Restore container?") },
+                    text = { Text("This replaces your current Ubuntu container with the last backup. Anything installed or changed since that backup will be lost.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showRestoreConfirm = false
+                            backupRunning = true
+                            scope.launch {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    BackupManager.restoreBackup(context) { msg -> backupStatus = msg }
+                                }
+                                backupRunning = false
+                            }
+                        }) { Text("Restore") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+                    },
                 )
             }
 
