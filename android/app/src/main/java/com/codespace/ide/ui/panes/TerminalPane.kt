@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.terminal.BackupManager
 import com.codespace.ide.terminal.McpShellProfile
 import android.content.ServiceConnection
 import com.codespace.ide.terminal.TerminalService
@@ -991,7 +992,18 @@ internal fun TerminalPane(
                 // Ensure Termux proot binaries are extracted from assets
                 writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
                 ProotInstaller.ensureBinaries(ctx)
-                if (isFirstTimeInstall) {
+                if (isFirstTimeInstall && BackupManager.hasBackup()) {
+                    // A previous container backup exists in shared storage (survives uninstall) —
+                    // restore it instead of downloading a fresh Ubuntu rootfs from scratch. This is
+                    // what makes every GitHub Actions rebuild's forced uninstall/reinstall NOT wipe
+                    // Node/ffmpeg/Remotion/Piper/Ollama/Claude Code/projects every single time.
+                    writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
+                    BackupManager.restoreBackup(ctx) { msg ->
+                        TerminalService.updateProgress(ctx, msg.take(60))
+                        writeToDisplay(progressSession, "  $msg\r\n")
+                    }
+                    writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
+                } else if (isFirstTimeInstall) {
                     writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
                     writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
                     ProotInstaller.install(ctx) { msg ->
