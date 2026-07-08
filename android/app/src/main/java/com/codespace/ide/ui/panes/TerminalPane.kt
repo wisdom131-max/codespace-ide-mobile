@@ -535,8 +535,18 @@ internal fun ollamaClaudeGuardScript(): String =
     "if ! command -v claude &>/dev/null; then\n" +
     "  echo -e \"\\033[1;34m[Claude]\\033[0m Installing Claude Code...\"\n" +
     "  npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
+    // 2026-07-08 debug session found the npm install alone is not enough: the native binary's
+    // postinstall doesn't always run (--ignore-scripts, some npm/pnpm configs), leaving `claude`
+    // installed but non-functional with no error at install time. Fix: always run the postinstall
+    // manually, then verify with `claude --version` instead of trusting npm's exit code.
+    "  node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs 2>&1 | tail -5\n" +
+    "  if command -v claude &>/dev/null && claude --version &>/dev/null 2>&1; then\n" +
+    "    echo -e \"\\033[1;32m  Claude Code installed: \$(claude --version 2>/dev/null | head -1)\\033[0m\"\n" +
+    "  else\n" +
+    "    echo -e \"\\033[1;31m  Claude Code install may be incomplete — try running 'claude --version' manually.\\033[0m\"\n" +
+    "  fi\n" +
     "else\n" +
-    "  echo -e \"\\033[1;32m  Claude Code already installed\\033[0m\"\n" +
+    "  echo -e \"\\033[1;32m  Claude Code already installed: \$(claude --version 2>/dev/null | head -1)\\033[0m\"\n" +
     "fi\n"
 
 internal fun ollamaEnvScript(model: String): String =
@@ -609,11 +619,22 @@ else
   echo -e "\033[1;32m  Already have Node ${'$'}(node -v)\033[0m"
 fi
 
-echo -e "\033[1;34m[2/5]\033[0m Checking ffmpeg..."
+echo -e "\033[1;34m[2/5]\033[0m Checking ffmpeg + Chrome headless-shell deps..."
 if ! command -v ffmpeg &>/dev/null; then
   apt install -y ffmpeg 2>&1 | tail -5
 else
-  echo -e "\033[1;32m  Already installed\033[0m"
+  echo -e "\033[1;32m  ffmpeg already installed\033[0m"
+fi
+# 2026-07-08 debug session found ffmpeg alone is not enough: Remotion's bundled headless
+# Chrome fails to launch at render time with "libnspr4.so: cannot open shared object file"
+# even though ffmpeg itself works fine — these libs aren't pulled in by ffmpeg's own deps.
+if ! dpkg -s libnspr4 &>/dev/null 2>&1 || ! dpkg -s libnss3 &>/dev/null 2>&1; then
+  echo -e "\033[1;36m  Installing Chrome headless-shell runtime libs (needed for rendering)...\033[0m"
+  apt install -y libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+    libcups2t64 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2t64 2>&1 | tail -8
+else
+  echo -e "\033[1;32m  Chrome headless-shell libs already installed\033[0m"
 fi
 
 echo -e "\033[1;34m[3/5]\033[0m Checking @remotion/cli..."
