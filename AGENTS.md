@@ -3746,3 +3746,27 @@ matching the already-proven run_command/git pattern.
   code-complete per commit b90b7a2/5c8fb39/7807df5, blocked purely on getting the real
   Google OAuth Client Secret — still unresolved as of this session (none of Wisdom's 3
   known Google accounts have IAM access to the `codespace-ide-2026` GCP project).
+
+---
+
+# UPDATE — 2026-07-08 (later still): #14 "one-tap environment setup" — DROPPED per Wisdom
+
+Wisdom's call: skip this item entirely. Reasoning — a single one-tap button would download
+everything (ffmpeg, Chrome headless-shell deps, Piper TTS + voice model, Ollama, Claude Code)
+in one shot regardless of whether the user actually wants all of it, and the individual
+buttons/flows for each piece already exist and work on their own (installed on-demand, only
+when actually needed). Bundling them into one action just means unnecessary downloads for
+people who don't want everything. Removing from the hard-bucket backlog — not being built.
+
+## Hard bucket — final status
+- #9 file upload chooser — DONE
+- #10 file-type viewer routing — DONE
+- #12 terminal cross-project bleed — DONE
+- #13 AI package access — DONE
+- #14 one-tap environment setup — DROPPED (see above), not being built
+- #11 GitHub repo browsing OAuth — still BLOCKED on Wisdom creating a GitHub OAuth web app
+  (client secret) at github.com Settings > Developer settings. Only remaining open hard-
+  bucket item, and it's blocked on him, not me.
+
+Hard bucket is otherwise fully closed. Moving to UI bucket #8 (rotation-safe popup/menu
+app-wide audit) next since it's the only other bucket item with no external blocker.
