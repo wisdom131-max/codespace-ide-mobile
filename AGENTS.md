@@ -3597,3 +3597,31 @@ Pushed as a separate fix commit (`432e3fe5`) on top.
 
 Hard bucket (file upload chooser, file-type viewer routing, GitHub repo browsing OAuth, terminal
 cross-project state bleed, AI package access bridging, one-tap env setup) still fully untouched.
+
+---
+
+## 2026-07-08 — Fixed CI red streak: builds #967–974 (only #969 green)
+
+### Root cause was 3 separate bugs, layered across commits:
+1. **#967, #968 — PreviewPane.kt visibility errors** (lines 57/58/82): `PreviewMode`/`PreviewState`
+   exposed as private-in-file types from internal/public declarations. Already fixed by the time
+   of #969 (green build).
+2. **#970, #971 — ExplorerPane.kt regex escape errors** (lines 382–385): non-raw string literals
+   with regex backslash escapes (`\[`, `\s`, `\S`, `\.`). Fixed in commit `432e3fe5` by switching
+   to raw triple-quoted strings (`"""..."""`) — no escaping needed.
+3. **#972, #973, #974 — CopilotChatPanelOverlay.kt:778 — real bug, not yet fixed until now.**
+   `val activeSession: ChatSession get() = sessions.find { ... } ?: sessions.first()` was declared
+   **inside a `@Composable` function body** (local scope). Kotlin does not allow custom `get()`
+   accessors on local properties — only class members and top-level declarations can have them.
+   The compiler correctly rejected it as "Unexpected tokens".
+
+   Fix: dropped `get()`, made it a plain `val` — `val activeSession: ChatSession = sessions.find { ... } ?: sessions.first()`.
+   Functionally identical since Composable functions fully re-execute on every recomposition anyway,
+   so the value is recomputed each time regardless.
+
+   Audited the rest of the codebase for the same anti-pattern (`grep "val .*get() ="`) — every
+   other instance (`CodeSpaceApplication.kt`, `SecureTokenStore.kt`, `TerminalService.kt`,
+   `TerminalPane.kt`) is a legitimate class-member computed property, not local. No other instances
+   of this bug exist.
+
+### Status: fix pushed as commit `8cf0adf`, triggered build #975 — awaiting result.
