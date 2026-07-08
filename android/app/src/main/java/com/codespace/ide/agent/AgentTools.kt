@@ -125,7 +125,7 @@ When you want to use a tool, output the <tool>...</tool> tag. Wait for the resul
 You can use multiple tools in sequence. When done, give a final summary.
 """
 
-    private val TOOL_REGEX = Regex("""<tool>(\{.*?})</tool>""", RegexOption.DOT_MATCHES_ALL)
+    private val TOOL_REGEX = Regex("""<tool>(\{.*?\})</tool>""", RegexOption.DOT_MATCHES_ALL)
 
     fun parseToolCalls(text: String): List<Pair<String, JSONObject>> {
         return TOOL_REGEX.findAll(text).map { match ->
