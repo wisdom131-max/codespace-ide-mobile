@@ -202,6 +202,9 @@ fun ExplorerSidePanel(
     var previewImagePath by remember { mutableStateOf<String?>(null) }
     var previewArchivePath by remember { mutableStateOf<String?>(null) }
     var previewPdfPath by remember { mutableStateOf<String?>(null) }
+    var previewVideoPath by remember { mutableStateOf<String?>(null) }
+    var previewAudioPath by remember { mutableStateOf<String?>(null) }
+    var previewHexPath by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -759,6 +762,9 @@ fun ExplorerSidePanel(
                     val isImage = !node.file.isDirectory && isImageFile(node.file.name)
                     val isArchive = !node.file.isDirectory && isArchiveFile(node.file.name)
                     val isPdf = !node.file.isDirectory && isPdfFile(node.file.name)
+                    val isVideo = !node.file.isDirectory && isVideoFile(node.file.name)
+                    val isAudio = !node.file.isDirectory && isAudioFile(node.file.name)
+                    val isHexBin = !node.file.isDirectory && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -780,6 +786,14 @@ fun ExplorerSidePanel(
                                     } else if (isPdf) {
                                         // PDFs are binary too — render with the native PdfRenderer viewer.
                                         previewPdfPath = node.file.absolutePath
+                                    } else if (isVideo) {
+                                        previewVideoPath = node.file.absolutePath
+                                    } else if (isAudio) {
+                                        previewAudioPath = node.file.absolutePath
+                                    } else if (isHexBin) {
+                                        // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
+                                        // catches) — hex dump instead of corrupting/crashing the text editor.
+                                        previewHexPath = node.file.absolutePath
                                     } else {
                                         onOpenFile(node.file.absolutePath)
                                     }
@@ -941,6 +955,9 @@ fun ExplorerSidePanel(
                     val isImg = isImageFile(f.name)
                     val isArch = isArchiveFile(f.name)
                     val isPdf = isPdfFile(f.name)
+                    val isVid = isVideoFile(f.name)
+                    val isAud = isAudioFile(f.name)
+                    val isHexBin = isHexViewFile(f.name) || sniffLooksBinary(f.absolutePath)
                     listOf(
                         "Open"            to Icons.Default.OpenInNew,
                         "Preview"         to Icons.Default.Image,
@@ -965,11 +982,17 @@ fun ExplorerSidePanel(
                                         "Open"   -> if (f.isDirectory) { expanded[f.absolutePath] = true; refresh++ }
                                                    else if (isArch) previewArchivePath = f.absolutePath
                                                    else if (isPdf) previewPdfPath = f.absolutePath
+                                                   else if (isVid) previewVideoPath = f.absolutePath
+                                                   else if (isAud) previewAudioPath = f.absolutePath
+                                                   else if (isHexBin) previewHexPath = f.absolutePath
                                                    else onOpenFile(f.absolutePath)
                                         "Preview" -> when {
                                             isImg -> { previewImagePath = f.absolutePath; showCtxMenu = false }
                                             isArch -> { previewArchivePath = f.absolutePath; showCtxMenu = false }
                                             isPdf -> { previewPdfPath = f.absolutePath; showCtxMenu = false }
+                                            isVid -> { previewVideoPath = f.absolutePath; showCtxMenu = false }
+                                            isAud -> { previewAudioPath = f.absolutePath; showCtxMenu = false }
+                                            isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
                                         }
                                         "Rename" -> { nameInput = f.name; showRename = true }
                                         "Copy"   -> { clipboardFile = f; clipboardCut = false }
@@ -1056,6 +1079,31 @@ fun ExplorerSidePanel(
         PdfViewerDialog(
             pdfPath = previewPdfPath!!,
             onDismiss = { previewPdfPath = null },
+        )
+    }
+
+    // ── Video player (tap on .mp4/.webm/.mov/etc) — native VideoView, no ExoPlayer dep ──
+    if (previewVideoPath != null) {
+        VideoPlayerDialog(
+            videoPath = previewVideoPath!!,
+            onDismiss = { previewVideoPath = null },
+        )
+    }
+
+    // ── Audio player (tap on .mp3/.wav/etc) — MediaPlayer + Compose transport controls ──
+    if (previewAudioPath != null) {
+        AudioPlayerDialog(
+            audioPath = previewAudioPath!!,
+            onDismiss = { previewAudioPath = null },
+        )
+    }
+
+    // ── Hex viewer — compiled binaries/DBs/fonts/.dex, or anything the NUL-byte sniff
+    // catches that wasn't already routed to a dedicated viewer above ──
+    if (previewHexPath != null) {
+        HexViewerDialog(
+            filePath = previewHexPath!!,
+            onDismiss = { previewHexPath = null },
         )
     }
 
