@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +28,9 @@ import com.codespace.ide.terminal.TextExpansionStore
 @Composable
 fun TextExpansionSheet(onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    // Rotation fix (#8): key on orientation so the AlertDialog below gets a fresh,
+    // correctly-sized window on rotate (the ModalBottomSheet itself already resizes fine).
+    val orientation = LocalConfiguration.current.orientation
     var expansions by remember { mutableStateOf(TextExpansionStore.load(ctx).toMutableList()) }
     var showAdd by remember { mutableStateOf(false) }
     var newTrigger by remember { mutableStateOf("") }
@@ -70,6 +74,7 @@ fun TextExpansionSheet(onDismiss: () -> Unit) {
     }
 
     if (showAdd) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showAdd = false },
             title = { Text("Add Expansion") },
@@ -93,5 +98,6 @@ fun TextExpansionSheet(onDismiss: () -> Unit) {
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } }
         )
+        }
     }
 }

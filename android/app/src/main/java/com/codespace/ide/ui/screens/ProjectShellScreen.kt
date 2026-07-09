@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -338,6 +339,9 @@ fun ProjectShellScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
+    // correctly-sized window on rotate.
+    val orientation = LocalConfiguration.current.orientation
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
     val ActivityBarBg = t.ActivityBarBg
@@ -1673,6 +1677,7 @@ fun ProjectShellScreen(
 
         // ── Go to Line dialog ─────────────────────────────────────────────
         if (showGoToLine) {
+            key(orientation) {
             AlertDialog(
                 onDismissRequest = { showGoToLine = false },
                 title = { Text("Go to Line", color = MenuText) },
@@ -1709,6 +1714,7 @@ fun ProjectShellScreen(
                 containerColor = MenuBg,
                 titleContentColor = MenuText,
             )
+            }
         }
     } // end root Box
 }
@@ -1823,6 +1829,8 @@ private fun buildRunCommand(path: String): String? {
 
 @Composable private fun PortsPanel(onOpenInPreview: (Int) -> Unit) {
     val scope = rememberCoroutineScope()
+    // Rotation fix (#8): see ProjectShellScreen above for rationale.
+    val orientation = LocalConfiguration.current.orientation
     var ports by remember { mutableStateOf<List<ForwardedPort>>(emptyList()) }
     var scanning by remember { mutableStateOf(true) }
     var customPorts by remember { mutableStateOf(listOf<Int>()) }
@@ -1873,6 +1881,7 @@ private fun buildRunCommand(path: String): String? {
     }
 
     if (showAddDialog) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("Forward a port") },
@@ -1888,6 +1897,7 @@ private fun buildRunCommand(path: String): String? {
             },
             dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Cancel") } }
         )
+        }
     }
 }
 

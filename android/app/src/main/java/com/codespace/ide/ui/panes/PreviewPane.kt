@@ -304,6 +304,7 @@ fun PreviewPane(
 
         // ── How-to-use guide dialog ─────────────────────────────────────
         if (showGuide) {
+            key(orientation) {
             AlertDialog(
                 onDismissRequest = { showGuide = false },
                 containerColor = Color(0xFF1E1E1E),
@@ -350,6 +351,7 @@ fun PreviewPane(
                     }
                 },
             )
+            }
         }
 
         // ── Preview body ────────────────────────────────────────────────────

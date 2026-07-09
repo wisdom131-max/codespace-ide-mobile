@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,10 @@ fun SshManagerSheet(
     onConnect: (label: String, command: String) -> Unit
 ) {
     val ctx = LocalContext.current
+    // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
+    // correctly-sized window on rotate (ModalBottomSheet itself doesn't need this — it's
+    // not a raw platform Dialog window and already resizes fine).
+    val orientation = LocalConfiguration.current.orientation
     var profiles by remember { mutableStateOf(SshProfileStore.load(ctx)) }
     var showAddEdit by remember { mutableStateOf<SshProfile?>(null) }   // null = hidden, non-null = editing
     var addNew    by remember { mutableStateOf(false) }
@@ -105,6 +110,7 @@ fun SshManagerSheet(
 
     // Confirm delete
     confirmDelete?.let { profile ->
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete Profile") },
@@ -119,11 +125,14 @@ fun SshManagerSheet(
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } }
         )
+        }
     }
 }
 
 @Composable
 private fun SshProfileDialog(initial: SshProfile, isNew: Boolean, onSave: (SshProfile) -> Unit, onDismiss: () -> Unit) {
+    // Rotation fix (#8): see SshManagerSheet above for rationale.
+    val orientation = LocalConfiguration.current.orientation
     var nickname by remember { mutableStateOf(initial.nickname) }
     var host     by remember { mutableStateOf(initial.host) }
     var port     by remember { mutableStateOf(initial.port.toString()) }
@@ -135,6 +144,7 @@ private fun SshProfileDialog(initial: SshProfile, isNew: Boolean, onSave: (SshPr
     var tunnelRHost  by remember { mutableStateOf(initial.tunnelRemoteHost) }
     var tunnelRPort  by remember { mutableStateOf(initial.tunnelRemotePort.toString()) }
 
+    key(orientation) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (isNew) "Add SSH Profile" else "Edit Profile") },
@@ -182,4 +192,5 @@ private fun SshProfileDialog(initial: SshProfile, isNew: Boolean, onSave: (SshPr
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+    }
 }

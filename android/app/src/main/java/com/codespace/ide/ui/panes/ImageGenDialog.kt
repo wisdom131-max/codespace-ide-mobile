@@ -6,6 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +40,9 @@ internal fun AiImageGenDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<GeneratedImage?>(null) }
     var savedFile by remember { mutableStateOf<File?>(null) }
+    // Rotation fix (#8): key on orientation so this AlertDialog gets a fresh, correctly-
+    // sized window on rotate.
+    val orientation = LocalConfiguration.current.orientation
 
     fun runGenerate() {
         if (prompt.isBlank() || apiKey.isNullOrBlank()) return
@@ -59,6 +63,7 @@ internal fun AiImageGenDialog(
         }
     }
 
+    key(orientation) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (savedFile != null) "Saved" else "Generate Image with AI") },
@@ -146,4 +151,5 @@ internal fun AiImageGenDialog(
             TextButton(onClick = onDismiss) { Text(if (savedFile != null) "Close" else "Cancel") }
         },
     )
+    }
 }

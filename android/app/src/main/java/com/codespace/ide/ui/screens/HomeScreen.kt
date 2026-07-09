@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.codespace.ide.domain.Project
 import com.codespace.ide.domain.ProjectKind
@@ -145,6 +146,9 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
+    // Rotation fix (#8): key on orientation so the AlertDialog below gets a fresh,
+    // correctly-sized window on rotate.
+    val orientation = LocalConfiguration.current.orientation
 
     val projects      = remember { mutableStateListOf<Project>().apply { addAll(loadProjectsLocal(context)) } }
     var syncing       by remember { mutableStateOf(false) }
@@ -173,6 +177,7 @@ fun HomeScreen(
 
     // ── Add project dialog ─────────────────────────────────────────
     if (showAddDialog) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("New Project") },
@@ -221,6 +226,7 @@ fun HomeScreen(
                 TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
             }
         )
+        }
     }
 
     Scaffold(

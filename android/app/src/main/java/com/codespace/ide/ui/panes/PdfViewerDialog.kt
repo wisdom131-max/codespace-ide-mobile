@@ -20,10 +20,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -47,6 +49,9 @@ import java.io.File
  */
 @Composable
 fun PdfViewerDialog(pdfPath: String, onDismiss: () -> Unit) {
+    // Rotation fix (#8): key on orientation so this fullscreen Dialog gets a fresh,
+    // correctly-sized window on rotate instead of a stuck stale one.
+    val orientation = LocalConfiguration.current.orientation
     var pageIndex by remember { mutableStateOf(0) }
     var pageCount by remember { mutableStateOf(0) }
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -84,6 +89,7 @@ fun PdfViewerDialog(pdfPath: String, onDismiss: () -> Unit) {
         }
     }
 
+    key(orientation) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
             // Header
@@ -157,5 +163,6 @@ fun PdfViewerDialog(pdfPath: String, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
     }
 }

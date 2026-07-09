@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,6 +98,9 @@ fun EditorPane(
     scrollToLine: Int = 0,
 ) {
     val context = LocalContext.current
+    // Rotation fix (#8): key on orientation so the unsaved-changes AlertDialog below gets
+    // a fresh, correctly-sized window on rotate.
+    val orientation = LocalConfiguration.current.orientation
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
@@ -132,6 +136,7 @@ fun EditorPane(
     }
 
     if (showUnsavedDialog) {
+        key(orientation) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showUnsavedDialog = false },
             title = { androidx.compose.material3.Text("Unsaved Changes") },
@@ -156,6 +161,7 @@ fun EditorPane(
                 }) { androidx.compose.material3.Text("No") }
             },
         )
+        }
     }
 
     // Wire up keyboard toolbar insert callback

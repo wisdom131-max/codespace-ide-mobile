@@ -1120,6 +1120,7 @@ fun ExplorerSidePanel(
     // ── Image preview popup (long-press on image file) ──
     if (previewImagePath != null) {
         val imgBitmap = remember(previewImagePath) { loadImageBitmap(previewImagePath!!) }
+        key(orientation) {
         Dialog(
             onDismissRequest = { scope.launch { previewAlpha.animateTo(0f, tween(200)); previewImagePath = null } },
         ) {
@@ -1159,6 +1160,7 @@ fun ExplorerSidePanel(
                 }
             }
         }
+        }
     }
 
     // ── Generate Image with AI dialog ──────────────────────────────────────
@@ -1173,6 +1175,7 @@ fun ExplorerSidePanel(
 
     // ── New File dialog ───────────────────────────────────────────────────
     if (showNewFile) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showNewFile = false },
             title = { Text("New File") },
@@ -1206,10 +1209,12 @@ fun ExplorerSidePanel(
                 TextButton(onClick = { showNewFile = false }) { Text("Cancel") }
             },
         )
+        }
     }
 
     // ── New Folder dialog ─────────────────────────────────────────────────
     if (showNewFolder) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showNewFolder = false },
             title = { Text("New Folder") },
@@ -1236,10 +1241,12 @@ fun ExplorerSidePanel(
                 TextButton(onClick = { showNewFolder = false }) { Text("Cancel") }
             },
         )
+        }
     }
 
     // ── Rename dialog ─────────────────────────────────────────────────────
     if (showRename && contextFile != null) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showRename = false },
             title = { Text("Rename") },
@@ -1263,10 +1270,12 @@ fun ExplorerSidePanel(
                 TextButton(onClick = { showRename = false }) { Text("Cancel") }
             },
         )
+        }
     }
 
     // ── Delete confirmation ───────────────────────────────────────────────
     if (showDelete && contextFile != null) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showDelete = false },
             title = { Text("Delete ${contextFile!!.name}?") },
@@ -1285,6 +1294,7 @@ fun ExplorerSidePanel(
                 TextButton(onClick = { showDelete = false }) { Text("Cancel") }
             },
         )
+        }
     }
 }
 

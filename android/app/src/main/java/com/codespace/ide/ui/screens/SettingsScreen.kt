@@ -35,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -66,6 +68,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
+    // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
+    // correctly-sized window on rotate.
+    val orientation = LocalConfiguration.current.orientation
 
     // ── GitHub sign-in (Device Flow) state ──────────────────────────────────
     var githubUsername by remember { mutableStateOf(tokenStore.githubUsername) }
@@ -110,6 +115,7 @@ fun SettingsScreen(
 
     // ── GitHub device-code dialog ────────────────────────────────────────────
     githubDeviceCode?.let { device ->
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { /* must Cancel explicitly — polling is still running */ },
             title = { Text("Connect GitHub") },
@@ -148,10 +154,12 @@ fun SettingsScreen(
                 }) { Text("Cancel") }
             },
         )
+        }
     }
 
     // ── Clear-data dialog ────────────────────────────────────────────────────
     if (showClearDialog != null) {
+        key(orientation) {
         AlertDialog(
             onDismissRequest = { showClearDialog = null },
             title = { Text("Clear ${showClearDialog}?") },
@@ -179,6 +187,7 @@ fun SettingsScreen(
                 TextButton(onClick = { showClearDialog = null }) { Text("Cancel") }
             }
         )
+        }
     }
 
     Scaffold(
@@ -424,6 +433,7 @@ fun SettingsScreen(
             }
 
             if (showRestoreConfirm) {
+                key(orientation) {
                 AlertDialog(
                     onDismissRequest = { showRestoreConfirm = false },
                     title = { Text("Restore container?") },
@@ -444,6 +454,7 @@ fun SettingsScreen(
                         TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
                     },
                 )
+                }
             }
 
             HorizontalDivider()

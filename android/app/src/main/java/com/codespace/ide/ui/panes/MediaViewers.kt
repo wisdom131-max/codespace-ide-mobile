@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,6 +97,11 @@ fun sniffLooksBinary(path: String): Boolean = try {
 @Composable
 fun VideoPlayerDialog(videoPath: String, onDismiss: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
+    // Rotation fix (#8): key on orientation so this fullscreen Dialog gets a fresh,
+    // correctly-sized window on rotate instead of a stuck stale one (same pattern used
+    // for ArchiveViewer/PreviewPane/ExplorerPane's context menu).
+    val orientation = LocalConfiguration.current.orientation
+    key(orientation) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
             Row(
@@ -132,6 +139,7 @@ fun VideoPlayerDialog(videoPath: String, onDismiss: () -> Unit) {
             }
         }
     }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,6 +149,8 @@ fun VideoPlayerDialog(videoPath: String, onDismiss: () -> Unit) {
 @Composable
 fun AudioPlayerDialog(audioPath: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    // Rotation fix (#8): see VideoPlayerDialog above for rationale.
+    val orientation = LocalConfiguration.current.orientation
     var error by remember { mutableStateOf<String?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var durationMs by remember { mutableStateOf(0) }
@@ -179,6 +189,7 @@ fun AudioPlayerDialog(audioPath: String, onDismiss: () -> Unit) {
         return "%d:%02d".format(s / 60, s % 60)
     }
 
+    key(orientation) {
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth(0.9f).background(Color(0xFF1E1E1E), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(20.dp),
@@ -230,6 +241,7 @@ fun AudioPlayerDialog(audioPath: String, onDismiss: () -> Unit) {
             }
         }
     }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,6 +254,8 @@ private const val HEX_VIEW_CAP = 256 * 1024
 
 @Composable
 fun HexViewerDialog(filePath: String, onDismiss: () -> Unit) {
+    // Rotation fix (#8): see VideoPlayerDialog above for rationale.
+    val orientation = LocalConfiguration.current.orientation
     var rows by remember { mutableStateOf<List<String>>(emptyList()) }
     var truncated by remember { mutableStateOf(false) }
     var totalSize by remember { mutableStateOf(0L) }
@@ -269,6 +283,7 @@ fun HexViewerDialog(filePath: String, onDismiss: () -> Unit) {
         }
     }
 
+    key(orientation) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
             Row(
@@ -299,5 +314,6 @@ fun HexViewerDialog(filePath: String, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
     }
 }

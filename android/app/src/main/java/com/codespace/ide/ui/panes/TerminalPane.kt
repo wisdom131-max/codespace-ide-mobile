@@ -1412,6 +1412,8 @@ internal fun TerminalPane(
 
         // Rename dialog
         if (renameTargetId != null) {
+            // Rotation fix (#8): see color scheme picker above for rationale.
+            key(configuration.orientation) {
             AlertDialog(
                 onDismissRequest = { renameTargetId = null; renameValue = "" },
                 title = { Text("Rename terminal") },
@@ -1427,10 +1429,13 @@ internal fun TerminalPane(
                     TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
                 },
             )
+            }
         }
 
         // Ollama model picker — shown only on the very first "Launch Coding Agent" tap.
         if (showOllamaModelPicker) {
+            // Rotation fix (#8): see color scheme picker above for rationale.
+            key(configuration.orientation) {
             AlertDialog(
                 onDismissRequest = { showOllamaModelPicker = false },
                 title = { Text("Choose a model") },
@@ -1466,10 +1471,13 @@ internal fun TerminalPane(
                 confirmButton = {},
                 dismissButton = { TextButton(onClick = { showOllamaModelPicker = false }) { Text("Cancel") } },
             )
+            }
         }
 
         // Voice/TTS model picker — Piper (fast/free) vs Bark-small (emotional, heavier).
         if (showVoiceModelPicker) {
+            // Rotation fix (#8): see color scheme picker above for rationale.
+            key(configuration.orientation) {
             AlertDialog(
                 onDismissRequest = { showVoiceModelPicker = false },
                 title = { Text("Choose a voice model") },
@@ -1492,6 +1500,7 @@ internal fun TerminalPane(
                 confirmButton = {},
                 dismissButton = { TextButton(onClick = { showVoiceModelPicker = false }) { Text("Cancel") } },
             )
+            }
         }
 
         // ── NewTermux-style toolbar row ────────────────────────────
