@@ -124,6 +124,15 @@ export class ConnectorsService {
     return { ok: true, message: `${conn.name} connected! You can close this tab and go back to the app.` };
   }
 
+  /**
+   * Public entry point for other modules (e.g. ReposController) that need a raw, valid access
+   * token for a connected service instead of going through proxyCall. Handles refresh
+   * transparently, same as proxyCall does internally.
+   */
+  async getAccessTokenForService(ownerId: string, service: string): Promise<string> {
+    return this.getValidAccessToken(ownerId, service);
+  }
+
   private async getValidAccessToken(ownerId: string, service: string): Promise<string> {
     const conn = CONNECTORS[service];
     if (!conn) throw new BadRequestException(`Unknown connector: ${service}`);

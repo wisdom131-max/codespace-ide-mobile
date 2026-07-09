@@ -61,4 +61,18 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     clientIdEnv: 'SLACK_CLIENT_ID',
     clientSecretEnv: 'SLACK_CLIENT_SECRET',
   },
+  github: {
+    id: 'github', name: 'GitHub',
+    authUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    // GitHub classic OAuth Apps have no revoke-by-POST endpoint like Google/Slack — revoking
+    // requires an authenticated DELETE to /applications/{client_id}/grant, which is a different
+    // shape (Basic auth with client_id:client_secret) than the other connectors' revokeUrl flow.
+    // Skip it: disconnect() will just delete our local row; the grant stays valid GitHub-side
+    // until the user revokes it themselves from github.com/settings/applications.
+    defaultScope: 'repo read:user codespace',
+    apiBase: 'https://api.github.com',
+    clientIdEnv: 'GITHUB_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'GITHUB_OAUTH_CLIENT_SECRET',
+  },
 };
