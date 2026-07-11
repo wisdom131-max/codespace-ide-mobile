@@ -296,8 +296,22 @@ class TerminalService : Service() {
             // bind-mounted at /sdcard inside proot, not at their host path, so guessing a
             // "translated" path here would risk cd-ing somewhere wrong; leave those at the
             // default /root instead (unchanged prior behavior for non-/root workspaces).
-            if (workDir != null && workDir.startsWith("/root") && workDir != "/root") {
-                session.write("cd \"$workDir\" 2>/dev/null && clear\n")
+            // Inject WORKSPACE_PATH so any AI in the terminal knows where the project files are.
+            // /storage/emulated/0 is bind-mounted at /sdcard inside proot, so translate the path.
+            val prootWorkspace: String? = workDir?.let {
+                when {
+                    it.startsWith("/storage/emulated/0") -> it.replace("/storage/emulated/0", "/sdcard")
+                    it.startsWith("/sdcard") -> it
+                    it.startsWith("/root") -> it
+                    else -> null
+                }
+            }
+            if (prootWorkspace != null) {
+                session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
+                session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
+                if (workDir != null && workDir.startsWith("/root") && workDir != "/root") {
+                    session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
+                }
             }
             return Pair(session, client)
         }

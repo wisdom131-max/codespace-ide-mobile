@@ -170,6 +170,7 @@ object McpShellProfile {
         appendLine("agent_health() { curl -s \"\$AGENT_API_URL/health\" 2>/dev/null || echo '[agent] API not running'; }")
         appendLine("")
         appendLine("echo '[Agent] 32 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
+        appendLine("[ -n \"\\${WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: \\${WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
         appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
     }
 
@@ -194,6 +195,20 @@ object McpShellProfile {
 
 You are an AI agent running inside CodeSpace IDE's terminal. You have full
 access to the user's environment through 32 agent tools.
+
+## WHERE THE FILES ARE
+
+The user's project files are at: ${'$'}{WORKSPACE_PATH:-/sdcard}
+- ${'$'}WORKSPACE_PATH  — the currently open project folder (set automatically)
+- ${'$'}PROJECT_FILES   — same as WORKSPACE_PATH (alias)
+- /sdcard            — the phone's internal storage (/storage/emulated/0)
+- /root              — the proot home directory
+
+ALWAYS start by checking ${'$'}WORKSPACE_PATH:
+  agent_run "ls \"${'$'}{WORKSPACE_PATH:-/sdcard}\""
+  agent_ls "${'$'}{WORKSPACE_PATH:-/sdcard}"
+
+Do NOT waste time guessing paths like /home/user, /workspace, or /project.
 
 ## How to Call Tools
 
