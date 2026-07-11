@@ -87,10 +87,17 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore) {
         }
 
         // ── Normal nav ───────────────────────────────────────────────────────
-        val startDest = when {
-            tokenStore.refreshToken == null                    -> Routes.AUTH
-            sessionStateStore.lastProjectId() != null          -> Routes.project(sessionStateStore.lastProjectId()!!)
-            else                                               -> Routes.HOME
+        // IMPORTANT: startDest must be computed only ONCE (remember with no keys).
+        // If it is a plain val, every theme/state change recomposes CodeSpaceApp and
+        // re-evaluates startDest, giving NavHost a new startDestination each time.
+        // NavHost treats a changed startDestination as a brand-new graph and destroys
+        // all remember() state (open editor tabs, scroll positions, terminal state, etc).
+        val startDest = remember {
+            when {
+                tokenStore.refreshToken == null               -> Routes.AUTH
+                sessionStateStore.lastProjectId() != null     -> Routes.project(sessionStateStore.lastProjectId()!!)
+                else                                          -> Routes.HOME
+            }
         }
 
         val nav = rememberNavController()

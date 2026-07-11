@@ -358,13 +358,25 @@ internal object TerminalSchemes {
     val ALL = listOf(DARK, DRACULA, SOLARIZED_DARK, MONOKAI, GRUVBOX)
 }
 
-internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false): Pair<TerminalSession, SimpleTerminalSessionClient> {
+internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false, workDir: String? = null): Pair<TerminalSession, SimpleTerminalSessionClient> {
     val client = SimpleTerminalSessionClient()
     client.appContext = context.applicationContext
 
     if (isUbuntu) {
         val (proot, args, envVars) = ProotInstaller.launchArgs(context)
         val session = TerminalSession(proot, "/", args, envVars, 4000, client)
+        // Inject WORKSPACE_PATH even for fallback sessions (service not yet bound)
+        val prootWorkspace = workDir?.let {
+            when {
+                it.startsWith("/storage/emulated/0") -> it.replace("/storage/emulated/0", "/sdcard")
+                it.startsWith("/sdcard") || it.startsWith("/root") -> it
+                else -> null
+            }
+        }
+        if (prootWorkspace != null) {
+            session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
+            session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
+        }
         return Pair(session, client)
     }
 
@@ -978,7 +990,7 @@ internal fun TerminalPane(
             // Ensure agent tools are available in this new terminal tab
             McpShellProfile.install(ctx)
             val id = System.currentTimeMillis().toString()
-            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true))
+            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true, workDir = loadWorkspacePath(ctx, projectId)))
             tabs.add(TabSession(id, "Ubuntu", session, client))
             activeId = id
             return
@@ -1074,7 +1086,7 @@ internal fun TerminalPane(
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
                 progressSession.finishIfRunning()
-                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true))
+                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true, workDir = loadWorkspacePath(ctx, projectId)))
                 if (idx >= 0) {
                     tabs[idx] = TabSession(id, "Ubuntu", session, client)
                 } else {
@@ -1857,7 +1869,7 @@ internal fun TerminalPane(
                     // Ubuntu proot is the only terminal environment now — openssh-client
                     // lives in the rootfs (apt install openssh-client), not on the host.
                     val id = System.currentTimeMillis().toString()
-                    val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId) ?: createTerminalSession(context, isUbuntu = true))
+                    val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId) ?: createTerminalSession(context, isUbuntu = true, workDir = loadWorkspacePath(context, projectId)))
                     tabs.add(TabSession(id, label, session, client))
                     activeId = id
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
