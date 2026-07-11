@@ -170,7 +170,7 @@ object McpShellProfile {
         appendLine("agent_health() { curl -s \"\$AGENT_API_URL/health\" 2>/dev/null || echo '[agent] API not running'; }")
         appendLine("")
         appendLine("echo '[Agent] 32 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
-        appendLine("[ -n \"\\${WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: \\${WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
+        appendLine("[ -n \"${'\$'}{WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: ${'\$'}{WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
         appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
     }
 
