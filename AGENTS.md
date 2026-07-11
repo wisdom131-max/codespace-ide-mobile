@@ -3770,3 +3770,56 @@ people who don't want everything. Removing from the hard-bucket backlog — not 
 
 Hard bucket is otherwise fully closed. Moving to UI bucket #8 (rotation-safe popup/menu
 app-wide audit) next since it's the only other bucket item with no external blocker.
+
+---
+
+# UPDATE — 2026-07-11: UI bucket #8 — DONE (commit 3a0d53c, shipped 2026-07-09)
+
+The rotation-safety audit (UI bucket #8) was completed by a prior session and committed as
+`3a0d53c` on 2026-07-09, but AGENTS.md was never updated to reflect this. Marking it closed
+now.
+
+## What was done
+Every raw `AlertDialog`/`Dialog` across the whole app that wasn't already inside a
+recomposing scope was wrapped in `key(orientation)`, forcing a fresh, correctly-sized window
+on device rotation (root cause: the app uses `android:configChanges="orientation|screenSize"`
+so Compose keeps the same Dialog window across config changes unless forced via `key()`).
+
+13 files touched in the final audit pass:
+- ExplorerPane.kt — image preview, New File, New Folder, Rename, Delete (5 dialogs)
+- SettingsScreen.kt — GitHub device-code, Clear-data, Restore-container (3 dialogs)
+- HomeScreen.kt — New Project dialog
+- MainActivity.kt — crash-log dialog
+- EditorPane.kt — unsaved-changes dialog
+- PreviewPane.kt — how-to-use guide dialog
+- ImageGenDialog.kt — Generate Image with AI dialog
+- ProjectShellScreen.kt — Go to Line, PortsPanel add-port
+- MediaViewers.kt, PdfViewerDialog.kt, SshManagerSheet.kt, TerminalPane.kt,
+  TextExpansionSheet.kt — various sheets and viewers
+
+ArchiveViewer.kt nested dialogs confirmed covered by the outer key() cascade, no separate wrap needed.
+
+## Current backlog status (as of 2026-07-11)
+
+### All buckets — final state
+- Easy bucket — ALL DONE
+- UI bucket — ALL DONE (#8 closes it)
+- Hard bucket — ALL DONE except #11
+
+### Only open item
+- **#11 GitHub repo browsing OAuth** — blocked on Wisdom creating a GitHub OAuth web app
+  at github.com → Settings → Developer settings. Backend is fully built (oauth_accounts
+  table, Railway callback endpoint, ConnectorsService with token storage). Only needs
+  the Client ID + Client Secret to go live.
+
+### Recent fixes (2026-07-11, this session)
+- theme-switch data loss — `startDest` was recomputed on every `themeName` change, causing
+  NavHost to treat the navigation graph as brand-new and destroy all `remember()` state
+  (open editor tabs, scroll positions, terminal sessions). Fixed by wrapping `startDest`
+  in `remember{}` (commit d249645).
+- WORKSPACE_PATH injected on every terminal tab — was only injected by TerminalService
+  (service-bound path); the `createTerminalSession()` fallback never got the path. Fixed
+  in both places, with /storage/emulated/0 → /sdcard translation for proot (d249645).
+- McpShellProfile.kt Kotlin interpolation compile error — `\\${WORKSPACE_PATH}` inside a
+  double-quoted `appendLine()` string was treated as a Kotlin template referencing a
+  non-existent variable. Fixed with `${'\$'}{WORKSPACE_PATH}` char-literal escape (98337d0).
