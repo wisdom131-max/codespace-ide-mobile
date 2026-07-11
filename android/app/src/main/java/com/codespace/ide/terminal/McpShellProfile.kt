@@ -34,7 +34,12 @@ object McpShellProfile {
         // Start the local Agent API server (gives terminal AI full 32-tool access)
         AgentApiServer.start(context)
 
-        val home = File(context.filesDir, "home").apply { mkdirs() }
+        // The ubuntu terminal's HOME is /root INSIDE proot, which maps to
+        // context.filesDir/ubuntu-rootfs/root/ on the host.  The old code wrote to
+        // context.filesDir/home/ — a completely different directory the shell never reads.
+        val rootfsDir = ProotInstaller.rootfsDir(context)
+        val home = File(rootfsDir, "root").apply { mkdirs() }
+
         val script = File(home, ".agent-profile.sh")
         script.writeText(buildProfile())
         script.setReadable(true, false)
@@ -53,8 +58,9 @@ object McpShellProfile {
         val promptFile = File(home, ".agent-system-prompt.md")
         promptFile.writeText(buildSystemPrompt())
 
-        // Also write to /usr/local/bin if proot is set up
-        val binDir = File(context.filesDir, "ubuntu/usr/local/bin")
+        // Write the `agent` bin script to the correct rootfs usr/local/bin.
+        // Old path was "ubuntu/usr/local/bin" but rootfs lives at "ubuntu-rootfs/".
+        val binDir = File(rootfsDir, "usr/local/bin")
         if (binDir.exists()) {
             val agentScript = File(binDir, "agent")
             agentScript.writeText(buildBinScript())
