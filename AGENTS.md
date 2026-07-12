@@ -3866,3 +3866,73 @@ ArchiveViewer.kt nested dialogs confirmed covered by the outer key() cascade, no
 
 ### Backlog final state
 **All items resolved. Zero open items.**
+
+---
+# SESSION PLAN — 2026-07-12 (Large Feature Sprint)
+
+## Wisdom's requests — full list
+
+### 1. File Explorer — MT Manager parity
+Make ExplorerPane.kt detect and open every file type MT Manager supports:
+- APK/XAPK/APKS/AAB/DEX/ODEX/VDEX/SO/AndroidManifest.xml/resources.arsc → open in hex viewer or decompile options
+- Archives: ZIP/RAR/7Z/TAR/GZ/BZ2/XZ/JAR → ArchiveViewer (already exists)
+- Code/script: TXT/LOG/XML/HTML/CSS/JS/JSON/YAML/INI/PROPERTIES/JAVA/SMALI/SH/PY/LUA/PHP/SQL → CodeEditor
+- Documents: PDF → PdfViewerDialog (exists); DOC/DOCX/XLS/XLSX/PPT/PPTX/RTF/CSV/ODT/ODS/ODP → open as text or download prompt
+- Images: PNG/JPG/JPEG/GIF/BMP/WEBP/SVG/ICO/TIFF → ImageViewer (MediaViewers.kt, exists)
+- Audio: MP3/WAV/OGG/AAC/FLAC/M4A/WMA → AudioPlayer (MediaViewers.kt, exists)
+- Video: MP4/MKV/AVI/MOV/WEBM/3GP/FLV → VideoPlayer (MediaViewers.kt, exists)
+- Database: DB/SQLITE/SQLITE3/SQL → SQLite viewer (needs building or route to hex viewer)
+- Certificates: PEM/CRT/CER/KEY/P12/PFX/JKS → text viewer (base64 content)
+- Config: CFG/CONF/PROP/ENV/TOML → CodeEditor
+- Binary/other: BIN/DAT/IMG/ISO/APKM → hex viewer (show first 4KB as hex dump)
+- File actions: search, multi-select (checkboxes), file info (size/permissions/hash MD5+SHA256), batch rename
+- Hex viewer: simple composable showing hex + ASCII dump of first 64KB of any file
+- SQLite viewer: list tables, show rows in a scrollable table composable
+
+### 2. AI Handnote — CODEBASE_MAP.md
+Create /root/CODEBASE_MAP.md inside the Ubuntu container via ProotInstaller (written during install) that maps every screen, pane, and feature to its source file. Injected as ~/CODEBASE_MAP.md alongside ~/AGENT_MEMORY.md. This lets any AI tool launched from the terminal (Claude Code, Ollama, Gemini, etc.) instantly know the app layout without re-reading source.
+
+### 3. Source Control — fix wrong directory bug
+SourceControlPane.kt must cd into the currently open project's root before running any git command. The bug: it uses a hardcoded or stale path instead of the active project's real path. Fix: read the project root from the same SessionStateStore/WorkspaceState that ExplorerPane and TerminalPane use.
+
+### 4. Connectors Hub — fix OAuth flow
+ConnectorsHubSheet.kt must call the real backend OAuth endpoints (not dead AgentConnectorManager). Backend is live at https://codespace-ide-mobile-production.up.railway.app/api/v1/connectors. Flow: user taps connector → app opens /connectors/auth/{provider}?userId=... in a WebView → backend redirects to Google/Slack → callback → token stored. Add a "Connected" / "Not connected" status badge per connector.
+
+### 5. Biometric lock — emergency bypass
+The biometric gate in SettingsScreen.kt permanently locks the app if the user didn't register a fingerprint first. Fix:
+- Add a fallback: if BiometricPrompt fails with ERROR_NO_BIOMETRICS or ERROR_HW_NOT_PRESENT or ERROR_LOCKOUT_PERMANENT, show a PIN/password fallback dialog
+- Add a secret emergency bypass: shake the device 5 times OR tap the lock icon 7 times → shows a plain text PIN entry dialog with a hardcoded recovery PIN that Wisdom can set in Settings before enabling biometric
+- Alternatively: if no fingerprint is enrolled, disable the biometric toggle automatically and show a toast 'Enroll a fingerprint in Android Settings first'
+- The simplest immediate fix: check BiometricManager.canAuthenticate() before locking; if it returns BIOMETRIC_ERROR_NONE_ENROLLED → force the toggle back to OFF and show a Snackbar 'No fingerprint enrolled — go to Android Settings > Security'
+
+### 6. Remotion — fix setup script
+The automated Remotion setup (install.sh) is confirmed broken in the Ubuntu container. Fix:
+- ProotInstaller.kt should write a working /root/setup-remotion.sh that:
+  1. Installs Node 20 via nvm (not system apt, which gives Node 12)
+  2. npm install -g remotion
+  3. Installs ffmpeg + libnspr4 + libnss3 (Chrome deps)
+  4. Creates /root/my-video as a starter Remotion project if it doesn't exist
+  5. Launches Remotion Studio on port 3000 (accessible via PreviewPane)
+- The script must be idempotent (safe to run twice)
+- Add a 'Launch Remotion' quick action button in TerminalPane's Quick Actions row
+
+### 7. Notifications — universal important-events system
+NotificationDrawerOverlay.kt currently has unclear purpose. Make it the app's universal notification center:
+- Show build errors (CI failures from GitHub Actions — poll /repos/{owner}/{repo}/actions/runs?per_page=5 via AgentApiServer)
+- Show terminal errors (process exit code != 0 → add to notification list)
+- Show backup status (last backup time, whether it's recent)
+- Show connector sync status (OAuth tokens expiring soon)
+- Show a persistent 'Ubuntu running' or 'Ubuntu stopped' status chip
+- Notification drawer opens via the bell icon (already in toolbar)
+- Badge count on bell icon showing unread count
+
+### 8. Other fixes considered relevant
+- TermuxBootstrapInstaller.kt, BusyboxInstaller.kt, AiAssistantPane.kt, CopilotChatPanelOverlay.kt: mark clearly as dead code with a top-of-file comment so no future AI wastes time on them
+- AgentConnectorManager.kt: same — mark as replaced by ConnectorsHubSheet + backend OAuth
+- The dev and staging productFlavors in build.gradle.kts: add a comment explaining they're unused placeholders (CI only builds prod)
+
+## Status at plan-logging time
+- All items: PLANNED, not yet implemented
+- Priority order: #5 (biometric bypass) → #3 (source control) → #1 (file explorer) → #6 (Remotion) → #4 (connectors) → #7 (notifications) → #2 (AI handnote) → #8 (dead code cleanup)
+
+---
