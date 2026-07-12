@@ -24,7 +24,11 @@ android {
         applicationId = "com.codespace.ide"
         minSdk = 26
         targetSdk = 28
-        versionCode = 1
+        // Auto-increments on every commit so Android always accepts the APK as a
+        // newer version — no "downgrade blocked" or "version already installed" errors.
+        versionCode = providers.exec {
+            commandLine("git", "rev-list", "--count", "HEAD")
+        }.standardOutput.asText.get().trim().toInt()
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -81,7 +85,8 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
         getByName("debug") {
-            applicationIdSuffix = ".debug"
+            // No applicationIdSuffix — same ID as release so debug APKs can update
+            // directly over the installed release without needing an uninstall first.
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
         }
