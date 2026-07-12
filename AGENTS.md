@@ -3823,3 +3823,46 @@ ArchiveViewer.kt nested dialogs confirmed covered by the outer key() cascade, no
 - McpShellProfile.kt Kotlin interpolation compile error — `\\${WORKSPACE_PATH}` inside a
   double-quoted `appendLine()` string was treated as a Kotlin template referencing a
   non-existent variable. Fixed with `${'\$'}{WORKSPACE_PATH}` char-literal escape (98337d0).
+
+## 2026-07-12 — GitHub OAuth wired + emoji fixed + uninstall survival + terminal session bridge
+
+### GitHub OAuth Browse Repos — NOW LIVE
+- Reused existing OAuth app (Client ID: Ov23liEA2inOMzi7bYrJ) — same app that already
+  handles Device Flow for git operations. Added callback URL on GitHub settings page.
+- Set `GITHUB_OAUTH_CLIENT_ID` + `GITHUB_OAUTH_CLIENT_SECRET` on Railway via GraphQL API
+  (variableCollectionUpsert). Google OAuth vars (`GOOGLE_OAUTH_CLIENT_ID`,
+  `GOOGLE_OAUTH_CLIENT_SECRET`) were already set from a prior session.
+- connector-registry.ts already had the GitHub connector definition with correct scopes
+  (`repo read:user codespace`) and callback URL. No code changes needed — config only.
+- Device Flow (git push/pull via GitHubAuth.kt) is completely unaffected.
+- **Item #11 is now FULLY RESOLVED. All backlog items are DONE.**
+
+### Emoji fix — ProotInstaller.kt
+- `LC_ALL=C` overrode `LANG=C.UTF-8`, causing Claude Code, Python, and other programs to
+  reject emoji bytes. Changed to `LC_ALL=en_US.UTF-8`.
+- Added `00-locale.sh` profile.d script that exports UTF-8 locale vars AND runs
+  `stty iutf8` so the PTY kernel driver handles 4-byte emoji sequences correctly.
+- `TerminalView.java` inputType was already fixed (VISIBLE_PASSWORD) in a prior commit.
+
+### Uninstall/reinstall survival — BackupManager.kt
+- Ubuntu rootfs was already safe (BackupManager tar.gz to /sdcard). Now adds:
+  - `backupPrefs(context)` — copies projects.xml, copilot_chat.xml,
+    com.codespace.ide_preferences.xml, and agent_memory.json to
+    /sdcard/CodespaceIDE/prefs-backup/
+  - `restorePrefs(context)` — restores them on reinstall
+- Both called automatically: backupPrefs() alongside createBackup() in SettingsScreen;
+  restorePrefs() alongside restoreBackup() in TerminalPane (auto-restore on first boot)
+  and SettingsScreen (manual restore).
+- After reinstall: sign in → tap Restore → full environment back including project list,
+  Copilot chat history, and agent memory.
+
+### Terminal AI → Copilot session bridge — AgentApiServer.kt + McpShellProfile.kt
+- New endpoint: `POST /tool/save_terminal_session` — writes a ChatSession-compatible
+  JSON record into the `copilot_chat` SharedPreferences so it appears in the Copilot
+  sessions sidebar alongside regular chat sessions.
+- New shell alias: `agent_session_save "title" "content"` — available to any terminal AI
+  (Claude, Ollama) via the existing agent() function infrastructure.
+- Sessions tagged with mode="TERMINAL" so the sidebar can filter/label them separately.
+
+### Backlog final state
+**All items resolved. Zero open items.**

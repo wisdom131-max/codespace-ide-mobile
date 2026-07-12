@@ -159,4 +159,47 @@ object BackupManager {
         onProgress("\u2713 Restore complete: $filesWritten files.")
         return true
     }
+
+    /**
+     * Backs up all relevant SharedPreferences files to /sdcard/CodespaceIDE/prefs-backup/
+     * so they survive an app uninstall. Called alongside createBackup().
+     * Prefs saved: "projects", "copilot_chat", "agent_memory" (from agent_memory/ dir),
+     * and the global app prefs file (com.codespace.ide_preferences.xml).
+     */
+    fun backupPrefs(context: Context) {
+        val dest = File(backupDir(), "prefs-backup")
+        dest.mkdirs()
+        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+        listOf("projects.xml", "copilot_chat.xml", "com.codespace.ide_preferences.xml").forEach { name ->
+            val src = File(prefsDir, name)
+            if (src.exists()) src.copyTo(File(dest, name), overwrite = true)
+        }
+        // Agent memory JSON
+        val memFile = File(context.filesDir, "agent_memory/memory.json")
+        if (memFile.exists()) memFile.copyTo(File(dest, "agent_memory.json"), overwrite = true)
+        Log.d(TAG, "Prefs backup written to ${dest.absolutePath}")
+    }
+
+    /**
+     * Restores SharedPreferences from /sdcard/CodespaceIDE/prefs-backup/ into the app's
+     * shared_prefs folder. Called alongside restoreBackup(). Safe to call even if the
+     * backup folder doesn't exist (returns silently).
+     */
+    fun restorePrefs(context: Context) {
+        val src = File(backupDir(), "prefs-backup")
+        if (!src.exists()) return
+        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+        prefsDir.mkdirs()
+        listOf("projects.xml", "copilot_chat.xml", "com.codespace.ide_preferences.xml").forEach { name ->
+            val f = File(src, name)
+            if (f.exists()) f.copyTo(File(prefsDir, name), overwrite = true)
+        }
+        val memSrc = File(src, "agent_memory.json")
+        if (memSrc.exists()) {
+            val memDir = File(context.filesDir, "agent_memory")
+            memDir.mkdirs()
+            memSrc.copyTo(File(memDir, "memory.json"), overwrite = true)
+        }
+        Log.d(TAG, "Prefs restored from ${src.absolutePath}")
+    }
 }

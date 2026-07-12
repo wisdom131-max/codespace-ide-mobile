@@ -498,6 +498,15 @@ object ProotInstaller {
                 // env var passed to proot itself, or libproot.so on the host fails to find it.
                 val profileDDir = File(rootfs, "etc/profile.d")
                 profileDDir.mkdirs()
+                // 00-locale: sets UTF-8 locale + stty iutf8 so emoji work in Claude/Ollama
+                File(profileDDir, "00-locale.sh").writeText(
+                    "#!/bin/sh\n" +
+                    "export LANG=en_US.UTF-8\n" +
+                    "export LC_ALL=en_US.UTF-8\n" +
+                    "export PYTHONIOENCODING=utf-8\n" +
+                    "stty iutf8 2>/dev/null || true\n"
+                )
+                File(profileDDir, "00-locale.sh").setExecutable(true, false)
                 File(profileDDir, "99-dpkg-fix.sh").writeText(
                     "#!/bin/sh\n" +
                     "# dpkg Android/Samsung-5.15 self-heal fix - persists across every shell.\n" +
@@ -983,7 +992,7 @@ exit 0
             // Suppress perl locale warnings from dpkg post-install scripts
             "PERL_BADLANG=0",
             "LANG=C.UTF-8",
-            "LC_ALL=C"
+            "LC_ALL=en_US.UTF-8"
         )
 
         return Triple(proot, args, envVars)

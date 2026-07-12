@@ -1040,6 +1040,7 @@ internal fun TerminalPane(
                     // what makes every GitHub Actions rebuild's forced uninstall/reinstall NOT wipe
                     // Node/ffmpeg/Remotion/Piper/Ollama/Claude Code/projects every single time.
                     writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
+                    BackupManager.restorePrefs(ctx)
                     BackupManager.restoreBackup(ctx) { msg ->
                         TerminalService.updateProgress(ctx, msg.take(60))
                         writeToDisplay(progressSession, "  $msg\r\n")

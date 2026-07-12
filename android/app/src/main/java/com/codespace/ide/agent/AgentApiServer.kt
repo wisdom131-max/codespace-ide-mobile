@@ -161,6 +161,47 @@ object AgentApiServer {
                 method == "GET" && path == "/system-prompt" ->
                     httpJson(200, """{"prompt":${JSONObject.quote(AgentTools.TOOLS_DESCRIPTION)}}""")
 
+                
+                // Save a terminal AI session snapshot into the Copilot chat SharedPreferences.
+                // Called by the shell agent_session_save() function defined in McpShellProfile.
+                // body JSON: {"title":"...","content":"...","mode":"TERMINAL"}
+                method == "POST" && path == "/tool/save_terminal_session" -> {
+                    val args = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+                    val title   = args.optString("title",   "Terminal session")
+                    val content = args.optString("content", "")
+                    val mode    = args.optString("mode",    "TERMINAL")
+                    val id      = java.util.UUID.randomUUID().toString()
+                    val now     = System.currentTimeMillis()
+
+                    // Build a ChatSession-compatible JSON object and append it to the
+                    // copilot_chat SharedPreferences list. Structure mirrors ChatSession
+                    // data class in CopilotChatPanelOverlay.kt.
+                    val msgJson = org.json.JSONObject()
+                        .put("role", "terminal")
+                        .put("content", content)
+                        .put("timestamp", now)
+
+                    val sessionJson = org.json.JSONObject()
+                        .put("id",        id)
+                        .put("title",     title)
+                        .put("mode",      mode)
+                        .put("messages",  org.json.JSONArray().put(msgJson))
+                        .put("updatedAt", now)
+
+                    val prefs = ctx.getSharedPreferences("copilot_chat", android.content.Context.MODE_PRIVATE)
+                    val existing = try {
+                        org.json.JSONArray(prefs.getString("sessions", "[]") ?: "[]")
+                    } catch (_: Exception) { org.json.JSONArray() }
+                    existing.put(sessionJson)
+                    // Keep max 50 terminal sessions + copilot sessions combined.
+                    val trimmed = org.json.JSONArray()
+                    val start = maxOf(0, existing.length() - 50)
+                    for (i in start until existing.length()) trimmed.put(existing.get(i))
+                    prefs.edit().putString("sessions", trimmed.toString()).apply()
+
+                    httpJson(200, """{"saved":true,"id":"$id"}""")
+                }
+
                 else -> httpJson(404, """{"error":"Not found: $method $path"}""")
             }
         } catch (e: Exception) {

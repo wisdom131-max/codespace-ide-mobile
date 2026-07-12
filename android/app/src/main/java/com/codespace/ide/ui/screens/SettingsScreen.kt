@@ -416,6 +416,7 @@ fun SettingsScreen(
                         backupRunning = true
                         scope.launch {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                BackupManager.backupPrefs(context)
                                 BackupManager.createBackup(context) { msg -> backupStatus = msg }
                             }
                             backupInfo = BackupManager.backupInfo()
@@ -444,6 +445,7 @@ fun SettingsScreen(
                             backupRunning = true
                             scope.launch {
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    BackupManager.restorePrefs(context)
                                     BackupManager.restoreBackup(context) { msg -> backupStatus = msg }
                                 }
                                 backupRunning = false
