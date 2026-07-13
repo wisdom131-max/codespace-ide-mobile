@@ -116,163 +116,72 @@ private fun hoverDocFor(word: String): String? = HOVER_DOCS[word]
 // ── Language-aware snippets with insert text ───────────────────────────────
 private fun snippetsFor(lang: Language): List<Completion> = when (lang) {
     Language.KOTLIN -> listOf(
-        Completion("fun", CompletionKind.SNIPPET, "fun name(): Unit {
-    
-}", "Function declaration"),
-        Completion("class", CompletionKind.SNIPPET, "class Name {
-    
-}", "Class declaration"),
-        Completion("data class", CompletionKind.SNIPPET, "data class Name(val field: Type)", "Data class with auto-generated equals/hashCode/copy"),
-        Completion("when", CompletionKind.SNIPPET, "when (expr) {
-    else -> {}
-}", "Exhaustive when expression"),
-        Completion("if", CompletionKind.SNIPPET, "if (condition) {
-    
-}", "If statement"),
-        Completion("for", CompletionKind.SNIPPET, "for (item in collection) {
-    
-}", "For-each loop"),
-        Completion("object", CompletionKind.SNIPPET, "object Name {
-    
-}", "Singleton object"),
-        Completion("companion object", CompletionKind.SNIPPET, "companion object {
-    
-}", "Companion object (static members)"),
-        Completion("launch", CompletionKind.SNIPPET, "launch {
-    
-}", "Launch a coroutine"),
-        Completion("LaunchedEffect", CompletionKind.SNIPPET, "LaunchedEffect(key) {
-    
-}", "Run suspend block scoped to composition"),
-        Completion("remember", CompletionKind.SNIPPET, "remember { mutableStateOf() }", "Remember mutable state across recompositions"),
-        Completion("Composable", CompletionKind.SNIPPET, "@Composable
-fun Name() {
-    
-}", "Jetpack Compose function"),
+        Completion("fun", CompletionKind.SNIPPET, "fun name(): Unit {\n    \n}", "Function declaration"),
+        Completion("class", CompletionKind.SNIPPET, "class Name {\n    \n}", "Class declaration"),
+        Completion("data class", CompletionKind.SNIPPET, "data class Name(val field: Type)", "Data class — auto-generates equals/hashCode/copy"),
+        Completion("when", CompletionKind.SNIPPET, "when (expr) {\n    else -> {}\n}", "Exhaustive when expression"),
+        Completion("if", CompletionKind.SNIPPET, "if (condition) {\n    \n}", "If statement"),
+        Completion("for", CompletionKind.SNIPPET, "for (item in collection) {\n    \n}", "For-each loop"),
+        Completion("object", CompletionKind.SNIPPET, "object Name {\n    \n}", "Singleton object"),
+        Completion("companion object", CompletionKind.SNIPPET, "companion object {\n    \n}", "Companion object (static members)"),
+        Completion("launch", CompletionKind.SNIPPET, "launch {\n    \n}", "Launch a coroutine"),
+        Completion("LaunchedEffect", CompletionKind.SNIPPET, "LaunchedEffect(key) {\n    \n}", "Run suspend block scoped to composition"),
+        Completion("remember", CompletionKind.SNIPPET, "remember { mutableStateOf() }", "Cache value across recompositions"),
+        Completion("Composable", CompletionKind.SNIPPET, "@Composable\nfun Name() {\n    \n}", "Jetpack Compose function"),
     )
     Language.JAVASCRIPT, Language.TYPESCRIPT -> listOf(
-        Completion("function", CompletionKind.SNIPPET, "function name(params) {
-    
-}", "Function declaration"),
+        Completion("function", CompletionKind.SNIPPET, "function name(params) {\n    \n}", "Function declaration"),
         Completion("const", CompletionKind.SNIPPET, "const name = value", "Immutable binding"),
-        Completion("async function", CompletionKind.SNIPPET, "async function name() {
-    
-}", "Async function"),
-        Completion("class", CompletionKind.SNIPPET, "class Name {
-  constructor() {
-    
-  }
-}", "Class declaration"),
-        Completion("for...of", CompletionKind.SNIPPET, "for (const item of array) {
-    
-}", "Iterate over iterable"),
-        Completion("try", CompletionKind.SNIPPET, "try {
-    
-} catch (err) {
-    
-}", "Try-catch"),
-        Completion("Promise", CompletionKind.SNIPPET, "new Promise((resolve, reject) => {
-    
-})", "Create a Promise"),
+        Completion("async function", CompletionKind.SNIPPET, "async function name() {\n    \n}", "Async function"),
+        Completion("class", CompletionKind.SNIPPET, "class Name {\n  constructor() {\n    \n  }\n}", "Class declaration"),
+        Completion("for...of", CompletionKind.SNIPPET, "for (const item of array) {\n    \n}", "Iterate over iterable"),
+        Completion("try", CompletionKind.SNIPPET, "try {\n    \n} catch (err) {\n    \n}", "Try-catch"),
+        Completion("Promise", CompletionKind.SNIPPET, "new Promise((resolve, reject) => {\n    \n})", "Create a Promise"),
         Completion("console.log", CompletionKind.SNIPPET, "console.log()", "Log to console"),
-        Completion("=>", CompletionKind.SNIPPET, "(params) => {
-    
-}", "Arrow function"),
+        Completion("=>", CompletionKind.SNIPPET, "(params) => {\n    \n}", "Arrow function"),
     )
     Language.PYTHON -> listOf(
-        Completion("def", CompletionKind.SNIPPET, "def name(params):
-    ", "Function definition"),
-        Completion("class", CompletionKind.SNIPPET, "class Name:
-    def __init__(self):
-        ", "Class with constructor"),
-        Completion("if", CompletionKind.SNIPPET, "if condition:
-    ", "If statement"),
-        Completion("for", CompletionKind.SNIPPET, "for item in collection:
-    ", "For loop"),
-        Completion("with", CompletionKind.SNIPPET, "with open('file') as f:
-    ", "Context manager"),
-        Completion("try", CompletionKind.SNIPPET, "try:
-    
-except Exception as e:
-    ", "Try-except"),
+        Completion("def", CompletionKind.SNIPPET, "def name(params):\n    ", "Function definition"),
+        Completion("class", CompletionKind.SNIPPET, "class Name:\n    def __init__(self):\n        ", "Class with constructor"),
+        Completion("if", CompletionKind.SNIPPET, "if condition:\n    ", "If statement"),
+        Completion("for", CompletionKind.SNIPPET, "for item in collection:\n    ", "For loop"),
+        Completion("with", CompletionKind.SNIPPET, "with open('file') as f:\n    ", "Context manager"),
+        Completion("try", CompletionKind.SNIPPET, "try:\n    \nexcept Exception as e:\n    ", "Try-except"),
         Completion("lambda", CompletionKind.SNIPPET, "lambda x: x", "Anonymous function"),
         Completion("list comprehension", CompletionKind.SNIPPET, "[expr for item in iterable]", "List comprehension"),
         Completion("print", CompletionKind.SNIPPET, "print()", "Print to stdout"),
     )
     Language.JAVA -> listOf(
-        Completion("public class", CompletionKind.SNIPPET, "public class Name {
-    
-}", "Public class"),
-        Completion("public static void main", CompletionKind.SNIPPET, "public static void main(String[] args) {
-    
-}", "Main method"),
-        Completion("for", CompletionKind.SNIPPET, "for (int i = 0; i < n; i++) {
-    
-}", "For loop"),
-        Completion("try", CompletionKind.SNIPPET, "try {
-    
-} catch (Exception e) {
-    e.printStackTrace();
-}", "Try-catch"),
-        Completion("interface", CompletionKind.SNIPPET, "public interface Name {
-    
-}", "Interface"),
-        Completion("@Override", CompletionKind.SNIPPET, "@Override
-public void method() {
-    
-}", "Override annotation"),
+        Completion("public class", CompletionKind.SNIPPET, "public class Name {\n    \n}", "Public class"),
+        Completion("public static void main", CompletionKind.SNIPPET, "public static void main(String[] args) {\n    \n}", "Main method"),
+        Completion("for", CompletionKind.SNIPPET, "for (int i = 0; i < n; i++) {\n    \n}", "For loop"),
+        Completion("try", CompletionKind.SNIPPET, "try {\n    \n} catch (Exception e) {\n    e.printStackTrace();\n}", "Try-catch"),
+        Completion("interface", CompletionKind.SNIPPET, "public interface Name {\n    \n}", "Interface"),
+        Completion("@Override", CompletionKind.SNIPPET, "@Override\npublic void method() {\n    \n}", "Override annotation"),
     )
     Language.RUST -> listOf(
-        Completion("fn", CompletionKind.SNIPPET, "fn name() -> () {
-    
-}", "Function declaration"),
-        Completion("struct", CompletionKind.SNIPPET, "struct Name {
-    field: Type,
-}", "Struct definition"),
-        Completion("impl", CompletionKind.SNIPPET, "impl Name {
-    fn method(&self) {
-        
-    }
-}", "Impl block"),
-        Completion("match", CompletionKind.SNIPPET, "match value {
-    Some(x) => x,
-    None => todo!(),
-}", "Match expression"),
+        Completion("fn", CompletionKind.SNIPPET, "fn name() -> () {\n    \n}", "Function declaration"),
+        Completion("struct", CompletionKind.SNIPPET, "struct Name {\n    field: Type,\n}", "Struct definition"),
+        Completion("impl", CompletionKind.SNIPPET, "impl Name {\n    fn method(&self) {\n        \n    }\n}", "Impl block"),
+        Completion("match", CompletionKind.SNIPPET, "match value {\n    Some(x) => x,\n    None => todo!(),\n}", "Match expression"),
         Completion("let", CompletionKind.SNIPPET, "let name = value;", "Immutable binding"),
         Completion("let mut", CompletionKind.SNIPPET, "let mut name = value;", "Mutable binding"),
-        Completion("for", CompletionKind.SNIPPET, "for item in collection {
-    
-}", "For loop"),
+        Completion("for", CompletionKind.SNIPPET, "for item in collection {\n    \n}", "For loop"),
     )
     Language.GO -> listOf(
-        Completion("func", CompletionKind.SNIPPET, "func name() {
-    
-}", "Function declaration"),
-        Completion("struct", CompletionKind.SNIPPET, "type Name struct {
-    Field Type
-}", "Struct type"),
-        Completion("interface", CompletionKind.SNIPPET, "type Name interface {
-    Method() ReturnType
-}", "Interface type"),
-        Completion("for", CompletionKind.SNIPPET, "for i := 0; i < n; i++ {
-    
-}", "For loop"),
-        Completion("goroutine", CompletionKind.SNIPPET, "go func() {
-    
-}()", "Anonymous goroutine"),
-        Completion("defer", CompletionKind.SNIPPET, "defer func() {
-    
-}()", "Deferred cleanup"),
-        Completion("err check", CompletionKind.SNIPPET, "if err != nil {
-    return err
-}", "Error check"),
+        Completion("func", CompletionKind.SNIPPET, "func name() {\n    \n}", "Function declaration"),
+        Completion("struct", CompletionKind.SNIPPET, "type Name struct {\n    Field Type\n}", "Struct type"),
+        Completion("interface", CompletionKind.SNIPPET, "type Name interface {\n    Method() ReturnType\n}", "Interface type"),
+        Completion("for", CompletionKind.SNIPPET, "for i := 0; i < n; i++ {\n    \n}", "For loop"),
+        Completion("goroutine", CompletionKind.SNIPPET, "go func() {\n    \n}()", "Anonymous goroutine"),
+        Completion("defer", CompletionKind.SNIPPET, "defer func() {\n    \n}()", "Deferred cleanup"),
+        Completion("err check", CompletionKind.SNIPPET, "if err != nil {\n    return err\n}", "Error check"),
     )
     else -> listOf(
         Completion("TODO", CompletionKind.SNIPPET, "TODO", "Mark as not yet implemented"),
         Completion("FIXME", CompletionKind.SNIPPET, "FIXME", "Mark as needing a fix"),
     )
 }
-
 private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     if (prefix.length < 2) return emptyList()
     val spec = LanguageSpecs.forLanguage(lang)
