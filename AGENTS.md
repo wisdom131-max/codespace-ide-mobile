@@ -133,10 +133,15 @@
 - Unlimited tabs, each an independent `TerminalSession`
 - Tab rename, color scheme picker (scrollable, rotation-safe)
 - **Key bar** — swipeable extra keys (tab, arrow keys, ctrl, escape, pipe, etc.)
-- **One-tap setup buttons:**
-  - 🤖 **Ollama + Claude Code** — installs Ollama + `@anthropic-ai/claude-code` via npm, runs postinstall manually, verifies with `claude --version`
-  - 🎬 **Remotion** — installs Remotion + ffmpeg + full headless Chrome dependency list (libnspr4, libnss3, etc.)
-  - 🎙️ **Piper/Bark voice** — voice synthesis setup
+- **⋮ overflow menu — AI & TOOLS section** (separate items, not one button):
+  - 📥 **Install Ollama** — runs `ollamaInstallScript()`, tries 5 install methods in sequence
+  - 🤖 **Launch Coding Agent** — first run opens model picker → full setup (Ollama + Claude Code); subsequent runs reuse existing tab + `ollamaLaunchScript()`
+  - 🎬 **Setup Remotion** — runs `remotionSetupScript()`: Node.js + ffmpeg + headless Chrome deps + `@remotion/cli` + scaffolds `~/remotion-project/` with TSX starter + chunked render helper
+  - 🎞️ **Launch Remotion Studio** — runs `remotionRelaunchScript()` (guards: must run Setup first)
+  - 🎙️ **Install Voice (TTS)** — opens model picker → Piper (fast, on-device) or Bark (slower, CPU-only)
+  - 🔑 / 🚪 **Sign in/out of Ollama** — `ollama signin` / `ollama signout`
+  - **Multi-Instance Mode** toggle — allows multiple Ollama tabs (advanced)
+  - 🔌 **Show Agent Tools (32)** — lists available MCP tools
 - **SSH remote terminal** — `RemoteTerminalSession.kt` connects to backend WS
 
 #### MCP shell integration (`McpShellProfile.kt`)
