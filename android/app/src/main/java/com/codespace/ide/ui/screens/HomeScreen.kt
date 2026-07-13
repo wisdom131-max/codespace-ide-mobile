@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.codespace.ide.domain.Project
 import com.codespace.ide.domain.ProjectKind
+import com.codespace.ide.ui.sheets.RepoBrowserSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -153,7 +154,9 @@ fun HomeScreen(
     val projects      = remember { mutableStateListOf<Project>().apply { addAll(loadProjectsLocal(context)) } }
     var syncing       by remember { mutableStateOf(false) }
     var syncStatus    by remember { mutableStateOf("") }
-    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddDialog    by remember { mutableStateOf(false) }
+    var showRepoBrowser  by remember { mutableStateOf(false) }
+    var fabMenuExpanded  by remember { mutableStateOf(false) }
     var newName       by remember { mutableStateOf("") }
     var newPath       by remember { mutableStateOf("") }
 
@@ -267,11 +270,26 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddDialog = true },
-                icon    = { Icon(Icons.Default.Add, contentDescription = null) },
-                text    = { Text("New project") },
-            )
+            Box {
+                ExtendedFloatingActionButton(
+                    onClick = { fabMenuExpanded = true },
+                    icon    = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text    = { Text("New project") },
+                )
+                DropdownMenu(
+                    expanded         = fabMenuExpanded,
+                    onDismissRequest = { fabMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text    = { Text("New local project") },
+                        onClick = { fabMenuExpanded = false; showAddDialog = true },
+                    )
+                    DropdownMenuItem(
+                        text    = { Text("Clone from GitHub") },
+                        onClick = { fabMenuExpanded = false; showRepoBrowser = true },
+                    )
+                }
+            }
         },
     ) { padding ->
 
@@ -370,5 +388,16 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showRepoBrowser) {
+        RepoBrowserSheet(
+            onDismiss = { showRepoBrowser = false },
+            onProjectCreated = { project ->
+                projects.add(project)
+                saveProjectsLocal(context, projects.toList())
+                scope.launch { pushProjectToCloud(accessToken, project) }
+            },
+        )
     }
 }
