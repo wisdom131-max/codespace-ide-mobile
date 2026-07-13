@@ -602,12 +602,12 @@ Status as of 2026-07-13:
 
 ### Phase 2 TODO (ordered)
 
-**Latest green build: #1035. Repo is clean — safe to implement.**
+**Latest green build: #1056. Repo is clean — safe to implement.**
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
 | P2-1 | Rename Symbol | DONE (#1035) | long-press word -> AlertDialog -> replace all word-boundary occurrences. commit acd045fa |
-| P2-2 | Find & Replace | **NEXT** | Bottom bar: search input, prev/next, replace input, replace-all, regex toggle, match highlight |
+| P2-2 | Find & Replace | DONE | Bottom bar: search input, prev/next, replace input, replace-all, regex toggle, match highlight |
 | P2-3 | Multi-cursor editing | TODO | |
 | P2-4 | Go to Definition | TODO | |
 | P2-5 | Error squiggles (lint underlines) | TODO | |
@@ -616,8 +616,8 @@ Status as of 2026-07-13:
 | P2-8 | Breadcrumb navigation | **DONE** | Clickable segments + horizontal scroll. Tapping any ancestor dir opens Explorer and auto-expands/scrolls the tree to that dir. |
 | P2-9 | Code bookmarks | **DONE** | Gutter ◆ dot toggle per line. Bookmark panel (◆ toolbar button) lists all bookmarks across open files with file:line + content preview. Tap to jump. |
 | P2-10 | Jump back/forward history | **DONE** | `NavEntry` stack (100-deep). ← → buttons in editor toolbar. Triggered on Explorer open, Search jump, tab click. Forward stack clears on new jump. |
-| P2-11 | Inlay hints | TODO | |
-| P2-12 | Parameter hints / signature help | TODO | |
+| P2-11 | Inlay hints | **DONE** | `InlayHintAnalyzer.kt` (new, regex-based, no AST) — type/return/param labels rendered as overlay in `CodeEditor.kt`. Toolbar ⊕ toggle in `ProjectShellScreen.kt` (not persisted, matches wordWrap's existing convention). commits 85703210 (#1055 green), 685b63bc (#1056 green, fixed dead/broken VAL_CHAR regex). |
+| P2-12 | Parameter hints / signature help | **NEXT** | |
 
 ### Phase 2 Session Log
 | Date | Done |
@@ -631,6 +631,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-8 Breadcrumb navigation — breadcrumb bar is now horizontally scrollable with clickable ancestor segments. Tap a segment → Explorer opens + tree auto-expands/scrolls to that dir via `navigateToDir` + `treeListState`. |
 | 2026-07-13 | Shipped P2-9 Code Bookmarks — gutter ◆ dot toggles bookmark per line; toolbar ◆ button opens panel listing all bookmarks (file+line+preview); tap to jump to file+line. `fileBookmarks` map in EditorPane. |
 | 2026-07-13 | Shipped P2-10 Jump back/forward history — `NavEntry(path, line)` back/fwd stacks, ← → toolbar buttons, push on Explorer open / Search jump / tab click. |
+| 2026-07-13 | Shipped P2-11 Inlay Hints — new `InlayHintAnalyzer.kt`, regex-based (no AST), type/return/param label overlay in `CodeEditor.kt`, toolbar ⊕ toggle. Picked up mid-session after a prior AI ran out of tokens right after triggering build #1055 (it landed GREEN). Found and fixed a real bug left behind: `VAL_CHAR` regex had a missing `\\s` escape (`'.'s*$` instead of `'.'\\s*$`) so it could never match, AND it was never referenced in the type-hint `when` block at all — char literals (`val c = 'a'`) silently got no hint. Fixed both in #1056 (green). |
 
 ---
 
