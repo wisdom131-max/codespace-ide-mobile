@@ -803,9 +803,9 @@ fun CodeEditor(
         // ── Rename Symbol Dialog ──────────────────────────────────────────────
         // ── P2-4 Context Action Sheet ──────────────────────────────────────────────────────
         if (contextWord != null) {
+            androidx.compose.runtime.key(contextWord) {
             val word = contextWord!!
             AlertDialog(
-                key = word,
                 onDismissRequest = { contextWord = null },
                 containerColor = Color(0xFF252526),
                 title = {
@@ -868,6 +868,7 @@ fun CodeEditor(
                     }
                 },
             )
+            } // end key(contextWord)
         }
 
         // ── P2-4 Go to Definition Results ──────────────────────────────────────────────────────
@@ -1401,3 +1402,4 @@ fun CodeEditor(
         }
     }
 }
+
