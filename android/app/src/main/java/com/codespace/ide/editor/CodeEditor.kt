@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -231,6 +233,8 @@ fun CodeEditor(
     scrollToLine: Int = 0,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
+    goToLineOpen: Boolean = false,
+    onGoToLineClose: () -> Unit = {},
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -326,6 +330,9 @@ fun CodeEditor(
     var replaceQuery by remember { mutableStateOf("") }
     var useRegex by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
+
+    // ── Go to Line state ─────────────────────────────────────────────────
+    var goToLineInput by remember { mutableStateOf("") }
 
     val matches = remember(value.text, findQuery, useRegex) {
         if (findQuery.isEmpty()) emptyList()
@@ -645,6 +652,97 @@ fun CodeEditor(
                     }
                 },
             )
+        }
+
+        // ── Go to Line Bar ──────────────────────────────────────────────────
+        if (goToLineOpen) {
+            val lineCount2 = remember(value.text) { value.text.count { it == '\n' } + 1 }
+            Row(
+                modifier = androidx.compose.ui.Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color(0xFF252526))
+                    .border(1.dp, Color(0xFF3C3C3C))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .zIndex(21f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    "Go to line:",
+                    color = Color(0xFF888888),
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+                androidx.compose.foundation.text.BasicTextField(
+                    value = goToLineInput,
+                    onValueChange = { v ->
+                        if (v.all { it.isDigit() } || v.isEmpty()) goToLineInput = v
+                    },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color(0xFFD4D4D4),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Go,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onGo = {
+                            val target = goToLineInput.toIntOrNull() ?: return@KeyboardActions
+                            val clamped = target.coerceIn(1, lineCount2)
+                            val lines2 = value.text.split("\n")
+                            val offset = lines2.take(clamped - 1).sumOf { it.length + 1 }
+                            val safeOffset = offset.coerceAtMost(value.text.length)
+                            value = value.copy(
+                                selection = androidx.compose.ui.text.TextRange(safeOffset),
+                            )
+                            coroutineScope.launch {
+                                val lineHeightPx = fontSize * 2.0f
+                                vScroll.animateScrollTo(((clamped - 1) * lineHeightPx).toInt())
+                            }
+                            goToLineInput = ""
+                            onGoToLineClose()
+                        },
+                    ),
+                    decorationBox = { inner ->
+                        Box(
+                            modifier = androidx.compose.ui.Modifier
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            if (goToLineInput.isEmpty()) Text(
+                                "1 – $lineCount2",
+                                color = Color(0xFF666666),
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            inner()
+                        }
+                    },
+                    modifier = androidx.compose.ui.Modifier
+                        .width(100.dp)
+                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
+                )
+                Text(
+                    "of $lineCount2",
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                )
+                Spacer(modifier = androidx.compose.ui.Modifier.weight(1f))
+                IconButton(
+                    onClick = { goToLineInput = ""; onGoToLineClose() },
+                    modifier = androidx.compose.ui.Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Close, null,
+                        tint = Color(0xFF888888),
+                        modifier = androidx.compose.ui.Modifier.size(16.dp),
+                    )
+                }
+            }
         }
 
         // ── Find & Replace Bar ───────────────────────────────────────────
