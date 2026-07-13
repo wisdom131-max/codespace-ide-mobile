@@ -403,6 +403,11 @@ fun CodeEditor(
             // Gutter
             val savedLines = remember(savedContent) { savedContent.split("\n") }
             val currentLines = remember(value.text) { value.text.split("\n") }
+            // P2-6 — real LCS git diff (replaces simple isDirty/isAdded heuristic)
+            val gitDiff = remember(savedContent, value.text) {
+                if (savedContent.isEmpty()) null
+                else GitDiffAnalyzer.diff(currentLines, savedLines)
+            }
             Column(modifier = Modifier.padding(horizontal = 4.dp).width(62.dp)) {
                 displayLines.forEach { (lineNum, _) ->
                     if (lineNum == -1) {
@@ -420,10 +425,8 @@ fun CodeEditor(
                             )
                         }
                     } else {
-                        val isDirty = savedContent.isNotEmpty() && (
-                            lineNum >= savedLines.size || (lineNum < currentLines.size && lineNum < savedLines.size && currentLines[lineNum] != savedLines[lineNum])
-                        )
-                        val isAdded = savedContent.isNotEmpty() && lineNum >= savedLines.size
+                        val diffStatus = gitDiff?.lineStatus?.getOrNull(lineNum) ?: DiffStatus.UNCHANGED
+                        val hasDeletedBefore = gitDiff?.deletedBeforeLines?.contains(lineNum) == true
                         val isFoldable = foldableLines.contains(lineNum)
                         val isFolded = foldedRanges.contains(lineNum)
 
@@ -431,18 +434,34 @@ fun CodeEditor(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.height(fontSize.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(3.dp)
-                                    .height(fontSize.dp)
-                                    .background(
-                                        when {
-                                            isAdded -> Color(0xFF4EC9B0)
-                                            isDirty -> Color(0xFF569CD6)
-                                            else    -> Color.Transparent
-                                        }
+                            // P2-6 diff gutter bar + deletion triangle
+                            Column(modifier = Modifier.width(3.dp)) {
+                                // Deletion triangle: small red ▼ rendered at top of this row
+                                // when saved lines were deleted just before this current line
+                                if (hasDeletedBefore) {
+                                    Text(
+                                        text = "▶",
+                                        color = Color(0xFFE06C75),
+                                        fontSize = (fontSize * 0.55f).sp,
+                                        lineHeight = (fontSize * 0.6f).sp,
+                                        modifier = Modifier.width(3.dp),
                                     )
-                            )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .weight(1f, fill = false)
+                                        .defaultMinSize(minHeight = fontSize.dp)
+                                        .background(
+                                            when (diffStatus) {
+                                                DiffStatus.ADDED    -> Color(0xFF4EC9B0) // green
+                                                DiffStatus.MODIFIED -> Color(0xFFE5C07B) // yellow
+                                                DiffStatus.DELETED_BEFORE -> Color(0xFFE06C75) // red (fallback)
+                                                DiffStatus.UNCHANGED -> Color.Transparent
+                                            }
+                                        )
+                                )
+                            }
                             Spacer(Modifier.width(1.dp))
                             // Gutter fold chevron icon (▼ when expanded, ▶ when folded)
                             Box(

@@ -611,7 +611,7 @@ Status as of 2026-07-13:
 | P2-3 | Multi-cursor editing | TODO | |
 | P2-4 | Go to Definition | TODO | |
 | P2-5 | Error squiggles (lint underlines) | TODO | |
-| P2-6 | Git diff gutter | TODO | dirty-line markers exist, upgrade to +/~/- with colour |
+| P2-6 | Git diff gutter | **DONE** | LCS diff, green=added / yellow=modified / red triangle=deleted. `GitDiffAnalyzer.kt` (new). |
 | P2-7 | Code folding | TODO | foldedRanges state exists, verify it works |
 | P2-8 | Breadcrumb navigation | TODO | |
 | P2-9 | Code bookmarks | TODO | |
@@ -625,6 +625,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped HOVER_DOCS (60+ keywords), rich snippets, sticky scroll, P2-1 Rename Symbol. Fixed #1028 (raw newlines) and #1035 (unescaped double-quote in Text string). |
 | 2026-07-13 | Added Future Feature Evaluation Policy. Added Phase 4 Background Safe Startup & Recovery directive (do not build until Phase 3 done). Audited existing systems: crash logger, BackupManager, AppOutputLog, WorkManager all present. |
 | 2026-07-13 | Shipped P2-2 Find & Replace — bottom bar with search, replace, prev/next arrows, regex toggle, replace-one, replace-all, match counter. Fixed missing FindReplace import (#1039 GREEN). |
+| 2026-07-13 | Shipped P2-6 Git diff gutter — new `GitDiffAnalyzer.kt` (LCS diff, capped at 2 000 lines). Gutter bar: green=added, yellow=modified, red ▶ triangle=deleted lines. Replaced old heuristic isDirty/isAdded in CodeEditor.kt. |
 
 ---
 
