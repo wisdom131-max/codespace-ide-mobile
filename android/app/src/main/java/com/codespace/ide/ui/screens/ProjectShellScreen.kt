@@ -322,6 +322,9 @@ private val MENU_BAR = listOf(
     )),
 )
 
+/** P2-10 Navigation history entry. */
+private data class NavEntry(val path: String, val line: Int = 0)
+
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 fun ProjectShellScreen(
@@ -438,6 +441,12 @@ fun ProjectShellScreen(
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
     var activeEditorTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }
     var keyboardInsert     by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
+    var breadcrumbNavDir   by remember { mutableStateOf<String?>(null) }
+
+    // P2-10 Jump back/forward navigation history
+    val navBackStack  = remember { mutableStateListOf<NavEntry>() }
+    val navFwdStack   = remember { mutableStateListOf<NavEntry>() }
 
     LaunchedEffect(projectId, restoredState) {
         if (editorTabs.isEmpty() && restoredState?.openFilePaths?.isNotEmpty() == true) {
@@ -767,6 +776,7 @@ fun ProjectShellScreen(
                                 projectId = projectId,
                                 onOpenFile = { path ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
+                                    pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
                                     activePanel = null
                                     showNotification("Opened ${path.substringAfterLast("/")}", "success")
@@ -792,7 +802,9 @@ fun ProjectShellScreen(
                                 projectId = projectId,
                                 onOpenFileAtLine = { path, line ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
+                                    pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
+                                    scrollTargetLine = line
                                     activePanel = null
                                     showNotification("Opened " + path.substringAfterLast("/") + ":" + line, "success")
                                 },
@@ -832,7 +844,7 @@ fun ProjectShellScreen(
                             editorTabs.forEach { tab ->
                                 val isActive = tab == activeEditorTab
                                 Box {
-                                    Column(Modifier.clickable { activeEditorTab = tab }
+                                    Column(Modifier.clickable { pushNavEntry(activeEditorTab, scrollTargetLine); activeEditorTab = tab }
                                         .combinedClickable(
                                             onClick = { activeEditorTab = tab },
                                             onLongClick = { tabContextMenuFor = tab },
@@ -958,6 +970,25 @@ fun ProjectShellScreen(
                             // Go to line
                             Box(Modifier.size(28.dp).clickable { showGoToLine = true }, contentAlignment = Alignment.Center) {
                                 Text(":${'$'}", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
+                            Spacer(Modifier.width(4.dp))
+                            // P2-10 Nav back
+                            Box(
+                                Modifier.size(28.dp).clickable(enabled = navBackStack.isNotEmpty()) { navBack() },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("←", fontSize = 16.sp,
+                                    color = if (navBackStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
+                            }
+                            // P2-10 Nav forward
+                            Box(
+                                Modifier.size(28.dp).clickable(enabled = navFwdStack.isNotEmpty()) { navForward() },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("→", fontSize = 16.sp,
+                                    color = if (navFwdStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
                             }
                             Spacer(Modifier.weight(1f))
                             // Match count for find
