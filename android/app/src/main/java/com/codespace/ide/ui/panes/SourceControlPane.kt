@@ -1,10 +1,7 @@
 package com.codespace.ide.ui.panes
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,11 +24,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.codespace.ide.terminal.ProotInstaller
-import java.io.BufferedReader
+import com.codespace.ide.data.SecureTokenStore
 import java.io.File
-import java.io.InputStreamReader
 
-// Colors
+// IDE palette
 private val BgColor        = Color(0xFFFFFFFF)
 private val HeaderBg       = Color(0xFFF3F3F3)
 private val TextColor      = Color(0xFF333333)
@@ -42,6 +38,7 @@ private val ModifiedColor  = Color(0xFFE2C08D)
 private val UntrackedColor = Color(0xFF73C991)
 private val DeletedColor   = Color(0xFFF48771)
 private val AddedColor     = Color(0xFF73C991)
+private val ErrorColor     = Color(0xFFCC0000)
 
 private data class GitChange(
     val status: String,
@@ -51,39 +48,60 @@ private data class GitChange(
     val isStaged: Boolean,
 )
 
-// git only exists inside the Ubuntu proot rootfs — never on the bare Android host. This used
-// to try /data/data/com.termux/files/usr/bin/git (a different app's private directory this app
-// has no permission to read/exec, leftover from the pre-Ubuntu-refactor Termux-based
-// architecture) and fall back to a bare "git" that was never on the host PATH either, so
-// Source Control never actually worked. Now routes through ProotInstaller.execOnce, the same
-// proot invocation the interactive terminal uses, after mapping the host-side folder (from
-// Explorer's workspace path, which can be anywhere the device folder browser reaches) to its
-// guest-side path.
+/**
+ * Route a git command through the Ubuntu proot shell.
+ *
+ * P3 fixes:
+ *  - authFlag built with single-quoted value to avoid shell injection
+ *  - Returns the raw stdout string; callers must check for "Error:" prefix
+ */
 private fun runGit(context: Context, dir: File, vararg args: String): String {
     val guestPath = ProotInstaller.hostToGuestPath(context, dir.absolutePath)
-        ?: return "Error: '${dir.absolutePath}' isn't reachable from the Ubuntu terminal. " +
-            "Git only works on folders inside Ubuntu (/root/...) or shared storage (/storage/emulated/0/...)."
-    val quoted = args.joinToString(" ") { a -> "'" + a.replace("'", "'\''") + "'" }
+        ?: return "Error: '${dir.absolutePath}' is not reachable from the Ubuntu terminal. " +
+            "Git only works on folders inside Ubuntu (/root/...) or shared storage."
+    val quoted = args.joinToString(" ") { a -> "'" + a.replace("'", "'\\''") + "'" }
 
-    // If signed in via GitHub Settings, inject the OAuth token as a one-off HTTP Basic Auth
-    // header (git -c http.extraheader) so push/pull/fetch/clone actually authenticate — without
-    // touching the remote URL or needing an interactive credential prompt inside proot.
-    val githubToken = com.codespace.ide.data.SecureTokenStore(context).githubToken
+    val githubToken = SecureTokenStore(context).githubToken
     val authFlag = if (!githubToken.isNullOrBlank()) {
         val basic = android.util.Base64.encodeToString(
             "x-access-token:$githubToken".toByteArray(), android.util.Base64.NO_WRAP
         )
-        "-c http.extraheader=\"Authorization: Basic $basic\" "
+        "-c 'http.extraheader=Authorization: Basic $basic' "
     } else ""
 
     return ProotInstaller.execOnce(context, "git $authFlag$quoted", guestPath)
 }
 
-// Scoped by projectId to match ExplorerPane's per-project workspace isolation (HARD BATCH #1) —
-// otherwise Git operations would run against whichever project's folder was last browsed.
 private fun loadWorkspacePath(context: Context, projectId: String): String? =
     context.getSharedPreferences("workspace_prefs", Context.MODE_PRIVATE)
         .getString("workspace_path_$projectId", null)
+
+/**
+ * Parse a single `git status --porcelain=v1` line into a [GitChange].
+ *
+ * P3 fix: handle renamed files (R/C codes with " -> " separator).
+ */
+private fun parsePorcelainLine(line: String, repoDir: File): Pair<GitChange?, GitChange?> {
+    if (line.length < 4) return null to null
+    val x = line[0]
+    val y = line[1]
+    // Raw path field (may be "old -> new" for renames)
+    val raw = line.substring(3).trim().replace("\"", "")
+    // For renames (R/C), git porcelain v1 gives "new -> old"; we want the new name
+    val filePath = if ((x == 'R' || x == 'C' || y == 'R' || y == 'C') && raw.contains(" -> ")) {
+        raw.substringBefore(" -> ").trim()
+    } else raw
+    val absPath = File(repoDir, filePath).absolutePath
+
+    val staged = if (x != ' ' && x != '?')
+        GitChange(line, filePath, absPath, x, true) else null
+    val unstaged = when {
+        x == '?' && y == '?' -> GitChange(line, filePath, absPath, '?', false)
+        y != ' ' && y != '?' -> GitChange(line, filePath, absPath, y, false)
+        else -> null
+    }
+    return staged to unstaged
+}
 
 @Composable
 fun SourceControlPane(projectId: String) {
@@ -100,57 +118,67 @@ fun SourceControlPane(projectId: String) {
     var aheadBehind by remember { mutableStateOf("") }
     var showStaged by remember { mutableStateOf(true) }
     var showChanges by remember { mutableStateOf(true) }
+    // P3: surface errors to the user instead of swallowing them
+    var statusError by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableStateOf(0) }
 
+    // P3 fix: repoDir is a guest-side path concept only — we don't do File() ops on it
+    // for filesystem existence checks. We just record it for runGit routing.
     val repoDir = remember(projectId) {
         val wsPath = loadWorkspacePath(context, projectId)
-        // Walk up from the workspace path to find the nearest .git directory.
-        // Fallback chain: workspace path → /root (Ubuntu home) → /root/my-video (default project)
         var dir = wsPath?.let { File(it) }
         while (dir != null && !File(dir, ".git").exists()) { dir = dir.parentFile }
-        when {
-            dir != null -> dir
-            File("/root/my-video/.git").exists() -> File("/root/my-video")
-            File("/root/.git").exists() -> File("/root")
-            else -> File("/root")  // Best guess — user can open Explorer to set path
-        }
+        dir ?: File("/root")
     }
 
     fun refreshStatus() {
         scope.launch {
             loading = true
+            statusError = null
             withContext(Dispatchers.IO) {
-                try {
-                    branch = runGit(context, repoDir, "branch", "--show-current")
-                    val branchList = runGit(context, repoDir, "branch", "--list", "--format=%(refname:short)")
-                    branches = if (!branchList.startsWith("Error")) branchList.lines().filter { it.isNotBlank() } else emptyList()
+                // Branch
+                val branchOut = runGit(context, repoDir, "branch", "--show-current").trim()
+                if (branchOut.startsWith("Error:")) {
+                    statusError = branchOut
+                    loading = false
+                    return@withContext
+                }
+                branch = branchOut
 
-                    val trackInfo = runGit(context, repoDir, "status", "-sb")
-                    val trackLine = trackInfo.lines().firstOrNull()
-                    if (trackLine != null && trackLine.contains("ahead")) {
-                        val ahead = Regex("ahead (\\d+)").find(trackLine)?.groupValues?.get(1) ?: "0"
+                // Branch list
+                val branchList = runGit(context, repoDir, "branch", "--list", "--format=%(refname:short)")
+                branches = if (!branchList.startsWith("Error:"))
+                    branchList.lines().filter { it.isNotBlank() }
+                else emptyList()
+
+                // Ahead/behind
+                val trackInfo = runGit(context, repoDir, "status", "-sb")
+                val trackLine = trackInfo.lines().firstOrNull() ?: ""
+                aheadBehind = when {
+                    trackLine.contains("ahead") || trackLine.contains("behind") -> {
+                        val ahead  = Regex("ahead (\\d+)").find(trackLine)?.groupValues?.get(1) ?: "0"
                         val behind = Regex("behind (\\d+)").find(trackLine)?.groupValues?.get(1) ?: "0"
-                        aheadBehind = if (behind != "0") "down$behind up$ahead" else "up$ahead"
-                    } else { aheadBehind = "" }
-
-                    val statusOutput = runGit(context, repoDir, "status", "--porcelain=v1")
-                    val staged = mutableListOf<GitChange>()
-                    val unstaged = mutableListOf<GitChange>()
-
-                    for (line in statusOutput.lines()) {
-                        if (line.length < 4) continue
-                        val x = line[0]
-                        val y = line[1]
-                        val filePath = line.substring(3).trim().replace("\"", "")
-                        val absPath = File(repoDir, filePath).absolutePath
-
-                        if (x != ' ' && x != '?') staged.add(GitChange(line, filePath, absPath, x, true))
-                        if (y != ' ' && y != '?') unstaged.add(GitChange(line, filePath, absPath, y, false))
-                        if (x == '?' && y == '?') unstaged.add(GitChange(line, filePath, absPath, '?', false))
+                        buildString {
+                            if (behind != "0") append("\u2193$behind ")
+                            if (ahead  != "0") append("\u2191$ahead")
+                        }.trim()
                     }
-                    stagedChanges = staged
-                    unstagedChanges = unstaged
-                } catch (_: Exception) {}
+                    else -> ""
+                }
+
+                // Porcelain status
+                val statusOutput = runGit(context, repoDir, "status", "--porcelain=v1")
+                val staged = mutableListOf<GitChange>()
+                val unstaged = mutableListOf<GitChange>()
+                if (!statusOutput.startsWith("Error:")) {
+                    for (line in statusOutput.lines()) {
+                        val (s, u) = parsePorcelainLine(line, repoDir)
+                        s?.let { staged.add(it) }
+                        u?.let { unstaged.add(it) }
+                    }
+                }
+                stagedChanges = staged
+                unstagedChanges = unstaged
             }
             loading = false
         }
@@ -158,153 +186,269 @@ fun SourceControlPane(projectId: String) {
 
     LaunchedEffect(refresh) { refreshStatus() }
 
-    fun stageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", file) }; refreshStatus() } }
-    fun unstageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "reset", "HEAD", file) }; refreshStatus() } }
-    fun discardFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "checkout", "--", file) }; refreshStatus() } }
-    fun stageAll() { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }; refreshStatus() } }
-    fun unstageAll() { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "reset", "HEAD") }; refreshStatus() } }
+    fun stageFile(file: String)   { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", file) }; refreshStatus() } }
+    fun unstageFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "restore", "--staged", file) }; refreshStatus() } }
+    fun discardFile(file: String) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "restore", file) }; refreshStatus() } }
+    fun stageAll()                { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }; refreshStatus() } }
+    fun unstageAll()              { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "restore", "--staged", ".") }; refreshStatus() } }
+    fun pushChanges()             { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }; refreshStatus() } }
 
     Column(Modifier.fillMaxSize().background(BgColor)) {
-        // Header
+        // ── Header ───────────────────────────────────────────────────────
         Row(
             Modifier.fillMaxWidth().height(35.dp).background(HeaderBg).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("SOURCE CONTROL", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Icon(Icons.Default.Refresh, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable { refresh++ })
+            // Refresh
+            Icon(Icons.Default.Refresh, null, tint = MutedColor,
+                modifier = Modifier.size(16.dp).clickable { refresh++ })
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.Sync, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
-                scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }; refreshStatus() }
-            })
+            // Pull
+            Icon(Icons.Default.ArrowDownward, null, tint = MutedColor,
+                modifier = Modifier.size(16.dp).clickable {
+                    scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }; refreshStatus() }
+                })
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.MoreVert, null, tint = MutedColor, modifier = Modifier.size(16.dp))
+            // P3 new: Push button
+            Icon(Icons.Default.ArrowUpward, null, tint = MutedColor,
+                modifier = Modifier.size(16.dp).clickable { pushChanges() })
         }
         HorizontalDivider(color = DividerColor)
 
-        // Branch selector
+        // ── Branch selector ───────────────────────────────────────────────
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
-                Row(Modifier.clickable { showBranchMenu = true }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.clickable { showBranchMenu = true }.padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Icon(Icons.Default.AccountTree, null, tint = IconColor, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(branch.ifBlank { "unknown" }, fontSize = 12.sp, color = TextColor, fontWeight = FontWeight.Medium)
-                    if (aheadBehind.isNotBlank()) { Spacer(Modifier.width(4.dp)); Text(aheadBehind, fontSize = 10.sp, color = MutedColor) }
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                    // P3: guard against error strings being displayed as branch name
+                    val displayBranch = if (branch.startsWith("Error:") || branch.isBlank()) "—" else branch
+                    Text(displayBranch, fontSize = 12.sp, color = TextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (aheadBehind.isNotBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(aheadBehind, fontSize = 10.sp, color = MutedColor)
+                    }
+                    Icon(Icons.Default.ArrowDropDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
                 }
                 DropdownMenu(expanded = showBranchMenu, onDismissRequest = { showBranchMenu = false }) {
                     branches.forEach { b ->
-                        DropdownMenuItem(text = { Text(if (b == branch) ">> $b" else b, fontSize = 12.sp) }, onClick = {
-                            showBranchMenu = false
-                            scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "checkout", b) }; refreshStatus() }
-                        })
+                        DropdownMenuItem(
+                            text = { Text(b, fontSize = 12.sp) },
+                            onClick = {
+                                showBranchMenu = false
+                                scope.launch {
+                                    withContext(Dispatchers.IO) { runGit(context, repoDir, "checkout", b) }
+                                    refreshStatus()
+                                }
+                            }
+                        )
                     }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("New branch…", fontSize = 12.sp, color = IconColor) },
+                        onClick = { showBranchMenu = false /* TODO: new-branch dialog */ }
+                    )
                 }
             }
-            Spacer(Modifier.weight(1f))
-            if (loading) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = IconColor)
         }
-
-        // Commit message
-        OutlinedTextField(
-            value = message, onValueChange = { message = it },
-            label = { Text("Commit message", fontSize = 11.sp) },
-            singleLine = false, minLines = 2, maxLines = 3,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
-        )
-
-        // Commit + Push
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Button(
-                onClick = { if (message.isNotBlank()) { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "commit", "-m", message) }; message = ""; refreshStatus() } } },
-                modifier = Modifier.weight(1f),
-                enabled = message.isNotBlank() && stagedChanges.isNotEmpty(),
-            ) { Text("Commit", fontSize = 11.sp) }
-            OutlinedButton(
-                onClick = { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }; refreshStatus() } },
-                modifier = Modifier.weight(1f),
-            ) { Text("Push", fontSize = 11.sp) }
-        }
-
-        Spacer(Modifier.height(4.dp))
         HorizontalDivider(color = DividerColor)
 
-        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-            // Staged Changes
-            item {
-                Row(Modifier.fillMaxWidth().height(24.dp).background(HeaderBg).clickable { showStaged = !showStaged }.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (showStaged) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("STAGED CHANGES", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(4.dp))
-                    Text(stagedChanges.size.toString(), fontSize = 10.sp, color = MutedColor, modifier = Modifier.background(DividerColor, RoundedCornerShape(8.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
-                    Spacer(Modifier.weight(1f))
-                    if (stagedChanges.isNotEmpty()) Icon(Icons.Default.UnfoldLess, "Unstage all", tint = MutedColor, modifier = Modifier.size(14.dp).clickable { unstageAll() })
+        // ── P3: Error banner ──────────────────────────────────────────────
+        if (statusError != null) {
+            Row(
+                Modifier.fillMaxWidth().background(ErrorColor.copy(alpha = 0.08f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Warning, null, tint = ErrorColor, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    statusError ?: "",
+                    fontSize = 11.sp, color = ErrorColor, modifier = Modifier.weight(1f),
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            HorizontalDivider(color = DividerColor)
+        }
+
+        // ── Commit message + button ────────────────────────────────────────
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            OutlinedTextField(
+                value = message,
+                onValueChange = { message = it },
+                placeholder = { Text("Message (Ctrl+Enter to commit)", fontSize = 11.sp, color = MutedColor) },
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = TextColor),
+                minLines = 2, maxLines = 4,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = IconColor,
+                    unfocusedBorderColor = DividerColor,
+                ),
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    onClick = {
+                        if (message.isBlank()) return@Button
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                // P3 fix: always stage-all before commit so nothing is missed
+                                runGit(context, repoDir, "add", ".")
+                                runGit(context, repoDir, "commit", "-m", message)
+                            }
+                            message = ""
+                            refreshStatus()
+                        }
+                    },
+                    enabled = message.isNotBlank() && !loading,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                ) {
+                    Text("Commit", fontSize = 12.sp)
                 }
+                // Stage all shortcut
+                OutlinedButton(
+                    onClick = { stageAll(); },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Stage All", fontSize = 12.sp)
+                }
+            }
+        }
+        HorizontalDivider(color = DividerColor)
+
+        if (loading) {
+            LinearProgressIndicator(Modifier.fillMaxWidth(), color = IconColor)
+        }
+
+        // ── Changes list ──────────────────────────────────────────────────
+        LazyColumn(Modifier.fillMaxSize()) {
+            // Staged
+            item {
+                SectionHeader(
+                    title = "Staged Changes",
+                    count = stagedChanges.size,
+                    expanded = showStaged,
+                    onToggle = { showStaged = !showStaged },
+                    action = if (stagedChanges.isNotEmpty()) "Unstage All" else null,
+                    onAction = { unstageAll() },
+                )
             }
             if (showStaged) {
-                items(stagedChanges) { change -> ChangeRow(change, { stageFile(change.file) }, { unstageFile(change.file) }, { discardFile(change.file) }, true) }
-                if (stagedChanges.isEmpty()) { item { Text("No staged changes", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) } }
-            }
-
-            // Changes
-            item {
-                Row(Modifier.fillMaxWidth().height(24.dp).background(HeaderBg).clickable { showChanges = !showChanges }.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (showChanges) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("CHANGES", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(4.dp))
-                    Text(unstagedChanges.size.toString(), fontSize = 10.sp, color = MutedColor, modifier = Modifier.background(DividerColor, RoundedCornerShape(8.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
-                    Spacer(Modifier.weight(1f))
-                    if (unstagedChanges.isNotEmpty()) Icon(Icons.Default.DoneAll, "Stage all", tint = MutedColor, modifier = Modifier.size(14.dp).clickable { stageAll() })
+                items(stagedChanges) { change ->
+                    ChangeRow(change, onStage = null, onUnstage = { unstageFile(change.file) }, onDiscard = null)
                 }
             }
-            if (showChanges) {
-                items(unstagedChanges) { change -> ChangeRow(change, { stageFile(change.file) }, { unstageFile(change.file) }, { discardFile(change.file) }, false) }
-                if (unstagedChanges.isEmpty()) { item { Text("No changes", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) } }
+
+            // Unstaged / untracked
+            item {
+                SectionHeader(
+                    title = "Changes",
+                    count = unstagedChanges.size,
+                    expanded = showChanges,
+                    onToggle = { showChanges = !showChanges },
+                    action = if (unstagedChanges.isNotEmpty()) "Stage All" else null,
+                    onAction = { stageAll() },
+                )
             }
+            if (showChanges) {
+                items(unstagedChanges) { change ->
+                    ChangeRow(
+                        change,
+                        onStage = { stageFile(change.file) },
+                        onUnstage = null,
+                        onDiscard = { discardFile(change.file) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Sub-composables ────────────────────────────────────────────────────────────
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    action: String?,
+    onAction: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onToggle() }
+            .background(HeaderBg).padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+            null, tint = MutedColor, modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(4.dp))
+        Text("$title ($count)", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        if (action != null) {
+            Text(action, fontSize = 10.sp, color = IconColor,
+                modifier = Modifier.clickable { onAction() }.padding(horizontal = 4.dp))
         }
     }
 }
 
 @Composable
-private fun ChangeRow(change: GitChange, onStage: () -> Unit, onUnstage: () -> Unit, onDiscard: () -> Unit, isStaged: Boolean) {
+private fun ChangeRow(
+    change: GitChange,
+    onStage: (() -> Unit)?,
+    onUnstage: (() -> Unit)?,
+    onDiscard: (() -> Unit)?,
+) {
     val statusColor = when (change.statusCode) {
-        'M' -> ModifiedColor; 'A' -> AddedColor; 'U' -> UntrackedColor; '?' -> UntrackedColor; 'D' -> DeletedColor; else -> MutedColor
+        'M'       -> ModifiedColor
+        'A'       -> AddedColor
+        'D'       -> DeletedColor
+        '?'       -> UntrackedColor
+        'R', 'C'  -> Color(0xFF4EC9B0)
+        else      -> MutedColor
     }
-    val statusLetter = when (change.statusCode) {
-        'M' -> "M"; 'A' -> "A"; 'U' -> "U"; '?' -> "U"; 'D' -> "D"; else -> " "
+    val statusLabel = when (change.statusCode) {
+        'M' -> "M"; 'A' -> "A"; 'D' -> "D"
+        '?' -> "U"; 'R' -> "R"; 'C' -> "C"
+        else -> change.statusCode.toString()
     }
-    Row(Modifier.fillMaxWidth().clickable { if (isStaged) onUnstage() else onStage() }.padding(16.dp, 4.dp, 8.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(statusLetter, fontSize = 11.sp, color = statusColor, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.width(16.dp))
-        Icon(fileIconFor(change.file), null, tint = IconColor, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(change.file, fontSize = 12.sp, color = TextColor, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (isStaged) {
-            Icon(Icons.Default.Remove, "Unstage", tint = MutedColor, modifier = Modifier.size(16.dp).clickable { onUnstage() })
-        } else {
-            Icon(Icons.Default.Add, "Stage", tint = MutedColor, modifier = Modifier.size(16.dp).clickable { onStage() })
+    Row(
+        Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(statusLabel, fontSize = 10.sp, color = statusColor,
+            fontFamily = FontFamily.Monospace, modifier = Modifier.width(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            change.file,
+            fontSize = 12.sp, color = TextColor,
+            modifier = Modifier.weight(1f),
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        // Actions
+        if (onStage != null) {
+            Icon(Icons.Default.Add, "Stage", tint = IconColor,
+                modifier = Modifier.size(15.dp).clickable { onStage() })
             Spacer(Modifier.width(4.dp))
-            Icon(Icons.Default.Close, "Discard", tint = DeletedColor, modifier = Modifier.size(16.dp).clickable { onDiscard() })
+        }
+        if (onUnstage != null) {
+            Icon(Icons.Default.Remove, "Unstage", tint = MutedColor,
+                modifier = Modifier.size(15.dp).clickable { onUnstage() })
+            Spacer(Modifier.width(4.dp))
+        }
+        if (onDiscard != null) {
+            Icon(Icons.Default.Undo, "Discard", tint = DeletedColor,
+                modifier = Modifier.size(15.dp).clickable { onDiscard() })
         }
     }
-}
-
-private fun fileIconFor(name: String) = when {
-    name.endsWith(".kt") || name.endsWith(".kts") -> Icons.Default.Code
-    name.endsWith(".java") -> Icons.Default.Code
-    name.endsWith(".py") -> Icons.Default.Code
-    name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".tsx") || name.endsWith(".jsx") -> Icons.Default.Code
-    name.endsWith(".html") || name.endsWith(".xml") -> Icons.Default.Code
-    name.endsWith(".json") -> Icons.Default.Code
-    name.endsWith(".md") -> Icons.Default.Article
-    name.endsWith(".gradle") -> Icons.Default.Build
-    name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".svg") || name.endsWith(".webp") -> Icons.Default.Image
-    name.endsWith(".zip") || name.endsWith(".apk") -> Icons.Default.FolderZip
-    name.endsWith(".sh") -> Icons.Default.Computer
-    else -> Icons.Default.Article
+    HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
 }

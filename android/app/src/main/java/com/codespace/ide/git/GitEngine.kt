@@ -8,6 +8,7 @@ import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.lib.PersonIdent
+import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.transport.CredentialsProvider
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import java.io.File
@@ -18,6 +19,10 @@ import javax.inject.Singleton
  * On-device Git built on JGit. Supports the full local workflow plus authenticated
  * remote operations. For a GitHub HTTPS remote, pass a personal access token (or the
  * OAuth token brokered by the backend) as the password with username "x-access-token".
+ *
+ * P3 fixes (Phase 3 audit):
+ *   - Remove dead `tracking` variable; compute real ahead/behind via rev-walk
+ *   - diff() now accepts an optional file-path filter so callers get per-file diffs
  */
 @Singleton
 class GitEngine @Inject constructor() {
@@ -39,11 +44,31 @@ class GitEngine @Inject constructor() {
         Git.open(repoDir).use { git ->
             val status = git.status().call()
             val branch = git.repository.branch
-            val tracking = git.repository.config
+
+            // Real ahead/behind via rev-walk against @{upstream}
+            var ahead = 0; var behind = 0
+            try {
+                val repo = git.repository
+                val headId = repo.resolve("HEAD")
+                val upstreamId = repo.resolve("@{upstream}")
+                if (headId != null && upstreamId != null) {
+                    RevWalk(repo).use { rw ->
+                        rw.markStart(rw.parseCommit(headId))
+                        rw.markUninteresting(rw.parseCommit(upstreamId))
+                        ahead = rw.count()
+                    }
+                    RevWalk(repo).use { rw ->
+                        rw.markStart(rw.parseCommit(upstreamId))
+                        rw.markUninteresting(rw.parseCommit(headId))
+                        behind = rw.count()
+                    }
+                }
+            } catch (_: Exception) { /* no upstream configured — leave 0/0 */ }
+
             GitStatus(
                 branch = branch,
-                ahead = 0,
-                behind = 0,
+                ahead = ahead,
+                behind = behind,
                 staged = (status.added + status.changed + status.removed).toList(),
                 modified = status.modified.toList(),
                 untracked = status.untracked.toList(),
@@ -110,11 +135,18 @@ class GitEngine @Inject constructor() {
         }
     }
 
-    /** Unified diff for a single file against HEAD (used by the diff viewer). */
-    suspend fun diff(repoDir: File): AppResult<String> = io {
+    /**
+     * Unified diff for the whole repo or a single [filePath] against HEAD.
+     * Pass [filePath] (repo-relative, e.g. "src/main/Foo.kt") to scope to one file.
+     */
+    suspend fun diff(repoDir: File, filePath: String? = null): AppResult<String> = io {
         Git.open(repoDir).use { git ->
             val out = java.io.ByteArrayOutputStream()
-            git.diff().setOutputStream(out).call()
+            val cmd = git.diff().setOutputStream(out)
+            if (filePath != null) cmd.setPathFilter(
+                org.eclipse.jgit.treewalk.filter.PathFilter.create(filePath)
+            )
+            cmd.call()
             out.toString("UTF-8")
         }
     }
