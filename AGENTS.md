@@ -602,7 +602,7 @@ Status as of 2026-07-13:
 
 ### Phase 2 TODO (ordered)
 
-**Latest green build: #1056. Repo is clean — safe to implement.**
+**Latest green build: #1060. Repo is clean — safe to implement.**
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
@@ -617,7 +617,7 @@ Status as of 2026-07-13:
 | P2-9 | Code bookmarks | **DONE** | Gutter ◆ dot toggle per line. Bookmark panel (◆ toolbar button) lists all bookmarks across open files with file:line + content preview. Tap to jump. |
 | P2-10 | Jump back/forward history | **DONE** | `NavEntry` stack (100-deep). ← → buttons in editor toolbar. Triggered on Explorer open, Search jump, tab click. Forward stack clears on new jump. |
 | P2-11 | Inlay hints | **DONE** | `InlayHintAnalyzer.kt` (new, regex-based, no AST) — type/return/param labels rendered as overlay in `CodeEditor.kt`. Toolbar ⊕ toggle in `ProjectShellScreen.kt` (not persisted, matches wordWrap's existing convention). commits 85703210 (#1055 green), 685b63bc (#1056 green, fixed dead/broken VAL_CHAR regex). |
-| P2-12 | Parameter hints / signature help | **NEXT** | |
+| P2-12 | Parameter hints / signature help | **DONE** | `SignatureHelpAnalyzer.kt` (new) — curated sig DB (60+ fns, 6 languages) + backward paren/comma scanner. Popup rendered one line above cursor; active param bolded teal; hides when autocomplete dropdown is open. commits 96c07db8, 667b5fa1(fail→withStyle missing import), 5d2cfe51 (#1060 green). |
 
 ### Phase 2 Session Log
 | Date | Done |
@@ -631,6 +631,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-8 Breadcrumb navigation — breadcrumb bar is now horizontally scrollable with clickable ancestor segments. Tap a segment → Explorer opens + tree auto-expands/scrolls to that dir via `navigateToDir` + `treeListState`. |
 | 2026-07-13 | Shipped P2-9 Code Bookmarks — gutter ◆ dot toggles bookmark per line; toolbar ◆ button opens panel listing all bookmarks (file+line+preview); tap to jump to file+line. `fileBookmarks` map in EditorPane. |
 | 2026-07-13 | Shipped P2-10 Jump back/forward history — `NavEntry(path, line)` back/fwd stacks, ← → toolbar buttons, push on Explorer open / Search jump / tab click. |
+| 2026-07-13 | Shipped P2-12 Parameter hints / signature help — new `SignatureHelpAnalyzer.kt`, backward paren+comma scanner, floating popup 1 line above cursor with active param teal+bold, hides while autocomplete open. Build #1059 failed (missing `withStyle` import — extension fn needs explicit import even when `buildAnnotatedString` is imported). Fixed in #1060 (green). |
 | 2026-07-13 | Shipped P2-11 Inlay Hints — new `InlayHintAnalyzer.kt`, regex-based (no AST), type/return/param label overlay in `CodeEditor.kt`, toolbar ⊕ toggle. Picked up mid-session after a prior AI ran out of tokens right after triggering build #1055 (it landed GREEN). Found and fixed a real bug left behind: `VAL_CHAR` regex had a missing `\\s` escape (`'.'s*$` instead of `'.'\\s*$`) so it could never match, AND it was never referenced in the type-hint `when` block at all — char literals (`val c = 'a'`) silently got no hint. Fixed both in #1056 (green). |
 
 ---
@@ -801,15 +802,174 @@ Design principles:
 
 ---
 
-## PHASE 11 — ANDROID DEVELOPMENT TOOLS (Long term)
+## PHASE 11 — ANDROID BUILD ENVIRONMENT VALIDATION & MANAGEMENT
 
-Only if not already present:
-- ADB bridge via terminal (`adb` in Termux bootstrap — check if already included)
-- Device detection — `adb devices` output parsed into a device picker
-- Logcat viewer (structured, filterable — separate from raw terminal)
-- APK build trigger — runs Gradle via terminal, surfaces output in Build panel
-- APK signing — keytool + jarsigner or apksigner via terminal
-- APK install — `adb install` with progress
+**Before implementing:** Audit existing Android functionality, package management, Ubuntu integration,
+and build systems. Reuse and improve before duplicating.
+
+**Goal:** Ensure the IDE can reliably build Android applications and that the required development
+environment is properly configured and repairable from within the IDE.
+
+### 11-A — Environment Validation
+
+Automatically detect and validate:
+
+- JDK (version, path, JAVA_HOME)
+- Gradle (version, wrapper vs system)
+- Android SDK (ANDROID_HOME, license acceptance)
+- Android Platform Tools (adb, fastboot)
+- Android Build Tools (aapt, aapt2, zipalign, apksigner)
+
+Detect: missing tools · broken installations · invalid paths · corrupted SDK components ·
+missing permissions · incomplete environments
+
+### 11-B — Environment Status Center
+
+Centralized status screen showing:
+
+- Installed tools + versions
+- Missing / broken components
+- Overall environment health
+- Recommended fixes with one-tap repair where possible
+
+### 11-C — Automatic Tool Detection
+
+Search for existing SDKs, JDKs, Gradle installs, build tools, and Ubuntu packages.
+**Reuse detected installations** — do not download if already present.
+
+### 11-D — Installation & Repair Management
+
+Workflows for: JDK · Gradle · Android SDK · Platform Tools · Build Tools
+
+Requirements:
+- Verify downloads (checksum)
+- Verify installations after completion
+- Progress reporting in Build panel (no blocking UI)
+- Failure reporting with actionable messages
+- Support updates and repairs
+
+### 11-E — Build Environment Health Check
+
+Validate: tool availability · version compatibility · env variables · SDK config ·
+build tool compatibility · package integrity. Generate clear health report.
+
+### 11-F — Build Diagnostics
+
+Detect: missing dependencies · missing SDK packages · invalid configs · common Android
+build failures. Surface actionable solutions, not raw Gradle stderr.
+
+### 11-G — Project Build Validation
+
+Pre-build checks: project config · required SDK versions · dependencies · build requirements ·
+signing config. Warn users BEFORE execution, not during.
+
+### 11-H — Build Execution
+
+Support: debug builds · release builds · APK generation · APK signing
+
+Requirements: progress reporting · build logs in Build panel · error reporting ·
+build summaries · build result (success/fail + APK path)
+
+### 11-I — Performance
+
+- All validation/install runs off the UI thread (WorkManager / coroutines)
+- Avoid blocking editor or terminal
+- Support large projects
+- Minimal memory footprint
+
+### Implementation Policy
+
+1. Verify before implementing
+2. Repair before replacing
+3. Reuse before duplicating
+4. Improve existing systems where possible
+5. Prioritize reliability and build success
+6. Ensure compatibility with Ubuntu proot environment
+7. Android project builds must be practical and dependable
+
+**Success Criteria:** User opens Android project → validates environment → identifies missing
+requirements → installs/repairs → successfully builds a signed APK — all from within the IDE.
+
+---
+
+## PHASE 12 — PROJECT SETUP, TOOLCHAIN MANAGEMENT, BUILD HISTORY & TASK RUNNER
+
+**Before implementing:** Audit existing project creation, build, package management, environment
+management, and download systems. Reuse and improve before duplicating.
+
+### 12-A — Project Wizard
+
+Guided project creation workflow:
+
+- Create New Project
+- Project Configuration Wizard with validation
+- Project naming + location selection
+
+Supported project types:
+- Android App · Flutter App · React Native App · Web App · Node.js Project · Python Project · Empty Project
+
+Requirements: simple workflow · minimal input · fast setup · clear validation messages
+
+### 12-B — Project Templates
+
+Per-type templates with correct structure, starter files, and recommended configs.
+Support future template expansion via manifest-driven approach.
+
+### 12-C — Toolchain Manager
+
+Centralized management for:
+JDK · Gradle · Android SDK · Android Build Tools · Platform Tools ·
+Flutter SDK · Dart SDK · Node.js · npm · Yarn · Python
+
+Features: tool detection · version detection · install status · update management ·
+repair workflows · missing tool detection. Clear status reporting.
+
+### 12-D — Download Center
+
+Centralized download tracking for SDKs, tools, packages, extensions, updates.
+
+Features: download progress · download history · failure reporting · retry support
+
+### 12-E — Build History
+
+Track: build date/time · duration · type · status · logs · generated artifacts
+
+Features: search history · filter · view logs · export logs
+
+### 12-F — Build Artifact Manager
+
+Manage: APK files · AAB files · build outputs · exported packages
+
+Features: artifact history · open · share · delete · artifact info
+
+### 12-G — Task Runner
+
+Reusable one-tap tasks: Build APK · Build Release · Clean Project · Install APK ·
+Update Dependencies · Run Tests · Generate Artifacts
+
+Requirements: one-tap execution · progress reporting · log viewing ·
+failure reporting · task history
+
+### 12-H — Environment Profiles
+
+Profiles: Android Development · Flutter Development · Web Development ·
+Python Development · Node.js Development
+
+Features: profile switching · profile-specific config · tool recommendations ·
+environment validation
+
+### Implementation Policy
+
+1. Verify before implementing — audit first
+2. Repair before replacing
+3. Reuse before duplicating
+4. Prioritize simplicity
+5. Maintain Android performance
+6. Maintain Ubuntu proot compatibility
+7. Reliability and usability above feature count
+
+**Goal:** Complete project creation, environment management, build management, and task execution
+suitable for professional development on Android.
 
 ---
 
