@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -331,6 +332,13 @@ fun CodeEditor(
     var useRegex by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
 
+    // ── Lint state ───────────────────────────────────────────────────────
+    var lintErrors by remember { mutableStateOf<List<LintError>>(emptyList()) }
+    LaunchedEffect(value.text, language) {
+        kotlinx.coroutines.delay(500)   // debounce — only lint after 500 ms idle
+        lintErrors = LintAnalyzer.analyze(value.text, language)
+    }
+
     // ── Multi-cursor state ───────────────────────────────────────────────
     var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
 
@@ -564,7 +572,7 @@ fun CodeEditor(
                             fontFamily = FontFamily.Monospace,
                         )
                     ),
-                    visualTransformation = SyntaxTransformation(language, colors),
+                    visualTransformation = SyntaxTransformation(language, colors, lintErrors),
                     modifier = Modifier.padding(end = 24.dp),
                 )
             }
