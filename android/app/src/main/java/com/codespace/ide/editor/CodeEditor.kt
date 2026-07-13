@@ -2,7 +2,9 @@ package com.codespace.ide.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,12 +14,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -205,6 +214,7 @@ private fun currentWord(text: String, cursor: Int): String {
     return text.substring(start, end)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CodeEditor(
     content: String,
@@ -299,6 +309,11 @@ fun CodeEditor(
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     LaunchedEffect(prefix) { showCompletions = prefix.length >= 2 && completions.isNotEmpty() }
+
+    // ── Rename Symbol state ────────────────────────────────────────────────
+    var renameDialogWord by remember { mutableStateOf<String?>(null) }  // null = closed
+    var renameNewName by remember { mutableStateOf("") }
+    var renameCount by remember { mutableStateOf(0) }
 
     // Bracket matching
     val bracketMatch = remember(value) {
@@ -422,7 +437,23 @@ fun CodeEditor(
                 }
             }
             // Editor surface
-            Box(modifier = if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll)) {
+            Box(
+                modifier = (if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll))
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            // Long-press → Rename Symbol: extract word at cursor
+                            val cursor = value.selection.end
+                            val word = currentWord(value.text, cursor)
+                            if (word.length >= 2) {
+                                renameNewName = word
+                                val pattern = Regex("""\b${Regex.escape(word)}\b""")
+                                renameCount = pattern.findAll(value.text).count()
+                                renameDialogWord = word
+                            }
+                        }
+                    )
+            ) {
                 BasicTextField(
                     value = value,
                     onValueChange = { newValue ->
@@ -523,6 +554,74 @@ fun CodeEditor(
                 Box(Modifier.width(1.dp).fillMaxHeight().background(colors.gutter.copy(alpha = 0.15f)))
                 Spacer(Modifier.width(11.dp))
             }
+        }
+
+        // ── Rename Symbol Dialog ──────────────────────────────────────────────
+        if (renameDialogWord != null) {
+            val wordToRename = renameDialogWord!!
+            AlertDialog(
+                onDismissRequest = { renameDialogWord = null },
+                containerColor = Color(0xFF252526),
+                title = {
+                    Text(
+                        "Rename Symbol",
+                        color = Color(0xFFD4D4D4),
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "$renameCount occurrence${if (renameCount != 1) "s" else ""} of "$wordToRename"",
+                            color = Color(0xFF888888),
+                            fontSize = 11.sp,
+                        )
+                        OutlinedTextField(
+                            value = renameNewName,
+                            onValueChange = { renameNewName = it },
+                            singleLine = true,
+                            label = { Text("New name", color = Color(0xFF888888), fontSize = 11.sp) },
+                            textStyle = TextStyle(
+                                color = Color(0xFFD4D4D4),
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF007ACC),
+                                unfocusedBorderColor = Color(0xFF3C3C3C),
+                                cursorColor = Color(0xFF007ACC),
+                            ),
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val newName = renameNewName.trim()
+                            if (newName.isNotEmpty() && newName != wordToRename) {
+                                val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
+                                val newText = pattern.replace(value.text, newName)
+                                value = TextFieldValue(
+                                    text = newText,
+                                    selection = value.selection,
+                                )
+                                onContentChange(newText)
+                            }
+                            renameDialogWord = null
+                        },
+                        enabled = renameNewName.trim().isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)),
+                    ) {
+                        Text("Rename", color = Color(0xFFFFFFFF), fontSize = 12.sp)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renameDialogWord = null }) {
+                        Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
+                    }
+                },
+            )
         }
 
         // IntelliSense dropdown
