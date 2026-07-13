@@ -179,6 +179,8 @@ fun ExplorerSidePanel(
     onCloseTab: ((String) -> Unit)? = null,
     // fix/feature 2026-07-08: "Generate Image with AI Here" needs the user's Gemini key.
     tokenStore: com.codespace.ide.data.SecureTokenStore? = null,
+    /** Breadcrumb navigation: when set, auto-expand and scroll to this directory path. */
+    navigateToDir: String? = null,
 ) {
     val context = LocalContext.current
     // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
@@ -224,6 +226,38 @@ fun ExplorerSidePanel(
     }
 
     val expanded      = remember { mutableStateMapOf<String, Boolean>() }
+    val treeListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    // Breadcrumb navigation: when navigateToDir changes, expand all ancestor dirs
+    // and scroll the tree to the target directory.
+    LaunchedEffect(navigateToDir) {
+        val targetPath = navigateToDir ?: return@LaunchedEffect
+        // Build ancestry chain and expand each ancestor
+        var dir = java.io.File(targetPath)
+        while (dir.parent != null) {
+            expanded[dir.absolutePath] = true
+            dir = dir.parentFile ?: break
+        }
+        // Give the tree a frame to recompose, then scroll to the target item
+        kotlinx.coroutines.delay(100)
+        // nodes is recomputed from expanded — find the index of the target
+        // We can't reference `nodes` here (it's computed below), so we do a
+        // best-effort scroll by counting visible dirs above the target.
+        val workspaceRoot = workspacePath?.let { java.io.File(it) } ?: return@LaunchedEffect
+        var idx = 0
+        fun walk(f: java.io.File, depth: Int) {
+            idx++
+            if (f.absolutePath == targetPath) return
+            if (expanded[f.absolutePath] == true && f.isDirectory) {
+                f.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                    ?.forEach { child -> walk(child, depth + 1) }
+            }
+        }
+        workspaceRoot.listFiles()
+            ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            ?.forEach { walk(it, 0) }
+        treeListState.animateScrollToItem(idx.coerceAtLeast(0))
+    }
     var selected      by remember { mutableStateOf<String?>(null) }
     var contextFile   by remember { mutableStateOf<File?>(null) }
     var showCtxMenu   by remember { mutableStateOf(false) }
@@ -761,7 +795,7 @@ fun ExplorerSidePanel(
                 HorizontalDivider(color = DividerColor, thickness = 1.dp)
             }
 
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize(), state = treeListState) {
                 items(nodes) { node ->
                     val isSelected = selected == node.file.absolutePath
                     // Image preview state for this node

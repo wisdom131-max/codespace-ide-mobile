@@ -785,6 +785,8 @@ fun ProjectShellScreen(
                                     if (activeEditorTab == tabPath) activeEditorTab = editorTabs.lastOrNull()
                                 },
                                 tokenStore = tokenStore,
+                            
+                                navigateToDir = breadcrumbNavDir,
                             )
                             SidePanel.SEARCH     -> SearchPanel(
                                 projectId = projectId,
