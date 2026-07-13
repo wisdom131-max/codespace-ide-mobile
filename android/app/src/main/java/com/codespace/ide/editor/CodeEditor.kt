@@ -331,6 +331,9 @@ fun CodeEditor(
     var useRegex by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
 
+    // ── Multi-cursor state ───────────────────────────────────────────────
+    var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
+
     // ── Go to Line state ─────────────────────────────────────────────────
     var goToLineInput by remember { mutableStateOf("") }
 
@@ -481,6 +484,14 @@ fun CodeEditor(
                                 renameCount = pattern.findAll(value.text).count()
                                 renameDialogWord = word
                             }
+                        },
+                        onDoubleClick = {
+                            // Double-tap → toggle extra cursor at this position
+                            val cursor = value.selection.end
+                            extraCursors = if (cursor in extraCursors)
+                                extraCursors.filter { it != cursor }
+                            else
+                                (extraCursors + cursor).distinct().sorted()
                         }
                     )
             ) {
@@ -512,6 +523,37 @@ fun CodeEditor(
                             }
                         }
                         
+                        // Multi-cursor fan-out: replay same edit at each extra cursor
+                        if (extraCursors.isNotEmpty()) {
+                            val delta = updatedValue.text.length - value.text.length
+                            if (delta != 0) {
+                                val primaryAt = value.selection.start
+                                val inserted = if (delta > 0) updatedValue.text.substring(primaryAt, primaryAt + delta) else ""
+                                val deletedLen = if (delta < 0) -delta else 0
+                                var composed = updatedValue.text
+                                var shift = 0
+                                val newExtras = mutableListOf<Int>()
+                                for (ec in extraCursors.sorted()) {
+                                    val pos = (ec + shift).coerceIn(0, composed.length)
+                                    if (delta > 0) {
+                                        composed = composed.substring(0, pos) + inserted + composed.substring(pos)
+                                        shift += inserted.length
+                                        newExtras.add(pos + inserted.length)
+                                    } else {
+                                        val from = (pos - deletedLen).coerceAtLeast(0)
+                                        val to = pos.coerceAtMost(composed.length)
+                                        if (from < to) {
+                                            composed = composed.substring(0, from) + composed.substring(to)
+                                            shift -= (to - from)
+                                            newExtras.add(from)
+                                        } else newExtras.add(from)
+                                    }
+                                }
+                                extraCursors = newExtras
+                                updatedValue = updatedValue.copy(text = composed)
+                            }
+                        }
+
                         value = updatedValue
                         onContentChange(updatedValue.text)
                     },
@@ -525,6 +567,21 @@ fun CodeEditor(
                     visualTransformation = SyntaxTransformation(language, colors),
                     modifier = Modifier.padding(end = 24.dp),
                 )
+            }
+        }
+
+        // Extra-cursor clear chip
+        if (extraCursors.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 64.dp, top = 4.dp)
+                    .background(Color(0xFF007ACC), RoundedCornerShape(3.dp))
+                    .clickable { extraCursors = emptyList() }
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .zIndex(10f),
+            ) {
+                Text("${extraCursors.size}× ✕", color = Color(0xFFFFFFFF), fontSize = 10.sp)
             }
         }
 
