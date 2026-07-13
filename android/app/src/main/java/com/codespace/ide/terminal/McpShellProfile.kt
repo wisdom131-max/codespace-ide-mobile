@@ -117,7 +117,7 @@ object McpShellProfile {
         appendLine("agent_session_save() {")
         appendLine("  local _title=\"\${'\$'}{1:-Terminal session}\"")
         appendLine("  local _content=\"\${'\$'}{2:-}\"")
-        appendLine("  agent save_terminal_session \"{\\\"title\\\":\\\"$_title\\\",\\\"content\\\":\\\"$_content\\\",\\\"mode\\\":\\\"TERMINAL\\\"}\"")
+        appendLine("  agent save_terminal_session \"{\\"title\\":\\"${'$'}_title\\",\\"content\\":\\"${'$'}_content\\",\\"mode\\":\\"TERMINAL\\"}\"")
         appendLine("}")
         appendLine("")
         appendLine("# ── Shell & File shorthands ───────────────────────────────────────")
