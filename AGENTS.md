@@ -3936,3 +3936,54 @@ NotificationDrawerOverlay.kt currently has unclear purpose. Make it the app's un
 - Priority order: #5 (biometric bypass) → #3 (source control) → #1 (file explorer) → #6 (Remotion) → #4 (connectors) → #7 (notifications) → #2 (AI handnote) → #8 (dead code cleanup)
 
 ---
+
+
+## Session — 2026-07-13 (Full Backlog Sweep)
+
+### ✅ APK Update Fix (no more forced uninstalls)
+- CI workflow (`android-build.yml`) now **always** builds `assembleProdDebug` with the committed `debug.keystore`
+- Removed the conditional release/debug signing split — one keystore, one signature for all builds
+- `versionCode` already auto-increments via `git rev-list --count HEAD`
+- Result: Android sees same signature + higher versionCode → accepts as a direct upgrade
+
+### ✅ File Viewers
+- `SqliteViewerDialog.kt` + `HexViewerDialog.kt` added to panes (were only in sandbox)
+- `ExplorerPane.kt`: SQLite files (`.db/.sqlite/.sqlite3`) route to `SqliteViewerDialog` before falling through to hex
+- `ExplorerPane.kt`: `HexViewerDialog` call fixed to pass `File` object
+
+### ✅ Biometric Lockout Fix
+- `CodeSpaceApp.kt`: on launch, auto-bypasses gate if `canAuthenticate()` ≠ `BIOMETRIC_SUCCESS`
+- On fatal auth error (`ERROR_NO_BIOMETRICS`, `ERROR_HW_NOT_PRESENT`, `ERROR_LOCKOUT_PERMANENT`): auto-unlocks + shows toast + note to re-enable in settings
+
+### ✅ Source Control Path
+- `SourceControlPane.kt`: fallback chain: `wsPath` → `/root/my-video` → `/root` (was `/storage/emulated/0`)
+
+### ✅ Remotion Integration (Option C)
+- `ProotInstaller.kt`: writes `~/setup-remotion.sh` to Ubuntu rootfs on every install (NVM + Node 20 + headless deps + starter project + launches on `:3000`)
+- `TerminalPane.kt`: "▶ Remotion" Quick Action chip added — one tap runs the script
+
+### ✅ CODEBASE_MAP.md
+- `ProotInstaller.kt`: writes `~/CODEBASE_MAP.md` into Ubuntu rootfs with full map of all Kotlin files, dead code markers, backend URL, and key container paths
+- Any AI tool (Claude Code, Ollama) inside the container now has full project context
+
+### ✅ Connectors OAuth WebView
+- `ConnectorsHubSheet.kt`: OAuth now opens in a full-screen in-app WebView dialog
+- WebView intercepts the Railway callback URL and auto-closes, then refreshes status list
+- Was: opened system browser (callback URL never returned to app)
+
+### ✅ Global Notification System
+- New `NotificationStore.kt` (singleton, Compose-observable `mutableStateListOf`)
+- `BackupManager.kt`: fires `BACKUP` notifications on create/restore complete
+- `ProotInstaller.kt`: fires `UBUNTU_STATUS` notification when rootfs is ready
+- `NotificationDrawerOverlay.kt`: reads global store, unread badge, relative timestamps, tap-to-dismiss, title+body layout, per-type icons
+
+### ✅ Dead Code Labelled
+- `TermuxBootstrapInstaller.kt`, `BusyboxInstaller.kt`, `CopilotChatPanelOverlay.kt`, `AgentConnectorManager.kt` — all have `⚠️ DEAD CODE` headers
+
+### 🔲 Still Open
+- `#8` App-wide non-scrollable long-press menus (needs audit of ~8 files, deferred)
+- GitHub Browse Repos OAuth (separate from Device Flow — needs full auth code flow + DB table)
+- Terminal cross-project session isolation (PTY scoped per project, not global)
+- AI package bridging (Ubuntu packages not visible to AI tools running in native Android context)
+- WebView file upload chooser (`onShowFileChooser` not implemented in `WebChromeClient`)
+
