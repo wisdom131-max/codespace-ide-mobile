@@ -374,3 +374,41 @@ Built `RepoBrowserSheet.kt` (`ui/sheets/`) and wired it into `HomeScreen.kt`.
 - #12 Terminal cross-project state bleed: DONE (TrackedSession scoping, prev session)
 - #13 AI package access bridging: DONE (ProotInstaller.execOnce routing, prev session)
 - #11 GitHub OAuth repo browsing: DONE (RepoBrowserSheet.kt, this session)
+
+---
+
+## 2026-07-13 (later) — Fixed build break from previous session's auto-open feature
+
+The previous session's commits (3b28c50, 1d83e70 — "auto-open written files" +
+"wire onOpenFile/onSwitchToPreview callbacks") broke CI:
+
+```
+CopilotChatPanelOverlay.kt:526:106 Unresolved reference: onOpenFile
+CopilotChatPanelOverlay.kt:526:118 Unresolved reference: onSwitchToPreview
+```
+
+Root cause: `chat()` (the private suspend fn) was updated to accept and forward
+`onOpenFile`/`onSwitchToPreview`, and both `CopilotChatPanelInline` (used) and
+`CopilotChatPanelOverlay` (dead code, never called from anywhere in the app) were
+updated to pass those params into `chat(...)`. But only `CopilotChatPanelInline`'s
+own function signature was updated to declare the two new params — the *composable*
+`CopilotChatPanelOverlay(onClose, colors, tokenStore)` was left with its old 3-param
+signature while its body referenced the new params. Kotlin doesn't know what
+`onOpenFile`/`onSwitchToPreview` refer to inside a function that never declared them
+-> compile error.
+
+Fix: added `onOpenFile: ((String) -> Unit)? = null` and
+`onSwitchToPreview: ((String) -> Unit)? = null` to `CopilotChatPanelOverlay`'s
+signature too, matching `CopilotChatPanelInline`. Defaults to null so nothing else
+needs to change — Overlay stays unused/dead code, it just compiles now.
+
+**Verified separately (this was correct, no changes needed):**
+- `CopilotChatPanelInline` signature + wiring in `ProjectShellScreen.kt` — callbacks
+  are properly hooked to `editorTabs`/`activeEditorTab`/`activeBottomTab` state.
+- The AGENT system prompt vocabulary table and auto-open rules read correctly.
+- `write_file` calls in the agentic loop trigger `onOpenFile`/`onSwitchToPreview`
+  for `.svg/.html/.htm/.md` files, plain `onOpenFile` for everything else.
+
+Lesson: when adding a new callback param to a shared private helper fn that's
+called from multiple composables, grep for ALL call sites AND all their public
+signatures — not just the ones actually wired end-to-end.

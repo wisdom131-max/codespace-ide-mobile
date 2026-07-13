@@ -477,6 +477,8 @@ internal fun CopilotChatPanelOverlay(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
     tokenStore: SecureTokenStore? = null,
+    onOpenFile: ((String) -> Unit)? = null,
+    onSwitchToPreview: ((String) -> Unit)? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
