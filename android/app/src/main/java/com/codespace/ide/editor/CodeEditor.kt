@@ -14,7 +14,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FindReplace
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Code
@@ -225,6 +229,8 @@ fun CodeEditor(
     savedContent: String = "",
     wordWrap: Boolean = false,
     scrollToLine: Int = 0,
+    findReplaceOpen: Boolean = false,
+    onFindReplaceClose: () -> Unit = {},
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -314,6 +320,23 @@ fun CodeEditor(
     var renameDialogWord by remember { mutableStateOf<String?>(null) }  // null = closed
     var renameNewName by remember { mutableStateOf("") }
     var renameCount by remember { mutableStateOf(0) }
+
+    // ── Find & Replace state ────────────────────────────────────────────
+    var findQuery by remember { mutableStateOf("") }
+    var replaceQuery by remember { mutableStateOf("") }
+    var useRegex by remember { mutableStateOf(false) }
+    var matchIndex by remember { mutableStateOf(0) }
+
+    val matches = remember(value.text, findQuery, useRegex) {
+        if (findQuery.isEmpty()) emptyList()
+        else try {
+            val pattern = if (useRegex) Regex(findQuery) else Regex(Regex.escape(findQuery))
+            pattern.findAll(value.text).map { it.range }.toList()
+        } catch (e: Exception) { emptyList() }
+    }
+    LaunchedEffect(matches.size, findQuery) {
+        if (matchIndex >= matches.size) matchIndex = 0
+    }
 
     // Bracket matching
     val bracketMatch = remember(value) {
@@ -622,6 +645,215 @@ fun CodeEditor(
                     }
                 },
             )
+        }
+
+        // ── Find & Replace Bar ───────────────────────────────────────────
+        if (findReplaceOpen) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color(0xFF252526))
+                    .border(1.dp, Color(0xFF3C3C3C))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .zIndex(20f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Row 1 — Search
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    val matchLabel = when {
+                        findQuery.isEmpty() -> ""
+                        matches.isEmpty() -> "No results"
+                        else -> "${matchIndex + 1}/${matches.size}"
+                    }
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = findQuery,
+                        onValueChange = { findQuery = it; matchIndex = 0 },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFFD4D4D4),
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        decorationBox = { inner ->
+                            Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                if (findQuery.isEmpty()) Text(
+                                    "Find",
+                                    color = Color(0xFF666666),
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                inner()
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                            .border(
+                                1.dp,
+                                if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400)
+                                else Color(0xFF3C3C3C),
+                                RoundedCornerShape(3.dp),
+                            ),
+                    )
+                    Text(
+                        matchLabel,
+                        color = Color(0xFF888888),
+                        fontSize = 10.sp,
+                        modifier = Modifier.widthIn(min = 52.dp),
+                    )
+                    // Regex toggle
+                    IconButton(
+                        onClick = { useRegex = !useRegex },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Text(
+                            ".*",
+                            color = if (useRegex) Color(0xFF007ACC) else Color(0xFF888888),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    // Prev
+                    IconButton(
+                        onClick = {
+                            if (matches.isNotEmpty()) {
+                                matchIndex = (matchIndex - 1 + matches.size) % matches.size
+                                val range = matches[matchIndex]
+                                value = value.copy(
+                                    selection = androidx.compose.ui.text.TextRange(range.first, range.last + 1),
+                                )
+                            }
+                        },
+                        modifier = Modifier.size(28.dp),
+                        enabled = matches.isNotEmpty(),
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp, null,
+                            tint = if (matches.isNotEmpty()) Color(0xFFD4D4D4) else Color(0xFF555555),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    // Next
+                    IconButton(
+                        onClick = {
+                            if (matches.isNotEmpty()) {
+                                matchIndex = (matchIndex + 1) % matches.size
+                                val range = matches[matchIndex]
+                                value = value.copy(
+                                    selection = androidx.compose.ui.text.TextRange(range.first, range.last + 1),
+                                )
+                            }
+                        },
+                        modifier = Modifier.size(28.dp),
+                        enabled = matches.isNotEmpty(),
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown, null,
+                            tint = if (matches.isNotEmpty()) Color(0xFFD4D4D4) else Color(0xFF555555),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    // Close
+                    IconButton(
+                        onClick = {
+                            findQuery = ""
+                            replaceQuery = ""
+                            onFindReplaceClose()
+                        },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Close, null,
+                            tint = Color(0xFF888888),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                // Row 2 — Replace
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = replaceQuery,
+                        onValueChange = { replaceQuery = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFFD4D4D4),
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        decorationBox = { inner ->
+                            Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                if (replaceQuery.isEmpty()) Text(
+                                    "Replace",
+                                    color = Color(0xFF666666),
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                inner()
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                            .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
+                    )
+                    // Replace current match
+                    TextButton(
+                        onClick = {
+                            if (matches.isNotEmpty()) {
+                                val range = matches[matchIndex]
+                                val newText = value.text.substring(0, range.first) +
+                                    replaceQuery +
+                                    value.text.substring(range.last + 1)
+                                val cursor = range.first + replaceQuery.length
+                                value = TextFieldValue(
+                                    text = newText,
+                                    selection = androidx.compose.ui.text.TextRange(cursor),
+                                )
+                                onContentChange(newText)
+                            }
+                        },
+                        enabled = matches.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            "Replace",
+                            color = if (matches.isNotEmpty()) Color(0xFF007ACC) else Color(0xFF555555),
+                            fontSize = 11.sp,
+                        )
+                    }
+                    // Replace all
+                    TextButton(
+                        onClick = {
+                            if (findQuery.isNotEmpty() && matches.isNotEmpty()) {
+                                val newText = try {
+                                    val pattern = if (useRegex) Regex(findQuery)
+                                                  else Regex(Regex.escape(findQuery))
+                                    pattern.replace(value.text, replaceQuery)
+                                } catch (e: Exception) { value.text }
+                                value = TextFieldValue(text = newText)
+                                onContentChange(newText)
+                            }
+                        },
+                        enabled = matches.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            "All",
+                            color = if (matches.isNotEmpty()) Color(0xFF007ACC) else Color(0xFF555555),
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+            }
         }
 
         // IntelliSense dropdown
