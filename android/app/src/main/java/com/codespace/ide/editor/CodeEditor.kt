@@ -684,6 +684,47 @@ fun CodeEditor(
             }
         }
 
+        // ── P2-3 Extra-cursor visual indicators ──────────────────────────────
+        // BasicTextField exposes no TextLayoutResult here, so we approximate
+        // positions using the same line-height formula as every other overlay
+        // in this file: y = lineIdx * fontSize * 1.25f dp, x = 64dp + col * fontSize * 0.6f dp.
+        if (extraCursors.isNotEmpty()) {
+            val lineHeightPx = fontSize * 1.25f
+            val charWidthPx  = fontSize * 0.6f
+            val gutterDp     = 64f
+            extraCursors.forEach { off ->
+                val clamped  = off.coerceIn(0, value.text.length)
+                val lineIdx  = value.text.take(clamped).count { it == '\n' }
+                val lineStart = (value.text.lastIndexOf('\n', (clamped - 1).coerceAtLeast(0)) + 1)
+                                    .coerceAtLeast(0)
+                val col      = (clamped - lineStart).coerceAtLeast(0)
+                val topDp    = lineIdx * lineHeightPx
+                val startDp  = gutterDp + col * charWidthPx
+
+                // 1. Subtle full-line background tint — gives line context at a glance
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .padding(start = gutterDp.dp, top = topDp.dp)
+                        .height(lineHeightPx.dp)
+                        .background(Color(0xFFE5C07B).copy(alpha = 0.08f))
+                        .zIndex(4f),
+                )
+
+                // 2. Thin amber cursor bar at the exact column position
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = startDp.dp, top = topDp.dp)
+                        .width(2.dp)
+                        .height(lineHeightPx.dp)
+                        .background(Color(0xFFE5C07B))   // amber — distinct from primary cursor
+                        .zIndex(5f),
+                )
+            }
+        }
+
         // Extra-cursor clear chip
         if (extraCursors.isNotEmpty()) {
             Box(
