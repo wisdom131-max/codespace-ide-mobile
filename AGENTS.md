@@ -602,7 +602,7 @@ Status as of 2026-07-13:
 
 ### Phase 2 TODO (ordered)
 
-**Latest green build: #1060. Repo is clean — safe to implement.**
+**Latest green build: #1062. Repo is clean — safe to implement.**
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
