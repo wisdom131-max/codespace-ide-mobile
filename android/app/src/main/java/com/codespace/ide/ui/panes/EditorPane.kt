@@ -105,6 +105,7 @@ fun EditorPane(
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
+    var findReplaceOpen by remember { mutableStateOf(false) }
 
     // Restore session on first launch
     LaunchedEffect(Unit) {
@@ -260,6 +261,15 @@ fun EditorPane(
                     Box(Modifier.width(1.dp).height(28.dp).background(DividerColor))
                 }
                 // Split view button
+                IconButton(onClick = { findReplaceOpen = !findReplaceOpen }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Default.FindReplace,
+                        contentDescription = "Find & Replace",
+                        tint = if (findReplaceOpen) androidx.compose.ui.graphics.Color(0xFF007ACC)
+                               else androidx.compose.ui.graphics.Color(0xFF858585),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
@@ -300,6 +310,8 @@ fun EditorPane(
                         modifier = Modifier.weight(1f),
                         wordWrap = wordWrap,
                         scrollToLine = scrollToLine,
+                        findReplaceOpen = findReplaceOpen,
+                        onFindReplaceClose = { findReplaceOpen = false },
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -309,6 +321,8 @@ fun EditorPane(
                         onContentChange = {},
                         modifier = Modifier.weight(1f),
                         wordWrap = wordWrap,
+                        findReplaceOpen = findReplaceOpen,
+                        onFindReplaceClose = { findReplaceOpen = false },
                     )
                 }
             } else {
@@ -347,6 +361,8 @@ fun EditorPane(
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,
                         scrollToLine = scrollToLine,
+                        findReplaceOpen = findReplaceOpen,
+                        onFindReplaceClose = { findReplaceOpen = false },
                     )
                 }
             }
