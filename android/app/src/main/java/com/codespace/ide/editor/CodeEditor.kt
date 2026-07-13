@@ -30,18 +30,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.LocalEditorColors
+import kotlinx.coroutines.launch
 
 private data class Completion(val label: String, val kind: CompletionKind)
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
-/** Build completion candidates from current word + language spec */
 private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     if (prefix.length < 2) return emptyList()
     val spec = LanguageSpecs.forLanguage(lang)
     val p = prefix.lowercase()
     val kw = spec.keywords.filter { it.startsWith(p) }.sorted().map { Completion(it, CompletionKind.KEYWORD) }
     val ty = spec.types.filter { it.lowercase().startsWith(p) }.sorted().map { Completion(it, CompletionKind.TYPE) }
-    // Common snippets
     val snips = buildList {
         val snippets = mapOf(
             "func" to "function", "ret" to "return", "imp" to "import",
@@ -56,7 +55,6 @@ private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     return (kw + ty + snips).distinctBy { it.label }.take(8)
 }
 
-/** Extract the last partial word being typed */
 private fun currentWord(text: String, cursor: Int): String {
     val end = cursor.coerceAtMost(text.length)
     var start = end
@@ -64,15 +62,6 @@ private fun currentWord(text: String, cursor: Int): String {
     return text.substring(start, end)
 }
 
-/**
- * Multi-feature code editor pane.
- *
- * - Monospace, syntax-highlighted via [SyntaxHighlighter] visual transformation.
- * - Line-number gutter.
- * - Horizontal + vertical scrolling for long lines / big files.
- * - IntelliSense autocomplete dropdown (keyword + type + snippet suggestions).
- * - Emits [onContentChange] for autosave + dirty tracking.
- */
 @Composable
 fun CodeEditor(
     content: String,
@@ -80,24 +69,95 @@ fun CodeEditor(
     fontSize: Int = 13,
     onContentChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    savedContent: String = "",   // original saved text — used for diff gutter indicators
+    savedContent: String = "",
     wordWrap: Boolean = false,
-    scrollToLine: Int = 0,       // set to >0 to scroll to this line (resets after scrolling)
+    scrollToLine: Int = 0,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
     val vScroll = rememberScrollState()
     val hScroll = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // 2. Code folding state
+    var foldedRanges by remember { mutableStateOf(setOf<Int>()) } // start line index (0-based)
+
+    // Parse lines and folding
+    val rawLines = remember(value.text) { value.text.split("\n") }
+    
+    // Determine which line indices are foldable
+    val foldableLines = remember(rawLines) {
+        val set = mutableSetOf<Int>()
+        for (i in rawLines.indices) {
+            val line = rawLines[i].trimEnd()
+            if (line.endsWith("{") || line.endsWith("(") || line.endsWith("[") || line.endsWith(":")) {
+                set.add(i)
+            } else if (i < rawLines.lastIndex) {
+                val currentIndent = rawLines[i].length - rawLines[i].trimStart().length
+                val nextIndent = rawLines[i + 1].length - rawLines[i + 1].trimStart().length
+                if (nextIndent > currentIndent && rawLines[i + 1].trim().isNotEmpty()) {
+                    set.add(i)
+                }
+            }
+        }
+        set
+    }
+
+    // Determine the range of folded lines
+    val foldedLineIndices = remember(foldedRanges, rawLines) {
+        val set = mutableSetOf<Int>()
+        for (startIdx in foldedRanges) {
+            if (startIdx >= rawLines.size) continue
+            val startIndent = rawLines[startIdx].length - rawLines[startIdx].trimStart().length
+            var j = startIdx + 1
+            while (j < rawLines.size) {
+                val lineTrimmed = rawLines[j].trim()
+                if (lineTrimmed.isEmpty()) {
+                    set.add(j)
+                    j++
+                    continue
+                }
+                val indent = rawLines[j].length - rawLines[j].trimStart().length
+                if (indent > startIndent) {
+                    set.add(j)
+                    j++
+                } else {
+                    break
+                }
+            }
+        }
+        set
+    }
+
+    // Line list to display in the gutter & editor
+    val displayLines = remember(rawLines, foldedLineIndices) {
+        val list = mutableListOf<Pair<Int, String>>() // Pair of (original 0-based line index, content)
+        var i = 0
+        while (i < rawLines.size) {
+            if (foldedLineIndices.contains(i)) {
+                // If this line is folded, skip it. If the previous wasn't folded or was the fold start, we can add a visual placeholder.
+                // We add exactly one placeholder for a contiguous block of folded lines.
+                val prevFolded = i > 0 && foldedLineIndices.contains(i - 1)
+                if (!prevFolded) {
+                    list.add(Pair(-1, "···"))
+                }
+                i++
+            } else {
+                list.add(Pair(i, rawLines[i]))
+                i++
+            }
+        }
+        list
+    }
 
     val lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
-    // IntelliSense state
     val prefix = remember(value) { currentWord(value.text, value.selection.end) }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     LaunchedEffect(prefix) { showCompletions = prefix.length >= 2 && completions.isNotEmpty() }
 
-    // Bracket matching — highlight the matching bracket when cursor is adjacent to one
+    // Bracket matching
     val bracketMatch = remember(value) {
         val pos = value.selection.end
         if (pos == 0 || pos > value.text.length) null
@@ -114,7 +174,6 @@ fun CodeEditor(
                     else -> null
                 }
                 if (match != null) {
-                    // Search for matching bracket
                     val dir = if (bracket == '(' || bracket == '[' || bracket == '{') 1 else -1
                     var depth = 0
                     var i = bracketPos
@@ -139,40 +198,83 @@ fun CodeEditor(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .padding(end = 62.dp)   // leave room for minimap
+                .padding(end = 62.dp)
                 .verticalScroll(vScroll)
         ) {
-            // Gutter — with diff indicators
+            // Gutter
             val savedLines = remember(savedContent) { savedContent.split("\n") }
             val currentLines = remember(value.text) { value.text.split("\n") }
-            Column(modifier = Modifier.padding(horizontal = 4.dp).width(50.dp)) {
-                for (lineNum in 1..lineCount) {
-                    val idx = lineNum - 1
-                    val isDirty = savedContent.isNotEmpty() && (
-                        idx >= savedLines.size || (idx < currentLines.size && idx < savedLines.size && currentLines[idx] != savedLines[idx])
-                    )
-                    val isAdded = savedContent.isNotEmpty() && idx >= savedLines.size
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Diff indicator — 4dp wide
-                        Box(
-                            modifier = Modifier
-                                .width(3.dp)
-                                .height(fontSize.dp)
-                                .background(
-                                    when {
-                                        isAdded -> Color(0xFF4EC9B0) // teal = added
-                                        isDirty -> Color(0xFF569CD6)  // blue = modified
-                                        else    -> Color.Transparent
-                                    }
-                                )
+            Column(modifier = Modifier.padding(horizontal = 4.dp).width(62.dp)) {
+                displayLines.forEach { (lineNum, _) ->
+                    if (lineNum == -1) {
+                        // Visual placeholder row in gutter
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.height(fontSize.dp)
+                        ) {
+                            Spacer(Modifier.width(20.dp))
+                            Text(
+                                text = " ",
+                                color = colors.gutter,
+                                fontSize = fontSize.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    } else {
+                        val isDirty = savedContent.isNotEmpty() && (
+                            lineNum >= savedLines.size || (lineNum < currentLines.size && lineNum < savedLines.size && currentLines[lineNum] != savedLines[lineNum])
                         )
-                        Spacer(Modifier.width(3.dp))
-                        Text(
-                            text = lineNum.toString(),
-                            color = colors.gutter,
-                            fontSize = fontSize.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                        val isAdded = savedContent.isNotEmpty() && lineNum >= savedLines.size
+                        val isFoldable = foldableLines.contains(lineNum)
+                        val isFolded = foldedRanges.contains(lineNum)
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.height(fontSize.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(fontSize.dp)
+                                    .background(
+                                        when {
+                                            isAdded -> Color(0xFF4EC9B0)
+                                            isDirty -> Color(0xFF569CD6)
+                                            else    -> Color.Transparent
+                                        }
+                                    )
+                            )
+                            Spacer(Modifier.width(1.dp))
+                            // Gutter fold chevron icon (▼ when expanded, ▶ when folded)
+                            Box(
+                                modifier = Modifier
+                                    .width(16.dp)
+                                    .fillMaxHeight()
+                                    .clickable(enabled = isFoldable) {
+                                        foldedRanges = if (isFolded) {
+                                            foldedRanges - lineNum
+                                        } else {
+                                            foldedRanges + lineNum
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isFoldable) {
+                                    Text(
+                                        text = if (isFolded) "▶" else "▼",
+                                        color = colors.gutter,
+                                        fontSize = (fontSize - 3).sp,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(2.dp))
+                            Text(
+                                text = (lineNum + 1).toString(),
+                                color = colors.gutter,
+                                fontSize = fontSize.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
                     }
                 }
             }
@@ -180,9 +282,34 @@ fun CodeEditor(
             Box(modifier = if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll)) {
                 BasicTextField(
                     value = value,
-                    onValueChange = {
-                        value = it
-                        onContentChange(it.text)
+                    onValueChange = { newValue ->
+                        var updatedValue = newValue
+                        // 1. Auto-close brackets & quotes
+                        if (newValue.text.length == value.text.length + 1) {
+                            val cursor = newValue.selection.end
+                            if (cursor > 0 && cursor <= newValue.text.length) {
+                                val insertedChar = newValue.text[cursor - 1]
+                                val closer = when (insertedChar) {
+                                    '(' -> ')'
+                                    '[' -> ']'
+                                    '{' -> '}'
+                                    '"' -> '"'
+                                    '\'' -> '\''
+                                    else -> null
+                                }
+                                if (closer != null) {
+                                    val leftText = newValue.text.substring(0, cursor)
+                                    val rightText = newValue.text.substring(cursor)
+                                    updatedValue = TextFieldValue(
+                                        text = leftText + closer + rightText,
+                                        selection = androidx.compose.ui.text.TextRange(cursor)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        value = updatedValue
+                        onContentChange(updatedValue.text)
                     },
                     textStyle = LocalTextStyle.current.merge(
                         TextStyle(
@@ -197,7 +324,7 @@ fun CodeEditor(
             }
         }
 
-        // ── Minimap — right-side code thumbnail ──────────────────────────────
+        // Minimap
         val textLines = remember(value.text) { value.text.split("\n") }
         Column(
             modifier = Modifier
@@ -208,19 +335,23 @@ fun CodeEditor(
                 .zIndex(5f),
         ) {
             textLines.forEachIndexed { idx, line ->
-                // Each minimap "line" is a thin colored rect representing code density
                 val density = (line.trimStart().length.coerceAtMost(80)).toFloat() / 80f
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.dp)
-                        .padding(horizontal = 2.dp),
+                        .padding(horizontal = 2.dp)
+                        .clickable {
+                            // 3. Minimap click-to-navigate
+                            coroutineScope.launch {
+                                val lineHeightPx = fontSize * 1.5f * 2.0f // Simple scale factor for density
+                                vScroll.animateScrollTo((idx * lineHeightPx).toInt())
+                            }
+                        },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Indentation blank
                     val indent = line.length - line.trimStart().length
                     Spacer(Modifier.width((indent * 0.3f).dp))
-                    // Code line body
                     Box(
                         Modifier
                             .weight(density.coerceAtLeast(0.05f))
@@ -232,12 +363,11 @@ fun CodeEditor(
             }
         }
 
-        // ── Indentation guides ───────────────────────────────────────────────
-        // Faint vertical lines at each tab/2-space indent level
+        // Indentation guides
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = 50.dp)
+                .padding(start = 62.dp)
                 .zIndex(1f),
         ) {
             val maxIndent = remember(value.text) {
@@ -252,12 +382,12 @@ fun CodeEditor(
             }
         }
 
-        // ── IntelliSense dropdown ─────────────────────────────────────────────
+        // IntelliSense dropdown
         if (showCompletions && completions.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 52.dp, top = ((value.text.take(value.selection.end).count { it == '\n' } + 1) * fontSize * 1.25f).dp)
+                    .padding(start = 64.dp, top = ((value.text.take(value.selection.end).count { it == '\n' } + 1) * fontSize * 1.25f).dp)
                     .widthIn(min = 160.dp, max = 260.dp)
                     .heightIn(max = 200.dp)
                     .zIndex(10f)
@@ -269,7 +399,6 @@ fun CodeEditor(
                         Modifier
                             .fillMaxWidth()
                             .clickable {
-                                // Replace current word with completion
                                 val cursor = value.selection.end
                                 val text = value.text
                                 val end = cursor.coerceAtMost(text.length)
@@ -288,7 +417,6 @@ fun CodeEditor(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        // Kind icon
                         val (icon, tint) = when (comp.kind) {
                             CompletionKind.KEYWORD  -> Pair(Icons.Default.Code,       Color(0xFF569CD6))
                             CompletionKind.TYPE     -> Pair(Icons.Default.TextFields,  Color(0xFF4EC9B0))
