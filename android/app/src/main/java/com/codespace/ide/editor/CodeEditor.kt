@@ -38,6 +38,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
@@ -331,6 +335,13 @@ fun CodeEditor(
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     LaunchedEffect(prefix) { showCompletions = prefix.length >= 2 && completions.isNotEmpty() }
+
+    // ── P2-12 Parameter hints / signature help ─────────────────────────────
+    // Cheap local backward-scan (no debounce needed, unlike the whole-file
+    // inlay-hint/lint analyzers) — recomputed on every cursor move/edit.
+    val activeSignature = remember(value.text, value.selection.end, language) {
+        SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
+    }
 
     // ── Rename Symbol state ────────────────────────────────────────────────
     var renameDialogWord by remember { mutableStateOf<String?>(null) }  // null = closed
@@ -1110,6 +1121,52 @@ fun CodeEditor(
                         )
                     }
                 }
+            }
+        }
+
+        // P2-12 Signature help popup — shown above the current line, one line up so it
+        // doesn't cover what's being typed. Hidden while the autocomplete dropdown is open
+        // to avoid stacking two popups on the same spot.
+        if (!showCompletions && activeSignature != null) {
+            val sig = activeSignature
+            val cursorLineIdx = value.text.take(value.selection.end).count { it == '\n' }
+            val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
+            val annotated = remember(sig) {
+                buildAnnotatedString {
+                    append(sig.name)
+                    append("(")
+                    sig.params.forEachIndexed { idx, param ->
+                        if (idx > 0) append(", ")
+                        if (idx == sig.activeParam) {
+                            withStyle(SpanStyle(color = Color(0xFF4EC9B0), fontWeight = FontWeight.Bold)) {
+                                append(param)
+                            }
+                        } else {
+                            append(param)
+                        }
+                    }
+                    append(")")
+                    if (sig.returnType != null) {
+                        withStyle(SpanStyle(color = Color(0xFF808080))) { append(": ${sig.returnType}") }
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 64.dp, top = (popupLineIdx * fontSize * 1.25f).dp)
+                    .widthIn(max = 320.dp)
+                    .zIndex(10f)
+                    .background(Color(0xFF252526), RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = annotated,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFFD4D4D4),
+                )
             }
         }
 
