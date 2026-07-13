@@ -587,6 +587,7 @@ fun ProjectShellScreen(
 
     Box(
         Modifier.fillMaxSize().background(BgColor)
+            .statusBarsPadding()   // shield: push content below system status bar (battery/time/signal)
             .onGloballyPositioned { totalWidth = it.size.width.toFloat(); totalHeight = it.size.height.toFloat() }
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -1902,4 +1903,5 @@ private fun buildRunCommand(path: String): String? {
 }
 
 // ConnectorRow moved to ConnectorsHubSheet.kt
+
 
