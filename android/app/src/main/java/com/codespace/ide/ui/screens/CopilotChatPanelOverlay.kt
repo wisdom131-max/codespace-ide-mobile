@@ -323,50 +323,65 @@ private suspend fun chat(
     mode: ChatMode,
     context: Context,
     tokenStore: SecureTokenStore? = null,
+    onOpenFile: ((String) -> Unit)? = null,
+    onSwitchToPreview: ((String) -> Unit)? = null,
 ): String = withContext(Dispatchers.IO) {
     val systemPrompt = when (mode) {
         ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely."
         ChatMode.AGENT -> """
-You are an autonomous coding agent running inside CodeSpace IDE on Android.
+You are an autonomous coding agent running inside CodeSpace IDE — a VS Code-style
+Android IDE with a built-in Ubuntu Linux terminal (no root needed).
 
-## CRITICAL RULES — read before every response
+## APP VOCABULARY — what the user calls things vs what they actually are
 
-### 1. The editor IS NOT a browser
-This is a code editor, not a web browser. Writing SVG or HTML to a file does NOT
-display it visually by itself. The user CANNOT see rendered SVG/HTML just because
-you wrote it to disk. They can only see it if they open the PREVIEW tab.
+| What the user says              | What it actually is in the app                          |
+|---------------------------------|---------------------------------------------------------|
+| "the dashboard"                 | PREVIEW tab → Dashboard mode                            |
+| "the terminal" / "the console"  | TERMINAL tab (Ubuntu shell, proot-based)                |
+| "the editor"                    | The main code editor area (centre of the screen)        |
+| "the file tree" / "the sidebar" | Explorer panel (left side, folder icon)                 |
+| "the chat" / "the AI"           | This panel (Copilot Chat, the one you're in now)        |
+| "the preview"                   | PREVIEW tab — renders HTML/SVG/Markdown/local server    |
+| "the source control" / "git"    | Source Control panel (git icon in left sidebar)         |
+| "the problems tab"              | PROBLEMS tab in the bottom bar                          |
+| "the ports tab"                 | PORTS tab in the bottom bar                             |
+| "open a file"                   | Tap the file in Explorer OR type path → it opens in editor |
+| "run it" / "run the project"    | Type command in TERMINAL tab                            |
+| "the bottom bar"                | The tab row at the bottom: Terminal, Preview, Problems… |
+| "the left bar"                  | The icon sidebar: Explorer, Search, Git, Debug, Extensions |
 
-### 2. After write_file, ALWAYS tell the user EXACTLY how to see the result
-Never say "done" or "the file is saved" and stop there. Always end with:
-  - The exact file path you wrote to
-  - The exact steps to view it in this app, e.g.:
-    "To see it: tap the PREVIEW tab (bottom bar) → select SVG mode → paste the path"
-    "To see it: tap the PREVIEW tab → select HTML mode → paste the file path"
-    "To see it: open the file in the Explorer tab"
+## CRITICAL RULES — follow these on every response
 
-### 3. SVG/HTML/images — preferred approach
-When the user asks to "create" or "show" a visual (icon, image, chart, dashboard widget):
-  a. Write the file to /root/preview.svg (or .html) using write_file
-  b. ALSO paste the full SVG/HTML content directly in your chat reply so the user
-     can copy-paste it if needed
-  c. Tell the user: "Switch to the PREVIEW tab, choose SVG (or HTML) mode, and enter
-     the path /root/preview.svg"
+### 1. Files you write are opened automatically
+When you use write_file, the file is AUTOMATICALLY opened in the editor AND the
+correct preview mode is switched on for visual files (SVG → SVG mode, HTML → HTML mode).
+You do NOT need to tell the user to navigate anywhere or enter a path.
+Just say "Done — [filename] is now open in the editor" (and for visuals: "and showing in Preview").
 
-### 4. Dashboard = PREVIEW tab, Dashboard mode
-When the user says "dashboard", they mean the PREVIEW tab in Dashboard mode.
-To add something to the dashboard:
-  - Write an HTML file to /root/dashboard.html with your content
-  - Tell the user: "Switch to PREVIEW tab → Dashboard mode → enter /root/dashboard.html"
-  - Do NOT assume the dashboard updates automatically — the user must navigate there
+### 2. Write visuals to the project root or /root/
+- SVG files:  /root/preview.svg   (auto-opens in Preview → SVG mode)
+- HTML files: /root/dashboard.html (auto-opens in Preview → HTML mode)  
+- Markdown:   /root/README.md
+Use /root/ as your default working directory unless the user specifies otherwise.
 
-### 5. Never silently fail
-If a tool returns an error or empty result, say so explicitly. Do not pretend the
-task succeeded. Do not give the user a file path that does not exist.
+### 3. Never say "go to X tab" or "enter the path"
+The app handles navigation automatically after write_file. Do not instruct the user
+to switch tabs, enter file paths, or do anything manual — it just opens.
 
-### 6. File paths inside this app
-The Ubuntu proot rootfs root is /root/. Safe paths: /root/preview.svg,
-/root/dashboard.html, /root/myproject/. Do not write to /data/data/ or
-other Android-restricted paths.
+### 4. Always paste visual content (SVG/HTML) inline in chat too
+Even though the file auto-opens, paste the content in your reply so the user can
+see what was written and copy-paste it elsewhere if needed.
+
+### 5. "Dashboard" means PREVIEW tab, Dashboard mode — treat it like a web page
+When the user says "add this to the dashboard" or "show on the dashboard", write an
+HTML file to /root/dashboard.html. It will auto-open in Preview.
+
+### 6. Never silently fail
+If a tool returns an error, say exactly what went wrong. Never pretend success.
+
+### 7. Ubuntu terminal is the only shell
+All run_command calls execute inside the Ubuntu proot terminal. Standard Linux
+commands work (apt, git, node, python3). Android host commands do NOT work here.
 
 """ + AgentTools.TOOLS_DESCRIPTION
         ChatMode.PLAN  -> "You are a planning assistant inside CodeSpace IDE. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution."
@@ -429,6 +444,21 @@ other Android-restricted paths.
             for ((toolName, toolArgs) in toolCalls) {
                 val result = AgentTools.executeTool(toolName, toolArgs, context)
                 toolResults.append("[Tool: $toolName] Result:\n$result\n\n")
+                // Auto-open file in editor + switch preview when AI writes a visual file
+                if (toolName == "write_file") {
+                    val writtenPath = try { toolArgs.getString("path") } catch (_: Exception) { "" }
+                    if (writtenPath.isNotBlank()) {
+                        val lower = writtenPath.lowercase()
+                        val isVisual = lower.endsWith(".svg") || lower.endsWith(".html") ||
+                                       lower.endsWith(".htm") || lower.endsWith(".md")
+                        if (isVisual) {
+                            onOpenFile?.invoke(writtenPath)
+                            onSwitchToPreview?.invoke(writtenPath)
+                        } else {
+                            onOpenFile?.invoke(writtenPath)
+                        }
+                    }
+                }
             }
 
             // Feed tool results back as user message
@@ -493,7 +523,7 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -793,6 +823,8 @@ internal fun CopilotChatPanelInline(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
     tokenStore: SecureTokenStore? = null,
+    onOpenFile: ((String) -> Unit)? = null,
+    onSwitchToPreview: ((String) -> Unit)? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -890,7 +922,7 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
                 messages.add(ChatMsg("assistant", reply))
                 persistSessions()
             } catch (e: Exception) {
