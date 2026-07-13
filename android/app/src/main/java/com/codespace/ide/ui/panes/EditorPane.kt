@@ -107,6 +107,7 @@ fun EditorPane(
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     var findReplaceOpen by remember { mutableStateOf(false) }
+    var goToLineOpen by remember { mutableStateOf(false) }
 
     // Restore session on first launch
     LaunchedEffect(Unit) {
@@ -271,6 +272,15 @@ fun EditorPane(
                         modifier = Modifier.size(18.dp),
                     )
                 }
+                IconButton(onClick = { goToLineOpen = !goToLineOpen }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Go to Line",
+                        tint = if (goToLineOpen) androidx.compose.ui.graphics.Color(0xFF007ACC)
+                               else androidx.compose.ui.graphics.Color(0xFF858585),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
@@ -313,6 +323,8 @@ fun EditorPane(
                         scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
+                        goToLineOpen = goToLineOpen,
+                        onGoToLineClose = { goToLineOpen = false },
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -324,6 +336,8 @@ fun EditorPane(
                         wordWrap = wordWrap,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
+                        goToLineOpen = goToLineOpen,
+                        onGoToLineClose = { goToLineOpen = false },
                     )
                 }
             } else {
@@ -364,6 +378,8 @@ fun EditorPane(
                         scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
+                        goToLineOpen = goToLineOpen,
+                        onGoToLineClose = { goToLineOpen = false },
                     )
                 }
             }
