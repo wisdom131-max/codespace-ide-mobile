@@ -587,7 +587,8 @@ fun ProjectShellScreen(
 
     Box(
         Modifier.fillMaxSize().background(BgColor)
-            .statusBarsPadding()   // shield: push content below system status bar (battery/time/signal)
+            .then(if (orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT)
+                Modifier.statusBarsPadding() else Modifier) // shield: portrait only — landscape is fine edge-to-edge
             .onGloballyPositioned { totalWidth = it.size.width.toFloat(); totalHeight = it.size.height.toFloat() }
     ) {
         Column(Modifier.fillMaxSize()) {
