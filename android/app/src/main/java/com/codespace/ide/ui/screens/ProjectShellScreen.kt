@@ -1350,6 +1350,16 @@ fun ProjectShellScreen(
                                 scrim = Color(0x66000000),
                             ),
                             tokenStore = tokenStore,
+                            // AI auto-opens files it writes — no manual navigation needed
+                            onOpenFile = { path ->
+                                if (!editorTabs.contains(path)) editorTabs.add(path)
+                                activeEditorTab = path
+                            },
+                            onSwitchToPreview = { path ->
+                                showBottomPanel = true
+                                activeBottomTab = BottomTab.PREVIEW
+                                // activeEditorTab drives PreviewPane.activeFilePath — already set in onOpenFile
+                            },
                         )
                     }
                 }
