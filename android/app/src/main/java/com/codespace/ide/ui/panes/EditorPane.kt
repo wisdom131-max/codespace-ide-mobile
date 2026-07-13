@@ -268,6 +268,19 @@ fun EditorPane(
         }
 
         val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
+
+        // Sticky scroll — computed unconditionally (Compose rules of hooks)
+        val stickyScope = remember(active?.content, scrollToLine) {
+            if (scrollToLine <= 0 || active == null) null
+            else {
+                val lines = active.content.split("\n")
+                val scopeKeywords = listOf("fun ", "class ", "object ", "interface ", "enum ", "@Composable", "if ", "when ", "for ", "while ", "struct ", "impl ", "fn ", "def ", "func ")
+                (scrollToLine - 1 downTo 0)
+                    .map { i -> lines.getOrNull(i)?.trim() }
+                    .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line!!.contains(kw) } }
+            }
+        }
+
         if (active != null) {
             val splitTab = splitId?.let { id -> tabs.firstOrNull { it.id == id && it.id != active.id } }
             if (splitTab != null) {
@@ -299,17 +312,7 @@ fun EditorPane(
                     )
                 }
             } else {
-                // ── Sticky Scroll header ───────────────────────────────────────────
-                val stickyScope = remember(active.content, scrollToLine) {
-                    if (scrollToLine <= 0) null
-                    else {
-                        val lines = active.content.split("\n")
-                        val scopeKeywords = listOf("fun ", "class ", "object ", "interface ", "enum ", "@Composable", "if ", "when ", "for ", "while ", "struct ", "impl ", "fn ", "def ", "func ")
-                        (scrollToLine - 1 downTo 0)
-                            .map { i -> lines.getOrNull(i)?.trim() }
-                            .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line!!.contains(kw) } }
-                    }
-                }
+                // ── Sticky Scroll header (computed above unconditionally) ───────────
                 if (stickyScope != null) {
                     Box(
                         Modifier
