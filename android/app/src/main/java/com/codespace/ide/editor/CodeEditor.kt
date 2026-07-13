@@ -349,6 +349,11 @@ fun CodeEditor(
     var renameNewName by remember { mutableStateOf("") }
     var renameCount by remember { mutableStateOf(0) }
 
+    // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
+    var contextWord by remember { mutableStateOf<String?>(null) }
+    data class DefResult(val line: Int, val lineText: String)
+    var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
+
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
@@ -553,14 +558,11 @@ fun CodeEditor(
                     .combinedClickable(
                         onClick = {},
                         onLongClick = {
-                            // Long-press → Rename Symbol: extract word at cursor
+                            // Long-press → context sheet: Go to Definition | Rename Symbol
                             val cursor = value.selection.end
                             val word = currentWord(value.text, cursor)
                             if (word.length >= 2) {
-                                renameNewName = word
-                                val pattern = Regex("""\b${Regex.escape(word)}\b""")
-                                renameCount = pattern.findAll(value.text).count()
-                                renameDialogWord = word
+                                contextWord = word
                             }
                         },
                         onDoubleClick = {
@@ -799,6 +801,137 @@ fun CodeEditor(
         }
 
         // ── Rename Symbol Dialog ──────────────────────────────────────────────
+        // ── P2-4 Context Action Sheet ──────────────────────────────────────────────────────
+        if (contextWord != null) {
+            val word = contextWord!!
+            AlertDialog(
+                key = word,
+                onDismissRequest = { contextWord = null },
+                containerColor = Color(0xFF252526),
+                title = {
+                    Text(
+                        "\"$word\"",
+                        color = Color(0xFF4EC9B0),
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(
+                            onClick = {
+                                val lines = value.text.split("\n")
+                                val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
+                                val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+                                val found = lines.mapIndexedNotNull { idx, ln ->
+                                    if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
+                                }
+                                gotoResults = found
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("⇒", color = Color(0xFF007ACC), fontSize = 14.sp)
+                                Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                renameNewName = word
+                                val pattern = Regex("\\b" + Regex.escape(word) + "\\b")
+                                renameCount = pattern.findAll(value.text).count()
+                                renameDialogWord = word
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("✎", color = Color(0xFFE5C07B), fontSize = 14.sp)
+                                Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { contextWord = null }) {
+                        Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
+                    }
+                },
+            )
+        }
+
+        // ── P2-4 Go to Definition Results ──────────────────────────────────────────────────────
+        if (gotoResults != null) {
+            val results = gotoResults!!
+            AlertDialog(
+                onDismissRequest = { gotoResults = null },
+                containerColor = Color(0xFF252526),
+                title = {
+                    Text(
+                        if (results.isEmpty()) "Not found in file" else "Go to Definition",
+                        color = Color(0xFFD4D4D4),
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                },
+                text = {
+                    if (results.isEmpty()) {
+                        Text(
+                            "No declaration found in the current file.",
+                            color = Color(0xFF888888),
+                            fontSize = 12.sp,
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            results.forEach { def ->
+                                TextButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val lineHeightPx = fontSize * 1.25f
+                                            vScroll.animateScrollTo((def.line * lineHeightPx).toInt())
+                                        }
+                                        gotoResults = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            "Line ${def.line + 1}",
+                                            color = Color(0xFF007ACC),
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
+                                        Text(
+                                            def.lineText.take(60),
+                                            color = Color(0xFFD4D4D4),
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { gotoResults = null }) {
+                        Text("Close", color = Color(0xFF888888), fontSize = 12.sp)
+                    }
+                },
+            )
+        }
+
         if (renameDialogWord != null) {
             val wordToRename = renameDialogWord!!
             AlertDialog(
