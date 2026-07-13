@@ -1053,12 +1053,14 @@ fun ProjectShellScreen(
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         if (activeEditorTab != null) {
                             EditorPane(
-                                openFilePath    = activeEditorTab,
-                                fontSize        = editorFontSize,
-                                onInsertRequest = { fn -> keyboardInsert = fn },
-                                onCursorChange  = { line, col -> cursorLine = line; cursorCol = col },
-                                wordWrap        = wordWrap,
-                                scrollToLine    = scrollTargetLine,
+                                openFilePath       = activeEditorTab,
+                                fontSize           = editorFontSize,
+                                onInsertRequest    = { fn -> keyboardInsert = fn },
+                                onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
+                                wordWrap           = wordWrap,
+                                scrollToLine       = scrollTargetLine,
+                                projectId          = projectId,
+                                sessionStateStore  = sessionStateStore,
                             )
                         } else {
                             Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {

@@ -29,27 +29,18 @@ import com.codespace.ide.editor.CodeEditor
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
+import com.codespace.ide.data.SessionStateStore
 
-private const val PREFS_SESSION = "editor_session"
-private const val KEY_OPEN_PATHS = "open_paths"
-private const val KEY_ACTIVE_PATH = "active_path"
-
-private fun saveSession(context: Context, tabs: List<EditorTab>, activeId: String?) {
-    val paths = tabs.filter { it.path.startsWith("/") }.joinToString("|") { it.path }
-    val activePath = tabs.firstOrNull { it.id == activeId }?.path ?: ""
-    context.getSharedPreferences(PREFS_SESSION, Context.MODE_PRIVATE).edit()
-        .putString(KEY_OPEN_PATHS, paths)
-        .putString(KEY_ACTIVE_PATH, activePath)
-        .apply()
+// Legacy global session prefs removed — workspace memory now handled by SessionStateStore.
+// Kept only for migration: read once then clear.
+private fun migrateLegacySession(context: Context): Pair<List<String>, String?> {
+    val prefs = context.getSharedPreferences("editor_session", Context.MODE_PRIVATE)
+    val paths = prefs.getString("open_paths", "")?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
+    val active = prefs.getString("active_path", null)
+    prefs.edit().clear().apply()   // one-time migration — delete legacy data
+    return Pair(paths, active)
 }
 
-private fun loadSession(context: Context): Pair<List<String>, String?> {
-    val prefs = context.getSharedPreferences(PREFS_SESSION, Context.MODE_PRIVATE)
-    val paths = prefs.getString(KEY_OPEN_PATHS, "")
-        ?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
-    val activePath = prefs.getString(KEY_ACTIVE_PATH, null)
-    return Pair(paths, activePath)
-}
 
 private val TabBarBg = Color(0xFFECECEC)
 private val TabActiveBg = Color(0xFFFFFFFF)
@@ -98,36 +89,70 @@ fun EditorPane(
     onCursorChange: ((Int, Int) -> Unit)? = null,
     wordWrap: Boolean = false,
     scrollToLine: Int = 0,
+    projectId: String? = null,
+    sessionStateStore: SessionStateStore? = null,
 ) {
     val context = LocalContext.current
-    // Rotation fix (#8): key on orientation so the unsaved-changes AlertDialog below gets
-    // a fresh, correctly-sized window on rotate.
     val orientation = LocalConfiguration.current.orientation
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
+    // Pinned tab paths set
+    val pinnedPaths = remember { mutableStateListOf<String>() }
+    // Per-file scroll line memory (path → first visible line)
+    val tabScrollLines = remember { mutableStateMapOf<String, Int>() }
+    // Per-file cursor offset memory (path → char offset) — persisted via EditorTab.cursorOffset
+    val tabCursorOffsets = remember { mutableStateMapOf<String, Int>() }
 
-    // Restore session on first launch
+    // ── Workspace memory restore ──────────────────────────────────────────
     LaunchedEffect(Unit) {
         if (tabs.isEmpty()) {
-            val (paths, activePath) = loadSession(context)
-            paths.forEach { path ->
+            val store = sessionStateStore
+            val pid = projectId
+            // Try per-project restore first, fall back to legacy migration
+            val restoredPaths: List<String>
+            val restoredActive: String?
+            val restoredPinned: List<String>
+            val restoredSplit: String?
+            if (store != null && pid != null) {
+                val state = store.loadShellState(pid)
+                restoredPaths  = state?.openFilePaths ?: emptyList()
+                restoredActive = state?.activeFilePath
+                restoredPinned = state?.pinnedFilePaths ?: emptyList()
+                restoredSplit  = state?.splitFilePath
+                // Restore per-file scroll and cursor positions
+                store.loadScrollPositions(pid).forEach { (p, line) -> tabScrollLines[p] = line }
+                store.loadCursors(pid).forEach { (p, off) -> tabCursorOffsets[p] = off }
+            } else {
+                // One-time legacy migration
+                val (legacy, legacyActive) = migrateLegacySession(context)
+                restoredPaths  = legacy
+                restoredActive = legacyActive
+                restoredPinned = emptyList()
+                restoredSplit  = null
+            }
+            restoredPaths.forEach { path ->
                 val file = File(path)
                 if (file.exists()) {
                     val tab = EditorTab(
-                        id = java.util.UUID.randomUUID().toString(),
+                        id = path,
                         path = path,
                         name = file.name,
                         content = loadFileContent(path),
                         language = detectLanguage(file.name),
                         isDirty = false,
+                        cursorOffset = tabCursorOffsets[path] ?: 0,
                     )
                     tabs.add(tab)
                 }
             }
-            activeId = tabs.firstOrNull { it.path == activePath }?.id ?: tabs.firstOrNull()?.id
+            pinnedPaths.addAll(restoredPinned.filter { p -> tabs.any { it.path == p } })
+            if (restoredSplit != null && tabs.any { it.path == restoredSplit }) {
+                splitId = restoredSplit
+            }
+            activeId = tabs.firstOrNull { it.path == restoredActive }?.id ?: tabs.firstOrNull()?.id
         }
     }
 
@@ -204,9 +229,27 @@ fun EditorPane(
         }
     }
 
-    // Save session whenever tabs or activeId changes
-    LaunchedEffect(tabs.toList(), activeId) {
-        saveSession(context, tabs, activeId)
+    // ── Workspace memory: persist on every state change ─────────────────
+    val currentTabList = tabs.toList()
+    LaunchedEffect(currentTabList, activeId, pinnedPaths.toList(), splitId) {
+        val store = sessionStateStore
+        val pid = projectId
+        if (store != null && pid != null) {
+            val state = SessionStateStore.ShellState(
+                projectId      = pid,
+                activeFilePath = tabs.firstOrNull { it.id == activeId }?.path,
+                openFilePaths  = tabs.map { it.path },
+                pinnedFilePaths = pinnedPaths.toList(),
+                splitFilePath  = splitId?.let { id -> tabs.firstOrNull { it.id == id }?.path },
+                // activePanel / bottomTab / showBottomPanel managed by ProjectShellScreen
+            )
+            store.saveShellState(pid, state)
+            // Persist cursor offsets
+            val cursors = tabs.associate { it.path to it.cursorOffset }
+            store.saveCursors(pid, cursors)
+            // Persist scroll lines
+            store.saveScrollPositions(pid, tabScrollLines.toMap())
+        }
     }
 
     // No sample tabs — editor starts empty, waiting for Explorer

@@ -162,10 +162,11 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore) {
             }
             composable(Routes.SETTINGS) {
                 SettingsScreen(
-                    isDark        = !themeName.contains("Light"),
-                    onToggleTheme = { themeName = if (themeName.contains("Light")) "Dark (Default)" else "Light (Default)" },
-                    onBack        = { nav.popBackStack() },
-                    tokenStore    = tokenStore,
+                    isDark             = !themeName.contains("Light"),
+                    onToggleTheme      = { themeName = if (themeName.contains("Light")) "Dark (Default)" else "Light (Default)" },
+                    onBack             = { nav.popBackStack() },
+                    tokenStore         = tokenStore,
+                    sessionStateStore  = sessionStateStore,
                 )
             }
         }

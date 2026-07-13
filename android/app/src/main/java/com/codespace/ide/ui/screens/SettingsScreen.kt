@@ -52,6 +52,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.codespace.ide.data.GitHubAuth
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.domain.AiProviderId
 import com.codespace.ide.terminal.BackupManager
 import kotlinx.coroutines.Job
@@ -64,6 +65,7 @@ fun SettingsScreen(
     onToggleTheme: () -> Unit,
     onBack: () -> Unit,
     tokenStore: SecureTokenStore,
+    sessionStateStore: SessionStateStore? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -169,6 +171,7 @@ fun SettingsScreen(
                     onClick = {
                         when (showClearDialog) {
                             "Terminal History" -> context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().apply()
+                            "Workspace Memory" -> sessionStateStore?.clearAllWorkspaceMemory()
                             "AI Chat History"  -> context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().apply()
                             "Projects"         -> context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().apply()
                             "All Data" -> {
@@ -459,6 +462,38 @@ fun SettingsScreen(
                 }
             }
 
+            HorizontalDivider()
+
+            // ── Workspace Memory ─────────────────────────────────────────────
+            Text("Workspace Memory", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+
+            var workspaceRestoreEnabled by remember {
+                mutableStateOf(sessionStateStore?.workspaceRestoreEnabled ?: true)
+            }
+            ListItem(
+                headlineContent = { Text("Restore previous session on project open") },
+                supportingContent = { Text("Reopens your last files, cursor positions and layout") },
+                trailingContent = {
+                    Switch(
+                        checked = workspaceRestoreEnabled,
+                        onCheckedChange = { checked ->
+                            workspaceRestoreEnabled = checked
+                            sessionStateStore?.let { it.workspaceRestoreEnabled = checked }
+                        }
+                    )
+                }
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Clear Workspace Memory") },
+                supportingContent = { Text("Forgets all saved file positions, layouts and sessions") },
+                trailingContent = {
+                    OutlinedButton(
+                        onClick = { showClearDialog = "Workspace Memory" },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
+                    ) { Text("Clear") }
+                }
+            )
             HorizontalDivider()
 
             // ── Clear Data ───────────────────────────────────────────────────

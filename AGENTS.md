@@ -627,6 +627,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-2 Find & Replace — bottom bar with search, replace, prev/next arrows, regex toggle, replace-one, replace-all, match counter. Fixed missing FindReplace import (#1039 GREEN). |
 | 2026-07-13 | Shipped P2-6 Git diff gutter — new `GitDiffAnalyzer.kt` (LCS diff, capped at 2 000 lines). Gutter bar: green=added, yellow=modified, red ▶ triangle=deleted lines. Replaced old heuristic isDirty/isAdded in CodeEditor.kt. |
 | 2026-07-13 | Shipped P2-7 Code Folding — SyntaxTransformation now accepts foldedLineIndices, collapses folded blocks into ··· with correct OffsetMapping so cursor positions stay valid. BasicTextField finally shows the folded view (was showing full text before). |
+| 2026-07-13 | Shipped Workspace Memory System — expanded `SessionStateStore` (cursor offsets, scroll positions, pinned tabs, split path, terminal state, per-project isolation, restore toggle, clearAll). `EditorPane` now accepts `projectId`+`sessionStateStore`, saves/restores per-project session including cursors, scroll lines, pinned+split tabs. `SettingsScreen` has new "Workspace Memory" section (restore toggle + clear button). One-time legacy `editor_session` migration included. |
 
 ---
 
