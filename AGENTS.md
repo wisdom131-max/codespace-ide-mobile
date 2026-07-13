@@ -20,6 +20,30 @@
 
 ---
 
+## CURRENT STATE (2026-07-13)
+
+| | |
+|-|-|
+| Latest green build | #1035 |
+| Active phase | Phase 2 - Code Editor Intelligence |
+| Last shipped | P2-1 Rename Symbol (acd045fa) |
+| Next to implement | P2-2 Find & Replace (bottom bar: search, replace, prev/next, replace-all, regex toggle) |
+| After Phase 2 | Phase 3 - Verify & Repair all existing features |
+| After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
+
+---
+
+## KNOWN KOTLIN/COMPOSE CI FAILURE PATTERNS (memorise these)
+
+Do NOT repeat any of these — they have each caused 5+ failed builds:
+
+1. Raw newlines inside double-quoted strings: "foo\nbar" is OK, literal newline is NOT. Use \n or triple-quoted strings.
+2. remember() inside if/else branches or LazyColumn items{} — Compose rules: call remember() unconditionally at top of composable.
+3. Double-quotes inside a double-quoted string: "of "$var"" breaks the string. Use single quotes: "of '$var'".
+4. Triple-quoted strings inside ${} interpolation — not valid Kotlin. Extract to a local val first.
+
+---
+
 ## CI BUILD STATUS
 
 | Build | Result | Notes |
@@ -33,8 +57,10 @@
 | #1011 | FAIL | fix: remove remember inside LazyColumn items{} — same root cause, CE not fully fixed |
 | #1012–#1027 | FAIL | Multiple fix attempts; root cause fully resolved in #1028 |
 | #1028 | GREEN ✅ | fix(editor): escape snippet insertText newlines — definitive fix |
-| #1029 | GREEN ✅ | docs(AGENTS): CI status + Phase 2 session log |
-| #1030 | GREEN ✅ | docs(AGENTS): full audit directive + 11-phase roadmap |
+| #1029–#1032 | GREEN ✅ | docs(AGENTS): evaluation policy + background startup directive + audit |
+| #1033 | FAIL | feat(editor): Rename Symbol — unescaped double-quote in Text string at :576 |
+| #1034 | FAIL | docs-only — ran on same broken CodeEditor.kt commit as #1033 |
+| #1035 | GREEN ✅ | fix(editor): P2-1 Rename Symbol — quote fix, SHIPPED & CLEAN |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -573,21 +599,29 @@ Status as of 2026-07-13:
 - Rich language snippets with insertText bodies (shipped, pending CI green)
 
 ### Phase 2 TODO (ordered)
-| # | Feature | Status |
-|---|---------|--------|
-| P2-1 | Rename Symbol | SHIPPED ✅ (#1033) | long-press → AlertDialog shows occurrence count → replaces all with regex word-boundary |
-| P2-1 | Rename Symbol | SHIPPED ✅ | commit 9596a920833f — CodeEditor.kt: combinedClickable long-press, renameDialogWord state, AlertDialog with OutlinedTextField, triple-quoted \b Regex replace-all |
-| P2-2 | Find & Replace (full: regex, highlight, replace-all) | TODO |
-| P2-3 | Multi-cursor editing | TODO |
-| P2-4 | Go to Definition | TODO |
-| P2-5 | Error squiggles (visual underlines for lint) | TODO |
-| P2-6 | Git diff gutter | TODO |
-| P2-7 | Code folding | TODO |
-| P2-8 | Breadcrumb navigation | TODO |
-| P2-9 | Code bookmarks | TODO |
-| P2-10 | Jump back / forward navigation history | TODO |
-| P2-11 | Inlay hints (type annotations inline) | TODO |
-| P2-12 | Parameter hints / signature help | TODO |
+
+**Latest green build: #1035. Repo is clean — safe to implement.**
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| P2-1 | Rename Symbol | DONE (#1035) | long-press word -> AlertDialog -> replace all word-boundary occurrences. commit acd045fa |
+| P2-2 | Find & Replace | **NEXT** | Bottom bar: search input, prev/next, replace input, replace-all, regex toggle, match highlight |
+| P2-3 | Multi-cursor editing | TODO | |
+| P2-4 | Go to Definition | TODO | |
+| P2-5 | Error squiggles (lint underlines) | TODO | |
+| P2-6 | Git diff gutter | TODO | dirty-line markers exist, upgrade to +/~/- with colour |
+| P2-7 | Code folding | TODO | foldedRanges state exists, verify it works |
+| P2-8 | Breadcrumb navigation | TODO | |
+| P2-9 | Code bookmarks | TODO | |
+| P2-10 | Jump back/forward history | TODO | |
+| P2-11 | Inlay hints | TODO | |
+| P2-12 | Parameter hints / signature help | TODO | |
+
+### Phase 2 Session Log
+| Date | Done |
+|------|------|
+| 2026-07-13 | Shipped HOVER_DOCS (60+ keywords), rich snippets, sticky scroll, P2-1 Rename Symbol. Fixed #1028 (raw newlines) and #1035 (unescaped double-quote in Text string). |
+| 2026-07-13 | Added Future Feature Evaluation Policy. Added Phase 4 Background Safe Startup & Recovery directive (do not build until Phase 3 done). Audited existing systems: crash logger, BackupManager, AppOutputLog, WorkManager all present. |
 
 ---
 
