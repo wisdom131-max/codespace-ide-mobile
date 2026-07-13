@@ -8,20 +8,17 @@ import androidx.compose.ui.text.withStyle
 import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.EditorColors
 
-/**
- * Lightweight, allocation-conscious tokenizer used for on-device syntax highlighting.
- *
- * In production this is backed by TextMate grammars (tm4e) loaded from assets so any of
- * the 12+ languages — and plugin-contributed grammars — highlight consistently. This
- * pure-Kotlin fallback covers the core token classes (keywords, strings, numbers,
- * comments, functions, types) and is what runs when a grammar isn't loaded yet, keeping
- * the editor responsive on low-RAM devices because it only tokenizes the visible
- * viewport.
- */
 object SyntaxHighlighter {
 
     fun highlight(text: String, language: Language, colors: EditorColors): AnnotatedString {
         val spec = LanguageSpecs.forLanguage(language)
+        var bracketDepth = 0
+        val bracketColors = listOf(
+            Color(0xFFFFD700), // gold
+            Color(0xFFDA70D6), // orchid
+            Color(0xFF179FFF)  // blue
+        )
+
         return buildAnnotatedString {
             var i = 0
             val n = text.length
@@ -74,6 +71,21 @@ object SyntaxHighlighter {
                     }
                     appendStyled(word, style)
                     i = j
+                    continue
+                }
+                // Brackets
+                if (c == '(' || c == '[' || c == '{') {
+                    val color = bracketColors[Math.floorMod(bracketDepth, bracketColors.size)]
+                    appendStyled(c.toString(), color)
+                    bracketDepth++
+                    i++
+                    continue
+                }
+                if (c == ')' || c == ']' || c == '}') {
+                    bracketDepth = (bracketDepth - 1).coerceAtLeast(0)
+                    val color = bracketColors[Math.floorMod(bracketDepth, bracketColors.size)]
+                    appendStyled(c.toString(), color)
+                    i++
                     continue
                 }
                 // Operators / punctuation
