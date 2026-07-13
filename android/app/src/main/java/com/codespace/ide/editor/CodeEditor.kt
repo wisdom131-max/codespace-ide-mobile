@@ -3,6 +3,7 @@ package com.codespace.ide.editor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Code
@@ -22,9 +24,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -32,27 +40,261 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.launch
 
-private data class Completion(val label: String, val kind: CompletionKind)
+private data class Completion(val label: String, val kind: CompletionKind, val insertText: String = label, val doc: String? = null)
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
+
+// ── Hover docs for common symbols ──────────────────────────────────────────
+private val HOVER_DOCS: Map<String, String> = mapOf(
+    // Kotlin
+    "fun" to "Declares a function. Usage: fun name(params): ReturnType { }",
+    "val" to "Declares an immutable (read-only) property or local variable.",
+    "var" to "Declares a mutable property or local variable.",
+    "suspend" to "Marks a function as a coroutine — can call other suspend functions and delay without blocking a thread.",
+    "companion" to "A companion object is a singleton tied to a class, similar to static members in Java.",
+    "data" to "Data class — auto-generates equals(), hashCode(), copy(), and toString() based on constructor params.",
+    "sealed" to "Sealed class — all subclasses must be defined in the same file. Useful for exhaustive when expressions.",
+    "inline" to "Inline function — the compiler copies the function body at every call site, avoiding lambda object allocation.",
+    "reified" to "Used with inline functions to access the actual type T at runtime (e.g. obj is T).",
+    "by" to "Delegation — implements an interface or property by delegating to another object.",
+    "lateinit" to "Declares a non-null var that will be initialized later. Throws UninitializedPropertyAccessException if accessed before init.",
+    "override" to "Overrides an open or abstract member from a superclass or interface.",
+    "object" to "Declares a singleton or anonymous object. companion object { } acts as a class-level namespace.",
+    // Kotlin stdlib / common
+    "launch" to "Starts a new coroutine in a CoroutineScope. Returns a Job — non-blocking fire-and-forget.",
+    "collect" to "Terminal operator for a Flow — suspends and collects each emitted value.",
+    "remember" to "Caches a value across recompositions. Recomputed only when keys change.",
+    "rememberSaveable" to "Like remember but also survives process death and configuration changes (saved to Bundle).",
+    "mutableStateOf" to "Creates a mutable State<T> that triggers recomposition when its value changes.",
+    "LaunchedEffect" to "Runs a suspend block in a coroutine scoped to the composition. Restarts when keys change.",
+    "derivedStateOf" to "Creates a State whose value is derived from other States — only recomposes when the result changes.",
+    // JavaScript / TypeScript
+    "const" to "Declares a block-scoped constant. The binding cannot be reassigned (but object contents can still mutate).",
+    "let" to "Declares a block-scoped variable that can be reassigned.",
+    "async" to "Marks a function as asynchronous — it always returns a Promise.",
+    "await" to "Pauses execution inside an async function until the Promise resolves.",
+    "typeof" to "Returns a string indicating the type of the operand: 'string', 'number', 'boolean', 'object', 'undefined', 'function', 'symbol'.",
+    "instanceof" to "Tests whether an object has the prototype of a constructor in its prototype chain.",
+    "Promise" to "Represents an eventual (async) result. States: pending → fulfilled | rejected.",
+    // Python
+    "def" to "Defines a function. Usage: def name(params): body",
+    "self" to "Refers to the current instance inside a class method. Must be the first parameter by convention.",
+    "yield" to "Turns a function into a generator. Each yield produces a value without ending the function.",
+    "lambda" to "Creates an anonymous function. Usage: lambda x, y: x + y",
+    "with" to "Context manager — calls __enter__ at start and __exit__ at end, even if an exception is raised.",
+    "None" to "Python's null value. Equivalent to null in other languages. Type: NoneType.",
+    // Rust
+    "fn" to "Declares a function. Usage: fn name(params) -> ReturnType { }",
+    "mut" to "Makes a binding mutable. In Rust, variables are immutable by default.",
+    "impl" to "Implements methods or traits for a type.",
+    "trait" to "Defines shared behavior — similar to interfaces in other languages.",
+    "match" to "Pattern-matching expression. Must be exhaustive (all cases handled).",
+    "Option" to "Rust's null-safe type. Either Some(value) or None.",
+    "Result" to "Error-handling type. Either Ok(value) or Err(error).",
+    "Vec" to "A growable heap-allocated array. Similar to ArrayList in Java.",
+    // Go
+    "defer" to "Defers execution of a function call until the surrounding function returns. Called in LIFO order.",
+    "goroutine" to "A lightweight thread managed by the Go runtime. Launched with the 'go' keyword.",
+    "chan" to "A typed channel for communication between goroutines. Send: ch <- v. Receive: v := <-ch.",
+    "nil" to "Go's zero value for pointers, slices, maps, channels, functions, and interface types.",
+    // Common
+    "return" to "Exits the current function and optionally returns a value to the caller.",
+    "import" to "Brings external modules or packages into the current file's scope.",
+    "class" to "Blueprint for creating objects. Encapsulates data (fields) and behaviour (methods).",
+    "interface" to "Defines a contract — a set of methods that implementing classes must provide.",
+    "null" to "Represents the absence of a value. Many languages have null-safety features to avoid null pointer errors.",
+    "true" to "Boolean literal representing the logical true value.",
+    "false" to "Boolean literal representing the logical false value.",
+    "this" to "Refers to the current object instance inside a class method.",
+    "static" to "Belongs to the class itself rather than any instance. Shared across all instances.",
+    "void" to "Indicates a function returns no value.",
+    "new" to "Allocates a new object instance on the heap and calls its constructor.",
+    "throw" to "Raises an exception, transferring control to the nearest matching catch block.",
+    "try" to "Wraps code that might throw an exception. Pairs with catch and/or finally.",
+    "catch" to "Handles exceptions thrown in the corresponding try block.",
+    "finally" to "Block that always runs after try/catch, regardless of whether an exception was thrown.",
+    "for" to "Loop construct. Common forms: for (init; condition; step), for (item in collection), for...of, for...in.",
+    "while" to "Loops while the condition is true. Checks condition before each iteration.",
+    "break" to "Exits the innermost loop or switch statement immediately.",
+    "continue" to "Skips the rest of the current loop iteration and starts the next one.",
+    "switch" to "Multi-way branch — compares a value against multiple cases and executes the matching branch.",
+)
+
+private fun hoverDocFor(word: String): String? = HOVER_DOCS[word]
+
+// ── Language-aware snippets with insert text ───────────────────────────────
+private fun snippetsFor(lang: Language): List<Completion> = when (lang) {
+    Language.KOTLIN -> listOf(
+        Completion("fun", CompletionKind.SNIPPET, "fun name(): Unit {
+    
+}", "Function declaration"),
+        Completion("class", CompletionKind.SNIPPET, "class Name {
+    
+}", "Class declaration"),
+        Completion("data class", CompletionKind.SNIPPET, "data class Name(val field: Type)", "Data class with auto-generated equals/hashCode/copy"),
+        Completion("when", CompletionKind.SNIPPET, "when (expr) {
+    else -> {}
+}", "Exhaustive when expression"),
+        Completion("if", CompletionKind.SNIPPET, "if (condition) {
+    
+}", "If statement"),
+        Completion("for", CompletionKind.SNIPPET, "for (item in collection) {
+    
+}", "For-each loop"),
+        Completion("object", CompletionKind.SNIPPET, "object Name {
+    
+}", "Singleton object"),
+        Completion("companion object", CompletionKind.SNIPPET, "companion object {
+    
+}", "Companion object (static members)"),
+        Completion("launch", CompletionKind.SNIPPET, "launch {
+    
+}", "Launch a coroutine"),
+        Completion("LaunchedEffect", CompletionKind.SNIPPET, "LaunchedEffect(key) {
+    
+}", "Run suspend block scoped to composition"),
+        Completion("remember", CompletionKind.SNIPPET, "remember { mutableStateOf() }", "Remember mutable state across recompositions"),
+        Completion("Composable", CompletionKind.SNIPPET, "@Composable
+fun Name() {
+    
+}", "Jetpack Compose function"),
+    )
+    Language.JAVASCRIPT, Language.TYPESCRIPT -> listOf(
+        Completion("function", CompletionKind.SNIPPET, "function name(params) {
+    
+}", "Function declaration"),
+        Completion("const", CompletionKind.SNIPPET, "const name = value", "Immutable binding"),
+        Completion("async function", CompletionKind.SNIPPET, "async function name() {
+    
+}", "Async function"),
+        Completion("class", CompletionKind.SNIPPET, "class Name {
+  constructor() {
+    
+  }
+}", "Class declaration"),
+        Completion("for...of", CompletionKind.SNIPPET, "for (const item of array) {
+    
+}", "Iterate over iterable"),
+        Completion("try", CompletionKind.SNIPPET, "try {
+    
+} catch (err) {
+    
+}", "Try-catch"),
+        Completion("Promise", CompletionKind.SNIPPET, "new Promise((resolve, reject) => {
+    
+})", "Create a Promise"),
+        Completion("console.log", CompletionKind.SNIPPET, "console.log()", "Log to console"),
+        Completion("=>", CompletionKind.SNIPPET, "(params) => {
+    
+}", "Arrow function"),
+    )
+    Language.PYTHON -> listOf(
+        Completion("def", CompletionKind.SNIPPET, "def name(params):
+    ", "Function definition"),
+        Completion("class", CompletionKind.SNIPPET, "class Name:
+    def __init__(self):
+        ", "Class with constructor"),
+        Completion("if", CompletionKind.SNIPPET, "if condition:
+    ", "If statement"),
+        Completion("for", CompletionKind.SNIPPET, "for item in collection:
+    ", "For loop"),
+        Completion("with", CompletionKind.SNIPPET, "with open('file') as f:
+    ", "Context manager"),
+        Completion("try", CompletionKind.SNIPPET, "try:
+    
+except Exception as e:
+    ", "Try-except"),
+        Completion("lambda", CompletionKind.SNIPPET, "lambda x: x", "Anonymous function"),
+        Completion("list comprehension", CompletionKind.SNIPPET, "[expr for item in iterable]", "List comprehension"),
+        Completion("print", CompletionKind.SNIPPET, "print()", "Print to stdout"),
+    )
+    Language.JAVA -> listOf(
+        Completion("public class", CompletionKind.SNIPPET, "public class Name {
+    
+}", "Public class"),
+        Completion("public static void main", CompletionKind.SNIPPET, "public static void main(String[] args) {
+    
+}", "Main method"),
+        Completion("for", CompletionKind.SNIPPET, "for (int i = 0; i < n; i++) {
+    
+}", "For loop"),
+        Completion("try", CompletionKind.SNIPPET, "try {
+    
+} catch (Exception e) {
+    e.printStackTrace();
+}", "Try-catch"),
+        Completion("interface", CompletionKind.SNIPPET, "public interface Name {
+    
+}", "Interface"),
+        Completion("@Override", CompletionKind.SNIPPET, "@Override
+public void method() {
+    
+}", "Override annotation"),
+    )
+    Language.RUST -> listOf(
+        Completion("fn", CompletionKind.SNIPPET, "fn name() -> () {
+    
+}", "Function declaration"),
+        Completion("struct", CompletionKind.SNIPPET, "struct Name {
+    field: Type,
+}", "Struct definition"),
+        Completion("impl", CompletionKind.SNIPPET, "impl Name {
+    fn method(&self) {
+        
+    }
+}", "Impl block"),
+        Completion("match", CompletionKind.SNIPPET, "match value {
+    Some(x) => x,
+    None => todo!(),
+}", "Match expression"),
+        Completion("let", CompletionKind.SNIPPET, "let name = value;", "Immutable binding"),
+        Completion("let mut", CompletionKind.SNIPPET, "let mut name = value;", "Mutable binding"),
+        Completion("for", CompletionKind.SNIPPET, "for item in collection {
+    
+}", "For loop"),
+    )
+    Language.GO -> listOf(
+        Completion("func", CompletionKind.SNIPPET, "func name() {
+    
+}", "Function declaration"),
+        Completion("struct", CompletionKind.SNIPPET, "type Name struct {
+    Field Type
+}", "Struct type"),
+        Completion("interface", CompletionKind.SNIPPET, "type Name interface {
+    Method() ReturnType
+}", "Interface type"),
+        Completion("for", CompletionKind.SNIPPET, "for i := 0; i < n; i++ {
+    
+}", "For loop"),
+        Completion("goroutine", CompletionKind.SNIPPET, "go func() {
+    
+}()", "Anonymous goroutine"),
+        Completion("defer", CompletionKind.SNIPPET, "defer func() {
+    
+}()", "Deferred cleanup"),
+        Completion("err check", CompletionKind.SNIPPET, "if err != nil {
+    return err
+}", "Error check"),
+    )
+    else -> listOf(
+        Completion("TODO", CompletionKind.SNIPPET, "TODO", "Mark as not yet implemented"),
+        Completion("FIXME", CompletionKind.SNIPPET, "FIXME", "Mark as needing a fix"),
+    )
+}
 
 private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     if (prefix.length < 2) return emptyList()
     val spec = LanguageSpecs.forLanguage(lang)
     val p = prefix.lowercase()
-    val kw = spec.keywords.filter { it.startsWith(p) }.sorted().map { Completion(it, CompletionKind.KEYWORD) }
-    val ty = spec.types.filter { it.lowercase().startsWith(p) }.sorted().map { Completion(it, CompletionKind.TYPE) }
-    val snips = buildList {
-        val snippets = mapOf(
-            "func" to "function", "ret" to "return", "imp" to "import",
-            "cla" to "class", "con" to "console.log", "asy" to "async",
-            "def" to "def ", "pri" to "print(", "for" to "for",
-        )
-        snippets.forEach { (trigger, expand) ->
-            if (trigger.startsWith(p) || expand.startsWith(p))
-                add(Completion(expand, CompletionKind.SNIPPET))
-        }
+    val kw = spec.keywords.filter { it.startsWith(p) }.sorted().map {
+        Completion(it, CompletionKind.KEYWORD, it, hoverDocFor(it))
     }
-    return (kw + ty + snips).distinctBy { it.label }.take(8)
+    val ty = spec.types.filter { it.lowercase().startsWith(p) }.sorted().map {
+        Completion(it, CompletionKind.TYPE, it, hoverDocFor(it))
+    }
+    val snips = snippetsFor(lang).filter {
+        it.label.lowercase().startsWith(p) || it.insertText.lowercase().startsWith(p)
+    }
+    return (snips + kw + ty).distinctBy { it.label }.take(10)
 }
 
 private fun currentWord(text: String, cursor: Int): String {
@@ -395,17 +637,19 @@ fun CodeEditor(
                     .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp)),
             ) {
                 items(completions) { comp ->
-                    Row(
+                    var showDocTooltip by remember { mutableStateOf(false) }
+                    Column(
                         Modifier
                             .fillMaxWidth()
                             .clickable {
+                                // Insert the full insertText (snippet body), not just label
                                 val cursor = value.selection.end
                                 val text = value.text
                                 val end = cursor.coerceAtMost(text.length)
                                 var start = end
-                                while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
-                                val newText = text.substring(0, start) + comp.label + text.substring(end)
-                                val newCursor = start + comp.label.length
+                                while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_' || text[start - 1] == ' ')) start--
+                                val newText = text.substring(0, start) + comp.insertText + text.substring(end)
+                                val newCursor = start + comp.insertText.length
                                 value = TextFieldValue(
                                     text = newText,
                                     selection = androidx.compose.ui.text.TextRange(newCursor),
@@ -413,22 +657,53 @@ fun CodeEditor(
                                 onContentChange(newText)
                                 showCompletions = false
                             }
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            .pointerInput(comp.label) {
+                                detectTapGestures(
+                                    onLongPress = { showDocTooltip = !showDocTooltip }
+                                )
+                            }
                     ) {
-                        val (icon, tint) = when (comp.kind) {
-                            CompletionKind.KEYWORD  -> Pair(Icons.Default.Code,       Color(0xFF569CD6))
-                            CompletionKind.TYPE     -> Pair(Icons.Default.TextFields,  Color(0xFF4EC9B0))
-                            CompletionKind.SNIPPET  -> Pair(Icons.Default.Functions,   Color(0xFFDCDCAA))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val (icon, tint) = when (comp.kind) {
+                                CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
+                                CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
+                                CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
+                            }
+                            Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(comp.label, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
+                                if (comp.kind == CompletionKind.SNIPPET && comp.doc != null) {
+                                    Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1)
+                                }
+                            }
+                            Text(comp.kind.name.lowercase(), color = Color(0xFF808080), fontSize = 9.sp)
                         }
-                        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
-                        Text(comp.label, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            comp.kind.name.lowercase(),
-                            color = Color(0xFF808080), fontSize = 9.sp,
-                        )
+                        // Hover doc tooltip — shown on long-press
+                        if (showDocTooltip && comp.doc != null) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF2D2D2D))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    buildAnnotatedString {
+                                        withStyle(SpanStyle(color = Color(0xFF9CDCFE), fontWeight = FontWeight.SemiBold)) { append(comp.label) }
+                                        append("\n")
+                                        withStyle(SpanStyle(color = Color(0xFFCCCCCC), fontStyle = FontStyle.Italic)) { append(comp.doc) }
+                                    },
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    lineHeight = 15.sp,
+                                )
+                            }
+                        }
                     }
                 }
             }
