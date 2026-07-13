@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.EditorTab
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.CodeEditor
+import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
 
@@ -298,6 +299,35 @@ fun EditorPane(
                     )
                 }
             } else {
+                // ── Sticky Scroll header ───────────────────────────────────────────
+                val stickyScope = remember(active.content, scrollToLine) {
+                    if (scrollToLine <= 0) null
+                    else {
+                        val lines = active.content.split("\n")
+                        val scopeKeywords = listOf("fun ", "class ", "object ", "interface ", "enum ", "@Composable", "if ", "when ", "for ", "while ", "struct ", "impl ", "fn ", "def ", "func ")
+                        (scrollToLine - 1 downTo 0)
+                            .map { i -> lines.getOrNull(i)?.trim() }
+                            .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line!!.contains(kw) } }
+                    }
+                }
+                if (stickyScope != null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF1E1E1E).copy(alpha = 0.97f))
+                            .zIndex(8f)
+                            .padding(horizontal = 64.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = stickyScope,
+                            color = Color(0xFF888888),
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 key(active.id) {
                     CodeEditor(
                         content = active.content,
