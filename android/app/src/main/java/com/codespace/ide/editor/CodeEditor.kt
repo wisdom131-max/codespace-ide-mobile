@@ -573,7 +573,7 @@ fun CodeEditor(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "$renameCount occurrence${if (renameCount != 1) "s" else ""} of "$wordToRename"",
+                            "$renameCount occurrence${if (renameCount != 1) "s" else ""} of '$wordToRename'",
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                         )
