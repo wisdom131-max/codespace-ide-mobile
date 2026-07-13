@@ -27,7 +27,7 @@
 | Latest green build | #1035 |
 | Active phase | Phase 2 - Code Editor Intelligence |
 | Last shipped | P2-1 Rename Symbol (acd045fa) |
-| Next to implement | P2-2 Find & Replace (bottom bar: search, replace, prev/next, replace-all, regex toggle) |
+| Next to implement | P2-3 Go to Line (Ctrl+G style — bottom input, jump cursor to line N) |
 | After Phase 2 | Phase 3 - Verify & Repair all existing features |
 | After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
 
@@ -61,6 +61,8 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1033 | FAIL | feat(editor): Rename Symbol — unescaped double-quote in Text string at :576 |
 | #1034 | FAIL | docs-only — ran on same broken CodeEditor.kt commit as #1033 |
 | #1035 | GREEN ✅ | fix(editor): P2-1 Rename Symbol — quote fix, SHIPPED & CLEAN |
+| #1036–#1038 | FAIL | feat(P2-2): FindReplace import missing in EditorPane.kt |
+| #1039 | GREEN ✅ | fix(P2-2): FindReplace icon import — P2-2 SHIPPED & CLEAN |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -622,6 +624,7 @@ Status as of 2026-07-13:
 |------|------|
 | 2026-07-13 | Shipped HOVER_DOCS (60+ keywords), rich snippets, sticky scroll, P2-1 Rename Symbol. Fixed #1028 (raw newlines) and #1035 (unescaped double-quote in Text string). |
 | 2026-07-13 | Added Future Feature Evaluation Policy. Added Phase 4 Background Safe Startup & Recovery directive (do not build until Phase 3 done). Audited existing systems: crash logger, BackupManager, AppOutputLog, WorkManager all present. |
+| 2026-07-13 | Shipped P2-2 Find & Replace — bottom bar with search, replace, prev/next arrows, regex toggle, replace-one, replace-all, match counter. Fixed missing FindReplace import (#1039 GREEN). |
 
 ---
 
