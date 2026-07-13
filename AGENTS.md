@@ -471,3 +471,256 @@ Once CI goes green on #1012:
 | 4 | **Go to Definition** | Double-tap a symbol -> scan file for first `fun name` / `val name` / `class name` definition -> `scrollToLine` jump |
 | 5 | **Error squiggles** | Post-edit analysis pass: unmatched braces, unclosed strings, undefined references (scan for uses without definitions in file) -> wavy red underline via AnnotatedString SpanStyle |
 | 6 | **Git diff gutter** | On file open read `git diff HEAD <file>` via ProotInstaller.execOnce -> parse unified diff -> color sidebar strips (green=add, orange=mod, red=del) aligned to line numbers |
+
+---
+
+## MASTER AUDIT DIRECTIVE — 2026-07-13
+
+### Source: Wisdom's Full Audit & Feature Implementation Order
+
+The following is the canonical work order for all future sessions. Every AI reading this must:
+1. Audit before implementing — never assume a button works because it exists
+2. Repair broken before adding new
+3. Follow complexity order within each section
+4. Update AGENTS.md after every session
+
+---
+
+## AUDIT REPORT TEMPLATE (fill per session)
+
+Each session must output:
+
+| Category | Features |
+|----------|---------|
+| Fully Functional | List what actually works |
+| Partially Functional | List what's wired but incomplete |
+| Broken | List what exists but is broken |
+| Repaired This Session | List what was fixed |
+| Upgraded This Session | List what was improved |
+| Newly Implemented | List what was added fresh |
+
+---
+
+## PHASE 2 — CODE EDITOR INTELLIGENCE (current phase)
+
+Status as of 2026-07-13:
+
+### Already Exists (verify working)
+- Syntax highlighting (SyntaxHighlighter.kt + SyntaxTransformation.kt)
+- LintChecker.kt — inline problem markers (VERIFY: are markers actually showing?)
+- Find/Replace — (VERIFY: does it actually replace or just find?)
+- Autocomplete dropdown (VERIFY: does it insert full snippet or just keyword?)
+- HOVER_DOCS map (shipped 2026-07-13, pending CI green)
+- Sticky scroll (shipped 2026-07-13, pending CI green)
+- Rich language snippets with insertText bodies (shipped, pending CI green)
+
+### Phase 2 TODO (ordered)
+| # | Feature | Status |
+|---|---------|--------|
+| P2-1 | Rename Symbol | NEXT — once CI #1012 green |
+| P2-2 | Find & Replace (full: regex, highlight, replace-all) | TODO |
+| P2-3 | Multi-cursor editing | TODO |
+| P2-4 | Go to Definition | TODO |
+| P2-5 | Error squiggles (visual underlines for lint) | TODO |
+| P2-6 | Git diff gutter | TODO |
+| P2-7 | Code folding | TODO |
+| P2-8 | Breadcrumb navigation | TODO |
+| P2-9 | Code bookmarks | TODO |
+| P2-10 | Jump back / forward navigation history | TODO |
+| P2-11 | Inlay hints (type annotations inline) | TODO |
+| P2-12 | Parameter hints / signature help | TODO |
+
+---
+
+## PHASE 3 — VERIFY & REPAIR EXISTING FEATURES
+
+### Must audit in order before implementing anything else
+
+#### File Explorer (ExplorerPane.kt)
+- [ ] Rename — does it actually rename the file on disk?
+- [ ] Copy/Cut/Paste — do these actually move bytes?
+- [ ] Duplicate — does it copy the file?
+- [ ] Delete — does it delete recursively for folders?
+- [ ] "Open in Terminal" — does it cd to the correct directory?
+- [ ] Search panel — does in-project search return accurate results?
+- [ ] Outline view — does it actually parse symbols from the current file?
+- [ ] Long-press context menu — all 13 items working?
+
+#### Terminal (TerminalPane.kt)
+- [ ] All 5 Ollama install methods fallthrough correctly?
+- [ ] Launch Coding Agent: does model picker persist choice?
+- [ ] Setup Remotion: does it complete without manual steps?
+- [ ] Launch Remotion Studio: does composition panel show (not blank)?
+- [ ] Install Voice (TTS): Piper download + bark-small download both complete?
+- [ ] SSH remote terminal: does it actually connect?
+- [ ] Color scheme picker: do all schemes apply correctly?
+- [ ] Extra key bar: all keys send correct sequences?
+
+#### Source Control (SourceControlPane.kt)
+- [ ] Stage/unstage — works?
+- [ ] Commit — works?
+- [ ] Push — uses GitHub token correctly?
+- [ ] Pull / Fetch — works?
+- [ ] Branch switch — works?
+- [ ] Diff viewer — shows actual diff?
+- [ ] RepoBrowserSheet clone — end-to-end verified?
+
+#### Preview Pane (PreviewPane.kt)
+- [ ] HTML preview — loads local file:// correctly?
+- [ ] Browser mode — navigation bar works?
+- [ ] Markdown — renders correctly?
+- [ ] SVG — renders inline?
+- [ ] File upload via WebView — picker opens and files load?
+- [ ] Video auto-wrap (shipped 2026-07-08) — working?
+- [ ] Audio auto-wrap — working?
+- [ ] Remotion Studio — compositions panel not blank?
+
+#### AI Copilot (CopilotChatPanelOverlay.kt)
+- [ ] MCP tool calls execute correctly?
+- [ ] write_file auto-opens file in editor?
+- [ ] write_file switches to Preview for .html/.svg/.md?
+- [ ] Multi-session history persists across app restarts?
+- [ ] Token streaming works for all providers?
+
+#### Connectors (ConnectorsHubSheet.kt)
+- [ ] OAuth flow completes (doesn't get stuck in WebView)?
+- [ ] Connected services actually pass tokens to API calls?
+- [ ] ConnectorsApiClient proxies correctly?
+
+#### Viewers
+- [ ] PDF — paginate, zoom working?
+- [ ] Archive — extract individual files working?
+- [ ] Video — playback, seek, fullscreen?
+- [ ] Audio — seek bar, play/pause?
+- [ ] Hex — 256KB cap enforced, ASCII column correct?
+- [ ] SQLite — table list, query result grid?
+
+#### Settings (SettingsScreen.kt)
+- [ ] API key save/load — round-trips correctly?
+- [ ] Biometric toggle — locks on next launch?
+- [ ] Provider switch — actually changes which LLM responds?
+- [ ] Theme change — persists across restarts?
+
+---
+
+## PHASE 4 — TERMINAL SESSION RESTORE
+
+Requirements (implement after Phase 3 audit):
+- Save on app close: tab count, working dir per tab, command history
+- 8-second startup headstart — do NOT restore before initialization completes
+- Restore asynchronously — never block main thread
+- Corrupted session detection — skip, don't crash
+- Prevent restore loops (max 1 restore attempt per session ID per launch)
+- Auto-disable sessions that crash 2+ times
+- Manual restore option in terminal ⋮ menu
+
+Implementation targets:
+- `TerminalSessionStore.kt` — new file, Room entity or DataStore
+- `TerminalPane.kt` — wire save on tab close + restore on startup (post-8s delay)
+- `TerminalSession.kt` — expose workingDir(), commandHistory()
+
+---
+
+## PHASE 5 — PACKAGE MANAGER UPGRADE
+
+Current state (AUDIT FIRST):
+- Likely shows a list and copies `apt install <pkg>` to clipboard
+- Does NOT actually run the command
+
+Target implementation:
+- One-tap install → runs `apt install -y <pkg>` in active terminal via PTY write
+- Package search (apt-cache search)
+- Show installed packages (dpkg --list)
+- Remove packages
+- Update packages (apt upgrade)
+- Download progress (parse apt output)
+- Error reporting inline
+- Installation history (Room entity)
+- Cancel mid-install (SIGINT via PTY)
+- Dependency resolution (apt handles this, surface the output)
+
+---
+
+## PHASE 6 — GIT & VERSION CONTROL COMPLETENESS
+
+Audit JGit implementation then fill gaps:
+- [ ] Diff viewer — side-by-side or unified? Is it scrollable?
+- [ ] Commit history — shows list? Tap to view commit details?
+- [ ] Branch management — create, delete, rename, switch all working?
+- [ ] Merge conflict resolution — does it open conflict markers in editor?
+- [ ] Stash — save/pop working?
+- [ ] Local version history — file-level history (separate from git, snapshots)
+- [ ] .gitignore editor — create/edit from Source Control pane
+- [ ] Tag management
+
+---
+
+## PHASE 7 — RECOVERY & RELIABILITY
+
+- Auto-save editor content every 60 seconds to `<project>/.autosave/`
+- Crash recovery — on next launch, detect `.autosave/` files → offer restore dialog
+- Workspace snapshots — manual "Create Snapshot" → tar.gz of project dir
+- Diagnostics report generator — collects: device info, app version, recent logs, crash stack → shareable text file
+- Emergency recovery mode — if app crashes on startup 2+ times → safe mode (no project auto-open, no terminal auto-start)
+
+---
+
+## PHASE 8 — DEBUGGING INFRASTRUCTURE
+
+Only if not already present after full audit:
+- DAP (Debug Adapter Protocol) client — requires language-specific debug adapter in terminal
+- Breakpoint markers in editor gutter (UI only initially, wire to DAP later)
+- Variable inspector panel (Bottom panel new tab)
+- Debug Console (already in bottom panel — VERIFY it works)
+- Logcat viewer (Android device logs via `adb logcat` or `/proc` on rooted)
+
+---
+
+## PHASE 9 — PERFORMANCE & MONITORING
+
+- Background file indexer — builds symbol index for workspace-wide search
+- Smart file caching — LRU cache for recently opened files (avoid re-read on tab switch)
+- Memory pressure monitor — show RAM usage in status bar, auto-close binary viewers on low RAM
+- CPU/RAM stats widget (collapsible in bottom panel or menu)
+- Large file support — files > 1MB: stream render, don't load full content into memory
+- Code metrics: line count, file size, complexity estimate per file (show in status bar)
+
+---
+
+## PHASE 10 — EXTENSION SYSTEM (Long term)
+
+Design principles:
+- No VSIX (requires full VS Code runtime) — implement a lightweight plugin API instead
+- Plugins are ZIP files containing: `plugin.json` manifest + Kotlin script or shell script
+- Plugin types: Theme, Language pack, Snippet pack, Tool integration
+- Extension marketplace: GitHub releases from `codespace-ide-plugins` org (future)
+- Plugin API surface: read/write files, add menu items, add terminal commands, add syntax highlighting rules
+
+---
+
+## PHASE 11 — ANDROID DEVELOPMENT TOOLS (Long term)
+
+Only if not already present:
+- ADB bridge via terminal (`adb` in Termux bootstrap — check if already included)
+- Device detection — `adb devices` output parsed into a device picker
+- Logcat viewer (structured, filterable — separate from raw terminal)
+- APK build trigger — runs Gradle via terminal, surfaces output in Build panel
+- APK signing — keytool + jarsigner or apksigner via terminal
+- APK install — `adb install` with progress
+
+---
+
+## ONGOING RULES (for every future AI session)
+
+1. ALWAYS read AGENTS.md before touching code
+2. ALWAYS run CI check after pushing — don't assume green
+3. ALWAYS verify the exact error from CI logs before guessing a fix
+4. NEVER push Ubuntu/proot fixes to codespace-ide-mobile (ubuntu-proot-test only)
+5. NEVER add a feature if an equivalent already exists — repair it instead
+6. ALWAYS update AGENTS.md after the session ends
+7. NEVER use raw newlines inside Kotlin "..." string literals — use \n or triple-quoted strings
+8. ALWAYS use key(orientation) on AlertDialogs (Activity has configChanges=orientation)
+9. ALWAYS call remember() unconditionally at the top of a @Composable (Compose rules of hooks)
+10. NEVER call remember() inside items{}, conditionals, or loops
+11. MINIMAP IS EXCLUDED — do not implement it under any circumstances
+12. 8-SECOND STARTUP HEADSTART — all heavy init (terminal restore, indexing) must wait for it
