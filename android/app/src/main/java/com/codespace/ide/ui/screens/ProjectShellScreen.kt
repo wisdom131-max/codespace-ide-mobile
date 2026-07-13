@@ -478,7 +478,16 @@ fun ProjectShellScreen(
         if (notificationMsg != null) { kotlinx.coroutines.delay(3000); notificationMsg = null }
     }
 
-    // ── P2-10: Navigation history helpers ──────────────────────────────────
+    fun showNotification(msg: String, type: String = "info") {
+        notificationMsg = msg
+        notificationType = type
+        // Also push to persistent notification list
+        notifList.add(0, NotifItem(System.currentTimeMillis(), msg, type))
+        if (notifList.size > 50) notifList.removeAt(notifList.size - 1)
+        if (!showNotifDrawer) notifUnread++
+    }
+
+        // ── P2-10: Navigation history helpers ──────────────────────────────────
     /** Push the current position onto the back-stack and clear the forward-stack. */
     fun pushNavEntry(path: String?, line: Int) {
         val p = path ?: return
