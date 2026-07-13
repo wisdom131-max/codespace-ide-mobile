@@ -3,7 +3,6 @@ package com.codespace.ide.editor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Code
@@ -24,15 +22,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -637,12 +629,11 @@ fun CodeEditor(
                     .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp)),
             ) {
                 items(completions) { comp ->
-                    var showDocTooltip by remember { mutableStateOf(false) }
-                    Column(
+                    // Doc always visible below label — no per-item state (Compose rules)
+                    Row(
                         Modifier
                             .fillMaxWidth()
                             .clickable {
-                                // Insert the full insertText (snippet body), not just label
                                 val cursor = value.selection.end
                                 val text = value.text
                                 val end = cursor.coerceAtMost(text.length)
@@ -657,53 +648,24 @@ fun CodeEditor(
                                 onContentChange(newText)
                                 showCompletions = false
                             }
-                            .pointerInput(comp.label) {
-                                detectTapGestures(
-                                    onLongPress = { showDocTooltip = !showDocTooltip }
-                                )
-                            }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            val (icon, tint) = when (comp.kind) {
-                                CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
-                                CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
-                                CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
-                            }
-                            Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(comp.label, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
-                                if (comp.kind == CompletionKind.SNIPPET && comp.doc != null) {
-                                    Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1)
-                                }
-                            }
-                            Text(comp.kind.name.lowercase(), color = Color(0xFF808080), fontSize = 9.sp)
+                        val (icon, tint) = when (comp.kind) {
+                            CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
+                            CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
+                            CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
                         }
-                        // Hover doc tooltip — shown on long-press
-                        if (showDocTooltip && comp.doc != null) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF2D2D2D))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    buildAnnotatedString {
-                                        withStyle(SpanStyle(color = Color(0xFF9CDCFE), fontWeight = FontWeight.SemiBold)) { append(comp.label) }
-                                        append("\n")
-                                        withStyle(SpanStyle(color = Color(0xFFCCCCCC), fontStyle = FontStyle.Italic)) { append(comp.doc) }
-                                    },
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    lineHeight = 15.sp,
-                                )
+                        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(comp.label, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
+                            if (comp.doc != null) {
+                                Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                             }
                         }
+                        Text(comp.kind.name.lowercase(), color = Color(0xFF808080), fontSize = 9.sp)
                     }
                 }
             }
