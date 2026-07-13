@@ -1,3 +1,7 @@
+// ⚠️ DEAD CODE — DO NOT EDIT OR RELY ON THIS FILE
+// Replaced by CopilotChatPanelInline (wired inside ProjectShellScreen.kt).
+// This overlay is never invoked. Kept for reference only.
+
 package com.codespace.ide.ui.screens
 
 import android.content.Context

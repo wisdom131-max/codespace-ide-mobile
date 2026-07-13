@@ -37,30 +37,14 @@ jobs:
           echo "=== SIGNING REPORT ==="
           cat /tmp/signing.txt
 
-      - name: Check for signing secrets
-        id: signing
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build debug APK
-        if: steps.signing.outputs.release == 'false'
+      - name: Build APK (always signed with committed debug.keystore)
+        # We always use the committed android/app/debug.keystore so every CI build
+        # carries the SAME signature. This lets Android accept the new APK as a direct
+        # upgrade (install -r / "Install anyway") without requiring an uninstall.
+        # versionCode auto-increments via git rev-list --count HEAD (see build.gradle.kts)
+        # so Android always sees it as a newer version.
         working-directory: android
         run: ./gradlew assembleProdDebug --stacktrace --no-build-cache
-
-      - name: Build signed release APK
-        if: steps.signing.outputs.release == 'true'
-        working-directory: android
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleProdRelease --stacktrace --no-build-cache
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

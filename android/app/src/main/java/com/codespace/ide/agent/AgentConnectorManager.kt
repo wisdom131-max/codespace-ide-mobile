@@ -1,3 +1,8 @@
+// ⚠️ DEAD CODE — DO NOT EDIT OR RELY ON THIS FILE
+// Used Google's deprecated OOB OAuth 2.0 flow (killed by Google in 2022).
+// Replaced by ConnectorsHubSheet.kt + Railway backend OAuth (backend/src/connectors/).
+// Kept for reference only.
+
 package com.codespace.ide.agent
 
 import android.content.Context

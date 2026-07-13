@@ -52,12 +52,12 @@ import java.io.RandomAccessFile
 // ─────────────────────────────────────────────────────────────────────────────
 fun isVideoFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
-    return ext in listOf("mp4", "webm", "mov", "mkv", "m4v", "3gp", "avi")
+    return ext in listOf("mp4", "webm", "mov", "mkv", "m4v", "3gp", "avi", "flv")
 }
 
 fun isAudioFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
-    return ext in listOf("mp3", "wav", "ogg", "m4a", "aac", "flac", "opus")
+    return ext in listOf("mp3", "wav", "ogg", "m4a", "aac", "flac", "opus", "wma")
 }
 
 /** Compiled binaries, databases, fonts — no dedicated viewer built yet, so these get a raw
@@ -67,9 +67,16 @@ fun isAudioFile(name: String): Boolean {
 fun isHexViewFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
     return ext in listOf(
-        "dex", "so", "class", "o", "a", "bin", "dat", "exe", "dll",
-        "db", "sqlite", "sqlite3", "ttf", "otf", "woff", "woff2",
+        "dex", "odex", "vdex", "so", "class", "o", "a", "bin", "dat", "exe", "dll",
+        "img", "iso", "apkm", "p12", "pfx", "jks",
+        "ttf", "otf", "woff", "woff2",
     )
+}
+
+/** SQLite database files — opened in SqliteViewerDialog instead of hex or text editor. */
+fun isSqliteFile(name: String): Boolean {
+    val ext = name.substringAfterLast(".", "").lowercase()
+    return ext in listOf("db", "sqlite", "sqlite3")
 }
 
 /** Safety net for anything NOT covered by the explicit lists above (image/archive/pdf/video/

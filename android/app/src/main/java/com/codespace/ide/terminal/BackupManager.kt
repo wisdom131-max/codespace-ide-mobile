@@ -1,5 +1,7 @@
 package com.codespace.ide.terminal
 
+import com.codespace.ide.data.NotificationStore
+
 import android.content.Context
 import android.os.Environment
 import android.util.Log
@@ -105,6 +107,7 @@ object BackupManager {
         }
         tmp.renameTo(backupFile())
         onProgress("\u2713 Backup complete: $filesWritten files, ${backupFile().length() / (1024 * 1024)} MB \u2192 ${backupFile().path}")
+        NotificationStore.add("Backup complete", "$filesWritten files saved to ${backupFile().name}", NotificationStore.Type.BACKUP)
     }
 
     /**
@@ -157,6 +160,7 @@ object BackupManager {
             }
         }
         onProgress("\u2713 Restore complete: $filesWritten files.")
+        NotificationStore.add("Restore complete", "$filesWritten files restored from backup", NotificationStore.Type.BACKUP)
         return true
     }
 

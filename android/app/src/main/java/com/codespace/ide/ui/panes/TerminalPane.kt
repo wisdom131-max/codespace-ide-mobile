@@ -1618,6 +1618,13 @@ internal fun TerminalPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Clear", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
 
+            // Remotion Studio launcher
+            Box(
+                Modifier.background(Color(0xFF1A2A1A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { active?.session?.write("bash ~/setup-remotion.sh\n") }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("▶ Remotion", color = Color(0xFF6DB33F), fontSize = 11.sp) }
+
             // Export terminal output to file
             Box(
                 Modifier.background(Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))

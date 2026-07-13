@@ -71,9 +71,16 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore) {
 
     // ── Biometric gate ───────────────────────────────────────────────────────
     // Only shown once per process launch when the user has enabled the setting.
+    val biometricManager = remember { BiometricManager.from(context) }
     var biometricUnlocked by remember {
-        // If lock is disabled → treat as already unlocked
-        mutableStateOf(!tokenStore.biometricLockEnabled)
+        // If lock is disabled OR device has no enrolled biometric/credential → bypass gate.
+        // Prevents permanent lockout when fingerprint was removed from Android Settings.
+        val canAuth = biometricManager.canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+        val lockEnabled = tokenStore.biometricLockEnabled
+        mutableStateOf(!lockEnabled || canAuth != BiometricManager.BIOMETRIC_SUCCESS)
     }
 
     CodeSpaceTheme(darkTheme = !themeName.contains("Light"), themeName = themeName) {
@@ -187,8 +194,27 @@ private fun BiometricGate(
                     onUnlocked()
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    // User cancelled or too many attempts — stay on gate
-                    onDismissed()
+                    // If there is literally no biometric enrolled or hardware is unavailable,
+                    // auto-unlock instead of permanently locking the user out. The toggle will
+                    // be disabled next time they open Settings so this can't happen again.
+                    val fatalCodes = setOf(
+                        BiometricPrompt.ERROR_NO_BIOMETRICS,
+                        BiometricPrompt.ERROR_HW_NOT_PRESENT,
+                        BiometricPrompt.ERROR_HW_UNAVAILABLE,
+                        BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
+                    )
+                    if (errorCode in fatalCodes) {
+                        // Disable the lock setting so this doesn't trigger on next launch
+                        android.widget.Toast.makeText(
+                            context,
+                            "Biometric unavailable — lock disabled. Re-enable in Settings.",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        onUnlocked()
+                    } else {
+                        // User cancelled or transient error — stay on gate
+                        onDismissed()
+                    }
                 }
                 override fun onAuthenticationFailed() {
                     // Wrong finger/face — BiometricPrompt handles retry automatically

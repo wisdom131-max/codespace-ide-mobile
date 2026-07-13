@@ -1,3 +1,7 @@
+// ⚠️ DEAD CODE — DO NOT EDIT OR RELY ON THIS FILE
+// BusyBox installation was removed from MainActivity and is no longer used anywhere.
+// Kept for reference only.
+
 package com.codespace.ide.terminal
 
 import android.content.Context

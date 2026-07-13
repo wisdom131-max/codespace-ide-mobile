@@ -104,9 +104,16 @@ fun SourceControlPane(projectId: String) {
 
     val repoDir = remember(projectId) {
         val wsPath = loadWorkspacePath(context, projectId)
+        // Walk up from the workspace path to find the nearest .git directory.
+        // Fallback chain: workspace path → /root (Ubuntu home) → /root/my-video (default project)
         var dir = wsPath?.let { File(it) }
         while (dir != null && !File(dir, ".git").exists()) { dir = dir.parentFile }
-        dir ?: File("/storage/emulated/0")
+        when {
+            dir != null -> dir
+            File("/root/my-video/.git").exists() -> File("/root/my-video")
+            File("/root/.git").exists() -> File("/root")
+            else -> File("/root")  // Best guess — user can open Explorer to set path
+        }
     }
 
     fun refreshStatus() {

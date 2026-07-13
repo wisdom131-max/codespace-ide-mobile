@@ -2,6 +2,9 @@ package com.codespace.ide.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.data.ConnectorsApiClient
 import com.codespace.ide.data.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +47,9 @@ internal fun ConnectorsHubSheet(
     var statuses by remember { mutableStateOf<List<ConnectorsApiClient.ConnectorStatus>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
+    // In-app OAuth WebView dialog — avoids returning to external browser flow
+    var oauthWebViewUrl by remember { mutableStateOf<String?>(null) }
+    var pendingOAuthId by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
     var busyService by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -138,12 +145,8 @@ internal fun ConnectorsHubSheet(
                                         busyService = null
                                         result.fold(
                                             onSuccess = { authUrl ->
-                                                runCatching {
-                                                    context.startActivity(
-                                                        Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
-                                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                    )
-                                                }.onFailure { toast = "Couldn't open browser: ${it.message}" }
+                                                pendingOAuthId = s.id
+                                                oauthWebViewUrl = authUrl
                                             },
                                             onFailure = { toast = it.message ?: "Failed to start connecting ${s.name}" },
                                         )
@@ -206,6 +209,66 @@ internal fun ConnectorsHubSheet(
                     onClick = { onDismiss() }
                 )
                 Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+    // ── In-app OAuth WebView dialog ───────────────────────────────────────────
+    val callbackBase = "https://codespace-ide-mobile-production.up.railway.app/api/v1/connectors/callback"
+    oauthWebViewUrl?.let { authUrl ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { oauthWebViewUrl = null; pendingOAuthId = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF1E1E1E))
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF252526))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Connect ${pendingOAuthId?.replaceFirstChar { it.uppercase() } ?: "Account"}",
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        Icons.Default.Close, null, tint = Color(0xFFCCCCCC),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { oauthWebViewUrl = null; pendingOAuthId = null },
+                    )
+                }
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                    val url = request.url.toString()
+                                    if (url.startsWith(callbackBase)) {
+                                        // OAuth callback received — close the dialog and refresh status
+                                        oauthWebViewUrl = null
+                                        pendingOAuthId = null
+                                        refreshKey++
+                                        return true
+                                    }
+                                    return false
+                                }
+                            }
+                            loadUrl(authUrl)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }

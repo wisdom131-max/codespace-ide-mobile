@@ -1,3 +1,7 @@
+// ⚠️ DEAD CODE — DO NOT EDIT OR RELY ON THIS FILE
+// The app is Ubuntu-only. The Bash/Termux tab was removed. No code calls this class.
+// Kept for reference only.
+
 package com.codespace.ide.terminal
 
 import android.content.Context

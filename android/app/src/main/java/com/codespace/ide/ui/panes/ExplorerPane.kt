@@ -105,12 +105,12 @@ private val DEVICE_FOLDERS = listOf(
 
 private fun isImageFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
-    return ext in listOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "svg")
+    return ext in listOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "ico", "tiff", "tif")
 }
 
 private fun isArchiveFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
-    return ext in listOf("zip", "apk", "jar", "aar")
+    return ext in listOf("zip", "apk", "jar", "aar", "rar", "7z", "tar", "gz", "bz2", "xz", "xapk", "apks")
 }
 
 private fun isPdfFile(name: String): Boolean = name.substringAfterLast(".", "").lowercase() == "pdf"
@@ -207,6 +207,7 @@ fun ExplorerSidePanel(
     var previewVideoPath by remember { mutableStateOf<String?>(null) }
     var previewAudioPath by remember { mutableStateOf<String?>(null) }
     var previewHexPath by remember { mutableStateOf<String?>(null) }
+    var previewSqlitePath by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -769,7 +770,8 @@ fun ExplorerSidePanel(
                     val isPdf = !node.file.isDirectory && isPdfFile(node.file.name)
                     val isVideo = !node.file.isDirectory && isVideoFile(node.file.name)
                     val isAudio = !node.file.isDirectory && isAudioFile(node.file.name)
-                    val isHexBin = !node.file.isDirectory && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
+                    val isSqlite = !node.file.isDirectory && isSqliteFile(node.file.name)
+                    val isHexBin = !node.file.isDirectory && !isSqlite && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -795,6 +797,8 @@ fun ExplorerSidePanel(
                                         previewVideoPath = node.file.absolutePath
                                     } else if (isAudio) {
                                         previewAudioPath = node.file.absolutePath
+                                    } else if (isSqlite) {
+                                        previewSqlitePath = node.file.absolutePath
                                     } else if (isHexBin) {
                                         // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
                                         // catches) — hex dump instead of corrupting/crashing the text editor.
@@ -1112,8 +1116,16 @@ fun ExplorerSidePanel(
     // catches that wasn't already routed to a dedicated viewer above ──
     if (previewHexPath != null) {
         HexViewerDialog(
-            filePath = previewHexPath!!,
+            file = java.io.File(previewHexPath!!),
             onDismiss = { previewHexPath = null },
+        )
+    }
+
+    // ── SQLite database viewer ──
+    if (previewSqlitePath != null) {
+        SqliteViewerDialog(
+            file = java.io.File(previewSqlitePath!!),
+            onDismiss = { previewSqlitePath = null },
         )
     }
 
