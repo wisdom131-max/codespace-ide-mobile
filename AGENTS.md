@@ -26,8 +26,8 @@
 |-|-|
 | Latest green build | #1066 |
 | Active phase | Phase 2 - Code Editor Intelligence |
-| Last shipped | P2-5 Error squiggles / LintAnalyzer hardening (37b8528) |
-| Next to implement | P2-6 Git diff gutter (GitDiffAnalyzer.kt exists; wire gutter bars fully) |
+| Last shipped | P2-6 Git diff gutter — PHASE 2 COMPLETE ✅ |
+| Next to implement | Phase 3 — Verify & Repair all existing features |
 | After Phase 2 | Phase 3 - Verify & Repair all existing features |
 | After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
 
@@ -371,7 +371,7 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 | P2-3 | Go to Line | DONE ✅ | Shipped |
 | P2-4 | Go to Definition | DONE ✅ | Long-press context sheet + results dialog |
 | P2-5 | Error squiggles (lint) | DONE ✅ | LintAnalyzer hardened; SyntaxTransformation underlines errors |
-| P2-6 | Git diff gutter | NEXT 🔜 | GitDiffAnalyzer.kt exists; gutter bars partially wired |
+| P2-6 | Git diff gutter | DONE ✅ | GitDiffAnalyzer.kt (LCS diff) + gutter bars fully wired in CodeEditor.kt |
 
 ---
 
