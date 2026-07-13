@@ -31,7 +31,10 @@
 | #1009 | FAIL | sticky scroll — remember() inside if/else branch (Compose rules violation) |
 | #1010 | FAIL | fix: move stickyScope outside conditional — CE still had raw newline strings |
 | #1011 | FAIL | fix: remove remember inside LazyColumn items{} — same root cause, CE not fully fixed |
-| #1012 | RUNNING | fix: escape snippet insertText newlines — commit 0111924526f3 |
+| #1012–#1027 | FAIL | Multiple fix attempts; root cause fully resolved in #1028 |
+| #1028 | GREEN ✅ | fix(editor): escape snippet insertText newlines — definitive fix |
+| #1029 | GREEN ✅ | docs(AGENTS): CI status + Phase 2 session log |
+| #1030 | GREEN ✅ | docs(AGENTS): full audit directive + 11-phase roadmap |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -326,11 +329,11 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| CI | Build green | RUNNING (#1012) | Snippet newline escape fix pushed — 0111924526f3 |
+| CI | Build green | DONE ✅ (#1028) | Raw newline escape fix confirmed green — 0111924526f3 |
 | 12 | Terminal cross-project state bleed | DONE | TrackedSession scoping fixed |
 | 13 | AI package access bridging | DONE | ProotInstaller.execOnce routing |
 | 11 | GitHub OAuth repo browsing | DONE | RepoBrowserSheet.kt shipped 2026-07-13 |
-| P2-1 | Rename Symbol | NEXT | Once CI green — rename all occurrences in current file via dialog |
+| P2-1 | Rename Symbol | NEXT 🔜 | CI is green — start this feature in next session |
 | P2-2 | Multi-cursor editing | TODO | Alt+click to add cursor; insert/delete synced across cursors |
 | P2-3 | Go to Definition | TODO | Tap symbol -> jump to its definition line in same file |
 | P2-4 | Find and Replace in file | TODO | Dialog with regex toggle, match highlight, replace one/all |
@@ -517,7 +520,7 @@ Status as of 2026-07-13:
 ### Phase 2 TODO (ordered)
 | # | Feature | Status |
 |---|---------|--------|
-| P2-1 | Rename Symbol | NEXT — once CI #1012 green |
+| P2-1 | Rename Symbol | NEXT 🔜 — CI GREEN (#1028), ready to implement |
 | P2-2 | Find & Replace (full: regex, highlight, replace-all) | TODO |
 | P2-3 | Multi-cursor editing | TODO |
 | P2-4 | Go to Definition | TODO |
