@@ -575,7 +575,8 @@ Status as of 2026-07-13:
 ### Phase 2 TODO (ordered)
 | # | Feature | Status |
 |---|---------|--------|
-| P2-1 | Rename Symbol | IN PROGRESS 🔨 | Long-press word → extract word at tap → AlertDialog → regex word-boundary replace all |
+| P2-1 | Rename Symbol | SHIPPED ✅ (#1033) | long-press → AlertDialog shows occurrence count → replaces all with regex word-boundary |
+| P2-1 | Rename Symbol | SHIPPED ✅ | commit 9596a920833f — CodeEditor.kt: combinedClickable long-press, renameDialogWord state, AlertDialog with OutlinedTextField, triple-quoted \b Regex replace-all |
 | P2-2 | Find & Replace (full: regex, highlight, replace-all) | TODO |
 | P2-3 | Multi-cursor editing | TODO |
 | P2-4 | Go to Definition | TODO |
