@@ -329,7 +329,7 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| CI | Build green | DONE ✅ (#1028) | Raw newline escape fix confirmed green — 0111924526f3 |
+| CI | Build green | DONE ✅ (#1028–#1030) | Raw newline escape fix confirmed green |
 | 12 | Terminal cross-project state bleed | DONE | TrackedSession scoping fixed |
 | 13 | AI package access bridging | DONE | ProotInstaller.execOnce routing |
 | 11 | GitHub OAuth repo browsing | DONE | RepoBrowserSheet.kt shipped 2026-07-13 |
@@ -350,6 +350,61 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 - System.gc() every 1000 files during extraction
 - No W^X restriction on `nativeLibraryDir` — safe to execute .so files there
 - Termux bootstrap ZIP is 29 MB — already in assets, extracts to ~150 MB
+
+
+---
+
+## FUTURE FEATURE EVALUATION POLICY (MANDATORY)
+
+Before implementing any feature outside the core IDE experience, an AI agent MUST:
+1. Present the feature to Wisdom first.
+2. Explain benefits, drawbacks, performance impact, and maintenance cost.
+3. Wait for explicit approval before implementing.
+
+This applies to: Social/Collaboration features, Live collaboration, Shared Workspaces,
+Achievement/Gamification/Rewards/Badges/Leaderboards, Coding streaks, Complex dashboards,
+Utility collections, Experimental/Novelty features, Comment systems.
+
+When uncertain whether a feature is essential or optional → ASK FIRST.
+
+---
+
+## BACKGROUND SAFE STARTUP & RECOVERY SYSTEM (Phase 4 directive — 2026-07-13)
+
+### Existing Systems Audited (do NOT duplicate these):
+| Component | File | Status |
+|-----------|------|--------|
+| Crash logger (JVM UncaughtExceptionHandler) | CodeSpaceApplication.kt | ✅ EXISTS |
+| Native signal crash handler (SIGSEGV/SIGABRT) | CodeSpaceApplication.kt | ✅ EXISTS |
+| Ubuntu rootfs backup/restore (tar.gz to external storage) | BackupManager.kt | ✅ EXISTS |
+| App-wide output log (500-line ring buffer) | AppOutputLog.kt | ✅ EXISTS |
+| Lint checker (inline error markers) | LintChecker.kt | ✅ EXISTS |
+| Port scanner | PortsScanner.kt | ✅ EXISTS |
+| Editor session save/restore (tab paths in SharedPreferences) | EditorPane.kt | ✅ EXISTS |
+| WorkManager configured (HiltWorkerFactory) | CodeSpaceApplication.kt | ✅ EXISTS |
+
+NO Workspace Trash, NO crash loop counter, NO safe mode, NO checkpoint/snapshot system,
+NO background integrity validators — these do NOT exist yet.
+
+### Startup Rule (CRITICAL):
+- NEVER block startup. NEVER delay the 8-second headstart. All validation is background-only.
+- App displays UI immediately. Background workers validate AFTER startup completes.
+
+### What to implement (Phase 4 — do not start until Phase 2+3 complete):
+1. **Crash loop counter** — increment on every cold start; reset after 60s uptime; trigger safe mode at 3+ crashes
+2. **Safe Mode** — on crash loop: disable last-used terminal session, skip Ubuntu tab, load minimal UI; never auto-delete data
+3. **Workspace Trash** — move deleted files/folders to ; restore/purge from settings
+4. **Undoable file ops** — FileOpHistory: create/delete/rename/move with multi-level undo (stack in memory, not disk)
+5. **Background integrity validator** — WorkManager OneTimeWork runs 10s after startup: validate settings JSON, editor session paths, cache sizes; post notification on problem
+6. **Recovery Assistant** — simple screen listing detected problems + repair buttons (clear cache, reset settings, restore from backup)
+7. **Workspace Snapshots** — manual zip of current project to external storage (extend BackupManager)
+8. **Diagnostics Hub** — extends existing AppOutputLog: categories (crash/perf/git/terminal), export to .txt file
+
+### Performance constraints:
+- No startup delays. No UI blocking. WorkManager for all heavy validation.
+- Minimal memory — cap diagnostic buffers at 500 entries (same as AppOutputLog).
+- Never auto-delete user data.
+
 
 ---
 
@@ -520,7 +575,7 @@ Status as of 2026-07-13:
 ### Phase 2 TODO (ordered)
 | # | Feature | Status |
 |---|---------|--------|
-| P2-1 | Rename Symbol | NEXT 🔜 — CI GREEN (#1028), ready to implement |
+| P2-1 | Rename Symbol | IN PROGRESS 🔨 | Long-press word → extract word at tap → AlertDialog → regex word-boundary replace all |
 | P2-2 | Find & Replace (full: regex, highlight, replace-all) | TODO |
 | P2-3 | Multi-cursor editing | TODO |
 | P2-4 | Go to Definition | TODO |
