@@ -398,6 +398,7 @@ fun ProjectShellScreen(
     var showColorTheme     by remember { mutableStateOf(false) }
     var showFindBar        by remember { mutableStateOf(false) }
     var wordWrap           by remember { mutableStateOf(false) }
+    var showInlayHints     by remember { mutableStateOf(true) }  // P2-11
     var showGoToLine       by remember { mutableStateOf(false) }
     var goToLineInput      by remember { mutableStateOf("") }
     var scrollTargetLine   by remember { mutableStateOf(0) }
@@ -999,6 +1000,9 @@ fun ProjectShellScreen(
                             Box(Modifier.size(28.dp).clickable { wordWrap = !wordWrap }, contentAlignment = Alignment.Center) {
                                 Text("↵", fontSize = 14.sp, color = if (wordWrap) TabActiveIndicator else TabTextInactive)
                             }
+                            Box(Modifier.size(28.dp).clickable { showInlayHints = !showInlayHints }, contentAlignment = Alignment.Center) {
+                                Text("⊕", fontSize = 13.sp, color = if (showInlayHints) TabActiveIndicator else TabTextInactive)
+                            }
                             // Go to line
                             Box(Modifier.size(28.dp).clickable { showGoToLine = true }, contentAlignment = Alignment.Center) {
                                 Text(":${'$'}", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
@@ -1123,6 +1127,7 @@ fun ProjectShellScreen(
                                 onInsertRequest    = { fn -> keyboardInsert = fn },
                                 onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
                                 wordWrap           = wordWrap,
+                                showInlayHints     = showInlayHints,
                                 scrollToLine       = scrollTargetLine,
                                 projectId          = projectId,
                                 sessionStateStore  = sessionStateStore,

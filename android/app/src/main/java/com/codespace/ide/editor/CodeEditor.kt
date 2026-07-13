@@ -240,6 +240,8 @@ fun CodeEditor(
     initialBookmarks: Set<Int> = emptySet(),
     /** P2-9 Bookmarks: called whenever the bookmark set changes. */
     onBookmarksChange: ((Set<Int>) -> Unit)? = null,
+    /** P2-11 Inlay hints: show/hide the inline type/param hint overlay. */
+    showInlayHints: Boolean = true,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -346,6 +348,13 @@ fun CodeEditor(
     LaunchedEffect(value.text, language) {
         kotlinx.coroutines.delay(500)   // debounce — only lint after 500 ms idle
         lintErrors = LintAnalyzer.analyze(value.text, language)
+    }
+
+    // ── P2-11 Inlay hints state ─────────────────────────────────────────
+    var inlayHints by remember { mutableStateOf<List<InlayHint>>(emptyList()) }
+    LaunchedEffect(value.text, language) {
+        kotlinx.coroutines.delay(600)   // debounce — slightly after lint
+        inlayHints = InlayHintAnalyzer.analyze(value.text, language)
     }
 
     // ── Multi-cursor state ───────────────────────────────────────────────
@@ -624,6 +633,42 @@ fun CodeEditor(
                     visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices),
                     modifier = Modifier.padding(end = 24.dp),
                 )
+            }
+        }
+
+        // ── P2-11 Inlay hint overlay ───────────────────────────────────
+        if (showInlayHints && inlayHints.isNotEmpty()) {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val lineHeightDp = with(density) { fontSize.sp.toDp() }
+            val gutterWidthDp = 62.dp
+            inlayHints.forEach { hint ->
+                val displayIdx = displayLines.indexOfFirst { it.first == hint.line }
+                if (displayIdx < 0) return@forEach
+                val yOffset = lineHeightDp * displayIdx
+                val hintColor = when (hint.kind) {
+                    InlayHint.Kind.TYPE   -> androidx.compose.ui.graphics.Color(0xFF888888)
+                    InlayHint.Kind.RETURN -> androidx.compose.ui.graphics.Color(0xFF7A9EC2)
+                    InlayHint.Kind.PARAM  -> androidx.compose.ui.graphics.Color(0xFFB5A05A)
+                }
+                Box(
+                    modifier = Modifier
+                        .padding(start = gutterWidthDp)
+                        .offset(y = yOffset)
+                        .align(Alignment.TopStart)
+                ) {
+                    Text(
+                        text = hint.label,
+                        color = hintColor,
+                        fontSize = (fontSize - 2).coerceAtLeast(8).sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .background(
+                                color = colors.background.copy(alpha = 0.75f),
+                                shape = RoundedCornerShape(2.dp),
+                            )
+                            .padding(horizontal = 2.dp),
+                    )
+                }
             }
         }
 
