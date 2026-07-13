@@ -321,7 +321,7 @@
 | CI | Build green | 🟡 RUNNING (#1007) | L120 McpShellProfile fix pushed |
 | 12 | Terminal cross-project state bleed | ⏳ TODO | Switching projects mirrors keystrokes between terminals — needs TerminalSession scoping audit |
 | 13 | AI package access bridging | ⏳ TODO | Terminal AI can't read/write project files directly — bridge AgentApiServer to filesystem |
-| 11 | GitHub OAuth repo browsing | ⏳ TODO | Hardest — needs user to register OAuth app with client_secret for web flow |
+| 11 | GitHub OAuth repo browsing | ✅ DONE | RepoBrowserSheet.kt — browse repos, clone into proot /root/repos/<name> via git + auth header (2026-07-13) |
 
 ---
 
@@ -346,3 +346,31 @@
 6. **No LD_LIBRARY_PATH** — avoids ABI mismatch on bash startup
 7. **`key(orientation)` on Dialogs** — because Activity has `configChanges=orientation` and never recreates
 8. **versionCode from git commit count** — no manual bumping, always newer than installed version
+
+
+
+---
+
+## 2026-07-13 — ITEM #11 SHIPPED: GitHub Repo Browser (Clone from GitHub)
+
+### What was done
+Built `RepoBrowserSheet.kt` (`ui/sheets/`) and wired it into `HomeScreen.kt`.
+
+**RepoBrowserSheet features:**
+- Reads the stored `SecureTokenStore.githubToken` — no new auth flow needed.
+- Fetches `GET /user/repos?sort=updated&per_page=50` from GitHub API, shows a searchable
+  `LazyColumn` of repos with name, description, private badge, branch chip.
+- Tap a repo -> clone dialog: pre-filled destination `/root/repos/<name>` (editable).
+- Clone routes through `ProotInstaller.execOnce(context, cmd, null, 180L)` with the same
+  `Authorization: Basic base64(x-access-token:<token>)` header proven in SourceControlPane.
+- On success creates a `Project(kind=GIT, pathOrUrl=<rootfsDir>/<dest>)` and adds it to
+  HomeScreen immediately (also synced to cloud).
+- Rotation-safe: clone dialog wrapped in `key(orientation)`.
+
+**HomeScreen.kt changes:**
+- FAB now opens a DropdownMenu: 'New local project' | 'Clone from GitHub'.
+
+### All 3 OPEN ITEMS now resolved
+- #12 Terminal cross-project state bleed: DONE (TrackedSession scoping, prev session)
+- #13 AI package access bridging: DONE (ProotInstaller.execOnce routing, prev session)
+- #11 GitHub OAuth repo browsing: DONE (RepoBrowserSheet.kt, this session)
