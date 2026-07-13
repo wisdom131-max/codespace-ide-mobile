@@ -30,6 +30,7 @@ import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
 import com.codespace.ide.data.SessionStateStore
+import androidx.compose.foundation.lazy.items
 
 // Legacy global session prefs removed — workspace memory now handled by SessionStateStore.
 // Kept only for migration: read once then clear.
@@ -97,6 +98,9 @@ fun EditorPane(
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
+    // P2-9 Bookmarks: path → set of bookmarked line indices
+    val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
+    var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
     // Pinned tab paths set
@@ -327,8 +331,67 @@ fun EditorPane(
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
+                // P2-9 Bookmarks panel toggle
+                IconButton(onClick = { showBookmarkPanel = !showBookmarkPanel }, modifier = Modifier.size(35.dp)) {
+                    Text(
+                        text = "◆",
+                        fontSize = 14.sp,
+                        color = if (showBookmarkPanel) Color(0xFF61AFEF) else TabTextInactive,
+                    )
+                }
             }
             HorizontalDivider(color = DividerColor)
+        }
+
+        // P2-9 Bookmark panel — dropdown list of all bookmarks across open files
+        if (showBookmarkPanel) {
+            val allBookmarks = fileBookmarks.flatMap { (filePath, lines) ->
+                lines.sorted().map { line -> Pair(filePath, line) }
+            }.sortedWith(compareBy({ it.first }, { it.second }))
+
+            if (allBookmarks.isEmpty()) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    tonalElevation = 2.dp,
+                ) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
+                        Text("No bookmarks — tap ◆ in the gutter to add one", fontSize = 12.sp, color = TabTextInactive)
+                    }
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
+                        .background(Color(0xFF252526)),
+                ) {
+                    items(allBookmarks) { (filePath, lineIdx) ->
+                        val fileName = java.io.File(filePath).name
+                        val lineContent = try {
+                            java.io.File(filePath).readLines().getOrElse(lineIdx) { "" }.trim()
+                        } catch (_: Exception) { "" }
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val tab = tabs.firstOrNull { it.path == filePath }
+                                    if (tab != null) activeId = tab.id
+                                    showBookmarkPanel = false
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("◆", color = Color(0xFF61AFEF), fontSize = 12.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text("${'$'}fileName : ${'$'}{lineIdx + 1}", fontSize = 11.sp, color = Color(0xFF61AFEF), fontWeight = FontWeight.Bold)
+                                if (lineContent.isNotBlank()) {
+                                    Text(lineContent, fontSize = 11.sp, color = TabTextInactive, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                    }
+                }
+            }
         }
 
         val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
@@ -423,6 +486,8 @@ fun EditorPane(
                         onFindReplaceClose = { findReplaceOpen = false },
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
+                        initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
+                        onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                     )
                 }
             }

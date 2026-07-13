@@ -236,6 +236,10 @@ fun CodeEditor(
     onFindReplaceClose: () -> Unit = {},
     goToLineOpen: Boolean = false,
     onGoToLineClose: () -> Unit = {},
+    /** P2-9 Bookmarks: initial set of bookmarked line indices (0-based). */
+    initialBookmarks: Set<Int> = emptySet(),
+    /** P2-9 Bookmarks: called whenever the bookmark set changes. */
+    onBookmarksChange: ((Set<Int>) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -245,8 +249,13 @@ fun CodeEditor(
 
     // 2. Code folding state
     var foldedRanges by remember { mutableStateOf(setOf<Int>()) } // start line index (0-based)
+    // P2-9 Bookmarks
+    var bookmarkedLines by remember { mutableStateOf(initialBookmarks) }
 
     // Parse lines and folding
+    // Notify parent when bookmarks change
+    LaunchedEffect(bookmarkedLines) { onBookmarksChange?.invoke(bookmarkedLines) }
+
     val rawLines = remember(value.text) { value.text.split("\n") }
     
     // Determine which line indices are foldable
@@ -486,9 +495,30 @@ fun CodeEditor(
                                 }
                             }
                             Spacer(Modifier.width(2.dp))
+                            // P2-9 Bookmark dot (◆) — tappable to toggle
+                            Box(
+                                modifier = Modifier
+                                    .size(fontSize.dp)
+                                    .clickable {
+                                        bookmarkedLines = if (bookmarkedLines.contains(lineNum))
+                                            bookmarkedLines - lineNum
+                                        else
+                                            bookmarkedLines + lineNum
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (bookmarkedLines.contains(lineNum)) {
+                                    Text(
+                                        text = "◆",
+                                        color = Color(0xFF61AFEF),  // blue bookmark
+                                        fontSize = (fontSize * 0.6f).sp,
+                                    )
+                                }
+                            }
                             Text(
                                 text = (lineNum + 1).toString(),
-                                color = colors.gutter,
+                                color = if (bookmarkedLines.contains(lineNum))
+                                    Color(0xFF61AFEF) else colors.gutter,
                                 fontSize = fontSize.sp,
                                 fontFamily = FontFamily.Monospace,
                             )

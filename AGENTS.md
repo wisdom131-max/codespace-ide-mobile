@@ -614,7 +614,7 @@ Status as of 2026-07-13:
 | P2-6 | Git diff gutter | **DONE** | LCS diff, green=added / yellow=modified / red triangle=deleted. `GitDiffAnalyzer.kt` (new). |
 | P2-7 | Code folding | **DONE** | Fixed: BasicTextField now receives folded view via SyntaxTransformation(foldedLineIndices). ··· placeholder with correct cursor offset mapping. |
 | P2-8 | Breadcrumb navigation | **DONE** | Clickable segments + horizontal scroll. Tapping any ancestor dir opens Explorer and auto-expands/scrolls the tree to that dir. |
-| P2-9 | Code bookmarks | TODO | |
+| P2-9 | Code bookmarks | **DONE** | Gutter ◆ dot toggle per line. Bookmark panel (◆ toolbar button) lists all bookmarks across open files with file:line + content preview. Tap to jump. |
 | P2-10 | Jump back/forward history | TODO | |
 | P2-11 | Inlay hints | TODO | |
 | P2-12 | Parameter hints / signature help | TODO | |
@@ -629,6 +629,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-7 Code Folding — SyntaxTransformation now accepts foldedLineIndices, collapses folded blocks into ··· with correct OffsetMapping so cursor positions stay valid. BasicTextField finally shows the folded view (was showing full text before). |
 | 2026-07-13 | Shipped Workspace Memory System — expanded `SessionStateStore` (cursor offsets, scroll positions, pinned tabs, split path, terminal state, per-project isolation, restore toggle, clearAll). `EditorPane` now accepts `projectId`+`sessionStateStore`, saves/restores per-project session including cursors, scroll lines, pinned+split tabs. `SettingsScreen` has new "Workspace Memory" section (restore toggle + clear button). One-time legacy `editor_session` migration included. |
 | 2026-07-13 | Shipped P2-8 Breadcrumb navigation — breadcrumb bar is now horizontally scrollable with clickable ancestor segments. Tap a segment → Explorer opens + tree auto-expands/scrolls to that dir via `navigateToDir` + `treeListState`. |
+| 2026-07-13 | Shipped P2-9 Code Bookmarks — gutter ◆ dot toggles bookmark per line; toolbar ◆ button opens panel listing all bookmarks (file+line+preview); tap to jump to file+line. `fileBookmarks` map in EditorPane. |
 
 ---
 
