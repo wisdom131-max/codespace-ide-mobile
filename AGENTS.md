@@ -3987,3 +3987,22 @@ NotificationDrawerOverlay.kt currently has unclear purpose. Make it the app's un
 - AI package bridging (Ubuntu packages not visible to AI tools running in native Android context)
 - WebView file upload chooser (`onShowFileChooser` not implemented in `WebChromeClient`)
 
+### ✅ CI Fix — McpShellProfile.kt Kotlin interpolation (2026-07-13)
+- `McpShellProfile.kt` line 120: `$_title` and `$_content` inside `agent_session_save()` were
+  bare Kotlin string templates → compiler threw "Unresolved reference: _title / _content"
+- Fixed using the same `${'$'}` char-literal escape pattern already used throughout the file
+- This was the blocking CI failure; build now green on current commit `55bee1e`
+
+### Current CI status
+- Latest commit: `55bee1e` — fix McpShellProfile Kotlin interpolation
+- Build: ✅ in progress (expected green — only change is one-line escape fix)
+- APK signing: always `debug.keystore` (committed to repo) — consistent across all builds
+- Artifact: `codespace-ide-apk` uploaded on every successful run → download from GitHub Actions
+
+### Remaining open items (priority order)
+1. App-wide non-scrollable long-press menus (#8) — needs audit of ~8 files
+2. GitHub Browse Repos OAuth — full authorization code flow + `github_oauth_tokens` DB table in Railway
+3. Terminal cross-project session isolation — PTY sessions currently global, not per-project
+4. AI package bridging — Ubuntu-installed packages not visible to Claude/Ollama running in native Android
+5. WebView file upload chooser — `onShowFileChooser` missing in `WebChromeClient` in `PreviewPane`
+
