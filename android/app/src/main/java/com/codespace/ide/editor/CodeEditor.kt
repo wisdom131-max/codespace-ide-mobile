@@ -591,7 +591,7 @@ fun CodeEditor(
                             fontFamily = FontFamily.Monospace,
                         )
                     ),
-                    visualTransformation = SyntaxTransformation(language, colors, lintErrors),
+                    visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices),
                     modifier = Modifier.padding(end = 24.dp),
                 )
             }

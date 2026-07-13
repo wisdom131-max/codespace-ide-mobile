@@ -612,7 +612,7 @@ Status as of 2026-07-13:
 | P2-4 | Go to Definition | TODO | |
 | P2-5 | Error squiggles (lint underlines) | TODO | |
 | P2-6 | Git diff gutter | **DONE** | LCS diff, green=added / yellow=modified / red triangle=deleted. `GitDiffAnalyzer.kt` (new). |
-| P2-7 | Code folding | TODO | foldedRanges state exists, verify it works |
+| P2-7 | Code folding | **DONE** | Fixed: BasicTextField now receives folded view via SyntaxTransformation(foldedLineIndices). ··· placeholder with correct cursor offset mapping. |
 | P2-8 | Breadcrumb navigation | TODO | |
 | P2-9 | Code bookmarks | TODO | |
 | P2-10 | Jump back/forward history | TODO | |
@@ -626,6 +626,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Added Future Feature Evaluation Policy. Added Phase 4 Background Safe Startup & Recovery directive (do not build until Phase 3 done). Audited existing systems: crash logger, BackupManager, AppOutputLog, WorkManager all present. |
 | 2026-07-13 | Shipped P2-2 Find & Replace — bottom bar with search, replace, prev/next arrows, regex toggle, replace-one, replace-all, match counter. Fixed missing FindReplace import (#1039 GREEN). |
 | 2026-07-13 | Shipped P2-6 Git diff gutter — new `GitDiffAnalyzer.kt` (LCS diff, capped at 2 000 lines). Gutter bar: green=added, yellow=modified, red ▶ triangle=deleted lines. Replaced old heuristic isDirty/isAdded in CodeEditor.kt. |
+| 2026-07-13 | Shipped P2-7 Code Folding — SyntaxTransformation now accepts foldedLineIndices, collapses folded blocks into ··· with correct OffsetMapping so cursor positions stay valid. BasicTextField finally shows the folded view (was showing full text before). |
 
 ---
 
