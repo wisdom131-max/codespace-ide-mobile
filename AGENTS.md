@@ -24,11 +24,19 @@
 
 | Build | Result | Notes |
 |-------|--------|-------|
-| #1000 | ✅ GREEN | Last confirmed passing |
-| #1001–#1006 | ❌ FAIL | All same error: `McpShellProfile.kt:120` — Kotlin string escape bug |
-| #1007 | 🟡 RUNNING | Fix pushed 2026-07-13 — L120 switched to triple-quoted string |
+| #1000 | GREEN | Last confirmed passing before Phase 2 editor work |
+| #1001–1006 | FAIL | McpShellProfile.kt:120 — Kotlin string escape bug |
+| #1007 | GREEN | Fixed L120 with triple-quoted string |
+| #1008 | FAIL | hover docs + rich snippets — raw newlines inside double-quoted strings (KSP crash) |
+| #1009 | FAIL | sticky scroll — remember() inside if/else branch (Compose rules violation) |
+| #1010 | FAIL | fix: move stickyScope outside conditional — CE still had raw newline strings |
+| #1011 | FAIL | fix: remove remember inside LazyColumn items{} — same root cause, CE not fully fixed |
+| #1012 | RUNNING | fix: escape snippet insertText newlines — commit 0111924526f3 |
 
-**Root cause of #1001–#1006 failures:** `McpShellProfile.kt` line 120 used `\\"` inside a Kotlin double-quoted string. `\\"` = `\\` (literal backslash) + `"` (CLOSES string early). Fix: switched to `"""..."""` triple-quoted string where backslash is literal.
+Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
+regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
+newlines inside double-quoted strings — they must be \n or use triple-quoted strings.
+KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 
 ---
 
@@ -318,10 +326,16 @@
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| CI | Build green | 🟡 RUNNING (#1007) | L120 McpShellProfile fix pushed |
-| 12 | Terminal cross-project state bleed | ⏳ TODO | Switching projects mirrors keystrokes between terminals — needs TerminalSession scoping audit |
-| 13 | AI package access bridging | ⏳ TODO | Terminal AI can't read/write project files directly — bridge AgentApiServer to filesystem |
-| 11 | GitHub OAuth repo browsing | ✅ DONE | RepoBrowserSheet.kt — browse repos, clone into proot /root/repos/<name> via git + auth header (2026-07-13) |
+| CI | Build green | RUNNING (#1012) | Snippet newline escape fix pushed — 0111924526f3 |
+| 12 | Terminal cross-project state bleed | DONE | TrackedSession scoping fixed |
+| 13 | AI package access bridging | DONE | ProotInstaller.execOnce routing |
+| 11 | GitHub OAuth repo browsing | DONE | RepoBrowserSheet.kt shipped 2026-07-13 |
+| P2-1 | Rename Symbol | NEXT | Once CI green — rename all occurrences in current file via dialog |
+| P2-2 | Multi-cursor editing | TODO | Alt+click to add cursor; insert/delete synced across cursors |
+| P2-3 | Go to Definition | TODO | Tap symbol -> jump to its definition line in same file |
+| P2-4 | Find and Replace in file | TODO | Dialog with regex toggle, match highlight, replace one/all |
+| P2-5 | Error squiggles (lint) | TODO | Pattern match undefined vars, missing braces -> red underline |
+| P2-6 | Git diff gutter | TODO | Green/orange/red sidebar bars vs HEAD |
 
 ---
 
@@ -412,3 +426,48 @@ needs to change — Overlay stays unused/dead code, it just compiles now.
 Lesson: when adding a new callback param to a shared private helper fn that's
 called from multiple composables, grep for ALL call sites AND all their public
 signatures — not just the ones actually wired end-to-end.
+
+---
+
+## 2026-07-13 (Phase 2) — EDITOR UPGRADES SESSION
+
+### What was attempted / shipped
+
+**Phase 2 goals:** Hover docs, rich language snippets, sticky scroll, rename symbol, multi-cursor, go-to-definition, find/replace, error squiggles, git diff gutter.
+
+**Commits this session:**
+| Commit | File | Description | CI |
+|--------|------|-------------|----|
+| `5bd7cb9bcab9` | CodeEditor.kt | HOVER_DOCS map (60+ symbols), rich snippets per language, insertText bodies | FAIL (#1008) |
+| `d7d50e284251` | EditorPane.kt | Sticky scroll — nearest enclosing scope pinned at top | FAIL (#1009) |
+| `9d60d9c81761` | EditorPane.kt | Fix: stickyScope remember moved outside if/else | FAIL (#1010) |
+| `582eb1941b52` | CodeEditor.kt | Fix: remove remember inside LazyColumn items{} | FAIL (#1011) |
+| `0111924526f3` | CodeEditor.kt | Fix: escape all snippet insertText newlines (root cause fix) | RUNNING (#1012) |
+
+### Features shipped (pending CI green)
+1. **HOVER_DOCS** — 60+ keyword descriptions across Kotlin/JS/TS/Python/Java/Rust/Go
+2. **Rich language snippets** — per-language Completion lists with full `insertText` bodies
+   (e.g. selecting "LaunchedEffect" inserts full `LaunchedEffect(key) { }` block)
+3. **Doc subtitle in autocomplete** — one-liner doc always visible under each item label
+4. **Sticky scroll** — `fun`/`class`/`if`/`when`/`struct` headers pin at top of editor while scrolling
+5. **Snippet insertion uses full body** — clicking an autocomplete item inserts usable code, not just the keyword
+
+### Bugs hit and root causes
+1. **Raw newlines in string literals** — `snippetsFor()` had multi-line bodies written as literal newlines inside `"..."` strings. Kotlin does NOT allow this — must use `\n` or triple-quoted strings. KSP catches it before kotlinc. Fixed by replacing all occurrences with `\n` escapes.
+2. **remember() inside conditional** — `val stickyScope = remember(...)` was placed inside an `if/else` branch in EditorPane. Compose rules: composable functions (including `remember`) must be called unconditionally at the top level of a `@Composable`. Fixed by moving it above the `if (active != null)` block.
+3. **remember() inside items{} lambda** — `var showDocTooltip by remember {...}` was placed inside `LazyColumn`'s `items{}` lambda which is NOT a `@Composable` scope. Fixed by removing the per-item state entirely and showing doc as a permanent subtitle line.
+
+### Lesson
+When writing Kotlin string literals that should contain newlines, ALWAYS use `\n` or triple-quoted strings. Never paste multi-line content directly into `"..."`. This causes a KSP crash with a misleading "Error occurred in KSP" message rather than a clear parse error.
+
+### What comes NEXT (Phase 2 continuation)
+Once CI goes green on #1012:
+
+| Order | Feature | Implementation plan |
+|-------|---------|---------------------|
+| 1 | **Rename Symbol** | Long-press a word in editor -> "Rename" dialog -> replace all word-boundary matches in current file, preserving cursor position |
+| 2 | **Find & Replace in file** | Bottom sheet: search field + replace field + regex toggle + match highlight via AnnotatedString + "Replace" / "Replace All" buttons |
+| 3 | **Multi-cursor editing** | Track a `List<Int>` of cursor positions; on typed char insert at each position; on backspace delete before each; render as transparent Box overlays |
+| 4 | **Go to Definition** | Double-tap a symbol -> scan file for first `fun name` / `val name` / `class name` definition -> `scrollToLine` jump |
+| 5 | **Error squiggles** | Post-edit analysis pass: unmatched braces, unclosed strings, undefined references (scan for uses without definitions in file) -> wavy red underline via AnnotatedString SpanStyle |
+| 6 | **Git diff gutter** | On file open read `git diff HEAD <file>` via ProotInstaller.execOnce -> parse unified diff -> color sidebar strips (green=add, orange=mod, red=del) aligned to line numbers |
