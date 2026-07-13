@@ -478,13 +478,36 @@ fun ProjectShellScreen(
         if (notificationMsg != null) { kotlinx.coroutines.delay(3000); notificationMsg = null }
     }
 
-    fun showNotification(msg: String, type: String = "info") {
-        notificationMsg = msg
-        notificationType = type
-        // Also push to persistent notification list
-        notifList.add(0, NotifItem(System.currentTimeMillis(), msg, type))
-        if (notifList.size > 50) notifList.removeAt(notifList.size - 1)
-        if (!showNotifDrawer) notifUnread++
+    // ── P2-10: Navigation history helpers ──────────────────────────────────
+    /** Push the current position onto the back-stack and clear the forward-stack. */
+    fun pushNavEntry(path: String?, line: Int) {
+        val p = path ?: return
+        val entry = NavEntry(p, line)
+        // Ignore duplicate consecutive entries
+        if (navBackStack.lastOrNull() == entry) return
+        navBackStack.add(entry)
+        if (navBackStack.size > 100) navBackStack.removeAt(0)
+        navFwdStack.clear()
+    }
+
+    /** Jump backwards one step, pushing the current position onto the forward-stack. */
+    fun navBack() {
+        val prev = navBackStack.removeLastOrNull() ?: return
+        val current = activeEditorTab?.let { NavEntry(it, scrollTargetLine) }
+        if (current != null) navFwdStack.add(current)
+        activeEditorTab = prev.path
+        scrollTargetLine = prev.line
+        if (!editorTabs.contains(prev.path)) editorTabs.add(prev.path)
+    }
+
+    /** Jump forwards one step, pushing the current position onto the back-stack. */
+    fun navForward() {
+        val next = navFwdStack.removeLastOrNull() ?: return
+        val current = activeEditorTab?.let { NavEntry(it, scrollTargetLine) }
+        if (current != null) navBackStack.add(current)
+        activeEditorTab = next.path
+        scrollTargetLine = next.line
+        if (!editorTabs.contains(next.path)) editorTabs.add(next.path)
     }
 
     fun handleMenuAction(action: String) {
