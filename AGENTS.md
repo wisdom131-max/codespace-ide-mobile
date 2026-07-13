@@ -24,10 +24,10 @@
 
 | | |
 |-|-|
-| Latest green build | #1035 |
+| Latest green build | #1066 |
 | Active phase | Phase 2 - Code Editor Intelligence |
-| Last shipped | P2-1 Rename Symbol (acd045fa) |
-| Next to implement | P2-3 Go to Line (Ctrl+G style — bottom input, jump cursor to line N) |
+| Last shipped | P2-5 Error squiggles / LintAnalyzer hardening (37b8528) |
+| Next to implement | P2-6 Git diff gutter (GitDiffAnalyzer.kt exists; wire gutter bars fully) |
 | After Phase 2 | Phase 3 - Verify & Repair all existing features |
 | After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
 
@@ -63,6 +63,11 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1035 | GREEN ✅ | fix(editor): P2-1 Rename Symbol — quote fix, SHIPPED & CLEAN |
 | #1036–#1038 | FAIL | feat(P2-2): FindReplace import missing in EditorPane.kt |
 | #1039 | GREEN ✅ | fix(P2-2): FindReplace icon import — P2-2 SHIPPED & CLEAN |
+| #1062 | GREEN ✅ | feat(P2-3): multi-cursor visual indicators |
+| #1063 | GREEN ✅ | docs: mark P2-3 DONE |
+| #1064 | FAIL | feat(P2-4): AlertDialog key= param invalid (CE:808) |
+| #1065 | FAIL | feat(P2-5): LintAnalyzer only (CodeEditor not fixed yet) |
+| #1066 | GREEN ✅ | fix(P2-5): remove invalid key= from AlertDialog + harden LintAnalyzer — P2-5 SHIPPED |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -361,12 +366,12 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 | 12 | Terminal cross-project state bleed | DONE | TrackedSession scoping fixed |
 | 13 | AI package access bridging | DONE | ProotInstaller.execOnce routing |
 | 11 | GitHub OAuth repo browsing | DONE | RepoBrowserSheet.kt shipped 2026-07-13 |
-| P2-1 | Rename Symbol | NEXT 🔜 | CI is green — start this feature in next session |
-| P2-2 | Multi-cursor editing | TODO | Alt+click to add cursor; insert/delete synced across cursors |
-| P2-3 | Go to Definition | TODO | Tap symbol -> jump to its definition line in same file |
-| P2-4 | Find and Replace in file | TODO | Dialog with regex toggle, match highlight, replace one/all |
-| P2-5 | Error squiggles (lint) | TODO | Pattern match undefined vars, missing braces -> red underline |
-| P2-6 | Git diff gutter | TODO | Green/orange/red sidebar bars vs HEAD |
+| P2-1 | Rename Symbol | DONE ✅ | Shipped |
+| P2-2 | Find & Replace | DONE ✅ | Shipped |
+| P2-3 | Go to Line | DONE ✅ | Shipped |
+| P2-4 | Go to Definition | DONE ✅ | Long-press context sheet + results dialog |
+| P2-5 | Error squiggles (lint) | DONE ✅ | LintAnalyzer hardened; SyntaxTransformation underlines errors |
+| P2-6 | Git diff gutter | NEXT 🔜 | GitDiffAnalyzer.kt exists; gutter bars partially wired |
 
 ---
 
