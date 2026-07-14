@@ -1160,7 +1160,7 @@ fun ExplorerSidePanel(
     // catches that wasn't already routed to a dedicated viewer above ──
     if (previewHexPath != null) {
         HexViewerDialog(
-            file = java.io.File(previewHexPath!!),
+            filePath = previewHexPath!!,
             onDismiss = { previewHexPath = null },
         )
     }

@@ -650,6 +650,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-9 Code Bookmarks — gutter ◆ dot toggles bookmark per line; toolbar ◆ button opens panel listing all bookmarks (file+line+preview); tap to jump to file+line. `fileBookmarks` map in EditorPane. |
 | 2026-07-13 | Shipped P2-10 Jump back/forward history — `NavEntry(path, line)` back/fwd stacks, ← → toolbar buttons, push on Explorer open / Search jump / tab click. |
 | 2026-07-14 | Phase 3 Explorer audit complete — outline jump-to-line, Paste conditional, Duplicate folder fix, Rename→tab sync, onOpenFileAtLine wired. |
+| 2026-07-14 | Phase 3 Source Control audit — all git ops verified real. Added inline expandable diff viewer (tap file to expand, green/red/blue unified diff). Fixed HexViewerDialog call site parameter mismatch. Fixed PDF: DPI-aware render resolution, clamped pan, zoom indicator + reset. |
 | 2026-07-13 | Shipped P2-12 Parameter hints / signature help — new `SignatureHelpAnalyzer.kt`, backward paren+comma scanner, floating popup 1 line above cursor with active param teal+bold, hides while autocomplete open. Build #1059 failed (missing `withStyle` import — extension fn needs explicit import even when `buildAnnotatedString` is imported). Fixed in #1060 (green). |
 | 2026-07-13 | Shipped P2-11 Inlay Hints — new `InlayHintAnalyzer.kt`, regex-based (no AST), type/return/param label overlay in `CodeEditor.kt`, toolbar ⊕ toggle. Picked up mid-session after a prior AI ran out of tokens right after triggering build #1055 (it landed GREEN). Found and fixed a real bug left behind: `VAL_CHAR` regex had a missing `\\s` escape (`'.'s*$` instead of `'.'\\s*$`) so it could never match, AND it was never referenced in the type-hint `when` block at all — char literals (`val c = 'a'`) silently got no hint. Fixed both in #1056 (green). |
 
@@ -680,13 +681,13 @@ Status as of 2026-07-13:
 - [ ] Extra key bar: all keys send correct sequences?
 
 #### Source Control (SourceControlPane.kt)
-- [ ] Stage/unstage — works?
-- [ ] Commit — works?
-- [ ] Push — uses GitHub token correctly?
-- [ ] Pull / Fetch — works?
+- [x] Stage/unstage — ✅ `git add` / `git restore --staged` real commands.
+- [x] Commit — ✅ `git commit -m` real command.
+- [x] Push — ✅ Injects GitHub token as HTTP Basic Auth header via `git -c http.extraheader`.
+- [x] Pull / Fetch — ✅ `git pull` real command with token injection.
 - [x] Branch switch — works? ✅ (git checkout via runGit)
 - [x] New branch dialog — implemented (#1078) ✅
-- [ ] Diff viewer — shows actual diff?
+- [x] Diff viewer — ✅ Added inline expandable diff in ChangeRow (tap file to expand). Green/red/blue unified diff. Loads via `git diff` then `git diff --cached` fallback.
 - [ ] RepoBrowserSheet clone — end-to-end verified?
 
 #### Preview Pane (PreviewPane.kt)

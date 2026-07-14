@@ -23,6 +23,11 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ChevronRight
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.data.SecureTokenStore
 import java.io.File
@@ -373,6 +378,7 @@ fun SourceControlPane(projectId: String) {
                         onStage = { stageFile(change.file) },
                         onUnstage = null,
                         onDiscard = { discardFile(change.file) },
+                        repoDir = repoDir,
                     )
                 }
             }
@@ -469,7 +475,14 @@ private fun ChangeRow(
     onStage: (() -> Unit)?,
     onUnstage: (() -> Unit)?,
     onDiscard: (() -> Unit)?,
+    repoDir: File? = null,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var expanded by remember { mutableStateOf(false) }
+    var diffLines by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loadingDiff by remember { mutableStateOf(false) }
+
     val statusColor = when (change.statusCode) {
         'M'       -> ModifiedColor
         'A'       -> AddedColor
@@ -483,36 +496,98 @@ private fun ChangeRow(
         '?' -> "U"; 'R' -> "R"; 'C' -> "C"
         else -> change.statusCode.toString()
     }
-    Row(
-        Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(statusLabel, fontSize = 10.sp, color = statusColor,
-            fontFamily = FontFamily.Monospace, modifier = Modifier.width(14.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(
-            change.file,
-            fontSize = 12.sp, color = TextColor,
-            modifier = Modifier.weight(1f),
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
-        // Actions
-        if (onStage != null) {
-            Icon(Icons.Default.Add, "Stage", tint = IconColor,
-                modifier = Modifier.size(15.dp).clickable { onStage() })
-            Spacer(Modifier.width(4.dp))
-        }
-        if (onUnstage != null) {
-            Icon(Icons.Default.Remove, "Unstage", tint = MutedColor,
-                modifier = Modifier.size(15.dp).clickable { onUnstage() })
-            Spacer(Modifier.width(4.dp))
-        }
-        if (onDiscard != null) {
-            Icon(Icons.Default.Undo, "Discard", tint = DeletedColor,
-                modifier = Modifier.size(15.dp).clickable { onDiscard() })
-        }
-    }
-    HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
 
+    Column {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable {
+                    if (repoDir != null && change.statusCode != '?') {
+                        expanded = !expanded
+                        if (expanded && diffLines.isEmpty() && !loadingDiff) {
+                            loadingDiff = true
+                            scope.launch {
+                                val out = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    runGit(context, repoDir, "diff", "--", change.file).ifBlank {
+                                        runGit(context, repoDir, "diff", "--cached", "--", change.file)
+                                    }
+                                }
+                                diffLines = out.lines()
+                                loadingDiff = false
+                            }
+                        }
+                    }
+                }
+                .padding(start = 24.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(statusLabel, fontSize = 10.sp, color = statusColor,
+                fontFamily = FontFamily.Monospace, modifier = Modifier.width(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(
+                change.file,
+                fontSize = 12.sp, color = TextColor,
+                modifier = Modifier.weight(1f),
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            // Expand chevron for diffable files
+            if (repoDir != null && change.statusCode != '?') {
+                Icon(
+                    if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                    null, tint = MutedColor, modifier = Modifier.size(13.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+            }
+            // Actions
+            if (onStage != null) {
+                Icon(Icons.Default.Add, "Stage", tint = IconColor,
+                    modifier = Modifier.size(15.dp).clickable { onStage() })
+                Spacer(Modifier.width(4.dp))
+            }
+            if (onUnstage != null) {
+                Icon(Icons.Default.Remove, "Unstage", tint = MutedColor,
+                    modifier = Modifier.size(15.dp).clickable { onUnstage() })
+                Spacer(Modifier.width(4.dp))
+            }
+            if (onDiscard != null) {
+                Icon(Icons.Default.Undo, "Discard", tint = DeletedColor,
+                    modifier = Modifier.size(15.dp).clickable { onDiscard() })
+            }
+        }
+
+        // ── Inline diff view ──────────────────────────────────────────────
+        if (expanded) {
+            if (loadingDiff) {
+                Box(Modifier.fillMaxWidth().padding(start = 32.dp, bottom = 4.dp)) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = IconColor)
+                }
+            } else if (diffLines.isEmpty()) {
+                Text("  (no diff — file may be binary or untracked)",
+                    fontSize = 11.sp, color = MutedColor,
+                    modifier = Modifier.padding(start = 32.dp, bottom = 4.dp))
+            } else {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(Color(0xFF0D0D0D))
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 32.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
+                ) {
+                    diffLines.forEach { line ->
+                        val color = when {
+                            line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF4EC9B0)
+                            line.startsWith("-") && !line.startsWith("---") -> Color(0xFFFF6B6B)
+                            line.startsWith("@@") -> Color(0xFF569CD6)
+                            else -> MutedColor
+                        }
+                        Text(line, fontSize = 11.sp, color = color,
+                            fontFamily = FontFamily.Monospace,
+                            softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+        HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+    }
 }
 
