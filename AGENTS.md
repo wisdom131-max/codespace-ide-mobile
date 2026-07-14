@@ -24,12 +24,14 @@
 
 | | |
 |-|-|
-| Latest green build | **#1085** |
-| Active phase | **Phase 6 — Git & Version Control Completeness** |
-| Last shipped | Phase 5 COMPLETE (fix push bcb367f48c, build #1093) — Phase 6 now active |
-| P4 progress | `TerminalSessionStore.kt` added (#1080 ✅). Wired into TerminalPane (#1081 ❌ → #1082 ❌ → #1083 ✅ fixed). **P4-TerminalSessionStore is DONE and green as of #1083/1084/1085.** |
-| Next to implement | Phase 4 remaining items — see Phase 4 checklist below |
-| Phase 3 | ✅ COMPLETE (build #1078 → #1085 all green) |
+| Latest green build | **#1098** |
+| Active phase | **Phase 7 — Recovery & Reliability** |
+| Last shipped | Phase 6 COMPLETE — Commit Log, Stash, Tags, Branch delete/rename, Conflict banner, .gitignore editor (build #1098) |
+| **Next to implement** | **Phase 7** — see Phase 7 checklist below |
+| Phase 6 | ✅ COMPLETE (build #1098) |
+| Phase 5 | ✅ COMPLETE (build #1096) |
+| Phase 4 | ✅ COMPLETE (build #1086) |
+| Phase 3 | ✅ COMPLETE (build #1085) |
 
 ---
 
@@ -87,7 +89,24 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1083 | GREEN ✅ | fix: add missing launch import — P4 TerminalSessionStore FULLY WIRED ✅ |
 | #1084 | GREEN ✅ | fix(Phase3-Explorer): outline jump-to-line, Paste guard, folder duplicate, rename tab sync |
 | #1085 | GREEN ✅ | fix(Phase3): PDF DPI-aware render + clamped pan + zoom reset, SourceControl inline diff, HexViewer param fix |
-| #1086 | 🟡 RUNNING | feat(P4): autosave dirty tabs every 30s + restore dialog on launch — PHASE 4 COMPLETE |
+| #1086 | GREEN ✅ | feat(P4): autosave dirty tabs every 30s + restore dialog on launch — PHASE 4 COMPLETE |
+| #1087–#1088 | GREEN ✅ | docs: AGENTS.md sync after Phase 4 complete |
+| #1089 | FAIL | feat(P5): PackageManagerPane — duplicate composable conflict with ExplorerPane |
+| #1090–#1093 | FAIL | feat/fix(P5): multiple attempts — syntax corruption + duplicate symbols |
+| #1094–#1095 | FAIL | feat(P6): GitEngine Phase 6 additions — build not yet clean |
+| #1096 | GREEN ✅ | fix(build): remove duplicate ExtensionsPanel+McpPanel from ExplorerPane — P5 SHIPPED |
+| #1097 | FAIL | feat(P6): SourceControlPane full rewrite — key(Unit){} passed as AlertDialog param |
+| #1098 | GREEN ✅ | fix(P6): remove key(Unit){} from all AlertDialog calls — PHASE 6 COMPLETE ✅ |
+
+Root cause of #1089–#1095: ExtensionsPanel() and McpPanel() were defined in BOTH
+ExplorerPane.kt and PackageManagerPane.kt — Kotlin 'Conflicting declarations' error.
+Rule: Each composable must be defined in EXACTLY ONE file. When moving a composable,
+DELETE it from the original file in the same commit.
+
+Root cause of #1097: AlertDialog() in Material3 does NOT accept key() as a positional
+argument. key(orientation) { AlertDialog(...) } is valid — key() wrapping the call site.
+Passing key(Unit){} as a parameter inside AlertDialog() is invalid. Rule: NEVER pass
+key() as a parameter; always wrap the entire composable call site instead.
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -767,7 +786,7 @@ Implementation targets:
 
 ---
 
-## PHASE 5 — PACKAGE MANAGER UPGRADE (in progress)
+## PHASE 5 — PACKAGE MANAGER UPGRADE ✅ COMPLETE (build #1096)
 
 ### Shipped (commit fe8717f0f1, build #1089)
 
@@ -802,7 +821,7 @@ New file: `PackageManagerPane.kt` — contains both stubs that ProjectShellScree
 
 ---
 
-## PHASE 6 — GIT & VERSION CONTROL COMPLETENESS (active)
+## PHASE 6 — GIT & VERSION CONTROL COMPLETENESS ✅ COMPLETE (build #1098)
 
 ### Audit results (2026-07-14)
 
@@ -831,18 +850,40 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 - **Local version history**: file-level snapshots stored under `.versionhistory/` in project dir,
   accessible via long-press on file in ExplorerPane (separate from git — works even without a repo)
 
-### Shipped
-*(nothing yet — starting now)*
+### Shipped — ALL ITEMS COMPLETE ✅ (build #1098)
+
+| Feature | Status | Commit |
+|---------|--------|--------|
+| Commit Log tab (100 commits, tap to expand SHA/author/date/message) | ✅ DONE | #1098 |
+| Stash tab (list, save with message, pop, drop) | ✅ DONE | #1098 |
+| Tags tab (list annotated + lightweight, create, delete) | ✅ DONE | #1098 |
+| Branch delete + rename (context menu in branch dropdown) | ✅ DONE | #1098 |
+| Merge conflict banner (per-file badge + open-in-editor button) | ✅ DONE | #1098 |
+| .gitignore inline editor (icon button next to branch row) | ✅ DONE | #1098 |
 
 ---
 
-## PHASE 7 — RECOVERY & RELIABILITY
+## PHASE 7 — RECOVERY & RELIABILITY (NEXT — active)
 
-- Auto-save editor content every 60 seconds to `<project>/.autosave/`
-- Crash recovery — on next launch, detect `.autosave/` files → offer restore dialog
-- Workspace snapshots — manual "Create Snapshot" → tar.gz of project dir
-- Diagnostics report generator — collects: device info, app version, recent logs, crash stack → shareable text file
-- Emergency recovery mode — if app crashes on startup 2+ times → safe mode (no project auto-open, no terminal auto-start)
+**Status: starting. Latest green build: #1098. Safe to implement.**
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| P7-1 | Workspace snapshots | **NEXT** | "Create Snapshot" button in project settings → tar.gz of project dir saved to external storage |
+| P7-2 | Diagnostics report generator | TODO | Collect: device info, app version, crash logs, recent terminal output → shareable .txt file |
+| P7-3 | Emergency safe mode | TODO | If crash_count >= 2 on startup: skip project auto-open, skip terminal auto-start, show recovery screen |
+| P7-4 | Workspace Trash | TODO | Move deleted files to `.ide-trash/<timestamp>-<name>` — restore from Explorer context menu |
+
+### Pre-existing (do NOT re-implement):
+- Auto-save + restore dialog — ✅ EXISTS in EditorPane.kt (30s timer, .autosave/, AlertDialog on launch)
+- Crash logger (JVM) — ✅ EXISTS in CodeSpaceApplication.kt
+- Native crash handler — ✅ EXISTS (JNI.installCrashHandler)
+- BackupManager (rootfs tar.gz) — ✅ EXISTS for Ubuntu container
+
+### Known gotchas for this phase:
+- Snapshot tar.gz needs MANAGE_EXTERNAL_STORAGE permission (already in manifest — verify)
+- All heavy work (tar, file scan) must be in a coroutine/WorkManager — NEVER on main thread
+- key(orientation) { AlertDialog(...) } at call site — NEVER pass key() as AlertDialog param
 
 ---
 
