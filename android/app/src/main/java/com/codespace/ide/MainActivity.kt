@@ -133,13 +133,7 @@ class MainActivity : ComponentActivity() {
                         title = { Text("Safe Mode") },
                         text  = {
                             Text(
-                                "The app crashed ${WorkspaceManager.crashCount(applicationContext)} times in a row.
-
-" +
-                                "Safe mode skips auto-opening projects and terminal sessions.
-
-" +
-                                "Tap 'Continue' to proceed normally, or 'Reset' to clear crash history.",
+                                "The app crashed ${WorkspaceManager.crashCount(applicationContext)} times in a row.\n\nSafe mode skips auto-opening projects and terminal sessions.\n\nTap 'Continue' to proceed normally, or 'Reset' to clear crash history.",
                                 fontSize = 13.sp,
                             )
                         },
