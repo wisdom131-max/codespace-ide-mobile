@@ -1,4 +1,6 @@
 package com.codespace.ide.ui.screens
+
+import com.codespace.ide.util.WorkspaceManager
 import android.widget.Toast
 
 import androidx.compose.foundation.background
@@ -279,7 +281,7 @@ private val MENU_BAR = listOf(
         MenuAction("Open File","Ctrl+O"), MenuAction("Open Folder"),
         MenuAction("",divider=true),
         MenuAction("Save","Ctrl+S"), MenuAction("Save As","Ctrl+Shift+S"), MenuAction("Auto Save"),
-        MenuAction("",divider=true), MenuAction("Preferences"), MenuAction("Exit"),
+        MenuAction("",divider=true), MenuAction("Create Snapshot"), MenuAction("Diagnostics Report"), MenuAction("",divider=true), MenuAction("Preferences"), MenuAction("Exit"),
     )),
     MenuBarItem("Edit", listOf(
         MenuAction("Undo","Ctrl+Z"), MenuAction("Redo","Ctrl+Y"),
@@ -421,7 +423,8 @@ fun ProjectShellScreen(
     // Persistent notification list (bell drawer)
     val notifList = remember { mutableStateListOf<NotifItem>() }
     var notifUnread by remember { mutableStateOf(0) }
-    var showNotifDrawer by remember { mutableStateOf(false) }
+    var showNotifDrawer    by remember { mutableStateOf(false) }
+    var snapshotMessage    by remember { mutableStateOf<String?>(null) }
     // Connectors hub (replaces Person menu)
     var showConnectorsSheet by remember { mutableStateOf(false) }
     val terminalEnhancements = remember { TerminalEnhancementManager(context) }
@@ -568,6 +571,28 @@ fun ProjectShellScreen(
             "Zoom Out"           -> editorFontSize = (editorFontSize - 1).coerceAtLeast(8)
             "Exit"               -> onBack()
             "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
+            "Create Snapshot" -> {
+                coroutineScope.launch {
+                    try {
+                        val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                        val outFile = WorkspaceManager.createSnapshot(context, projectDir)
+                        snapshotMessage = "Saved to Downloads/CodespaceIDE/${outFile.name}"
+                        showNotification("Snapshot created!", "success")
+                    } catch (e: Exception) {
+                        showNotification("Snapshot failed: ${e.message}", "error")
+                    }
+                }
+            }
+            "Diagnostics Report" -> {
+                coroutineScope.launch {
+                    try {
+                        val (_, intent) = WorkspaceManager.generateDiagnosticsReport(context)
+                        context.startActivity(android.content.Intent.createChooser(intent, "Share Diagnostics"))
+                    } catch (e: Exception) {
+                        showNotification("Diagnostics failed: ${e.message}", "error")
+                    }
+                }
+            }
             "Run Program", "Start Debugging" -> {
                 showBottomPanel = true; activeBottomTab = BottomTab.DEBUG
                 debugMessages.add("[debug] Launching session...")
@@ -1666,7 +1691,22 @@ fun ProjectShellScreen(
 
 
         // ── Color Theme Picker Dialog ──────────────────────────────────────
-        if (showColorTheme) {
+        // P7-1 Snapshot result dialog
+    if (snapshotMessage != null) {
+        val _snapOrient = LocalConfiguration.current.orientation
+        key(_snapOrient) {
+        AlertDialog(
+            onDismissRequest = { snapshotMessage = null },
+            title = { Text("Snapshot Created") },
+            text  = { Text(snapshotMessage!!, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) },
+            confirmButton = {
+                TextButton(onClick = { snapshotMessage = null }) { Text("OK") }
+            },
+        )
+        }
+    }
+
+    if (showColorTheme) {
             val allThemes = listOf(
                 "Dark (Default)", "Dark Modern", "Dracula", "AMOLED Black",
                 "Monokai", "One Dark Pro", "GitHub Dark", "Tokyo Night",
