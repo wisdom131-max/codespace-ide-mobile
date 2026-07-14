@@ -3,7 +3,12 @@ package com.codespace.ide.terminal
 import android.content.Context
 import org.json.JSONArray
 import java.io.File
+import java.io.IOException
 
+/**
+ * P3 fix: save() now returns a Result so callers can surface write failures
+ * instead of silently losing profile data on storage-full / permission errors.
+ */
 object SshProfileStore {
     private fun file(ctx: Context) = File(ctx.filesDir, "ssh-profiles.json")
 
@@ -16,11 +21,17 @@ object SshProfileStore {
         } catch (_: Exception) { mutableListOf() }
     }
 
-    fun save(ctx: Context, profiles: List<SshProfile>) {
-        try {
+    /** @return [Result.success] on write OK, [Result.failure] with the [IOException] on error. */
+    fun save(ctx: Context, profiles: List<SshProfile>): Result<Unit> {
+        return try {
             val arr = JSONArray()
             profiles.forEach { arr.put(it.toJson()) }
             file(ctx).writeText(arr.toString(2))
-        } catch (_: Exception) {}
+            Result.success(Unit)
+        } catch (e: IOException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }

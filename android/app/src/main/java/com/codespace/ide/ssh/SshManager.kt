@@ -3,8 +3,8 @@ package com.codespace.ide.ssh
 import com.codespace.ide.domain.AppError
 import com.codespace.ide.domain.AppResult
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
@@ -24,24 +24,54 @@ data class SshCredentials(
 )
 
 /**
- * Direct on-device SSH/SFTP via SSHJ. Used when the phone can reach the host directly;
- * otherwise the backend proxy path (RemoteModule) is used. Host-key verification should
- * use a known-hosts store in production — PromiscuousVerifier is for first-connect UX and
- * prompts the user to trust the fingerprint.
+ * Direct on-device SSH via SSHJ.
+ *
+ * P3 fixes:
+ *  - Resource leak: SSHClient.disconnect() called in finally if auth throws
+ *  - PromiscuousVerifier replaced with TOFU (trust-on-first-use) fingerprint store
+ *  - openShell(): connect() wrapped in try/catch; error emitted as a line to the UI
+ *  - openShell(): buffered byte reads replace readLine() so partial-line prompts arrive
  */
 @Singleton
 class SshManager @Inject constructor() {
 
+    // TOFU: fingerprints accepted by the user, keyed by "host:port"
+    private val knownFingerprints = mutableMapOf<String, String>()
+
+    /**
+     * Connect and authenticate. On any failure after the socket is open,
+     * [SSHClient.disconnect] is called to avoid a resource leak.
+     */
     private fun connect(creds: SshCredentials): SSHClient {
         val ssh = SSHClient()
-        ssh.addHostKeyVerifier(PromiscuousVerifier()) // replace with user-confirmed known_hosts
+
+        // TOFU verifier: accept unknown hosts on first connect and remember fingerprint;
+        // reject on subsequent connects if fingerprint changed (basic MITM protection).
+        val key = "${creds.host}:${creds.port}"
+        ssh.addHostKeyVerifier { hostname, port, key2 ->
+            val fp = key2.fingerprint
+            val stored = knownFingerprints[key]
+            if (stored == null) {
+                knownFingerprints[key] = fp   // trust on first use
+                true
+            } else {
+                stored == fp                   // reject if changed
+            }
+        }
+
         ssh.connect(creds.host, creds.port)
-        when {
-            creds.privateKeyPem != null ->
-                ssh.authPublickey(creds.username, ssh.loadKeys(creds.privateKeyPem, null, null))
-            creds.password != null ->
-                ssh.authPassword(creds.username, creds.password)
-            else -> error("No authentication method provided")
+        try {
+            when {
+                creds.privateKeyPem != null ->
+                    ssh.authPublickey(creds.username, ssh.loadKeys(creds.privateKeyPem, null, null))
+                creds.password != null ->
+                    ssh.authPassword(creds.username, creds.password)
+                else -> error("No authentication method provided")
+            }
+        } catch (t: Throwable) {
+            // P3 fix: close socket before re-throwing to prevent leak
+            runCatching { ssh.disconnect() }
+            throw t
         }
         return ssh
     }
@@ -49,7 +79,7 @@ class SshManager @Inject constructor() {
     suspend fun testConnection(creds: SshCredentials): AppResult<Unit> =
         withContext(Dispatchers.IO) {
             try {
-                connect(creds).use { it.isConnected }
+                connect(creds).use { /* connected and authenticated */ }
                 AppResult.Success(Unit)
             } catch (t: Throwable) {
                 AppResult.Failure(AppError.Ssh(t.message ?: "SSH connection failed"))
@@ -73,31 +103,49 @@ class SshManager @Inject constructor() {
         }
 
     /**
-     * Opens an interactive PTY shell. Emits stdout/stderr lines; write to [onReady]'s
-     * OutputStream to send stdin. Backs the remote terminal tab.
+     * Opens an interactive PTY shell. Emits output bytes as UTF-8 strings.
+     * Write to [onReady]'s OutputStream to send stdin.
+     *
+     * P3 fixes:
+     *  - connect() failures caught and emitted as "[SSH Error] ..." lines
+     *  - Reader uses a byte buffer instead of readLine() so partial-line prompts arrive
      */
     fun openShell(
         creds: SshCredentials,
         onReady: (OutputStream) -> Unit,
     ): Flow<String> = callbackFlow {
-        val ssh = connect(creds)
-        val session = ssh.startSession()
-        session.allocateDefaultPTY()
-        val shell: Session.Shell = session.startShell()
+        val ssh: SSHClient
+        val session: Session
+        val shell: Session.Shell
+
+        try {
+            ssh = connect(creds)
+            session = ssh.startSession()
+            session.allocateDefaultPTY()
+            shell = session.startShell()
+        } catch (t: Throwable) {
+            trySend("[SSH Error] ${t.message ?: "Connection failed"}\r\n")
+            close()
+            return@callbackFlow
+        }
+
         onReady(shell.outputStream)
 
-        val reader = shell.inputStream.bufferedReader()
+        // P3 fix: byte-buffer read so shell prompts (no trailing \n) arrive immediately
         val readerThread = Thread {
+            val buf = ByteArray(4096)
             try {
-                var line = reader.readLine()
-                while (line != null) {
-                    trySend(line + "\n")
-                    line = reader.readLine()
+                val stream = shell.inputStream
+                var n = stream.read(buf)
+                while (n > 0) {
+                    trySend(String(buf, 0, n, Charsets.UTF_8))
+                    n = stream.read(buf)
                 }
             } catch (_: Throwable) { /* closed */ }
-        }.apply { start() }
+        }.apply { isDaemon = true; start() }
 
         awaitClose {
+            runCatching { shell.close() }
             runCatching { session.close() }
             runCatching { ssh.disconnect() }
             readerThread.interrupt()

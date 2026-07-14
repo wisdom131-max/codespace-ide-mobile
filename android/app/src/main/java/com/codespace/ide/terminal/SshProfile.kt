@@ -3,29 +3,39 @@ package com.codespace.ide.terminal
 import org.json.JSONObject
 import java.util.UUID
 
+/**
+ * P3 fixes:
+ *  - All fields changed from var to val; use copy() for edits (Compose-safe)
+ *  - buildCommand() shell-quotes every user-controlled argument to prevent injection
+ */
 data class SshProfile(
     val id: String = UUID.randomUUID().toString(),
-    var nickname: String = "",
-    var host: String = "",
-    var port: Int = 22,
-    var username: String = "",
-    var keyPath: String = "",
-    var tunnelEnabled: Boolean = false,
-    var tunnelType: String = "local",       // "local" (-L) or "remote" (-R)
-    var tunnelLocalPort: Int = 8080,
-    var tunnelRemoteHost: String = "localhost",
-    var tunnelRemotePort: Int = 8080
+    val nickname: String = "",
+    val host: String = "",
+    val port: Int = 22,
+    val username: String = "",
+    val keyPath: String = "",
+    val tunnelEnabled: Boolean = false,
+    val tunnelType: String = "local",       // "local" (-L) or "remote" (-R)
+    val tunnelLocalPort: Int = 8080,
+    val tunnelRemoteHost: String = "localhost",
+    val tunnelRemotePort: Int = 8080,
 ) {
+    /** Shell-quote a single argument (single-quote wrapping with inner-quote escaping). */
+    private fun q(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
     fun buildCommand(): String {
-        val cmd = StringBuilder("ssh -o StrictHostKeyChecking=accept-new")
+        val parts = mutableListOf("ssh", "-o", "StrictHostKeyChecking=accept-new")
         if (tunnelEnabled && tunnelRemoteHost.isNotEmpty()) {
             val flag = if (tunnelType == "remote") "-R" else "-L"
-            cmd.append(" $flag $tunnelLocalPort:$tunnelRemoteHost:$tunnelRemotePort")
+            parts += flag
+            parts += "$tunnelLocalPort:${tunnelRemoteHost}:$tunnelRemotePort"
         }
-        if (port != 22) cmd.append(" -p $port")
-        if (keyPath.isNotEmpty()) cmd.append(" -i $keyPath")
-        cmd.append(" $username@$host")
-        return cmd.toString()
+        if (port != 22) { parts += "-p"; parts += port.toString() }
+        if (keyPath.isNotEmpty()) { parts += "-i"; parts += keyPath }
+        parts += "$username@$host"
+        // Join with shell-quoting applied to each token
+        return parts.joinToString(" ") { q(it) }
     }
 
     fun displayLabel(): String {
@@ -59,7 +69,7 @@ data class SshProfile(
             tunnelType = o.optString("tunnelType", "local"),
             tunnelLocalPort = o.optInt("tunnelLocalPort", 8080),
             tunnelRemoteHost = o.optString("tunnelRemoteHost", "localhost"),
-            tunnelRemotePort = o.optInt("tunnelRemotePort", 8080)
+            tunnelRemotePort = o.optInt("tunnelRemotePort", 8080),
         )
     }
 }
