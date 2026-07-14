@@ -130,6 +130,7 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 2. remember() inside if/else branches or LazyColumn items{} — Compose rules: call remember() unconditionally at top of composable.
 3. Double-quotes inside a double-quoted string: "of "$var"" breaks the string. Use single quotes: "of '$var'".
 4. Triple-quoted strings inside ${} interpolation — not valid Kotlin. Extract to a local val first.
+5. `LocalContext.current` (or any `Local*.current`) inside `scope.launch {}` / `LaunchedEffect {}` / coroutine lambdas — NOT allowed. Capture it at the top of the `@Composable` function and use the captured val inside any lambdas.
 
 ---
 
@@ -1275,4 +1276,5 @@ suitable for professional development on Android.
 10. NEVER call remember() inside items{}, conditionals, or loops
 11. MINIMAP IS EXCLUDED — do not implement it under any circumstances
 12. 8-SECOND STARTUP HEADSTART — all heavy init (terminal restore, indexing) must wait for it
+
 
