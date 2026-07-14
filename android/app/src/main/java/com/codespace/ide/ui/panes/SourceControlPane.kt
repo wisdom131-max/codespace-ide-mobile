@@ -121,6 +121,9 @@ fun SourceControlPane(projectId: String) {
     // P3: surface errors to the user instead of swallowing them
     var statusError by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableStateOf(0) }
+    var showNewBranchDialog by remember { mutableStateOf(false) }
+    var newBranchName by remember { mutableStateOf("") }
+    var newBranchError by remember { mutableStateOf<String?>(null) }
 
     // P3 fix: repoDir is a guest-side path concept only — we don't do File() ops on it
     // for filesystem existence checks. We just record it for runGit routing.
@@ -253,7 +256,12 @@ fun SourceControlPane(projectId: String) {
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("New branch…", fontSize = 12.sp, color = IconColor) },
-                        onClick = { showBranchMenu = false /* TODO: new-branch dialog */ }
+                        onClick = {
+                            showBranchMenu = false
+                            newBranchName = ""
+                            newBranchError = null
+                            showNewBranchDialog = true
+                        }
                     )
                 }
             }
@@ -451,4 +459,59 @@ private fun ChangeRow(
         }
     }
     HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+    // New Branch dialog
+    if (showNewBranchDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewBranchDialog = false },
+            title = { Text("New branch", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = newBranchName,
+                        onValueChange = { newBranchName = it; newBranchError = null },
+                        label = { Text("Branch name") },
+                        singleLine = true,
+                        isError = newBranchError != null,
+                        supportingText = newBranchError?.let { err ->
+                            { Text(err, color = ErrorColor, fontSize = 11.sp) }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Branch will be created from '$branch'",
+                        fontSize = 11.sp, color = MutedColor
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = newBranchName.isNotBlank(),
+                    onClick = {
+                        val trimmed = newBranchName.trim()
+                        if (trimmed.contains(" ") || trimmed.contains("..") ||
+                            trimmed.startsWith("-") || trimmed.isEmpty()) {
+                            newBranchError = "Invalid branch name"
+                        } else {
+                            showNewBranchDialog = false
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    runGit(context, repoDir, "checkout", "-b", trimmed)
+                                }
+                                if (result.startsWith("Error:") || result.contains("fatal")) {
+                                    statusError = result
+                                } else {
+                                    refreshStatus()
+                                }
+                            }
+                        }
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewBranchDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
 }
