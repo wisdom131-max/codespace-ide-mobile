@@ -24,11 +24,11 @@
 
 | | |
 |-|-|
-| Latest green build | #1074 |
+| Latest green build | #1078 |
 | Active phase | Phase 2 - Code Editor Intelligence |
-| Last shipped | P3-ssh compile fix (SshManager.kt HostKeyVerifier) — build #1074 GREEN ✅ |
-| Next to implement | Phase 3 — Verify & Repair all existing features |
-| After Phase 2 | Phase 3 - Verify & Repair all existing features |
+| Last shipped | P3-git: new-branch dialog in SourceControlPane — build #1078 GREEN ✅ |
+| Next to implement | Phase 4 — Terminal Session Restore |
+| After Phase 2 | Phase 3 - Verify & Repair all existing features — COMPLETE ✅ |
 | After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
 
 ---
@@ -76,6 +76,10 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1072 | FAIL ❌ | fix(ssh): tried adding launch import — SshManager.kt:51 still broken |
 | #1073 | FAIL ❌ | docs: AGENTS.md update — still on broken SshManager.kt tree |
 | #1074 | GREEN ✅ | fix(ssh): replace non-SAM lambda with PromiscuousVerifier — REPO CLEAN ✅ |
+| #1075 | GREEN ✅ | docs: sync AGENTS.md to #1074; log #1067–#1074; Phase 3 audit findings |
+| #1076 | FAIL ❌ | feat(P3-git): new-branch dialog injected into wrong composable scope |
+| #1077 | FAIL ❌ | fix(P3-git): relocation attempt — dialog still outside composable |
+| #1078 | GREEN ✅ | fix(P3-git): new-branch dialog correctly inside SourceControlPane — PHASE 3 COMPLETE ✅ |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -650,7 +654,7 @@ Status as of 2026-07-13:
 
 ---
 
-## PHASE 3 — VERIFY & REPAIR EXISTING FEATURES
+## PHASE 3 — VERIFY & REPAIR EXISTING FEATURES ✅ COMPLETE (build #1078)
 
 ### Must audit in order before implementing anything else
 
@@ -679,7 +683,8 @@ Status as of 2026-07-13:
 - [ ] Commit — works?
 - [ ] Push — uses GitHub token correctly?
 - [ ] Pull / Fetch — works?
-- [ ] Branch switch — works?
+- [x] Branch switch — works? ✅ (git checkout via runGit)
+- [x] New branch dialog — implemented (#1078) ✅
 - [ ] Diff viewer — shows actual diff?
 - [ ] RepoBrowserSheet clone — end-to-end verified?
 
