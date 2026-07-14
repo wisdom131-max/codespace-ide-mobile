@@ -476,7 +476,7 @@ fun ProjectShellScreen(
     // P9-1: Start background file indexer when project opens
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank()) {
-            val wsPath = loadWorkspacePath(context, projectId)
+            val wsPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath
             if (wsPath != null) {
                 FileIndexer.startIndexing(wsPath, indexerScope)
             }
@@ -1483,7 +1483,7 @@ fun ProjectShellScreen(
                     Box(
                         Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 60.dp, horizontal = 16.dp)
+                            .padding(horizontal = 16.dp).padding(top = 60.dp)
                             .clickable { /* consume click */ }
                     ) {
                         SymbolSearchPanel(
