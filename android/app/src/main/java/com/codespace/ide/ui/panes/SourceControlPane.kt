@@ -378,10 +378,6 @@ fun SourceControlPane(projectId: String) {
             }
         }
     }
-}
-
-// ── Sub-composables ────────────────────────────────────────────────────────────
-
     // ── New Branch dialog ─────────────────────────────────────────────────
     if (showNewBranchDialog) {
         AlertDialog(
@@ -401,7 +397,7 @@ fun SourceControlPane(projectId: String) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "Creates from current branch: $branch",
+                        "Creates from: $branch",
                         fontSize = 11.sp, color = MutedColor
                     )
                 }
@@ -435,6 +431,10 @@ fun SourceControlPane(projectId: String) {
             },
         )
     }
+
+}
+
+// ── Sub-composables ────────────────────────────────────────────────────────────
 
 @Composable
 private fun SectionHeader(
@@ -515,3 +515,4 @@ private fun ChangeRow(
     HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
 
 }
+
