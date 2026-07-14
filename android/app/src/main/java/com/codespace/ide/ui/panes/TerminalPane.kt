@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.terminal.TerminalSessionStore
 import com.codespace.ide.terminal.BackupManager
 import com.codespace.ide.terminal.McpShellProfile
 import android.content.ServiceConnection
@@ -993,6 +994,10 @@ internal fun TerminalPane(
             val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true, workDir = loadWorkspacePath(ctx, projectId)))
             tabs.add(TabSession(id, "Ubuntu", session, client))
             activeId = id
+            // Phase 4: persist after opening a new tab
+            scope.launch { TerminalSessionStore.save(context, tabs.map {
+                TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root")
+            }) }
             return
         }
 
@@ -1203,7 +1208,22 @@ internal fun TerminalPane(
             kotlinx.coroutines.delay(8000)
             autoStartCountdownDone = true
             showTapToStart = false
-            tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+            // Phase 4: try session restore (loop-guarded, crash-safe)
+            val restored = if (TerminalSessionStore.claimRestoreAttempt(context)) {
+                TerminalSessionStore.load(context)
+            } else emptyList()
+            if (restored.isNotEmpty()) {
+                // Restore each saved tab as a fresh Ubuntu session
+                tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+                restored.drop(1).forEach { _ -> addUbuntuTab(replaceTabId = null) }
+                // Re-apply saved names
+                restored.forEachIndexed { i, saved ->
+                    val tab = tabs.getOrNull(i) ?: return@forEachIndexed
+                    tabs[i] = tab.copy(name = saved.name)
+                }
+            } else {
+                tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+            }
         }
     }
 
@@ -1220,6 +1240,10 @@ internal fun TerminalPane(
         tabs[idx].session.finishIfRunning()
         tabs.removeAt(idx)
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
+        // Phase 4: persist updated tab list
+        scope.launch { TerminalSessionStore.save(context, tabs.map {
+            TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root")
+        }) }
     }
 
     LaunchedEffect(initialCommand, active?.id) {
@@ -1419,6 +1443,14 @@ internal fun TerminalPane(
                         leadingIcon = { Text("✕", fontSize = 13.sp, color = Color(0xFFFF6B6B)) },
                         text = { Text("Close This Tab", color = Color(0xFFFF6B6B), fontSize = 13.sp) },
                         onClick = { showMenu = false; if (tabs.size > 1) closeTab(activeId) })
+                    // Phase 4: clear saved sessions
+                    DropdownMenuItem(
+                        text = { Text("Clear saved sessions", fontSize = 12.sp) },
+                        onClick = {
+                            showMenu = false
+                            scope.launch { TerminalSessionStore.wipe(context) }
+                        }
+                    )
                 }
             }
         }
