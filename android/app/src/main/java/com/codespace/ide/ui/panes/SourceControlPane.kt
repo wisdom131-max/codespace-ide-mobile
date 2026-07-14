@@ -600,7 +600,6 @@ fun SourceControlPane(projectId: String) {
     // New Branch
     if (showNewBranchDialog) {
         AlertDialog(
-            key(Unit) {},
             onDismissRequest = { showNewBranchDialog = false },
             title = { Text("New Branch", fontSize = 14.sp) },
             text = {
@@ -626,7 +625,6 @@ fun SourceControlPane(projectId: String) {
     // Branch context menu (delete / rename)
     branchContextMenu?.let { targetBranch ->
         AlertDialog(
-            key(Unit) {},
             onDismissRequest = { branchContextMenu = null },
             title = { Text(targetBranch, fontSize = 13.sp, fontFamily = FontFamily.Monospace) },
             text = {
@@ -653,7 +651,6 @@ fun SourceControlPane(projectId: String) {
     // Rename Branch
     if (showRenameBranchDialog) {
         AlertDialog(
-            key(Unit) {},
             onDismissRequest = { showRenameBranchDialog = false },
             title = { Text("Rename Branch", fontSize = 14.sp) },
             text = {
@@ -675,7 +672,6 @@ fun SourceControlPane(projectId: String) {
     // .gitignore editor
     if (showGitignoreDialog) {
         AlertDialog(
-            key(Unit) {},
             onDismissRequest = { showGitignoreDialog = false },
             title = { Text(".gitignore", fontSize = 14.sp) },
             text = {
@@ -701,7 +697,6 @@ fun SourceControlPane(projectId: String) {
     // Save Stash
     if (showStashDialog) {
         AlertDialog(
-            key(Unit) {},
             onDismissRequest = { showStashDialog = false },
             title = { Text("Save Stash", fontSize = 14.sp) },
             text = {
@@ -724,7 +719,6 @@ fun SourceControlPane(projectId: String) {
     // New Tag
     if (showTagDialog) {
         AlertDialog(
-            key(Unit) {},
             onDismissRequest = { showTagDialog = false },
             title = { Text("New Tag", fontSize = 14.sp) },
             text = {
