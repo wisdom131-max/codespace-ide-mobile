@@ -36,6 +36,7 @@ fun BuildPanel(
     onProblemsUpdate: (List<GradleErrorParser.BuildProblem>) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var envReport by remember { mutableStateOf<BuildEnvironment.EnvironmentReport?>(null) }
     var isValidating by remember { mutableStateOf(false) }
     var buildResult by remember { mutableStateOf<BuildRunner.BuildResult?>(null) }
@@ -86,7 +87,7 @@ fun BuildPanel(
                         buildOutput = ""
                         scope.launch {
                             val result = BuildRunner.runBuild(
-                                context = androidx.compose.ui.platform.LocalContext.current,
+                                context = ctx,
                                 projectPath = projectPath,
                                 task = selectedTask,
                             )
