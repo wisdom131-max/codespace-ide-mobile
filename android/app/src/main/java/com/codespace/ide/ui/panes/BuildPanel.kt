@@ -128,7 +128,6 @@ fun BuildPanel(
                     if (!isValidating) {
                         isValidating = true
                         scope.launch {
-                            val ctx = androidx.compose.ui.platform.LocalContext.current
                             envReport = BuildEnvironment.validateEnvironment(ctx)
                             isValidating = false
                         }
