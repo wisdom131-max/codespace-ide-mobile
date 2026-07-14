@@ -382,6 +382,60 @@ fun SourceControlPane(projectId: String) {
 
 // ── Sub-composables ────────────────────────────────────────────────────────────
 
+    // ── New Branch dialog ─────────────────────────────────────────────────
+    if (showNewBranchDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewBranchDialog = false },
+            title = { Text("New branch", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = newBranchName,
+                        onValueChange = { newBranchName = it; newBranchError = null },
+                        label = { Text("Branch name") },
+                        singleLine = true,
+                        isError = newBranchError != null,
+                        supportingText = if (newBranchError != null) {
+                            { Text(newBranchError!!, color = ErrorColor, fontSize = 11.sp) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Creates from current branch: $branch",
+                        fontSize = 11.sp, color = MutedColor
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = newBranchName.isNotBlank(),
+                    onClick = {
+                        val trimmed = newBranchName.trim()
+                        if (trimmed.contains(" ") || trimmed.contains("..") ||
+                            trimmed.startsWith("-") || trimmed.isEmpty()) {
+                            newBranchError = "Invalid branch name"
+                        } else {
+                            showNewBranchDialog = false
+                            scope.launch {
+                                val out = withContext(Dispatchers.IO) {
+                                    runGit(context, repoDir, "checkout", "-b", trimmed)
+                                }
+                                if (out.startsWith("Error:") || out.contains("fatal")) {
+                                    statusError = out
+                                } else {
+                                    refreshStatus()
+                                }
+                            }
+                        }
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewBranchDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
 @Composable
 private fun SectionHeader(
     title: String,
@@ -459,59 +513,5 @@ private fun ChangeRow(
         }
     }
     HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
-
-    // New Branch dialog
-    if (showNewBranchDialog) {
-        AlertDialog(
-            onDismissRequest = { showNewBranchDialog = false },
-            title = { Text("New branch", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(
-                        value = newBranchName,
-                        onValueChange = { newBranchName = it; newBranchError = null },
-                        label = { Text("Branch name") },
-                        singleLine = true,
-                        isError = newBranchError != null,
-                        supportingText = newBranchError?.let { err ->
-                            { Text(err, color = ErrorColor, fontSize = 11.sp) }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        "Branch will be created from '$branch'",
-                        fontSize = 11.sp, color = MutedColor
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    enabled = newBranchName.isNotBlank(),
-                    onClick = {
-                        val trimmed = newBranchName.trim()
-                        if (trimmed.contains(" ") || trimmed.contains("..") ||
-                            trimmed.startsWith("-") || trimmed.isEmpty()) {
-                            newBranchError = "Invalid branch name"
-                        } else {
-                            showNewBranchDialog = false
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    runGit(context, repoDir, "checkout", "-b", trimmed)
-                                }
-                                if (result.startsWith("Error:") || result.contains("fatal")) {
-                                    statusError = result
-                                } else {
-                                    refreshStatus()
-                                }
-                            }
-                        }
-                    }
-                ) { Text("Create") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNewBranchDialog = false }) { Text("Cancel") }
-            },
-        )
-    }
 
 }
