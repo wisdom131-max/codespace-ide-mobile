@@ -814,6 +814,20 @@ fun ProjectShellScreen(
                                     activePanel = null
                                     showNotification("Opened ${path.substringAfterLast("/")}", "success")
                                 },
+                                onFileRenamed = { oldPath, newPath ->
+                                    val idx = editorTabs.indexOf(oldPath)
+                                    if (idx >= 0) {
+                                        editorTabs[idx] = newPath
+                                        if (activeEditorTab == oldPath) activeEditorTab = newPath
+                                    }
+                                },
+                                onOpenFileAtLine = { path, line ->
+                                    if (!editorTabs.contains(path)) editorTabs.add(path)
+                                    pushNavEntry(activeEditorTab, scrollTargetLine)
+                                    activeEditorTab = path
+                                    scrollTargetLine = line
+                                    activePanel = null
+                                },
                                 onMoreMenu = { showExplorerMore = true },
                                 onOpenInTerminal = { path ->
                                     showBottomPanel = true

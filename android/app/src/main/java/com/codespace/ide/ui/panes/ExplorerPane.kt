@@ -172,6 +172,8 @@ data class FsNode(
 fun ExplorerSidePanel(
     projectId: String,
     onOpenFile: (String) -> Unit,
+    onFileRenamed: ((oldPath: String, newPath: String) -> Unit)? = null,
+    onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     onMoreMenu: () -> Unit,
     onOpenInTerminal: (String) -> Unit = {},
     openTabs: List<String> = emptyList(),
@@ -959,7 +961,11 @@ fun ExplorerSidePanel(
                     items(outlineItems) { (name, line, kind) ->
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable { onOpenFile(activeFilePath ?: return@clickable) }
+                                .clickable {
+                                    val fp = activeFilePath ?: return@clickable
+                                    onOpenFile(fp)
+                                    onOpenFileAtLine?.invoke(fp, line)
+                                }
                                 .padding(16.dp, 3.dp, 8.dp, 3.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -1001,23 +1007,25 @@ fun ExplorerSidePanel(
                     val isVid = isVideoFile(f.name)
                     val isAud = isAudioFile(f.name)
                     val isHexBin = isHexViewFile(f.name) || sniffLooksBinary(f.absolutePath)
-                    listOf(
-                        "Open"            to Icons.Default.OpenInNew,
-                        "Preview"         to Icons.Default.Image,
-                        "Rename"          to Icons.Default.Edit,
-                        "Copy"            to Icons.Default.ContentCopy,
-                        "Cut"             to Icons.Default.ContentCut,
-                        "Paste"           to Icons.Default.ContentPaste,
-                        "Duplicate"       to Icons.Default.FileCopy,
-                        "Delete"          to Icons.Default.Delete,
-                        "Copy Path"       to Icons.Default.ContentCopy,
-                        "Share"           to Icons.Default.Share,
-                        "Open in Terminal" to Icons.Default.Computer,
-                        "New File Here"   to Icons.Default.Add,
-                        "New Folder Here" to Icons.Default.CreateNewFolder,
-                        "Import Image(s) Here" to Icons.Default.AddPhotoAlternate,
-                        "Generate Image with AI Here" to Icons.Default.AutoAwesome,
-                    ).forEach { (label, icon) ->
+                    val hasPreview = isImg || isArch || isPdf || isVid || isAud || isHexBin
+                    val hasPaste = clipboardFile != null
+                    buildList {
+                        add("Open" to Icons.Default.OpenInNew)
+                        if (hasPreview) add("Preview" to Icons.Default.Image)
+                        add("Rename" to Icons.Default.Edit)
+                        add("Copy" to Icons.Default.ContentCopy)
+                        add("Cut" to Icons.Default.ContentCut)
+                        if (hasPaste) add("Paste" to Icons.Default.ContentPaste)
+                        add("Duplicate" to Icons.Default.FileCopy)
+                        add("Delete" to Icons.Default.Delete)
+                        add("Copy Path" to Icons.Default.ContentCopy)
+                        add("Share" to Icons.Default.Share)
+                        add("Open in Terminal" to Icons.Default.Computer)
+                        add("New File Here" to Icons.Default.Add)
+                        add("New Folder Here" to Icons.Default.CreateNewFolder)
+                        add("Import Image(s) Here" to Icons.Default.AddPhotoAlternate)
+                        add("Generate Image with AI Here" to Icons.Default.AutoAwesome)
+                    }.forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
                                 .clickable {
@@ -1055,8 +1063,10 @@ fun ExplorerSidePanel(
                                         "Duplicate" -> {
                                             val targetDir = f.parentFile
                                             if (targetDir != null) {
-                                                val dest = File(targetDir, f.nameWithoutExtension + "_copy." + f.extension)
-                                                f.copyTo(dest, overwrite = false)
+                                                val dest = if (f.isDirectory) File(targetDir, f.name + "_copy")
+                                                            else File(targetDir, f.nameWithoutExtension + "_copy." + f.extension)
+                                                if (f.isDirectory) f.copyRecursively(dest, overwrite = false)
+                                                else f.copyTo(dest, overwrite = false)
                                                 refresh++
                                             }
                                         }
@@ -1306,7 +1316,11 @@ fun ExplorerSidePanel(
             confirmButton = {
                 Button(onClick = {
                     if (nameInput.isNotBlank()) {
-                        contextFile!!.renameTo(File(contextFile!!.parent, nameInput))
+                        val oldPath = contextFile!!.absolutePath
+                        val newFile = File(contextFile!!.parent, nameInput)
+                        if (contextFile!!.renameTo(newFile)) {
+                            onFileRenamed?.invoke(oldPath, newFile.absolutePath)
+                        }
                         refresh++
                     }
                     showRename = false; nameInput = ""

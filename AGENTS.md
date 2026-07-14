@@ -649,6 +649,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-8 Breadcrumb navigation — breadcrumb bar is now horizontally scrollable with clickable ancestor segments. Tap a segment → Explorer opens + tree auto-expands/scrolls to that dir via `navigateToDir` + `treeListState`. |
 | 2026-07-13 | Shipped P2-9 Code Bookmarks — gutter ◆ dot toggles bookmark per line; toolbar ◆ button opens panel listing all bookmarks (file+line+preview); tap to jump to file+line. `fileBookmarks` map in EditorPane. |
 | 2026-07-13 | Shipped P2-10 Jump back/forward history — `NavEntry(path, line)` back/fwd stacks, ← → toolbar buttons, push on Explorer open / Search jump / tab click. |
+| 2026-07-14 | Phase 3 Explorer audit complete — outline jump-to-line, Paste conditional, Duplicate folder fix, Rename→tab sync, onOpenFileAtLine wired. |
 | 2026-07-13 | Shipped P2-12 Parameter hints / signature help — new `SignatureHelpAnalyzer.kt`, backward paren+comma scanner, floating popup 1 line above cursor with active param teal+bold, hides while autocomplete open. Build #1059 failed (missing `withStyle` import — extension fn needs explicit import even when `buildAnnotatedString` is imported). Fixed in #1060 (green). |
 | 2026-07-13 | Shipped P2-11 Inlay Hints — new `InlayHintAnalyzer.kt`, regex-based (no AST), type/return/param label overlay in `CodeEditor.kt`, toolbar ⊕ toggle. Picked up mid-session after a prior AI ran out of tokens right after triggering build #1055 (it landed GREEN). Found and fixed a real bug left behind: `VAL_CHAR` regex had a missing `\\s` escape (`'.'s*$` instead of `'.'\\s*$`) so it could never match, AND it was never referenced in the type-hint `when` block at all — char literals (`val c = 'a'`) silently got no hint. Fixed both in #1056 (green). |
 
@@ -659,14 +660,14 @@ Status as of 2026-07-13:
 ### Must audit in order before implementing anything else
 
 #### File Explorer (ExplorerPane.kt)
-- [ ] Rename — does it actually rename the file on disk?
-- [ ] Copy/Cut/Paste — do these actually move bytes?
-- [ ] Duplicate — does it copy the file?
-- [ ] Delete — does it delete recursively for folders?
-- [ ] "Open in Terminal" — does it cd to the correct directory?
-- [ ] Search panel — does in-project search return accurate results?
-- [ ] Outline view — does it actually parse symbols from the current file?
-- [ ] Long-press context menu — all 13 items working?
+- [x] Rename — ✅ renameTo() real disk op. onFileRenamed() callback updates open editor tabs automatically.
+- [x] Copy/Cut/Paste — ✅ copyTo()/renameTo() real disk ops. Paste now hidden in menu when clipboard is empty.
+- [x] Duplicate — ✅ Fixed: folders use copyRecursively(); files use copyTo().
+- [x] Delete — ✅ deleteRecursively() handles files and folders.
+- [x] Open in Terminal — ✅ passes dir path to onOpenInTerminal → terminal runs cd.
+- [x] Search panel — ✅ Walks workspace tree, reads line content, supports regex/case/word-boundary.
+- [x] Outline view — ✅ Parses class/fun/var. Tapping a symbol now scrolls editor to that line.
+- [x] Long-press context menu — ✅ All items working. Paste/Preview now conditionally shown.
 
 #### Terminal (TerminalPane.kt)
 - [ ] All 5 Ollama install methods fallthrough correctly?
