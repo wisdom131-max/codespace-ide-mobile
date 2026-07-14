@@ -24,10 +24,10 @@
 
 | | |
 |-|-|
-| Latest green build | **#1108** |
+| Latest green build | **#1112** (P8-1 shipped) |
 | Active phase | **Phase 8 — Debugging Infrastructure** |
-| Last shipped | Phase 7 COMPLETE ✅ — WorkspaceManager, safe mode, trash, snapshots, diagnostics |
-| **Next** | **Phase 8 P8-1 Breakpoint markers, then P8-2 Logcat viewer** |
+| Last shipped | P8-1 breakpoints ✅ (#1111/#1112) — P8-2 Logcat pushed (#1115 fixing) — P8-3 Variables pushed (#1116/#1117) |
+| **Next** | **P8-3 CI check, then Phase 8 complete** |
 | Phase 7 | ✅ COMPLETE (build #1108) |
 | Phase 6 | ✅ COMPLETE (build #1098) |
 | Phase 5 | ✅ COMPLETE (build #1096) |
@@ -49,9 +49,9 @@ Pre-implementation audit result:
 Phase 8 plan (ordered by value vs complexity):
 | # | Feature | Complexity | Status |
 |---|---------|-----------|--------|
-| P8-1 | Breakpoint markers in gutter (tap line number = red dot toggle) | Low | TODO — START HERE |
-| P8-2 | Logcat viewer (new Ports/Logcat tab, reads adb logcat or /proc) | Medium | TODO |
-| P8-3 | Variable inspector panel (new bottom tab, stub data) | Medium | TODO |
+| P8-1 | Breakpoint markers in gutter (tap line number = red dot toggle) | Low | DONE ✅ (#1111, #1112) |
+| P8-2 | Logcat viewer (new Logcat tab, streams adb logcat, color-coded) | Medium | PUSHED (#1113 green, #1115 fixing) |
+| P8-3 | Variable inspector panel (watch + locals + call stack) | Medium | PUSHED (#1116/#1117) |
 | P8-4 | DAP client | High | SKIP — needs external adapters |
 
 ---
@@ -121,6 +121,13 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1100 | GREEN ✅ | feat(P7): WorkspaceManager.kt — snapshots, diagnostics, safe mode, trash |
 | #1101–1106 | RED ❌ | P7 fixes — raw newline in string literal (MainActivity:136), wrong scope var (PSS coroutineScope→scope), brace structure |
 | #1108 | GREEN ✅ | fix(P7): all compile errors resolved — PHASE 7 COMPLETE ✅ |
+| #1111 | GREEN ✅ | feat(P8-1): breakpoint gutter markers — tap line number to toggle red dot |
+| #1112 | GREEN ✅ | feat(P8-1): wire breakpoints into EditorPane |
+| #1113 | GREEN ✅ | feat(P8-2): LogcatPanel.kt — new Logcat viewer composable |
+| #1114 | FAIL ❌ | feat(P8-2): add Logcat tab to bottom panel — Compose State read off main thread |
+| #1115 | RUNNING | fix(P8-2): use AtomicBoolean for pause flag — avoid Compose State read off main thread |
+| #1116 | RUNNING | feat(P8-3): VariableInspectorPanel — watch expressions + local vars + call stack |
+| #1117 | RUNNING | feat(P8-3): wire VariableInspectorPanel into bottom panel |
 
 Root cause of #1089–#1095: ExtensionsPanel() and McpPanel() were defined in BOTH
 ExplorerPane.kt and PackageManagerPane.kt — Kotlin 'Conflicting declarations' error.
@@ -131,6 +138,8 @@ Root cause of #1097: AlertDialog() in Material3 does NOT accept key() as a posit
 argument. key(orientation) { AlertDialog(...) } is valid — key() wrapping the call site.
 Passing key(Unit){} as a parameter inside AlertDialog() is invalid. Rule: NEVER pass
 key() as a parameter; always wrap the entire composable call site instead.
+
+Root cause of #1114: LogcatPanel pausedUi (Compose mutableState) was read from an IO coroutine via withContext(Dispatchers.Main), but the AtomicBoolean flag pattern was not yet in place. Fix: use AtomicBoolean for pause flag, sync via LaunchedEffect.
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
