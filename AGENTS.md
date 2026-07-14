@@ -1182,6 +1182,37 @@ requirements → installs/repairs → successfully builds a signed APK — all f
 ---
 
 ## PHASE 12 — PROJECT SETUP, TOOLCHAIN MANAGEMENT, BUILD HISTORY & TASK RUNNER
+### Phase 12 — Implementation Status 🚧 IN PROGRESS
+
+| # | Feature | File | Build |
+|---|---------|------|-------|
+| 12-A | ProjectWizard — two-step type picker + name dialog | `project/ProjectWizard.kt` | Pending |
+| 12-B | ProjectTemplates — scaffold files for 7 project types | `project/ProjectTemplates.kt` | Pending |
+| 12-C | ToolchainManager — detect JDK/Gradle/SDK/Flutter/Node/Python | `project/ToolchainManager.kt` | Pending |
+| 12-D | DownloadCenter — track downloads with live StateFlow progress | `project/DownloadCenter.kt` | Pending |
+| 12-E | BuildHistoryStore — persist build history (max 100 entries) | `project/BuildHistoryStore.kt` | Pending |
+| 12-F | BuildArtifactManager — scan/share/install/delete APK+AAB | `project/BuildArtifactManager.kt` | Pending |
+| 12-G | TaskRunner — one-tap task catalogue delegating to BuildRunner | `project/TaskRunner.kt` | Pending |
+| 12-H | EnvironmentProfiles — per-stack profiles with tool requirements | `project/EnvironmentProfiles.kt` | Pending |
+
+All 8 files pushed in separate commits. CI pending confirmation of green builds.
+HomeScreen.kt updated: basic New Project dialog replaced with ProjectWizardDialog.
+
+### CI Build History — Phase 12
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1138 | PENDING ⏳ | feat(P12-B): ProjectTemplates — scaffold 7 project types |
+| #1139 | PENDING ⏳ | feat(P12-A): ProjectWizard — two-step creation dialog |
+| #1140 | PENDING ⏳ | feat(P12-A): wire ProjectWizard into HomeScreen |
+| #1141 | PENDING ⏳ | feat(P12-C): ToolchainManager |
+| #1142 | PENDING ⏳ | feat(P12-D): DownloadCenter |
+| #1143 | PENDING ⏳ | feat(P12-E): BuildHistoryStore |
+| #1144 | PENDING ⏳ | feat(P12-F): BuildArtifactManager |
+| #1145 | PENDING ⏳ | feat(P12-G): TaskRunner |
+| #1146 | PENDING ⏳ | feat(P12-H): EnvironmentProfiles |
+
+
 
 **Before implementing:** Audit existing project creation, build, package management, environment
 management, and download systems. Reuse and improve before duplicating.
