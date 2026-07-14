@@ -24,11 +24,11 @@
 
 | | |
 |-|-|
-| Latest green build | **#1129** (P9 complete — all phases green) |
-| Active phase | **Phase 12 — Project Setup & Toolchain** (backend COMPLETE #1150, UI panels next) |
-| Last green | #1150 — fix(P12-C): ToolchainManager Regex — full tree compiles ✅ |
-| **Next** | **Phase 12 UI panels: ToolchainPanel, TaskRunnerPanel, BuildHistoryPanel, then Phase 13** |
-| Phase 12 | IN PROGRESS — backend P12-A thru P12-H COMPLETE #1150, UI panels next |
+| Latest green build | **#1157** (P12 COMPLETE — all phases green) |
+| Active phase | **Phase 13** |
+| Last green | #1157 — fix(P12-M): panel menu when exhaustive — PHASE 12 COMPLETE ✅ |
+| **Next** | **Phase 13** |
+| Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
 | Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
 | Phase 9 | ✅ COMPLETE (build #1129) — Performance & Monitoring |
 | Phase 8 | ✅ COMPLETE (build #1119) — Debugging Infrastructure |
@@ -1207,11 +1207,11 @@ HomeScreen.kt updated: basic New Project dialog replaced with full ProjectWizard
 
 | # | Feature | File | Status |
 |---|---------|------|--------|
-| 12-I | ToolchainPanel — status screen for all detected tools | `ui/ToolchainPanel.kt` | TODO |
-| 12-J | TaskRunnerPanel — one-tap task buttons with live log | `ui/TaskRunnerPanel.kt` | TODO |
-| 12-K | BuildHistoryPanel — scrollable build history with log view | `ui/BuildHistoryPanel.kt` | TODO |
-| 12-L | ArtifactPanel — list/share/install APK+AAB artifacts | `ui/ArtifactPanel.kt` | TODO |
-| 12-M | Wire panels into ProjectShellScreen bottom tabs | `ProjectShellScreen.kt` | TODO |
+| 12-I | ToolchainPanel — status screen for all detected tools | `ui/ToolchainPanel.kt` | SHIPPED (#1154) |
+| 12-J | TaskRunnerPanel — one-tap task buttons with live log | `ui/TaskRunnerPanel.kt` | SHIPPED (#1152) |
+| 12-K | BuildHistoryPanel — scrollable build history with log view | `ui/BuildHistoryPanel.kt` | SHIPPED (#1153) |
+| 12-L | ArtifactPanel — list/share/install APK+AAB artifacts | `ui/ArtifactPanel.kt` | SHIPPED (#1155) |
+| 12-M | Wire panels into ProjectShellScreen bottom tabs | `ProjectShellScreen.kt` | SHIPPED (#1157) |
 
 #### CI Build History — Phase 12
 
@@ -1228,11 +1228,20 @@ HomeScreen.kt updated: basic New Project dialog replaced with full ProjectWizard
 | #1147 | FAIL | feat(P12-H): EnvironmentProfiles — same root error |
 | #1148 | FAIL | docs(AGENTS): P12 status — same root error |
 | #1149 | FAIL | fix(P12-B): ProjectTemplates string concat — fixed Templates, exposed ToolchainManager Regex bug |
-| #1150 | GREEN | fix(P12-C): ToolchainManager Regex char literal fixed — TREE CLEAN |
+| #1150 | GREEN ✅ | fix(P12-C): ToolchainManager Regex char literal fixed — TREE CLEAN |
+| #1151 | GREEN ✅ | docs(AGENTS): full audit P12 — root cause logged, UI panels pending |
+| #1152 | GREEN ✅ | feat(P12-J): TaskRunnerPanel — one-tap task grid with live output log |
+| #1153 | GREEN ✅ | feat(P12-K): BuildHistoryPanel — build history list with expandable log |
+| #1154 | GREEN ✅ | feat(P12-I): ToolchainPanel — tool health status screen |
+| #1155 | GREEN ✅ | feat(P12-L): ArtifactPanel — list/share/install/delete APK+AAB |
+| #1156 | FAIL ❌ | feat(P12-M): wire panels into PSS — non-exhaustive when() on BottomTab |
+| #1157 | GREEN ✅ | fix(P12-M): add TOOLCHAIN/TASKS/HISTORY/ARTIFACTS to panel menu when — PHASE 12 COMPLETE ✅ |
 
 **Root cause of #1139-#1149:** ProjectTemplates.kt used Python triple-quote `"""` inside a Kotlin triple-quoted string causing parse failure on all commits. Fixed by rewriting all scaffold content as string concatenation. Secondary: ToolchainManager.kt used single-quote Regex delimiter (parsed as char literal); fixed with double-quote + escape.
 
 **NEW failure pattern to memorise:** Never embed triple-quotes inside Kotlin triple-quoted strings. Never use single-quote delimiters for Regex strings in Kotlin.
+
+**NEW failure pattern to memorise (#1156):** When adding new values to an enum used in a `when` expression elsewhere in the codebase, search for ALL `when (activeBottomTab)` / `when (enumVar)` occurrences and add branches for new values. Kotlin requires exhaustive `when` on enum/sealed types — missing cases are compile errors.
 
 **Before implementing:** Audit existing project creation, build, package management, environment
 management, and download systems. Reuse and improve before duplicating.
