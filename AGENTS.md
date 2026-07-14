@@ -16,7 +16,7 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-07-13. Read this FIRST before touching any code.
+> Last updated: 2026-07-14. Read this FIRST before touching any code.
 
 ---
 
@@ -24,10 +24,12 @@
 
 | | |
 |-|-|
-| Latest green build | **#1112** (P8-1 shipped) |
-| Active phase | **Phase 8 — Debugging Infrastructure** |
-| Last shipped | P8-1 breakpoints ✅ (#1111/#1112) — P8-2 Logcat pushed (#1115 fixing) — P8-3 Variables pushed (#1116/#1117) |
-| **Next** | **P8-3 CI check, then Phase 8 complete** |
+| Latest green build | **#1129** (P9 complete — all phases green) |
+| Active phase | **Phase 10 or 11 — TBD** (Phase 8 & 9 COMPLETE) |
+| Last shipped | Phase 9 — Performance & Monitoring ✅ (#1120–#1129) |
+| **Next** | **Phase 11 (Android Build Env) or Phase 10 (Extension System)** |
+| Phase 9 | ✅ COMPLETE (build #1129) — Performance & Monitoring |
+| Phase 8 | ✅ COMPLETE (build #1119) — Debugging Infrastructure |
 | Phase 7 | ✅ COMPLETE (build #1108) |
 | Phase 6 | ✅ COMPLETE (build #1098) |
 | Phase 5 | ✅ COMPLETE (build #1096) |
@@ -35,24 +37,88 @@
 | Phase 3 | ✅ COMPLETE (build #1085) |
 | Phase 2 | ✅ COMPLETE (build #1068) |
 
-### Phase 8 Audit (performed by prior AI session before token ran out)
+### Phase 8 — Debugging Infrastructure ✅ COMPLETE (build #1119)
 
-Pre-implementation audit result:
-- ✅ Debug Console panel — exists (DebugConsolePanel, debugMessages, full send/receive UI)
-- ✅ Debug tab — wired in bottom panel
-- ✅ Gutter — exists (line numbers + git diff gutter in CodeEditor)
-- ❌ Breakpoint markers — NOT in gutter (no red dot toggle on tap)
-- ❌ Variable inspector panel — NOT present
-- ❌ DAP client — NOT present (skip for now — needs external language adapters)
-- ❌ Logcat viewer — NOT present
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| P8-1 | Breakpoint gutter markers | ✅ DONE (#1111/#1112) | Tap line number = toggle red dot |
+| P8-2 | Logcat viewer | ✅ DONE (#1113→#1115→#1119) | LogcatPanel.kt, color-coded, filter, pause |
+| P8-3 | Variable inspector panel | ✅ DONE (#1116/#1117→#1119) | VariableInspectorPanel.kt, watch+locals+callstack |
+| P8-4 | DAP client | ⏭️ SKIP | Needs external language adapters |
 
-Phase 8 plan (ordered by value vs complexity):
-| # | Feature | Complexity | Status |
-|---|---------|-----------|--------|
-| P8-1 | Breakpoint markers in gutter (tap line number = red dot toggle) | Low | DONE ✅ (#1111, #1112) |
-| P8-2 | Logcat viewer (new Logcat tab, streams adb logcat, color-coded) | Medium | PUSHED (#1113 green, #1115 fixing) |
-| P8-3 | Variable inspector panel (watch + locals + call stack) | Medium | PUSHED (#1116/#1117) |
-| P8-4 | DAP client | High | SKIP — needs external adapters |
+Bottom panel tabs: PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES
+
+### Phase 9 — Performance & Monitoring ✅ COMPLETE (build #1129)
+
+| # | Feature | Status | Files |
+|---|---------|--------|-------|
+| P9-1 | Background file indexer + symbol search | ✅ DONE | FileIndexer.kt, SymbolSearchPanel.kt, wired in PSS |
+| P9-2 | Smart file caching (LRU, 20 files) | ✅ DONE | FileCache.kt, wired in EditorPane.kt |
+| P9-3 | Memory pressure monitor (RAM in status bar) | ✅ DONE | PerformanceMonitor.kt → MemoryMonitor, StatusBarContent |
+| P9-4 | Large file support (>1MB detection) | ✅ DONE | FileCache.isLargeFile(), EditorPane check |
+| P9-5 | Code metrics + live cursor in status bar | ✅ DONE | PerformanceMonitor.kt → CodeMetrics, StatusBarContent |
+
+New files created in Phase 9:
+- `diagnostics/PerformanceMonitor.kt` — MemoryMonitor (reads /proc/meminfo) + CodeMetrics (lines, size, functions, nesting)
+- `editor/FileCache.kt` — LRU cache, 20 files, invalidates on write, isLargeFile threshold 1MB
+- `editor/FileIndexer.kt` — Background workspace symbol indexer (classes, functions, variables)
+- `ui/panes/SymbolSearchPanel.kt` — Overlay UI for Go-to-Symbol workspace search
+
+Modified files in Phase 9:
+- `ui/screens/ProjectShellScreen.kt` — Added imports, indexer startup, "Go to Symbol" menu, SymbolSearchOverlay + StatusBarContent extracted composables
+- `ui/panes/EditorPane.kt` — loadFileContent uses FileCache, cache invalidation on write, large file check
+
+### ⚠️ ARCHITECTURAL RISK: ProjectShellScreen.kt method size
+
+**ProjectShellScreen.kt is 2160 lines.** It hit the JVM 64KB method-too-large limit during Phase 9 (#1126–#1128 failed).
+The fix was extracting `SymbolSearchOverlay()` and `StatusBarContent()` into separate @Composable functions (#1129 green).
+
+**RULE FOR FUTURE PHASES:** Any new UI added to ProjectShellScreen MUST be extracted into a separate
+@Composable function from the start. Do NOT inline large blocks in the main `ProjectShellScreen` function.
+The main function should delegate to extracted composables. If the file grows past ~2200 lines,
+proactively extract more composables before the build breaks.
+
+Current extracted composables in PSS:
+- `SymbolSearchOverlay()` — symbol search overlay (P9-1)
+- `StatusBarContent()` — full status bar with RAM, metrics, cursor, MCP (P9-3/P9-5)
+
+### CI Build History — Phase 8 & 9
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1111 | GREEN ✅ | feat(P8-1): breakpoint gutter markers |
+| #1112 | GREEN ✅ | feat(P8-1): wire breakpoints into EditorPane |
+| #1113 | GREEN ✅ | feat(P8-2): LogcatPanel.kt — new Logcat viewer composable |
+| #1114 | FAIL ❌ | feat(P8-2): add Logcat tab — Compose State read off main thread |
+| #1115 | FAIL ❌ | fix(P8-2): AtomicBoolean for pause flag — still had P8-3 issues in tree |
+| #1116 | FAIL ❌ | feat(P8-3): VariableInspectorPanel — compilation errors |
+| #1117 | FAIL ❌ | feat(P8-3): wire VariableInspectorPanel — same root cause |
+| #1118 | FAIL ❌ | docs(AGENTS): update Phase 8 status — ran on broken tree |
+| #1119 | GREEN ✅ | fix(P8): LOGCAT + VARIABLES branches in overflow menu — P8 COMPLETE ✅ |
+| #1120 | GREEN ✅ | feat(P9-3/P9-5): PerformanceMonitor — MemoryMonitor + CodeMetrics |
+| #1121 | GREEN ✅ | feat(P9-3/P9-5): wire RAM monitor + file metrics + live cursor into status bar |
+| #1122 | GREEN ✅ | feat(P9-2): FileCache — LRU cache for recently opened files |
+| #1123 | GREEN ✅ | feat(P9-2/P9-4): wire FileCache into EditorPane + cache invalidation on write |
+| #1124 | GREEN ✅ | feat(P9-1): FileIndexer — background workspace symbol index |
+| #1125 | FAIL ❌ | feat(P9-1): SymbolSearchPanel — missing focusRequester import |
+| #1126 | FAIL ❌ | feat(P9-1): wire FileIndexer + SymbolSearchPanel — private loadWorkspacePath + bad padding |
+| #1127 | FAIL ❌ | fix(P9-1): add focusRequester import — PSS still broken in this commit |
+| #1128 | FAIL ❌ | fix(P9-1): replace loadWorkspacePath + fix padding — Method too large (JVM 64KB limit) |
+| #1129 | GREEN ✅ | fix(P9): extract SymbolSearchOverlay + StatusBarContent — P9 COMPLETE ✅ |
+
+Root cause of #1125–#1128 (Phase 9):
+1. **#1125**: Missing `import androidx.compose.ui.focus.focusRequester` in SymbolSearchPanel.kt
+2. **#1126**: `loadWorkspacePath` is private in ExplorerPane.kt — can't call from ProjectShellScreen.kt
+   Fix: use `java.io.File(context.filesDir, "projects/$projectId").absolutePath` instead
+3. **#1126**: `padding(top = 60.dp, horizontal = 16.dp)` — no such overload exists in Compose
+   Fix: chain two `padding()` calls: `.padding(horizontal = 16.dp).padding(top = 60.dp)`
+4. **#1128**: `Method too large` — ProjectShellScreen composable exceeded JVM 64KB bytecode limit
+   Fix: extract `SymbolSearchOverlay()` and `StatusBarContent()` into separate @Composable functions
+
+LESSON: When adding new imports to a file, verify the import path is correct (focusRequester is a
+modifier extension, needs `import androidx.compose.ui.focus.focusRequester`). When calling functions
+from other files, check they're not `private`. When adding to large composables (>1500 lines),
+extract new UI into separate @Composable functions from the START.
 
 ---
 
@@ -127,7 +193,23 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1114 | FAIL ❌ | feat(P8-2): add Logcat tab to bottom panel — Compose State read off main thread |
 | #1115 | RUNNING | fix(P8-2): use AtomicBoolean for pause flag — avoid Compose State read off main thread |
 | #1116 | RUNNING | feat(P8-3): VariableInspectorPanel — watch expressions + local vars + call stack |
-| #1117 | RUNNING | feat(P8-3): wire VariableInspectorPanel into bottom panel |
+| #1113 | GREEN ✅ | feat(P8-2): LogcatPanel.kt — new Logcat viewer composable |
+| #1114 | FAIL ❌ | feat(P8-2): add Logcat tab — Compose State read off main thread |
+| #1115 | FAIL ❌ | fix(P8-2): AtomicBoolean for pause flag — P8-3 issues still in tree |
+| #1116 | FAIL ❌ | feat(P8-3): VariableInspectorPanel — compilation errors |
+| #1117 | FAIL ❌ | feat(P8-3): wire VariableInspectorPanel — same root cause |
+| #1118 | FAIL ❌ | docs(AGENTS): update Phase 8 status — ran on broken tree |
+| #1119 | GREEN ✅ | fix(P8): LOGCAT + VARIABLES branches in overflow menu — P8 COMPLETE ✅ |
+| #1120 | GREEN ✅ | feat(P9-3/P9-5): PerformanceMonitor — MemoryMonitor + CodeMetrics |
+| #1121 | GREEN ✅ | feat(P9-3/P9-5): wire RAM monitor + file metrics + live cursor into status bar |
+| #1122 | GREEN ✅ | feat(P9-2): FileCache — LRU cache for recently opened files |
+| #1123 | GREEN ✅ | feat(P9-2/P9-4): wire FileCache into EditorPane + cache invalidation on write |
+| #1124 | GREEN ✅ | feat(P9-1): FileIndexer — background workspace symbol index |
+| #1125 | FAIL ❌ | feat(P9-1): SymbolSearchPanel — missing focusRequester import |
+| #1126 | FAIL ❌ | feat(P9-1): wire FileIndexer + SymbolSearchPanel — private fn + bad padding |
+| #1127 | FAIL ❌ | fix(P9-1): focusRequester import — PSS still broken in this commit |
+| #1128 | FAIL ❌ | fix(P9-1): loadWorkspacePath + padding fix — Method too large (JVM 64KB) |
+| #1129 | GREEN ✅ | fix(P9): extract composables — P9 COMPLETE ✅ — REPO CLEAN |
 
 Root cause of #1089–#1095: ExtensionsPanel() and McpPanel() were defined in BOTH
 ExplorerPane.kt and PackageManagerPane.kt — Kotlin 'Conflicting declarations' error.
@@ -178,7 +260,7 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 
 ---
 
-### Main IDE Shell (`ProjectShellScreen.kt` — 1905 lines)
+### Main IDE Shell (`ProjectShellScreen.kt` — 2160 lines, 8 @Composable functions)
 - Four-pane layout: **Explorer | Editor | Terminal | Preview**
 - Tab bar with pane switching
 - **Bottom panel** (Problems / Output / Debug Console / Ports) — collapsible
@@ -938,7 +1020,7 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 
 ---
 
-## PHASE 8 — DEBUGGING INFRASTRUCTURE (ACTIVE)
+## PHASE 8 — DEBUGGING INFRASTRUCTURE ✅ COMPLETE (build #1119)
 
 ### Audit result (2026-07-14, prior AI session)
 - ✅ Debug Console — exists and functional (DebugConsolePanel, send/receive, message list)
@@ -972,7 +1054,21 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 
 ---
 
-## PHASE 9 — PERFORMANCE & MONITORING
+## PHASE 9 — PERFORMANCE & MONITORING ✅ COMPLETE (build #1129)
+
+All items shipped:
+- ✅ Background file indexer — FileIndexer.kt walks project tree, extracts symbols (classes, functions, variables)
+- ✅ Smart file caching — FileCache.kt LRU cache (20 files), invalidates on write, avoids disk re-reads on tab switch
+- ✅ Memory pressure monitor — MemoryMonitor reads /proc/meminfo every 5s, shows used/total RAM in status bar, red text <100MB
+- ✅ Large file support — FileCache.isLargeFile() checks >1MB threshold before loading
+- ✅ Code metrics — CodeMetrics.analyze() shows line count, file size, function count in status bar + live cursor position
+
+New files: PerformanceMonitor.kt, FileCache.kt, FileIndexer.kt, SymbolSearchPanel.kt
+Modified: ProjectShellScreen.kt (extracted SymbolSearchOverlay + StatusBarContent), EditorPane.kt (FileCache integration)
+
+⚠️ LESSON LEARNED: ProjectShellScreen.kt hit JVM 64KB method-too-large limit. All future additions
+MUST be extracted @Composable functions, not inline blocks in the main function.
+
 
 - Background file indexer — builds symbol index for workspace-wide search
 - Smart file caching — LRU cache for recently opened files (avoid re-read on tab switch)
@@ -1179,3 +1275,4 @@ suitable for professional development on Android.
 10. NEVER call remember() inside items{}, conditionals, or loops
 11. MINIMAP IS EXCLUDED — do not implement it under any circumstances
 12. 8-SECOND STARTUP HEADSTART — all heavy init (terminal restore, indexing) must wait for it
+
