@@ -572,7 +572,7 @@ fun ProjectShellScreen(
             "Exit"               -> onBack()
             "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
             "Create Snapshot" -> {
-                coroutineScope.launch {
+                scope.launch {
                     try {
                         val projectDir = java.io.File(context.filesDir, "projects/$projectId")
                         val outFile = WorkspaceManager.createSnapshot(context, projectDir)
@@ -584,7 +584,7 @@ fun ProjectShellScreen(
                 }
             }
             "Diagnostics Report" -> {
-                coroutineScope.launch {
+                scope.launch {
                     try {
                         val (_, intent) = WorkspaceManager.generateDiagnosticsReport(context)
                         context.startActivity(android.content.Intent.createChooser(intent, "Share Diagnostics"))
