@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
@@ -20,6 +22,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
@@ -34,6 +39,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.util.WorkspaceManager
 import com.codespace.ide.ui.CodeSpaceApp
 import dagger.hilt.android.AndroidEntryPoint
 import org.json.JSONObject
@@ -57,6 +63,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         updateSystemUIForOrientation(resources.configuration.orientation)
+
+        // P7-3 Safe mode: record this launch attempt. If the app has crashed
+        // 3+ times in a row (each launch ended within 60s), isSafeMode() returns true.
+        WorkspaceManager.recordLaunch(this)
+        // Mark stable after 60s of uptime — resets the crash counter.
+        Handler(Looper.getMainLooper()).postDelayed({
+            WorkspaceManager.recordStable(this)
+        }, 60_000L)
 
         // ── Storage permissions ───────────────────────────────────────────────
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -105,9 +119,49 @@ class MainActivity : ComponentActivity() {
         // redelivery ourselves right after the content is set, instead of waiting on the user
         // to accidentally trigger it via rotation.
         window.decorView.post { ViewCompat.requestApplyInsets(window.decorView) }
+        val inSafeMode = WorkspaceManager.isSafeMode(this)
         setContent {
             var crashLogText by remember { mutableStateOf(lastCrash) }
-            CodeSpaceApp(tokenStore = tokenStore)
+            var showSafeMode by remember { mutableStateOf(inSafeMode) }
+
+            // P7-3 Safe Mode dialog — shown instead of normal startup when crash count >= 3
+            if (showSafeMode) {
+                val orientation = LocalConfiguration.current.orientation
+                key(orientation) {
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text("Safe Mode") },
+                        text  = {
+                            Text(
+                                "The app crashed ${WorkspaceManager.crashCount(applicationContext)} times in a row.
+
+" +
+                                "Safe mode skips auto-opening projects and terminal sessions.
+
+" +
+                                "Tap 'Continue' to proceed normally, or 'Reset' to clear crash history.",
+                                fontSize = 13.sp,
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    WorkspaceManager.resetSafeMode(applicationContext)
+                                    showSafeMode = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)),
+                            ) { Text("Continue Normally") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { showSafeMode = false }) {
+                                Text("Enter Safe Mode")
+                            }
+                        },
+                    )
+                }
+            } else {
+                CodeSpaceApp(tokenStore = tokenStore, safeMode = inSafeMode)
+            }
             if (crashLogText != null) {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
                 // Rotation fix (#8): key on orientation so this AlertDialog gets a fresh,
@@ -138,6 +192,7 @@ class MainActivity : ComponentActivity() {
                 )
                 }
             }
+            } // end else (not safe mode)
         }
     }
 
