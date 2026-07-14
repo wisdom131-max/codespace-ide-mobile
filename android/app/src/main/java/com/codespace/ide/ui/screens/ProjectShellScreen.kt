@@ -66,6 +66,7 @@ import com.codespace.ide.diagnostics.ForwardedPort
 import com.codespace.ide.ui.panes.LogcatPanel
 import com.codespace.ide.ui.panes.VariableInspectorPanel
 import com.codespace.ide.ui.panes.SymbolSearchPanel
+import com.codespace.ide.ui.panes.BuildPanel
 import com.codespace.ide.editor.FileIndexer
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
@@ -270,7 +271,7 @@ private fun ideColors(themeName: String): IdeColors {
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
 
 // NotifItem moved to NotificationDrawerOverlay.kt
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -715,6 +716,11 @@ fun ProjectShellScreen(
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50),
                     modifier = Modifier.size(20.dp).clickable { handleMenuAction("Run Program") })
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.Default.Build, null, tint = Color(0xFF007ACC),
+                    modifier = Modifier.size(20.dp).clickable {
+                        showBottomPanel = true; activeBottomTab = BottomTab.BUILD
+                    })
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.VerticalSplit, null, tint = Color(0xFF007ACC),
                     modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT })
@@ -1358,6 +1364,13 @@ fun ProjectShellScreen(
                                     activeFilePath = activeEditorTab,
                                     onJumpToSource = { showBottomPanel = false },
                                 )
+                                BottomTab.BUILD    -> BuildPanel(
+                                    projectPath = if (activeEditorTab != null) {
+                                        java.io.File(activeEditorTab).parent
+                                    } else {
+                                        java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                                    },
+                                )
                             }
                         }
                     }
@@ -1467,7 +1480,7 @@ fun ProjectShellScreen(
         }
 
 
-        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode"); BottomTab.LOGCAT -> listOf("Clear Log","Pause","Resume","Filter"); BottomTab.VARIABLES -> listOf("Add Watch","Clear All","Copy All") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode"); BottomTab.LOGCAT -> listOf("Clear Log","Pause","Resume","Filter"); BottomTab.VARIABLES -> listOf("Add Watch","Clear All","Copy All"); BottomTab.BUILD -> listOf("Build","Clean","Check Environment","Cancel Build") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
         if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
 
 
