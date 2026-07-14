@@ -105,6 +105,8 @@ fun EditorPane(
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
+    // P8-1 Breakpoints: path → set of breakpoint line indices (0-based)
+    val fileBreakpoints = remember { mutableStateMapOf<String, Set<Int>>() }
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
@@ -538,6 +540,11 @@ fun EditorPane(
                         onFindReplaceClose = { findReplaceOpen = false },
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
+                        breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
+                        onBreakpointToggle = { line ->
+                            val cur = fileBreakpoints[active.path] ?: emptySet()
+                            fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
+                        },
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
