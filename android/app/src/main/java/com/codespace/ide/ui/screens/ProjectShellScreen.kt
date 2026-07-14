@@ -1,5 +1,10 @@
 package com.codespace.ide.ui.screens
 
+import com.codespace.ide.ui.panels.ToolchainPanel
+import com.codespace.ide.ui.panels.TaskRunnerPanel
+import com.codespace.ide.ui.panels.BuildHistoryPanel
+import com.codespace.ide.ui.panels.ArtifactPanel
+
 import com.codespace.ide.util.WorkspaceManager
 import android.widget.Toast
 
@@ -271,7 +276,7 @@ private fun ideColors(themeName: String): IdeColors {
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
 
 // NotifItem moved to NotificationDrawerOverlay.kt
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -1370,6 +1375,28 @@ fun ProjectShellScreen(
                                     } else {
                                         java.io.File(context.filesDir, "projects/$projectId").absolutePath
                                     },
+                                )
+                                BottomTab.TOOLCHAIN -> ToolchainPanel(
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                BottomTab.TASKS -> TaskRunnerPanel(
+                                    projectPath = if (activeEditorTab != null) {
+                                        java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
+                                    } else {
+                                        java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                BottomTab.HISTORY -> BuildHistoryPanel(
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                BottomTab.ARTIFACTS -> ArtifactPanel(
+                                    projectPath = if (activeEditorTab != null) {
+                                        java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
+                                    } else {
+                                        java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
                                 )
                             }
                         }
