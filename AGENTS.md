@@ -25,9 +25,11 @@
 | | |
 |-|-|
 | Latest green build | **#1129** (P9 complete — all phases green) |
-| Active phase | **Phase 10 or 11 — TBD** (Phase 8 & 9 COMPLETE) |
-| Last shipped | Phase 9 — Performance & Monitoring ✅ (#1120–#1129) |
-| **Next** | **Phase 11 (Android Build Env) or Phase 10 (Extension System)** |
+| Active phase | **Phase 12 — Project Setup & Toolchain** (backend COMPLETE #1150, UI panels next) |
+| Last green | #1150 — fix(P12-C): ToolchainManager Regex — full tree compiles ✅ |
+| **Next** | **Phase 12 UI panels: ToolchainPanel, TaskRunnerPanel, BuildHistoryPanel, then Phase 13** |
+| Phase 12 | IN PROGRESS — backend P12-A thru P12-H COMPLETE #1150, UI panels next |
+| Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
 | Phase 9 | ✅ COMPLETE (build #1129) — Performance & Monitoring |
 | Phase 8 | ✅ COMPLETE (build #1119) — Debugging Infrastructure |
 | Phase 7 | ✅ COMPLETE (build #1108) |
@@ -1182,37 +1184,55 @@ requirements → installs/repairs → successfully builds a signed APK — all f
 ---
 
 ## PHASE 12 — PROJECT SETUP, TOOLCHAIN MANAGEMENT, BUILD HISTORY & TASK RUNNER
-### Phase 12 — Implementation Status 🚧 IN PROGRESS
+### Phase 12 Implementation Status: IN PROGRESS (backend done, UI panels pending)
 
-| # | Feature | File | Build |
-|---|---------|------|-------|
-| 12-A | ProjectWizard — two-step type picker + name dialog | `project/ProjectWizard.kt` | Pending |
-| 12-B | ProjectTemplates — scaffold files for 7 project types | `project/ProjectTemplates.kt` | Pending |
-| 12-C | ToolchainManager — detect JDK/Gradle/SDK/Flutter/Node/Python | `project/ToolchainManager.kt` | Pending |
-| 12-D | DownloadCenter — track downloads with live StateFlow progress | `project/DownloadCenter.kt` | Pending |
-| 12-E | BuildHistoryStore — persist build history (max 100 entries) | `project/BuildHistoryStore.kt` | Pending |
-| 12-F | BuildArtifactManager — scan/share/install/delete APK+AAB | `project/BuildArtifactManager.kt` | Pending |
-| 12-G | TaskRunner — one-tap task catalogue delegating to BuildRunner | `project/TaskRunner.kt` | Pending |
-| 12-H | EnvironmentProfiles — per-stack profiles with tool requirements | `project/EnvironmentProfiles.kt` | Pending |
+**Current HEAD: #1150 GREEN ✅ — full tree compiles.**
 
-All 8 files pushed in separate commits. CI pending confirmation of green builds.
-HomeScreen.kt updated: basic New Project dialog replaced with ProjectWizardDialog.
+#### Backend files (`android/app/src/main/java/com/codespace/ide/project/`)
 
-### CI Build History — Phase 12
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| 12-A | ProjectWizard — two-step type picker + name dialog | `ProjectWizard.kt` | SHIPPED (fixed #1149) |
+| 12-B | ProjectTemplates — scaffold files for 7 project types | `ProjectTemplates.kt` | SHIPPED (fixed #1149) |
+| 12-C | ToolchainManager — detect JDK/Gradle/SDK/Flutter/Node/Python | `ToolchainManager.kt` | SHIPPED (fixed #1150) |
+| 12-D | DownloadCenter — track downloads with live StateFlow progress | `DownloadCenter.kt` | SHIPPED |
+| 12-E | BuildHistoryStore — persist build history (max 100 entries) | `BuildHistoryStore.kt` | SHIPPED |
+| 12-F | BuildArtifactManager — scan/share/install/delete APK+AAB | `BuildArtifactManager.kt` | SHIPPED |
+| 12-G | TaskRunner — one-tap task catalogue delegating to BuildRunner | `TaskRunner.kt` | SHIPPED |
+| 12-H | EnvironmentProfiles — per-stack profiles with tool requirements | `EnvironmentProfiles.kt` | SHIPPED |
+
+HomeScreen.kt updated: basic New Project dialog replaced with full ProjectWizardDialog.
+
+#### UI Panels (next — to be implemented)
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| 12-I | ToolchainPanel — status screen for all detected tools | `ui/ToolchainPanel.kt` | TODO |
+| 12-J | TaskRunnerPanel — one-tap task buttons with live log | `ui/TaskRunnerPanel.kt` | TODO |
+| 12-K | BuildHistoryPanel — scrollable build history with log view | `ui/BuildHistoryPanel.kt` | TODO |
+| 12-L | ArtifactPanel — list/share/install APK+AAB artifacts | `ui/ArtifactPanel.kt` | TODO |
+| 12-M | Wire panels into ProjectShellScreen bottom tabs | `ProjectShellScreen.kt` | TODO |
+
+#### CI Build History — Phase 12
 
 | Build | Result | Notes |
 |-------|--------|-------|
-| #1138 | PENDING ⏳ | feat(P12-B): ProjectTemplates — scaffold 7 project types |
-| #1139 | PENDING ⏳ | feat(P12-A): ProjectWizard — two-step creation dialog |
-| #1140 | PENDING ⏳ | feat(P12-A): wire ProjectWizard into HomeScreen |
-| #1141 | PENDING ⏳ | feat(P12-C): ToolchainManager |
-| #1142 | PENDING ⏳ | feat(P12-D): DownloadCenter |
-| #1143 | PENDING ⏳ | feat(P12-E): BuildHistoryStore |
-| #1144 | PENDING ⏳ | feat(P12-F): BuildArtifactManager |
-| #1145 | PENDING ⏳ | feat(P12-G): TaskRunner |
-| #1146 | PENDING ⏳ | feat(P12-H): EnvironmentProfiles |
+| #1139 | FAIL | feat(P12-A): ProjectWizard — blocked by ProjectTemplates parse error |
+| #1140 | FAIL | feat(P12-B): ProjectTemplates — triple-quote Python docstring syntax error |
+| #1141 | FAIL | feat(P12-A): wire ProjectWizard into HomeScreen — same root error |
+| #1142 | FAIL | feat(P12-C): ToolchainManager — same root error |
+| #1143 | FAIL | feat(P12-D): DownloadCenter — same root error |
+| #1144 | FAIL | feat(P12-E): BuildHistoryStore — same root error |
+| #1145 | FAIL | feat(P12-F): BuildArtifactManager — same root error |
+| #1146 | FAIL | feat(P12-G): TaskRunner — same root error |
+| #1147 | FAIL | feat(P12-H): EnvironmentProfiles — same root error |
+| #1148 | FAIL | docs(AGENTS): P12 status — same root error |
+| #1149 | FAIL | fix(P12-B): ProjectTemplates string concat — fixed Templates, exposed ToolchainManager Regex bug |
+| #1150 | GREEN | fix(P12-C): ToolchainManager Regex char literal fixed — TREE CLEAN |
 
+**Root cause of #1139-#1149:** ProjectTemplates.kt used Python triple-quote `"""` inside a Kotlin triple-quoted string causing parse failure on all commits. Fixed by rewriting all scaffold content as string concatenation. Secondary: ToolchainManager.kt used single-quote Regex delimiter (parsed as char literal); fixed with double-quote + escape.
 
+**NEW failure pattern to memorise:** Never embed triple-quotes inside Kotlin triple-quoted strings. Never use single-quote delimiters for Regex strings in Kotlin.
 
 **Before implementing:** Audit existing project creation, build, package management, environment
 management, and download systems. Reuse and improve before duplicating.
