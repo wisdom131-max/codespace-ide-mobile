@@ -31,6 +31,10 @@ import java.io.File
 import com.codespace.ide.R
 import com.codespace.ide.data.SessionStateStore
 import androidx.compose.foundation.lazy.items
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // Legacy global session prefs removed — workspace memory now handled by SessionStateStore.
 // Kept only for migration: read once then clear.
@@ -254,6 +258,107 @@ fun EditorPane(
             store.saveCursors(pid, cursors)
             // Persist scroll lines
             store.saveScrollPositions(pid, tabScrollLines.toMap())
+        }
+    }
+
+
+    // ── Autosave: every 30s write dirty tabs to .autosave/ ──────────────
+    // On next launch (see restore block below), these are offered back to the user
+    // as a restore dialog so no work is lost after a crash or force-close.
+    val autosaveDir = remember(projectId) {
+        projectId?.let {
+            File(context.filesDir, "projects/$it/.autosave").also { d -> d.mkdirs() }
+        }
+    }
+
+    LaunchedEffect(projectId) {
+        while (true) {
+            delay(30_000L)
+            val dir = autosaveDir ?: continue
+            val dirty = tabs.filter { it.isDirty && it.path.startsWith("/") }
+            withContext(Dispatchers.IO) {
+                dirty.forEach { tab ->
+                    try {
+                        val name = File(tab.path).name
+                        File(dir, "$name.autosave").writeText(tab.content)
+                    } catch (_: Exception) {}
+                }
+                // Remove autosave files for tabs that are now clean (saved or closed)
+                val activeNames = tabs.map { File(it.path).name + ".autosave" }.toSet()
+                dir.listFiles()?.forEach { f -> if (f.name !in activeNames) f.delete() }
+            }
+        }
+    }
+
+    // ── Autosave restore: offer recovery dialog on first open if stale saves exist ──
+    var showAutosaveRestoreDialog by remember { mutableStateOf(false) }
+    var autosaveFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+
+    LaunchedEffect(projectId) {
+        val dir = autosaveDir ?: return@LaunchedEffect
+        delay(1_500L) // let normal session restore settle first
+        val stale = withContext(Dispatchers.IO) {
+            dir.listFiles()?.filter { it.name.endsWith(".autosave") } ?: emptyList()
+        }
+        if (stale.isNotEmpty()) {
+            autosaveFiles = stale
+            showAutosaveRestoreDialog = true
+        }
+    }
+
+    if (showAutosaveRestoreDialog && autosaveFiles.isNotEmpty()) {
+        key(orientation) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = {
+                    showAutosaveRestoreDialog = false
+                    // User dismissed without restoring — delete the autosave files
+                    autosaveFiles.forEach { it.delete() }
+                    autosaveFiles = emptyList()
+                },
+                title = { androidx.compose.material3.Text("Restore unsaved edits?") },
+                text = {
+                    Column {
+                        androidx.compose.material3.Text(
+                            "${autosaveFiles.size} file(s) have unsaved edits from the last session:",
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        autosaveFiles.forEach { f ->
+                            androidx.compose.material3.Text(
+                                "• ${f.name.removeSuffix(".autosave")}",
+                                fontSize = 12.sp,
+                                color = Color(0xFF89B4FA)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.Button(onClick = {
+                        showAutosaveRestoreDialog = false
+                        autosaveFiles.forEach { autosave ->
+                            try {
+                                val originalName = autosave.name.removeSuffix(".autosave")
+                                // Find matching open tab by name, restore its content
+                                val idx = tabs.indexOfFirst { File(it.path).name == originalName }
+                                val recoveredContent = autosave.readText()
+                                if (idx >= 0) {
+                                    tabs[idx] = tabs[idx].copy(content = recoveredContent, isDirty = true)
+                                }
+                                autosave.delete()
+                            } catch (_: Exception) {}
+                        }
+                        autosaveFiles = emptyList()
+                        Toast.makeText(context, "Edits restored ✓", Toast.LENGTH_SHORT).show()
+                    }) { androidx.compose.material3.Text("Restore") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        showAutosaveRestoreDialog = false
+                        autosaveFiles.forEach { it.delete() }
+                        autosaveFiles = emptyList()
+                    }) { androidx.compose.material3.Text("Discard") }
+                },
+            )
         }
     }
 
