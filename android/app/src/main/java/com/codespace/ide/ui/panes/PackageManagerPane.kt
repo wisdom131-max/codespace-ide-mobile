@@ -87,11 +87,38 @@ data class PkgInfo(val name: String, val description: String, val category: Stri
 // ─── State for a running install/remove operation ─────────────────────────────
 data class PkgOperation(
     val packageName: String,
-    val action: String,           // "install" | "remove" | "update"
+    val action: String,           // "install" | "remove" | "update" | "upgrade-all"
     val output: MutableList<String> = mutableListOf(),
     var done: Boolean = false,
     var success: Boolean = false,
+    @Transient var process: Process? = null,   // held for SIGINT cancel
 )
+
+// ─── Install history (SharedPreferences log) ─────────────────────────────────
+private const val PREFS_HISTORY = "pkg_install_history"
+private const val KEY_HISTORY   = "log"          // newline-delimited  "action|pkg|timestamp"
+private const val MAX_HISTORY   = 200
+
+private fun appendHistory(context: Context, action: String, pkg: String, success: Boolean) {
+    val prefs = context.getSharedPreferences(PREFS_HISTORY, Context.MODE_PRIVATE)
+    val existing = prefs.getString(KEY_HISTORY, "") ?: ""
+    val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+        .format(java.util.Date())
+    val entry = "${if (success) "✓" else "✗"} $action $pkg — $stamp"
+    val lines = existing.split("
+").filter { it.isNotBlank() }.toMutableList()
+    lines.add(0, entry)
+    if (lines.size > MAX_HISTORY) lines.subList(MAX_HISTORY, lines.size).clear()
+    prefs.edit().putString(KEY_HISTORY, lines.joinToString("
+")).apply()
+}
+
+private fun loadHistory(context: Context): List<String> {
+    val prefs = context.getSharedPreferences(PREFS_HISTORY, Context.MODE_PRIVATE)
+    val raw = prefs.getString(KEY_HISTORY, "") ?: ""
+    return raw.split("
+").filter { it.isNotBlank() }
+}
 
 // ─── Main Extensions (Package Manager) panel ─────────────────────────────────
 @Composable
@@ -107,6 +134,8 @@ internal fun ExtensionsPanel() {
     var lastUpdated      by remember { mutableStateOf("") }
     var errorMsg         by remember { mutableStateOf("") }
     var isSearching      by remember { mutableStateOf(false) }
+    var showHistory      by remember { mutableStateOf(false) }
+    var installHistory   by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     fun runPkg(pkg: String, action: String) {
@@ -131,6 +160,8 @@ internal fun ExtensionsPanel() {
                             File(context.filesDir, "termux-prefix/home").absolutePath
                     }
                     .start()
+                op.process = proc
+                scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
                 proc.inputStream.bufferedReader().use { reader ->
                     reader.forEachLine { line ->
                         op.output.add(line)
@@ -141,12 +172,52 @@ internal fun ExtensionsPanel() {
                 val exit = proc.waitFor()
                 op.success = (exit == 0)
                 op.done    = true
+                appendHistory(context, action, pkg, op.success)
                 if (op.success && action == "install") {
                     installedPkgs = installedPkgs + pkg
                 } else if (op.success && action == "remove") {
                     installedPkgs = installedPkgs - pkg
                 }
+                scope.launch(Dispatchers.Main) {
+                    activeOperation  = op.copy()
+                    installHistory   = loadHistory(context)
+                }
+            } catch (e: Exception) {
+                op.output.add("Error: ${e.message}")
+                op.done    = true
+                op.success = false
                 scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
+            }
+        }
+    }
+
+    fun upgradeAll() {
+        if (activeOperation?.done == false) return
+        val op = PkgOperation("(all)", "upgrade-all")
+        activeOperation = op
+        scope.launch(Dispatchers.IO) {
+            try {
+                val proc = ProcessBuilder("bash", "-c", "apt-get upgrade -y 2>&1")
+                    .redirectErrorStream(true)
+                    .apply { environment()["DEBIAN_FRONTEND"] = "noninteractive" }
+                    .start()
+                op.process = proc
+                scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
+                proc.inputStream.bufferedReader().use { reader ->
+                    reader.forEachLine { line ->
+                        op.output.add(line)
+                        scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
+                    }
+                }
+                val exit = proc.waitFor()
+                op.success = (exit == 0)
+                op.done    = true
+                appendHistory(context, "upgrade-all", "(all)", op.success)
+                scope.launch(Dispatchers.Main) {
+                    activeOperation = op.copy()
+                    loadInstalled()
+                    installHistory  = loadHistory(context)
+                }
             } catch (e: Exception) {
                 op.output.add("Error: ${e.message}")
                 op.done    = true
@@ -203,8 +274,11 @@ internal fun ExtensionsPanel() {
         }
     }
 
-    // Load installed packages on first composition
-    LaunchedEffect(Unit) { loadInstalled() }
+    // Load installed packages + history on first composition
+    LaunchedEffect(Unit) {
+        loadInstalled()
+        installHistory = loadHistory(context)
+    }
 
     // Debounce search
     LaunchedEffect(searchQuery) {
@@ -234,9 +308,12 @@ internal fun ExtensionsPanel() {
                 color = PkgMuted,
                 modifier = Modifier.weight(1f)
             )
-            // Installed toggle
+            // Tab toggle
             TextButton(
-                onClick = { showInstalled = !showInstalled },
+                onClick = {
+                    showHistory  = false
+                    showInstalled = !showInstalled
+                },
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
             ) {
                 Text(
@@ -245,7 +322,21 @@ internal fun ExtensionsPanel() {
                     color = PkgAccent
                 )
             }
-            // Update all
+            // History toggle
+            TextButton(
+                onClick = { showHistory = !showHistory; showInstalled = false },
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+            ) {
+                Text("History", fontSize = 11.sp, color = if (showHistory) PkgAccent else PkgMuted)
+            }
+            // Upgrade all
+            IconButton(
+                onClick = { upgradeAll() },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(Icons.Default.SystemUpdate, "Upgrade all packages", tint = PkgMuted, modifier = Modifier.size(16.dp))
+            }
+            // Refresh package lists
             IconButton(
                 onClick = {
                     scope.launch(Dispatchers.IO) {
@@ -261,7 +352,30 @@ internal fun ExtensionsPanel() {
             }
         }
 
-        if (!showInstalled) {
+        if (showHistory) {
+            // ── History tab ──────────────────────────────────────────────────
+            if (installHistory.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No installation history yet", color = PkgMuted, fontSize = 13.sp)
+                }
+            } else {
+                LazyColumn(Modifier.weight(1f)) {
+                    items(installHistory) { entry ->
+                        val color = if (entry.startsWith("✓")) PkgGreen else PkgRed
+                        Text(
+                            entry,
+                            fontSize = 11.sp,
+                            color = color,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                        HorizontalDivider(color = PkgBorder, thickness = 0.5.dp)
+                    }
+                }
+            }
+        } else if (!showInstalled) {
             // Search bar
             Row(
                 Modifier
@@ -357,7 +471,19 @@ internal fun ExtensionsPanel() {
                         color = statusColor,
                         modifier = Modifier.weight(1f)
                     )
-                    if (op.done) {
+                    if (!op.done) {
+                        // Cancel — send SIGINT to the running process
+                        TextButton(
+                            onClick = {
+                                scope.launch(Dispatchers.IO) {
+                                    try { activeOperation?.process?.destroy() } catch (_: Exception) {}
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text("Cancel", fontSize = 11.sp, color = PkgRed)
+                        }
+                    } else {
                         IconButton(onClick = { activeOperation = null }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Default.Close, null, tint = PkgMuted, modifier = Modifier.size(14.dp))
                         }
