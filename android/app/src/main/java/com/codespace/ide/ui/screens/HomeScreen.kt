@@ -16,10 +16,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.codespace.ide.domain.Project
 import com.codespace.ide.domain.ProjectKind
+import com.codespace.ide.project.ProjectWizardDialog
 import com.codespace.ide.ui.sheets.RepoBrowserSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -147,9 +147,6 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
-    // Rotation fix (#8): key on orientation so the AlertDialog below gets a fresh,
-    // correctly-sized window on rotate.
-    val orientation = LocalConfiguration.current.orientation
 
     val projects      = remember { mutableStateListOf<Project>().apply { addAll(loadProjectsLocal(context)) } }
     var syncing       by remember { mutableStateOf(false) }
@@ -157,8 +154,6 @@ fun HomeScreen(
     var showAddDialog    by remember { mutableStateOf(false) }
     var showRepoBrowser  by remember { mutableStateOf(false) }
     var fabMenuExpanded  by remember { mutableStateOf(false) }
-    var newName       by remember { mutableStateOf("") }
-    var newPath       by remember { mutableStateOf("") }
 
     // ── Auto-sync on launch ────────────────────────────────────────
     LaunchedEffect(accessToken) {
@@ -178,58 +173,20 @@ fun HomeScreen(
         }
     }
 
-    // ── Add project dialog ─────────────────────────────────────────
+    // ── Project Wizard (Phase 12-A) ───────────────────────────────
     if (showAddDialog) {
-        key(orientation) {
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("New Project") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value         = newName,
-                        onValueChange = { newName = it },
-                        label         = { Text("Project name") },
-                        modifier      = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        singleLine    = true,
-                    )
-                    OutlinedTextField(
-                        value         = newPath,
-                        onValueChange = { newPath = it },
-                        label         = { Text("Path or GitHub URL") },
-                        modifier      = Modifier.fillMaxWidth(),
-                        singleLine    = true,
-                    )
+        ProjectWizardDialog(
+            onDismiss = { showAddDialog = false },
+            onProjectCreated = { project, _ ->
+                projects.add(project)
+                saveProjectsLocal(context, projects.toList())
+                scope.launch {
+                    val ok = pushProjectToCloud(accessToken, project)
+                    syncStatus = if (ok) "Project created \u2713" else "Saved locally (offline)"
                 }
+                showAddDialog = false
             },
-            confirmButton = {
-                Button(onClick = {
-                    if (newName.isNotBlank()) {
-                        val project = Project(
-                            id            = System.currentTimeMillis().toString(),
-                            name          = newName,
-                            kind          = if (newPath.contains("github")) ProjectKind.GIT else ProjectKind.LOCAL,
-                            pathOrUrl     = newPath.ifBlank { "local" },
-                            defaultBranch = "main",
-                        )
-                        projects.add(project)
-                        saveProjectsLocal(context, projects.toList())
-                        // Push to cloud in background
-                        scope.launch {
-                            val ok = pushProjectToCloud(accessToken, project)
-                            syncStatus = if (ok) "Project saved to cloud ✓" else "Saved locally (offline)"
-                        }
-                        newName = ""
-                        newPath = ""
-                        showAddDialog = false
-                    }
-                }) { Text("Create") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
-            }
         )
-        }
     }
 
     Scaffold(
