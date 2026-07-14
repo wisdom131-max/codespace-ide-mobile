@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -247,6 +249,10 @@ fun CodeEditor(
     onBookmarksChange: ((Set<Int>) -> Unit)? = null,
     /** P2-11 Inlay hints: show/hide the inline type/param hint overlay. */
     showInlayHints: Boolean = true,
+    /** P8-1 Breakpoints: set of breakpoint line indices (0-based). */
+    breakpointLines: Set<Int> = emptySet(),
+    /** P8-1 Breakpoints: called when user taps a line number to toggle a breakpoint. */
+    onBreakpointToggle: (Int) -> Unit = {},
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -541,13 +547,30 @@ fun CodeEditor(
                                     )
                                 }
                             }
-                            Text(
-                                text = (lineNum + 1).toString(),
-                                color = if (bookmarkedLines.contains(lineNum))
-                                    Color(0xFF61AFEF) else colors.gutter,
-                                fontSize = fontSize.sp,
-                                fontFamily = FontFamily.Monospace,
-                            )
+                            // P8-1 Breakpoint dot + tappable line number
+                            Box(
+                                modifier = Modifier
+                                    .height(fontSize.dp)
+                                    .clickable { onBreakpointToggle(lineNum) },
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (breakpointLines.contains(lineNum)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFFF5F5F))
+                                    )
+                                } else {
+                                    Text(
+                                        text = (lineNum + 1).toString(),
+                                        color = if (bookmarkedLines.contains(lineNum))
+                                            Color(0xFF61AFEF) else colors.gutter,
+                                        fontSize = fontSize.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
