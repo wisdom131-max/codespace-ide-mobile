@@ -57,6 +57,8 @@ import kotlinx.coroutines.withContext
 import com.codespace.ide.terminal.TerminalEnhancementManager
 import com.codespace.ide.ui.panes.*
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.diagnostics.MemoryMonitor
+import com.codespace.ide.diagnostics.CodeMetrics
 import com.codespace.ide.diagnostics.LintChecker
 import com.codespace.ide.diagnostics.Problem
 import com.codespace.ide.diagnostics.PortsScanner
@@ -1463,10 +1465,42 @@ fun ProjectShellScreen(
                 Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("main", fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+                Spacer(Modifier.width(8.dp))
+                // P9-5: Live file metrics
+                if (activeEditorTab != null) {
+                    val fileStats = remember(activeEditorTab) {
+                        try { CodeMetrics.analyze(java.io.File(activeEditorTab).readText()) } catch (_: Exception) { null }
+                    }
+                    if (fileStats != null) {
+                        Text("${fileStats.lineCount} lines", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+                        Spacer(Modifier.width(6.dp))
+                        Text(fileStats.sizeLabel, fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+                        Spacer(Modifier.width(6.dp))
+                        if (fileStats.functionCount > 0) {
+                            Text("${fileStats.functionCount} fn", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+                            Spacer(Modifier.width(6.dp))
+                        }
+                    }
+                }
                 Spacer(Modifier.weight(1f))
-                Text("Ln 1, Col 1", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                // P9-5: Live cursor position (was hardcoded before)
+                Text("Ln $cursorLine, Col $cursorCol", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
                 Spacer(Modifier.width(8.dp))
                 Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                // P9-3: RAM usage indicator
+                val memInfo = remember { mutableStateOf(MemoryMonitor.getMemInfo()) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        memInfo.value = MemoryMonitor.getMemInfo()
+                        kotlinx.coroutines.delay(5000)
+                    }
+                }
+                Text(
+                    "${memInfo.value.usedMb}/${memInfo.value.totalMb}MB",
+                    fontSize = 9.sp,
+                    color = if (memInfo.value.isLowRam) Color(0xFFFF6B6B) else Color.White.copy(alpha = 0.6f),
+                )
                 Spacer(Modifier.width(8.dp))
                 // MCP Agent API status indicator
                 val mcpConnected = remember { mutableStateOf(com.codespace.ide.agent.AgentApiServer.isRunning()) }
