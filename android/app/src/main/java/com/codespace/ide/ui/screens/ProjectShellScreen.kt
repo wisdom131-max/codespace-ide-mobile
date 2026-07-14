@@ -62,6 +62,7 @@ import com.codespace.ide.diagnostics.Problem
 import com.codespace.ide.diagnostics.PortsScanner
 import com.codespace.ide.diagnostics.ForwardedPort
 import com.codespace.ide.ui.panes.LogcatPanel
+import com.codespace.ide.ui.panes.VariableInspectorPanel
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
 private data class IdeColors(
@@ -265,7 +266,7 @@ private fun ideColors(themeName: String): IdeColors {
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
 
 // NotifItem moved to NotificationDrawerOverlay.kt
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -1336,6 +1337,10 @@ fun ProjectShellScreen(
                                 BottomTab.LOGCAT   -> LogcatPanel(
                                     modifier = Modifier.fillMaxSize(),
                                 )
+                                BottomTab.VARIABLES -> VariableInspectorPanel(
+                                    activeFilePath = activeEditorTab,
+                                    onJumpToSource = { showBottomPanel = false },
+                                )
                             }
                         }
                     }
@@ -2046,4 +2051,5 @@ private fun buildRunCommand(path: String): String? {
 }
 
 // ConnectorRow moved to ConnectorsHubSheet.kt
+
 
