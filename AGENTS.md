@@ -24,10 +24,10 @@
 
 | | |
 |-|-|
-| Latest green build | **#1098** (CI running for Phase 7) |
+| Latest green build | **#1108** |
 | Active phase | **Phase 7 — Recovery & Reliability** |
-| Last shipped | Phase 7 PUSHED — WorkspaceManager, safe mode, trash, snapshots, diagnostics |
-| **Next** | Wait for CI; if green Phase 7 DONE → start Phase 8 |
+| Last shipped | Phase 7 COMPLETE ✅ — WorkspaceManager, safe mode, trash, snapshots, diagnostics |
+| **Next** | **Phase 8** — see Phase 8 checklist below |
 | Phase 6 | ✅ COMPLETE (build #1098) |
 | Phase 5 | ✅ COMPLETE (build #1096) |
 | Phase 4 | ✅ COMPLETE (build #1086) |
@@ -97,7 +97,9 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1096 | GREEN ✅ | fix(build): remove duplicate ExtensionsPanel+McpPanel from ExplorerPane — P5 SHIPPED |
 | #1097 | FAIL | feat(P6): SourceControlPane full rewrite — key(Unit){} passed as AlertDialog param |
 | #1098 | GREEN ✅ | fix(P6): remove key(Unit){} from all AlertDialog calls — PHASE 6 COMPLETE ✅ |
-| #1099+ | PENDING | feat(P7): WorkspaceManager + safe mode + trash + snapshots + diagnostics |
+| #1100 | GREEN ✅ | feat(P7): WorkspaceManager.kt — snapshots, diagnostics, safe mode, trash |
+| #1101–1106 | RED ❌ | P7 fixes — raw newline in string literal (MainActivity:136), wrong scope var (PSS coroutineScope→scope), brace structure |
+| #1108 | GREEN ✅ | fix(P7): all compile errors resolved — PHASE 7 COMPLETE ✅ |
 
 Root cause of #1089–#1095: ExtensionsPanel() and McpPanel() were defined in BOTH
 ExplorerPane.kt and PackageManagerPane.kt — Kotlin 'Conflicting declarations' error.
@@ -870,10 +872,16 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| P7-1 | Workspace snapshots | PUSHED ⏳ | File > Create Snapshot → zip to Downloads/CodespaceIDE/. WorkspaceManager.createSnapshot() |
-| P7-2 | Diagnostics report | PUSHED ⏳ | File > Diagnostics Report → device info + crash logs → share sheet. WorkspaceManager.generateDiagnosticsReport() |
-| P7-3 | Safe mode | PUSHED ⏳ | MainActivity.recordLaunch() + 60s stable timer. Dialog shown on 3+ crashes. WorkspaceManager.isSafeMode() |
-| P7-4 | Workspace Trash | PUSHED ⏳ | ExplorerPane delete now calls WorkspaceManager.moveToTrash(). Files go to .ide-trash/<ts>-<name>. |
+| P7-1 | Workspace snapshots | DONE ✅ | File > Create Snapshot → zip to Downloads/CodespaceIDE/. WorkspaceManager.createSnapshot() |
+| P7-2 | Diagnostics report | DONE ✅ | File > Diagnostics Report → device info + crash logs → share sheet. WorkspaceManager.generateDiagnosticsReport() |
+| P7-3 | Safe mode | DONE ✅ | MainActivity.recordLaunch() + 60s stable timer. Dialog shown on 3+ crashes. WorkspaceManager.isSafeMode() |
+| P7-4 | Workspace Trash | DONE ✅ | ExplorerPane delete now calls WorkspaceManager.moveToTrash(). Files go to .ide-trash/<ts>-<name>. |
+
+
+### P7 CI failure patterns (for future reference)
+- **Raw newlines in string literals** — Python heredoc/multiline strings written directly into Kotlin `"..."` strings break the compiler. Always use `\n` escape or string concatenation with `+`.
+- **Wrong coroutine scope name** — Always check the actual `val <name> = rememberCoroutineScope()` variable name in each file before referencing it. PSS uses `scope`, not `coroutineScope`.
+- **Brace structure from nested if/else** — When wrapping existing `setContent` blocks with new if/else, count braces carefully. Safe pattern: show the app unconditionally, overlay dialogs on top rather than wrapping the entire app in an else branch.
 
 ### Implementation details (Phase 7)
 - **WorkspaceManager.kt** — new file in `com.codespace.ide.util`. Contains all 4 features.
