@@ -25,8 +25,8 @@
 | | |
 |-|-|
 | Latest green build | **#1085** |
-| Active phase | **Phase 5 — Package Manager Upgrade** |
-| Last shipped | Phase 5 start: PackageManagerPane.kt — ExtensionsPanel + McpPanel (commit fe8717f0f1, build #1089 running) |
+| Active phase | **Phase 5 COMPLETE ✅ → Phase 6 — Git & Version Control** |
+| Last shipped | Phase 5 COMPLETE: PackageManagerPane v2 — history + cancel + upgrade-all (commit 893ce19603, build #1090 running) |
 | P4 progress | `TerminalSessionStore.kt` added (#1080 ✅). Wired into TerminalPane (#1081 ❌ → #1082 ❌ → #1083 ✅ fixed). **P4-TerminalSessionStore is DONE and green as of #1083/1084/1085.** |
 | Next to implement | Phase 4 remaining items — see Phase 4 checklist below |
 | Phase 3 | ✅ COMPLETE (build #1078 → #1085 all green) |
@@ -790,10 +790,15 @@ New file: `PackageManagerPane.kt` — contains both stubs that ProjectShellScree
 - Quick tool chips: `agent_read`, `agent_write`, `agent_run`, `agent_git`, `agent_search`
 - One-tap "Install shell profile" if missing
 
-### Remaining Phase 5 items
-- [ ] Installation history (lightweight SharedPreferences log — no Room needed)
-- [ ] Cancel mid-install (SIGINT to the running process)
-- [ ] `apt-get upgrade` all installed packages button
+### Phase 5 — ALL ITEMS COMPLETE ✅
+
+| Item | Status |
+|------|--------|
+| ExtensionsPanel (package manager UI) | ✅ commit fe8717f0f1 |
+| McpPanel (Agent API status) | ✅ commit fe8717f0f1 |
+| Install history (SharedPrefs, 200 entries, History tab) | ✅ commit 893ce19603 |
+| Cancel mid-install (Process.destroy → SIGTERM) | ✅ commit 893ce19603 |
+| Upgrade-all button (apt-get upgrade -y, streamed) | ✅ commit 893ce19603 |
 
 ---
 
