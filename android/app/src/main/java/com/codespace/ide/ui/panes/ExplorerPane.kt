@@ -1,5 +1,7 @@
 package com.codespace.ide.ui.panes
 
+import com.codespace.ide.util.WorkspaceManager
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -1339,11 +1341,20 @@ fun ExplorerSidePanel(
         AlertDialog(
             onDismissRequest = { showDelete = false },
             title = { Text("Delete ${contextFile!!.name}?") },
-            text  = { Text("This action cannot be undone.") },
+            text  = { Text("File will be moved to .ide-trash/ and can be restored.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        contextFile!!.deleteRecursively()
+                        // P7-4 Trash: move to .ide-trash/ instead of permanent delete
+                        val proj = contextFile!!.let { f ->
+                            // Walk up to find the project root (contains .ide-trash or is filesDir/projects/*)
+                            var p = f.parentFile
+                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") {
+                                p = p.parentFile
+                            }
+                            p ?: f.parentFile!!
+                        }
+                        WorkspaceManager.moveToTrash(proj, contextFile!!)
                         refresh++
                         showDelete = false
                     },
