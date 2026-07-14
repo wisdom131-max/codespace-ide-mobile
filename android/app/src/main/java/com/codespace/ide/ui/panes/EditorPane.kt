@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.EditorTab
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.CodeEditor
+import com.codespace.ide.editor.FileCache
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -75,7 +76,7 @@ fun detectLanguage(name: String): Language = when {
 }
 
 fun loadFileContent(path: String): String = try {
-    File(path).readText()
+    FileCache.get(path).content
 } catch (e: Exception) {
     "// Could not read file: ${e.message}"
 }
@@ -212,7 +213,7 @@ fun EditorPane(
             val newContent = active.content + text
             if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
             if (active.path.startsWith("/")) {
-                try { File(active.path).writeText(newContent) } catch (_: Exception) {}
+                try { File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
             }
         }
     }
@@ -226,6 +227,10 @@ fun EditorPane(
             } else {
                 val name = File(openFilePath).name
                 val content = loadFileContent(openFilePath)
+                if (FileCache.isLargeFile(openFilePath)) {
+                    // P9-4: Large file — content still loads but isLargeFile flag is available
+                    // for the editor to render in read-only/streamed mode
+                }
                 val tab = EditorTab(
                     id = openFilePath,
                     path = openFilePath,
@@ -529,7 +534,7 @@ fun EditorPane(
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
                             if (active.path.startsWith("/")) {
-                                try { File(active.path).writeText(newText) } catch (_: Exception) {}
+                                try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -591,7 +596,7 @@ fun EditorPane(
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
                             if (active.path.startsWith("/")) {
-                                try { File(active.path).writeText(newText) } catch (_: Exception) {}
+                                try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
