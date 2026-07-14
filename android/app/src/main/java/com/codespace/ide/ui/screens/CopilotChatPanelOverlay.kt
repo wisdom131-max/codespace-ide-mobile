@@ -759,50 +759,75 @@ internal fun AnimatedBotIcon(
 ) {
     val infinite = rememberInfiniteTransition(label = "bot-idle")
 
-    // Continuous float (bob up/down) — faster + taller amplitude while thinking
+    // Smooth sinusoidal float — EaseInOutSine gives a natural, organic bob
+    // Amplitude: 2px idle, 4px while thinking
     val floatOffset by infinite.animateFloat(
         initialValue = -1f,
-        targetValue = 1f,
+        targetValue  =  1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (isThinking) 550 else 1400, easing = LinearEasing),
+            animation = tween(
+                durationMillis = if (isThinking) 800 else 2200,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing,
+            ),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "float",
     )
 
-    // Periodic "blink" — a quick vertical squash, on a slow loop so it doesn't feel jittery
+    // Subtle idle rotation sway — ±2° like a gentle head-tilt, period = 4.4s
+    val sway by infinite.animateFloat(
+        initialValue = -2f,
+        targetValue  =  2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (isThinking) 1600 else 4400,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing,
+            ),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "sway",
+    )
+
+    // Blink: quick scaleY squash every ~3 s idle / ~1.2 s thinking
+    // Uses animateFloatAsState so the snap-back is instant (no spring jank)
     var blinking by remember { mutableStateOf(false) }
     LaunchedEffect(isThinking) {
         while (true) {
-            kotlinx.coroutines.delay(if (isThinking) 900L else 2600L)
+            kotlinx.coroutines.delay(if (isThinking) 1200L else 3000L)
             blinking = true
-            kotlinx.coroutines.delay(110L)
+            kotlinx.coroutines.delay(80L)   // squash duration
             blinking = false
         }
     }
     val blinkScaleY by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (blinking) 0.82f else 1f,
-        animationSpec = tween(90),
+        targetValue    = if (blinking) 0.78f else 1f,
+        animationSpec  = tween(70, easing = androidx.compose.animation.core.FastOutLinearInEasing),
         label = "blink",
     )
 
-    // Subtle glow pulse behind the icon while thinking
-    val glowAlpha by infinite.animateFloat(
-        initialValue = 0.15f,
-        targetValue = if (isThinking) 0.55f else 0.15f,
+    // Glow ring pulse — only visible while thinking; fades in/out gracefully
+    val glowAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue   = if (isThinking) 0.6f else 0f,
+        animationSpec = tween(400),
+        label = "glow-fade",
+    )
+    val glowPulse by infinite.animateFloat(
+        initialValue = 0.5f,
+        targetValue  = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (isThinking) 500 else 1800, easing = LinearEasing),
+            animation = tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "glow",
+        label = "glow-pulse",
     )
 
     Box(modifier, contentAlignment = Alignment.Center) {
-        if (isThinking) {
+        // Glow ring — fades in when thinking, pulses at 600ms
+        if (glowAlpha > 0f) {
             Box(
                 Modifier
                     .matchParentSize()
-                    .graphicsLayer { alpha = glowAlpha }
+                    .graphicsLayer { alpha = glowAlpha * glowPulse }
                     .background(Color(0xFF5B6EF5), androidx.compose.foundation.shape.CircleShape),
             )
         }
@@ -812,8 +837,9 @@ internal fun AnimatedBotIcon(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationY = floatOffset * (if (isThinking) 4f else 2.5f)
-                    scaleY = blinkScaleY
+                    translationY = floatOffset * (if (isThinking) 4f else 2f)
+                    rotationZ    = sway * (if (isThinking) 0.5f else 1f)
+                    scaleY       = blinkScaleY
                 },
         )
     }

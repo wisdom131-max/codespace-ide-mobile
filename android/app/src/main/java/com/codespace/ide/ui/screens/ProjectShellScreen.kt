@@ -1336,50 +1336,6 @@ fun ProjectShellScreen(
                     }
                 }
 
-            } // end main Row (editor + optional chat panel)
-
-        // Simple overlay menus
-
-        // ── Connectors Hub Sheet ─────────────────────────────────────────
-        if (showConnectorsSheet) {
-            ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
-        }
-
-
-        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
-        if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
-
-
-    // ── First-launch onboarding walkthrough ─────────────────────────────
-            // ── VS Code status bar (blue bar at bottom) ──────────────────
-            Row(
-                Modifier.fillMaxWidth().height(22.dp).background(StatusBarBg).padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("main", fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
-                Spacer(Modifier.weight(1f))
-                Text("Ln 1, Col 1", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
-                Spacer(Modifier.width(8.dp))
-                Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
-                Spacer(Modifier.width(8.dp))
-                // MCP Agent API status indicator
-                val mcpConnected = remember { mutableStateOf(com.codespace.ide.agent.AgentApiServer.isRunning()) }
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        mcpConnected.value = com.codespace.ide.agent.AgentApiServer.isRunning()
-                        kotlinx.coroutines.delay(3000)
-                    }
-                }
-                Box(Modifier.size(7.dp).background(
-                    if (mcpConnected.value) Color(0xFF4CAF50) else Color(0xFFF44336),
-                    CircleShape
-                ))
-                Spacer(Modifier.width(3.dp))
-                Text("MCP", fontSize = 9.sp, color = Color.White.copy(alpha = 0.7f))
-            }
-    } // end Editor Column
 
                 // ── AI Chat Panel (right side, draggable, own region — not shared with Explorer) ──
                 if (showChatPanel) {
@@ -1435,6 +1391,52 @@ fun ProjectShellScreen(
                         )
                     }
                 }
+
+            } // end main Row (editor + optional chat panel)
+
+        // Simple overlay menus
+
+        // ── Connectors Hub Sheet ─────────────────────────────────────────
+        if (showConnectorsSheet) {
+            ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
+        }
+
+
+        if (showPanelMenu) { Box(Modifier.fillMaxSize().clickable { showPanelMenu = false }) { Card(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { val items = when (activeBottomTab) { BottomTab.TERMINAL -> listOf("New Terminal","Split Terminal","Kill Terminal","Clear"); BottomTab.OUTPUT -> listOf("Clear Output","Copy All"); BottomTab.PROBLEMS -> listOf("Filter","Show Errors Only"); BottomTab.DEBUG -> listOf("Clear Console","Copy All"); BottomTab.PORTS -> listOf("Forward Port","Stop Forwarding"); BottomTab.SPLIT -> listOf("New Terminal","Pin Split","Swap Panels","Kill Split"); BottomTab.PREVIEW -> listOf("Refresh Preview","Open in Browser","HTML Mode","Markdown Mode") }; items.forEach { item -> Row(Modifier.fillMaxWidth().clickable { when (item) { "New Terminal" -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL } }; showPanelMenu = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+        if (showExplorerMore) { Box(Modifier.fillMaxSize().clickable { showExplorerMore = false }) { Card(Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp), colors = CardDefaults.cardColors(containerColor = MenuBg), elevation = CardDefaults.cardElevation(8.dp)) { listOf("New File","New Folder","Refresh","Collapse All","Open in Terminal").forEach { item -> Row(Modifier.fillMaxWidth().clickable { showExplorerMore = false }.padding(16.dp)) { Text(item, fontSize = 13.sp, color = MenuText) } } } } }
+
+
+    // ── First-launch onboarding walkthrough ─────────────────────────────
+            // ── VS Code status bar (blue bar at bottom) ──────────────────
+            Row(
+                Modifier.fillMaxWidth().height(22.dp).background(StatusBarBg).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("main", fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+                Spacer(Modifier.weight(1f))
+                Text("Ln 1, Col 1", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                // MCP Agent API status indicator
+                val mcpConnected = remember { mutableStateOf(com.codespace.ide.agent.AgentApiServer.isRunning()) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        mcpConnected.value = com.codespace.ide.agent.AgentApiServer.isRunning()
+                        kotlinx.coroutines.delay(3000)
+                    }
+                }
+                Box(Modifier.size(7.dp).background(
+                    if (mcpConnected.value) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    CircleShape
+                ))
+                Spacer(Modifier.width(3.dp))
+                Text("MCP", fontSize = 9.sp, color = Color.White.copy(alpha = 0.7f))
+            }
+    } // end Editor Column
+
 
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
