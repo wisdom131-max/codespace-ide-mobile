@@ -124,16 +124,24 @@ class MainActivity : ComponentActivity() {
             var crashLogText by remember { mutableStateOf(lastCrash) }
             var showSafeMode by remember { mutableStateOf(inSafeMode) }
 
-            // P7-3 Safe Mode dialog — shown instead of normal startup when crash count >= 3
+            // P7-3 Safe Mode: always show the main app, but overlay a blocking dialog
+            // when crash count is >= 3. User can choose to reset (normal launch) or
+            // stay in safe mode (app loads but ProjectShellScreen skips auto-open).
+            CodeSpaceApp(tokenStore = tokenStore, safeMode = showSafeMode)
+
             if (showSafeMode) {
                 val orientation = LocalConfiguration.current.orientation
                 key(orientation) {
                     AlertDialog(
                         onDismissRequest = {},
                         title = { Text("Safe Mode") },
-                        text  = {
+                        text = {
                             Text(
-                                "The app crashed ${WorkspaceManager.crashCount(applicationContext)} times in a row.\n\nSafe mode skips auto-opening projects and terminal sessions.\n\nTap 'Continue' to proceed normally, or 'Reset' to clear crash history.",
+                                "The app crashed " +
+                                WorkspaceManager.crashCount(applicationContext).toString() +
+                                " times in a row.\n\n" +
+                                "Safe mode skips project auto-open and terminal auto-start.\n\n" +
+                                "Tap 'Normal Mode' to reset and continue, or dismiss to stay safe.",
                                 fontSize = 13.sp,
                             )
                         },
@@ -144,49 +152,41 @@ class MainActivity : ComponentActivity() {
                                     showSafeMode = false
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)),
-                            ) { Text("Continue Normally") }
+                            ) { Text("Normal Mode") }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { showSafeMode = false }) {
-                                Text("Enter Safe Mode")
-                            }
+                            TextButton(onClick = { showSafeMode = false }) { Text("Stay Safe") }
                         },
                     )
                 }
-            } else {
-                CodeSpaceApp(tokenStore = tokenStore, safeMode = inSafeMode)
             }
+
             if (crashLogText != null) {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                // Rotation fix (#8): key on orientation so this AlertDialog gets a fresh,
-                // correctly-sized window on rotate (this app doesn't recreate the Activity
-                // on rotation — configChanges="orientation|screenSize" — so the Dialog's
-                // window would otherwise stay stuck at the old size).
                 val orientation = LocalConfiguration.current.orientation
                 key(orientation) {
-                AlertDialog(
-                    onDismissRequest = { crashLogText = null },
-                    title = { Text("App crashed last time it closed") },
-                    text = {
-                        Text(
-                            crashLogText!!.take(3000),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            clipboard.setPrimaryClip(ClipData.newPlainText("crash log", crashLogText))
-                            crashLogText = null
-                        }) { Text("Copy") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { crashLogText = null }) { Text("Dismiss") }
-                    }
-                )
+                    AlertDialog(
+                        onDismissRequest = { crashLogText = null },
+                        title = { Text("App crashed last time it closed") },
+                        text = {
+                            Text(
+                                crashLogText!!.take(3000),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                clipboard.setPrimaryClip(ClipData.newPlainText("crash log", crashLogText))
+                                crashLogText = null
+                            }) { Text("Copy") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { crashLogText = null }) { Text("Dismiss") }
+                        },
+                    )
                 }
             }
-            } // end else (not safe mode)
         }
     }
 
