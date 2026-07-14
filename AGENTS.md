@@ -25,8 +25,8 @@
 | | |
 |-|-|
 | Latest green build | **#1085** |
-| Active phase | **Phase 5 COMPLETE ✅ → Phase 6 — Git & Version Control** |
-| Last shipped | Phase 5 COMPLETE: PackageManagerPane v2 — history + cancel + upgrade-all (commit 893ce19603, build #1090 running) |
+| Active phase | **Phase 6 — Git & Version Control Completeness** |
+| Last shipped | Phase 5 COMPLETE (fix push bcb367f48c, build #1093) — Phase 6 now active |
 | P4 progress | `TerminalSessionStore.kt` added (#1080 ✅). Wired into TerminalPane (#1081 ❌ → #1082 ❌ → #1083 ✅ fixed). **P4-TerminalSessionStore is DONE and green as of #1083/1084/1085.** |
 | Next to implement | Phase 4 remaining items — see Phase 4 checklist below |
 | Phase 3 | ✅ COMPLETE (build #1078 → #1085 all green) |
@@ -802,17 +802,37 @@ New file: `PackageManagerPane.kt` — contains both stubs that ProjectShellScree
 
 ---
 
-## PHASE 6 — GIT & VERSION CONTROL COMPLETENESS
+## PHASE 6 — GIT & VERSION CONTROL COMPLETENESS (active)
 
-Audit JGit implementation then fill gaps:
-- [ ] Diff viewer — side-by-side or unified? Is it scrollable?
-- [ ] Commit history — shows list? Tap to view commit details?
-- [ ] Branch management — create, delete, rename, switch all working?
-- [ ] Merge conflict resolution — does it open conflict markers in editor?
-- [ ] Stash — save/pop working?
-- [ ] Local version history — file-level history (separate from git, snapshots)
-- [ ] .gitignore editor — create/edit from Source Control pane
-- [ ] Tag management
+### Audit results (2026-07-14)
+
+SourceControlPane.kt (593 lines) + GitEngine.kt (162 lines) audited.
+
+| Feature | Status |
+|---------|--------|
+| Inline diff viewer (per-file expand, git diff / git diff --cached, coloured) | ✅ exists |
+| Stage / unstage / stage-all / unstage-all | ✅ exists |
+| Commit + push + pull | ✅ exists |
+| Branch create + switch (checkout) | ✅ exists |
+| Branch delete | ❌ missing |
+| Branch rename | ❌ missing |
+| Commit history / log (list + tap for details) | ❌ missing |
+| Stash save / pop / list | ❌ missing |
+| Merge conflict resolution UI | ❌ missing |
+| .gitignore editor | ❌ missing |
+| Tag management | ❌ missing |
+| Local version history (file snapshots, separate from git) | ❌ missing |
+
+### Build plan
+All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
+- **GitEngine**: add stash (save/pop/list), deleteBranch, renameBranch, commitLog, createTag, listTags
+- **SourceControlPane**: Commit Log tab, Stash section, branch long-press menu (delete/rename),
+  conflict file badge + open-in-editor, .gitignore quick-create/edit button, Tag panel
+- **Local version history**: file-level snapshots stored under `.versionhistory/` in project dir,
+  accessible via long-press on file in ExplorerPane (separate from git — works even without a repo)
+
+### Shipped
+*(nothing yet — starting now)*
 
 ---
 
