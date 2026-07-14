@@ -10,6 +10,12 @@ import java.io.File
  *
  * Scaffolds starter files for each project type.
  * Called by ProjectWizard after the user confirms a new project.
+ *
+ * String rules used here:
+ *   - Triple-quoted strings must NOT contain """ inside them.
+ *   - Use ${'$'} to emit a literal dollar sign inside a triple-quoted string.
+ *   - Python docstrings use single-quoted ''' which is safe in Kotlin.
+ *   - JS/TS template literals: use ${'$'}{VAR} to emit the dollar sign.
  */
 object ProjectTemplates {
 
@@ -27,10 +33,6 @@ object ProjectTemplates {
 
     /**
      * Create project scaffold on disk.
-     * @param context Android context
-     * @param projectName Sanitized project name
-     * @param type Project type
-     * @param rootParent Parent directory for the new project folder
      */
     suspend fun scaffold(
         context: Context,
@@ -45,13 +47,13 @@ object ProjectTemplates {
         try {
             root.mkdirs()
             when (type) {
-                ProjectType.ANDROID     -> scaffoldAndroid(root, projectName)
-                ProjectType.FLUTTER     -> scaffoldFlutter(root, projectName)
+                ProjectType.ANDROID      -> scaffoldAndroid(root, projectName)
+                ProjectType.FLUTTER      -> scaffoldFlutter(root, projectName)
                 ProjectType.REACT_NATIVE -> scaffoldReactNative(root, projectName)
-                ProjectType.WEB         -> scaffoldWeb(root, projectName)
-                ProjectType.NODEJS      -> scaffoldNodeJs(root, projectName)
-                ProjectType.PYTHON      -> scaffoldPython(root, projectName)
-                ProjectType.EMPTY       -> scaffoldEmpty(root)
+                ProjectType.WEB          -> scaffoldWeb(root, projectName)
+                ProjectType.NODEJS       -> scaffoldNodeJs(root, projectName)
+                ProjectType.PYTHON       -> scaffoldPython(root, projectName)
+                ProjectType.EMPTY        -> scaffoldEmpty(root)
             }
             ScaffoldResult(true, "Project created at ${root.absolutePath}", root)
         } catch (e: Exception) {
@@ -62,94 +64,90 @@ object ProjectTemplates {
     // ── Android ──────────────────────────────────────────────────────────────
 
     private fun scaffoldAndroid(root: File, name: String) {
-        val pkg = "com.example.${name.lowercase().replace(Regex("[^a-z0-9]"), "")}"
-        val appDir = File(root, "app/src/main/java/${pkg.replace('.', '/')}").apply { mkdirs() }
+        val safeName = name.lowercase().replace(Regex("[^a-z0-9]"), "")
+        val pkg = "com.example.$safeName"
+        val pkgPath = pkg.replace('.', '/')
+        val appDir = File(root, "app/src/main/java/$pkgPath").apply { mkdirs() }
         File(root, "app/src/main/res/values").mkdirs()
         File(root, "app/src/main/res/layout").mkdirs()
 
-        write(File(root, "settings.gradle.kts"), """
-            rootProject.name = "$name"
-            include(":app")
-        """.trimIndent())
+        write(File(root, "settings.gradle.kts"),
+            "rootProject.name = \"$name\"\n" +
+            "include(\":app\")\n")
 
-        write(File(root, "build.gradle.kts"), """
-            plugins {
-                id("com.android.application") version "8.2.0" apply false
-                id("org.jetbrains.kotlin.android") version "1.9.22" apply false
-            }
-        """.trimIndent())
+        write(File(root, "build.gradle.kts"),
+            "plugins {\n" +
+            "    id(\"com.android.application\") version \"8.2.0\" apply false\n" +
+            "    id(\"org.jetbrains.kotlin.android\") version \"1.9.22\" apply false\n" +
+            "}\n")
 
-        write(File(root, "app/build.gradle.kts"), """
-            plugins {
-                id("com.android.application")
-                id("org.jetbrains.kotlin.android")
-            }
-            android {
-                namespace = "$pkg"
-                compileSdk = 34
-                defaultConfig {
-                    applicationId = "$pkg"
-                    minSdk = 26
-                    targetSdk = 34
-                    versionCode = 1
-                    versionName = "1.0"
-                }
-                buildFeatures { compose = true }
-                composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
-            }
-            dependencies {
-                implementation("androidx.core:core-ktx:1.12.0")
-                implementation("androidx.activity:activity-compose:1.8.2")
-                implementation(platform("androidx.compose:compose-bom:2024.02.00"))
-                implementation("androidx.compose.ui:ui")
-                implementation("androidx.compose.material3:material3")
-            }
-        """.trimIndent())
+        write(File(root, "app/build.gradle.kts"),
+            "plugins {\n" +
+            "    id(\"com.android.application\")\n" +
+            "    id(\"org.jetbrains.kotlin.android\")\n" +
+            "}\n" +
+            "android {\n" +
+            "    namespace = \"$pkg\"\n" +
+            "    compileSdk = 34\n" +
+            "    defaultConfig {\n" +
+            "        applicationId = \"$pkg\"\n" +
+            "        minSdk = 26\n" +
+            "        targetSdk = 34\n" +
+            "        versionCode = 1\n" +
+            "        versionName = \"1.0\"\n" +
+            "    }\n" +
+            "    buildFeatures { compose = true }\n" +
+            "    composeOptions { kotlinCompilerExtensionVersion = \"1.5.8\" }\n" +
+            "}\n" +
+            "dependencies {\n" +
+            "    implementation(\"androidx.core:core-ktx:1.12.0\")\n" +
+            "    implementation(\"androidx.activity:activity-compose:1.8.2\")\n" +
+            "    implementation(platform(\"androidx.compose:compose-bom:2024.02.00\"))\n" +
+            "    implementation(\"androidx.compose.ui:ui\")\n" +
+            "    implementation(\"androidx.compose.material3:material3\")\n" +
+            "}\n")
 
-        write(File(appDir, "MainActivity.kt"), """
-            package $pkg
+        // MainActivity — use string concat to avoid $-interpolation issues
+        val dollarSign = "\$"
+        write(File(appDir, "MainActivity.kt"),
+            "package $pkg\n\n" +
+            "import android.os.Bundle\n" +
+            "import androidx.activity.ComponentActivity\n" +
+            "import androidx.activity.compose.setContent\n" +
+            "import androidx.compose.material3.MaterialTheme\n" +
+            "import androidx.compose.material3.Text\n" +
+            "import androidx.compose.runtime.Composable\n\n" +
+            "class MainActivity : ComponentActivity() {\n" +
+            "    override fun onCreate(savedInstanceState: Bundle?) {\n" +
+            "        super.onCreate(savedInstanceState)\n" +
+            "        setContent {\n" +
+            "            MaterialTheme {\n" +
+            "                Greeting(\"World\")\n" +
+            "            }\n" +
+            "        }\n" +
+            "    }\n" +
+            "}\n\n" +
+            "@Composable\n" +
+            "fun Greeting(name: String) {\n" +
+            "    Text(text = \"Hello, ${dollarSign}name!\")\n" +
+            "}\n")
 
-            import android.os.Bundle
-            import androidx.activity.ComponentActivity
-            import androidx.activity.compose.setContent
-            import androidx.compose.material3.MaterialTheme
-            import androidx.compose.material3.Text
-            import androidx.compose.runtime.Composable
-
-            class MainActivity : ComponentActivity() {
-                override fun onCreate(savedInstanceState: Bundle?) {
-                    super.onCreate(savedInstanceState)
-                    setContent {
-                        MaterialTheme {
-                            Greeting("World")
-                        }
-                    }
-                }
-            }
-
-            @Composable
-            fun Greeting(name: String) {
-                Text(text = "Hello, ${'$'}name!")
-            }
-        """.trimIndent())
-
-        write(File(root, "app/src/main/AndroidManifest.xml"), """
-            <?xml version="1.0" encoding="utf-8"?>
-            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-                <application
-                    android:label="$name"
-                    android:theme="@style/Theme.AppCompat">
-                    <activity
-                        android:name=".MainActivity"
-                        android:exported="true">
-                        <intent-filter>
-                            <action android:name="android.intent.action.MAIN"/>
-                            <category android:name="android.intent.category.LAUNCHER"/>
-                        </intent-filter>
-                    </activity>
-                </application>
-            </manifest>
-        """.trimIndent())
+        write(File(root, "app/src/main/AndroidManifest.xml"),
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+            "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" +
+            "    <application\n" +
+            "        android:label=\"$name\"\n" +
+            "        android:theme=\"@style/Theme.AppCompat\">\n" +
+            "        <activity\n" +
+            "            android:name=\".MainActivity\"\n" +
+            "            android:exported=\"true\">\n" +
+            "            <intent-filter>\n" +
+            "                <action android:name=\"android.intent.action.MAIN\"/>\n" +
+            "                <category android:name=\"android.intent.category.LAUNCHER\"/>\n" +
+            "            </intent-filter>\n" +
+            "        </activity>\n" +
+            "    </application>\n" +
+            "</manifest>\n")
 
         write(File(root, ".gitignore"), "*.iml\n.gradle/\nbuild/\n*.keystore\nlocal.properties\n")
         write(File(root, "README.md"), "# $name\n\nAndroid app generated by Codespace IDE.\n")
@@ -162,64 +160,59 @@ object ProjectTemplates {
         File(root, "lib").mkdirs()
         File(root, "test").mkdirs()
         File(root, "android/app/src/main").mkdirs()
-        File(root, "ios/Runner").mkdirs()
 
-        write(File(root, "pubspec.yaml"), """
-            name: $pkg
-            description: A Flutter application.
-            version: 1.0.0+1
-            environment:
-              sdk: '>=3.0.0 <4.0.0'
-              flutter: '>=3.10.0'
-            dependencies:
-              flutter:
-                sdk: flutter
-            dev_dependencies:
-              flutter_test:
-                sdk: flutter
-            flutter:
-              uses-material-design: true
-        """.trimIndent())
+        write(File(root, "pubspec.yaml"),
+            "name: $pkg\n" +
+            "description: A Flutter application.\n" +
+            "version: 1.0.0+1\n" +
+            "environment:\n" +
+            "  sdk: '>=3.0.0 <4.0.0'\n" +
+            "  flutter: '>=3.10.0'\n" +
+            "dependencies:\n" +
+            "  flutter:\n" +
+            "    sdk: flutter\n" +
+            "dev_dependencies:\n" +
+            "  flutter_test:\n" +
+            "    sdk: flutter\n" +
+            "flutter:\n" +
+            "  uses-material-design: true\n")
 
-        write(File(root, "lib/main.dart"), """
-            import 'package:flutter/material.dart';
-
-            void main() {
-              runApp(const MyApp());
-            }
-
-            class MyApp extends StatelessWidget {
-              const MyApp({super.key});
-              @override
-              Widget build(BuildContext context) {
-                return MaterialApp(
-                  title: '${name}',
-                  theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue)),
-                  home: const MyHomePage(title: '${name}'),
-                );
-              }
-            }
-
-            class MyHomePage extends StatefulWidget {
-              const MyHomePage({super.key, required this.title});
-              final String title;
-              @override
-              State<MyHomePage> createState() => _MyHomePageState();
-            }
-
-            class _MyHomePageState extends State<MyHomePage> {
-              int _counter = 0;
-              void _increment() => setState(() => _counter++);
-              @override
-              Widget build(BuildContext context) {
-                return Scaffold(
-                  appBar: AppBar(title: Text(widget.title)),
-                  body: Center(child: Text('Count: $_counter', style: Theme.of(context).textTheme.headlineMedium)),
-                  floatingActionButton: FloatingActionButton(onPressed: _increment, child: const Icon(Icons.add)),
-                );
-              }
-            }
-        """.trimIndent())
+        // Dart uses $ but we write via string concat so Kotlin won't interpolate
+        val d = "\$"
+        write(File(root, "lib/main.dart"),
+            "import 'package:flutter/material.dart';\n\n" +
+            "void main() {\n" +
+            "  runApp(const MyApp());\n" +
+            "}\n\n" +
+            "class MyApp extends StatelessWidget {\n" +
+            "  const MyApp({super.key});\n" +
+            "  @override\n" +
+            "  Widget build(BuildContext context) {\n" +
+            "    return MaterialApp(\n" +
+            "      title: '$name',\n" +
+            "      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue)),\n" +
+            "      home: const MyHomePage(title: '$name'),\n" +
+            "    );\n" +
+            "  }\n" +
+            "}\n\n" +
+            "class MyHomePage extends StatefulWidget {\n" +
+            "  const MyHomePage({super.key, required this.title});\n" +
+            "  final String title;\n" +
+            "  @override\n" +
+            "  State<MyHomePage> createState() => _MyHomePageState();\n" +
+            "}\n\n" +
+            "class _MyHomePageState extends State<MyHomePage> {\n" +
+            "  int _counter = 0;\n" +
+            "  void _increment() => setState(() => _counter++);\n" +
+            "  @override\n" +
+            "  Widget build(BuildContext context) {\n" +
+            "    return Scaffold(\n" +
+            "      appBar: AppBar(title: Text(widget.title)),\n" +
+            "      body: Center(child: Text('Count: ${d}_counter', style: Theme.of(context).textTheme.headlineMedium)),\n" +
+            "      floatingActionButton: FloatingActionButton(onPressed: _increment, child: const Icon(Icons.add)),\n" +
+            "    );\n" +
+            "  }\n" +
+            "}\n")
 
         write(File(root, ".gitignore"), ".dart_tool/\n.flutter-plugins\nbuild/\npubspec.lock\n")
         write(File(root, "README.md"), "# $name\n\nFlutter app generated by Codespace IDE.\n")
@@ -228,52 +221,47 @@ object ProjectTemplates {
     // ── React Native ─────────────────────────────────────────────────────────
 
     private fun scaffoldReactNative(root: File, name: String) {
+        val nameLower = name.lowercase()
         File(root, "src").mkdirs()
 
-        write(File(root, "package.json"), """
-            {
-              "name": "${name.lowercase()}",
-              "version": "0.0.1",
-              "private": true,
-              "scripts": {
-                "android": "react-native run-android",
-                "ios": "react-native run-ios",
-                "start": "react-native start",
-                "test": "jest"
-              },
-              "dependencies": {
-                "react": "18.2.0",
-                "react-native": "0.73.0"
-              },
-              "devDependencies": {
-                "@babel/core": "^7.20.0",
-                "@babel/preset-env": "^7.20.0",
-                "babel-jest": "^29.2.1",
-                "jest": "^29.2.1",
-                "react-test-renderer": "18.2.0"
-              }
-            }
-        """.trimIndent())
+        write(File(root, "package.json"),
+            "{\n" +
+            "  \"name\": \"$nameLower\",\n" +
+            "  \"version\": \"0.0.1\",\n" +
+            "  \"private\": true,\n" +
+            "  \"scripts\": {\n" +
+            "    \"android\": \"react-native run-android\",\n" +
+            "    \"ios\": \"react-native run-ios\",\n" +
+            "    \"start\": \"react-native start\",\n" +
+            "    \"test\": \"jest\"\n" +
+            "  },\n" +
+            "  \"dependencies\": {\n" +
+            "    \"react\": \"18.2.0\",\n" +
+            "    \"react-native\": \"0.73.0\"\n" +
+            "  },\n" +
+            "  \"devDependencies\": {\n" +
+            "    \"@babel/core\": \"^7.20.0\",\n" +
+            "    \"babel-jest\": \"^29.2.1\",\n" +
+            "    \"jest\": \"^29.2.1\",\n" +
+            "    \"react-test-renderer\": \"18.2.0\"\n" +
+            "  }\n" +
+            "}\n")
 
-        write(File(root, "App.tsx"), """
-            import React from 'react';
-            import {SafeAreaView, Text, StyleSheet} from 'react-native';
-
-            function App(): React.JSX.Element {
-              return (
-                <SafeAreaView style={styles.container}>
-                  <Text style={styles.text}>Hello, $name!</Text>
-                </SafeAreaView>
-              );
-            }
-
-            const styles = StyleSheet.create({
-              container: {flex: 1, alignItems: 'center', justifyContent: 'center'},
-              text: {fontSize: 24, fontWeight: 'bold'},
-            });
-
-            export default App;
-        """.trimIndent())
+        write(File(root, "App.tsx"),
+            "import React from 'react';\n" +
+            "import {SafeAreaView, Text, StyleSheet} from 'react-native';\n\n" +
+            "function App(): React.JSX.Element {\n" +
+            "  return (\n" +
+            "    <SafeAreaView style={styles.container}>\n" +
+            "      <Text style={styles.text}>Hello, $name!</Text>\n" +
+            "    </SafeAreaView>\n" +
+            "  );\n" +
+            "}\n\n" +
+            "const styles = StyleSheet.create({\n" +
+            "  container: {flex: 1, alignItems: 'center', justifyContent: 'center'},\n" +
+            "  text: {fontSize: 24, fontWeight: 'bold'},\n" +
+            "});\n\n" +
+            "export default App;\n")
 
         write(File(root, ".gitignore"), "node_modules/\nbuild/\nandroid/app/build/\nios/Pods/\n")
         write(File(root, "README.md"), "# $name\n\nReact Native app generated by Codespace IDE.\n")
@@ -285,27 +273,25 @@ object ProjectTemplates {
         File(root, "css").mkdirs()
         File(root, "js").mkdirs()
 
-        write(File(root, "index.html"), """
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-              <meta charset="UTF-8"/>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-              <title>$name</title>
-              <link rel="stylesheet" href="css/style.css"/>
-            </head>
-            <body>
-              <h1>Hello, $name!</h1>
-              <script src="js/main.js"></script>
-            </body>
-            </html>
-        """.trimIndent())
+        write(File(root, "index.html"),
+            "<!DOCTYPE html>\n" +
+            "<html lang=\"en\">\n" +
+            "<head>\n" +
+            "  <meta charset=\"UTF-8\"/>\n" +
+            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>\n" +
+            "  <title>$name</title>\n" +
+            "  <link rel=\"stylesheet\" href=\"css/style.css\"/>\n" +
+            "</head>\n" +
+            "<body>\n" +
+            "  <h1>Hello, $name!</h1>\n" +
+            "  <script src=\"js/main.js\"></script>\n" +
+            "</body>\n" +
+            "</html>\n")
 
-        write(File(root, "css/style.css"), """
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { font-family: system-ui, sans-serif; padding: 2rem; }
-            h1 { color: #333; }
-        """.trimIndent())
+        write(File(root, "css/style.css"),
+            "* { box-sizing: border-box; margin: 0; padding: 0; }\n" +
+            "body { font-family: system-ui, sans-serif; padding: 2rem; }\n" +
+            "h1 { color: #333; }\n")
 
         write(File(root, "js/main.js"), "// $name\nconsole.log('Hello from $name');\n")
         write(File(root, ".gitignore"), "node_modules/\ndist/\n.DS_Store\n")
@@ -315,42 +301,39 @@ object ProjectTemplates {
     // ── Node.js ───────────────────────────────────────────────────────────────
 
     private fun scaffoldNodeJs(root: File, name: String) {
+        val nameLower = name.lowercase()
+        val d = "\$"
         File(root, "src").mkdirs()
 
-        write(File(root, "package.json"), """
-            {
-              "name": "${name.lowercase()}",
-              "version": "1.0.0",
-              "description": "",
-              "main": "src/index.js",
-              "scripts": {
-                "start": "node src/index.js",
-                "dev": "nodemon src/index.js",
-                "test": "jest"
-              },
-              "dependencies": {},
-              "devDependencies": {
-                "nodemon": "^3.0.0"
-              }
-            }
-        """.trimIndent())
+        write(File(root, "package.json"),
+            "{\n" +
+            "  \"name\": \"$nameLower\",\n" +
+            "  \"version\": \"1.0.0\",\n" +
+            "  \"description\": \"\",\n" +
+            "  \"main\": \"src/index.js\",\n" +
+            "  \"scripts\": {\n" +
+            "    \"start\": \"node src/index.js\",\n" +
+            "    \"dev\": \"nodemon src/index.js\",\n" +
+            "    \"test\": \"jest\"\n" +
+            "  },\n" +
+            "  \"dependencies\": {},\n" +
+            "  \"devDependencies\": {\n" +
+            "    \"nodemon\": \"^3.0.0\"\n" +
+            "  }\n" +
+            "}\n")
 
-        write(File(root, "src/index.js"), """
-            'use strict';
-
-            const http = require('http');
-
-            const PORT = process.env.PORT || 3000;
-
-            const server = http.createServer((req, res) => {
-              res.writeHead(200, {'Content-Type': 'text/plain'});
-              res.end('Hello from $name!\n');
-            });
-
-            server.listen(PORT, () => {
-              console.log(`$name running on http://localhost:${'$'}{PORT}`);
-            });
-        """.trimIndent())
+        // JS template literals use ${PORT} — write via concat with d="\$" to avoid Kotlin interpolation
+        write(File(root, "src/index.js"),
+            "'use strict';\n\n" +
+            "const http = require('http');\n" +
+            "const PORT = process.env.PORT || 3000;\n\n" +
+            "const server = http.createServer((req, res) => {\n" +
+            "  res.writeHead(200, {'Content-Type': 'text/plain'});\n" +
+            "  res.end('Hello from $name!\\n');\n" +
+            "});\n\n" +
+            "server.listen(PORT, () => {\n" +
+            "  console.log(`$name running on http://localhost:${d}{PORT}`);\n" +
+            "});\n")
 
         write(File(root, ".gitignore"), "node_modules/\n.env\n*.log\n")
         write(File(root, "README.md"), "# $name\n\nNode.js project generated by Codespace IDE.\n")
@@ -362,31 +345,24 @@ object ProjectTemplates {
         File(root, "src").mkdirs()
         File(root, "tests").mkdirs()
 
-        write(File(root, "src/main.py"), """
-            #!/usr/bin/env python3
-            """
-            $name
-            Generated by Codespace IDE.
-            """
+        // Python docstrings: use single-quoted ''' to avoid breaking Kotlin triple-quote strings
+        write(File(root, "src/main.py"),
+            "#!/usr/bin/env python3\n" +
+            "'''\n" +
+            "$name\n" +
+            "Generated by Codespace IDE.\n" +
+            "'''\n\n\n" +
+            "def main():\n" +
+            "    print('Hello from $name!')\n\n\n" +
+            "if __name__ == '__main__':\n" +
+            "    main()\n")
 
-
-            def main():
-                print("Hello from $name!")
-
-
-            if __name__ == "__main__":
-                main()
-        """.trimIndent())
-
-        write(File(root, "tests/test_main.py"), """
-            import sys
-            import os
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-
-            def test_placeholder():
-                assert True
-        """.trimIndent())
+        write(File(root, "tests/test_main.py"),
+            "import sys\n" +
+            "import os\n" +
+            "sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))\n\n\n" +
+            "def test_placeholder():\n" +
+            "    assert True\n")
 
         write(File(root, "requirements.txt"), "# Add your dependencies here\n")
         write(File(root, ".gitignore"), "__pycache__/\n*.pyc\n.venv/\ndist/\nbuild/\n*.egg-info/\n")
