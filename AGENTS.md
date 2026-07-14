@@ -25,8 +25,8 @@
 | | |
 |-|-|
 | Latest green build | **#1085** |
-| Active phase | **Phase 4 COMPLETE ✅ — all items done, build pending** |
-| Last shipped | Phase 4 autosave + restore dialog — commit 6cc64a252b, build pending |
+| Active phase | **Phase 5 — Package Manager Upgrade** |
+| Last shipped | Phase 5 start: PackageManagerPane.kt — ExtensionsPanel + McpPanel (commit fe8717f0f1, build #1089 running) |
 | P4 progress | `TerminalSessionStore.kt` added (#1080 ✅). Wired into TerminalPane (#1081 ❌ → #1082 ❌ → #1083 ✅ fixed). **P4-TerminalSessionStore is DONE and green as of #1083/1084/1085.** |
 | Next to implement | Phase 4 remaining items — see Phase 4 checklist below |
 | Phase 3 | ✅ COMPLETE (build #1078 → #1085 all green) |
@@ -767,23 +767,33 @@ Implementation targets:
 
 ---
 
-## PHASE 5 — PACKAGE MANAGER UPGRADE
+## PHASE 5 — PACKAGE MANAGER UPGRADE (in progress)
 
-Current state (AUDIT FIRST):
-- Likely shows a list and copies `apt install <pkg>` to clipboard
-- Does NOT actually run the command
+### Shipped (commit fe8717f0f1, build #1089)
 
-Target implementation:
-- One-tap install → runs `apt install -y <pkg>` in active terminal via PTY write
-- Package search (apt-cache search)
-- Show installed packages (dpkg --list)
-- Remove packages
-- Update packages (apt upgrade)
-- Download progress (parse apt output)
-- Error reporting inline
-- Installation history (Room entity)
-- Cancel mid-install (SIGINT via PTY)
-- Dependency resolution (apt handles this, surface the output)
+New file: `PackageManagerPane.kt` — contains both stubs that ProjectShellScreen called but were never defined:
+
+**ExtensionsPanel** (full package manager):
+- 35 curated featured packages shown by default
+- Live `apt-cache search` (debounced 400ms) — falls back to local filter if apt unavailable
+- One-tap Install / Remove per package — streams `apt-get -y` output live
+- Output terminal strip at bottom (60-line cap, auto-scroll, colored status dot)
+- "Installed" tab — reads `dpkg --list`, shows all installed packages with Remove button
+- Refresh button triggers `apt-get update`
+- One operation at a time (spinner locks row while busy)
+
+**McpPanel** (MCP / Agent API status):
+- Live health poll every 5s → green/red dot
+- Tool count read from `~/.agent.json`
+- Shell profile installed check (`.bashrc` scan)
+- Start/Restart button → `McpShellProfile.install()`
+- Quick tool chips: `agent_read`, `agent_write`, `agent_run`, `agent_git`, `agent_search`
+- One-tap "Install shell profile" if missing
+
+### Remaining Phase 5 items
+- [ ] Installation history (lightweight SharedPreferences log — no Room needed)
+- [ ] Cancel mid-install (SIGINT to the running process)
+- [ ] `apt-get upgrade` all installed packages button
 
 ---
 
