@@ -24,9 +24,9 @@
 
 | | |
 |-|-|
-| Latest green build | #1066 |
+| Latest green build | #1074 |
 | Active phase | Phase 2 - Code Editor Intelligence |
-| Last shipped | P2-6 Git diff gutter — PHASE 2 COMPLETE ✅ |
+| Last shipped | P3-ssh compile fix (SshManager.kt HostKeyVerifier) — build #1074 GREEN ✅ |
 | Next to implement | Phase 3 — Verify & Repair all existing features |
 | After Phase 2 | Phase 3 - Verify & Repair all existing features |
 | After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
@@ -68,6 +68,14 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1064 | FAIL | feat(P2-4): AlertDialog key= param invalid (CE:808) |
 | #1065 | FAIL | feat(P2-5): LintAnalyzer only (CodeEditor not fixed yet) |
 | #1066 | GREEN ✅ | fix(P2-5): remove invalid key= from AlertDialog + harden LintAnalyzer — P2-5 SHIPPED |
+| #1067 | GREEN ✅ | docs: mark P2-5 DONE; update CI table; open Phase 3 |
+| #1068 | GREEN ✅ | docs: Phase 2 complete — all P2-1 through P2-6 shipped |
+| #1069 | GREEN ✅ | fix(P3-git): audit & repair GitEngine + SourceControlPane |
+| #1070 | FAIL ❌ | fix(P3-ssh): SshManager.kt:51 — addHostKeyVerifier lambda not SAM-compatible |
+| #1071 | FAIL ❌ | fix(chat-panel): same SshManager.kt:51 error still in tree |
+| #1072 | FAIL ❌ | fix(ssh): tried adding launch import — SshManager.kt:51 still broken |
+| #1073 | FAIL ❌ | docs: AGENTS.md update — still on broken SshManager.kt tree |
+| #1074 | GREEN ✅ | fix(ssh): replace non-SAM lambda with PromiscuousVerifier — REPO CLEAN ✅ |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
