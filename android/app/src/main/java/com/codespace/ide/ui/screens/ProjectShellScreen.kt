@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.terminal.BusyboxInstaller
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -815,8 +816,38 @@ fun ProjectShellScreen(
                         .border(1.dp, DividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    val gitBadgeCount = 0  // TODO: count changed files
-                    val runBadgeCount = 0   // TODO: count errors
+                    // Git badge: count staged + unstaged changes via `git status --porcelain`
+                    val gitBadgeCount by produceState(0, projectId, activeEditorTab) {
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val repoDir = java.io.File(
+                                    if (activeEditorTab != null) java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
+                                    else java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                                )
+                                if (java.io.File(repoDir, ".git").exists()) {
+                                    val proc = ProcessBuilder("git", "status", "--porcelain")
+                                        .directory(repoDir)
+                                        .redirectErrorStream(true)
+                                        .start()
+                                    val lines = proc.inputStream.bufferedReader().readLines()
+                                    proc.waitFor()
+                                    value = lines.count { it.isNotBlank() }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    // Problems badge: error-level lint issues in active file
+                    val runBadgeCount by produceState(0, activeEditorTab) {
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val path = activeEditorTab
+                                if (path != null) {
+                                    val src = java.io.File(path).takeIf { it.exists() }?.readText() ?: ""
+                                    value = LintChecker.check(path, src).count { it.severity == Problem.Severity.ERROR }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
                     listOf(
                         Triple(SidePanel.EXPLORER, Icons.Default.Description, 0),
                         Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
