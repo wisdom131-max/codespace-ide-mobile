@@ -314,5 +314,5 @@ object ToolchainManager {
         try { ProotInstaller.execOnce(ctx, cmd) } catch (e: Exception) { "" }
 
     private fun extractQuoted(s: String): String? =
-        Regex('"([^"]+)"').find(s)?.groupValues?.getOrNull(1)
+        Regex("\"([^\"]+)\"").find(s)?.groupValues?.getOrNull(1)
 }
