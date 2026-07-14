@@ -20,16 +20,16 @@
 
 ---
 
-## CURRENT STATE (2026-07-13)
+## CURRENT STATE (2026-07-14)
 
 | | |
 |-|-|
-| Latest green build | #1078 |
-| Active phase | Phase 2 - Code Editor Intelligence |
-| Last shipped | P3-git: new-branch dialog in SourceControlPane — build #1078 GREEN ✅ |
-| Next to implement | Phase 4 — Terminal Session Restore |
-| After Phase 2 | Phase 3 - Verify & Repair all existing features — COMPLETE ✅ |
-| After Phase 3 | Phase 4 - Background Safe Startup & Recovery |
+| Latest green build | **#1085** |
+| Active phase | **Phase 4 — Background Safe Startup & Recovery** |
+| Last shipped | Phase 3 COMPLETE: PDF DPI-aware render + clamped pan + zoom reset, SourceControl inline diff, Explorer fixes — build #1085 GREEN ✅ |
+| P4 progress | `TerminalSessionStore.kt` added (#1080 ✅). Wired into TerminalPane (#1081 ❌ → #1082 ❌ → #1083 ✅ fixed). **P4-TerminalSessionStore is DONE and green as of #1083/1084/1085.** |
+| Next to implement | Phase 4 remaining items — see Phase 4 checklist below |
+| Phase 3 | ✅ COMPLETE (build #1078 → #1085 all green) |
 
 ---
 
@@ -80,6 +80,13 @@ Do NOT repeat any of these — they have each caused 5+ failed builds:
 | #1076 | FAIL ❌ | feat(P3-git): new-branch dialog injected into wrong composable scope |
 | #1077 | FAIL ❌ | fix(P3-git): relocation attempt — dialog still outside composable |
 | #1078 | GREEN ✅ | fix(P3-git): new-branch dialog correctly inside SourceControlPane — PHASE 3 COMPLETE ✅ |
+| #1079 | GREEN ✅ | docs: mark Phase 3 COMPLETE |
+| #1080 | GREEN ✅ | feat(P4): add TerminalSessionStore — save/restore tab list with crash guard |
+| #1081 | FAIL ❌ | feat(P4): wire TerminalSessionStore into TerminalPane — missing rememberCoroutineScope() |
+| #1082 | FAIL ❌ | fix(P4): rememberCoroutineScope() added but missing 'import kotlinx.coroutines.launch' |
+| #1083 | GREEN ✅ | fix: add missing launch import — P4 TerminalSessionStore FULLY WIRED ✅ |
+| #1084 | GREEN ✅ | fix(Phase3-Explorer): outline jump-to-line, Paste guard, folder duplicate, rename tab sync |
+| #1085 | GREEN ✅ | fix(Phase3): PDF DPI-aware render + clamped pan + zoom reset, SourceControl inline diff, HexViewer param fix |
 
 Root cause of #1008–#1011: CodeEditor.kt snippetsFor() used literal newline chars inside
 regular "..." string literals for multi-line snippet bodies. Kotlin does not allow unescaped
@@ -656,7 +663,25 @@ Status as of 2026-07-13:
 
 ---
 
-## PHASE 3 — VERIFY & REPAIR EXISTING FEATURES ✅ COMPLETE (build #1078)
+## PHASE 4 — BACKGROUND SAFE STARTUP & RECOVERY (in progress)
+
+### What was done this session (2026-07-14)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `TerminalSessionStore.kt` | ✅ DONE (#1083) | Saves/restores tab list + names to SharedPreferences. Crash guard: if app crashed >2 times, auto-wipes saved state to break crash loops. Loop-guarded restore (8s delay). 'Clear saved sessions' menu item in terminal ⋮ menu. |
+| Wire into TerminalPane | ✅ DONE (#1083) | Save on tab open/close, restore after 8s startup delay, crash count tracked |
+| RepoBrowserSheet.kt | ✅ EXISTS (17KB, wired into HomeScreen) | Browse GitHub repos by token, clone dialog, destination editable, rotation-safe |
+
+### Phase 4 remaining checklist (from directive)
+- [ ] Autosave unsaved edits every 30s to `.autosave/<filename>.autosave`
+- [ ] On launch: detect `.autosave/` files → offer restore dialog
+- [ ] Crash logger — write stack trace to `crash_log.txt` on uncaught exception (WorkManager already present)
+- [ ] Background session keepalive — prevent Android from killing terminal PTY on app minimize
+
+---
+
+## PHASE 3 — VERIFY & REPAIR EXISTING FEATURES ✅ COMPLETE (build #1085)
 
 ### Must audit in order before implementing anything else
 
