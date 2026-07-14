@@ -65,6 +65,8 @@ import com.codespace.ide.diagnostics.PortsScanner
 import com.codespace.ide.diagnostics.ForwardedPort
 import com.codespace.ide.ui.panes.LogcatPanel
 import com.codespace.ide.ui.panes.VariableInspectorPanel
+import com.codespace.ide.ui.panes.SymbolSearchPanel
+import com.codespace.ide.editor.FileIndexer
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
 private data class IdeColors(
@@ -397,6 +399,8 @@ fun ProjectShellScreen(
     var showChatPanel      by remember { mutableStateOf(false) }
     var aiPanelWidth       by remember { mutableFloatStateOf(300f) }
     var bottomPanelHeight  by remember { mutableFloatStateOf(300f) }
+    var showSymbolSearch   by remember { mutableStateOf(false) }
+    val indexerScope = rememberCoroutineScope()
     var isDraggingBottomPanel by remember { mutableStateOf(false) }
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
     var showCommandPalette by remember { mutableStateOf(false) }
@@ -465,6 +469,16 @@ fun ProjectShellScreen(
             }
             if (activeEditorTab == null) {
                 activeEditorTab = restoredState.activeFilePath ?: restoredState.openFilePaths.firstOrNull()
+            }
+        }
+    }
+
+    // P9-1: Start background file indexer when project opens
+    LaunchedEffect(projectId) {
+        if (projectId.isNotBlank()) {
+            val wsPath = loadWorkspacePath(context, projectId)
+            if (wsPath != null) {
+                FileIndexer.startIndexing(wsPath, indexerScope)
             }
         }
     }
@@ -539,7 +553,8 @@ fun ProjectShellScreen(
             "Terminal"           -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
             "Preview"            -> { showBottomPanel = true; activeBottomTab = BottomTab.PREVIEW }
             "Split Terminal"     -> { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT }
-            "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
+            "Go to Symbol"        -> { showSymbolSearch = true }
+                        "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
             "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
             "Find"               -> { showFindBar = true; showReplaceRow = false }
@@ -1457,6 +1472,32 @@ fun ProjectShellScreen(
 
 
     // ── First-launch onboarding walkthrough ─────────────────────────────
+            // P9-1: Symbol Search overlay
+            if (showSymbolSearch) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .clickable { showSymbolSearch = false }
+                ) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 60.dp, horizontal = 16.dp)
+                            .clickable { /* consume click */ }
+                    ) {
+                        SymbolSearchPanel(
+                            onNavigate = { filePath, line ->
+                                activeEditorTab = filePath
+                                showBottomPanel = false
+                                showSymbolSearch = false
+                            },
+                            onDismiss = { showSymbolSearch = false },
+                        )
+                    }
+                }
+            }
+
             // ── VS Code status bar (blue bar at bottom) ──────────────────
             Row(
                 Modifier.fillMaxWidth().height(22.dp).background(StatusBarBg).padding(horizontal = 8.dp),
