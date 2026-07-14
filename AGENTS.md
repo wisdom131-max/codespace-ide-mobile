@@ -25,13 +25,34 @@
 | | |
 |-|-|
 | Latest green build | **#1108** |
-| Active phase | **Phase 7 — Recovery & Reliability** |
+| Active phase | **Phase 8 — Debugging Infrastructure** |
 | Last shipped | Phase 7 COMPLETE ✅ — WorkspaceManager, safe mode, trash, snapshots, diagnostics |
-| **Next** | **Phase 8** — see Phase 8 checklist below |
+| **Next** | **Phase 8 P8-1 Breakpoint markers, then P8-2 Logcat viewer** |
+| Phase 7 | ✅ COMPLETE (build #1108) |
 | Phase 6 | ✅ COMPLETE (build #1098) |
 | Phase 5 | ✅ COMPLETE (build #1096) |
 | Phase 4 | ✅ COMPLETE (build #1086) |
 | Phase 3 | ✅ COMPLETE (build #1085) |
+| Phase 2 | ✅ COMPLETE (build #1068) |
+
+### Phase 8 Audit (performed by prior AI session before token ran out)
+
+Pre-implementation audit result:
+- ✅ Debug Console panel — exists (DebugConsolePanel, debugMessages, full send/receive UI)
+- ✅ Debug tab — wired in bottom panel
+- ✅ Gutter — exists (line numbers + git diff gutter in CodeEditor)
+- ❌ Breakpoint markers — NOT in gutter (no red dot toggle on tap)
+- ❌ Variable inspector panel — NOT present
+- ❌ DAP client — NOT present (skip for now — needs external language adapters)
+- ❌ Logcat viewer — NOT present
+
+Phase 8 plan (ordered by value vs complexity):
+| # | Feature | Complexity | Status |
+|---|---------|-----------|--------|
+| P8-1 | Breakpoint markers in gutter (tap line number = red dot toggle) | Low | TODO — START HERE |
+| P8-2 | Logcat viewer (new Ports/Logcat tab, reads adb logcat or /proc) | Medium | TODO |
+| P8-3 | Variable inspector panel (new bottom tab, stub data) | Medium | TODO |
+| P8-4 | DAP client | High | SKIP — needs external adapters |
 
 ---
 
@@ -908,14 +929,37 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 
 ---
 
-## PHASE 8 — DEBUGGING INFRASTRUCTURE
+## PHASE 8 — DEBUGGING INFRASTRUCTURE (ACTIVE)
 
-Only if not already present after full audit:
-- DAP (Debug Adapter Protocol) client — requires language-specific debug adapter in terminal
-- Breakpoint markers in editor gutter (UI only initially, wire to DAP later)
-- Variable inspector panel (Bottom panel new tab)
-- Debug Console (already in bottom panel — VERIFY it works)
-- Logcat viewer (Android device logs via `adb logcat` or `/proc` on rooted)
+### Audit result (2026-07-14, prior AI session)
+- ✅ Debug Console — exists and functional (DebugConsolePanel, send/receive, message list)
+- ✅ Debug tab in bottom panel — wired correctly
+- ✅ Gutter bar — exists (line numbers + git diff colored strips)
+- ❌ Breakpoint markers — missing (no red dot on tap)
+- ❌ Variable inspector panel — not present
+- ❌ DAP client — not present (skip: needs external language adapters)
+- ❌ Logcat viewer — not present
+
+### Implementation order
+| # | Feature | Complexity | Status | Notes |
+|---|---------|-----------|--------|-------|
+| P8-1 | Breakpoint gutter markers | Low | TODO — START HERE | Tap line number = toggle red dot. No DAP needed. Store Set<Int> of breakpoint lines. |
+| P8-2 | Logcat viewer | Medium | TODO | New tab in bottom panel (after Ports). Runs `adb logcat` in terminal subprocess, streams into scrolling list with filter input. |
+| P8-3 | Variable inspector panel | Medium | TODO | New bottom tab. Stub initially — show local vars from debug session JSON if present. |
+| P8-4 | DAP client | High | SKIP | Requires external per-language debug adapters in terminal. Out of scope for now. |
+
+### P8-1 implementation plan
+- `CodeEditor.kt`: add `breakpointLines: Set<Int>` param, render red filled circle in line number gutter on tap
+- `EditorPane.kt`: hold `var breakpointLines by remember { mutableStateOf(setOf<Int>()) }`, pass to CodeEditor
+- Tap line number row → `breakpointLines = if (line in breakpointLines) breakpointLines - line else breakpointLines + line`
+- Red dot: `Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF5F5F)))` aligned right in gutter
+
+### P8-2 implementation plan
+- Add "Logcat" tab to bottom panel tab row (after "Ports")
+- `LogcatPanel.kt` (new): LaunchedEffect runs `Runtime.getRuntime().exec("adb logcat -d")` in background
+- Parse lines into LogEntry(level, tag, message), color-code by level (V=grey, D=blue, I=green, W=amber, E=red)
+- Filter input at top (debounced 300ms) — filters tag or message
+- Auto-scroll to bottom toggle (default on), Clear button, Pause button
 
 ---
 
