@@ -607,14 +607,14 @@ Status as of 2026-07-13:
 
 ### Phase 2 TODO (ordered)
 
-**Latest green build: #1062. Repo is clean — safe to implement.**
+**Latest green build: #1069 (P3-git). Repo blocked at #1070 and #1071 by SshManagerSheet.kt:66 missing launch import — fixed in this commit.**
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
 | P2-1 | Rename Symbol | DONE (#1035) | long-press word -> AlertDialog -> replace all word-boundary occurrences. commit acd045fa |
 | P2-2 | Find & Replace | DONE | Bottom bar: search input, prev/next, replace input, replace-all, regex toggle, match highlight |
-| P2-3 | Multi-cursor editing | TODO | |
-| P2-4 | Go to Definition | TODO | |
+| P2-3 | Multi-cursor editing | **DONE** | Amber line-highlight tint + 2dp amber cursor bar per extra cursor. Fan-out editing + clear chip already existed. commit 5e0f60e1 (#1062 green). |
+| P2-4 | Go to Definition | **DONE** | Long-press context sheet: "Go to Def" scans file for decl keywords (Kotlin/JS/Python/Rust/Go), scrolls to match; multi-result list if ambiguous; not-found msg if absent. commit 2b72e17f (#1064 fail — key= param, fixed in #1066). |
 | P2-5 | Error squiggles (lint underlines) | TODO | |
 | P2-6 | Git diff gutter | **DONE** | LCS diff, green=added / yellow=modified / red triangle=deleted. `GitDiffAnalyzer.kt` (new). |
 | P2-7 | Code folding | **DONE** | Fixed: BasicTextField now receives folded view via SyntaxTransformation(foldedLineIndices). ··· placeholder with correct cursor offset mapping. |
@@ -630,6 +630,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped HOVER_DOCS (60+ keywords), rich snippets, sticky scroll, P2-1 Rename Symbol. Fixed #1028 (raw newlines) and #1035 (unescaped double-quote in Text string). |
 | 2026-07-13 | Added Future Feature Evaluation Policy. Added Phase 4 Background Safe Startup & Recovery directive (do not build until Phase 3 done). Audited existing systems: crash logger, BackupManager, AppOutputLog, WorkManager all present. |
 | 2026-07-13 | Shipped P2-2 Find & Replace — bottom bar with search, replace, prev/next arrows, regex toggle, replace-one, replace-all, match counter. Fixed missing FindReplace import (#1039 GREEN). |
+| 2026-07-14 | Shipped P2-4 Go to Definition — long-press now shows context sheet with two actions: "Go to Def" (scans current file for decl keywords across 6 languages, scrolls to match, multi-result list if ambiguous) and "Rename Symbol". Build #1064 failed (AlertDialog key= param not valid here — removed in #1066). P2-5 also fixed same session. Fixed blocking SSH bug (SshManagerSheet.kt:66 missing launch import) breaking builds #1070 and #1071. |
 | 2026-07-13 | Shipped P2-6 Git diff gutter — new `GitDiffAnalyzer.kt` (LCS diff, capped at 2 000 lines). Gutter bar: green=added, yellow=modified, red ▶ triangle=deleted lines. Replaced old heuristic isDirty/isAdded in CodeEditor.kt. |
 | 2026-07-13 | Shipped P2-7 Code Folding — SyntaxTransformation now accepts foldedLineIndices, collapses folded blocks into ··· with correct OffsetMapping so cursor positions stay valid. BasicTextField finally shows the folded view (was showing full text before). |
 | 2026-07-13 | Shipped Workspace Memory System — expanded `SessionStateStore` (cursor offsets, scroll positions, pinned tabs, split path, terminal state, per-project isolation, restore toggle, clearAll). `EditorPane` now accepts `projectId`+`sessionStateStore`, saves/restores per-project session including cursors, scroll lines, pinned+split tabs. `SettingsScreen` has new "Workspace Memory" section (restore toggle + clear button). One-time legacy `editor_session` migration included. |
