@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 // P8-2 Logcat viewer — streams adb logcat, color-coded by level, filterable.
 
@@ -54,9 +54,13 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
     val entries = remember { mutableStateListOf<LogcatEntry>() }
     var filter by remember { mutableStateOf("") }
     var autoScroll by remember { mutableStateOf(true) }
-    var paused by remember { mutableStateOf(false) }
+    var pausedUi by remember { mutableStateOf(false) }
+    // Thread-safe flag read from IO coroutine — avoids reading Compose State off main thread
+    val pausedFlag = remember { AtomicBoolean(false) }
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
+
+    // Sync UI state to atomic flag
+    LaunchedEffect(pausedUi) { pausedFlag.set(pausedUi) }
 
     // Start adb logcat stream
     LaunchedEffect(Unit) {
@@ -65,7 +69,7 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
                 val process = Runtime.getRuntime().exec(arrayOf("adb", "logcat", "-v", "time"))
                 val reader = process.inputStream.bufferedReader()
                 while (isActive) {
-                    if (paused) {
+                    if (pausedFlag.get()) {
                         delay(300L)
                         continue
                     }
@@ -127,8 +131,8 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
                 textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
             )
             Spacer(Modifier.width(4.dp))
-            TextButton(onClick = { paused = !paused }) {
-                Text(if (paused) "Resume" else "Pause", fontSize = 11.sp)
+            TextButton(onClick = { pausedUi = !pausedUi }) {
+                Text(if (pausedUi) "Resume" else "Pause", fontSize = 11.sp)
             }
             TextButton(onClick = { entries.clear() }) {
                 Text("Clear", fontSize = 11.sp)
