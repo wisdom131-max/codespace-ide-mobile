@@ -832,6 +832,7 @@ internal fun TerminalPane(
     projectId: String = "default",                 // fix #12: scopes session tracking/reattach
 ) {
     val context      = LocalContext.current
+    val scope        = androidx.compose.runtime.rememberCoroutineScope()
 
     // ── Moved up: needed by the lifecycle observer (ON_STOP handler) below.
     // Use shared state if provided, otherwise own state
