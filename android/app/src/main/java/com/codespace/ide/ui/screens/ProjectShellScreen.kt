@@ -2026,6 +2026,16 @@ private fun PssBottomPanelContent(
                 modifier = Modifier.fillMaxSize(),
             )
             BottomTab.DOWNLOADS -> DownloadCenterPanel(modifier = Modifier.fillMaxSize())
+            BottomTab.VARIABLES -> VariableInspectorPanel(
+                activeFilePath = activeEditorTab,
+                modifier = Modifier.fillMaxSize(),
+            )
+            BottomTab.BUILD -> BuildPanel(
+                projectPath = if (activeEditorTab != null) {
+                    java.io.File(activeEditorTab!!).parent ?: ""
+                } else "",
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
