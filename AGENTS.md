@@ -25,11 +25,13 @@
 | | |
 |-|-|
 | Latest green build | **#1172** (tree clean, Phase 13 complete) |
-| Active phase | **Phase 14** |
-| Last green | #1172 — fix(ProjectShellScreen): GoToLine digit filter — TREE CLEAN ✅ |
+| Active phase | **Phase 15 — Editor Intelligence & UX Polish** |
+| Last green | #1180 — fix(P14-C): TerminalPane URL regex triple-quote — TREE CLEAN ✅ |
 | Last pushed | 5d51cb4 — P14-A/C/F: scrollback cache + URL bar + command palette |
 | **Phase 14** | **✅ COMPLETE — all 6 items shipped** |
-| **Next** | **Phase 15 — TBD (await Wisdom direction)** |
+| **Next** | CI confirm #1180 green; then Phase 15 complete — plan Phase 16 |
+| Phase 15 | ✅ COMPLETE (build #1181 pending — all P15-A thru H shipped) |
+| Phase 14 | ✅ COMPLETE (build #1176) |
 | Phase 13 | ✅ COMPLETE (build #1172) — Runtime UX Polish & Stability |
 | Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
 | Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
@@ -1414,6 +1416,46 @@ Modified files in Phase 14 (so far):
 - `ui/panes/TerminalPane.kt` — showHistorySearch state, 🔍 Hist button, long-press tab to rename, STT history append
 
 ---
+
+
+## PHASE 15 — EDITOR INTELLIGENCE & UX POLISH
+### Phase 15 Implementation Status: ✅ COMPLETE (pending #1181 green)
+
+**CI context:**
+- #1177-#1179: FAIL — TerminalPane.kt:1270 illegal regex escapes (\w, \[, \]) in double-quoted string. Root cause: P14-C URL regex used `"..."` not `"""..."""`
+- #1180: GREEN ✅ — fix(P14-C): TerminalPane URL regex moved to triple-quoted string
+- #1181: PENDING — feat(P15-E/G/H): ProjectFileSearch overlay + heavyPanesReady gate + isWideLayout scaffold
+
+**NEW failure pattern to memorise:** Regex special chars (\w \d \[ \] \s etc.) inside regular Kotlin double-quoted strings cause "Illegal escape" compile errors. ALWAYS use triple-quoted `"""..."""`  or `Regex("""pattern""")` for any regex with backslash sequences.
+
+#### Files shipped in Phase 15
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| 15-A | Fix with AI — onAiFixRequest param, context sheet action | `editor/CodeEditor.kt` | ✅ SHIPPED #1179 |
+| 15-B | Bracket pair colorization | — | ✅ Already present — no work needed |
+| 15-C | Sticky scroll — scope line pinned at editor top | `editor/CodeEditor.kt` | ✅ SHIPPED #1179 |
+| 15-D | Ghost text inline completion (800ms delay, tap to accept) | `editor/CodeEditor.kt` | ✅ SHIPPED #1179 |
+| 15-E | ProjectFileSearchPanel — fuzzy file + full-text search | `ui/panes/ProjectFileSearchPanel.kt` | ✅ SHIPPED #1179 |
+| 15-E | Wire ProjectFileSearch overlay into PSS (Find in Files) | `ui/screens/ProjectShellScreen.kt` | ✅ SHIPPED #1181 |
+| 15-F | Logcat level filter chips (E/W/I/D/V toggles) | `ui/panes/LogcatPanel.kt` | ✅ SHIPPED #1179 |
+| 15-G | heavyPanesReady 8s gate (Logcat, Variables, BuildHistory) | `ui/screens/ProjectShellScreen.kt` | ✅ SHIPPED #1181 |
+| 15-H | isWideLayout two-column landscape scaffold | `ui/screens/ProjectShellScreen.kt` | ✅ SHIPPED #1181 |
+
+#### CI Build History — Phase 14 & 15
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1173 | ✅ GREEN | docs(AGENTS): Phase 13 status correct |
+| #1174 | ✅ GREEN | docs(AGENTS): Phase 14 plan defined |
+| #1175 | ✅ GREEN | feat(P14-D/B/E): TOFU SSH fingerprint, shell history search, tab-complete |
+| #1176 | ✅ GREEN | docs(AGENTS): P14-D/B/E shipped |
+| #1177 | ❌ FAIL | feat(P14-A/C/F): scrollback cache, URL hyperlink bar, quick cmd palette — TerminalPane regex illegal escapes |
+| #1178 | ❌ FAIL | docs(AGENTS): Phase 14 COMPLETE — same root error still in tree |
+| #1179 | ❌ FAIL | feat(P15-A/C/D/E/F): all P15 features — same root error still in tree |
+| #1180 | ✅ GREEN | fix(P14-C): TerminalPane URL regex → triple-quoted string — TREE CLEAN |
+| #1181 | PENDING | feat(P15-E/G/H): ProjectFileSearch wired, heavyPanesReady, isWideLayout |
+
 
 ## ONGOING RULES (for every future AI session)
 
