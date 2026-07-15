@@ -24,12 +24,12 @@
 
 | | |
 |-|-|
-| Latest green build | **#1219** (tree clean, Phase 18 complete) |
-| Active phase | **Phase 18 COMPLETE ✅ — next phase TBD** |
-| Last green | #1219 — fix(P18-C): replace f→file — TREE CLEAN ✅ |
-| Last pushed | 4550af81 — fix(P18-C): replace f→file in forEach |
+| Latest green build | **#1263** (Phase 21 COMPLETE — ExplorerPane wiring green) |
+| Active phase | **Phase 21 COMPLETE ✅ — next: Phase 21-X Reverse Engineering** |
+| Last green | #1262 — feat(P21): wire FileInfoDialog + StringsViewerDialog + BinaryInspectorDialog — TREE CLEAN ✅ |
+| Last pushed | 5b985bda — docs(AGENTS): Phase 21 Step 4 COMPLETE |
 | **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
-| **Next** | Plan Phase 19 |
+| **Next** | Phase 21-X — Reverse Engineering & Advanced Binary Analysis |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -1951,7 +1951,7 @@ Existing viewers found in codebase:
 - Category badges (Text, Binary, Archive, Image, Audio, Video, Document, Database, Code, Font, Cert, APK, ELF)
 - "Open As" actions: Text, Hex, Strings, Binary
 
-### Step 4: Wire fallback viewers + ExplorerPane context menu integration ✅ (build #1262 pending)
+### Step 4: Wire fallback viewers + ExplorerPane context menu integration ✅ (build #1262 GREEN ✅)
 - Added 3 state vars to ExplorerPane: `showFileInfoDialog`, `previewStringsPath`, `previewBinaryPath`
 - Context menu: "File Info" (all files), "Open as Strings" (binary/archive), "Open as Binary Inspector" (binary)
 - `FileInfoDialog` wired with full onOpenAs* callbacks → routes to Text/Hex/Strings/Binary viewers
@@ -1959,7 +1959,7 @@ Existing viewers found in codebase:
 - `BinaryInspectorDialog` wired — renders on `previewBinaryPath != null`
 - Commit: e0aac179
 
-### Phase 21 COMPLETE ✅ (pending green CI on #1262)
+### Phase 21 COMPLETE ✅ (build #1262 GREEN)
 All foundation viewers from the Universal File Viewer spec are shipped and integrated.
 Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, Smali, JADX-style decompilation)
 
@@ -1975,4 +1975,5 @@ Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, S
 | #1259 | ✅ GREEN | feat(P21): StringsViewerDialog.kt |
 | #1260 | ❌ FAIL | feat(P21): BinaryInspectorDialog — Triple destructuring 4-component error |
 | #1261 | ✅ GREEN | fix(P21): BinaryInspectorDialog — use list instead of Triple for 4 values |
-| #1262 | ⏳ RUNNING | feat(P21): wire FileInfoDialog + StringsViewerDialog + BinaryInspectorDialog into ExplorerPane |
+| #1262 | ✅ GREEN | feat(P21): wire FileInfoDialog + StringsViewerDialog + BinaryInspectorDialog into ExplorerPane |
+| #1263 | ✅ GREEN | docs(AGENTS): Phase 21 Step 4 COMPLETE — ExplorerPane wiring + CI history |
