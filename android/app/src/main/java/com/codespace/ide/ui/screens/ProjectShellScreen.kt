@@ -1862,7 +1862,7 @@ private fun PssOverlays(
                 text = {
                     OutlinedTextField(
                         value = goToLineInput,
-                        onValueChange = { onGoToLineInputChange(it).filter { c -> c.isDigit() } },
+                        onValueChange = { onGoToLineInputChange(it.filter { c -> c.isDigit() }) },
                         label = { Text("Line number") },
                         singleLine = true,
                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
