@@ -769,21 +769,7 @@ fun CodeEditor(
                 }
                 Box(
                     modifier = Modifier
-                        if (blameData != null) {
-                Box(Modifier.width(120.dp).fillMaxHeight().background(colors.gutter.copy(alpha = 0.3f))) {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(blameData.entries.toList().sortedBy { it.key }) { (lineIdx, blame) ->
-                            Box(Modifier.height(fontSize.dp * 1.25f).fillMaxWidth().padding(start = 4.dp), contentAlignment = Alignment.CenterStart) {
-                                Column {
-                                    Text(blame.author.take(12), fontSize = 9.sp, color = colors.gutter.copy(alpha = 0.8f), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(blame.shortSha, fontSize = 8.sp, color = colors.gutter.copy(alpha = 0.6f), fontFamily = FontFamily.Monospace, maxLines = 1)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(start = gutterWidthDp)
+                        .padding(start = gutterWidthDp)
                         .offset(y = yOffset)
                         .align(Alignment.TopStart)
                 ) {
