@@ -24,15 +24,16 @@
 
 | | |
 |-|-|
-| Latest green build | **#1199** (tree clean, Phase 16 complete) |
-| Active phase | **Phase 16 COMPLETE ✅ — next phase TBD** |
-| Last green | #1199 — fix(P16-A): declare actionToast — TREE CLEAN ✅ |
-| Last pushed | 98cd9347dc — fix(P16-A): actionToast declaration |
+| Latest green build | **#1219** (tree clean, Phase 18 complete) |
+| Active phase | **Phase 18 COMPLETE ✅ — next phase TBD** |
+| Last green | #1219 — fix(P18-C): replace f→file — TREE CLEAN ✅ |
+| Last pushed | 4550af81 — fix(P18-C): replace f→file in forEach |
 | **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
 | **Next** | Plan Phase 19 |
-| Phase 18 | ⏳ IN PROGRESS — Replace in Files + Select All Occurrences |
-| Phase 18 | ⏳ IN PROGRESS — builds #1210/#1211 running — Replace in Files + Select All Occurrences |
+| Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
+| Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
+| Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit: Replace in Files, Select All Occurrences, Cross-file Rename Symbol |
 | Phase 16 | ✅ COMPLETE (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync, Sync UI |
 | Phase 15 | ✅ COMPLETE (build #1183 GREEN) |
 | Phase 14 | ✅ COMPLETE (build #1176) |
@@ -1551,7 +1552,7 @@ No new files created — all changes in ExplorerPane.kt
 
 ---
 
-## PHASE 18 — MULTI-FILE EDIT & REFACTORING ⏳ IN PROGRESS
+## PHASE 18 — MULTI-FILE EDIT & REFACTORING ✅ COMPLETE (build #1219)
 
 **Goal:** Power-user editing across files — replace everywhere, multi-occurrence select.
 
@@ -1559,7 +1560,7 @@ No new files created — all changes in ExplorerPane.kt
 |---|---------|------|--------|
 | P18-A | Replace in Files — "Replace" chip in ProjectFileSearchPanel, replaceQuery field, "Replace All (N)" button writes back to disk, snackbar feedback | `ProjectFileSearchPanel.kt` | ⏳ #1210 running |
 | P18-B | Select All Occurrences — long-press context menu action seeds `extraCursors` at every `...` match, multi-cursor types simultaneously | `CodeEditor.kt` | ⏳ #1211 running |
-| P18-C | Rename Symbol across files — (planned) extend Rename Symbol to optionally scan project files | TBD | 📋 QUEUED |
+| P18-C | Cross-file Rename Symbol — project-wide word-boundary replace with progress indicator | `CodeEditor.kt`, `EditorPane.kt` | ✅ SHIPPED #1219 |
 
 #### Design notes
 - P18-A uses `Regex.escape(query).replace()` on each file (not raw regex) — safe for literal strings
@@ -1573,20 +1574,28 @@ No new files created — all changes in ExplorerPane.kt
 
 ---
 
-## PHASE 18 — MULTI-FILE EDIT & REFACTORING ⏳ IN PROGRESS
+## PHASE 18 — MULTI-FILE EDIT & REFACTORING ✅ COMPLETE (build #1219)
 
 | # | Feature | File | Status |
 |---|---------|------|--------|
-| P18-A | Replace in Files — "Replace" amber chip in ProjectFileSearchPanel, batch File.writeText() + Snackbar feedback | `ProjectFileSearchPanel.kt` | ⏳ #1210 |
-| P18-B | Select All Occurrences — context sheet action seeds extraCursors at every word-boundary match in current file | `CodeEditor.kt` | ⏳ #1211 |
-| P18-C | Cross-file Rename Symbol — project-wide word-boundary replace with result count | TBD | TODO |
+| P18-A | Replace in Files — "Replace" amber chip in ProjectFileSearchPanel, batch File.writeText() + Snackbar feedback | `ProjectFileSearchPanel.kt` | ✅ #1214 |
+| P18-B | Select All Occurrences — context sheet action seeds extraCursors at every word-boundary match in current file | `CodeEditor.kt` | ✅ #1212 |
+| P18-C | Cross-file Rename Symbol — project-wide word-boundary replace with progress indicator | `CodeEditor.kt`, `EditorPane.kt` | ✅ SHIPPED #1219 |
 
 #### CI Build History — Phase 18
 
 | Build | Result | Notes |
 |-------|--------|-------|
-| #1210 | ⏳ RUNNING | feat(P18-A): Replace in Files in ProjectFileSearchPanel |
-| #1211 | ⏳ RUNNING | feat(P18-B): Select All Occurrences in CodeEditor |
+| #1210 | ✅ GREEN | feat(P18-B): Select All Occurrences — seed extraCursors at word-boundary match |
+| #1211 | ✅ GREEN | feat(P18-A): Replace in Files in ProjectFileSearchPanel |
+| #1212 | ✅ GREEN | feat(P18-B): Select All Occurrences — context sheet action |
+| #1213 | ✅ GREEN | docs(AGENTS): Phase 18 started |
+| #1214 | ✅ GREEN | feat(P18-A): Replace in Files — replace field + Replace All button |
+| #1215 | ✅ GREEN | docs(AGENTS): Phase 18 plan |
+| #1216 | ❌ FAIL | feat(P18-C): cross-file Rename Symbol — missing imports (Checkbox, File, LinearProgressIndicator) |
+| #1217 | ❌ FAIL | feat(P18-C): pass projectRoot — same root cause |
+| #1218 | ❌ FAIL | fix(P18-C): add missing imports — leftover f→file references |
+| **#1219** | **✅ GREEN** | fix(P18-C): replace f→file in forEach — **PHASE 18 COMPLETE** |
 
 ---
 
