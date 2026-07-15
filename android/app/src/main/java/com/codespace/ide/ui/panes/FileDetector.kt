@@ -71,15 +71,15 @@ object FileDetector {
         Signature(0, byteArrayOf(0x50, 0x4B, 0x03, 0x04), FileFormat.ZIP),             // PK\x03\x04 (ZIP, JAR, AAR, APK, DOCX, EPUB)
         Signature(0, byteArrayOf(0x50, 0x4B, 0x05, 0x06), FileFormat.ZIP),             // PK\x05\x06 (empty ZIP)
         Signature(0, byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07), FileFormat.RAR), // Rar!
-        Signature(0, byteArrayOf(0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C), FileFormat.SEVEN_Z), // 7z
-        Signature(0, byteArrayOf(0x1F, 0x8B), FileFormat.GZIP),                          // GZIP
+        Signature(0, byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C), FileFormat.SEVEN_Z), // 7z
+        Signature(0, byteArrayOf(0x1F, 0x8B.toByte()), FileFormat.GZIP),                          // GZIP
         Signature(0, byteArrayOf(0x53, 0x51, 0x4C, 0x69, 0x74, 0x65), FileFormat.SQLITE), // SQLite
-        Signature(0, byteArrayOf(0xFF, 0xD8, 0xFF), FileFormat.JPEG),                    // JPEG
-        Signature(0, byteArrayOf(0x89, 0x50, 0x4E, 0x47), FileFormat.PNG),             // PNG
+        Signature(0, byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()), FileFormat.JPEG),                    // JPEG
+        Signature(0, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47), FileFormat.PNG),             // PNG
         Signature(0, byteArrayOf(0x47, 0x49, 0x46, 0x38), FileFormat.GIF),             // GIF8
         Signature(0, byteArrayOf(0x42, 0x4D), FileFormat.BMP),                           // BM (BMP)
         Signature(0, byteArrayOf(0x52, 0x49, 0x46, 0x46), FileFormat.WEBP),             // RIFF (WEBP/WAV/AVI)
-        Signature(0, byteArrayOf(0xFF, 0xFB), FileFormat.MP3),                           // MP3
+        Signature(0, byteArrayOf(0xFF.toByte(), 0xFB.toByte()), FileFormat.MP3),                           // MP3
         Signature(0, byteArrayOf(0x49, 0x44, 0x33), FileFormat.MP3),                     // ID3 (MP3)
         Signature(0, byteArrayOf(0x4F, 0x67, 0x67, 0x53), FileFormat.OGG),             // OggS
         Signature(0, byteArrayOf(0x66, 0x4C, 0x61, 0x43), FileFormat.FLAC),             // fLaC
@@ -90,8 +90,8 @@ object FileDetector {
         Signature(0, byteArrayOf(0x7F, 0x45, 0x4C, 0x46), FileFormat.ELF),             // \x7fELF
         Signature(0, byteArrayOf(0x64, 0x65, 0x78, 0x0A, 0x30, 0x33, 0x35), FileFormat.DEX), // dex\n035
         Signature(0, byteArrayOf(0x2D, 0x2D, 0x2D, 0x2D, 0x2D), FileFormat.PEM),       // ----- (PEM cert/key)
-        Signature(0, byteArrayOf(0x30, 0x82), FileFormat.DER),                          // DER cert
-        Signature(0, byteArrayOf(0xFE, 0xED, 0xFE, 0xED), FileFormat.KEYSTORE),        // JKS keystore
+        Signature(0, byteArrayOf(0x30, 0x82.toByte()), FileFormat.DER),                          // DER cert
+        Signature(0, byteArrayOf(0xFE.toByte(), 0xED.toByte(), 0xFE.toByte(), 0xED.toByte()), FileFormat.KEYSTORE),        // JKS keystore
     )
 
     // ── Extension to format mapping ───────────────────────────────────────
