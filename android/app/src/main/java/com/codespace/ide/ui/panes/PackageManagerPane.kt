@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.terminal.McpShellProfile
+import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -148,18 +149,9 @@ internal fun ExtensionsPanel() {
                     "upgrade-all" -> "apt-get upgrade -y 2>&1"
                     else          -> "apt-get install -y $pkg 2>&1"
                 }
-                val proc = ProcessBuilder("bash", "-c", cmdStr)
-                    .redirectErrorStream(true)
-                    .apply { environment()["DEBIAN_FRONTEND"] = "noninteractive" }
-                    .start()
-                op.process = proc
-                scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
-                proc.inputStream.bufferedReader().forEachLine { line ->
-                    op.output.add(line)
-                    scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
-                }
-                val exit   = proc.waitFor()
-                op.success = (exit == 0)
+                val result = ProotInstaller.execOnce(context, cmdStr, timeoutSeconds = 120L)
+                op.output.addAll(result.lines())
+                op.success = !result.startsWith("Exit code") && !result.startsWith("Error") && !result.startsWith("Timed out")
                 op.done    = true
                 appendHistory(context, action, pkg, op.success)
                 if (op.success && action == "install") installedPkgs = installedPkgs + pkg
@@ -183,11 +175,8 @@ internal fun ExtensionsPanel() {
     fun loadInstalled() {
         scope.launch(Dispatchers.IO) {
             try {
-                val proc = ProcessBuilder("bash", "-c",
-                    "dpkg --list 2>/dev/null | awk '/^ii/{print \$2}'")
-                    .redirectErrorStream(true).start()
-                val pkgs = proc.inputStream.bufferedReader().readLines().toSet()
-                proc.waitFor()
+                val out = ProotInstaller.execOnce(context, "dpkg --list 2>/dev/null | awk '/^ii/{print \$2}'")
+                val pkgs = out.lines().filter { it.isNotBlank() }.toSet()
                 withContext(Dispatchers.Main) { installedPkgs = pkgs }
             } catch (_: Exception) {}
         }
@@ -199,11 +188,8 @@ internal fun ExtensionsPanel() {
         isSearching = true
         scope.launch(Dispatchers.IO) {
             try {
-                val proc = ProcessBuilder("bash", "-c",
-                    "apt-cache search ${q.trim()} 2>/dev/null | head -40")
-                    .redirectErrorStream(true).start()
-                val lines = proc.inputStream.bufferedReader().readLines()
-                proc.waitFor()
+                val raw = ProotInstaller.execOnce(context, "apt-cache search ${q.trim()} 2>/dev/null | head -40", timeoutSeconds = 30L)
+                val lines = raw.lines()
                 val results = lines.mapNotNull { line ->
                     val parts = line.split(" - ", limit = 2)
                     if (parts.size == 2) PkgInfo(parts[0].trim(), parts[1].trim(), "search") else null
@@ -271,8 +257,7 @@ internal fun ExtensionsPanel() {
                 onClick = {
                     scope.launch(Dispatchers.IO) {
                         try {
-                            ProcessBuilder("bash", "-c", "apt-get update -y 2>&1")
-                                .redirectErrorStream(true).start().waitFor()
+                            ProotInstaller.execOnce(context, "apt-get update -y 2>&1", timeoutSeconds = 60L)
                         } catch (_: Exception) {}
                     }
                 },

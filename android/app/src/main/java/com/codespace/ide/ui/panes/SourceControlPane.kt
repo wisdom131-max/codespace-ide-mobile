@@ -165,7 +165,7 @@ fun SourceControlPane(projectId: String) {
         val wsPath = loadWorkspacePath(context, projectId)
         var dir = wsPath?.let { File(it) }
         while (dir != null && !File(dir, ".git").exists()) { dir = dir.parentFile }
-        dir ?: File("/root")
+        dir ?: File(com.codespace.ide.terminal.ProotInstaller.rootfsDir(context), "root")
     }
 
     // ── data loaders ─────────────────────────────────────────────────────────

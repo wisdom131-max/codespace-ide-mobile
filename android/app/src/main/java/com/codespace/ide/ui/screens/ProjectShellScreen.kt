@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -1389,11 +1390,122 @@ fun ProjectShellScreen(
     } // end Editor Column
 
 
+        PssOverlays(
+            activePanel = activePanel,
+            onActivePanelChange = { activePanel = it },
+            showBottomPanel = showBottomPanel,
+            onShowBottomPanelChange = { showBottomPanel = it },
+            showChatPanel = showChatPanel,
+            onShowChatPanelChange = { showChatPanel = it },
+            showCommandPalette = showCommandPalette,
+            onShowCommandPaletteChange = { showCommandPalette = it },
+            appWakeLockOn = appWakeLockOn,
+            onAppWakeLockOnChange = { appWakeLockOn = it },
+            showColorTheme = showColorTheme,
+            onShowColorThemeChange = { showColorTheme = it },
+            showGoToLine = showGoToLine,
+            onShowGoToLineChange = { showGoToLine = it },
+            goToLineInput = goToLineInput,
+            onGoToLineInputChange = { goToLineInput = it },
+            scrollTargetLine = scrollTargetLine,
+            onScrollTargetLineChange = { scrollTargetLine = it },
+            showPersonMenu = showPersonMenu,
+            onShowPersonMenuChange = { showPersonMenu = it },
+            showGearMenu = showGearMenu,
+            onShowGearMenuChange = { showGearMenu = it },
+            commandQuery = commandQuery,
+            onCommandQueryChange = { commandQuery = it },
+            showNotifDrawer = showNotifDrawer,
+            onShowNotifDrawerChange = { showNotifDrawer = it },
+            snapshotMessage = snapshotMessage,
+            onSnapshotMessageChange = { snapshotMessage = it },
+            editorFontSize = editorFontSize,
+            onEditorFontSizeChange = { editorFontSize = it },
+            notifList = notifList,
+            BgColor = BgColor,
+            ActivityBarIconActive = ActivityBarIconActive,
+            TabActiveIndicator = TabActiveIndicator,
+            TabTextInactive = TabTextInactive,
+            DividerColor = DividerColor,
+            SectionHeaderText = SectionHeaderText,
+            MenuBg = MenuBg,
+            MenuText = MenuText,
+            CmdSelectedBg = CmdSelectedBg,
+            CmdSelectedText = CmdSelectedText,
+            currentTheme = currentTheme,
+            onSelectTheme = onSelectTheme,
+            onSignOut = onSignOut,
+            onOpenSettings = onOpenSettings,
+        )
+    } // end root Box
+}
+
+/**
+ * Maps a file path to the shell command that actually runs it inside the
+ * Ubuntu proot environment, mirroring VS Code's "Run" (▷) behavior for a
+ * given language. Returns null for file types with no direct runner (the
+ * user still has the Terminal for anything custom).
+ */
+/**
+ * Dialogs, sheets, and overlay panels for ProjectShellScreen.
+ * Extracted to reduce DEX register count in the main function.
+ */
+@Composable
+private fun PssOverlays(
+    // State
+    activePanel: SidePanel?,
+    onActivePanelChange: (SidePanel?) -> Unit,
+    showBottomPanel: Boolean,
+    onShowBottomPanelChange: (Boolean) -> Unit,
+    showChatPanel: Boolean,
+    onShowChatPanelChange: (Boolean) -> Unit,
+    showCommandPalette: Boolean,
+    onShowCommandPaletteChange: (Boolean) -> Unit,
+    appWakeLockOn: Boolean,
+    onAppWakeLockOnChange: (Boolean) -> Unit,
+    showColorTheme: Boolean,
+    onShowColorThemeChange: (Boolean) -> Unit,
+    showGoToLine: Boolean,
+    onShowGoToLineChange: (Boolean) -> Unit,
+    goToLineInput: String,
+    onGoToLineInputChange: (String) -> Unit,
+    scrollTargetLine: Int,
+    onScrollTargetLineChange: (Int) -> Unit,
+    showPersonMenu: Boolean,
+    onShowPersonMenuChange: (Boolean) -> Unit,
+    showGearMenu: Boolean,
+    onShowGearMenuChange: (Boolean) -> Unit,
+    commandQuery: String,
+    onCommandQueryChange: (String) -> Unit,
+    showNotifDrawer: Boolean,
+    onShowNotifDrawerChange: (Boolean) -> Unit,
+    snapshotMessage: String?,
+    onSnapshotMessageChange: (String?) -> Unit,
+    editorFontSize: Int,
+    onEditorFontSizeChange: (Int) -> Unit,
+    notifList: androidx.compose.runtime.snapshots.SnapshotStateList<NotifItem>,
+    // Colors
+    BgColor: Color,
+    ActivityBarIconActive: Color,
+    TabActiveIndicator: Color,
+    TabTextInactive: Color,
+    DividerColor: Color,
+    SectionHeaderText: Color,
+    MenuBg: Color,
+    MenuText: Color,
+    CmdSelectedBg: Color,
+    CmdSelectedText: Color,
+    // Params
+    currentTheme: String,
+    onSelectTheme: (String) -> Unit,
+    onSignOut: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
             NotificationDrawerOverlay(
                 notifList = notifList,
-                onDismiss = { showNotifDrawer = false },
+                onDismiss = { onShowNotifDrawerChange(false) },
                 onClear = { notifList.clear() },
             )
         }
@@ -1411,7 +1523,7 @@ fun ProjectShellScreen(
                 Modifier.fillMaxSize()
                     .background(Color(0x88000000))
                     .pointerInput(Unit) {
-                        detectTapGestures { showCommandPalette = false; commandQuery = "" }
+                        detectTapGestures { onShowCommandPaletteChange(false); onCommandQueryChange("") }
                     }
             ) {
                 Card(
@@ -1431,7 +1543,7 @@ fun ProjectShellScreen(
                     Column {
                         androidx.compose.foundation.text.BasicTextField(
                             value = commandQuery,
-                            onValueChange = { commandQuery = it },
+                            onValueChange = { onCommandQueryChange(it) },
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MenuText, fontFamily = FontFamily.Default),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1465,7 +1577,7 @@ fun ProjectShellScreen(
                                 Row(
                                     Modifier.fillMaxWidth()
                                         .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
-                                        .clickable { handleMenuAction(item); showCommandPalette = false; commandQuery = "" }
+                                        .clickable { handleMenuAction(item); onShowCommandPaletteChange(false); onCommandQueryChange("") }
                                         .padding(horizontal = 16.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -1484,7 +1596,7 @@ fun ProjectShellScreen(
                 Modifier.fillMaxSize()
                     .background(Color(0x44000000))
                     .pointerInput(Unit) {
-                        detectTapGestures { showGearMenu = false }
+                        detectTapGestures { onShowGearMenuChange(false) }
                     }
             ) {
                 Card(
@@ -1506,14 +1618,14 @@ fun ProjectShellScreen(
                                 modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
                         }
                         val gearItems = listOf(
-                            "Color Theme" to { showColorTheme = true; showGearMenu = false },
-                            "Toggle Sidebar" to { activePanel = if (activePanel == null) SidePanel.EXPLORER else null; showGearMenu = false },
-                            "Toggle Terminal" to { showBottomPanel = !showBottomPanel; showGearMenu = false },
-                            "Toggle Copilot Chat" to { showChatPanel = !showChatPanel; showGearMenu = false },
-                            "Font Size +" to { editorFontSize = (editorFontSize + 1).coerceAtMost(32); showGearMenu = false },
-                            "Font Size -" to { editorFontSize = (editorFontSize - 1).coerceAtLeast(8); showGearMenu = false },
+                            "Color Theme" to { onShowColorThemeChange(true); onShowGearMenuChange(false) },
+                            "Toggle Sidebar" to { onActivePanelChange(if (activePanel == null) SidePanel.EXPLORER else null); onShowGearMenuChange(false) },
+                            "Toggle Terminal" to { onShowBottomPanelChange(!showBottomPanel); onShowGearMenuChange(false) },
+                            "Toggle Copilot Chat" to { onShowChatPanelChange(!showChatPanel); onShowGearMenuChange(false) },
+                            "Font Size +" to { onEditorFontSizeChange((editorFontSize + 1).coerceAtMost(32)); onShowGearMenuChange(false) },
+                            "Font Size -" to { onEditorFontSizeChange((editorFontSize - 1).coerceAtLeast(8)); onShowGearMenuChange(false) },
                             "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
-                                appWakeLockOn = !appWakeLockOn
+                                onAppWakeLockOnChange(!appWakeLockOn)
                                 val appCtx = context.applicationContext as com.codespace.ide.CodeSpaceApplication
                                 if (appWakeLockOn) {
                                     appCtx.acquireAppWakeLock()
@@ -1522,7 +1634,7 @@ fun ProjectShellScreen(
                                     appCtx.releaseAppWakeLock()
                                     showNotification("App WakeLock OFF", "info")
                                 }
-                                showGearMenu = false
+                                onShowGearMenuChange(false)
                             },
                         )
                         items(gearItems) { (label, action) ->
@@ -1539,7 +1651,7 @@ fun ProjectShellScreen(
                         item {
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .clickable { showGearMenu = false; onOpenSettings() }
+                                    .clickable { onShowGearMenuChange(false); onOpenSettings() }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -1549,7 +1661,7 @@ fun ProjectShellScreen(
                         item {
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .clickable { showGearMenu = false; onSignOut() }
+                                    .clickable { onShowGearMenuChange(false); onSignOut() }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -1567,7 +1679,7 @@ fun ProjectShellScreen(
                 Modifier.fillMaxSize()
                     .background(Color(0x44000000))
                     .pointerInput(Unit) {
-                        detectTapGestures { showPersonMenu = false }
+                        detectTapGestures { onShowPersonMenuChange(false) }
                     }
             ) {
                 Card(
@@ -1587,8 +1699,8 @@ fun ProjectShellScreen(
                         Text("Wisdom Ijezie", fontSize = 13.sp, color = MenuText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
                         HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 8.dp))
                         listOf(
-                            "Settings" to { showPersonMenu = false; onOpenSettings() },
-                            "Sign Out" to { showPersonMenu = false; onSignOut() }
+                            "Settings" to { onShowPersonMenuChange(false); onOpenSettings() },
+                            "Sign Out" to { onShowPersonMenuChange(false); onSignOut() }
                         ).forEach { (item, action) ->
                             Row(
                                 Modifier.fillMaxWidth().clickable { action() }.padding(horizontal = 8.dp, vertical = 10.dp)
@@ -1608,11 +1720,11 @@ fun ProjectShellScreen(
         val _snapOrient = LocalConfiguration.current.orientation
         key(_snapOrient) {
         AlertDialog(
-            onDismissRequest = { snapshotMessage = null },
+            onDismissRequest = { onSnapshotMessageChange(null) },
             title = { Text("Snapshot Created") },
             text  = { Text(snapshotMessage!!, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) },
             confirmButton = {
-                TextButton(onClick = { snapshotMessage = null }) { Text("OK") }
+                TextButton(onClick = { onSnapshotMessageChange(null) }) { Text("OK") }
             },
         )
         }
@@ -1629,7 +1741,7 @@ fun ProjectShellScreen(
             Box(
                 Modifier.fillMaxSize()
                     .background(Color(0x88000000))
-                    .pointerInput(Unit) { detectTapGestures { showColorTheme = false } }
+                    .pointerInput(Unit) { detectTapGestures { onShowColorThemeChange(false) } }
             ) {
                 Card(
                     Modifier
@@ -1650,7 +1762,7 @@ fun ProjectShellScreen(
                         ) {
                             Text("Select Color Theme", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MenuText)
                             Icon(Icons.Default.Close, "Close", tint = MenuText.copy(alpha = 0.6f),
-                                modifier = Modifier.size(20.dp).clickable { showColorTheme = false })
+                                modifier = Modifier.size(20.dp).clickable { onShowColorThemeChange(false) })
                         }
                         HorizontalDivider(color = DividerColor)
                         // Theme grid
@@ -1670,7 +1782,7 @@ fun ProjectShellScreen(
                                 Row(
                                     Modifier.fillMaxWidth()
                                         .background(if (isSelected) CmdSelectedBg else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                        .clickable { onSelectTheme(themeName); showColorTheme = false }
+                                        .clickable { onSelectTheme(themeName); onShowColorThemeChange(false) }
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -1702,7 +1814,7 @@ fun ProjectShellScreen(
                                 Row(
                                     Modifier.fillMaxWidth()
                                         .background(if (isSelected) CmdSelectedBg else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                        .clickable { onSelectTheme(themeName); showColorTheme = false }
+                                        .clickable { onSelectTheme(themeName); onShowColorThemeChange(false) }
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -1731,12 +1843,12 @@ fun ProjectShellScreen(
         if (showGoToLine) {
             key(orientation) {
             AlertDialog(
-                onDismissRequest = { showGoToLine = false },
+                onDismissRequest = { onShowGoToLineChange(false) },
                 title = { Text("Go to Line", color = MenuText) },
                 text = {
                     OutlinedTextField(
                         value = goToLineInput,
-                        onValueChange = { goToLineInput = it.filter { c -> c.isDigit() } },
+                        onValueChange = { onGoToLineInputChange(it).filter { c -> c.isDigit() } },
                         label = { Text("Line number") },
                         singleLine = true,
                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
@@ -1753,30 +1865,23 @@ fun ProjectShellScreen(
                     TextButton(onClick = {
                         val lineNum = goToLineInput.toIntOrNull()
                         if (lineNum != null && lineNum > 0) {
-                            scrollTargetLine = lineNum
+                            onScrollTargetLineChange(lineNum)
                             showNotification("Jumping to line $lineNum", "info")
                         }
-                        showGoToLine = false
-                        goToLineInput = ""
+                        onShowGoToLineChange(false)
+                        onGoToLineInputChange("")
                     }) { Text("Go") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showGoToLine = false; goToLineInput = "" }) { Text("Cancel") }
+                    TextButton(onClick = { onShowGoToLineChange(false); onGoToLineInputChange("") }) { Text("Cancel") }
                 },
                 containerColor = MenuBg,
                 titleContentColor = MenuText,
             )
             }
         }
-    } // end root Box
 }
 
-/**
- * Maps a file path to the shell command that actually runs it inside the
- * Ubuntu proot environment, mirroring VS Code's "Run" (▷) behavior for a
- * given language. Returns null for file types with no direct runner (the
- * user still has the Terminal for anything custom).
- */
 /**
  * Activity bar (left icon strip). Extracted from ProjectShellScreen to reduce DEX register count.
  */
@@ -1900,7 +2005,7 @@ private fun PssBottomPanelContent(
     if (!showBottomPanel) return
 
     Box(
-        Modifier.fillMaxWidth().height(4.dp).background(dividerColor)
+        Modifier.fillMaxWidth().height(8.dp).background(dividerColor.copy(alpha = 0.6f))
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { onDraggingChange(true) },
@@ -1919,36 +2024,41 @@ private fun PssBottomPanelContent(
             }
     )
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(22.dp).padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(26.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BottomTab.entries.forEach { tab ->
-            val isActive = tab == activeBottomTab
-            Box(
-                Modifier.clickable { onActiveBottomTabChange(tab) }
-                    .background(if (isActive) Color(0xFFDCEAFB) else Color.Transparent, RoundedCornerShape(4.dp))
-                    .border(if (isActive) 1.dp else 0.dp, if (isActive) Color(0xFF007ACC) else Color.Transparent, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(tab.name, fontSize = 10.sp,
-                    color = if (isActive) Color(0xFF007ACC) else Color(0xFF717171),
-                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal)
+        LazyRow(
+            modifier = Modifier.weight(1f).padding(start = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(BottomTab.entries) { tab ->
+                val isActive = tab == activeBottomTab
+                Box(
+                    Modifier.clickable { onActiveBottomTabChange(tab) }
+                        .background(if (isActive) Color(0xFFDCEAFB) else Color.Transparent, RoundedCornerShape(4.dp))
+                        .border(if (isActive) 1.dp else 0.dp, if (isActive) Color(0xFF007ACC) else Color.Transparent, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(tab.name, fontSize = 10.sp,
+                        color = if (isActive) Color(0xFF007ACC) else Color(0xFF717171),
+                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal)
+                }
+                Spacer(Modifier.width(3.dp))
             }
-            Spacer(Modifier.width(4.dp))
         }
-        Spacer(Modifier.weight(1f))
         Icon(Icons.Default.OpenInFull, null, tint = tabTextInactive,
-            modifier = Modifier.size(16.dp).clickable {
-                onBottomPanelHeightChange(if (bottomPanelHeight > totalHeight * 0.5f) 260f else totalHeight * 0.75f)
+            modifier = Modifier.size(18.dp).padding(1.dp).clickable {
+                onBottomPanelHeightChange(if (bottomPanelHeight > totalHeight * 0.5f) 260f else totalHeight * 0.85f)
             })
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         Icon(Icons.Default.Close, null, tint = tabTextInactive,
-            modifier = Modifier.size(16.dp).clickable { onHideBottomPanel() })
-        Spacer(Modifier.width(4.dp))
+            modifier = Modifier.size(18.dp).padding(1.dp).clickable { onHideBottomPanel() })
+        Spacer(Modifier.width(6.dp))
     }
     HorizontalDivider(color = dividerColor)
-    val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(0.dp, 600.dp)
+    val maxDp = with(density) { totalHeight.toDp() }
+    val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(0.dp, maxDp)
     val animatedBh by animateDpAsState(
         targetValue = bh,
         animationSpec = if (isDraggingBottomPanel) snap() else tween(180),
