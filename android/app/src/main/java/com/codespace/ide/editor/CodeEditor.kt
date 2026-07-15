@@ -965,6 +965,35 @@ fun CodeEditor(
                                 Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                         }
+                        // P18-B: Select All Occurrences — seed extraCursors at every word-boundary match
+                        TextButton(
+                            onClick = {
+                                val pattern = try {
+                                    Regex("\\b" + Regex.escape(word) + "\\b")
+                                } catch (_: Exception) { null }
+                                if (pattern != null) {
+                                    val positions = pattern.findAll(value.text)
+                                        .map { it.range.last + 1 }.toList()
+                                    if (positions.isNotEmpty()) {
+                                        value = value.copy(
+                                            selection = androidx.compose.ui.text.TextRange(positions.first())
+                                        )
+                                        extraCursors = positions.drop(1)
+                                    }
+                                }
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("■", color = Color(0xFF569CD6), fontSize = 14.sp)
+                                Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
                     }
                 },
                 confirmButton = {},
