@@ -67,7 +67,7 @@ fun isAudioFile(name: String): Boolean {
 fun isHexViewFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
     return ext in listOf(
-        "dex", "odex", "vdex", "so", "class", "o", "a", "bin", "dat", "exe", "dll",
+        "so", "class", "o", "a", "bin", "dat", "exe", "dll",
         "img", "iso", "apkm", "p12", "pfx", "jks",
         "ttf", "otf", "woff", "woff2",
     )
@@ -77,6 +77,12 @@ fun isHexViewFile(name: String): Boolean {
 fun isSqliteFile(name: String): Boolean {
     val ext = name.substringAfterLast(".", "").lowercase()
     return ext in listOf("db", "sqlite", "sqlite3")
+}
+
+/** DEX bytecode files — opened in DexViewerDialog (Phase 21-X). */
+fun isDexFile(name: String): Boolean {
+    val ext = name.substringAfterLast(".", "").lowercase()
+    return ext in listOf("dex", "odex", "vdex")
 }
 
 /** Safety net for anything NOT covered by the explicit lists above (image/archive/pdf/video/
