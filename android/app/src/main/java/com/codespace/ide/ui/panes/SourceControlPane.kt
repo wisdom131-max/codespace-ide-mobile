@@ -881,20 +881,12 @@ private fun ChangeRow(change: GitChange, onStage: (() -> Unit)?, onUnstage: (() 
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = IconColor)
                 }
             } else {
-                Column(
-                    Modifier.fillMaxWidth().background(Color(0xFF0D0D0D)).heightIn(max = 300.dp)
-                        .verticalScroll(rememberScrollState()).padding(start = 32.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
-                ) {
-                    diffLines.forEach { line ->
-                        val color = when {
-                            line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF4EC9B0)
-                            line.startsWith("-") && !line.startsWith("---") -> Color(0xFFFF6B6B)
-                            line.startsWith("@@") -> Color(0xFF569CD6)
-                            else -> MutedColor
-                        }
-                        Text(line, fontSize = 11.sp, color = color, fontFamily = FontFamily.Monospace, softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+                DiffViewer(
+                    diffText = diffLines.joinToString("\n"),
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Color(0xFF0D0D0D))
+                        .padding(start = 24.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+                )
             }
         }
         HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
