@@ -1,6 +1,10 @@
 package com.codespace.ide.ui.screens
 
 import android.content.Context
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.content.Intent
 import android.net.Uri
 import androidx.biometric.BiometricManager
@@ -509,6 +513,80 @@ fun SettingsScreen(
                         ) { Text("Clear") }
                     }
                 )
+                HorizontalDivider()
+            }
+
+            // ── Deleted / Orphaned Projects ──────────────────────────────────────
+            item {
+                HorizontalDivider()
+                Text(
+                    "Deleted Projects",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+            item {
+                val projectsRoot = remember { File(context.filesDir, "projects") }
+                var refreshDeleted by remember { mutableStateOf(0) }
+                val deletedList by produceState<List<File>>(emptyList(), refreshDeleted) {
+                    value = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        projectsRoot.listFiles()
+                            ?.filter { dir ->
+                                dir.isDirectory && (
+                                    dir.listFiles()?.all { it.name == ".ide-trash" } == true ||
+                                    dir.listFiles()?.isEmpty() == true
+                                )
+                            }
+                            ?.sortedByDescending { it.lastModified() }
+                            ?: emptyList()
+                    }
+                }
+                if (deletedList.isEmpty()) {
+                    ListItem(
+                        headlineContent = { Text("No deleted projects", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        leadingContent = { Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    )
+                } else {
+                    Column(Modifier.fillMaxWidth()) {
+                        deletedList.forEach { dir ->
+                            val deletedDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                                .format(Date(dir.lastModified()))
+                            var showConfirm by remember(dir.absolutePath) { mutableStateOf(false) }
+                            ListItem(
+                                headlineContent = { Text(dir.name) },
+                                supportingContent = { Text("Deleted around $deletedDate", fontSize = 11.sp) },
+                                leadingContent = { Icon(Icons.Default.FolderOff, null, tint = MaterialTheme.colorScheme.error) },
+                                trailingContent = {
+                                    OutlinedButton(
+                                        onClick = { showConfirm = true },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                    ) { Text("Delete Forever") }
+                                },
+                            )
+                            HorizontalDivider()
+                            if (showConfirm) {
+                                AlertDialog(
+                                    onDismissRequest = { showConfirm = false },
+                                    title = { Text("Permanently delete \"${dir.name}\"?") },
+                                    text  = { Text("This cannot be undone. The project name will be freed for reuse.") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                dir.deleteRecursively()
+                                                refreshDeleted++
+                                                showConfirm = false
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                        ) { Text("Delete Forever") }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
                 HorizontalDivider()
             }
 
