@@ -415,6 +415,10 @@ internal class TerminalState(
     // shared across multiple TerminalPane composables (split panels).
     var ubuntuBootstrapStarted by androidx.compose.runtime.mutableStateOf(false)
 
+    // P14-A: cached TerminalView instances keyed by tab ID so Compose reuse avoids
+    // scrollback loss when the bottom panel is hidden/reshown or tabs are switched.
+    val viewCache = mutableMapOf<String, com.termux.view.TerminalView>()
+
     val active: TabSession? get() = tabs.firstOrNull { it.id == activeId }
     val pinned: TabSession? get() = tabs.firstOrNull { it.id == (pinnedId ?: activeId) }
 }
@@ -892,6 +896,11 @@ internal fun TerminalPane(
     var acEnabled         by remember { mutableStateOf(false) }
     var showCustomCmds    by remember { mutableStateOf(false) }
     var showHistorySearch  by remember { mutableStateOf(false) }
+    // P14-C: detected URLs from terminal transcript
+    var detectedUrls       by remember { mutableStateOf<List<String>>(emptyList()) }
+    var urlBarDismissed    by remember { mutableStateOf(false) }
+    // P14-F: quick command palette (recent 5 commands strip)
+    var showCmdPalette     by remember { mutableStateOf(false) }
     var showSttHint       by remember { mutableStateOf(false) }
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
@@ -1242,6 +1251,7 @@ internal fun TerminalPane(
         val idx = tabs.indexOfFirst { it.id == id }
         tabs[idx].session.finishIfRunning()
         tabs.removeAt(idx)
+        sharedState.viewCache.remove(id) // P14-A: evict cached view so it can be GC'd
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
         // Phase 4: persist updated tab list
         scope.launch { TerminalSessionStore.save(context, tabs.map {
@@ -1253,6 +1263,27 @@ internal fun TerminalPane(
         val command = initialCommand ?: return@LaunchedEffect
         active?.session?.write(command)
         onCommandConsumed()
+    }
+
+    // P14-C: Scan terminal transcript for URLs every 2s — update chip bar
+    val urlRegex = remember {
+        Regex("https?://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+")
+    }
+    LaunchedEffect(active?.id) {
+        while (true) {
+            kotlinx.coroutines.delay(2000L)
+            val screen = active?.session?.getEmulator()?.screen
+            val text = screen?.getTranscriptText() ?: ""
+            val urls = urlRegex.findAll(text)
+                .map { it.value.trimEnd('.', ',', ')', ']') }
+                .distinct()
+                .take(5)
+                .toList()
+            if (urls != detectedUrls) {
+                detectedUrls = urls
+                if (urls.isNotEmpty()) urlBarDismissed = false
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
@@ -1576,6 +1607,121 @@ internal fun TerminalPane(
         // second line (which would steal vertical space the terminal output needs) and must never
         // silently clip buttons off the right edge either — scrolling keeps every action reachable
         // while staying a single compact row no matter how narrow the screen is.
+        // P14-F: Quick command palette — recent 5 commands strip
+        if (showCmdPalette) {
+            val recentCmds = remember(showCmdPalette) {
+                TerminalHistoryStore.load(context).takeLast(5).reversed()
+            }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1A1A2E))
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Recent commands", color = Color(0xFF569CD6), fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Box(
+                        Modifier
+                            .background(Color(0xFF2A2A2A),
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .clickable { showCmdPalette = false }
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    ) { Text("✕", color = Color(0xFF808080), fontSize = 10.sp) }
+                }
+                if (recentCmds.isEmpty()) {
+                    Text("No history yet",
+                        color = Color(0xFF555555), fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                } else {
+                    recentCmds.forEach { cmd ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    active?.session?.write(cmd)
+                                    TerminalHistoryStore.append(context, cmd)
+                                    showCmdPalette = false
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("›", color = Color(0xFF569CD6), fontSize = 13.sp,
+                                modifier = Modifier.padding(end = 6.dp))
+                            Text(cmd, color = Color(0xFFCCCCCC), fontSize = 12.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                        HorizontalDivider(color = Color(0xFF2A2A2A), thickness = 0.5.dp)
+                    }
+                    // Full search footer
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { showCmdPalette = false; showHistorySearch = true }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text("Search all history →", color = Color(0xFF569CD6), fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // P14-C: URL chip bar — appears when URLs are detected in terminal output
+        if (detectedUrls.isNotEmpty() && !urlBarDismissed) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0D1117))
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Links:", color = Color(0xFF569CD6), fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(end = 2.dp))
+                detectedUrls.forEach { url ->
+                    val displayUrl = if (url.length > 38) url.take(35) + "…" else url
+                    Box(
+                        Modifier
+                            .background(Color(0xFF1C2333),
+                                androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .clickable {
+                                try {
+                                    val intent = android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(url)
+                                    )
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    android.widget.Toast.makeText(
+                                        context, "Cannot open: $url", android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 3.dp),
+                    ) {
+                        Text(displayUrl, color = Color(0xFF4EC9B0),
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    }
+                }
+                Spacer(Modifier.width(4.dp))
+                // Dismiss button
+                Box(
+                    Modifier
+                        .background(Color(0xFF2A2A2A),
+                            androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .clickable { urlBarDismissed = true }
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) { Text("✕", color = Color(0xFF808080), fontSize = 10.sp) }
+            }
+        }
+
         if (showQuickActions) {
         Row(
             Modifier.fillMaxWidth().height(34.dp).background(Color(0xFF161616))
@@ -1724,12 +1870,20 @@ internal fun TerminalPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Cmds", color = if (showCustomCmds) Color(0xFFBB86FC) else Color(0xFFCCCCCC), fontSize = 11.sp) }
 
-            // History search — P14-B
+            // History search — P14-B: tap = full overlay, long-press = quick palette (P14-F)
             Box(
-                Modifier.background(if (showHistorySearch) Color(0xFF1A3A2A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                    .clickable { showHistorySearch = true }
+                Modifier
+                    .background(
+                        if (showHistorySearch || showCmdPalette) Color(0xFF1A3A2A) else Color(0xFF2A2A2A),
+                        androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap     = { showHistorySearch = true },
+                            onLongPress = { showCmdPalette = !showCmdPalette },
+                        )
+                    }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) { Text("🔍 Hist", color = if (showHistorySearch) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+            ) { Text("🔍 Hist", color = if (showHistorySearch || showCmdPalette) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
         }
         }
         HorizontalDivider(color = Color(0xFF2A2A2A))
