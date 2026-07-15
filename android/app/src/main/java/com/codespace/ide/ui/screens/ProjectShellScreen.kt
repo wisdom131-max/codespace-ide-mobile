@@ -2034,7 +2034,6 @@ private fun PssBottomPanelContent(
                 projectPath = if (activeEditorTab != null) {
                     java.io.File(activeEditorTab!!).parent ?: ""
                 } else "",
-                modifier = Modifier.fillMaxSize(),
             )
         }
     }
