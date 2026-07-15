@@ -253,6 +253,8 @@ fun CodeEditor(
     breakpointLines: Set<Int> = emptySet(),
     /** P8-1 Breakpoints: called when user taps a line number to toggle a breakpoint. */
     onBreakpointToggle: (Int) -> Unit = {},
+    /** P15-A: Fix with AI — called with a pre-formatted prompt when user taps "Fix with AI". */
+    onAiFixRequest: ((String) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -338,10 +340,45 @@ fun CodeEditor(
 
     val lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
+    // P15-C: Sticky scroll — derives the "current scope" line from the scroll position.
+    // Uses the line height formula: lineIdx = scrollPx / (fontSize * 1.25f).
+    // Finds the nearest non-blank, non-folded ancestor line above the visible top.
+    val stickyLine: String? = remember(vScroll.value, rawLines, foldedLineIndices, fontSize) {
+        if (rawLines.size < 3) return@remember null
+        val lineHeightPx = fontSize * 1.25f
+        val topLineIdx = (vScroll.value / lineHeightPx).toInt()
+        // Walk upward from topLineIdx to find the nearest scope-opening line
+        var i = (topLineIdx - 1).coerceIn(0, rawLines.lastIndex)
+        while (i >= 0) {
+            if (!foldedLineIndices.contains(i)) {
+                val trimmed = rawLines[i].trimEnd()
+                if (trimmed.endsWith("{") || trimmed.endsWith("(") || trimmed.endsWith(":")) {
+                    return@remember rawLines[i].take(80)
+                }
+            }
+            i--
+        }
+        null
+    }
+
     val prefix = remember(value) { currentWord(value.text, value.selection.end) }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     LaunchedEffect(prefix) { showCompletions = prefix.length >= 2 && completions.isNotEmpty() }
+
+    // P15-D: Ghost text — shows the top IntelliSense completion as grey inline text
+    // after 800ms idle with a non-empty prefix. Tab/→ accepts; any edit dismisses.
+    var ghostText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(prefix, completions) {
+        ghostText = null
+        if (prefix.length >= 2 && completions.isNotEmpty()) {
+            kotlinx.coroutines.delay(800L)
+            val top = completions.firstOrNull()
+            if (top != null && top.insertText.startsWith(prefix)) {
+                ghostText = top.insertText.removePrefix(prefix).lines().first()
+            }
+        }
+    }
 
     // ── P2-12 Parameter hints / signature help ─────────────────────────────
     // Cheap local backward-scan (no debounce needed, unlike the whole-file
@@ -434,11 +471,34 @@ fun CodeEditor(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+
+        // P15-C: Sticky scroll header — shows current scope line pinned at top
+        if (stickyLine != null) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .zIndex(20f)
+                    .background(Color(0xEE1A1A1A))
+                    .padding(start = 66.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stickyLine,
+                    color = Color(0xFF888888),
+                    fontSize = (fontSize - 1).sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .padding(end = 62.dp)
+                .padding(end = 62.dp, top = if (stickyLine != null) (fontSize * 1.4f).dp else 0.dp)
                 .verticalScroll(vScroll)
         ) {
             // Gutter
@@ -601,6 +661,7 @@ fun CodeEditor(
                 BasicTextField(
                     value = value,
                     onValueChange = { newValue ->
+                        ghostText = null  // P15-D: dismiss ghost on any keystroke
                         var updatedValue = newValue
                         // 1. Auto-close brackets & quotes
                         if (newValue.text.length == value.text.length + 1) {
@@ -841,6 +902,28 @@ fun CodeEditor(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // P15-A: Fix with AI — surfaces the nearest lint error to the AI chat
+                        val cursorOffset = value.selection.end
+                        val nearbyError = lintErrors.minByOrNull { kotlin.math.abs(it.start - cursorOffset) }
+                        if (nearbyError != null) {
+                            val errLine = value.text.take(nearbyError.start).count { it == '\n' } + 1
+                            val errText = value.text.substring(
+                                nearbyError.start.coerceIn(0, value.text.length),
+                                nearbyError.end.coerceIn(0, value.text.length)
+                            )
+                            TextButton(onClick = {
+                                onAiFixRequest?.invoke(
+                                    "Fix this ${language.name} error on line $errLine:\n" +
+                                    "Code: `$errText`\n" +
+                                    "Error: ${nearbyError.message}\n" +
+                                    "Full context:\n${value.text.lines().drop((errLine - 3).coerceAtLeast(0)).take(10).joinToString("\n")}"
+                                )
+                                contextWord = null
+                            }) {
+                                Text("⚡ Fix with AI", color = Color(0xFF4EC9B0), fontSize = 12.sp)
+                            }
+                        }
+
                         TextButton(
                             onClick = {
                                 val lines = value.text.split("\n")
@@ -1365,6 +1448,40 @@ fun CodeEditor(
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     color = Color(0xFFD4D4D4),
+                )
+            }
+        }
+
+        // P15-D: Ghost text overlay — shown when not showing full dropdown
+        if (ghostText != null && !showCompletions) {
+            val ghost = ghostText!!
+            val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
+            val cursorCol  = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
+            val topDp  = cursorLine * fontSize * 1.25f
+            val startDp = 64f + cursorCol * fontSize * 0.6f
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = startDp.dp, top = topDp.dp)
+                    .zIndex(8f)
+                    .clickable {
+                        // Tap ghost text to accept it
+                        val cursor = value.selection.end
+                        val newText = value.text.substring(0, cursor) + ghost + value.text.substring(cursor)
+                        value = TextFieldValue(
+                            text = newText,
+                            selection = androidx.compose.ui.text.TextRange(cursor + ghost.length),
+                        )
+                        onContentChange(newText)
+                        ghostText = null
+                    },
+            ) {
+                Text(
+                    text = ghost,
+                    color = Color(0xFF6A6A6A),   // dimmed — VS Code ghost text colour
+                    fontSize = fontSize.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
                 )
             }
         }

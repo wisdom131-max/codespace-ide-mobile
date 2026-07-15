@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.panes
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -55,6 +56,8 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
     var filter by remember { mutableStateOf("") }
     var autoScroll by remember { mutableStateOf(true) }
     var pausedUi by remember { mutableStateOf(false) }
+    // P15-F: level filter — empty set = show all levels
+    var levelFilter by remember { mutableStateOf(setOf<String>()) }
     // Thread-safe flag read from IO coroutine — avoids reading Compose State off main thread
     val pausedFlag = remember { AtomicBoolean(false) }
     val listState = rememberLazyListState()
@@ -100,11 +103,13 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
         }
     }
 
-    val filtered = remember(entries.toList(), filter) {
-        if (filter.isBlank()) entries.toList()
-        else entries.filter {
-            it.tag.contains(filter, ignoreCase = true) ||
-            it.message.contains(filter, ignoreCase = true)
+    val filtered = remember(entries.toList(), filter, levelFilter) {
+        entries.filter { entry ->
+            val levelOk = levelFilter.isEmpty() || entry.level in levelFilter
+            val textOk  = filter.isBlank() ||
+                entry.tag.contains(filter, ignoreCase = true) ||
+                entry.message.contains(filter, ignoreCase = true)
+            levelOk && textOk
         }
     }
 
@@ -139,6 +144,46 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
             }
             TextButton(onClick = { autoScroll = !autoScroll }) {
                 Text(if (autoScroll) "Auto" else "Manual", fontSize = 11.sp)
+            }
+        }
+        HorizontalDivider(color = Color(0xFF3E3E42))
+        // P15-F: Level filter chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF252526))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Level:", color = Color(0xFF808080), fontSize = 10.sp)
+            listOf("E" to Color(0xFFFF5F5F), "W" to Color(0xFFFFB74D),
+                   "I" to Color(0xFF81C784), "D" to Color(0xFF64B5F6),
+                   "V" to Color(0xFF9E9E9E)).forEach { (level, clr) ->
+                val active = level in levelFilter
+                Box(
+                    androidx.compose.ui.Modifier
+                        .background(
+                            if (active) clr.copy(alpha = 0.25f) else Color(0xFF3C3C3C),
+                            androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                        )
+                        .clickable {
+                            levelFilter = if (active) levelFilter - level else levelFilter + level
+                        }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(level, color = if (active) clr else Color(0xFF888888), fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace)
+                }
+            }
+            if (levelFilter.isNotEmpty()) {
+                Box(
+                    androidx.compose.ui.Modifier
+                        .background(Color(0xFF3C3C3C),
+                            androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .clickable { levelFilter = emptySet() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) { Text("✕ All", color = Color(0xFF888888), fontSize = 10.sp) }
             }
         }
         HorizontalDivider(color = Color(0xFF3E3E42))
