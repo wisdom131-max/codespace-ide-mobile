@@ -408,8 +408,8 @@ fun ExplorerSidePanel(
 
     // Read git status for badges
     LaunchedEffect(workspacePath, refresh) {
-        val wsSnap = workspacePath ?: return@LaunchedEffect
-        run {
+        val wsSnap = workspacePath  // capture to local val for smart cast
+        if (wsSnap != null) {
             try {
                 val gitDir = File(wsSnap, ".git")
                 if (gitDir.exists()) {
