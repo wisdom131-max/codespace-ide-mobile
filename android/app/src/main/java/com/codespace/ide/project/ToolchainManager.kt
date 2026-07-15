@@ -37,6 +37,7 @@ object ToolchainManager {
         val version: String?,          // detected version string or null
         val path: String?,             // detected path or null
         val note: String? = null,      // human-readable hint / error
+        val installCmd: String? = null, // suggested terminal install command
     )
 
     data class ToolchainReport(
@@ -106,6 +107,7 @@ object ToolchainManager {
                 id = ToolId.JDK, displayName = "JDK",
                 health = ToolHealth.MISSING, version = null, path = null,
                 note = "Install JDK 17+ via the Package Manager",
+                installCmd = "pkg install openjdk-17",
             )
             else -> ToolStatus(
                 id = ToolId.JDK, displayName = "JDK",
@@ -137,6 +139,7 @@ object ToolchainManager {
                         id = ToolId.GRADLE, displayName = "Gradle",
                         health = ToolHealth.MISSING, version = null, path = null,
                         note = "Install Gradle via the Package Manager (sdkman or apt)",
+                        installCmd = "pkg install gradle",
                     )
                 }
             }
@@ -166,6 +169,7 @@ object ToolchainManager {
             id = ToolId.ANDROID_SDK, displayName = "Android SDK",
             health = ToolHealth.MISSING, version = null, path = null,
             note = "Set ANDROID_HOME or install via Build Environment panel",
+            installCmd = "pkg install android-sdk",
         )
     }
 
@@ -183,6 +187,7 @@ object ToolchainManager {
                 id = ToolId.ANDROID_BUILD_TOOLS, displayName = "Build Tools (aapt)",
                 health = ToolHealth.MISSING, version = null, path = null,
                 note = "Install Android Build Tools via Android SDK Manager",
+                installCmd = "sdkmanager \"build-tools;34.0.0\"",
             )
         }
     }
@@ -201,6 +206,7 @@ object ToolchainManager {
                 id = ToolId.PLATFORM_TOOLS, displayName = "Platform Tools (adb)",
                 health = ToolHealth.MISSING, version = null, path = null,
                 note = "Install Android Platform Tools via SDK Manager",
+                installCmd = "sdkmanager \"platform-tools\"",
             )
         }
     }
@@ -219,6 +225,7 @@ object ToolchainManager {
                 id = ToolId.FLUTTER, displayName = "Flutter",
                 health = ToolHealth.MISSING, version = null, path = null,
                 note = "Install Flutter SDK for Flutter projects",
+                installCmd = "git clone https://github.com/flutter/flutter.git -b stable ~/flutter && export PATH=\$PATH:~/flutter/bin",
             )
         }
     }
@@ -236,6 +243,7 @@ object ToolchainManager {
             ToolStatus(
                 id = ToolId.DART, displayName = "Dart",
                 health = ToolHealth.MISSING, version = null, path = null,
+                installCmd = "pkg install dart",
             )
         }
     }
@@ -253,6 +261,7 @@ object ToolchainManager {
                 id = ToolId.NODEJS, displayName = "Node.js",
                 health = ToolHealth.MISSING, version = null, path = null,
                 note = "Install Node.js for React Native and web projects",
+                installCmd = "pkg install nodejs",
             )
         }
     }
@@ -269,6 +278,7 @@ object ToolchainManager {
             ToolStatus(
                 id = ToolId.NPM, displayName = "npm",
                 health = ToolHealth.MISSING, version = null, path = null,
+                installCmd = "pkg install nodejs",
             )
         }
     }
@@ -287,6 +297,7 @@ object ToolchainManager {
                 id = ToolId.PYTHON3, displayName = "Python 3",
                 health = ToolHealth.MISSING, version = null, path = null,
                 note = "Install Python 3 for Python projects",
+                installCmd = "pkg install python",
             )
         }
     }
@@ -304,6 +315,7 @@ object ToolchainManager {
             ToolStatus(
                 id = ToolId.PIP, displayName = "pip",
                 health = ToolHealth.MISSING, version = null, path = null,
+                installCmd = "pip3 install --upgrade pip",
             )
         }
     }

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,7 +32,10 @@ import kotlinx.coroutines.launch
  * Allows one-tap re-scan and profile switching.
  */
 @Composable
-fun ToolchainPanel(modifier: Modifier = Modifier) {
+fun ToolchainPanel(
+    modifier: Modifier = Modifier,
+    onRunInstall: ((String) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -143,7 +147,11 @@ fun ToolchainPanel(modifier: Modifier = Modifier) {
         // ── Tool list ───────────────────────────────────────────────────────
         LazyColumn(Modifier.fillMaxSize()) {
             items(r.tools) { tool ->
-                ToolRow(tool = tool, isRequired = tool.id in activeProfile.requiredTools)
+                ToolRow(
+                    tool = tool,
+                    isRequired = tool.id in activeProfile.requiredTools,
+                    onRunInstall = onRunInstall,
+                )
                 HorizontalDivider(color = Color(0xFF2D2D3F), thickness = 0.5.dp)
             }
         }
@@ -151,7 +159,11 @@ fun ToolchainPanel(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ToolRow(tool: ToolchainManager.ToolStatus, isRequired: Boolean) {
+private fun ToolRow(
+    tool: ToolchainManager.ToolStatus,
+    isRequired: Boolean,
+    onRunInstall: ((String) -> Unit)? = null,
+) {
     val (icon, tint) = when (tool.health) {
         ToolchainManager.ToolHealth.OK      -> Icons.Default.CheckCircle to Color(0xFF4CAF50)
         ToolchainManager.ToolHealth.MISSING -> Icons.Default.Error to Color(0xFFEF5350)
@@ -196,13 +208,25 @@ private fun ToolRow(tool: ToolchainManager.ToolStatus, isRequired: Boolean) {
             }
         }
 
-        tool.path?.let {
-            Text(
-                it.substringAfterLast("/"),
-                fontSize = 9.sp,
-                color = Color(0xFF4B5563),
-                fontFamily = FontFamily.Monospace,
-            )
+        if (tool.health == ToolchainManager.ToolHealth.MISSING && tool.installCmd != null && onRunInstall != null) {
+            TextButton(
+                onClick = { onRunInstall(tool.installCmd) },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp),
+            ) {
+                Icon(Icons.Default.Download, null, tint = Color(0xFF569CD6), modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(3.dp))
+                Text("Install", fontSize = 10.sp, color = Color(0xFF569CD6))
+            }
+        } else {
+            tool.path?.let {
+                Text(
+                    it.substringAfterLast("/"),
+                    fontSize = 9.sp,
+                    color = Color(0xFF4B5563),
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
     }
 }

@@ -75,6 +75,7 @@ import com.codespace.ide.ui.panes.VariableInspectorPanel
 import com.codespace.ide.ui.panes.SymbolSearchPanel
 import com.codespace.ide.ui.panes.BuildPanel
 import com.codespace.ide.editor.FileIndexer
+import org.json.JSONArray
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
 private data class IdeColors(
@@ -357,6 +358,17 @@ fun ProjectShellScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Resolve human-readable project name from local project store
+    val projectName = remember(projectId) {
+        try {
+            val str = context.getSharedPreferences("projects", android.content.Context.MODE_PRIVATE)
+                .getString("list", null) ?: return@remember projectId
+            val arr = JSONArray(str)
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+                .firstOrNull { it.getString("id") == projectId }
+                ?.getString("name") ?: projectId
+        } catch (_: Exception) { projectId }
+    }
     val density = LocalDensity.current
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.
@@ -714,7 +726,7 @@ fun ProjectShellScreen(
                     ) {
                         Icon(Icons.Default.Search, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Workspace", fontSize = 13.sp, color = TabTextInactive, maxLines = 1)
+                        Text(projectName, fontSize = 13.sp, color = TabTextInactive, maxLines = 1)
                     }
                 }
                 // Right: action icons
@@ -810,82 +822,19 @@ fun ProjectShellScreen(
             // ── Main body
             Row(Modifier.weight(1f).fillMaxWidth()) {
 
-                // Activity Bar
-                Column(
-                    Modifier.width(48.dp).fillMaxHeight().background(ActivityBarBg)
-                        .border(1.dp, DividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    // Git badge: count staged + unstaged changes via `git status --porcelain`
-                    val gitBadgeCount by produceState(0, projectId, activeEditorTab) {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                val repoDir = java.io.File(
-                                    if (activeEditorTab != null) java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
-                                    else java.io.File(context.filesDir, "projects/$projectId").absolutePath
-                                )
-                                if (java.io.File(repoDir, ".git").exists()) {
-                                    val proc = ProcessBuilder("git", "status", "--porcelain")
-                                        .directory(repoDir)
-                                        .redirectErrorStream(true)
-                                        .start()
-                                    val lines = proc.inputStream.bufferedReader().readLines()
-                                    proc.waitFor()
-                                    value = lines.count { it.isNotBlank() }
-                                }
-                            } catch (_: Exception) {}
-                        }
-                    }
-                    // Problems badge: error-level lint issues in active file
-                    val runBadgeCount by produceState(0, activeEditorTab) {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                val path = activeEditorTab
-                                if (path != null) {
-                                    val src = java.io.File(path).takeIf { it.exists() }?.readText() ?: ""
-                                    value = LintChecker.check(path, src).count { it.severity == Problem.Severity.ERROR }
-                                }
-                            } catch (_: Exception) {}
-                        }
-                    }
-                    listOf(
-                        Triple(SidePanel.EXPLORER, Icons.Default.Description, 0),
-                        Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
-                        Triple(SidePanel.GIT, Icons.Default.AccountTree, gitBadgeCount),
-                        Triple(SidePanel.RUN, Icons.Default.BugReport, runBadgeCount),
-                        Triple(SidePanel.EXTENSIONS, Icons.Default.Extension, 0),
-                    ).forEach { (panel, icon, badge) ->
-                        val isActive = activePanel == panel
-                        Box(
-                            Modifier.fillMaxWidth().height(48.dp)
-                                .clickable { activePanel = if (activePanel == panel) null else panel },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
-                            Icon(icon, null, tint = if (isActive) ActivityBarIconActive else ActivityBarIcon, modifier = Modifier.size(24.dp))
-                            // Badge count
-                            if (badge > 0) {
-                                Box(
-                                    Modifier.align(Alignment.BottomEnd)
-                                        .background(Color(0xFF007ACC), androidx.compose.foundation.shape.CircleShape)
-                                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                                ) {
-                                    Text(badge.toString(), fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.weight(1f))
-
-                    // Connectors hub (GitHub + SSH + Services)
-                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showPersonMenu = true }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.AccountCircle, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
-                    }
-                    Box(Modifier.fillMaxWidth().height(48.dp).clickable { showGearMenu = true }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Settings, null, tint = ActivityBarIcon, modifier = Modifier.size(24.dp))
-                    }
-                                    }
+                // Activity Bar — extracted to PssActivityBar (DEX register reduction)
+                PssActivityBar(
+                    projectId = projectId,
+                    activeEditorTab = activeEditorTab,
+                    activePanel = activePanel,
+                    onActivePanelChange = { activePanel = it },
+                    onShowPersonMenu = { showPersonMenu = true },
+                    onShowGearMenu = { showGearMenu = true },
+                    activityBarBg = ActivityBarBg,
+                    activityBarIcon = ActivityBarIcon,
+                    activityBarIconActive = ActivityBarIconActive,
+                    dividerColor = DividerColor,
+                )
 
                 // Side Panel
                 if (activePanel != null) {
@@ -1278,164 +1227,34 @@ fun ProjectShellScreen(
                         HorizontalDivider(color = DividerColor)
                     }
 
-                    // Bottom Panel
-                    if (showBottomPanel) {
-                        Box(
-                            Modifier.fillMaxWidth().height(4.dp).background(DividerColor)
-                                .pointerInput(Unit) {
-                                    detectDragGestures(
-                                        onDragStart = { isDraggingBottomPanel = true },
-                                        onDragEnd = {
-                                            isDraggingBottomPanel = false
-                                            // Only fully collapse (and reset to a sane default height for
-                                            // next time it's reopened) once the finger is lifted below the
-                                            // threshold — while dragging, we let it "flow" all the way down
-                                            // to 0 instead of snapping/vanishing mid-drag.
-                                            if (bottomPanelHeight < 60f) {
-                                                showBottomPanel = false
-                                                bottomPanelHeight = 260f
-                                            }
-                                        },
-                                        onDragCancel = { isDraggingBottomPanel = false },
-                                    ) { _, dragAmount ->
-                                        val nh = bottomPanelHeight - dragAmount.y
-                                        bottomPanelHeight = nh.coerceIn(0f, totalHeight * 0.92f)
-                                    }
-                                }
-                        )
-                        Row(
-                            Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(22.dp).padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            BottomTab.entries.forEach { tab ->
-                                val isActive = tab == activeBottomTab
-                                Box(
-                                    Modifier.clickable { activeBottomTab = tab }
-                                        .background(if (isActive) Color(0xFFDCEAFB) else Color.Transparent, RoundedCornerShape(4.dp))
-                                        .border(if (isActive) 1.dp else 0.dp, if (isActive) Color(0xFF007ACC) else Color.Transparent, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(tab.name, fontSize = 10.sp,
-                                        color = if (isActive) Color(0xFF007ACC) else Color(0xFF717171),
-                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal)
-                                }
-                                Spacer(Modifier.width(4.dp))
-                            }
-                            Spacer(Modifier.weight(1f))
-
-                            Icon(Icons.Default.OpenInFull, null, tint = TabTextInactive,
-                                modifier = Modifier.size(16.dp).clickable {
-                                    bottomPanelHeight = if (bottomPanelHeight > totalHeight * 0.5f) 260f else totalHeight * 0.75f
-                                })
-                            Spacer(Modifier.width(8.dp))
-                            Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                                modifier = Modifier.size(16.dp).clickable { showBottomPanel = false })
-                            Spacer(Modifier.width(4.dp))
-                        }
-                        HorizontalDivider(color = DividerColor)
-                        val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(0.dp, 600.dp)
-                        // While actively dragging, follow the finger 1:1 (snap — no animation lag).
-                        // Otherwise (icon-triggered resize, programmatic changes) animate smoothly so the
-                        // panel "flows" open/closed instead of jumping.
-                        val animatedBh by animateDpAsState(
-                            targetValue = bh,
-                            animationSpec = if (isDraggingBottomPanel) snap() else tween(180),
-                            label = "bottomPanelHeight",
-                        )
-                        Box(Modifier.fillMaxWidth().height(animatedBh).background(PanelBg)) {
-                            when (activeBottomTab) {
-                                BottomTab.TERMINAL -> TerminalPane(
-                                    initialCommand = terminalCommandToRun,
-                                    onCommandConsumed = { terminalCommandToRun = null },
-                                    externalState = sharedTerminalState,
-                                    projectId = projectId,
-                                )
-                                BottomTab.PROBLEMS -> ProblemsPanel(
-                                    activeFilePath = activeEditorTab,
-                                    onJumpToSource = { showBottomPanel = false },
-                                )
-                                BottomTab.OUTPUT   -> OutputPanel()
-                                BottomTab.DEBUG    -> DebugConsolePanel(
-                                    messages = debugMessages,
-                                    input = debugInput,
-                                    onSend = { text ->
-                                        if (text.isNotBlank()) {
-                                            debugMessages.add("> $text")
-                                            debugInput.value = ""
-                                        }
-                                    },
-                                    onRun = {
-                                        val path = activeEditorTab
-                                        if (path.isNullOrBlank()) {
-                                            debugMessages.add("[debug] No file open — open a file first, then press Run.")
-                                        } else {
-                                            val cmd = buildRunCommand(path)
-                                            if (cmd == null) {
-                                                debugMessages.add("[debug] Don't know how to run '${path.substringAfterLast('/')}' — unsupported file type.")
-                                            } else {
-                                                debugMessages.add("> $cmd")
-                                                debugMessages.add("[debug] Dispatched to Terminal tab — switch there to see live output.")
-                                                AppOutputLog.log("Running ${path.substringAfterLast('/')}", "debug")
-                                                terminalCommandToRun = cmd + "\r"
-                                                showBottomPanel = true
-                                                activeBottomTab = BottomTab.TERMINAL
-                                            }
-                                        }
-                                    },
-                                )
-                                BottomTab.PORTS    -> PortsPanel(onOpenInPreview = { port ->
-                                    previewPort = port
-                                    activeBottomTab = BottomTab.PREVIEW
-                                })
-                                BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
-                                BottomTab.PREVIEW  -> PreviewPane(
-                                    activeFilePath = activeEditorTab ?: "",
-                                    initialPort = previewPort,
-                                    externalState = sharedPreviewState,
-                                )
-                                BottomTab.LOGCAT   -> LogcatPanel(
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                BottomTab.VARIABLES -> VariableInspectorPanel(
-                                    activeFilePath = activeEditorTab,
-                                    onJumpToSource = { showBottomPanel = false },
-                                )
-                                BottomTab.BUILD    -> BuildPanel(
-                                    projectPath = if (activeEditorTab != null) {
-                                        java.io.File(activeEditorTab).parent
-                                    } else {
-                                        java.io.File(context.filesDir, "projects/$projectId").absolutePath
-                                    },
-                                )
-                                BottomTab.TOOLCHAIN -> ToolchainPanel(
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                BottomTab.TASKS -> TaskRunnerPanel(
-                                    projectPath = if (activeEditorTab != null) {
-                                        java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
-                                    } else {
-                                        java.io.File(context.filesDir, "projects/$projectId").absolutePath
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                BottomTab.HISTORY -> BuildHistoryPanel(
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                BottomTab.ARTIFACTS -> ArtifactPanel(
-                                    projectPath = if (activeEditorTab != null) {
-                                        java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
-                                    } else {
-                                        java.io.File(context.filesDir, "projects/$projectId").absolutePath
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                BottomTab.DOWNLOADS -> DownloadCenterPanel(
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-                    }
+                    // Bottom Panel — extracted to PssBottomPanelContent to keep
+                    // ProjectShellScreen's DEX method register count below ART's 256-register
+                    // verifier limit (VerifyError fix).
+                    PssBottomPanelContent(
+                        showBottomPanel = showBottomPanel,
+                        onHideBottomPanel = { showBottomPanel = false },
+                        bottomPanelHeight = bottomPanelHeight,
+                        onBottomPanelHeightChange = { bottomPanelHeight = it },
+                        isDraggingBottomPanel = isDraggingBottomPanel,
+                        onDraggingChange = { isDraggingBottomPanel = it },
+                        activeBottomTab = activeBottomTab,
+                        onActiveBottomTabChange = { activeBottomTab = it },
+                        terminalCommandToRun = terminalCommandToRun,
+                        onCommandConsumed = { terminalCommandToRun = null },
+                        sharedTerminalState = sharedTerminalState,
+                        activeEditorTab = activeEditorTab,
+                        debugMessages = debugMessages,
+                        debugInput = debugInput,
+                        sharedPreviewState = sharedPreviewState,
+                        previewPort = previewPort,
+                        onPreviewPortChange = { previewPort = it },
+                        projectId = projectId,
+                        totalHeight = totalHeight,
+                        dividerColor = DividerColor,
+                        panelBg = PanelBg,
+                        tabTextInactive = TabTextInactive,
+                        onRunInTerminal = { cmd -> terminalCommandToRun = cmd + "\r" },
+                    )
 
                 } // end editor Column
 
@@ -1958,6 +1777,259 @@ fun ProjectShellScreen(
  * given language. Returns null for file types with no direct runner (the
  * user still has the Terminal for anything custom).
  */
+/**
+ * Activity bar (left icon strip). Extracted from ProjectShellScreen to reduce DEX register count.
+ */
+@Composable
+private fun PssActivityBar(
+    projectId: String,
+    activeEditorTab: String?,
+    activePanel: SidePanel?,
+    onActivePanelChange: (SidePanel?) -> Unit,
+    onShowPersonMenu: () -> Unit,
+    onShowGearMenu: () -> Unit,
+    activityBarBg: Color,
+    activityBarIcon: Color,
+    activityBarIconActive: Color,
+    dividerColor: Color,
+) {
+    val context = LocalContext.current
+    Column(
+        Modifier.width(48.dp).fillMaxHeight().background(activityBarBg)
+            .border(1.dp, dividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val gitBadgeCount by produceState(0, projectId, activeEditorTab) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val repoDir = java.io.File(
+                        if (activeEditorTab != null) java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
+                        else java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                    )
+                    if (java.io.File(repoDir, ".git").exists()) {
+                        val proc = ProcessBuilder("git", "status", "--porcelain")
+                            .directory(repoDir)
+                            .redirectErrorStream(true)
+                            .start()
+                        val lines = proc.inputStream.bufferedReader().readLines()
+                        proc.waitFor()
+                        value = lines.count { it.isNotBlank() }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+        val runBadgeCount by produceState(0, activeEditorTab) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val path = activeEditorTab
+                    if (path != null) {
+                        val src = java.io.File(path).takeIf { it.exists() }?.readText() ?: ""
+                        value = LintChecker.check(path, src).count { it.severity == Problem.Severity.ERROR }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+        listOf(
+            Triple(SidePanel.EXPLORER, Icons.Default.Description, 0),
+            Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
+            Triple(SidePanel.GIT, Icons.Default.AccountTree, gitBadgeCount),
+            Triple(SidePanel.RUN, Icons.Default.BugReport, runBadgeCount),
+            Triple(SidePanel.EXTENSIONS, Icons.Default.Extension, 0),
+        ).forEach { (panel, icon, badge) ->
+            val isActive = activePanel == panel
+            Box(
+                Modifier.fillMaxWidth().height(48.dp)
+                    .clickable { onActivePanelChange(if (activePanel == panel) null else panel) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
+                Icon(icon, null, tint = if (isActive) activityBarIconActive else activityBarIcon, modifier = Modifier.size(24.dp))
+                if (badge > 0) {
+                    Box(
+                        Modifier.align(Alignment.BottomEnd)
+                            .background(Color(0xFF007ACC), androidx.compose.foundation.shape.CircleShape)
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    ) {
+                        Text(badge.toString(), fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowPersonMenu() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.AccountCircle, null, tint = activityBarIcon, modifier = Modifier.size(24.dp))
+        }
+        Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowGearMenu() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.Settings, null, tint = activityBarIcon, modifier = Modifier.size(24.dp))
+        }
+    }
+}
+
+/**
+ * Extracted from ProjectShellScreen to keep the parent method's DEX register count
+ * below ART's 256-register limit (which causes VerifyError on older ART runtimes).
+ */
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun PssBottomPanelContent(
+    showBottomPanel: Boolean,
+    onHideBottomPanel: () -> Unit,
+    bottomPanelHeight: Float,
+    onBottomPanelHeightChange: (Float) -> Unit,
+    isDraggingBottomPanel: Boolean,
+    onDraggingChange: (Boolean) -> Unit,
+    activeBottomTab: BottomTab,
+    onActiveBottomTabChange: (BottomTab) -> Unit,
+    terminalCommandToRun: String?,
+    onCommandConsumed: () -> Unit,
+    sharedTerminalState: TerminalState,
+    activeEditorTab: String?,
+    debugMessages: androidx.compose.runtime.snapshots.SnapshotStateList<String>,
+    debugInput: androidx.compose.runtime.MutableState<String>,
+    sharedPreviewState: com.codespace.ide.ui.panes.PreviewState,
+    previewPort: Int,
+    onPreviewPortChange: (Int) -> Unit,
+    projectId: String,
+    totalHeight: Float,
+    dividerColor: Color,
+    panelBg: Color,
+    tabTextInactive: Color,
+    onRunInTerminal: (String) -> Unit = {},
+) {
+    val density = LocalDensity.current
+    if (!showBottomPanel) return
+
+    Box(
+        Modifier.fillMaxWidth().height(4.dp).background(dividerColor)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { onDraggingChange(true) },
+                    onDragEnd = {
+                        onDraggingChange(false)
+                        if (bottomPanelHeight < 60f) {
+                            onHideBottomPanel()
+                            onBottomPanelHeightChange(260f)
+                        }
+                    },
+                    onDragCancel = { onDraggingChange(false) },
+                ) { _, dragAmount ->
+                    val nh = bottomPanelHeight - dragAmount.y
+                    onBottomPanelHeightChange(nh.coerceIn(0f, totalHeight * 0.92f))
+                }
+            }
+    )
+    Row(
+        Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(22.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BottomTab.entries.forEach { tab ->
+            val isActive = tab == activeBottomTab
+            Box(
+                Modifier.clickable { onActiveBottomTabChange(tab) }
+                    .background(if (isActive) Color(0xFFDCEAFB) else Color.Transparent, RoundedCornerShape(4.dp))
+                    .border(if (isActive) 1.dp else 0.dp, if (isActive) Color(0xFF007ACC) else Color.Transparent, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(tab.name, fontSize = 10.sp,
+                    color = if (isActive) Color(0xFF007ACC) else Color(0xFF717171),
+                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal)
+            }
+            Spacer(Modifier.width(4.dp))
+        }
+        Spacer(Modifier.weight(1f))
+        Icon(Icons.Default.OpenInFull, null, tint = tabTextInactive,
+            modifier = Modifier.size(16.dp).clickable {
+                onBottomPanelHeightChange(if (bottomPanelHeight > totalHeight * 0.5f) 260f else totalHeight * 0.75f)
+            })
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.Default.Close, null, tint = tabTextInactive,
+            modifier = Modifier.size(16.dp).clickable { onHideBottomPanel() })
+        Spacer(Modifier.width(4.dp))
+    }
+    HorizontalDivider(color = dividerColor)
+    val bh = with(density) { bottomPanelHeight.toDp() }.coerceIn(0.dp, 600.dp)
+    val animatedBh by animateDpAsState(
+        targetValue = bh,
+        animationSpec = if (isDraggingBottomPanel) snap() else tween(180),
+        label = "bottomPanelHeight",
+    )
+    Box(Modifier.fillMaxWidth().height(animatedBh).background(panelBg)) {
+        when (activeBottomTab) {
+            BottomTab.TERMINAL -> TerminalPane(
+                initialCommand = terminalCommandToRun,
+                onCommandConsumed = onCommandConsumed,
+                externalState = sharedTerminalState,
+                projectId = projectId,
+            )
+            BottomTab.PROBLEMS -> ProblemsPanel(
+                activeFilePath = activeEditorTab,
+                onJumpToSource = { onHideBottomPanel() },
+            )
+            BottomTab.OUTPUT   -> OutputPanel()
+            BottomTab.DEBUG    -> DebugConsolePanel(
+                messages = debugMessages,
+                input = debugInput,
+                onSend = { text ->
+                    if (text.isNotBlank()) {
+                        debugMessages.add("> $text")
+                        debugInput.value = ""
+                    }
+                },
+                onRun = {
+                    val path = activeEditorTab
+                    if (path.isNullOrBlank()) {
+                        debugMessages.add("[debug] No file open — open a file first, then press Run.")
+                    } else {
+                        val cmd = buildRunCommand(path)
+                        if (cmd == null) {
+                            debugMessages.add("[debug] Don't know how to run '${path.substringAfterLast('/')}' — unsupported file type.")
+                        } else {
+                            debugMessages.add("> $cmd")
+                            debugMessages.add("[debug] Dispatched to Terminal tab — switch there to see live output.")
+                            AppOutputLog.log("Running ${path.substringAfterLast('/')}", "debug")
+                            onRunInTerminal(cmd)
+                            onActiveBottomTabChange(BottomTab.TERMINAL)
+                        }
+                    }
+                },
+            )
+            BottomTab.PORTS    -> PortsPanel(onOpenInPreview = { port ->
+                onPreviewPortChange(port)
+                onActiveBottomTabChange(BottomTab.PREVIEW)
+            })
+            BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
+            BottomTab.PREVIEW  -> PreviewPane(
+                activeFilePath = activeEditorTab ?: "",
+                initialPort = previewPort,
+                externalState = sharedPreviewState,
+            )
+            BottomTab.LOGCAT   -> LogcatPanel(modifier = Modifier.fillMaxSize())
+            BottomTab.TOOLCHAIN -> ToolchainPanel(
+                modifier = Modifier.fillMaxSize(),
+                onRunInstall = { cmd ->
+                    onRunInTerminal(cmd)
+                    onActiveBottomTabChange(BottomTab.TERMINAL)
+                },
+            )
+            BottomTab.TASKS -> TaskRunnerPanel(
+                projectPath = if (activeEditorTab != null) {
+                    java.io.File(activeEditorTab!!).parent ?: ""
+                } else "",
+                modifier = Modifier.fillMaxSize(),
+            )
+            BottomTab.HISTORY -> BuildHistoryPanel(modifier = Modifier.fillMaxSize())
+            BottomTab.ARTIFACTS -> ArtifactPanel(
+                projectPath = if (activeEditorTab != null) {
+                    java.io.File(activeEditorTab!!).parent ?: ""
+                } else "",
+                modifier = Modifier.fillMaxSize(),
+            )
+            BottomTab.DOWNLOADS -> DownloadCenterPanel(modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
 private fun buildRunCommand(path: String): String? {
     val quoted = "\"$path\""
     return when {

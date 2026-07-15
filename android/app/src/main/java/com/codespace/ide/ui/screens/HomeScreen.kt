@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.screens
 
 import android.content.Context
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
@@ -148,6 +150,8 @@ fun HomeScreen(
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
+    var projectToRename by remember { mutableStateOf<Project?>(null) }
+    var renameInput     by remember { mutableStateOf("") }
     val projects      = remember { mutableStateListOf<Project>().apply { addAll(loadProjectsLocal(context)) } }
     var syncing       by remember { mutableStateOf(false) }
     var syncStatus    by remember { mutableStateOf("") }
@@ -298,7 +302,13 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp)
-                                .clickable { onOpenProject(project.id) },
+                                .combinedClickable(
+                                    onClick = { onOpenProject(project.id) },
+                                    onLongClick = {
+                                        projectToRename = project
+                                        renameInput = project.name
+                                    },
+                                ),
                         ) {
                             Row(
                                 Modifier.padding(16.dp),
@@ -348,7 +358,40 @@ fun HomeScreen(
     }
 
     if (showRepoBrowser) {
-        RepoBrowserSheet(
+        // Rename dialog
+    if (projectToRename != null) {
+        AlertDialog(
+            onDismissRequest = { projectToRename = null },
+            title = { Text("Rename Project") },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = renameInput.trim()
+                    if (name.isNotEmpty()) {
+                        val idx = projects.indexOfFirst { it.id == projectToRename!!.id }
+                        if (idx >= 0) {
+                            projects[idx] = projects[idx].copy(name = name)
+                            saveProjectsLocal(context, projects.toList())
+                        }
+                    }
+                    projectToRename = null
+                }) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { projectToRename = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    RepoBrowserSheet(
             onDismiss = { showRepoBrowser = false },
             onProjectCreated = { project ->
                 projects.add(project)
