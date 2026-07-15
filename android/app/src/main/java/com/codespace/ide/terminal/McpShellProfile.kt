@@ -181,7 +181,7 @@ object McpShellProfile {
         appendLine("")
         appendLine("echo '[Agent] 32 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
         appendLine("[ -n \"${'\$'}{WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: ${'\$'}{WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
-        appendLine("echo "[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch..."")
+        appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
     }
 
     private fun buildAgentJson(): String =
