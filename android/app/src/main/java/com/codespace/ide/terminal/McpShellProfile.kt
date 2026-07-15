@@ -101,7 +101,7 @@ object McpShellProfile {
         appendLine("d=json.load(sys.stdin)")
         appendLine("for t in d.get('tools',[]):")
         appendLine("    print(f'  {t}')")
-        appendLine("print(f'\\nTotal: {d.get(\"count\",0)} tools available')\" 2>/dev/null || echo '[agent] API not reachable'")
+        appendLine("print('Total: '+str(d.get('count',0))+' tools available')\" 2>/dev/null || echo '[agent] API not reachable'")
         appendLine("}")
         appendLine("")
         appendLine("# ── Get system prompt for CLI AI tools ────────────────────────────")
