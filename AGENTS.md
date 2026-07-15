@@ -29,7 +29,8 @@
 | Last green | #1199 — fix(P16-A): declare actionToast — TREE CLEAN ✅ |
 | Last pushed | 98cd9347dc — fix(P16-A): actionToast declaration |
 | **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
-| **Next** | Plan Phase 18 |
+| **Next** | Plan Phase 19 |
+| Phase 18 | ⏳ IN PROGRESS — builds #1210/#1211 running — Replace in Files + Select All Occurrences |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
 | Phase 16 | ✅ COMPLETE (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync, Sync UI |
 | Phase 15 | ✅ COMPLETE (build #1183 GREEN) |
@@ -1543,6 +1544,28 @@ Modified files in Phase 14 (so far):
 New context menu items added to ExplorerPane: "Compress" (zip), "Permissions" (chmod)
 New state vars: showCompressDialog, showPermDialog (unconditional remember at top)
 No new files created — all changes in ExplorerPane.kt
+
+---
+
+
+---
+
+## PHASE 18 — MULTI-FILE EDIT & REFACTORING ⏳ IN PROGRESS
+
+**Goal:** Power-user editing across files — replace everywhere, multi-occurrence select.
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| P18-A | Replace in Files — "Replace" chip in ProjectFileSearchPanel, replaceQuery field, "Replace All (N)" button writes back to disk, snackbar feedback | `ProjectFileSearchPanel.kt` | ⏳ #1210 running |
+| P18-B | Select All Occurrences — long-press context menu action seeds `extraCursors` at every `...` match, multi-cursor types simultaneously | `CodeEditor.kt` | ⏳ #1211 running |
+| P18-C | Rename Symbol across files — (planned) extend Rename Symbol to optionally scan project files | TBD | 📋 QUEUED |
+
+#### Design notes
+- P18-A uses `Regex.escape(query).replace()` on each file (not raw regex) — safe for literal strings
+- P18-A dispatches on `Dispatchers.IO`, shows `SnackbarHost` result count
+- P18-B reuses existing `extraCursors` multi-cursor engine (fan-out already implemented)
+- P18-B places primary cursor at first match, extra cursors at all subsequent matches
+- P18-C will reuse `ProjectFileSearchPanel`'s text search results + `File.writeText()` pattern from P18-A
 
 ---
 
