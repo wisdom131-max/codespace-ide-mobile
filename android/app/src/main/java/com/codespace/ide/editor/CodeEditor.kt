@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.LocalEditorColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 private data class Completion(val label: String, val kind: CompletionKind, val insertText: String = label, val doc: String? = null)
@@ -255,6 +256,8 @@ fun CodeEditor(
     onBreakpointToggle: (Int) -> Unit = {},
     /** P15-A: Fix with AI — called with a pre-formatted prompt when user taps "Fix with AI". */
     onAiFixRequest: ((String) -> Unit)? = null,
+    /** P18-C: Project root path for cross-file rename. Null = single-file only. */
+    projectRoot: String? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -391,6 +394,10 @@ fun CodeEditor(
     var renameDialogWord by remember { mutableStateOf<String?>(null) }  // null = closed
     var renameNewName by remember { mutableStateOf("") }
     var renameCount by remember { mutableStateOf(0) }
+    // P18-C — Cross-file rename
+    var renameProjectWide by remember { mutableStateOf(false) }
+    var renameCrossFileCount by remember { mutableStateOf(0) }
+    var renameInProgress by remember { mutableStateOf(false) }
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var contextWord by remember { mutableStateOf<String?>(null) }
@@ -1084,7 +1091,8 @@ fun CodeEditor(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "$renameCount occurrence${if (renameCount != 1) "s" else ""} of '$wordToRename'",
+                            "$renameCount occurrence${if (renameCount != 1) "s" else ""} of '$wordToRename'" +
+                            if (renameProjectWide && renameCrossFileCount > 0) " + $renameCrossFileCount in other files" else "",
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                         )
@@ -1104,6 +1112,29 @@ fun CodeEditor(
                                 cursorColor = Color(0xFF007ACC),
                             ),
                         )
+                        if (projectRoot != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { renameProjectWide = !renameProjectWide },
+                            ) {
+                                Checkbox(
+                                    checked = renameProjectWide,
+                                    onCheckedChange = { renameProjectWide = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007ACC)),
+                                )
+                                Text(
+                                    "Rename in all project files",
+                                    color = Color(0xFFD4D4D4),
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                        if (renameInProgress) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Color(0xFF007ACC),
+                            )
+                        }
                     }
                 },
                 confirmButton = {
@@ -1118,6 +1149,28 @@ fun CodeEditor(
                                     selection = value.selection,
                                 )
                                 onContentChange(newText)
+                                // P18-C: Cross-file rename
+                                if (renameProjectWide && projectRoot != null) {
+                                    renameInProgress = true
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val root = File(projectRoot)
+                                        var totalCrossFile = 0
+                                        root.walkTopDown()
+                                            .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
+                                            .forEach { f ->
+                                                try {
+                                                    val text = f.readText()
+                                                    if (pattern.containsMatchIn(text)) {
+                                                        val updated = pattern.replace(text, newName)
+                                                        f.writeText(updated)
+                                                        totalCrossFile += pattern.findAll(text).count()
+                                                    }
+                                                } catch (_: Exception) {}
+                                            }
+                                        renameCrossFileCount = totalCrossFile
+                                        renameInProgress = false
+                                    }
+                                }
                             }
                             renameDialogWord = null
                         },
