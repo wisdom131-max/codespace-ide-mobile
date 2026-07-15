@@ -233,11 +233,11 @@ private fun currentWord(text: String, cursor: Int): String {
     return text.substring(start, end)
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
 /** P20-A: Git blame info per line */
 data class BlameLine(val author: String, val date: String, val shortSha: String)
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun CodeEditor(
     content: String,
     language: Language,
