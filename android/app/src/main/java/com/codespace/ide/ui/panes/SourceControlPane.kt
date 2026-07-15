@@ -275,14 +275,46 @@ fun SourceControlPane(projectId: String) {
             Icon(Icons.Default.Refresh, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable { refresh++ })
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Default.ArrowDownward, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
-                scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }; refreshStatus() }
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }
+                    refreshStatus()
+                    actionToast = if (result.startsWith("Error:")) "Pull failed: ${result.take(60)}" else "Pull complete"
+                }
+            })
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Default.Sync, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "fetch", "--all") }
+                    refreshStatus()
+                    actionToast = if (result.startsWith("Error:")) "Fetch failed: ${result.take(60)}" else "Fetch complete"
+                }
             })
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Default.ArrowUpward, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
-                scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }; refreshStatus() }
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
+                    refreshStatus()
+                    actionToast = if (result.startsWith("Error:")) "Push failed: ${result.take(60)}" else "Push complete"
+                }
             })
         }
         HorizontalDivider(color = DividerColor)
+
+        // P16-A: action feedback toast
+        actionToast?.let { msg ->
+            LaunchedEffect(msg) {
+                kotlinx.coroutines.delay(3000)
+                actionToast = null
+            }
+            Text(
+                text = msg,
+                fontSize = 11.sp,
+                color = if (msg.contains("failed")) ErrorColor else IconColor,
+                modifier = Modifier.fillMaxWidth().background(HeaderBg).padding(horizontal = 8.dp, vertical = 3.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
 
         // ── Branch row ───────────────────────────────────────────────────────
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
