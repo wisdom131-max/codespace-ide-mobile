@@ -30,6 +30,7 @@
 | Last pushed | 98cd9347dc — fix(P16-A): actionToast declaration |
 | **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
 | **Next** | Plan Phase 19 |
+| Phase 18 | ⏳ IN PROGRESS — Replace in Files + Select All Occurrences |
 | Phase 18 | ⏳ IN PROGRESS — builds #1210/#1211 running — Replace in Files + Select All Occurrences |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
 | Phase 16 | ✅ COMPLETE (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync, Sync UI |
@@ -1566,6 +1567,26 @@ No new files created — all changes in ExplorerPane.kt
 - P18-B reuses existing `extraCursors` multi-cursor engine (fan-out already implemented)
 - P18-B places primary cursor at first match, extra cursors at all subsequent matches
 - P18-C will reuse `ProjectFileSearchPanel`'s text search results + `File.writeText()` pattern from P18-A
+
+---
+
+
+---
+
+## PHASE 18 — MULTI-FILE EDIT & REFACTORING ⏳ IN PROGRESS
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| P18-A | Replace in Files — "Replace" amber chip in ProjectFileSearchPanel, batch File.writeText() + Snackbar feedback | `ProjectFileSearchPanel.kt` | ⏳ #1210 |
+| P18-B | Select All Occurrences — context sheet action seeds extraCursors at every word-boundary match in current file | `CodeEditor.kt` | ⏳ #1211 |
+| P18-C | Cross-file Rename Symbol — project-wide word-boundary replace with result count | TBD | TODO |
+
+#### CI Build History — Phase 18
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1210 | ⏳ RUNNING | feat(P18-A): Replace in Files in ProjectFileSearchPanel |
+| #1211 | ⏳ RUNNING | feat(P18-B): Select All Occurrences in CodeEditor |
 
 ---
 
