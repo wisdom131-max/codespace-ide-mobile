@@ -63,6 +63,8 @@ private data class CommitRow(
     val date: String,
 )
 
+private data class GraphRow(val graph: String, val sha: String, val message: String)
+
 private data class StashRow(val index: Int, val message: String, val sha: String)
 private data class TagRow(val name: String, val sha: String, val isAnnotated: Boolean, val message: String)
 
@@ -105,7 +107,7 @@ private fun fmtEpoch(ms: Long): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(ms))
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-private enum class ScmTab { CHANGES, LOG, STASH, TAGS }
+private enum class ScmTab { CHANGES, LOG, GRAPH, STASH, TAGS }
 
 // ══════════════════════════════════════════════════════════════════════════════
 @Composable
@@ -121,6 +123,7 @@ fun SourceControlPane(projectId: String) {
     var stagedChanges   by remember { mutableStateOf<List<GitChange>>(emptyList()) }
     var unstagedChanges by remember { mutableStateOf<List<GitChange>>(emptyList()) }
     var conflictedFiles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var graphData by remember { mutableStateOf<List<GraphRow>>(emptyList()) }
     var loading         by remember { mutableStateOf(false) }
     var aheadBehind     by remember { mutableStateOf("") }
     var statusError     by remember { mutableStateOf<String?>(null) }
@@ -218,6 +221,16 @@ fun SourceControlPane(projectId: String) {
                 if (p.size < 5) return@mapNotNull null
                 val epochSec = p[4].toLongOrNull() ?: 0L
                 CommitRow(sha = p[0], shortSha = p[0].take(7), message = p[1], author = p[2], date = fmtEpoch(epochSec * 1000))
+            }
+            // P19-B: Fetch branch graph
+            val graphRaw = withContext(Dispatchers.IO) {
+                runGit(context, repoDir, "log", "--graph", "--oneline", "--all", "-n", "100")
+            }
+            graphData = if (graphRaw.startsWith("Error:")) emptyList() else graphRaw.lines().filter { it.isNotBlank() }.map { line ->
+                val graph = line.takeWhile { it == ' ' || it == '|' || it == '*' || it == '/' || it == '\\' || it == '_' || it == '-' }
+                val rest = line.drop(graph.length).trim()
+                val restParts = rest.split(Regex("\\s+"), 2)
+                GraphRow(graph = graph, sha = restParts.getOrElse(0) { "" }.take(7), message = restParts.getOrElse(1) { "" })
             }
             logLoading = false
         }
@@ -379,16 +392,7 @@ fun SourceControlPane(projectId: String) {
                     Text("${conflictedFiles.size} merge conflict(s)", fontSize = 12.sp, color = ConflictColor, fontWeight = FontWeight.Bold)
                 }
                 conflictedFiles.forEach { f ->
-                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(f, fontSize = 11.sp, color = ConflictColor, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("Open", fontSize = 10.sp, color = IconColor, modifier = Modifier.clickable {
-                            // fire intent to open in editor — CodeSpaceApp handles "openFile" broadcast
-                            val intent = android.content.Intent("com.codespace.ide.OPEN_FILE").apply {
-                                putExtra("path", File(repoDir, f).absolutePath)
-                            }
-                            context.sendBroadcast(intent)
-                        }.padding(4.dp))
-                    }
+                    ConflictResolverRow(filePath = f, repoDir = repoDir, context = context, onResolved = { refreshStatus() })
                 }
             }
             HorizontalDivider(color = DividerColor)
@@ -444,12 +448,12 @@ fun SourceControlPane(projectId: String) {
         // ── Tab row ──────────────────────────────────────────────────────────
         Row(Modifier.fillMaxWidth().background(HeaderBg)) {
             ScmTab.entries.forEach { tab ->
-                val label = when (tab) { ScmTab.CHANGES -> "Changes"; ScmTab.LOG -> "Log"; ScmTab.STASH -> "Stash"; ScmTab.TAGS -> "Tags" }
+                val label = when (tab) { ScmTab.CHANGES -> "Changes"; ScmTab.LOG -> "Log"; ScmTab.GRAPH -> "Graph"; ScmTab.STASH -> "Stash"; ScmTab.TAGS -> "Tags" }
                 val active = tab == activeTab
                 Box(
                     Modifier.weight(1f).clickable {
                         activeTab = tab
-                        when (tab) { ScmTab.LOG -> loadLog(); ScmTab.STASH -> loadStashes(); ScmTab.TAGS -> loadTags(); else -> {} }
+                        when (tab) { ScmTab.LOG -> loadLog(); ScmTab.GRAPH -> loadLog(); ScmTab.STASH -> loadStashes(); ScmTab.TAGS -> loadTags(); else -> {} }
                     }.padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -530,6 +534,30 @@ fun SourceControlPane(projectId: String) {
                                 }
                             }
                             HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                        }
+                    }
+                }
+            }
+
+            // ─────────────────────────── GRAPH (P19-B) ───────────────────────
+            ScmTab.GRAPH -> {
+                if (logLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = IconColor)
+                    }
+                } else if (graphData.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No graph data", fontSize = 12.sp, color = MutedColor)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(graphData) { row ->
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(row.graph.ifBlank { " " }, color = Color(0xFF569CD6), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(80.dp))
+                                Text(row.sha, color = IconColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp))
+                                Text(row.message, color = TextColor, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            }
+                            HorizontalDivider(color = DividerColor, thickness = 0.3.dp)
                         }
                     }
                 }
@@ -870,5 +898,29 @@ private fun ChangeRow(change: GitChange, onStage: (() -> Unit)?, onUnstage: (() 
             }
         }
         HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+    }
+}
+
+
+@Composable
+private fun ConflictResolverRow(filePath: String, repoDir: File, context: Context, onResolved: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var conflictInfo by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxWidth().padding(start = 20.dp, top = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
+            Text(filePath, fontSize = 11.sp, color = ConflictColor, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (expanded) "v" else ">", color = MutedColor, fontSize = 10.sp)
+        }
+        if (expanded) {
+            Spacer(Modifier.height(6.dp))
+            LaunchedEffect(filePath) { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { val t = f.readText(); conflictInfo = "${t.split("<<<<<<< ").size - 1} conflict(s)" } } }
+            conflictInfo?.let { Text(it, fontSize = 10.sp, color = MutedColor); Spacer(Modifier.height(6.dp)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { var t = f.readText(); t = Regex("(?s)<<<<<<< .*?\n(.*?)=======.*?>>>>>>> .*\n").replace(t) { m -> m.groupValues[1] }; f.writeText(t); runGit(context, repoDir, "add", filePath); onResolved() } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)), modifier = Modifier.weight(1f)) { Text("Ours", color = Color.White, fontSize = 10.sp) }
+                Button(onClick = { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { var t = f.readText(); t = Regex("(?s)<<<<<<< .*?=======\n(.*?)>>>>>>> .*\n").replace(t) { m -> m.groupValues[1] }; f.writeText(t); runGit(context, repoDir, "add", filePath); onResolved() } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD16969)), modifier = Modifier.weight(1f)) { Text("Theirs", color = Color.White, fontSize = 10.sp) }
+                Button(onClick = { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { var t = f.readText(); t = t.replace(Regex("(?m)^<<<<<<< .*\n"), "").replace(Regex("(?m)^=======$"), "").replace(Regex("(?m)^>>>>>>> .*\n"), ""); f.writeText(t); runGit(context, repoDir, "add", filePath); onResolved() } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4EC9B0)), modifier = Modifier.weight(1f)) { Text("Both", color = Color.Black, fontSize = 10.sp) }
+            }
+        }
     }
 }
