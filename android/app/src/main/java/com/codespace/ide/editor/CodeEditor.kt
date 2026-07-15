@@ -510,7 +510,7 @@ fun CodeEditor(
                     fontSize = (fontSize - 1).sp,
                     fontFamily = FontFamily.Monospace,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -1706,7 +1706,7 @@ fun CodeEditor(
                             Text(comp.label, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
                             if (comp.doc != null) {
                                 Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    overflow = TextOverflow.Ellipsis)
                             }
                         }
                         Text(comp.kind.name.lowercase(), color = Color(0xFF808080), fontSize = 9.sp)
