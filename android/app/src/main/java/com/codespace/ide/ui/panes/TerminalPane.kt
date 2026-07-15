@@ -1267,7 +1267,7 @@ internal fun TerminalPane(
 
     // P14-C: Scan terminal transcript for URLs every 2s — update chip bar
     val urlRegex = remember {
-        Regex("https?://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+")
+        Regex("""https?://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+""")
     }
     LaunchedEffect(active?.id) {
         while (true) {
