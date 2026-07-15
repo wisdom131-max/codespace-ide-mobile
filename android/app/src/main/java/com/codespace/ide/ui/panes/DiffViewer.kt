@@ -60,7 +60,7 @@ fun parseUnifiedDiff(diffText: String): ParsedDiff {
     while (i < lines.size) {
         val line = lines[i]
         if (line.startsWith("@@")) {
-            val regex = Regex("@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+            val regex = Regex("""@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@""")
             val match = regex.find(line)
             if (match != null) {
                 val oldStart = match.groupValues[1].toInt()
