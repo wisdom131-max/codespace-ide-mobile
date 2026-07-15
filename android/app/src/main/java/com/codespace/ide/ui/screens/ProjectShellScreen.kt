@@ -1887,7 +1887,7 @@ private fun PssBottomPanelContent(
     debugMessages: androidx.compose.runtime.snapshots.SnapshotStateList<String>,
     debugInput: androidx.compose.runtime.MutableState<String>,
     sharedPreviewState: com.codespace.ide.ui.panes.PreviewState,
-    previewPort: Int,
+    previewPort: Int?,
     onPreviewPortChange: (Int) -> Unit,
     projectId: String,
     totalHeight: Float,
@@ -2001,7 +2001,7 @@ private fun PssBottomPanelContent(
             BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
             BottomTab.PREVIEW  -> PreviewPane(
                 activeFilePath = activeEditorTab ?: "",
-                initialPort = previewPort,
+                initialPort = previewPort ?: 0,
                 externalState = sharedPreviewState,
             )
             BottomTab.LOGCAT   -> LogcatPanel(modifier = Modifier.fillMaxSize())
