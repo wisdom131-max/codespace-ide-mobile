@@ -420,6 +420,8 @@ fun ProjectShellScreen(
     var showChatPanel      by remember { mutableStateOf(false) }
     var aiPanelWidth       by remember { mutableFloatStateOf(300f) }
     var bottomPanelHeight  by remember { mutableFloatStateOf(300f) }
+    var bottomPanelPrevHeight by remember { mutableFloatStateOf(300f) }
+    var bottomPanelMaximized by remember { mutableStateOf(false) }
     var showSymbolSearch   by remember { mutableStateOf(false) }
     val indexerScope = rememberCoroutineScope()
     var isDraggingBottomPanel by remember { mutableStateOf(false) }
@@ -1236,6 +1238,10 @@ fun ProjectShellScreen(
                         onHideBottomPanel = { showBottomPanel = false },
                         bottomPanelHeight = bottomPanelHeight,
                         onBottomPanelHeightChange = { bottomPanelHeight = it },
+                        bottomPanelPrevHeight = bottomPanelPrevHeight,
+                        onBottomPanelPrevHeightChange = { bottomPanelPrevHeight = it },
+                        bottomPanelMaximized = bottomPanelMaximized,
+                        onBottomPanelMaximizedChange = { bottomPanelMaximized = it },
                         isDraggingBottomPanel = isDraggingBottomPanel,
                         onDraggingChange = { isDraggingBottomPanel = it },
                         activeBottomTab = activeBottomTab,
@@ -1912,13 +1918,11 @@ private fun PssActivityBar(
                         else java.io.File(context.filesDir, "projects/$projectId").absolutePath
                     )
                     if (java.io.File(repoDir, ".git").exists()) {
-                        val proc = ProcessBuilder("git", "status", "--porcelain")
-                            .directory(repoDir)
-                            .redirectErrorStream(true)
-                            .start()
-                        val lines = proc.inputStream.bufferedReader().readLines()
-                        proc.waitFor()
-                        value = lines.count { it.isNotBlank() }
+                        val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir.absolutePath)
+                        if (guestPath != null) {
+                            val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git -C '$guestPath' status --porcelain 2>/dev/null", timeoutSeconds = 10L)
+                            value = out.lines().count { it.isNotBlank() && !it.startsWith("Exit") && !it.startsWith("Error") }
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -1981,6 +1985,10 @@ private fun PssBottomPanelContent(
     onHideBottomPanel: () -> Unit,
     bottomPanelHeight: Float,
     onBottomPanelHeightChange: (Float) -> Unit,
+    bottomPanelPrevHeight: Float = 300f,
+    onBottomPanelPrevHeightChange: (Float) -> Unit = {},
+    bottomPanelMaximized: Boolean = false,
+    onBottomPanelMaximizedChange: (Boolean) -> Unit = {},
     isDraggingBottomPanel: Boolean,
     onDraggingChange: (Boolean) -> Unit,
     activeBottomTab: BottomTab,
@@ -2020,6 +2028,7 @@ private fun PssBottomPanelContent(
                 ) { _, dragAmount ->
                     val nh = bottomPanelHeight - dragAmount.y
                     onBottomPanelHeightChange(nh.coerceIn(0f, totalHeight * 0.92f))
+                    if (bottomPanelMaximized) onBottomPanelMaximizedChange(false)
                 }
             }
     )
@@ -2047,9 +2056,21 @@ private fun PssBottomPanelContent(
                 Spacer(Modifier.width(3.dp))
             }
         }
-        Icon(Icons.Default.OpenInFull, null, tint = tabTextInactive,
+        Icon(
+            if (bottomPanelMaximized) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
+            contentDescription = if (bottomPanelMaximized) "Restore" else "Maximize",
+            tint = tabTextInactive,
             modifier = Modifier.size(18.dp).padding(1.dp).clickable {
-                onBottomPanelHeightChange(if (bottomPanelHeight > totalHeight * 0.5f) 260f else totalHeight * 0.85f)
+                if (bottomPanelMaximized) {
+                    // Restore to previous height
+                    onBottomPanelHeightChange(bottomPanelPrevHeight.coerceAtLeast(200f))
+                    onBottomPanelMaximizedChange(false)
+                } else {
+                    // Save current height, then maximize
+                    onBottomPanelPrevHeightChange(bottomPanelHeight)
+                    onBottomPanelHeightChange(totalHeight * 0.88f)
+                    onBottomPanelMaximizedChange(true)
+                }
             })
         Spacer(Modifier.width(6.dp))
         Icon(Icons.Default.Close, null, tint = tabTextInactive,

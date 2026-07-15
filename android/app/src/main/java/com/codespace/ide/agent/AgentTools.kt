@@ -300,11 +300,12 @@ You can use multiple tools in sequence. When done, give a final summary.
         val tempDir = File(outFile.parentFile, ".remotion_tmp_${System.currentTimeMillis()}")
         tempDir.mkdirs()
         try {
-            val renderCmd = listOf("npx", "remotion", "render", composition, "${tempDir}/clip.mp4", "--concurrency=1")
-            val proc = ProcessBuilder(renderCmd).directory(File(dir)).redirectErrorStream(true).start()
-            val renderOut = proc.inputStream.bufferedReader().use { it.readText() }
-            val exitCode = proc.waitFor()
-            if (exitCode != 0) return "Remotion render failed (exit $exitCode):\n${renderOut.take(2000)}"
+            val guestDir = ProotInstaller.hostToGuestPath(context, dir) ?: dir
+            val renderOut = ProotInstaller.execOnce(context,
+                "cd '$guestDir' && npx remotion render $composition '${tempDir.absolutePath}/clip.mp4' --concurrency=1 2>&1",
+                timeoutSeconds = 300L)
+            if (renderOut.startsWith("Exit code") || renderOut.startsWith("Error") || renderOut.startsWith("Timed out"))
+                return "Remotion render failed:\n${renderOut.take(2000)}"
             val clipFile = File(tempDir, "clip.mp4")
             if (!clipFile.exists()) return "Remotion render produced no output file"
             clipFile.copyTo(outFile, overwrite = true)

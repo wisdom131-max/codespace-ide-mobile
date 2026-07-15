@@ -53,14 +53,14 @@ object AgentScheduler {
         when {
             cron == "@once" -> {
                 val future = executor.schedule({
-                    runCommand(command)
+                    runCommand(command, context)
                 }, 5, TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
             cron.startsWith("*/") && cron.contains("* * * *") -> {
                 val minutes = cron.substringAfter("*/").substringBefore(" ").toIntOrNull() ?: 5
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command)
+                    runCommand(command, context)
                 }, minutes.toLong(), minutes.toLong(), TimeUnit.MINUTES)
                 scheduledFutures[name] = future
             }
@@ -76,14 +76,14 @@ object AgentScheduler {
                 }
                 val delay = (target.timeInMillis - now.timeInMillis) / 1000
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command)
+                    runCommand(command, context)
                 }, delay, TimeUnit.DAYS.toSeconds(1), TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
             else -> {
                 // Default: treat as every-N-minutes
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command)
+                    runCommand(command, context)
                 }, 60, 60, TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }

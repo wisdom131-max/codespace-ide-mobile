@@ -413,10 +413,10 @@ fun ExplorerSidePanel(
                 val gitDir = File(workspacePath, ".git")
                 if (gitDir.exists()) {
                     val statusMap = mutableMapOf<String, Char>()
-                    val process = ProcessBuilder("sh", "-c", "cd '" + workspacePath + "' && git status --porcelain 2>/dev/null")
-                        .redirectErrorStream(true).start()
-                    val output = process.inputStream.bufferedReader().readText()
-                    process.waitFor()
+                    val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, workspacePath)
+                    val output = if (guestPath != null)
+                        com.codespace.ide.terminal.ProotInstaller.execOnce(context, "cd '$guestPath' && git status --porcelain 2>/dev/null", timeoutSeconds = 15L)
+                    else ""
                     for (line in output.lines()) {
                         if (line.length < 4) continue
                         val status = line[0]
