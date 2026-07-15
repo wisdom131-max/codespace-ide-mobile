@@ -447,7 +447,7 @@ private fun PssTopBar(
             }
         }
         Spacer(Modifier.weight(1f))
-        Text(currentTheme, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(end = 8.dp))
+        Text(currentTheme, fontSize = 10.sp, color = menuText.copy(alpha = 0.5f), modifier = Modifier.padding(end = 8.dp))
     }
 }
 
