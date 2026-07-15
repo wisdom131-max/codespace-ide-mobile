@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.panes
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -8,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -23,12 +25,7 @@ import androidx.compose.ui.unit.sp
 /**
  * DiffViewer — parses unified diff output into structured hunks and renders
  * them with line numbers, background colors, and hunk navigation.
- *
- * Replaces the raw `git diff` text display in ChangeRow with a proper
- * VS Code-style inline diff view.
  */
-
-// ── Data classes ─────────────────────────────────────────────────────────
 
 data class DiffHunk(
     val oldStart: Int,
@@ -41,8 +38,8 @@ data class DiffHunk(
 data class DiffLine(
     val type: DiffLineType,
     val content: String,
-    val oldLineNum: Int?,  // null for additions
-    val newLineNum: Int?   // null for deletions
+    val oldLineNum: Int?,
+    val newLineNum: Int?
 )
 
 enum class DiffLineType { CONTEXT, ADDITION, DELETION, HEADER }
@@ -53,8 +50,6 @@ data class ParsedDiff(
     val totalDeletions: Int
 )
 
-// ── Parser ──────────────────────────────────────────────────────────────
-
 fun parseUnifiedDiff(diffText: String): ParsedDiff {
     val lines = diffText.lines()
     val hunks = mutableListOf<DiffHunk>()
@@ -64,10 +59,9 @@ fun parseUnifiedDiff(diffText: String): ParsedDiff {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
-        // Skip file headers (---, +++, diff --git, index, etc.)
         if (line.startsWith("@@")) {
-            // Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
-            val match = Regex("@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@").find(line)
+            val regex = Regex("@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+            val match = regex.find(line)
             if (match != null) {
                 val oldStart = match.groupValues[1].toInt()
                 val oldCount = match.groupValues[2].ifBlank { "1" }.toInt()
@@ -75,14 +69,13 @@ fun parseUnifiedDiff(diffText: String): ParsedDiff {
                 val newCount = match.groupValues[4].ifBlank { "1" }.toInt()
 
                 val hunkLines = mutableListOf<DiffLine>()
-                // Add the header line itself
                 hunkLines.add(DiffLine(DiffLineType.HEADER, line, null, null))
 
                 var oldLn = oldStart
                 var newLn = newStart
                 i++
 
-                while (i < lines.size && !lines[i].startsWith("@@") && !lines[i].startsWith("diff ")) && !lines[i].startsWith("--- ") && !lines[i].startsWith("+++ ")) {
+                while (i < lines.size && !lines[i].startsWith("@@") && !lines[i].startsWith("diff ") && !lines[i].startsWith("--- ") && !lines[i].startsWith("+++ ")) {
                     val l = lines[i]
                     when {
                         l.startsWith(" ") -> {
@@ -99,11 +92,10 @@ fun parseUnifiedDiff(diffText: String): ParsedDiff {
                             oldLn++
                             deletions++
                         }
-                        l.startsWith("\") -> {
-                            // "\ No newline at end of file" — skip
+                        l.startsWith("\\") -> {
+                            // No newline marker — skip
                         }
                         else -> {
-                            // Could be context without leading space or empty line
                             hunkLines.add(DiffLine(DiffLineType.CONTEXT, l, oldLn, newLn))
                             oldLn++; newLn++
                         }
@@ -121,8 +113,6 @@ fun parseUnifiedDiff(diffText: String): ParsedDiff {
     return ParsedDiff(hunks, additions, deletions)
 }
 
-// ── Composable ──────────────────────────────────────────────────────────
-
 @Composable
 fun DiffViewer(
     diffText: String,
@@ -137,10 +127,9 @@ fun DiffViewer(
 
     var currentHunk by remember { mutableStateOf(0) }
     val scrollState = rememberScrollState()
-    val hunkScrollStates = remember { mutableStateMapOf<Int, androidx.compose.foundation.ScrollState>() }
 
     Column(modifier) {
-        // ── Stats bar ──
+        // Stats bar
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -149,36 +138,21 @@ fun DiffViewer(
             Spacer(Modifier.width(8.dp))
             Text("-${parsed.totalDeletions}", fontSize = 10.sp, color = Color(0xFFFF6B6B), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            // Hunk navigation
             if (parsed.hunks.size > 1) {
                 Text("${currentHunk + 1}/${parsed.hunks.size}", fontSize = 10.sp, color = Color(0xFF858585), fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.width(4.dp))
-                Icon(
-                    Icons.Default.ChevronLeft, null, tint = Color(0xFF858585),
-                    modifier = Modifier.size(14.dp).clickable {
-                        if (currentHunk > 0) currentHunk--
-                    }
-                )
+                Icon(Icons.Default.ChevronLeft, null, tint = Color(0xFF858585), modifier = Modifier.size(14.dp).clickable { if (currentHunk > 0) currentHunk-- })
                 Spacer(Modifier.width(2.dp))
-                Icon(
-                    Icons.Default.ChevronRight, null, tint = Color(0xFF858585),
-                    modifier = Modifier.size(14.dp).clickable {
-                        if (currentHunk < parsed.hunks.size - 1) currentHunk++
-                    }
-                )
+                Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF858585), modifier = Modifier.size(14.dp).clickable { if (currentHunk < parsed.hunks.size - 1) currentHunk++ })
             }
         }
 
-        // ── Diff content ──
+        // Diff content
         Column(
-            Modifier.fillMaxWidth()
-                .heightIn(max = 350.dp)
-                .verticalScroll(scrollState)
-                .padding(start = 8.dp, end = 4.dp)
+            Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(scrollState).padding(start = 8.dp, end = 4.dp)
         ) {
             parsed.hunks.forEachIndexed { hunkIdx, hunk ->
                 val bg = if (hunkIdx == currentHunk) Color(0xFF1A1A2E) else Color.Transparent
-
                 Column(Modifier.fillMaxWidth().background(bg)) {
                     hunk.lines.forEach { diffLine ->
                         DiffLineRow(diffLine)
@@ -203,41 +177,10 @@ private fun DiffLineRow(line: DiffLine) {
         DiffLineType.CONTEXT -> Triple(Color.Transparent, Color(0xFFCCCCCC), " ")
     }
 
-    Row(
-        Modifier.fillMaxWidth().background(bgColor)
-            .horizontalScroll(rememberScrollState())
-    ) {
-        // Old line number
-        Text(
-            line.oldLineNum?.toString()?.padStart(4) ?: "    ",
-            fontSize = 10.sp,
-            color = Color(0xFF858585),
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(40.dp).padding(start = 2.dp)
-        )
-        // New line number
-        Text(
-            line.newLineNum?.toString()?.padStart(4) ?: "    ",
-            fontSize = 10.sp,
-            color = Color(0xFF858585),
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(40.dp).padding(start = 2.dp)
-        )
-        // Prefix
+    Row(Modifier.fillMaxWidth().background(bgColor).horizontalScroll(rememberScrollState())) {
+        Text(line.oldLineNum?.toString()?.padStart(4) ?: "    ", fontSize = 10.sp, color = Color(0xFF858585), fontFamily = FontFamily.Monospace, modifier = Modifier.width(40.dp).padding(start = 2.dp))
+        Text(line.newLineNum?.toString()?.padStart(4) ?: "    ", fontSize = 10.sp, color = Color(0xFF858585), fontFamily = FontFamily.Monospace, modifier = Modifier.width(40.dp).padding(start = 2.dp))
         Text(prefix, fontSize = 11.sp, color = textColor, fontFamily = FontFamily.Monospace, modifier = Modifier.width(12.dp))
-        // Content
-        Text(
-            line.content,
-            fontSize = 11.sp,
-            color = textColor,
-            fontFamily = FontFamily.Monospace,
-            softWrap = false,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Text(line.content, fontSize = 11.sp, color = textColor, fontFamily = FontFamily.Monospace, softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
-
-// Need clickable import
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.HorizontalDivider
