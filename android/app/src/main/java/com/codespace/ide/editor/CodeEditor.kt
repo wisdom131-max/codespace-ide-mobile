@@ -235,6 +235,9 @@ private fun currentWord(text: String, cursor: Int): String {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+/** P20-A: Git blame info per line */
+data class BlameLine(val author: String, val date: String, val shortSha: String)
+
 fun CodeEditor(
     content: String,
     language: Language,
@@ -411,8 +414,6 @@ fun CodeEditor(
     var contextWord by remember { mutableStateOf<String?>(null) }
     data class DefResult(val line: Int, val lineText: String)
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
-    /** P20-A: Git blame info per line */
-    data class BlameLine(val author: String, val date: String, val shortSha: String)
     var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
 
@@ -797,9 +798,8 @@ fun CodeEditor(
                     .width(120.dp)
                     .fillMaxHeight()
                     .background(colors.gutter.copy(alpha = 0.3f))
-                    .verticalScroll(vScroll)
             ) {
-                Column {
+                Column(Modifier.verticalScroll(vScroll)) {
                     blameData.entries.sortedBy { it.key }.forEach { (lineIdx, blame) ->
                         Box(
                             Modifier.height(fontSize.dp * 1.25f).fillMaxWidth().padding(start = 4.dp),
