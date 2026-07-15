@@ -34,6 +34,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -55,6 +58,7 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 private data class Completion(val label: String, val kind: CompletionKind, val insertText: String = label, val doc: String? = null)
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
@@ -1157,7 +1161,7 @@ fun CodeEditor(
                                         var totalCrossFile = 0
                                         root.walkTopDown()
                                             .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
-                                            .forEach { f ->
+                                            .forEach { file ->
                                                 try {
                                                     val text = f.readText()
                                                     if (pattern.containsMatchIn(text)) {
@@ -1624,4 +1628,3 @@ fun CodeEditor(
         }
     }
 }
-
