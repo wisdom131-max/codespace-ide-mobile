@@ -1844,3 +1844,62 @@ Prioritize: Reuse over duplication, Repair over replacement, Completion over rec
 9. Remaining document/image/media viewers
 10. Viewer acquisition system
 11. Advanced analysis modules (long-term)
+
+## PHASE 21-X: REVERSE ENGINEERING & ADVANCED BINARY ANALYSIS
+
+### MANDATORY AUDIT FIRST
+Before implementing any reverse-engineering feature:
+- Audit existing viewers, binary analysis tools, APK analysis tools, DEX analysis tools, ELF analysis tools, file detection systems, and decompilation functionality.
+- If functionality already exists and works, reuse it. If incomplete, complete it. If broken, repair it.
+- Do not create duplicate analyzers, viewers, or decompilers.
+- Priority: Audit → Verify → Repair → Complete → Improve → Create only when necessary
+
+### FOUNDATION REQUIREMENTS
+Verify these systems exist and function correctly before continuing:
+- File Type Detection, MIME Detection, Magic Byte Detection, Binary Viewer, Hex Viewer, Strings Viewer, Metadata Viewer, File Information Viewer.
+- If any are missing or broken, repair them first.
+
+### BINARY INSPECTOR
+A unified Binary Inspector with: File Structure View, Header Analysis, Section Analysis, Offset Navigation, Magic Signature Detection, Embedded Resource Detection, Entropy Analysis, Binary Metadata Analysis, Binary Relationship Analysis.
+
+### REVERSE ENGINEERING VIEWERS
+- Disassembly Viewer, Assembly Viewer, Opcode Viewer, Function Browser, Function Signature Viewer, Symbol Browser, Cross-Reference Viewer, Call Graph Viewer, Control Flow Graph Viewer, Data Flow Viewer, Instruction Browser.
+- Requirements: Fast navigation, search support, symbol linking, cross-reference navigation, jump to definition, jump to references.
+
+### DEX ANALYSIS
+- DEX Viewer, Multi-DEX Viewer, DEX Metadata Viewer, Class Browser, Package Browser, Method Browser, Field Browser, String Pool Browser, DEX Structure Viewer.
+- Support: Navigation, search, filtering, relationship analysis.
+
+### SMALI ANALYSIS
+- Smali Viewer, Smali Navigation, Method Navigation, Class Navigation, Opcode Inspection, Reference Tracking.
+
+### JAVA & KOTLIN ANALYSIS
+- Java Decompiler, Kotlin Metadata Viewer, Class Viewer, Method Viewer, Package Viewer, Inheritance Viewer.
+
+### ELF & NATIVE LIBRARIES
+- ELF Viewer, Shared Library Viewer, Header Viewer, Section Viewer, Symbol Viewer, Dependency Viewer, Relocation Viewer, Import Viewer, Export Viewer, Symbol Demangler.
+- Display: Architecture, ABI, Dependencies, Exported Symbols, Imported Symbols.
+
+### ANDROID INTERNALALS
+- OAT Viewer, VDEX Viewer, APEX Viewer, Boot Image Viewer, Recovery Image Viewer, OTA Package Viewer, Vendor Image Viewer, Sparse Image Viewer.
+
+### MEMORY ANALYSIS
+- Heap Dump Viewer, Memory Dump Viewer, Thread Dump Viewer, Core Dump Viewer, Stack Trace Viewer, Object Reference Viewer.
+
+### NETWORK ANALYSIS
+- PCAP Viewer, HAR Viewer, HTTP Request Viewer, HTTP Response Viewer, WebSocket Viewer, DNS Packet Viewer.
+
+### ADVANCED BINARY ANALYSIS
+- Structure Tree Viewer, Binary Map Viewer, Memory Layout Viewer, Resource Explorer, Embedded File Explorer, Embedded Resource Explorer, Binary Diff Viewer, Entropy Heatmap Viewer, Signature Database Viewer.
+
+### AI & MODEL ANALYSIS
+- GGUF Viewer, Safetensors Viewer, ONNX Viewer, Tokenizer Viewer, Model Metadata Viewer.
+
+### PERFORMANCE REQUIREMENTS
+- Support large binaries and large APKs. Use background processing. Avoid UI freezes. Use lazy loading. Cache analysis results. Minimize memory usage.
+
+### USER EXPERIENCE
+Every supported binary should provide: Open Normally, Open as Hex, Open as Binary, Open as Strings, Open as Metadata, Analyze Structure, View Relationships, Export Results.
+
+### SUCCESS CRITERIA
+The IDE should provide reverse-engineering capabilities comparable to a lightweight combination of APK Analyzer, JADX, APKTool inspection workflows, binary inspection tools, hex editors, and native library analyzers — while remaining stable, performant, and fully integrated into the existing viewer architecture.
