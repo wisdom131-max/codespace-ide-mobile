@@ -24,10 +24,10 @@
 
 | | |
 |-|-|
-| Latest green build | **#1157** (P12 COMPLETE — all phases green) |
+| Latest green build | **#1172** (post-P13 hotfixes green) |
 | Active phase | **Phase 13** |
-| Last green | #1157 — fix(P12-M): panel menu when exhaustive — PHASE 12 COMPLETE ✅ |
-| **Next** | **Phase 13** |
+| Last green | #1172 — fix(ProjectShellScreen): GoToLine digit filter — TREE CLEAN ✅ |
+| **Next** | **Phase 13 continued** |
 | Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
 | Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
 | Phase 9 | ✅ COMPLETE (build #1129) — Performance & Monitoring |
@@ -1319,6 +1319,59 @@ environment validation
 
 **Goal:** Complete project creation, environment management, build management, and task execution
 suitable for professional development on Android.
+
+---
+
+
+---
+
+### Phase 13 — Runtime UX Polish & Stability (ACTIVE)
+
+| # | Feature | Status | Build | Notes |
+|---|---------|--------|-------|-------|
+| P13-A | Download Center panel | ✅ DONE | #1159 | DownloadCenterPanel.kt + DOWNLOADS tab |
+| P13-B | Live git+lint badge counts in activity bar | ✅ DONE | #1160 | Replace hardcoded zeros |
+| P13-C | Terminal zoom toggle+restore | ⚠️ PARTIAL | #1166❌ | Introduced regressions; needs clean rewrite |
+| P13-D | 4-bug hotfix batch | ⚠️ PARTIAL | #1165❌ | McpShellProfile quote broke parse |
+| — | Hotfix cascade #1165→#1172 | ✅ RESOLVED | #1172 | See table below |
+
+#### CI Build History — Phase 13
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1157 | ✅ | fix(P12-M): exhaustive when branches — PHASE 12 COMPLETE |
+| #1158 | ✅ | docs(AGENTS): Phase 12 complete, failure patterns updated |
+| #1159 | ✅ | feat(P13-A): DownloadCenterPanel + DOWNLOADS tab + clear terminal fix |
+| #1160 | ✅ | fix(P13-B): live git+lint badge counts in activity bar |
+| #1161 | ❌ | fix(crash): split ProjectShellScreen DEX register overflow — broke tree |
+| #1162 | ❌ | fix: previewPort type mismatch (Int? vs Int) in PssBottomPanelContent |
+| #1163 | ❌ | fix: VARIABLES+BUILD cases missing in PssBottomPanelContent |
+| #1164 | ✅ | fix: remove invalid modifier param from BuildPanel call |
+| #1165 | ❌ | fix: 4 bugs — McpShellProfile.kt:184 double-quote inside appendLine() |
+| #1166 | ❌ | fix: terminal zoom toggle — McpShellProfile still broken (same root) |
+| #1167 | ❌ | fix: McpShellProfile quote fixed — but AgentScheduler/ExplorerPane/PSS errors surfaced |
+| #1168 | ❌ | fix: AgentScheduler ctx param — ExplorerPane smart-cast + PSS unresolved refs remain |
+| #1169 | ❌ | fix: ExplorerPane wsSnap — broke if/else by replacing with run{} |
+| #1170 | ❌ | fix: PSS params added — ExplorerPane run{}/else syntax error still present |
+| #1171 | ❌ | fix: ExplorerPane if/else restored — PSS GoToLine .filter on Unit remained |
+| #1172 | ✅ | fix: PSS GoToLine filter applied to 'it' before callback — TREE CLEAN ✅ |
+
+#### Root causes of #1161–#1172 cascade
+
+1. **#1161–#1164**: Attempted DEX-register split and type-mismatch fixes introduced new errors. Each fix only exposed the next underlying issue.
+2. **#1165–#1166**: `McpShellProfile.kt:184` — raw double-quotes inside `appendLine("echo "..."")` broke Kotlin parser (Expecting an element). Pattern already in known-failures list as rule 3.
+3. **#1167–#1168**: `AgentScheduler.runCommand()` called with 2 args but signature took 1. `ExplorerPane.workspacePath` is a `var` delegate — smart cast impossible without local val capture.
+4. **#1168**: `PssOverlays` was missing `context`, `orientation`, `handleMenuAction`, `showNotification` params — used inside body but not declared in signature.
+5. **#1169**: Fixing ExplorerPane smart-cast by replacing `if (workspacePath != null) {` with `run {` left the original `} else {` branch dangling — syntax error.
+6. **#1170**: ExplorerPane params were at call site but the PSS GoToLine still had `.filter {}` chained on `Unit`.
+7. **#1172**: Fixed by applying `.filter { c -> c.isDigit() }` to `it` before passing to `onGoToLineInputChange`.
+
+#### NEW failure patterns to memorise
+
+- **`var` delegate smart cast**: `var x by remember { mutableStateOf(...) }` cannot be smart-cast. Always capture to a local `val snap = x` before using in blocks that need non-null type.
+- **`run {}` vs `if/else`**: Never replace `if (cond) { ... } else { ... }` with `run { ... }` — the `else` becomes dangling. Use a local val + `if (val != null)` instead.
+- **Chaining on `Unit`**: `callback(it).filter {...}` fails when callback returns `Unit`. Apply transforms to the input before the call: `callback(it.filter {...})`.
+- **Extracting composables**: When a nested composable needs variables from the parent scope, ALL referenced variables must be passed explicitly as parameters — they do not close over the outer scope automatically when moved to a `private fun`.
 
 ---
 
