@@ -27,8 +27,9 @@
 | Latest green build | **#1172** (tree clean, Phase 13 complete) |
 | Active phase | **Phase 14** |
 | Last green | #1172 — fix(ProjectShellScreen): GoToLine digit filter — TREE CLEAN ✅ |
-| Last pushed | a0e1e5c — P14-D TOFU SSH + P14-B history search + P14-E long-press rename |
-| **Next** | **Phase 14 — P14-C hyperlink detection, P14-A scrollback, P14-F command palette** |
+| Last pushed | 5d51cb4 — P14-A/C/F: scrollback cache + URL bar + command palette |
+| **Phase 14** | **✅ COMPLETE — all 6 items shipped** |
+| **Next** | **Phase 15 — TBD (await Wisdom direction)** |
 | Phase 13 | ✅ COMPLETE (build #1172) — Runtime UX Polish & Stability |
 | Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
 | Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
@@ -1386,12 +1387,12 @@ suitable for professional development on Android.
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| P14-A | Persistent terminal scrollback (save/restore scroll buffer on tab switch) | 🔲 TODO | Scrollback lost when switching bottom tabs |
+| P14-A | Persistent terminal scrollback (save/restore scroll buffer on tab switch) | ✅ DONE | viewCache in TerminalState; AndroidView reused per tab ID; evicted on close |
 | P14-B | Shell history search (Ctrl+R style overlay in extra-keys bar) | ✅ DONE | ShellHistorySearchOverlay.kt + TerminalHistoryStore; 🔍 Hist button in quick-actions |
-| P14-C | Terminal hyperlink detection (tap URLs to open in preview) | 🔲 TODO | Regex over output, underline+tap to open |
+| P14-C | Terminal hyperlink detection (tap URLs to open in preview) | ✅ DONE | urlRegex scan every 2s; dismissible chip bar above quick-actions; Intent.ACTION_VIEW |
 | P14-D | TOFU SSH fingerprint pinning (replace PromiscuousVerifier) | ✅ DONE | TofuVerifier + SshFingerprintStore; filesDir/ssh-known-hosts.json; getKnownHosts()/removeFingerprint() |
 | P14-E | Terminal session name editor (rename tabs) | ✅ DONE | Long-press tab → existing rename dialog; TerminalSessionRenameDialog.kt added |
-| P14-F | Quick command palette for terminal (recent commands + suggestions) | 🔲 TODO | Reuse history log, show as autocomplete overlay |
+| P14-F | Quick command palette for terminal (recent commands + suggestions) | ✅ DONE | Long-press 🔍 Hist → recent-5 strip; tap → inject; 'Search all →' opens full overlay |
 
 **Implementation order:** P14-D first (security), then P14-B, P14-E, P14-C, P14-A, P14-F.
 
@@ -1402,6 +1403,7 @@ suitable for professional development on Android.
 | #1172 | ✅ | fix: PSS GoToLine filter — PHASE 13 COMPLETE, TREE CLEAN |
 | chat-fix | ✅ | fix(chat-panel): move chat panel inside main Row + AnimatedBotIcon professional animation (995f333) |
 | P14-D/B/E | ✅ PUSHED | feat(P14-D/B/E): TOFU SSH, history search, long-press rename (a0e1e5c) |
+| P14-A/C/F | ✅ PUSHED | feat(P14-A/C/F): scrollback cache, URL chip bar, quick cmd palette (5d51cb4) |
 
 New files created in Phase 14 (so far):
 - `ssh/SshManager.kt` — TOFU verifier replaces PromiscuousVerifier; SshFingerprintStore persists to filesDir/ssh-known-hosts.json
