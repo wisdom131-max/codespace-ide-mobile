@@ -1951,5 +1951,28 @@ Existing viewers found in codebase:
 - Category badges (Text, Binary, Archive, Image, Audio, Video, Document, Database, Code, Font, Cert, APK, ELF)
 - "Open As" actions: Text, Hex, Strings, Binary
 
-### Next: Phase 21 Step 4
-Wire fallback viewers (Strings Viewer, Binary Inspector) and integrate FileInfoDialog into ExplorerPane context menu.
+### Step 4: Wire fallback viewers + ExplorerPane context menu integration ✅ (build #1262 pending)
+- Added 3 state vars to ExplorerPane: `showFileInfoDialog`, `previewStringsPath`, `previewBinaryPath`
+- Context menu: "File Info" (all files), "Open as Strings" (binary/archive), "Open as Binary Inspector" (binary)
+- `FileInfoDialog` wired with full onOpenAs* callbacks → routes to Text/Hex/Strings/Binary viewers
+- `StringsViewerDialog` wired — renders on `previewStringsPath != null`
+- `BinaryInspectorDialog` wired — renders on `previewBinaryPath != null`
+- Commit: e0aac179
+
+### Phase 21 COMPLETE ✅ (pending green CI on #1262)
+All foundation viewers from the Universal File Viewer spec are shipped and integrated.
+Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, Smali, JADX-style decompilation)
+
+### CI Build History — Phase 21
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1253 | ✅ GREEN | docs: add Phase 21 spec |
+| #1254 | ❌ FAIL | feat(P21): FileDetector — .toByte() missing for hex > 0x7F |
+| #1255 | ✅ GREEN | fix(P21): FileDetector — add .toByte() for hex literals |
+| #1256 | ✅ GREEN | docs: Phase 21 Steps 1-3 progress |
+| #1257 | ✅ GREEN | feat(P21): FileInfoDialog.kt |
+| #1258 | ✅ GREEN | docs: Phase 20-B complete + Phase 21 Steps 1-3 |
+| #1259 | ✅ GREEN | feat(P21): StringsViewerDialog.kt |
+| #1260 | ❌ FAIL | feat(P21): BinaryInspectorDialog — Triple destructuring 4-component error |
+| #1261 | ✅ GREEN | fix(P21): BinaryInspectorDialog — use list instead of Triple for 4 values |
+| #1262 | ⏳ RUNNING | feat(P21): wire FileInfoDialog + StringsViewerDialog + BinaryInspectorDialog into ExplorerPane |
