@@ -20,17 +20,18 @@
 
 ---
 
-## CURRENT STATE (2026-07-14)
+## CURRENT STATE (2026-07-15)
 
 | | |
 |-|-|
-| Latest green build | **#1172** (tree clean, Phase 13 complete) |
-| Active phase | **Phase 15 — Editor Intelligence & UX Polish** |
-| Last green | #1180 — fix(P14-C): TerminalPane URL regex triple-quote — TREE CLEAN ✅ |
-| Last pushed | 5d51cb4 — P14-A/C/F: scrollback cache + URL bar + command palette |
-| **Phase 14** | **✅ COMPLETE — all 6 items shipped** |
-| **Next** | CI confirm #1180 green; then Phase 15 complete — plan Phase 16 |
-| Phase 15 | ✅ COMPLETE (build #1181 pending — all P15-A thru H shipped) |
+| Latest green build | **#1199** (tree clean, Phase 16 complete) |
+| Active phase | **Phase 16 COMPLETE ✅ — next phase TBD** |
+| Last green | #1199 — fix(P16-A): declare actionToast — TREE CLEAN ✅ |
+| Last pushed | 98cd9347dc — fix(P16-A): actionToast declaration |
+| **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
+| **Next** | Plan Phase 17 |
+| Phase 16 | ✅ COMPLETE (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync, Sync UI |
+| Phase 15 | ✅ COMPLETE (build #1183 GREEN) |
 | Phase 14 | ✅ COMPLETE (build #1176) |
 | Phase 13 | ✅ COMPLETE (build #1172) — Runtime UX Polish & Stability |
 | Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
@@ -1481,6 +1482,35 @@ Modified files in Phase 14 (so far):
 **Files:**
 - NEW: `ui/screens/PssEditorColumn.kt` (567 lines)  
 - MOD: `ui/screens/ProjectShellScreen.kt` (2125 lines, was 2510)
+
+
+---
+
+### Phase 16 — Cloud Backup, Session Sync & Source Control Polish ✅ COMPLETE (#1199 GREEN)
+
+| Item | Feature | File(s) |
+|------|---------|---------|
+| P16-A | SourceControlPane — fetch button + pull/push/fetch result feedback + actionToast state fix | `SourceControlPane.kt` |
+| P16-B | CloudBackupManager — backup/restore/list projects as tar.gz to backups dir | `CloudBackupManager.kt` |
+| P16-C | SessionHandoffManager — export/import/push/pull session state for multi-device handoff | `SessionHandoffManager.kt` |
+| P16-D | SyncStatusMonitor — Idle/Syncing/Success/Error StateFlow with auto-poll | `SyncStatusMonitor.kt` |
+| P16-E | CloudBackupPanel — full backup/restore/session-sync UI with SyncStatusMonitor | `CloudBackupPanel.kt` |
+| P16-F | StatusBarContent — sync indicator dot (Syncing/Synced/Error) wired to SyncStatusMonitor | `ProjectShellScreen.kt` |
+
+**Root cause of #1193–#1198 failures:** `actionToast` state used in SourceControlPane but never declared. Fixed in #1199 (98cd9347dc).
+
+#### CI Build History — Phase 16
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1192 | ✅ GREEN | fix(VerifyError): PssEditorColumn compile errors resolved — TREE CLEAN |
+| #1193 | ❌ FAIL | feat(P16-A): SourceControlPane fetch — actionToast undeclared |
+| #1194 | ❌ FAIL | feat(P16-B): CloudBackupManager — same root cause in tree |
+| #1195 | ❌ FAIL | feat(P16-C): SessionHandoffManager — same |
+| #1196 | ❌ FAIL | feat(P16-D): SyncStatusMonitor — same |
+| #1197 | ❌ FAIL | feat(P16-E): CloudBackupPanel — same |
+| #1198 | ❌ FAIL | feat(P16-F): StatusBarContent sync indicator — same |
+| **#1199** | **✅ GREEN** | fix(P16-A): declare actionToast — **PHASE 16 COMPLETE** |
 
 ## ONGOING RULES (for every future AI session)
 
