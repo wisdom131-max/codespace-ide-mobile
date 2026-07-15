@@ -218,6 +218,10 @@ fun ExplorerSidePanel(
     var previewAudioPath by remember { mutableStateOf<String?>(null) }
     var previewHexPath by remember { mutableStateOf<String?>(null) }
     var previewSqlitePath by remember { mutableStateOf<String?>(null) }
+    // Phase 21 Step 4 — file info + fallback viewers
+    var showFileInfoDialog  by remember { mutableStateOf(false) }
+    var previewStringsPath  by remember { mutableStateOf<String?>(null) }
+    var previewBinaryPath   by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -1068,6 +1072,9 @@ fun ExplorerSidePanel(
                         add("Restore from Trash" to Icons.Default.RestoreFromTrash)
                         add("Compress" to Icons.Default.FolderZip)
                         add("Permissions" to Icons.Default.Lock)
+                        if (!f.isDirectory) add("File Info" to Icons.Default.Info)
+                        if (!f.isDirectory && (isHexBin || isArch)) add("Open as Strings" to Icons.Default.FormatListBulleted)
+                        if (!f.isDirectory && isHexBin) add("Open as Binary Inspector" to Icons.Default.BugReport)
                     }.forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
@@ -1175,6 +1182,9 @@ fun ExplorerSidePanel(
                                         "Open in Terminal" -> onOpenInTerminal(if (f.isDirectory) f.absolutePath else f.parent ?: f.absolutePath)
                                         "Compress" -> { showCompressDialog = true }
                                         "Permissions" -> { showPermDialog = true }
+                                        "File Info" -> { showFileInfoDialog = true }
+                                        "Open as Strings" -> { previewStringsPath = f.absolutePath }
+                                        "Open as Binary Inspector" -> { previewBinaryPath = f.absolutePath }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -1418,6 +1428,34 @@ fun ExplorerSidePanel(
             apiKey = tokenStore?.aiKey("GEMINI"),
             onDismiss = { showAiImageGen = false; pendingAiImageTargetDir = null },
             onSaved = { refresh++ },
+        )
+    }
+
+    // ── File Info dialog (Phase 21 Step 4) ──────────────────────────────────
+    if (showFileInfoDialog && contextFile != null) {
+        FileInfoDialog(
+            file = contextFile!!,
+            onDismiss = { showFileInfoDialog = false },
+            onOpenAsText = { file -> onOpenFile(file.absolutePath); showFileInfoDialog = false },
+            onOpenAsHex = { file -> previewHexPath = file.absolutePath; showFileInfoDialog = false },
+            onOpenAsStrings = { file -> previewStringsPath = file.absolutePath; showFileInfoDialog = false },
+            onOpenAsBinary = { file -> previewBinaryPath = file.absolutePath; showFileInfoDialog = false },
+        )
+    }
+
+    // ── Strings viewer (Phase 21 Step 4) ─────────────────────────────────
+    if (previewStringsPath != null) {
+        StringsViewerDialog(
+            file = java.io.File(previewStringsPath!!),
+            onDismiss = { previewStringsPath = null },
+        )
+    }
+
+    // ── Binary Inspector (Phase 21 Step 4) ───────────────────────────────
+    if (previewBinaryPath != null) {
+        BinaryInspectorDialog(
+            file = java.io.File(previewBinaryPath!!),
+            onDismiss = { previewBinaryPath = null },
         )
     }
 
@@ -2117,3 +2155,4 @@ private fun findTrashProjectDir(contextFile: java.io.File?): java.io.File? {
     }
     return null
 }
+
