@@ -404,7 +404,6 @@ fun ProjectShellScreen(
     val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     val showBottomPanelMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }; var showBottomPanel by showBottomPanelMs
-    val showBackupPanelMs = remember { mutableStateOf(false) }; var showBackupPanel by showBackupPanelMs
     val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
     val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
@@ -998,7 +997,6 @@ fun ProjectShellScreen(
                     showSymbolSearchMs = showSymbolSearchMs,
                     splitTerminalWidthMs = splitTerminalWidthMs,
                     terminalCommandToRunMs = terminalCommandToRunMs,
-                    showBackupPanelMs = showBackupPanelMs,
                 )
             } // end main Row (editor + optional chat panel)
 
@@ -1839,13 +1837,11 @@ private fun PssBottomPanelContent(
             )
             BottomTab.DOWNLOADS -> DownloadCenterPanel(modifier = Modifier.fillMaxSize())
             BottomTab.BACKUP -> {
-                if (showBackupPanel) {
-                    CloudBackupPanel(
-                        projectId  = projectId,
-                        backendUrl = "https://codespace-ide-mobile-production.up.railway.app",
-                        onDismiss  = { showBackupPanel = false; activeBottomTab = BottomTab.TERMINAL },
-                    )
-                }
+                CloudBackupPanel(
+                    projectId  = projectId,
+                    backendUrl = "https://codespace-ide-mobile-production.up.railway.app",
+                    onDismiss  = { onActiveBottomTabChange(BottomTab.TERMINAL) },
+                )
             }
             BottomTab.VARIABLES -> if (heavyPanesReady) {
                 VariableInspectorPanel(
@@ -2232,7 +2228,6 @@ private fun PssEditorColumn(
     showSymbolSearchMs: MutableState<Boolean>,
     splitTerminalWidthMs: MutableState<Float>,
     terminalCommandToRunMs: MutableState<String?>,
-    showBackupPanelMs: MutableState<Boolean>,
 ) {
     val density = LocalDensity.current
     // Color param aliases — body code uses PascalCase originals, params are camelCase
@@ -2274,7 +2269,6 @@ private fun PssEditorColumn(
     var showReplaceRow by showReplaceRowMs
     var showSplitTerminal by showSplitTerminalMs
     var showSymbolSearch by showSymbolSearchMs
-    var showBackupPanel by showBackupPanelMs
     var splitTerminalWidth by splitTerminalWidthMs
     var terminalCommandToRun by terminalCommandToRunMs
 
