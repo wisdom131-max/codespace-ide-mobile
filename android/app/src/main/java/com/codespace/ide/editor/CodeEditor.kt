@@ -1163,10 +1163,10 @@ fun CodeEditor(
                                             .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
                                             .forEach { file ->
                                                 try {
-                                                    val text = f.readText()
+                                                    val text = file.readText()
                                                     if (pattern.containsMatchIn(text)) {
                                                         val updated = pattern.replace(text, newName)
-                                                        f.writeText(updated)
+                                                        file.writeText(updated)
                                                         totalCrossFile += pattern.findAll(text).count()
                                                     }
                                                 } catch (_: Exception) {}
