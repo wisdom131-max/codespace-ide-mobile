@@ -373,12 +373,12 @@ private fun PssTopBar(
     // ── Top Bar (VS Code style)
     Row(
         Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
-            .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
+            .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(Modifier.width(4.dp))
         Box(Modifier.size(44.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TabTextInactive, modifier = Modifier.size(22.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(22.dp))
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(
@@ -388,12 +388,12 @@ private fun PssTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Icon(Icons.Default.Search, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.Search, null, tint = tabTextInactive, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(projectName, fontSize = 13.sp, color = TabTextInactive, maxLines = 1)
+                Text(projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1)
             }
         }
-        Icon(Icons.Default.Computer, null, tint = TabTextInactive, modifier = Modifier.size(20.dp).clickable { onShowTerminal() })
+        Icon(Icons.Default.Computer, null, tint = tabTextInactive, modifier = Modifier.size(20.dp).clickable { onShowTerminal() })
         Spacer(Modifier.width(8.dp))
         Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp).clickable { onRunProgram() })
         Spacer(Modifier.width(4.dp))
@@ -404,7 +404,7 @@ private fun PssTopBar(
         AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleChat() })
         Spacer(Modifier.width(8.dp))
         Box(Modifier.size(28.dp).clickable { onToggleNotif() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Notifications, null, tint = if (notifUnread > 0) Color(0xFFF44336) else TabTextInactive, modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Notifications, null, tint = if (notifUnread > 0) Color(0xFFF44336) else tabTextInactive, modifier = Modifier.size(20.dp))
             if (notifUnread > 0) {
                 Box(Modifier.align(Alignment.TopEnd).size(14.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
                     Text(if (notifUnread > 9) "9+" else notifUnread.toString(), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
@@ -414,28 +414,28 @@ private fun PssTopBar(
         Spacer(Modifier.width(8.dp))
     }
     // ── Menu bar
-    Row(Modifier.fillMaxWidth().height(26.dp).background(BgColor), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(26.dp).background(bgColor), verticalAlignment = Alignment.CenterVertically) {
         MENU_BAR.forEach { menuItem ->
             Box {
                 val isOpen = openMenuBar == menuItem.label
                 Text(
                     menuItem.label, fontSize = 12.sp,
-                    color = if (isOpen) MenuText else MenuText.copy(alpha = 0.85f),
-                    modifier = Modifier.background(if (isOpen) MenuBg else Color.Transparent)
+                    color = if (isOpen) menuText else menuText.copy(alpha = 0.85f),
+                    modifier = Modifier.background(if (isOpen) menuBg else Color.Transparent)
                         .clickable { onOpenMenuBarChange(if (isOpen) null else menuItem.label) }
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
                 androidx.compose.material3.DropdownMenu(expanded = isOpen, onDismissRequest = { onOpenMenuBarChange(null) }) {
                     menuItem.items.forEach { action ->
                         if (action.divider) {
-                            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
                         } else {
                             androidx.compose.material3.DropdownMenuItem(
                                 text = {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(action.label, fontSize = 12.sp, color = MenuText)
+                                        Text(action.label, fontSize = 12.sp, color = menuText)
                                         if (action.shortcut.isNotEmpty()) {
-                                            Text(action.shortcut, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f))
+                                            Text(action.shortcut, fontSize = 10.sp, color = menuText.copy(alpha = 0.5f))
                                         }
                                     }
                                 },
