@@ -127,7 +127,7 @@ object AgentScheduler {
         }
     }
 
-    private fun runCommand(command: String) {
+    private fun runCommand(command: String, @Suppress("UNUSED_PARAMETER") ctx: android.content.Context? = null) {
         try {
             val parts = command.split("\\s+".toRegex())
             val proc = ProcessBuilder(parts).redirectErrorStream(true).start()
