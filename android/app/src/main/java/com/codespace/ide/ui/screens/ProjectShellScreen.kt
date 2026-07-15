@@ -349,6 +349,104 @@ private val MENU_BAR = listOf(
 private data class NavEntry(val path: String, val line: Int = 0)
 
 @Composable
+private fun PssTopBar(
+    projectName: String,
+    currentTheme: String,
+    notifUnread: Int,
+    openMenuBar: String?,
+    onOpenMenuBarChange: (String?) -> Unit,
+    onBack: () -> Unit,
+    onShowCommandPalette: () -> Unit,
+    onShowTerminal: () -> Unit,
+    onRunProgram: () -> Unit,
+    onShowBuild: () -> Unit,
+    onShowSplit: () -> Unit,
+    onToggleChat: () -> Unit,
+    onToggleNotif: () -> Unit,
+    onMenuAction: (String) -> Unit,
+) {
+    // ── Top Bar (VS Code style)
+    Row(
+        Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
+            .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.width(4.dp))
+        Box(Modifier.size(44.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TabTextInactive, modifier = Modifier.size(22.dp))
+        }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Row(
+                Modifier.background(Color(0xFFECECEC), RoundedCornerShape(4.dp))
+                    .clickable { onShowCommandPalette() }
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(Icons.Default.Search, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(projectName, fontSize = 13.sp, color = TabTextInactive, maxLines = 1)
+            }
+        }
+        Icon(Icons.Default.Computer, null, tint = TabTextInactive, modifier = Modifier.size(20.dp).clickable { onShowTerminal() })
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp).clickable { onRunProgram() })
+        Spacer(Modifier.width(4.dp))
+        Icon(Icons.Default.Build, null, tint = Color(0xFF007ACC), modifier = Modifier.size(20.dp).clickable { onShowBuild() })
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.Default.VerticalSplit, null, tint = Color(0xFF007ACC), modifier = Modifier.size(20.dp).clickable { onShowSplit() })
+        Spacer(Modifier.width(8.dp))
+        AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleChat() })
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.size(28.dp).clickable { onToggleNotif() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.Notifications, null, tint = if (notifUnread > 0) Color(0xFFF44336) else TabTextInactive, modifier = Modifier.size(20.dp))
+            if (notifUnread > 0) {
+                Box(Modifier.align(Alignment.TopEnd).size(14.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
+                    Text(if (notifUnread > 9) "9+" else notifUnread.toString(), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+    }
+    // ── Menu bar
+    Row(Modifier.fillMaxWidth().height(26.dp).background(BgColor), verticalAlignment = Alignment.CenterVertically) {
+        MENU_BAR.forEach { menuItem ->
+            Box {
+                val isOpen = openMenuBar == menuItem.label
+                Text(
+                    menuItem.label, fontSize = 12.sp,
+                    color = if (isOpen) MenuText else MenuText.copy(alpha = 0.85f),
+                    modifier = Modifier.background(if (isOpen) MenuBg else Color.Transparent)
+                        .clickable { onOpenMenuBarChange(if (isOpen) null else menuItem.label) }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                androidx.compose.material3.DropdownMenu(expanded = isOpen, onDismissRequest = { onOpenMenuBarChange(null) }) {
+                    menuItem.items.forEach { action ->
+                        if (action.divider) {
+                            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                        } else {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(action.label, fontSize = 12.sp, color = MenuText)
+                                        if (action.shortcut.isNotEmpty()) {
+                                            Text(action.shortcut, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f))
+                                        }
+                                    }
+                                },
+                                onClick = { onMenuAction(action.label) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text(currentTheme, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(end = 8.dp))
+    }
+}
+
+@Composable
 @OptIn(ExperimentalFoundationApi::class)
 fun ProjectShellScreen(
     projectId: String,
@@ -722,125 +820,23 @@ fun ProjectShellScreen(
     ) {
         Column(Modifier.fillMaxSize()) {
 
-            // ── Top Bar (VS Code style)
-            Row(
-                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
-                    .border(1.dp, DividerColor, RoundedCornerShape(0.dp)),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Left: back button — proper ArrowBack + 44dp touch target
-                Spacer(Modifier.width(4.dp))
-                Box(
-                    Modifier.size(44.dp).clickable { onBack() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TabTextInactive,
-                        modifier = Modifier.size(22.dp))
-                }
-                // Center: Workspace title (clickable opens command palette)
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Row(
-                        Modifier
-                            .background(Color(0xFFECECEC), RoundedCornerShape(4.dp))
-                            .clickable { showCommandPalette = true }
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(Icons.Default.Search, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(projectName, fontSize = 13.sp, color = TabTextInactive, maxLines = 1)
-                    }
-                }
-                // Right: action icons
-                Icon(Icons.Default.Computer, null, tint = TabTextInactive,
-                    modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL })
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50),
-                    modifier = Modifier.size(20.dp).clickable { handleMenuAction("Run Program") })
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Default.Build, null, tint = Color(0xFF007ACC),
-                    modifier = Modifier.size(20.dp).clickable {
-                        showBottomPanel = true; activeBottomTab = BottomTab.BUILD
-                    })
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.VerticalSplit, null, tint = Color(0xFF007ACC),
-                    modifier = Modifier.size(20.dp).clickable { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT })
-                Spacer(Modifier.width(8.dp))
-
-                // Copilot Chat toggle — animated bot icon, primary way to open the chat panel
-                AnimatedBotIcon(
-                    modifier = Modifier.size(20.dp).clickable { showChatPanel = !showChatPanel },
-                )
-                Spacer(Modifier.width(8.dp))
-
-                // Notification bell with unread badge
-                Box(Modifier.size(28.dp).clickable {
-                    showNotifDrawer = !showNotifDrawer
-                    if (showNotifDrawer) notifUnread = 0
-                }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Notifications, null,
-                        tint = if (notifUnread > 0) Color(0xFFF44336) else TabTextInactive,
-                        modifier = Modifier.size(20.dp))
-                    if (notifUnread > 0) {
-                        Box(Modifier.align(Alignment.TopEnd).size(14.dp)
-                            .background(Color(0xFFF44336), CircleShape),
-                            contentAlignment = Alignment.Center) {
-                            Text(if (notifUnread > 9) "9+" else notifUnread.toString(),
-                                color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-
-            // ── Menu bar — VS Code style File/Edit/View/etc dropdowns
-            Row(
-                Modifier.fillMaxWidth().height(26.dp).background(BgColor),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                MENU_BAR.forEach { menuItem ->
-                    Box {
-                        val isOpen = openMenuBar == menuItem.label
-                        Text(
-                            menuItem.label,
-                            fontSize = 12.sp,
-                            color = if (isOpen) MenuText else MenuText.copy(alpha = 0.85f),
-                            modifier = Modifier
-                                .background(if (isOpen) MenuBg else Color.Transparent)
-                                .clickable { openMenuBar = if (isOpen) null else menuItem.label }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
-                        androidx.compose.material3.DropdownMenu(
-                            expanded = isOpen,
-                            onDismissRequest = { openMenuBar = null },
-                        ) {
-                            menuItem.items.forEach { action ->
-                                if (action.divider) {
-                                    HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 2.dp))
-                                } else {
-                                    androidx.compose.material3.DropdownMenuItem(
-                                        text = {
-                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text(action.label, fontSize = 12.sp, color = MenuText)
-                                                if (action.shortcut.isNotEmpty()) {
-                                                    Text(action.shortcut, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            handleMenuAction(action.label)
-                                            openMenuBar = null
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                Text(currentTheme, fontSize = 10.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(end = 8.dp))
-            }
+            // ── Top Bar + Menu Bar (extracted to PssTopBar to stay under JVM 64KB limit)
+            PssTopBar(
+                projectName = projectName,
+                currentTheme = currentTheme,
+                notifUnread = notifUnread,
+                openMenuBar = openMenuBar,
+                onOpenMenuBarChange = { openMenuBar = it },
+                onBack = onBack,
+                onShowCommandPalette = { showCommandPalette = true },
+                onShowTerminal = { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL },
+                onRunProgram = { handleMenuAction("Run Program") },
+                onShowBuild = { showBottomPanel = true; activeBottomTab = BottomTab.BUILD },
+                onShowSplit = { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT },
+                onToggleChat = { showChatPanel = !showChatPanel },
+                onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) notifUnread = 0 },
+                onMenuAction = { handleMenuAction(it); openMenuBar = null },
+            )
 
             // ── Main body
             Row(Modifier.weight(1f).fillMaxWidth()) {
