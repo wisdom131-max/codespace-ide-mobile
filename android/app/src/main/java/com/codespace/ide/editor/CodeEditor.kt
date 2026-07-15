@@ -262,6 +262,8 @@ fun CodeEditor(
     onAiFixRequest: ((String) -> Unit)? = null,
     /** P18-C: Project root path for cross-file rename. Null = single-file only. */
     projectRoot: String? = null,
+    /** P19-A: Cross-file Go-to-Definition — opens file at line. */
+    onOpenFileAtLine: ((String, Int) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -406,6 +408,8 @@ fun CodeEditor(
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var contextWord by remember { mutableStateOf<String?>(null) }
     data class DefResult(val line: Int, val lineText: String)
+    data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
+    var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
 
     // ── Find & Replace state ────────────────────────────────────────────
@@ -944,6 +948,11 @@ fun CodeEditor(
                                     if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
                                 }
                                 gotoResults = found
+                                // P19-A: Search FileIndexer for cross-file definitions
+                                crossFileResults = if (projectRoot != null) {
+                                    FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
+                                        .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
+                                } else null
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1003,6 +1012,28 @@ fun CodeEditor(
                             ) {
                                 Text("■", color = Color(0xFF569CD6), fontSize = 14.sp)
                                 Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+;                            }
+                            // P19-A: Cross-file results
+                            if (crossFileResults != null && crossFileResults!!.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text("In project", color = Color(0xFF888888), fontSize = 10.sp)
+                                crossFileResults!!.forEach { cf ->
+                                    TextButton(
+                                        onClick = {
+                                            onOpenFileAtLine?.invoke(cf.filePath, cf.line)
+                                            gotoResults = null
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(cf.kind, color = Color(0xFF569CD6), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(60.dp))
+                                                Text(cf.name, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                            }
+                                            Text("${cf.fileName}:${cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1025,7 +1056,7 @@ fun CodeEditor(
                 containerColor = Color(0xFF252526),
                 title = {
                     Text(
-                        if (results.isEmpty()) "Not found in file" else "Go to Definition",
+                        if (results.isEmpty() && (crossFileResults == null || crossFileResults!!.isEmpty())) "Not found" else "Go to Definition",
                         color = Color(0xFFD4D4D4),
                         fontSize = 14.sp,
                         fontFamily = FontFamily.Monospace,
@@ -1034,7 +1065,7 @@ fun CodeEditor(
                 text = {
                     if (results.isEmpty()) {
                         Text(
-                            "No declaration found in the current file.",
+                            "No declaration found in current file or project.",
                             color = Color(0xFF888888),
                             fontSize = 12.sp,
                         )
@@ -1064,6 +1095,28 @@ fun CodeEditor(
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                         )
+                                    }
+                                }
+;                            }
+                            // P19-A: Cross-file results
+                            if (crossFileResults != null && crossFileResults!!.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text("In project", color = Color(0xFF888888), fontSize = 10.sp)
+                                crossFileResults!!.forEach { cf ->
+                                    TextButton(
+                                        onClick = {
+                                            onOpenFileAtLine?.invoke(cf.filePath, cf.line)
+                                            gotoResults = null
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(cf.kind, color = Color(0xFF569CD6), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(60.dp))
+                                                Text(cf.name, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                            }
+                                            Text("${cf.fileName}:${cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        }
                                     }
                                 }
                             }
