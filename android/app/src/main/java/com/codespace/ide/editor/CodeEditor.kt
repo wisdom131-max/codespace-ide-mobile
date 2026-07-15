@@ -803,6 +803,36 @@ fun CodeEditor(
             }
         }
 
+        // ── P20-A: Git Blame column overlay ──────────────────────────────────
+        if (blameData != null && blameData.isNotEmpty()) {
+            Box(
+                Modifier
+                    .padding(start = 62.dp)
+                    .width(120.dp)
+                    .fillMaxHeight()
+                    .background(colors.gutter.copy(alpha = 0.3f))
+                    .verticalScroll(vScroll)
+            ) {
+                Column {
+                    blameData.entries.sortedBy { it.key }.forEach { (lineIdx, blame) ->
+                        Box(
+                            Modifier.height(fontSize.dp * 1.25f).fillMaxWidth().padding(start = 4.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                blame.author.take(12),
+                                fontSize = 9.sp,
+                                color = colors.gutter.copy(alpha = 0.8f),
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // ── P2-3 Extra-cursor visual indicators ──────────────────────────────
         // BasicTextField exposes no TextLayoutResult here, so we approximate
         // positions using the same line-height formula as every other overlay
