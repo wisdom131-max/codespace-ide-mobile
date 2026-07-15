@@ -1442,6 +1442,10 @@ fun ProjectShellScreen(
             onSelectTheme = onSelectTheme,
             onSignOut = onSignOut,
             onOpenSettings = onOpenSettings,
+            context = context,
+            orientation = orientation,
+            handleMenuAction = { handleMenuAction(it) },
+            showNotification = { msg, type -> showNotification(msg, type) },
         )
     } // end root Box
 }
@@ -1506,6 +1510,10 @@ private fun PssOverlays(
     onSelectTheme: (String) -> Unit,
     onSignOut: () -> Unit,
     onOpenSettings: () -> Unit,
+    context: android.content.Context,
+    orientation: Int,
+    handleMenuAction: (String) -> Unit,
+    showNotification: (String, String) -> Unit,
 ) {
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
