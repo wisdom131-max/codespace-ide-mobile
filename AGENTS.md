@@ -1707,3 +1707,140 @@ Three runtime bugs fixed:
 - Main function: ~648 lines (reduced from ~768)
 
 ### Next: Phase 20-B
+
+## PHASE 21 — UNIVERSAL FILE VIEWER, INSPECTION, ANALYSIS, EXTRACTION & VIEWER ACQUISITION SYSTEM
+
+### GOAL
+Allow users to open, inspect, analyze, preview, search, extract, and manage as many file types as possible directly inside the IDE without requiring external applications whenever possible.
+
+### MANDATORY AUDIT & DUPLICATE PREVENTION
+Before implementing any viewer, inspector, analyzer, extractor, plugin, extension, UI component, backend service, or feature:
+- Audit the existing application.
+- Check if the functionality already exists, is partially implemented, hidden but operational, incomplete, or broken.
+- Check if the functionality can be improved instead of recreated.
+
+Rules:
+- If a feature already exists and works correctly, skip implementation.
+- If a feature exists but is incomplete, complete it.
+- If a feature exists but is broken, repair it.
+- If a feature exists but lacks UI integration, connect it properly.
+- Do not create duplicate viewers, inspectors, analyzers, plugin systems, download systems, extraction systems, or file handling systems.
+
+Priority Order: Audit → Verify → Repair → Complete → Improve → Integrate → Create only when necessary
+
+### FILE DETECTION
+When a file is opened:
+- Detect file extension, MIME type, file signature (magic bytes), encoding, archive formats, embedded file formats, APK-related formats, binary formats, media formats, document formats.
+- Display: File name, File size, File type, MIME type, Last modified date, Encoding, Detection confidence.
+
+### CORE ACTIONS
+Open, Preview, Open as Text, Open as Code, Open as Hex, Open as Binary, Open as Strings, Open as Metadata, View File Information, Search Within File, Copy Content, Save File, Export File, Share File, Extract File.
+
+### FALLBACK VIEWERS
+Every file must be viewable through at least one fallback:
+- Text Viewer, Hex Viewer, Binary Viewer, Strings Viewer, Metadata Viewer, File Information Viewer, Binary Inspector.
+- Never show "Unsupported File" without fallback options. Never force extraction before inspection.
+
+### DOCUMENT VIEWERS
+PDF, DOCX, ODT, RTF, EPUB, Markdown, CSV, Spreadsheet Preview, Presentation Preview.
+
+### IMAGE VIEWERS
+PNG, JPG, JPEG, GIF, BMP, WEBP, SVG, ICO, Image Metadata, EXIF Viewer.
+
+### AUDIO VIEWERS
+Audio Player, Audio Metadata, Waveform Viewer.
+
+### VIDEO VIEWERS
+Video Player, Video Metadata, Frame Preview Viewer.
+
+### ARCHIVE VIEWERS
+ZIP, RAR, 7Z, TAR, GZIP, JAR, AAR, APK Archive Viewer.
+Features: Archive Browsing, Archive Search, File Preview, Selective Extraction, Bulk Extraction.
+
+### APK ANALYSIS
+APK Information, APK Analyzer, AndroidManifest Viewer, AXML Viewer, Resource Explorer, Resource Table Viewer, Permission Viewer, Component Viewer, Certificate Viewer, Signature Viewer, SDK Information Viewer, Version Information Viewer.
+
+### CODE ANALYSIS
+DEX Viewer, Multi-DEX Viewer, Smali Viewer, Java Decompiler, Class Browser, Package Browser, Method Browser.
+
+### NATIVE LIBRARY ANALYSIS
+ELF Viewer, Shared Library Viewer, Symbol Viewer, Dependency Viewer, Header Viewer, Section Viewer.
+
+### DATABASE VIEWERS
+SQLite Viewer, Database Inspector.
+
+### FONT VIEWERS
+TTF, OTF, Font Preview, Font Metadata Viewer.
+
+### CERTIFICATES & SECURITY
+Certificate Viewer, Keystore Viewer, Hash Viewer, Signature Viewer.
+
+### DEVELOPMENT FILES
+JSON, XML, YAML, TOML, INI, Properties, Log Viewer.
+
+### ADVANCED INSPECTION
+Strings Extraction, Entropy Analysis, Structure Viewer, Offset Viewer, Header Viewer, Embedded File Detection, Embedded File Extraction, Binary Diff Viewer, File Relationship Viewer, File Signature Viewer, Metadata Viewer, Binary Inspector.
+
+### UNKNOWN FILE HANDLING
+If a dedicated viewer is unavailable:
+1. Attempt format detection. 2. Attempt signature detection. 3. Attempt embedded format detection.
+4. Offer Text Viewer. 5. Offer Hex Viewer. 6. Offer Binary Viewer. 7. Offer Strings Viewer.
+8. Offer Metadata Viewer. 9. Offer File Information Viewer. Never immediately fail.
+
+### VIEWER ACQUISITION SYSTEM
+When a file type is detected:
+- Search installed viewers, plugins, extensions.
+- If no compatible viewer exists: Search official viewer repository, display compatible viewer options, allow one-tap installation, download and install, open file automatically.
+- Requirements: Trusted repositories only, verify package integrity, verify signatures when supported, prevent duplicate installations, support updates and removal, cache installed viewers.
+
+### EXTRACTION & EXPORT
+File Extraction, Archive Extraction, Embedded File Extraction, Save As, Export, Share. Extraction must always remain optional. Users should be able to inspect files before extraction whenever possible.
+
+### PERFORMANCE REQUIREMENTS
+- Support large files and large archives. Use lazy loading. Avoid UI freezes. Use background processing.
+- Minimize memory usage. Handle unknown files gracefully. Protect against memory exhaustion.
+
+### SUCCESS CRITERIA
+The IDE should allow users to: Open files directly, Inspect unknown files, Analyze APKs, Analyze binaries, Browse archives, View documents, View images, View media, View databases, Inspect native libraries, Extract files when desired, Acquire missing viewers automatically.
+Prioritize: Reuse over duplication, Repair over replacement, Completion over recreation, Inspection over extraction, Reliability over complexity, Graceful fallback behavior for every file type.
+
+### ADDITIONAL MODULES (long-term roadmap)
+
+**Reverse Engineering:** Disassembly Viewer, Assembly Viewer, Function Browser, Cross-Reference Viewer, Opcode Viewer, Call Graph Viewer, Control Flow Graph Viewer, Data Flow Viewer, Function Signature Viewer, Symbol Reference Viewer, Instruction Browser.
+
+**Android Internals:** OAT Viewer, VDEX Viewer, APEX Viewer, Boot Image Viewer, Recovery Image Viewer, OTA Package Viewer, Vendor Image Viewer, Sparse Image Viewer, ART Metadata Viewer.
+
+**Network Files:** PCAP Viewer, HAR Viewer, HTTP Request/Response Viewer, WebSocket Viewer, DNS Packet Viewer, TLS Handshake Viewer, Network Session Viewer.
+
+**Memory Analysis:** Heap Dump Viewer, Memory Dump Viewer, Thread Dump Viewer, Core Dump Viewer, Stack Trace Viewer, Memory Allocation Viewer, Object Reference Viewer.
+
+**Development Artifacts:** Gradle Viewer, Maven Viewer, Dependency Tree Viewer, Build Report Viewer, Coverage Report Viewer, Test Report Viewer, Benchmark Report Viewer, Package Manifest Viewer, Lockfile Viewer.
+
+**Forensics:** Timeline Viewer, Hash Comparison Viewer, Metadata Diff Viewer, Deleted File Record Viewer, File Provenance Viewer, Timestamp Analyzer, Integrity Verification Viewer, Evidence Metadata Viewer.
+
+**AI & Model Files:** GGUF Viewer, Safetensors Viewer, ONNX Viewer, Tokenizer Viewer, Tensor Viewer, Model Metadata Viewer, Embedding Viewer, Vocabulary Viewer.
+
+**Embedded Filesystems:** EXT4 Viewer, FAT Viewer, NTFS Viewer, Disk Image Viewer, Partition Viewer, Filesystem Structure Viewer, Mount Information Viewer, Filesystem Metadata Viewer.
+
+**Advanced Binary Analysis:** Structure Tree Viewer, Memory Layout Viewer, Relocation Viewer, Import/Export Viewer, Resource Explorer, Symbol Demangler, Binary Relationship Viewer, Binary Section Viewer, Binary Map Viewer.
+
+**Containers & Virtualization:** Docker Image Viewer, OCI Image Viewer, Container Manifest Viewer, VHD Viewer, VMDK Viewer, VDI Viewer, VM Configuration Viewer.
+
+**Game & Asset Files:** Unity Asset Viewer, Unreal Asset Viewer, Texture Viewer, Sprite Sheet Viewer, Audio Bank Viewer, Asset Bundle Viewer.
+
+**Scientific & Data Formats:** HDF5 Viewer, NetCDF Viewer, FITS Viewer, Parquet Viewer, Avro Viewer, MessagePack Viewer, CBOR Viewer, BSON Viewer.
+
+**Extreme Fallback Analysis:** Raw Bytes Viewer, Embedded File Explorer, Embedded Resource Explorer, Entropy Heatmap Viewer, Binary Pattern Explorer, File Carver, Offset Navigator, Structure Explorer, Signature Database Viewer, Unknown Format Inspector.
+
+### IMPLEMENTATION ORDER (priority)
+1. Audit existing viewers (PDF, Hex, Image, etc.) — verify working, repair if broken
+2. File type detection system (magic bytes + extension + MIME)
+3. Universal file info dialog (size, type, encoding, metadata)
+4. Fallback viewers wired (Text, Hex, Strings, Metadata, Binary Inspector)
+5. Archive browser (ZIP/JAR/AAR/APK browsing + selective extraction)
+6. SQLite database viewer
+7. JSON/XML/YAML structured viewers
+8. APK analyzer (manifest, permissions, resources)
+9. Remaining document/image/media viewers
+10. Viewer acquisition system
+11. Advanced analysis modules (long-term)
