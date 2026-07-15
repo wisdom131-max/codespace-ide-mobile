@@ -105,6 +105,9 @@ fun EditorPane(
     val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
+    // P20-A: Git Blame
+    var showBlame by remember { mutableStateOf(false) }
+    var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.CodeEditor.BlameLine>?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -629,6 +632,7 @@ fun EditorPane(
                             }
                             activeId = filePath
                         },
+                        blameData = if (showBlame) blameData else null,
                     )
                 }
             }
