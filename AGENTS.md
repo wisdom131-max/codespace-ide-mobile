@@ -1903,3 +1903,53 @@ Every supported binary should provide: Open Normally, Open as Hex, Open as Binar
 
 ### SUCCESS CRITERIA
 The IDE should provide reverse-engineering capabilities comparable to a lightweight combination of APK Analyzer, JADX, APKTool inspection workflows, binary inspection tools, hex editors, and native library analyzers — while remaining stable, performant, and fully integrated into the existing viewer architecture.
+
+## Phase 20-B: Interactive Diff Viewer — ✅ COMPLETE (build #1252 GREEN)
+
+### P20-B: DiffViewer
+- `DiffViewer.kt` — structured diff parser with `ParsedDiff`, `DiffHunk`, `DiffLine` data classes
+- Parses unified `git diff` output into typed hunks with old/new line numbers
+- Color-coded background highlighting (green additions, red deletions, blue hunk headers)
+- Hunk navigation (prev/next arrows when multiple hunks)
+- Stats bar showing total additions/deletions
+- Wired into `ChangeRow` in `SourceControlPane.kt` — replaces raw text diff display
+
+### CI Build History — Phase 20-B
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1249 | ❌ FAIL | DiffViewer.kt — imports at bottom of file |
+| #1250 | ❌ FAIL | SourceControlPane wiring — inherited broken tree |
+| #1251 | ❌ FAIL | Illegal escape: \d in regex string |
+| #1252 | ✅ GREEN | Fixed regex with triple-quoted raw string |
+
+---
+
+## Phase 21 Progress (2026-07-15)
+
+### Step 1: Audit existing viewers ✅
+Existing viewers found in codebase:
+- `PdfViewerDialog.kt` (11.6KB) ✅
+- `HexViewerDialog.kt` (4.5KB) ✅
+- `ArchiveViewer.kt` (17KB) ✅
+- `SqliteViewerDialog.kt` (11KB) ✅
+- `MediaViewers.kt` (17KB) ✅ (images/audio/video)
+- `PreviewPane.kt` (72KB) ✅ (markdown/HTML preview)
+
+### Step 2: File type detection system ✅ (build #1255 GREEN)
+- `FileDetector.kt` — magic bytes + extension + MIME file type detection
+- 30+ file format signatures (PDF, ZIP, RAR, 7Z, SQLite, PNG, JPEG, GIF, BMP, WEBP, MP3, OGG, FLAC, ELF, DEX, TTF, OTF, PEM, DER, JKS, etc.)
+- Extension-based fallback detection for 60+ extensions
+- MIME type mapping
+- Text/binary heuristic detection (null byte sampling)
+- Encoding detection (UTF-8 BOM, UTF-16LE/BE)
+- `FileTypeInfo` data class with category flags (isText, isBinary, isArchive, isImage, etc.)
+- CI: 1 fix needed (.toByte() for hex literals > 0x7F)
+
+### Step 3: Universal file info dialog ✅ (build #1257 GREEN)
+- `FileInfoDialog.kt` — universal file info dialog
+- Uses `FileDetector.detect()` to display: name, size, extension, format, MIME type, encoding, modified date, confidence, magic bytes
+- Category badges (Text, Binary, Archive, Image, Audio, Video, Document, Database, Code, Font, Cert, APK, ELF)
+- "Open As" actions: Text, Hex, Strings, Binary
+
+### Next: Phase 21 Step 4
+Wire fallback viewers (Strings Viewer, Binary Inspector) and integrate FileInfoDialog into ExplorerPane context menu.
