@@ -1,6 +1,7 @@
 package com.codespace.ide.diagnostics
 
 import java.io.File
+import kotlinx.coroutines.launch
 
 /**
  * P9-3/P9-5: Memory pressure monitor + code metrics for the status bar.
@@ -96,4 +97,46 @@ object CodeMetrics {
         bytes < 1024 * 1024 -> "${bytes / 1024}KB"
         else -> String.format("%.1fMB", bytes / (1024.0 * 1024.0))
     }
+}
+
+// ── P16-D: Sync Status Monitor ───────────────────────────────────────────────
+
+sealed class SyncState {
+    object Idle : SyncState()
+    data class Syncing(val label: String) : SyncState()
+    data class Success(val label: String) : SyncState()
+    data class Error(val msg: String) : SyncState()
+}
+
+object SyncStatusMonitor {
+
+    private val _syncState = kotlinx.coroutines.flow.MutableStateFlow<SyncState>(SyncState.Idle)
+    val syncState: kotlinx.coroutines.flow.StateFlow<SyncState> = _syncState
+
+    private val scope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob()
+    )
+
+    fun setSyncing(label: String) { _syncState.value = SyncState.Syncing(label) }
+
+    fun setSuccess(label: String) {
+        _syncState.value = SyncState.Success(label)
+        scope.launch {
+            kotlinx.coroutines.delay(3_000)
+            if (_syncState.value is SyncState.Success) _syncState.value = SyncState.Idle
+        }
+    }
+
+    fun setError(msg: String) {
+        _syncState.value = SyncState.Error(msg)
+        scope.launch {
+            kotlinx.coroutines.delay(5_000)
+            if (_syncState.value is SyncState.Error) _syncState.value = SyncState.Idle
+        }
+    }
+
+    fun setIdle() { _syncState.value = SyncState.Idle }
+
+    private fun launch(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
+        scope.launch(block = block)
 }
