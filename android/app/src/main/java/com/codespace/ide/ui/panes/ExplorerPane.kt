@@ -408,12 +408,13 @@ fun ExplorerSidePanel(
 
     // Read git status for badges
     LaunchedEffect(workspacePath, refresh) {
-        if (workspacePath != null) {
+        val wsSnap = workspacePath ?: return@LaunchedEffect
+        run {
             try {
-                val gitDir = File(workspacePath, ".git")
+                val gitDir = File(wsSnap, ".git")
                 if (gitDir.exists()) {
                     val statusMap = mutableMapOf<String, Char>()
-                    val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, workspacePath)
+                    val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, wsSnap)
                     val output = if (guestPath != null)
                         com.codespace.ide.terminal.ProotInstaller.execOnce(context, "cd '$guestPath' && git status --porcelain 2>/dev/null", timeoutSeconds = 15L)
                     else ""
@@ -421,7 +422,7 @@ fun ExplorerSidePanel(
                         if (line.length < 4) continue
                         val status = line[0]
                         val filePath = line.substring(3).trim()
-                        val absPath = File(workspacePath, filePath).absolutePath
+                        val absPath = File(wsSnap, filePath).absolutePath
                         statusMap[absPath] = status
                     }
                     gitStatus = statusMap
