@@ -1117,7 +1117,7 @@ exit 0
             // Suppress perl locale warnings from dpkg post-install scripts
             "PERL_BADLANG=0",
             "LANG=C.UTF-8",
-            "LC_ALL=en_US.UTF-8"
+            "LC_ALL=C.UTF-8"  // C.UTF-8 always exists; 00-locale.sh upgrades to en_US.UTF-8 if generated
         )
 
         return Triple(proot, args, envVars)
