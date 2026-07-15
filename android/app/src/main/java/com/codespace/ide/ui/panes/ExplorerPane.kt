@@ -58,6 +58,10 @@ import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
 
 private val BgColor      = Color(0xFFFFFFFF)
 private val SelectedBg   = Color(0xFFCCE5FF)
@@ -265,6 +269,11 @@ fun ExplorerSidePanel(
     var selected      by remember { mutableStateOf<String?>(null) }
     var contextFile   by remember { mutableStateOf<File?>(null) }
     var showCtxMenu   by remember { mutableStateOf(false) }
+    var showHistoryDialog  by remember { mutableStateOf(false) }
+    var historyFile        by remember { mutableStateOf<File?>(null) }
+    var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
+    var showTrashDialog    by remember { mutableStateOf(false) }
+    var trashEntries       by remember { mutableStateOf<List<WorkspaceManager.TrashEntry>>(emptyList()) }
     var showNewFile   by remember { mutableStateOf(false) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showRename    by remember { mutableStateOf(false) }
@@ -992,6 +1001,29 @@ fun ExplorerSidePanel(
     }
 
     // ── Context menu (long press) ─────────────────────────────────────────
+    // P17-A: version history autosave — snapshot recently modified files every 30s
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            withContext(Dispatchers.IO) {
+                val wsPath = loadWorkspacePath(context, projectId) ?: return@withContext
+                val projectDir = File(wsPath)
+                val vhRoot = File(projectDir, ".versionhistory")
+                val cutoff = System.currentTimeMillis() - 5 * 60 * 1000L
+                projectDir.walkTopDown()
+                    .filter { it.isFile && !it.path.contains(".versionhistory") && !it.path.contains(".ide-trash") && it.lastModified() > cutoff && it.length() < 1_048_576L }
+                    .take(20)
+                    .forEach { file ->
+                        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(Date())
+                        val vhDir = File(vhRoot, file.name)
+                        vhDir.mkdirs()
+                        file.copyTo(File(vhDir, "$stamp.bak"), overwrite = true)
+                        vhDir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(20)?.forEach { old -> old.delete() }
+                    }
+            }
+        }
+    }
+
     if (showCtxMenu && contextFile != null) {
         val f = contextFile!!
         key(orientation) {
@@ -1028,6 +1060,8 @@ fun ExplorerSidePanel(
                         add("New Folder Here" to Icons.Default.CreateNewFolder)
                         add("Import Image(s) Here" to Icons.Default.AddPhotoAlternate)
                         add("Generate Image with AI Here" to Icons.Default.AutoAwesome)
+                        if (!f.isDirectory) add("Local History" to Icons.Default.History)
+                        add("Restore from Trash" to Icons.Default.RestoreFromTrash)
                     }.forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
@@ -1091,6 +1125,32 @@ fun ExplorerSidePanel(
                                         "Generate Image with AI Here" -> {
                                             pendingAiImageTargetDir = if (f.isDirectory) f else f.parentFile
                                             showAiImageGen = true
+                                        }
+                                        "Local History" -> {
+                                            historyFile = f
+                                            val projectDir = run {
+                                                var p = f.parentFile
+                                                while (p != null && !File(p, ".git").exists() && p.parentFile?.name != "projects") p = p.parentFile
+                                                p ?: f.parentFile
+                                            }
+                                            if (projectDir != null) {
+                                                val vhDir = File(projectDir, ".versionhistory/${f.name}")
+                                                historySnapshots = if (vhDir.exists())
+                                                    (vhDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList())
+                                                else emptyList()
+                                            }
+                                            showHistoryDialog = true
+                                        }
+                                        "Restore from Trash" -> {
+                                            val projectDir = run {
+                                                var p = if (f.isDirectory) f else f.parentFile
+                                                while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p.parentFile
+                                                p
+                                            }
+                                            if (projectDir != null) {
+                                                trashEntries = WorkspaceManager.listTrash(projectDir)
+                                            }
+                                            showTrashDialog = true
                                         }
                                         "Copy Path" -> {
                                             val clipboard = context.getSystemService(
@@ -1337,6 +1397,101 @@ fun ExplorerSidePanel(
     }
 
     // ── Delete confirmation ───────────────────────────────────────────────
+    // P17-A: Local version history dialog
+    if (showHistoryDialog && historyFile != null) {
+        val hFile = historyFile!!
+        AlertDialog(
+            onDismissRequest = { showHistoryDialog = false },
+            title = { Text("Local History — ${hFile.name}", fontSize = 13.sp) },
+            text = {
+                if (historySnapshots.isEmpty()) {
+                    Text("No snapshots yet. Snapshots are saved every 30 seconds for recently modified files.", fontSize = 12.sp, color = MutedColor)
+                } else {
+                    Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                        historySnapshots.forEach { snap ->
+                            val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(Date(snap.lastModified()))
+                            val sizeKb = snap.length() / 1024
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(ts, fontSize = 12.sp, color = TextColor)
+                                    Text("${sizeKb}KB", fontSize = 10.sp, color = MutedColor)
+                                }
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
+                                        showHistoryDialog = false
+                                        refresh++
+                                    }
+                                }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
+                            }
+                            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showHistoryDialog = false }) { Text("Close") } }
+        )
+    }
+
+    // P17-D: Trash browser dialog
+    if (showTrashDialog) {
+        AlertDialog(
+            onDismissRequest = { showTrashDialog = false },
+            title = { Text("Restore from Trash", fontSize = 13.sp) },
+            text = {
+                if (trashEntries.isEmpty()) {
+                    Text("Trash is empty.", fontSize = 12.sp, color = MutedColor)
+                } else {
+                    Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                        trashEntries.forEach { entry ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.originalName, fontSize = 12.sp, color = TextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(Date(entry.deletedAt)),
+                                        fontSize = 10.sp, color = MutedColor
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        val projectDir = run {
+                                            var p = contextFile?.parentFile
+                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p.parentFile
+                                            p
+                                        }
+                                        if (projectDir != null) {
+                                            withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(projectDir, entry) }
+                                            trashEntries = WorkspaceManager.listTrash(projectDir)
+                                            refresh++
+                                        }
+                                    }
+                                }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
+                                Spacer(Modifier.width(4.dp))
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        val projectDir = run {
+                                            var p = contextFile?.parentFile
+                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p.parentFile
+                                            p
+                                        }
+                                        if (projectDir != null) {
+                                            withContext(Dispatchers.IO) { WorkspaceManager.purgeTrashEntry(projectDir, entry) }
+                                            trashEntries = WorkspaceManager.listTrash(projectDir)
+                                        }
+                                    }
+                                }) { Text("Delete", fontSize = 11.sp, color = Color(0xFFCC0000)) }
+                            }
+                            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showTrashDialog = false }) { Text("Close") } }
+        )
+    }
+
     if (showDelete && contextFile != null) {
         key(orientation) {
         AlertDialog(
