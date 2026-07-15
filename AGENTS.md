@@ -1669,3 +1669,41 @@ No new files created — all changes in ExplorerPane.kt
 - SymbolSearchOverlay: ~28 lines
 - StatusBarContent: ~97 lines
 - Main function: ~648 lines (reduced from ~768)
+
+## Phase 20-A Runtime Fixes — ✅ COMPLETE (build #1247 GREEN)
+
+### Audit Summary (2026-07-15)
+Failure chain #1239–#1246 (8 consecutive failures) resolved at #1247.
+
+Three runtime bugs fixed:
+
+1. **Locale warning** (`setlocale: LC_ALL: cannot change locale (en_US.UTF-8)`)
+   - ProotInstaller.kt `launchArgs()` hardcoded `LC_ALL=en_US.UTF-8` in env vars.
+   - That locale doesn't exist until `00-locale.sh` runs `locale-gen`.
+   - Fix: Changed to `LC_ALL=C.UTF-8` (always available). Profile script upgrades to en_US.UTF-8 after locale-gen.
+
+2. **`.agent-profile.sh` EOF error** (`line 109: unexpected EOF while looking for matching '`)
+   - McpShellProfile.kt `agent_tools()` had `d.get("count",0)` — unescaped double quotes inside shell double-quoted `python3 -c "..."` string.
+   - Shell closed the quote at `"count"`, breaking everything after.
+   - Fix: Replaced with `str(d.get('count',0))` using single quotes.
+
+3. **VerifyError crash** (`java.lang.VerifyError: ProjectShellScreenKt — High-half Constant`)
+   - Main `ProjectShellScreen` function was ~768 lines — exceeded JVM 64KB method bytecode limit.
+   - Fix: Extracted `PssTopBar` composable (~120 lines) with color params passed as arguments.
+   - Main function now ~648 lines. Previous extractions: PssOverlays, PssActivityBar, SymbolSearchOverlay, StatusBarContent, PssEditorColumn.
+
+### PssTopBar extraction notes
+- Colors (`bgColor`, `tabTextInactive`, `dividerColor`, `menuText`, `menuBg`) passed as params since they're local vals in ProjectShellScreen, not file-level.
+- CI took 4 commits to fully resolve: (1) missing params, (2) body refs not replaced, (3) line 450 missed, (4) all fixed.
+
+### Composable extraction status (ProjectShellScreen.kt — 2719 lines total)
+- PssTopBar: ~120 lines ✅ NEW
+- PssOverlays: ~439 lines
+- PssActivityBar: ~485 lines
+- PssEditorColumn: ~550 lines
+- SymbolSearchOverlay: ~28 lines
+- StatusBarContent: ~97 lines
+- ideColors: ~1011 lines
+- Main function: ~648 lines (reduced from ~768)
+
+### Next: Phase 20-B
