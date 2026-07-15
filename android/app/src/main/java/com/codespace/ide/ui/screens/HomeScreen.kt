@@ -329,6 +329,9 @@ fun HomeScreen(
                                     projects.remove(toRemove)
                                     saveProjectsLocal(context, projects.toList())
                                     scope.launch {
+                                        // Also wipe the on-disk folder so the name can be reused
+                                        val projectDir = java.io.File(context.filesDir, "projects/${toRemove.name}")
+                                        if (projectDir.exists()) projectDir.deleteRecursively()
                                         deleteProjectFromCloud(accessToken, toRemove.id)
                                     }
                                 }) {
