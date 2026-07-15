@@ -67,6 +67,8 @@ import com.codespace.ide.terminal.TerminalEnhancementManager
 import com.codespace.ide.ui.panes.*
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.diagnostics.MemoryMonitor
+import com.codespace.ide.diagnostics.SyncState
+import com.codespace.ide.diagnostics.SyncStatusMonitor
 import com.codespace.ide.diagnostics.CodeMetrics
 import com.codespace.ide.diagnostics.LintChecker
 import com.codespace.ide.diagnostics.Problem
@@ -2125,6 +2127,25 @@ private fun StatusBarContent(
         ))
         Spacer(Modifier.width(3.dp))
         Text("MCP", fontSize = 9.sp, color = Color.White.copy(alpha = 0.7f))
+        // P16-F: Sync status indicator
+        val syncState by SyncStatusMonitor.syncState.collectAsState()
+        when (val s = syncState) {
+            is SyncState.Syncing -> {
+                Spacer(Modifier.width(6.dp))
+                CircularProgressIndicator(modifier = Modifier.size(7.dp), strokeWidth = 1.dp, color = Color(0xFF007ACC))
+                Spacer(Modifier.width(3.dp))
+                Text(s.label, fontSize = 9.sp, color = Color(0xFF007ACC))
+            }
+            is SyncState.Success -> {
+                Spacer(Modifier.width(6.dp))
+                Text("✓ ${s.label}", fontSize = 9.sp, color = Color(0xFF4CAF50))
+            }
+            is SyncState.Error -> {
+                Spacer(Modifier.width(6.dp))
+                Text("⚠ ${s.msg.take(30)}", fontSize = 9.sp, color = Color(0xFFCC0000))
+            }
+            is SyncState.Idle -> { /* nothing */ }
+        }
     }
 }
 
