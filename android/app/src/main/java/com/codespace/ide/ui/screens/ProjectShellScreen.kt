@@ -74,6 +74,7 @@ import com.codespace.ide.diagnostics.ForwardedPort
 import com.codespace.ide.ui.panes.LogcatPanel
 import com.codespace.ide.ui.panes.VariableInspectorPanel
 import com.codespace.ide.ui.panes.SymbolSearchPanel
+import com.codespace.ide.ui.panes.ProjectFileSearchPanel
 import com.codespace.ide.ui.panes.BuildPanel
 import com.codespace.ide.editor.FileIndexer
 import org.json.JSONArray
@@ -374,6 +375,8 @@ fun ProjectShellScreen(
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.
     val orientation = LocalConfiguration.current.orientation
+    // P15-H: two-column layout on wide landscape screens (tablets / foldables)
+    val isWideLayout = orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && totalWidth > 1400f
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
     val ActivityBarBg = t.ActivityBarBg
@@ -423,6 +426,10 @@ fun ProjectShellScreen(
     var bottomPanelPrevHeight by remember { mutableFloatStateOf(300f) }
     var bottomPanelMaximized by remember { mutableStateOf(false) }
     var showSymbolSearch   by remember { mutableStateOf(false) }
+    // P15-E: File search overlay (Ctrl+P / 🔍 icon)
+    var showFileSearch     by remember { mutableStateOf(false) }
+    // P15-G: delay heavy panels 8s after launch to not block editor warmup
+    var heavyPanesReady    by remember { mutableStateOf(false) }
     val indexerScope = rememberCoroutineScope()
     var isDraggingBottomPanel by remember { mutableStateOf(false) }
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
@@ -471,6 +478,11 @@ fun ProjectShellScreen(
             kotlinx.coroutines.delay(500)
             scrollTargetLine = 0
         }
+    }
+    // P15-G: heavy panels (Logcat, Variables, BuildHistory) ready after 8s startup headstart
+    LaunchedEffect(projectId) {
+        kotlinx.coroutines.delay(8_000L)
+        heavyPanesReady = true
     }
     var editorFontSize     by remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
@@ -606,7 +618,7 @@ fun ProjectShellScreen(
             "Preferences"        -> { showColorTheme = true }
             "Color Theme"        -> { showColorTheme = true }
             "Replace"            -> { showFindBar = true; showReplaceRow = true }
-            "Find in Files"      -> activePanel = SidePanel.SEARCH
+            "Find in Files"      -> { showFileSearch = true }
             "Go to File"         -> showCommandPalette = true
             "Change Color Theme" -> showColorTheme = true
             "Zoom In"            -> editorFontSize = (editorFontSize + 1).coerceAtMost(24)
@@ -1385,6 +1397,19 @@ fun ProjectShellScreen(
                     onDismiss = { showSymbolSearch = false },
                 )
             }
+    // P15-E: File search overlay (shown over full screen)
+    if (showFileSearch) {
+        ProjectFileSearchPanel(
+            workspacePath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
+            onFileSelected = { path ->
+                if (!editorTabs.contains(path)) editorTabs.add(path)
+                activeEditorTab = path
+                showFileSearch = false
+            },
+            onDismiss = { showFileSearch = false },
+        )
+    }
+
 
             // ── VS Code status bar (blue bar at bottom) ──
             StatusBarContent(
@@ -2143,7 +2168,13 @@ private fun PssBottomPanelContent(
                 initialPort = previewPort ?: 0,
                 externalState = sharedPreviewState,
             )
-            BottomTab.LOGCAT   -> LogcatPanel(modifier = Modifier.fillMaxSize())
+            BottomTab.LOGCAT   -> if (heavyPanesReady) {
+                LogcatPanel(modifier = Modifier.fillMaxSize())
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
+                }
+            }
             BottomTab.TOOLCHAIN -> ToolchainPanel(
                 modifier = Modifier.fillMaxSize(),
                 onRunInstall = { cmd ->
@@ -2157,7 +2188,13 @@ private fun PssBottomPanelContent(
                 } else "",
                 modifier = Modifier.fillMaxSize(),
             )
-            BottomTab.HISTORY -> BuildHistoryPanel(modifier = Modifier.fillMaxSize())
+            BottomTab.HISTORY -> if (heavyPanesReady) {
+                BuildHistoryPanel(modifier = Modifier.fillMaxSize())
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
+                }
+            }
             BottomTab.ARTIFACTS -> ArtifactPanel(
                 projectPath = if (activeEditorTab != null) {
                     java.io.File(activeEditorTab!!).parent ?: ""
@@ -2165,10 +2202,16 @@ private fun PssBottomPanelContent(
                 modifier = Modifier.fillMaxSize(),
             )
             BottomTab.DOWNLOADS -> DownloadCenterPanel(modifier = Modifier.fillMaxSize())
-            BottomTab.VARIABLES -> VariableInspectorPanel(
-                activeFilePath = activeEditorTab,
-                modifier = Modifier.fillMaxSize(),
-            )
+            BottomTab.VARIABLES -> if (heavyPanesReady) {
+                VariableInspectorPanel(
+                    activeFilePath = activeEditorTab,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
+                }
+            }
             BottomTab.BUILD -> BuildPanel(
                 projectPath = if (activeEditorTab != null) {
                     java.io.File(activeEditorTab!!).parent ?: ""
