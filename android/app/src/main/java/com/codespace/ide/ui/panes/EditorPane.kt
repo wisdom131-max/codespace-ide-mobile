@@ -437,6 +437,16 @@ fun EditorPane(
                         modifier = Modifier.size(18.dp),
                     )
                 }
+                // P20-A: Git Blame toggle
+                IconButton(onClick = { showBlame = !showBlame }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Default.History,
+                        contentDescription = "Git Blame",
+                        tint = if (showBlame) androidx.compose.ui.graphics.Color(0xFF007ACC)
+                               else androidx.compose.ui.graphics.Color(0xFF858585),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
                 IconButton(onClick = { goToLineOpen = !goToLineOpen }, modifier = Modifier.size(35.dp)) {
                     Icon(
                         androidx.compose.material.icons.Icons.Default.KeyboardArrowDown,
@@ -530,6 +540,62 @@ fun EditorPane(
             val splitTab = splitId?.let { id -> tabs.firstOrNull { it.id == id && it.id != active.id } }
             if (splitTab != null) {
                 Row(Modifier.fillMaxSize()) {
+                    // P20-A: Fetch git blame data
+                    if (showBlame && active != null) {
+                        LaunchedEffect(showBlame, active.path) {
+                            if (showBlame) {
+                                blameData = withContext(Dispatchers.IO) {
+                                    try {
+                                        val repoDir2 = active.path.substringBeforeLast("/")
+                                        val fileName = active.path.substringAfterLast("/")
+                                        val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
+                                        if (guestPath != null) {
+                                            val raw = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git blame --line-porcelain '$fileName' 2>/dev/null", guestPath)
+                                            val map = mutableMapOf<Int, com.codespace.ide.editor.CodeEditor.BlameLine>()
+                                            var idx = 0; var author = ""; var sha = ""
+                                            raw.lines().forEach { ln ->
+                                                if (ln.startsWith("author ") && !ln.startsWith("author-")) author = ln.removePrefix("author ").trim()
+                                                else if (ln.length >= 40 && ln.matches(Regex("^[0-9a-f]{40}.*"))) sha = ln.substring(0, 8)
+                                                else if (ln.startsWith("\t")) {
+                                                    map[idx] = com.codespace.ide.editor.CodeEditor.BlameLine(author.take(12), "", sha)
+                                                    idx++
+                                                }
+                                            }
+                                            map.toMap()
+                                        } else null
+                                    } catch (_: Exception) { null }
+                                }
+                            }
+                        }
+                    }
+                    // P20-A: Fetch git blame data
+                    if (showBlame && active != null) {
+                        LaunchedEffect(showBlame, active.path) {
+                            if (showBlame) {
+                                blameData = withContext(Dispatchers.IO) {
+                                    try {
+                                        val repoDir2 = active.path.substringBeforeLast("/")
+                                        val fileName = active.path.substringAfterLast("/")
+                                        val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
+                                        if (guestPath != null) {
+                                            val raw = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git blame --line-porcelain '$fileName' 2>/dev/null", guestPath)
+                                            val map = mutableMapOf<Int, com.codespace.ide.editor.CodeEditor.BlameLine>()
+                                            var idx = 0; var author = ""; var sha = ""
+                                            raw.lines().forEach { ln ->
+                                                if (ln.startsWith("author ") && !ln.startsWith("author-")) author = ln.removePrefix("author ").trim()
+                                                else if (ln.length >= 40 && ln.matches(Regex("^[0-9a-f]{40}.*"))) sha = ln.substring(0, 8)
+                                                else if (ln.startsWith("\t")) {
+                                                    map[idx] = com.codespace.ide.editor.CodeEditor.BlameLine(author.take(12), "", sha)
+                                                    idx++
+                                                }
+                                            }
+                                            map.toMap()
+                                        } else null
+                                    } catch (_: Exception) { null }
+                                }
+                            }
+                        }
+                    }
                     CodeEditor(
                         content = active.content,
                         language = active.language,
