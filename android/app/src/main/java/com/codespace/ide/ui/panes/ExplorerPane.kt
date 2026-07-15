@@ -274,6 +274,10 @@ fun ExplorerSidePanel(
     var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
     var showTrashDialog    by remember { mutableStateOf(false) }
     var trashEntries       by remember { mutableStateOf<List<WorkspaceManager.TrashEntry>>(emptyList()) }
+    // P17-B Compress
+    var showCompressDialog by remember { mutableStateOf(false) }
+    // P17-C Permissions
+    var showPermDialog     by remember { mutableStateOf(false) }
     var showNewFile   by remember { mutableStateOf(false) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showRename    by remember { mutableStateOf(false) }
@@ -1062,6 +1066,8 @@ fun ExplorerSidePanel(
                         add("Generate Image with AI Here" to Icons.Default.AutoAwesome)
                         if (!f.isDirectory) add("Local History" to Icons.Default.History)
                         add("Restore from Trash" to Icons.Default.RestoreFromTrash)
+                        add("Compress" to Icons.Default.FolderZip)
+                        add("Permissions" to Icons.Default.Lock)
                     }.forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
@@ -1167,6 +1173,8 @@ fun ExplorerSidePanel(
                                             context.startActivity(Intent.createChooser(shareIntent, "Share " + f.name))
                                         }
                                         "Open in Terminal" -> onOpenInTerminal(if (f.isDirectory) f.absolutePath else f.parent ?: f.absolutePath)
+                                        "Compress" -> { showCompressDialog = true }
+                                        "Permissions" -> { showPermDialog = true }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -1185,6 +1193,127 @@ fun ExplorerSidePanel(
             },
         )
         }
+    }
+
+    // ── P17-B: Compress dialog ──────────────────────────────────────────────
+    if (showCompressDialog && contextFile != null) {
+        val f = contextFile!!
+        val defaultName = f.name.trimEnd('/') + ".zip"
+        var zipName by remember(f.absolutePath) { mutableStateOf(defaultName) }
+        var compressing by remember { mutableStateOf(false) }
+        var compressDone by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        AlertDialog(
+            onDismissRequest = { if (!compressing) { showCompressDialog = false; compressDone = false } },
+            title = { Text("Compress", fontSize = 14.sp) },
+            text = {
+                Column {
+                    Text("Output filename:", fontSize = 12.sp)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = zipName,
+                        onValueChange = { zipName = it },
+                        singleLine = true,
+                        enabled = !compressing && !compressDone,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (compressDone) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Done: ${f.parent}/$zipName", fontSize = 11.sp, color = Color(0xFF81C784))
+                    }
+                }
+            },
+            confirmButton = {
+                if (!compressDone) {
+                    TextButton(enabled = !compressing && zipName.isNotBlank(), onClick = {
+                        val outFile = File(f.parentFile ?: f, zipName.let { if (it.endsWith(".zip")) it else "$it.zip" })
+                        compressing = true
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                java.util.zip.ZipOutputStream(outFile.outputStream().buffered()).use { zos ->
+                                    fun addEntry(file: File, name: String) {
+                                        if (file.isDirectory) {
+                                            file.listFiles()?.forEach { child ->
+                                                addEntry(child, "$name/${child.name}")
+                                            }
+                                        } else {
+                                            zos.putNextEntry(java.util.zip.ZipEntry(name))
+                                            file.inputStream().use { it.copyTo(zos) }
+                                            zos.closeEntry()
+                                        }
+                                    }
+                                    addEntry(f, f.name)
+                                }
+                                withContext(Dispatchers.Main) { compressDone = true; compressing = false; refresh++ }
+                            } catch (_: Exception) {
+                                withContext(Dispatchers.Main) { compressing = false }
+                            }
+                        }
+                    }) { Text(if (compressing) "Compressing..." else "Compress") }
+                } else {
+                    TextButton(onClick = { showCompressDialog = false; compressDone = false }) { Text("Done") }
+                }
+            },
+            dismissButton = {
+                if (!compressDone) TextButton(onClick = { showCompressDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // ── P17-C: File permissions dialog ────────────────────────────────────────
+    if (showPermDialog && contextFile != null) {
+        val f = contextFile!!
+        val perms = remember(f.absolutePath) {
+            mutableStateOf(
+                Triple(
+                    f.canRead(),
+                    f.canWrite(),
+                    f.canExecute(),
+                )
+            )
+        }
+        val scope = rememberCoroutineScope()
+        AlertDialog(
+            onDismissRequest = { showPermDialog = false },
+            title = { Text("Permissions — ${f.name}", fontSize = 13.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Owner: ${if (perms.value.first) "r" else "-"}${if (perms.value.second) "w" else "-"}${if (perms.value.third) "x" else "-"}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 14.sp,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = perms.value.first, onCheckedChange = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Readable", fontSize = 13.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = perms.value.second, onCheckedChange = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Writable", fontSize = 13.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = perms.value.third,
+                            onCheckedChange = { checked ->
+                                scope.launch(Dispatchers.IO) {
+                                    f.setExecutable(checked, false)
+                                    val updated = Triple(f.canRead(), f.canWrite(), f.canExecute())
+                                    withContext(Dispatchers.Main) { perms.value = updated }
+                                }
+                            }
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("Executable", fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("Note: Android does not allow changing read/write permissions on app-owned files from the UI.", fontSize = 10.sp, color = Color(0xFF9E9E9E))
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showPermDialog = false }) { Text("Close") } },
+        )
     }
 
     // ── Archive/APK browser (tap on .zip/.apk/.jar/.aar) ──
