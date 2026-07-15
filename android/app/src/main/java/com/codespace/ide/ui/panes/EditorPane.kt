@@ -441,7 +441,7 @@ fun EditorPane(
                 // P20-A: Git Blame toggle
                 IconButton(onClick = { showBlame = !showBlame }, modifier = Modifier.size(35.dp)) {
                     Icon(
-                        androidx.compose.material.icons.Icons.Default.Info,
+                        androidx.compose.material.icons.Icons.Default.Code,
                         contentDescription = "Git Blame",
                         tint = if (showBlame) androidx.compose.ui.graphics.Color(0xFF007ACC)
                                else androidx.compose.ui.graphics.Color(0xFF858585),
