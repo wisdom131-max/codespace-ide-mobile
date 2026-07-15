@@ -503,8 +503,13 @@ object ProotInstaller {
                 // 00-locale: sets UTF-8 locale + stty iutf8 so emoji work in Claude/Ollama
                 File(profileDDir, "00-locale.sh").writeText(
                     "#!/bin/sh\n" +
+                    "# Generate en_US.UTF-8 locale if not present\n" +
+                    "if ! locale -a 2>/dev/null | grep -q 'en_US.utf8'; then\n" +
+                    "    locale-gen en_US.UTF-8 2>/dev/null || true\n" +
+                    "fi\n" +
                     "export LANG=en_US.UTF-8\n" +
-                    "export LC_ALL=en_US.UTF-8\n" +
+                    "# Only export LC_ALL if the locale is actually available to avoid setlocale warnings\n" +
+                    "locale -a 2>/dev/null | grep -q 'en_US.utf8' && export LC_ALL=en_US.UTF-8\n" +
                     "export PYTHONIOENCODING=utf-8\n" +
                     "stty iutf8 2>/dev/null || true\n"
                 )
