@@ -55,18 +55,18 @@ fun BinaryInspectorDialog(file: File, onDismiss: () -> Unit) {
     LaunchedEffect(file) {
         loading = true
         fileSize = file.length()
-        val (se, en, hx, as) = withContext(Dispatchers.IO) {
+        val result = withContext(Dispatchers.IO) {
             val s = detectSections(file)
             val e = calcEntropy(file)
             val header = readHeader(file, 256)
             val hexStr = header.joinToString(" ") { "%02X".format(it) }
             val asciiStr = header.map { if (it in 32..126) it.toInt().toChar() else '.' }.joinToString("")
-            Triple(s, e, hexStr) to asciiStr
+            listOf(s, e, hexStr, asciiStr)
         }
-        sections = se
-        entropy = en
-        headerHex = hx
-        headerAscii = as
+        sections = result[0] as List<BinarySection>
+        entropy = result[1] as EntropyResult
+        headerHex = result[2] as String
+        headerAscii = result[3] as String
         loading = false
     }
 
