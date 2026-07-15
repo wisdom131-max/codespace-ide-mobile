@@ -404,6 +404,7 @@ fun ProjectShellScreen(
     val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     val showBottomPanelMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }; var showBottomPanel by showBottomPanelMs
+    var showBackupPanel by remember { mutableStateOf(false) }
     val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
     val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
@@ -1836,7 +1837,15 @@ private fun PssBottomPanelContent(
                 modifier = Modifier.fillMaxSize(),
             )
             BottomTab.DOWNLOADS -> DownloadCenterPanel(modifier = Modifier.fillMaxSize())
-            BottomTab.BACKUP -> CloudBackupPanel(modifier = Modifier.fillMaxSize())
+            BottomTab.BACKUP -> {
+                if (showBackupPanel) {
+                    CloudBackupPanel(
+                        projectId  = projectId,
+                        backendUrl = "https://codespace-ide-mobile-production.up.railway.app",
+                        onDismiss  = { showBackupPanel = false; activeBottomTab = BottomTab.TERMINAL },
+                    )
+                }
+            }
             BottomTab.VARIABLES -> if (heavyPanesReady) {
                 VariableInspectorPanel(
                     activeFilePath = activeEditorTab,
