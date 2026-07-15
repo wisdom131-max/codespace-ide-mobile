@@ -615,15 +615,16 @@ fun EditorPane(
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
                         onOpenFileAtLine = { filePath, line ->
-                            val lang = Language.fromExtension(filePath.substringAfterLast(".", ""))
+                            val file = java.io.File(filePath)
                             if (tabs.none { it.path == filePath }) {
                                 tabs.add(EditorTab(
                                     id = filePath,
                                     path = filePath,
-                                    content = try { java.io.File(filePath).readText() } catch (_: Exception) { "" },
-                                    language = lang,
+                                    name = file.name,
+                                    content = try { file.readText() } catch (_: Exception) { "" },
+                                    language = Language.fromPath(filePath),
                                     isDirty = false,
-                                    savedContent = try { java.io.File(filePath).readText() } catch (_: Exception) { "" },
+                                    savedContent = try { file.readText() } catch (_: Exception) { "" },
                                 ))
                             }
                             activeId = filePath
