@@ -29,7 +29,8 @@
 | Last green | #1199 — fix(P16-A): declare actionToast — TREE CLEAN ✅ |
 | Last pushed | 98cd9347dc — fix(P16-A): actionToast declaration |
 | **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
-| **Next** | Plan Phase 17 |
+| **Next** | Plan Phase 18 |
+| Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
 | Phase 16 | ✅ COMPLETE (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync, Sync UI |
 | Phase 15 | ✅ COMPLETE (build #1183 GREEN) |
 | Phase 14 | ✅ COMPLETE (build #1176) |
@@ -1511,6 +1512,39 @@ Modified files in Phase 14 (so far):
 | #1197 | ❌ FAIL | feat(P16-E): CloudBackupPanel — same |
 | #1198 | ❌ FAIL | feat(P16-F): StatusBarContent sync indicator — same |
 | **#1199** | **✅ GREEN** | fix(P16-A): declare actionToast — **PHASE 16 COMPLETE** |
+
+
+---
+
+## PHASE 17 — FILE MANAGEMENT POLISH & BACKUP UX ✅ COMPLETE (build #1208)
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| P17-A | Local version history — 30s snapshots, "Local History" context menu, restore | `ExplorerPane.kt` | ✅ SHIPPED #1201→#1207 |
+| P17-B | Compress to zip — context menu, recursive ZipOutputStream, rename dialog | `ExplorerPane.kt` | ✅ SHIPPED #1208 |
+| P17-C | File permissions — r/w/x viewer, executable toggle via setExecutable() | `ExplorerPane.kt` | ✅ SHIPPED #1208 |
+| P17-D | Trash restore UI — list .ide-trash entries, restore/purge with refresh | `ExplorerPane.kt` | ✅ SHIPPED #1201→#1207 |
+| P17-E | BACKUP bottom tab — CloudBackupPanel wired into PSS via heavyPanesReady gate | `ProjectShellScreen.kt` | ✅ SHIPPED #1202→#1207 |
+
+#### CI Build History — Phase 17
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1200 | ✅ GREEN | docs(AGENTS): P16 COMPLETE, P17 next |
+| #1201 | ❌ FAIL | feat(P17-A/D): ExplorerPane history + trash — TrashEntry field names |
+| #1202 | ❌ FAIL | feat(P17-E): CloudBackupPanel in PSS — wrong call signature |
+| #1203 | ❌ FAIL | fix(P17-A/D): ExplorerPane TrashEntry fields + smart cast |
+| #1204 | ❌ FAIL | fix(P17-E): CloudBackupPanel signature fix |
+| #1205 | ❌ FAIL | fix(P17-A/D): extract findTrashProjectDir helper |
+| #1206 | ❌ FAIL | fix(P17-E): thread showBackupPanelMs through PssEditorColumn |
+| **#1207** | **✅ GREEN** | fix(P17-E): simplify CloudBackupPanel wiring — PHASE 17-A/D/E CLEAN |
+| **#1208** | **⏳ RUNNING** | feat(P17-B/C): Compress + Permissions dialogs in ExplorerPane |
+
+New context menu items added to ExplorerPane: "Compress" (zip), "Permissions" (chmod)
+New state vars: showCompressDialog, showPermDialog (unconditional remember at top)
+No new files created — all changes in ExplorerPane.kt
+
+---
 
 ## ONGOING RULES (for every future AI session)
 
