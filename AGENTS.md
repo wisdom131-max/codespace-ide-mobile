@@ -1644,4 +1644,28 @@ No new files created — all changes in ExplorerPane.kt
 11. MINIMAP IS EXCLUDED — do not implement it under any circumstances
 12. 8-SECOND STARTUP HEADSTART — all heavy init (terminal restore, indexing) must wait for it
 
+## Phase 20-A: Git Blame — ✅ COMPLETE (build #1238 GREEN)
 
+### P20-A: Git Blame
+- `BlameLine` data class added to CodeEditor.kt (file-level)
+- `blameData: Map<Int, BlameLine>?` parameter on CodeEditor
+- Blame toggle button (Info icon) in EditorPane toolbar
+- LaunchedEffect fetches `git blame --line-porcelain` via ProotInstaller.execOnce
+- Author name shown per line in a dedicated column next to the gutter
+- CI: 7 commits to resolve (BlameLine placement, TextOverflow import, Info icon import)
+
+### Runtime Bug Fixes (2026-07-15)
+1. **Locale warning fix**: Changed `LC_ALL=en_US.UTF-8` → `LC_ALL=C.UTF-8` in ProotInstaller launchArgs env vars. The en_US.UTF-8 locale isn't generated until `00-locale.sh` runs, but the env var was set before that. C.UTF-8 is always available; the profile script upgrades to en_US.UTF-8 after locale-gen.
+
+2. **`.agent-profile.sh` EOF fix**: Fixed broken quotes in `agent_tools()` function in McpShellProfile.kt. The Python f-string `d.get("count",0)` had unescaped double quotes inside a shell double-quoted `python3 -c "..."` string, causing `unexpected EOF while looking for matching '`. Replaced with `str(d.get('count',0))` using single quotes.
+
+3. **VerifyError fix**: Extracted `PssTopBar` composable (120 lines) from `ProjectShellScreen` main function to reduce bytecode below the JVM 64KB method limit. The main function was ~768 lines; extraction brings it down to ~648 lines. Previous extractions: PssOverlays, PssActivityBar, SymbolSearchOverlay, StatusBarContent, PssEditorColumn.
+
+### Composable Extraction Status (ProjectShellScreen.kt)
+- PssTopBar: ~120 lines ✅ NEW
+- PssOverlays: ~439 lines
+- PssActivityBar: ~485 lines
+- PssEditorColumn: ~550 lines
+- SymbolSearchOverlay: ~28 lines
+- StatusBarContent: ~97 lines
+- Main function: ~648 lines (reduced from ~768)
