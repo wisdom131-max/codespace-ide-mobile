@@ -1419,7 +1419,7 @@ Modified files in Phase 14 (so far):
 
 
 ## PHASE 15 — EDITOR INTELLIGENCE & UX POLISH
-### Phase 15 Implementation Status: ✅ COMPLETE (pending #1181 green)
+### Phase 15 Implementation Status: ✅ COMPLETE (#1183 GREEN)
 
 **CI context:**
 - #1177-#1179: FAIL — TerminalPane.kt:1270 illegal regex escapes (\w, \[, \]) in double-quoted string. Root cause: P14-C URL regex used `"..."` not `"""..."""`
@@ -1454,8 +1454,33 @@ Modified files in Phase 14 (so far):
 | #1178 | ❌ FAIL | docs(AGENTS): Phase 14 COMPLETE — same root error still in tree |
 | #1179 | ❌ FAIL | feat(P15-A/C/D/E/F): all P15 features — same root error still in tree |
 | #1180 | ✅ GREEN | fix(P14-C): TerminalPane URL regex → triple-quoted string — TREE CLEAN |
-| #1181 | PENDING | feat(P15-E/G/H): ProjectFileSearch wired, heavyPanesReady, isWideLayout |
+| #1181 | ❌ FAIL | feat(P15-E/G/H): PSS fixes — KSP error unrelated; tree fixed by #1183 |
+| #1182 | ❌ FAIL | docs(AGENTS): Phase 15 plan — same underlying error still in tree |
+| #1183 | ✅ GREEN | fix(P15-E/G/H): PSS totalWidth/isWideLayout order, FileSearch params, heavyPanesReady scope — TREE CLEAN |
+| #1184 | ❌ FAIL | fix(agent-profile): McpShellProfile bad syntax attempt |
+| #1185 | ❌ FAIL | fix(locale): LC_ALL guard — KSP blocked by McpShellProfile:120 bug |
+| #1186 | ✅ GREEN | fix(agent-profile): McpShellProfile save_terminal_session triple-quoted string — TREE CLEAN |
+| #1187 | ✅ GREEN | fix(VerifyError): PssEditorColumn extracted + PSS MutableState refactor — HEAD |
 
+
+
+---
+
+## CRASH FIX: VerifyError — ProjectShellScreen (2026-07-15)
+
+**Symptom:** `java.lang.VerifyError: Verifier rejected class ProjectShellScreenKt` on ART — `copy-cat1 v22<-v293 type=High-half Constant` (classes12.dex). App crashes immediately on launch.
+
+**Root cause:** `ProjectShellScreen()` compiled to a function with 1150 lines, generating ~300+ DEX registers. ART's verifier rejects 64-bit constants split across high-numbered register pairs (>v256). This is an ART verifier limitation, not a code logic bug.
+
+**Fix (commit 53550d85e3 + a0a3c39448):**
+- Extracted the Editor Column + Split Terminal + Chat Panel section (~443 lines) into new file `PssEditorColumn.kt` as `internal fun PssEditorColumn()`
+- Converted 25 `var X by remember {}` declarations to `val XMs = remember {}; var X by XMs` in PSS
+- Passed `MutableState<T>` objects to `PssEditorColumn` — child uses `var X by XMs` delegation (zero body logic changes)
+- PSS main function: 1150 → ~700 lines; register count drops well below the v256 threshold
+
+**Files:**
+- NEW: `ui/screens/PssEditorColumn.kt` (567 lines)  
+- MOD: `ui/screens/ProjectShellScreen.kt` (2125 lines, was 2510)
 
 ## ONGOING RULES (for every future AI session)
 
