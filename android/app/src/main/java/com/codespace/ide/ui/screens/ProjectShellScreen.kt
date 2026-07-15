@@ -399,9 +399,9 @@ fun ProjectShellScreen(
     val restoredState = remember(projectId) { sessionStateStore.loadShellState(projectId) }
     val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
-    var showBottomPanel    by remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }
-    var showSplitTerminal  by remember { mutableStateOf(false) }
-    var splitTerminalWidth by remember { mutableFloatStateOf(300f) }
+    val showBottomPanelMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }; var showBottomPanel by showBottomPanelMs
+    val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
+    val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
     // FIX #12 (2026-07-08): this was previously unkeyed, so Compose handed back the SAME
     // TerminalState (same tabs, same live TerminalSession/PTY) no matter which project was
@@ -414,7 +414,7 @@ fun ProjectShellScreen(
     // to Preview doesn't reset the active sub-tab or the connected Browser/Remotion URL.
     val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()
 
-    var activeBottomTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }
+    val activeBottomTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }; var activeBottomTab by activeBottomTabMs
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
     // P15-H: two-column layout on wide landscape screens (tablets / foldables)
     // NOTE: totalWidth starts at 1080f and gets updated via onGloballyPositioned.
@@ -424,36 +424,36 @@ fun ProjectShellScreen(
     } }
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
-    var showChatPanel      by remember { mutableStateOf(false) }
-    var aiPanelWidth       by remember { mutableFloatStateOf(300f) }
-    var bottomPanelHeight  by remember { mutableFloatStateOf(300f) }
-    var bottomPanelPrevHeight by remember { mutableFloatStateOf(300f) }
-    var bottomPanelMaximized by remember { mutableStateOf(false) }
-    var showSymbolSearch   by remember { mutableStateOf(false) }
+    val showChatPanelMs = remember { mutableStateOf(false) }; var showChatPanel by showChatPanelMs
+    val aiPanelWidthMs = remember { mutableFloatStateOf(300f) }; var aiPanelWidth by aiPanelWidthMs
+    val bottomPanelHeightMs = remember { mutableFloatStateOf(300f) }; var bottomPanelHeight by bottomPanelHeightMs
+    val bottomPanelPrevHeightMs = remember { mutableFloatStateOf(300f) }; var bottomPanelPrevHeight by bottomPanelPrevHeightMs
+    val bottomPanelMaximizedMs = remember { mutableStateOf(false) }; var bottomPanelMaximized by bottomPanelMaximizedMs
+    val showSymbolSearchMs = remember { mutableStateOf(false) }; var showSymbolSearch by showSymbolSearchMs
     // P15-E: File search overlay (Ctrl+P / 🔍 icon)
-    var showFileSearch     by remember { mutableStateOf(false) }
+    val showFileSearchMs = remember { mutableStateOf(false) }; var showFileSearch by showFileSearchMs
     // P15-G: delay heavy panels 8s after launch to not block editor warmup
     var heavyPanesReady    by remember { mutableStateOf(false) }
     val indexerScope = rememberCoroutineScope()
-    var isDraggingBottomPanel by remember { mutableStateOf(false) }
+    val isDraggingBottomPanelMs = remember { mutableStateOf(false) }; var isDraggingBottomPanel by isDraggingBottomPanelMs
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
     var showCommandPalette by remember { mutableStateOf(false) }
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
-    var showFindBar        by remember { mutableStateOf(false) }
+    val showFindBarMs = remember { mutableStateOf(false) }; var showFindBar by showFindBarMs
     var wordWrap           by remember { mutableStateOf(false) }
     var showInlayHints     by remember { mutableStateOf(true) }  // P2-11
     var showGoToLine       by remember { mutableStateOf(false) }
     var goToLineInput      by remember { mutableStateOf("") }
-    var scrollTargetLine   by remember { mutableStateOf(0) }
-    var findQuery          by remember { mutableStateOf("") }
-    var replaceQuery       by remember { mutableStateOf("") }
-    var showReplaceRow     by remember { mutableStateOf(false) }
+    val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
+    val findQueryMs = remember { mutableStateOf("") }; var findQuery by findQueryMs
+    val replaceQueryMs = remember { mutableStateOf("") }; var replaceQuery by replaceQueryMs
+    val showReplaceRowMs = remember { mutableStateOf(false) }; var showReplaceRow by showReplaceRowMs
     var showMoreMenu       by remember { mutableStateOf(false) }
     var showPersonMenu     by remember { mutableStateOf(false) }
     var chatInput          by remember { mutableStateOf("") }
-    var terminalCommandToRun by remember { mutableStateOf<String?>(null) }
-    var previewPort by remember { mutableStateOf<Int?>(null) }
+    val terminalCommandToRunMs = remember { mutableStateOf<String?>(null) }; var terminalCommandToRun by terminalCommandToRunMs
+    val previewPortMs = remember { mutableStateOf<Int?>(null) }; var previewPort by previewPortMs
     var showGearMenu       by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
     var showPanelMenu      by remember { mutableStateOf(false) }
@@ -474,8 +474,8 @@ fun ProjectShellScreen(
     var showTerminalThemePicker by remember { mutableStateOf(false) }
     val debugInput = remember { mutableStateOf("") }
     val debugMessages = remember { mutableStateListOf("Debugger ready. Press Run to start.") }
-    var cursorLine         by remember { mutableStateOf(1) }
-    var cursorCol          by remember { mutableStateOf(1) }
+    val cursorLineMs = remember { mutableStateOf(1) }; var cursorLine by cursorLineMs
+    val cursorColMs = remember { mutableStateOf(1) }; var cursorCol by cursorColMs
     // Reset scroll target after use so the same line can be re-triggered
     LaunchedEffect(scrollTargetLine) {
         if (scrollTargetLine > 0) {
@@ -488,12 +488,12 @@ fun ProjectShellScreen(
         kotlinx.coroutines.delay(8_000L)
         heavyPanesReady = true
     }
-    var editorFontSize     by remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }
+    val editorFontSizeMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }; var editorFontSize by editorFontSizeMs
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
-    var activeEditorTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }
-    var keyboardInsert     by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
+    val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var keyboardInsert by keyboardInsertMs
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
-    var breadcrumbNavDir   by remember { mutableStateOf<String?>(null) }
+    val breadcrumbNavDirMs = remember { mutableStateOf<String?>(null) }; var breadcrumbNavDir by breadcrumbNavDirMs
 
     // P2-10 Jump back/forward navigation history
     val navBackStack  = remember { mutableStateListOf<NavEntry>() }
@@ -932,449 +932,64 @@ fun ProjectShellScreen(
                     )
                 }
 
-                // Editor Column
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-
-                    // Editor tab bar
-                    if (editorTabs.isNotEmpty()) {
-                        Row(
-                            Modifier.fillMaxWidth().height(35.dp).background(TabBarBg)
-                                .horizontalScroll(rememberScrollState()),
-                            verticalAlignment = Alignment.Bottom,
-                        ) {
-                            var tabContextMenuFor by remember { mutableStateOf<String?>(null) }
-                            editorTabs.forEach { tab ->
-                                val isActive = tab == activeEditorTab
-                                Box {
-                                    Column(Modifier.clickable { pushNavEntry(activeEditorTab, scrollTargetLine); activeEditorTab = tab }
-                                        .combinedClickable(
-                                            onClick = { activeEditorTab = tab },
-                                            onLongClick = { tabContextMenuFor = tab },
-                                        )
-                                        .background(if (isActive) TabActiveBg else TabInactiveBg)) {
-                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Text(tab.substringAfterLast("/"), fontSize = 13.sp,
-                                                color = if (isActive) TabText else TabTextInactive, maxLines = 1)
-                                            Spacer(Modifier.width(6.dp))
-                                            Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                                                modifier = Modifier.size(14.dp).clickable {
-                                                    editorTabs.remove(tab)
-                                                    if (activeEditorTab == tab) activeEditorTab = editorTabs.lastOrNull()
-                                                })
-                                        }
-                                        if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(TabActiveIndicator))
-                                        else Spacer(Modifier.height(1.dp))
-                                    }
-                                    DropdownMenu(
-                                        expanded = tabContextMenuFor == tab,
-                                        onDismissRequest = { tabContextMenuFor = null },
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Close", fontSize = 13.sp) },
-                                            onClick = {
-                                                editorTabs.remove(tab)
-                                                if (activeEditorTab == tab) activeEditorTab = editorTabs.lastOrNull()
-                                                tabContextMenuFor = null
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Close Others", fontSize = 13.sp) },
-                                            onClick = {
-                                                editorTabs.removeAll { it != tab }
-                                                activeEditorTab = tab
-                                                tabContextMenuFor = null
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Close All", fontSize = 13.sp) },
-                                            onClick = {
-                                                editorTabs.clear()
-                                                activeEditorTab = null
-                                                tabContextMenuFor = null
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Close Saved", fontSize = 13.sp) },
-                                            onClick = {
-                                                // Keep only dirty tabs — since we auto-save, all are "saved"
-                                                // This closes all tabs (none are unsaved in our model)
-                                                editorTabs.clear()
-                                                activeEditorTab = null
-                                                tabContextMenuFor = null
-                                            },
-                                        )
-                                        HorizontalDivider()
-                                        DropdownMenuItem(
-                                            text = { Text("Copy Path", fontSize = 13.sp) },
-                                            onClick = {
-                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("path", tab))
-                                                Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
-                                                tabContextMenuFor = null
-                                            },
-                                        )
-                                    }
-                                }
-                                Box(Modifier.width(1.dp).height(35.dp).background(DividerColor))
-                            }
-                        }
-                    }
-
-                    // Breadcrumb
-                    if (activeEditorTab != null) {
-                        Row(
-                            Modifier.fillMaxWidth().height(22.dp).background(BgColor).padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            val parts = activeEditorTab!!.removePrefix("/storage/emulated/0/").split("/")
-                            parts.forEachIndexed { idx, part ->
-                                Text(part, fontSize = 12.sp, color = if (idx == parts.lastIndex) TabText else TabTextInactive, maxLines = 1)
-                                if (idx < parts.lastIndex) Icon(Icons.Default.ChevronRight, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                        HorizontalDivider(color = DividerColor)
-                    }
-
-                    // ── Editor toolbar — quick action icons ───────────────────
-                    if (activeEditorTab != null) {
-                        Row(
-                            Modifier.fillMaxWidth().height(28.dp).background(BgColor)
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // Find
-                            Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar; showReplaceRow = false }, contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Search, null, tint = if (showFindBar) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
-                            }
-                            // Replace
-                            Box(Modifier.size(28.dp).clickable { showFindBar = true; showReplaceRow = !showReplaceRow }, contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.FindReplace, null, tint = if (showReplaceRow) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
-                            Spacer(Modifier.width(4.dp))
-                            // Zoom out
-                            Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize - 1).coerceAtLeast(8) }, contentAlignment = Alignment.Center) {
-                                Text("−", fontSize = 16.sp, color = TabTextInactive)
-                            }
-                            Text("${'$'}editorFontSize", fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 2.dp))
-                            // Zoom in
-                            Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize + 1).coerceAtMost(32) }, contentAlignment = Alignment.Center) {
-                                Text("+", fontSize = 16.sp, color = TabTextInactive)
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
-                            Spacer(Modifier.width(4.dp))
-                            // Word wrap toggle
-                            Box(Modifier.size(28.dp).clickable { wordWrap = !wordWrap }, contentAlignment = Alignment.Center) {
-                                Text("↵", fontSize = 14.sp, color = if (wordWrap) TabActiveIndicator else TabTextInactive)
-                            }
-                            Box(Modifier.size(28.dp).clickable { showInlayHints = !showInlayHints }, contentAlignment = Alignment.Center) {
-                                Text("⊕", fontSize = 13.sp, color = if (showInlayHints) TabActiveIndicator else TabTextInactive)
-                            }
-                            // Go to line
-                            Box(Modifier.size(28.dp).clickable { showGoToLine = true }, contentAlignment = Alignment.Center) {
-                                Text(":${'$'}", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
-                            Spacer(Modifier.width(4.dp))
-                            // P2-10 Nav back
-                            Box(
-                                Modifier.size(28.dp).clickable(enabled = navBackStack.isNotEmpty()) { navBack() },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("←", fontSize = 16.sp,
-                                    color = if (navBackStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
-                            }
-                            // P2-10 Nav forward
-                            Box(
-                                Modifier.size(28.dp).clickable(enabled = navFwdStack.isNotEmpty()) { navForward() },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("→", fontSize = 16.sp,
-                                    color = if (navFwdStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
-                            }
-                            Spacer(Modifier.weight(1f))
-                            // Match count for find
-                            if (showFindBar && findQuery.isNotEmpty()) {
-                                val active = activeEditorTab
-                                if (active != null) {
-                                    val content = try { java.io.File(active).readText() } catch (_: Exception) { "" }
-                                    val count = content.split(findQuery).size - 1
-                                    val matchWord = if (count == 1) "match" else "matches"
-                                    Text(count.toString() + " " + matchWord, fontSize = 10.sp, color = TabTextInactive)
-                                    Spacer(Modifier.width(8.dp))
-                                }
-                            }
-                        }
-                        HorizontalDivider(color = DividerColor)
-                    }
-
-                    // Find & Replace bar
-                    if (showFindBar) {
-                        Column(
-                            Modifier.fillMaxWidth().background(Color(0xFFF5F5F5))
-                                .border(1.dp, DividerColor, RoundedCornerShape(0.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedTextField(
-                                    value = findQuery, onValueChange = { findQuery = it },
-                                    placeholder = { Text("Find", fontSize = 12.sp) },
-                                    singleLine = true, modifier = Modifier.weight(1f).height(36.dp),
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Box(Modifier.border(1.dp, DividerColor, RoundedCornerShape(3.dp)).padding(4.dp)) {
-                                    Text("Aa", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                Box(Modifier.border(1.dp, DividerColor, RoundedCornerShape(3.dp)).padding(4.dp)) {
-                                    Text("\\b", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                Box(Modifier.border(1.dp, DividerColor, RoundedCornerShape(3.dp)).padding(4.dp)) {
-                                    Text(".*", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
-                                Icon(Icons.Default.KeyboardArrowDown, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                                    modifier = Modifier.size(18.dp).clickable { showFindBar = false; findQuery = ""; replaceQuery = "" })
-                            }
-                            if (showReplaceRow) {
-                                Spacer(Modifier.height(4.dp))
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    OutlinedTextField(value = replaceQuery, onValueChange = { replaceQuery = it },
-                                        placeholder = { Text("Replace", fontSize = 12.sp) },
-                                        singleLine = true, modifier = Modifier.weight(1f).height(36.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    OutlinedButton(onClick = {
-                                        val active = activeEditorTab
-                                        if (active != null && findQuery.isNotEmpty()) {
-                                            try {
-                                                val content = java.io.File(active).readText()
-                                                val idx = content.indexOf(findQuery)
-                                                if (idx >= 0) {
-                                                    val newContent = content.substring(0, idx) + replaceQuery + content.substring(idx + findQuery.length)
-                                                    java.io.File(active).writeText(newContent)
-                                                    showNotification("Replaced 1 occurrence", "info")
-                                                }
-                                            } catch (e: Exception) {
-                                                showNotification("Replace failed: ${'$'}{e.message}", "error")
-                                            }
-                                        }
-                                    }, modifier = Modifier.height(36.dp)) { Text("Replace", fontSize = 11.sp) }
-                                    Spacer(Modifier.width(4.dp))
-                                    OutlinedButton(onClick = {
-                                        val active = activeEditorTab
-                                        if (active != null && findQuery.isNotEmpty()) {
-                                            try {
-                                                val content = java.io.File(active).readText()
-                                                val newContent = content.replace(findQuery, replaceQuery)
-                                                java.io.File(active).writeText(newContent)
-                                                showNotification("Replaced ${'$'}{content.split(findQuery).size - 1} occurrences", "info")
-                                            } catch (e: Exception) {
-                                                showNotification("Replace failed: ${'$'}{e.message}", "error")
-                                            }
-                                        }
-                                    }, modifier = Modifier.height(36.dp)) { Text("All", fontSize = 11.sp) }
-                                }
-                            } else {
-                                TextButton(onClick = { showReplaceRow = true }) { Text("Replace", fontSize = 12.sp) }
-                            }
-                        }
-                    }
-
-                    // Editor area
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        if (activeEditorTab != null) {
-                            EditorPane(
-                                openFilePath       = activeEditorTab,
-                                fontSize           = editorFontSize,
-                                onInsertRequest    = { fn -> keyboardInsert = fn },
-                                onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
-                                wordWrap           = wordWrap,
-                                showInlayHints     = showInlayHints,
-                                scrollToLine       = scrollTargetLine,
-                                projectId          = projectId,
-                                sessionStateStore  = sessionStateStore,
-                            )
-                        } else {
-                            Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    androidx.compose.foundation.Image(
-                                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.vncode_watermark),
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxWidth(0.8f),
-                                    )
-                                    Spacer(Modifier.height(16.dp))
-                                    Text("Visual Node Code", fontSize = 22.sp, color = Color(0xFFAAAAAA), fontWeight = FontWeight.Light)
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Open Explorer → tap a file to start", fontSize = 13.sp, color = Color(0xFFCCCCCC))
-
-                                }
-                            }
-                        }
-                    }
-
-                    // Coding toolbar
-                    if (activeEditorTab != null) {
-                        Row(
-                            Modifier.fillMaxWidth().height(40.dp).background(KeyboardToolbarBg)
-                                .horizontalScroll(rememberScrollState()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Spacer(Modifier.width(4.dp))
-                            val isDarkToolbar = KeyboardToolbarBg.red < 0.5f
-                            val keyBg = if (isDarkToolbar) Color(0xFF3A3A3A) else Color(0xFFFFFFFF)
-                            val keyText = if (isDarkToolbar) Color(0xFFEEEEEE) else Color(0xFF333333)
-                            val keyBorder = if (isDarkToolbar) Color(0xFF555555) else DividerColor
-                            SPECIAL_KEYS.forEach { key ->
-                                Box(
-                                    Modifier.height(32.dp).defaultMinSize(minWidth = 36.dp)
-                                        .background(keyBg, RoundedCornerShape(4.dp))
-                                        .border(1.dp, keyBorder, RoundedCornerShape(4.dp))
-                                        .clickable { keyboardInsert?.invoke(key) }
-                                        .padding(horizontal = 8.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) { Text(key, fontSize = 13.sp, color = keyText, fontFamily = FontFamily.Monospace) }
-                                Spacer(Modifier.width(4.dp))
-                            }
-                        }
-                        HorizontalDivider(color = DividerColor)
-                    }
-
-                    // Bottom Panel — extracted to PssBottomPanelContent to keep
-                    // ProjectShellScreen's DEX method register count below ART's 256-register
-                    // verifier limit (VerifyError fix).
-                    PssBottomPanelContent(
-                        showBottomPanel = showBottomPanel,
-                        onHideBottomPanel = { showBottomPanel = false },
-                        bottomPanelHeight = bottomPanelHeight,
-                        onBottomPanelHeightChange = { bottomPanelHeight = it },
-                        bottomPanelPrevHeight = bottomPanelPrevHeight,
-                        onBottomPanelPrevHeightChange = { bottomPanelPrevHeight = it },
-                        bottomPanelMaximized = bottomPanelMaximized,
-                        onBottomPanelMaximizedChange = { bottomPanelMaximized = it },
-                        isDraggingBottomPanel = isDraggingBottomPanel,
-                        onDraggingChange = { isDraggingBottomPanel = it },
-                        activeBottomTab = activeBottomTab,
-                        onActiveBottomTabChange = { activeBottomTab = it },
-                        terminalCommandToRun = terminalCommandToRun,
-                        onCommandConsumed = { terminalCommandToRun = null },
-                        sharedTerminalState = sharedTerminalState,
-                        activeEditorTab = activeEditorTab,
-                        debugMessages = debugMessages,
-                        debugInput = debugInput,
-                        sharedPreviewState = sharedPreviewState,
-                        previewPort = previewPort,
-                        onPreviewPortChange = { previewPort = it },
-                        projectId = projectId,
-                        totalHeight = totalHeight,
-                        dividerColor = DividerColor,
-                        panelBg = PanelBg,
-                        tabTextInactive = TabTextInactive,
-                        onRunInTerminal = { cmd -> terminalCommandToRun = cmd + "\r" },
-                        heavyPanesReady = heavyPanesReady,
-                    )
-
-                } // end editor Column
-
-                // Split Terminal Panel
-                if (showSplitTerminal) {
-                    val density = androidx.compose.ui.platform.LocalDensity.current
-                    Box(
-                        Modifier
-                            .width(with(density) { splitTerminalWidth.toDp() })
-                            .fillMaxHeight()
-                    ) {
-                        Column(Modifier.fillMaxSize()) {
-                            // Drag handle
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .background(DividerColor)
-                                    .pointerInput(Unit) {
-                                        detectHorizontalDragGestures { _, dragAmount ->
-                                            splitTerminalWidth = (splitTerminalWidth - dragAmount)
-                                                .coerceIn(200f, 600f)
-                                        }
-                                    }
-                            )
-                            // Header
-                            Row(
-                                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFF252526)).padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("TERMINAL 2", fontSize = 11.sp, color = Color(0xFF969696), modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.Close, null, tint = Color(0xFF969696),
-                                    modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
-                            }
-                            HorizontalDivider(color = DividerColor)
-                            TerminalPane(externalState = sharedTerminalState, projectId = projectId)
-                        }
-                    }
-                }
-
-
-                // ── AI Chat Panel (right side, draggable, own region — not shared with Explorer) ──
-                if (showChatPanel) {
-                    val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
-                    // Drag handle on left edge of chat panel — mirrors Explorer's mechanics but
-                    // flipped: drag right→left widens (handle moves left, panel gets wider),
-                    // drag left→right shrinks it down to a full close.
-                    Box(
-                        Modifier
-                            .width(4.dp)
-                            .fillMaxHeight()
-                            .background(DividerColor)
-                            .pointerInput(Unit) {
-                                detectDragGestures { _, dragAmount ->
-                                    val nw = aiPanelWidth - dragAmount.x
-                                    if (nw < 20f) {
-                                        showChatPanel = false
-                                        aiPanelWidth = 300f
-                                    } else {
-                                        aiPanelWidth = nw.coerceIn(0f, totalWidth * 0.8f)
-                                    }
-                                }
-                            }
-                    )
-                    // Chat panel content
-                    Box(Modifier.width(chatWidth).fillMaxHeight().background(PanelBg)) {
-                        CopilotChatPanelInline(
-                            onClose = { showChatPanel = false },
-                            colors = ChatPanelColors(
-                                background = BgColor,
-                                surface = PanelBg,
-                                text = TabText,
-                                textSecondary = TabTextInactive,
-                                accent = TabActiveIndicator,
-                                userBubble = TabActiveIndicator,
-                                assistantBubble = PanelBg,
-                                inputBg = PanelBg,
-                                divider = DividerColor,
-                                headerBg = PanelBg,
-                                scrim = Color(0x66000000),
-                            ),
-                            tokenStore = tokenStore,
-                            // AI auto-opens files it writes — no manual navigation needed
-                            onOpenFile = { path ->
-                                if (!editorTabs.contains(path)) editorTabs.add(path)
-                                activeEditorTab = path
-                            },
-                            onSwitchToPreview = { path ->
-                                showBottomPanel = true
-                                activeBottomTab = BottomTab.PREVIEW
-                                // activeEditorTab drives PreviewPane.activeFilePath — already set in onOpenFile
-                            },
-                        )
-                    }
-                }
-
+                // Editor Column + Split Terminal + Chat Panel
+                // Extracted to PssEditorColumn to fix VerifyError (DEX register v293)
+                PssEditorColumn(
+                    projectId = projectId,
+                    context = context,
+                    tokenStore = tokenStore,
+                    editorTabs = editorTabs,
+                    heavyPanesReady = heavyPanesReady,
+                    wordWrap = wordWrap,
+                    showInlayHints = showInlayHints,
+                    navBackStack = navBackStack,
+                    navFwdStack = navFwdStack,
+                    sharedTerminalState = sharedTerminalState,
+                    sharedPreviewState = sharedPreviewState,
+                    debugMessages = debugMessages,
+                    debugInput = debugInput,
+                    totalWidth = totalWidth,
+                    totalHeight = totalHeight,
+                    tabBarBg = TabBarBg,
+                    tabActiveBg = TabActiveBg,
+                    tabInactiveBg = TabInactiveBg,
+                    tabActiveIndicator = TabActiveIndicator,
+                    tabText = TabText,
+                    tabTextInactive = TabTextInactive,
+                    dividerColor = DividerColor,
+                    panelBg = PanelBg,
+                    bgColor = BgColor,
+                    onHandleMenuAction = { handleMenuAction(it) },
+                    onShowNotification = { msg, type -> showNotification(msg, type) },
+                    onPushNavEntry = { path, line -> pushNavEntry(path, line) },
+                    onNavBack = { navBack() },
+                    onNavForward = { navForward() },
+                    activeBottomTabMs = activeBottomTabMs,
+                    activeEditorTabMs = activeEditorTabMs,
+                    aiPanelWidthMs = aiPanelWidthMs,
+                    bottomPanelHeightMs = bottomPanelHeightMs,
+                    bottomPanelMaximizedMs = bottomPanelMaximizedMs,
+                    bottomPanelPrevHeightMs = bottomPanelPrevHeightMs,
+                    breadcrumbNavDirMs = breadcrumbNavDirMs,
+                    cursorColMs = cursorColMs,
+                    cursorLineMs = cursorLineMs,
+                    editorFontSizeMs = editorFontSizeMs,
+                    findQueryMs = findQueryMs,
+                    isDraggingBottomPanelMs = isDraggingBottomPanelMs,
+                    keyboardInsertMs = keyboardInsertMs,
+                    previewPortMs = previewPortMs,
+                    replaceQueryMs = replaceQueryMs,
+                    scrollTargetLineMs = scrollTargetLineMs,
+                    showBottomPanelMs = showBottomPanelMs,
+                    showChatPanelMs = showChatPanelMs,
+                    showFileSearchMs = showFileSearchMs,
+                    showFindBarMs = showFindBarMs,
+                    showReplaceRowMs = showReplaceRowMs,
+                    showSplitTerminalMs = showSplitTerminalMs,
+                    showSymbolSearchMs = showSymbolSearchMs,
+                    splitTerminalWidthMs = splitTerminalWidthMs,
+                    terminalCommandToRunMs = terminalCommandToRunMs,
+                )
             } // end main Row (editor + optional chat panel)
 
         // Simple overlay menus
