@@ -42,7 +42,14 @@ object ProjectTemplates {
     ): ScaffoldResult = withContext(Dispatchers.IO) {
         val root = File(rootParent, projectName)
         if (root.exists()) {
-            return@withContext ScaffoldResult(false, "Directory already exists: ${root.absolutePath}", root)
+            // If the directory only contains .ide-trash (soft-deleted project), clean it up
+            // so the user can reuse the name without a spurious collision.
+            val contents = root.listFiles()?.filter { it.name != ".ide-trash" } ?: emptyList()
+            if (contents.isEmpty()) {
+                root.deleteRecursively()
+            } else {
+                return@withContext ScaffoldResult(false, "Directory already exists: ${root.absolutePath}", root)
+            }
         }
         try {
             root.mkdirs()
