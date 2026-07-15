@@ -354,6 +354,11 @@ private fun PssTopBar(
     currentTheme: String,
     notifUnread: Int,
     openMenuBar: String?,
+    bgColor: Color,
+    tabTextInactive: Color,
+    dividerColor: Color,
+    menuText: Color,
+    menuBg: Color,
     onOpenMenuBarChange: (String?) -> Unit,
     onBack: () -> Unit,
     onShowCommandPalette: () -> Unit,
@@ -826,6 +831,11 @@ fun ProjectShellScreen(
                 currentTheme = currentTheme,
                 notifUnread = notifUnread,
                 openMenuBar = openMenuBar,
+                bgColor = BgColor,
+                tabTextInactive = TabTextInactive,
+                dividerColor = DividerColor,
+                menuText = MenuText,
+                menuBg = MenuBg,
                 onOpenMenuBarChange = { openMenuBar = it },
                 onBack = onBack,
                 onShowCommandPalette = { showCommandPalette = true },
@@ -2712,4 +2722,3 @@ private fun PssEditorColumn(
     }
 
 }
-
