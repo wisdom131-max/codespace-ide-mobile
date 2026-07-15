@@ -1,7 +1,10 @@
 package com.codespace.ide.ssh
 
+import android.content.Context
+import android.util.Base64
 import com.codespace.ide.domain.AppError
 import com.codespace.ide.domain.AppResult
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -11,9 +14,11 @@ import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
-import net.schmizz.sshj.transport.verification.PromiscuousVerifier
-import java.security.PublicKey
+import org.json.JSONObject
+import java.io.File
 import java.io.OutputStream
+import java.security.MessageDigest
+import java.security.PublicKey
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,36 +30,138 @@ data class SshCredentials(
     val privateKeyPem: String? = null,
 )
 
+// ── TOFU fingerprint store ────────────────────────────────────────────────────
+// Persists accepted host fingerprints to filesDir/ssh-known-hosts.json.
+// Key = "host:port", value = "SHA256:<base64>".
+// Thread-safe: all reads/writes happen on Dispatchers.IO via the caller.
+object SshFingerprintStore {
+
+    private fun file(ctx: Context) = File(ctx.filesDir, "ssh-known-hosts.json")
+
+    fun load(ctx: Context): MutableMap<String, String> {
+        val f = file(ctx)
+        if (!f.exists()) return mutableMapOf()
+        return try {
+            val obj = JSONObject(f.readText())
+            val map = mutableMapOf<String, String>()
+            obj.keys().forEach { k -> map[k] = obj.getString(k) }
+            map
+        } catch (_: Exception) { mutableMapOf() }
+    }
+
+    fun save(ctx: Context, map: Map<String, String>) {
+        try {
+            val obj = JSONObject()
+            map.forEach { (k, v) -> obj.put(k, v) }
+            file(ctx).writeText(obj.toString(2))
+        } catch (_: Exception) { /* best-effort */ }
+    }
+
+    fun fingerprint(key: PublicKey): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(key.encoded)
+        val b64 = Base64.encodeToString(digest, Base64.NO_PADDING or Base64.NO_WRAP)
+        return "SHA256:$b64"
+    }
+}
+
+// ── SshManager ────────────────────────────────────────────────────────────────
 /**
  * Direct on-device SSH via SSHJ.
  *
- * P3 fixes:
- *  - Resource leak: SSHClient.disconnect() called in finally if auth throws
- *  - PromiscuousVerifier replaced with TOFU (trust-on-first-use) fingerprint store
- *  - openShell(): connect() wrapped in try/catch; error emitted as a line to the UI
- *  - openShell(): buffered byte reads replace readLine() so partial-line prompts arrive
+ * P14-D: TOFU fingerprint pinning replaces PromiscuousVerifier.
+ *  - First connect to a host: fingerprint is stored, connection accepted.
+ *  - Subsequent connects: fingerprint compared; mismatch = reject + warning emitted.
+ *  - Fingerprints stored in filesDir/ssh-known-hosts.json.
+ *  - getKnownHosts() / removeFingerprint() exposed for the SSH Manager UI.
+ *
+ * P3 fixes retained:
+ *  - Resource leak: SSHClient.disconnect() called in finally if auth throws.
+ *  - openShell(): byte-buffer reads replace readLine() so partial-line prompts arrive.
+ *  - openShell(): connect() errors caught and emitted as "[SSH Error] ..." lines.
  */
 @Singleton
-class SshManager @Inject constructor() {
-
-    // TOFU: fingerprints accepted by the user, keyed by "host:port"
+class SshManager @Inject constructor(
+    @ApplicationContext private val context: Context,
+) {
+    // In-memory fingerprint cache; loaded lazily on first connect.
+    // Guarded by synchronized(fingerprintLock) on every access.
+    private val fingerprintLock = Any()
+    private var fingerprintsLoaded = false
     private val knownFingerprints = mutableMapOf<String, String>()
+
+    private fun ensureLoaded() {
+        synchronized(fingerprintLock) {
+            if (!fingerprintsLoaded) {
+                knownFingerprints.putAll(SshFingerprintStore.load(context))
+                fingerprintsLoaded = true
+            }
+        }
+    }
+
+    /** Returns a copy of all stored host:port → SHA256 fingerprint entries. */
+    fun getKnownHosts(): Map<String, String> {
+        ensureLoaded()
+        return synchronized(fingerprintLock) { knownFingerprints.toMap() }
+    }
+
+    /** Removes a stored fingerprint so the next connect triggers a fresh TOFU accept. */
+    fun removeFingerprint(hostPort: String) {
+        ensureLoaded()
+        synchronized(fingerprintLock) {
+            knownFingerprints.remove(hostPort)
+            SshFingerprintStore.save(context, knownFingerprints)
+        }
+    }
+
+    /**
+     * TOFU HostKeyVerifier:
+     * - Unknown host → store fingerprint → accept.
+     * - Known host, same fingerprint → accept.
+     * - Known host, different fingerprint → REJECT (possible MITM).
+     * Returns the rejection reason via [onMismatch] so callers can surface it.
+     */
+    private inner class TofuVerifier(
+        private val onMismatch: (String) -> Unit = {},
+    ) : HostKeyVerifier {
+        override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
+            ensureLoaded()
+            val hostPort = "$hostname:$port"
+            val fp = SshFingerprintStore.fingerprint(key)
+            return synchronized(fingerprintLock) {
+                val stored = knownFingerprints[hostPort]
+                when {
+                    stored == null -> {
+                        // First time seeing this host — trust and remember.
+                        knownFingerprints[hostPort] = fp
+                        SshFingerprintStore.save(context, knownFingerprints)
+                        true
+                    }
+                    stored == fp -> true
+                    else -> {
+                        onMismatch(hostPort)
+                        false
+                    }
+                }
+            }
+        }
+
+        override fun findExistingAlgorithms(hostname: String, port: Int): List<String> =
+            emptyList()
+    }
 
     /**
      * Connect and authenticate. On any failure after the socket is open,
      * [SSHClient.disconnect] is called to avoid a resource leak.
+     *
+     * @param onMismatch called if the remote host key fingerprint changed since
+     *   the last accepted connection (possible MITM). Connection is rejected.
      */
-    private fun connect(creds: SshCredentials): SSHClient {
+    private fun connect(
+        creds: SshCredentials,
+        onMismatch: (String) -> Unit = {},
+    ): SSHClient {
         val ssh = SSHClient()
-
-        // TOFU verifier: accept unknown hosts on first connect and remember fingerprint;
-        // reject on subsequent connects if fingerprint changed (basic MITM protection).
-        val key = "${creds.host}:${creds.port}"
-        // TODO(P3): Implement TOFU fingerprint pinning — for now use PromiscuousVerifier
-        //  (accepts all hosts). Replace with a proper HostKeyVerifier once sshj TOFU
-        //  API usage is confirmed against the bundled sshj version.
-        ssh.addHostKeyVerifier(PromiscuousVerifier())
-
+        ssh.addHostKeyVerifier(TofuVerifier(onMismatch))
         ssh.connect(creds.host, creds.port)
         try {
             when {
@@ -65,7 +172,6 @@ class SshManager @Inject constructor() {
                 else -> error("No authentication method provided")
             }
         } catch (t: Throwable) {
-            // P3 fix: close socket before re-throwing to prevent leak
             runCatching { ssh.disconnect() }
             throw t
         }
@@ -102,9 +208,11 @@ class SshManager @Inject constructor() {
      * Opens an interactive PTY shell. Emits output bytes as UTF-8 strings.
      * Write to [onReady]'s OutputStream to send stdin.
      *
-     * P3 fixes:
-     *  - connect() failures caught and emitted as "[SSH Error] ..." lines
-     *  - Reader uses a byte buffer instead of readLine() so partial-line prompts arrive
+     * P14-D: emits a prominent warning line if the host fingerprint changed
+     *   (connection is rejected by the TOFU verifier before it gets this far,
+     *   but the warning line is added via onMismatch callback before close()).
+     *
+     * P3: byte-buffer read so shell prompts (no trailing \n) arrive immediately.
      */
     fun openShell(
         creds: SshCredentials,
@@ -114,20 +222,26 @@ class SshManager @Inject constructor() {
         val session: Session
         val shell: Session.Shell
 
+        var mismatchHost: String? = null
         try {
-            ssh = connect(creds)
+            ssh = connect(creds, onMismatch = { hostPort -> mismatchHost = hostPort })
             session = ssh.startSession()
             session.allocateDefaultPTY()
             shell = session.startShell()
         } catch (t: Throwable) {
-            trySend("[SSH Error] ${t.message ?: "Connection failed"}\r\n")
+            val msg = if (mismatchHost != null)
+                "[SSH WARNING] Host key changed for $mismatchHost — connection rejected.\r\n" +
+                "[SSH WARNING] If this is intentional, go to Settings → SSH Manager and remove the stored fingerprint for $mismatchHost.\r\n"
+            else
+                "[SSH Error] ${t.message ?: "Connection failed"}\r\n"
+            trySend(msg)
             close()
             return@callbackFlow
         }
 
         onReady(shell.outputStream)
 
-        // P3 fix: byte-buffer read so shell prompts (no trailing \n) arrive immediately
+        // P3: byte-buffer read so shell prompts (no trailing \n) arrive immediately.
         val readerThread = Thread {
             val buf = ByteArray(4096)
             try {

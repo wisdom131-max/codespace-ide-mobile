@@ -891,6 +891,7 @@ internal fun TerminalPane(
     var isRootMode        by remember { mutableStateOf(false) }
     var acEnabled         by remember { mutableStateOf(false) }
     var showCustomCmds    by remember { mutableStateOf(false) }
+    var showHistorySearch  by remember { mutableStateOf(false) }
     var showSttHint       by remember { mutableStateOf(false) }
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
@@ -1263,7 +1264,15 @@ internal fun TerminalPane(
                     Column(
                         Modifier
                             .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF2D2D2D))
-                            .clickable { activeId = tab.id }
+                            .pointerInput(tab.id) {
+                                detectTapGestures(
+                                    onTap = { activeId = tab.id },
+                                    onLongPress = {
+                                        renameTargetId = tab.id
+                                        renameValue = tab.name
+                                    },
+                                )
+                            }
                             .height(28.dp)
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                             .widthIn(min = 60.dp, max = 140.dp),
@@ -1457,6 +1466,18 @@ internal fun TerminalPane(
             }
         }
 
+        // P14-B: Shell history search overlay
+        if (showHistorySearch) {
+            ShellHistorySearchOverlay(
+                onDismiss = { showHistorySearch = false },
+                onSelect  = { cmd ->
+                    active?.session?.write(cmd)
+                    TerminalHistoryStore.append(context, cmd)
+                },
+                historyLines = remember { TerminalHistoryStore.load(context).reversed() },
+            )
+        }
+
         // Rename dialog
         if (renameTargetId != null) {
             // Rotation fix (#8): see color scheme picker above for rationale.
@@ -1570,7 +1591,9 @@ internal fun TerminalPane(
                 val data = result.data
                 val results = data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
                 if (!results.isNullOrEmpty()) {
-                    active?.session?.write(results[0])
+                    val sttCmd = results[0]
+                    active?.session?.write(sttCmd)
+                    TerminalHistoryStore.append(context, sttCmd)
                 }
             }
             Box(
@@ -1700,6 +1723,13 @@ internal fun TerminalPane(
                     .clickable { showCustomCmds = !showCustomCmds }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Cmds", color = if (showCustomCmds) Color(0xFFBB86FC) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // History search — P14-B
+            Box(
+                Modifier.background(if (showHistorySearch) Color(0xFF1A3A2A) else Color(0xFF2A2A2A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { showHistorySearch = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("🔍 Hist", color = if (showHistorySearch) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
         }
         }
         HorizontalDivider(color = Color(0xFF2A2A2A))
