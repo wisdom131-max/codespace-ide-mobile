@@ -24,10 +24,11 @@
 
 | | |
 |-|-|
-| Latest green build | **#1172** (post-P13 hotfixes green) |
-| Active phase | **Phase 13** |
+| Latest green build | **#1172** (tree clean, Phase 13 complete) |
+| Active phase | **Phase 14** |
 | Last green | #1172 — fix(ProjectShellScreen): GoToLine digit filter — TREE CLEAN ✅ |
-| **Next** | **Phase 13 continued** |
+| **Next** | **Phase 14 — Advanced Terminal & Shell UX** |
+| Phase 13 | ✅ COMPLETE (build #1172) — Runtime UX Polish & Stability |
 | Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
 | Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
 | Phase 9 | ✅ COMPLETE (build #1129) — Performance & Monitoring |
@@ -1331,9 +1332,11 @@ suitable for professional development on Android.
 |---|---------|--------|-------|-------|
 | P13-A | Download Center panel | ✅ DONE | #1159 | DownloadCenterPanel.kt + DOWNLOADS tab |
 | P13-B | Live git+lint badge counts in activity bar | ✅ DONE | #1160 | Replace hardcoded zeros |
-| P13-C | Terminal zoom toggle+restore | ⚠️ PARTIAL | #1166❌ | Introduced regressions; needs clean rewrite |
-| P13-D | 4-bug hotfix batch | ⚠️ PARTIAL | #1165❌ | McpShellProfile quote broke parse |
-| — | Hotfix cascade #1165→#1172 | ✅ RESOLVED | #1172 | See table below |
+| P13-C | Toolchain install button (runs pkg install in terminal) | ✅ DONE | #1164 | ToolchainPanel.kt |
+| P13-D | Rename Project long-press on HomeScreen | ✅ DONE | #1164 | HomeScreen.kt AlertDialog |
+| P13-E | Real project name in PSS top bar | ✅ DONE | #1164 | projectName from filesDir |
+| — | Hotfix cascade #1165→#1172 | ✅ RESOLVED | #1172 | 8-build cascade, all fixed |
+| **Phase 13** | **COMPLETE** | **✅** | **#1172** | **All items shipped** |
 
 #### CI Build History — Phase 13
 
@@ -1372,6 +1375,24 @@ suitable for professional development on Android.
 - **`run {}` vs `if/else`**: Never replace `if (cond) { ... } else { ... }` with `run { ... }` — the `else` becomes dangling. Use a local val + `if (val != null)` instead.
 - **Chaining on `Unit`**: `callback(it).filter {...}` fails when callback returns `Unit`. Apply transforms to the input before the call: `callback(it.filter {...})`.
 - **Extracting composables**: When a nested composable needs variables from the parent scope, ALL referenced variables must be passed explicitly as parameters — they do not close over the outer scope automatically when moved to a `private fun`.
+
+
+---
+
+### Phase 14 — Advanced Terminal & Shell UX (ACTIVE)
+
+**Goal:** Make the terminal a first-class mobile IDE experience — smarter shell, better navigation, real multi-session management, and robust SSH.
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| P14-A | Persistent terminal scrollback (save/restore scroll buffer on tab switch) | 🔲 TODO | Scrollback lost when switching bottom tabs |
+| P14-B | Shell history search (Ctrl+R style overlay in extra-keys bar) | 🔲 TODO | Tap 🔍 in extra keys → history search popup |
+| P14-C | Terminal hyperlink detection (tap URLs to open in preview) | 🔲 TODO | Regex over output, underline+tap to open |
+| P14-D | TOFU SSH fingerprint pinning (replace PromiscuousVerifier) | 🔲 TODO | Store fingerprint on first connect, verify on re-connect |
+| P14-E | Terminal session name editor (rename tabs) | 🔲 TODO | Long-press tab → rename dialog |
+| P14-F | Quick command palette for terminal (recent commands + suggestions) | 🔲 TODO | Reuse history log, show as autocomplete overlay |
+
+**Implementation order:** P14-D first (security), then P14-B, P14-E, P14-C, P14-A, P14-F.
 
 ---
 
