@@ -1447,22 +1447,23 @@ fun ExplorerSidePanel(
                         trashEntries.forEach { entry ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(entry.originalName, fontSize = 12.sp, color = TextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(entry.originalPath.substringAfterLast("/"), fontSize = 12.sp, color = TextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(
-                                        SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(Date(entry.deletedAt)),
+                                        SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(Date(entry.deletedAtMs)),
                                         fontSize = 10.sp, color = MutedColor
                                     )
                                 }
                                 TextButton(onClick = {
                                     scope.launch {
-                                        val projectDir = run {
-                                            var p = contextFile?.parentFile
-                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p.parentFile
+                                        val projectDir: File? = run {
+                                            var p: File? = contextFile?.parentFile
+                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p?.parentFile
                                             p
                                         }
-                                        if (projectDir != null) {
-                                            withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(projectDir, entry) }
-                                            trashEntries = WorkspaceManager.listTrash(projectDir)
+                                        val pd = projectDir
+                                        if (pd != null) {
+                                            withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(pd, entry) }
+                                            trashEntries = WorkspaceManager.listTrash(pd)
                                             refresh++
                                         }
                                     }
@@ -1470,14 +1471,15 @@ fun ExplorerSidePanel(
                                 Spacer(Modifier.width(4.dp))
                                 TextButton(onClick = {
                                     scope.launch {
-                                        val projectDir = run {
-                                            var p = contextFile?.parentFile
-                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p.parentFile
+                                        val projectDir: File? = run {
+                                            var p: File? = contextFile?.parentFile
+                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p?.parentFile
                                             p
                                         }
-                                        if (projectDir != null) {
-                                            withContext(Dispatchers.IO) { WorkspaceManager.purgeTrashEntry(projectDir, entry) }
-                                            trashEntries = WorkspaceManager.listTrash(projectDir)
+                                        val pd = projectDir
+                                        if (pd != null) {
+                                            withContext(Dispatchers.IO) { WorkspaceManager.purgeTrashEntry(pd, entry) }
+                                            trashEntries = WorkspaceManager.listTrash(pd)
                                         }
                                     }
                                 }) { Text("Delete", fontSize = 11.sp, color = Color(0xFFCC0000)) }
