@@ -1599,6 +1599,36 @@ No new files created — all changes in ExplorerPane.kt
 
 ---
 
+
+## PHASE 19 — GIT DEEP FEATURES & LANGUAGE INTELLIGENCE ✅ COMPLETE (build #1226)
+
+**Goal:** VS Code-level Git tooling — branch graph, merge conflict resolution, cross-file go-to-definition.
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| P19-A | Cross-file Go-to-Definition — searches FileIndexer for project-wide symbol definitions, shows "In this file" + "In project" results in dialog, tapping a project result opens that file in a new tab | `CodeEditor.kt`, `EditorPane.kt` | ✅ #1221, #1226 |
+| P19-B | Branch Graph Visualization — new GRAPH tab in SourceControlPane, parses `git log --graph --oneline --all`, renders ASCII branch lines in monospace blue with sha + message | `SourceControlPane.kt` | ✅ #1222 |
+| P19-C | Merge Conflict Resolver — conflict files show expandable resolver with Ours/Theirs/Both buttons per file, regex strips conflict markers and `git add`s the resolved file | `SourceControlPane.kt` | ✅ #1222 |
+
+#### Design notes
+- P19-A: `CrossFileDefResult` data class added alongside existing `DefResult`; `onOpenFileAtLine` callback parameter on CodeEditor, wired in EditorPane to open new EditorTab (with dedup via `tabs.none`)
+- P19-B: `GraphRow` data class; graph ASCII parsed via `takeWhile` on `|*/\_-` characters; loaded alongside `loadLog()` to share the IO call
+- P19-C: `ConflictResolverRow` extracted as separate @Composable (64KB rule); uses `Regex("(?s)<<<<<<< .*?\n(.*?)=======.*?>>>>>>> .*\n")` for Ours/Theirs, plain marker removal for Both
+- `ScmTab` enum extended: `CHANGES, LOG, GRAPH, STASH, TAGS`
+
+#### CI Build History — Phase 19
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1221 | ✅ GREEN | feat(P19-A): cross-file Go-to-Definition in CodeEditor |
+| #1222 | ✅ GREEN | feat(P19-B/C): branch graph + merge conflict resolver |
+| #1223 | ❌ FAIL | feat(P19-A): wire onOpenFileAtLine — wrong Language/EditorTab refs |
+| #1224 | ❌ FAIL | fix: same issues (pushed without changes) |
+| #1225 | ❌ FAIL | fix: Language.fromExtension doesn't exist + missing EditorTab.name param |
+| **#1226** | **✅ GREEN** | fix: Language.fromPath() + EditorTab(name=file.name) — **PHASE 19 COMPLETE** |
+
+---
+
 ## ONGOING RULES (for every future AI session)
 
 1. ALWAYS read AGENTS.md before touching code
