@@ -107,7 +107,7 @@ fun EditorPane(
     var activeId by remember { mutableStateOf<String?>(null) }
     // P20-A: Git Blame
     var showBlame by remember { mutableStateOf(false) }
-    var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.CodeEditor.BlameLine>?>(null) }
+    var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.BlameLine>?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -440,7 +440,7 @@ fun EditorPane(
                 // P20-A: Git Blame toggle
                 IconButton(onClick = { showBlame = !showBlame }, modifier = Modifier.size(35.dp)) {
                     Icon(
-                        androidx.compose.material.icons.Icons.Default.History,
+                        androidx.compose.material.icons.Icons.Default.Info,
                         contentDescription = "Git Blame",
                         tint = if (showBlame) androidx.compose.ui.graphics.Color(0xFF007ACC)
                                else androidx.compose.ui.graphics.Color(0xFF858585),
@@ -542,22 +542,23 @@ fun EditorPane(
                 Row(Modifier.fillMaxSize()) {
                     // P20-A: Fetch git blame data
                     if (showBlame && active != null) {
-                        LaunchedEffect(showBlame, active.path) {
+                        val blamePath = active.path
+                        LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
-                                blameData = withContext(Dispatchers.IO) {
+                                val result = withContext(Dispatchers.IO) {
                                     try {
-                                        val repoDir2 = active.path.substringBeforeLast("/")
-                                        val fileName = active.path.substringAfterLast("/")
+                                        val repoDir2 = blamePath.substringBeforeLast("/")
+                                        val fileName = blamePath.substringAfterLast("/")
                                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
                                         if (guestPath != null) {
                                             val raw = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git blame --line-porcelain '$fileName' 2>/dev/null", guestPath)
-                                            val map = mutableMapOf<Int, com.codespace.ide.editor.CodeEditor.BlameLine>()
+                                            val map = mutableMapOf<Int, com.codespace.ide.editor.BlameLine>()
                                             var idx = 0; var author = ""; var sha = ""
                                             raw.lines().forEach { ln ->
                                                 if (ln.startsWith("author ") && !ln.startsWith("author-")) author = ln.removePrefix("author ").trim()
                                                 else if (ln.length >= 40 && ln.matches(Regex("^[0-9a-f]{40}.*"))) sha = ln.substring(0, 8)
                                                 else if (ln.startsWith("\t")) {
-                                                    map[idx] = com.codespace.ide.editor.CodeEditor.BlameLine(author.take(12), "", sha)
+                                                    map[idx] = com.codespace.ide.editor.BlameLine(author.take(12), "", sha)
                                                     idx++
                                                 }
                                             }
@@ -565,27 +566,29 @@ fun EditorPane(
                                         } else null
                                     } catch (_: Exception) { null }
                                 }
+                                blameData = result
                             }
                         }
                     }
                     // P20-A: Fetch git blame data
                     if (showBlame && active != null) {
-                        LaunchedEffect(showBlame, active.path) {
+                        val blamePath = active.path
+                        LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
-                                blameData = withContext(Dispatchers.IO) {
+                                val result = withContext(Dispatchers.IO) {
                                     try {
-                                        val repoDir2 = active.path.substringBeforeLast("/")
-                                        val fileName = active.path.substringAfterLast("/")
+                                        val repoDir2 = blamePath.substringBeforeLast("/")
+                                        val fileName = blamePath.substringAfterLast("/")
                                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
                                         if (guestPath != null) {
                                             val raw = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git blame --line-porcelain '$fileName' 2>/dev/null", guestPath)
-                                            val map = mutableMapOf<Int, com.codespace.ide.editor.CodeEditor.BlameLine>()
+                                            val map = mutableMapOf<Int, com.codespace.ide.editor.BlameLine>()
                                             var idx = 0; var author = ""; var sha = ""
                                             raw.lines().forEach { ln ->
                                                 if (ln.startsWith("author ") && !ln.startsWith("author-")) author = ln.removePrefix("author ").trim()
                                                 else if (ln.length >= 40 && ln.matches(Regex("^[0-9a-f]{40}.*"))) sha = ln.substring(0, 8)
                                                 else if (ln.startsWith("\t")) {
-                                                    map[idx] = com.codespace.ide.editor.CodeEditor.BlameLine(author.take(12), "", sha)
+                                                    map[idx] = com.codespace.ide.editor.BlameLine(author.take(12), "", sha)
                                                     idx++
                                                 }
                                             }
@@ -593,6 +596,7 @@ fun EditorPane(
                                         } else null
                                     } catch (_: Exception) { null }
                                 }
+                                blameData = result
                             }
                         }
                     }
