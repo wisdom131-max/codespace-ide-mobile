@@ -614,6 +614,20 @@ fun EditorPane(
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
+                        onOpenFileAtLine = { filePath, line ->
+                            // Open the file in a new tab and scroll to line
+                            val lang = com.codespace.ide.editor.Language.fromExtension(filePath.substringAfterLast(".", ""))
+                            tabs.add(com.codespace.ide.ui.panes.EditorPane.EditorTab(
+                                id = filePath,
+                                path = filePath,
+                                content = try { java.io.File(filePath).readText() } catch (_: Exception) { "" },
+                                language = lang,
+                                isDirty = false,
+                                savedContent = try { java.io.File(filePath).readText() } catch (_: Exception) { "" },
+                            ))
+                            activeId = filePath
+                            scrollToLine = line - 1
+                        },
                     )
                 }
             }
