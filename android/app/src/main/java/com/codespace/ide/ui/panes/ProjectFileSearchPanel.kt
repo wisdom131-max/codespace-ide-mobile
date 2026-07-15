@@ -23,8 +23,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.compose.material.icons.filled.FindReplace
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 
 // ── Palette colours (VS Code-like dark) ─────────────────────────────────────
 private val SBg     = Color(0xFF1E1E1E)
@@ -72,6 +76,13 @@ fun ProjectFileSearchPanel(
     var fileResults by remember { mutableStateOf<List<FileResult>>(emptyList()) }
     var textResults by remember { mutableStateOf<List<TextResult>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    // P18-A — Replace in files
+    var replaceMode   by remember { mutableStateOf(false) }
+    var replaceQuery  by remember { mutableStateOf("") }
+    var replacing     by remember { mutableStateOf(false) }
+    var replaceCount  by remember { mutableStateOf(0) }
+    val snackState    = remember { SnackbarHostState() }
+    val scope         = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
     // ── File index — collected once (or when root changes) ─────────────────
@@ -182,16 +193,26 @@ fun ProjectFileSearchPanel(
                     ),
                 )
                 Spacer(Modifier.width(8.dp))
-                // Mode toggle chip
+                // Mode toggle chips
                 Box(
                     Modifier
                         .background(
                             if (textMode) SAccent else Color(0xFF3C3C3C),
                             RoundedCornerShape(4.dp),
                         )
-                        .clickable { textMode = !textMode; query = query }
+                        .clickable { textMode = !textMode; if (!textMode) replaceMode = false }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) { Text("Text", color = if (textMode) Color.White else SDim, fontSize = 11.sp) }
+                Spacer(Modifier.width(4.dp))
+                Box(
+                    Modifier
+                        .background(
+                            if (replaceMode) Color(0xFFE8A838) else Color(0xFF3C3C3C),
+                            RoundedCornerShape(4.dp),
+                        )
+                        .clickable { if (!textMode) textMode = true; replaceMode = !replaceMode }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) { Text("Replace", color = if (replaceMode) Color(0xFF1E1E1E) else SDim, fontSize = 11.sp) }
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Close, null, tint = SDim, modifier = Modifier.size(16.dp))
@@ -199,6 +220,66 @@ fun ProjectFileSearchPanel(
             }
 
             HorizontalDivider(color = SDivider)
+
+            // ── Replace field (P18-A) ──────────────────────────────────────
+            if (replaceMode && textMode) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF2D2D2D))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Default.FindReplace, null, tint = Color(0xFFE8A838), modifier = Modifier.size(16.dp))
+                    OutlinedTextField(
+                        value = replaceQuery,
+                        onValueChange = { replaceQuery = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Replace with…", color = SDim, fontSize = 12.sp) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SText, unfocusedTextColor = SText,
+                            focusedBorderColor = Color(0xFFE8A838), unfocusedBorderColor = SDivider,
+                            cursorColor = Color(0xFFE8A838),
+                            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                        ),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = SText),
+                    )
+                    val canReplace = textResults.isNotEmpty() && !replacing
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                replacing = true
+                                replaceCount = 0
+                                val grouped = textResults.groupBy { it.file.path }
+                                withContext(Dispatchers.IO) {
+                                    grouped.forEach { (path, results) ->
+                                        val file = File(path)
+                                        if (!file.exists() || !file.canWrite()) return@forEach
+                                        var fileContent = file.readText()
+                                        val pattern = try { Regex(Regex.escape(query)) } catch (_: Exception) { return@forEach }
+                                        fileContent = pattern.replace(fileContent, replaceQuery)
+                                        file.writeText(fileContent)
+                                        replaceCount += results.size
+                                    }
+                                }
+                                replacing = false
+                                snackState.showSnackbar("Replaced $replaceCount occurrence(s) in ${grouped.size} file(s)")
+                            }
+                        },
+                        enabled = canReplace,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            if (replacing) "Replacing…" else "Replace All (${textResults.size})",
+                            color = if (canReplace) Color(0xFFE8A838) else SDim,
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+                HorizontalDivider(color = SDivider)
+            }
 
             // ── Results ────────────────────────────────────────────────────
             Box(Modifier.fillMaxSize()) {
@@ -320,6 +401,11 @@ fun ProjectFileSearchPanel(
     }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // Snackbar for replace feedback
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        SnackbarHost(hostState = snackState)
+    }
 }
 
 // ── Fuzzy score helper ────────────────────────────────────────────────────────
