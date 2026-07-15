@@ -101,6 +101,8 @@ fun EditorPane(
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
+    // P18-C: project root for cross-file rename
+    val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
@@ -550,6 +552,7 @@ fun EditorPane(
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
                         },
+                        projectRoot = projectRootPath,
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -564,6 +567,7 @@ fun EditorPane(
                         onFindReplaceClose = { findReplaceOpen = false },
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
+                        projectRoot = projectRootPath,
                     )
                 }
             } else {
@@ -609,6 +613,7 @@ fun EditorPane(
                         onGoToLineClose = { goToLineOpen = false },
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
+                        projectRoot = projectRootPath,
                     )
                 }
             }
