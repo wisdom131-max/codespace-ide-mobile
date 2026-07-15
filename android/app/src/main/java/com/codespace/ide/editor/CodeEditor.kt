@@ -264,6 +264,8 @@ fun CodeEditor(
     projectRoot: String? = null,
     /** P19-A: Cross-file Go-to-Definition — opens file at line. */
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
+    /** P20-A: Git blame data — when non-null, shows author+date column next to line numbers */
+    blameData: Map<Int, BlameLine>? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -409,6 +411,8 @@ fun CodeEditor(
     var contextWord by remember { mutableStateOf<String?>(null) }
     data class DefResult(val line: Int, val lineText: String)
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
+    /** P20-A: Git blame info per line */
+    data class BlameLine(val author: String, val date: String, val shortSha: String)
     var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
 
@@ -753,7 +757,7 @@ fun CodeEditor(
         if (showInlayHints && inlayHints.isNotEmpty()) {
             val density = androidx.compose.ui.platform.LocalDensity.current
             val lineHeightDp = with(density) { fontSize.sp.toDp() }
-            val gutterWidthDp = 62.dp
+            val gutterWidthDp = if (blameData != null) 62.dp + 120.dp else 62.dp
             inlayHints.forEach { hint ->
                 val displayIdx = displayLines.indexOfFirst { it.first == hint.line }
                 if (displayIdx < 0) return@forEach
@@ -765,7 +769,21 @@ fun CodeEditor(
                 }
                 Box(
                     modifier = Modifier
-                        .padding(start = gutterWidthDp)
+                        if (blameData != null) {
+                Box(Modifier.width(120.dp).fillMaxHeight().background(colors.gutter.copy(alpha = 0.3f))) {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(blameData.entries.toList().sortedBy { it.key }) { (lineIdx, blame) ->
+                            Box(Modifier.height(fontSize.dp * 1.25f).fillMaxWidth().padding(start = 4.dp), contentAlignment = Alignment.CenterStart) {
+                                Column {
+                                    Text(blame.author.take(12), fontSize = 9.sp, color = colors.gutter.copy(alpha = 0.8f), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(blame.shortSha, fontSize = 8.sp, color = colors.gutter.copy(alpha = 0.6f), fontFamily = FontFamily.Monospace, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(start = gutterWidthDp)
                         .offset(y = yOffset)
                         .align(Alignment.TopStart)
                 ) {
