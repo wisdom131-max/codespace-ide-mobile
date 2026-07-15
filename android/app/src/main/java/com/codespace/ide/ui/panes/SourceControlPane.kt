@@ -127,6 +127,7 @@ fun SourceControlPane(projectId: String) {
     var refresh         by remember { mutableStateOf(0) }
     var showStaged      by remember { mutableStateOf(true) }
     var showChanges     by remember { mutableStateOf(true) }
+    var actionToast    by remember { mutableStateOf<String?>(null) } // P16-A: git op feedback
 
     // branch dialogs
     var showBranchMenu      by remember { mutableStateOf(false) }
