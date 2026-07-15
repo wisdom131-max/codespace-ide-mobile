@@ -1455,13 +1455,7 @@ fun ExplorerSidePanel(
                                 }
                                 TextButton(onClick = {
                                     scope.launch {
-                                        val projectDir: File? = run {
-                                            var p: File? = contextFile?.parentFile
-                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p?.parentFile
-                                            p
-                                        }
-                                        val pd = projectDir
-                                        if (pd != null) {
+                                        findTrashProjectDir(contextFile)?.let { pd ->
                                             withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(pd, entry) }
                                             trashEntries = WorkspaceManager.listTrash(pd)
                                             refresh++
@@ -1471,13 +1465,7 @@ fun ExplorerSidePanel(
                                 Spacer(Modifier.width(4.dp))
                                 TextButton(onClick = {
                                     scope.launch {
-                                        val projectDir: File? = run {
-                                            var p: File? = contextFile?.parentFile
-                                            while (p != null && !File(p, ".ide-trash").exists() && p.parentFile?.name != "projects") p = p?.parentFile
-                                            p
-                                        }
-                                        val pd = projectDir
-                                        if (pd != null) {
+                                        findTrashProjectDir(contextFile)?.let { pd ->
                                             withContext(Dispatchers.IO) { WorkspaceManager.purgeTrashEntry(pd, entry) }
                                             trashEntries = WorkspaceManager.listTrash(pd)
                                         }
@@ -1990,3 +1978,13 @@ private fun SectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit
     }
 }
 
+
+private fun findTrashProjectDir(contextFile: java.io.File?): java.io.File? {
+    var p = contextFile?.parentFile
+    while (p != null) {
+        if (java.io.File(p, ".ide-trash").exists()) return p
+        if (p.parentFile?.name == "projects") return p
+        p = p.parentFile
+    }
+    return null
+}
