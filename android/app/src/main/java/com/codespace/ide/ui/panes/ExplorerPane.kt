@@ -218,6 +218,7 @@ fun ExplorerSidePanel(
     var previewAudioPath by remember { mutableStateOf<String?>(null) }
     var previewHexPath by remember { mutableStateOf<String?>(null) }
     var previewSqlitePath by remember { mutableStateOf<String?>(null) }
+    var previewDexPath      by remember { mutableStateOf<String?>(null) }
     // Phase 21 Step 4 — file info + fallback viewers
     var showFileInfoDialog  by remember { mutableStateOf(false) }
     var previewStringsPath  by remember { mutableStateOf<String?>(null) }
@@ -827,7 +828,8 @@ fun ExplorerSidePanel(
                     val isVideo = !node.file.isDirectory && isVideoFile(node.file.name)
                     val isAudio = !node.file.isDirectory && isAudioFile(node.file.name)
                     val isSqlite = !node.file.isDirectory && isSqliteFile(node.file.name)
-                    val isHexBin = !node.file.isDirectory && !isSqlite && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
+                    val isDex    = !node.file.isDirectory && isDexFile(node.file.name)
+                    val isHexBin = !node.file.isDirectory && !isSqlite && !isDex && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -855,6 +857,8 @@ fun ExplorerSidePanel(
                                         previewAudioPath = node.file.absolutePath
                                     } else if (isSqlite) {
                                         previewSqlitePath = node.file.absolutePath
+                                    } else if (isDex) {
+                                        previewDexPath = node.file.absolutePath
                                     } else if (isHexBin) {
                                         // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
                                         // catches) — hex dump instead of corrupting/crashing the text editor.
@@ -1049,7 +1053,8 @@ fun ExplorerSidePanel(
                     val isPdf = isPdfFile(f.name)
                     val isVid = isVideoFile(f.name)
                     val isAud = isAudioFile(f.name)
-                    val isHexBin = isHexViewFile(f.name) || sniffLooksBinary(f.absolutePath)
+                    val isDex    = isDexFile(f.name)
+                    val isHexBin = !isDex && (isHexViewFile(f.name) || sniffLooksBinary(f.absolutePath))
                     val hasPreview = isImg || isArch || isPdf || isVid || isAud || isHexBin
                     val hasPaste = clipboardFile != null
                     buildList {
@@ -1086,6 +1091,7 @@ fun ExplorerSidePanel(
                                                    else if (isPdf) previewPdfPath = f.absolutePath
                                                    else if (isVid) previewVideoPath = f.absolutePath
                                                    else if (isAud) previewAudioPath = f.absolutePath
+                                                   else if (isDex) previewDexPath = f.absolutePath
                                                    else if (isHexBin) previewHexPath = f.absolutePath
                                                    else onOpenFile(f.absolutePath)
                                         "Preview" -> when {
@@ -1094,6 +1100,7 @@ fun ExplorerSidePanel(
                                             isPdf -> { previewPdfPath = f.absolutePath; showCtxMenu = false }
                                             isVid -> { previewVideoPath = f.absolutePath; showCtxMenu = false }
                                             isAud -> { previewAudioPath = f.absolutePath; showCtxMenu = false }
+                                            isDex -> { previewDexPath = f.absolutePath; showCtxMenu = false }
                                             isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
                                         }
                                         "Rename" -> { nameInput = f.name; showRename = true }
@@ -1428,6 +1435,14 @@ fun ExplorerSidePanel(
             apiKey = tokenStore?.aiKey("GEMINI"),
             onDismiss = { showAiImageGen = false; pendingAiImageTargetDir = null },
             onSaved = { refresh++ },
+        )
+    }
+
+    // ── DEX Viewer (Phase 21-X Step 1) ─────────────────────────────────────
+    if (previewDexPath != null) {
+        DexViewerDialog(
+            file = java.io.File(previewDexPath!!),
+            onDismiss = { previewDexPath = null },
         )
     }
 
