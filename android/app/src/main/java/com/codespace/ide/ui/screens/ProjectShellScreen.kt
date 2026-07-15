@@ -58,7 +58,7 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.terminal.BusyboxInstaller
-import com.codespace.ide.terminal.TerminalState
+import com.codespace.ide.ui.panes.TerminalState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -442,9 +442,9 @@ fun ProjectShellScreen(
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     val showFindBarMs = remember { mutableStateOf(false) }; var showFindBar by showFindBarMs
-    var wordWrap           by remember { mutableStateOf(false) }
-    var showInlayHints     by remember { mutableStateOf(true) }  // P2-11
-    var showGoToLine       by remember { mutableStateOf(false) }
+    val wordWrapMs = remember { mutableStateOf(false) }; var wordWrap by wordWrapMs
+    val showInlayHintsMs = remember { mutableStateOf(true) }; var showInlayHints by showInlayHintsMs  // P2-11
+    val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
     var goToLineInput      by remember { mutableStateOf("") }
     val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
     val findQueryMs = remember { mutableStateOf("") }; var findQuery by findQueryMs
@@ -942,8 +942,11 @@ fun ProjectShellScreen(
                     tokenStore = tokenStore,
                     editorTabs = editorTabs,
                     heavyPanesReady = heavyPanesReady,
-                    wordWrap = wordWrap,
-                    showInlayHints = showInlayHints,
+                    wordWrapMs = wordWrapMs,
+                    showInlayHintsMs = showInlayHintsMs,
+                    showGoToLineMs = showGoToLineMs,
+                    sessionStateStore = sessionStateStore,
+                    keyboardToolbarBg = KeyboardToolbarBg,
                     navBackStack = navBackStack,
                     navFwdStack = navFwdStack,
                     sharedTerminalState = sharedTerminalState,
@@ -2134,6 +2137,7 @@ private fun StatusBarContent(
  * body can use `var X by XMs` delegation — exactly the same read/write semantics as
  * the original inlined code, with zero logic changes needed.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PssEditorColumn(
     projectId: String,
@@ -2142,8 +2146,11 @@ private fun PssEditorColumn(
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     editorTabs: SnapshotStateList<String>,
     heavyPanesReady: Boolean,
-    wordWrap: Boolean,
-    showInlayHints: Boolean,
+    wordWrapMs: MutableState<Boolean>,
+    showInlayHintsMs: MutableState<Boolean>,
+    showGoToLineMs: MutableState<Boolean>,
+    sessionStateStore: com.codespace.ide.data.SessionStateStore,
+    keyboardToolbarBg: Color,
     navBackStack: SnapshotStateList<NavEntry>,
     navFwdStack: SnapshotStateList<NavEntry>,
     sharedTerminalState: TerminalState,
@@ -2198,6 +2205,10 @@ private fun PssEditorColumn(
     val TabBarBg = tabBarBg; val TabActiveBg = tabActiveBg; val TabInactiveBg = tabInactiveBg
     val TabActiveIndicator = tabActiveIndicator; val TabText = tabText; val TabTextInactive = tabTextInactive
     val DividerColor = dividerColor; val PanelBg = panelBg; val BgColor = bgColor
+    val KeyboardToolbarBg = keyboardToolbarBg
+    var wordWrap by wordWrapMs
+    var showInlayHints by showInlayHintsMs
+    var showGoToLine by showGoToLineMs
     // Local function aliases — these mirror the original local fun declarations in PSS
     // so the extracted body code works with zero changes
     val showNotification: (String, String) -> Unit = onShowNotification
