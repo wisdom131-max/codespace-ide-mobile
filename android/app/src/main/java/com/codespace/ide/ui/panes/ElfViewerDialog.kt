@@ -221,7 +221,8 @@ private object ElfParser {
     // Read a null-terminated string from a byte array at offset
     private fun readString(data: ByteArray, offset: Int): String {
         if (offset < 0 || offset >= data.size) return ""
-        val end = data.indexOf(0.toByte(), offset).let { if (it < 0) data.size else it }
+        var end = offset
+        while (end < data.size && data[end] != 0.toByte()) end++
         return try { String(data, offset, end - offset, Charsets.UTF_8) } catch (_: Exception) { "" }
     }
 
@@ -274,16 +275,16 @@ private object ElfParser {
         val eMach  = u16(18)
         val eVer   = u32(20).toInt()
 
-        val (eEntry, ePhOff, eShOff, eFlags, eEhSz, ePhEntSz, ePhNum, eShEntSz, eShNum, eShStrNdx) =
-            if (is64) listOf(
-                u64(24), u64(32), u64(40), u32(48).toLong(),
-                u16(52).toLong(), u16(54).toLong(), u16(56).toLong(),
-                u16(58).toLong(), u16(60).toLong(), u16(62).toLong()
-            ) else listOf(
-                u32(24), u32(28), u32(32), u32(36),
-                u16(40).toLong(), u16(42).toLong(), u16(44).toLong(),
-                u16(46).toLong(), u16(48).toLong(), u16(50).toLong()
-            )
+        val eEntry    = if (is64) u64(24)           else u32(24)
+        val ePhOff    = if (is64) u64(32)           else u32(28)
+        val eShOff    = if (is64) u64(40)           else u32(32)
+        val eFlags    = if (is64) u32(48)           else u32(36)
+        val eEhSz     = if (is64) u16(52).toLong()  else u16(40).toLong()
+        val ePhEntSz  = if (is64) u16(54).toLong()  else u16(42).toLong()
+        val ePhNum    = if (is64) u16(56).toLong()  else u16(44).toLong()
+        val eShEntSz  = if (is64) u16(58).toLong()  else u16(46).toLong()
+        val eShNum    = if (is64) u16(60).toLong()  else u16(48).toLong()
+        val eShStrNdx = if (is64) u16(62).toLong()  else u16(50).toLong()
 
         val header = ElfHeader(
             elfClass       = if (is64) "ELF64" else "ELF32",
@@ -356,14 +357,13 @@ private object ElfParser {
                 val off = (phOff + i * phEntSz).toInt()
                 if (off + phEntSz > bytes.size) break
                 val segType  = u32(off)
-                val (segFlags, segOffset, segVaddr, segPaddr, segFileSz, segMemSz, segAlign) =
-                    if (is64) listOf(
-                        u32(off + 4), u64(off + 8), u64(off + 16),
-                        u64(off + 24), u64(off + 32), u64(off + 40), u64(off + 48)
-                    ) else listOf(
-                        u32(off + 24), u32(off + 4), u32(off + 8),
-                        u32(off + 12), u32(off + 16), u32(off + 20), u32(off + 28)
-                    )
+                val segFlags   = if (is64) u32(off + 4)   else u32(off + 24)
+                val segOffset  = if (is64) u64(off + 8)   else u32(off + 4)
+                val segVaddr   = if (is64) u64(off + 16)  else u32(off + 8)
+                val segPaddr   = if (is64) u64(off + 24)  else u32(off + 12)
+                val segFileSz  = if (is64) u64(off + 32)  else u32(off + 16)
+                val segMemSz   = if (is64) u64(off + 40)  else u32(off + 20)
+                val segAlign   = if (is64) u64(off + 48)  else u32(off + 28)
                 segments += ElfSegment(
                     type = segTypeStr(segType),
                     flags = segFlagsStr(segFlags),
