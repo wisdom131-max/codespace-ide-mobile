@@ -375,8 +375,6 @@ fun ProjectShellScreen(
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.
     val orientation = LocalConfiguration.current.orientation
-    // P15-H: two-column layout on wide landscape screens (tablets / foldables)
-    val isWideLayout = orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && totalWidth > 1400f
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
     val ActivityBarBg = t.ActivityBarBg
@@ -418,6 +416,12 @@ fun ProjectShellScreen(
 
     var activeBottomTab    by remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
+    // P15-H: two-column layout on wide landscape screens (tablets / foldables)
+    // NOTE: totalWidth starts at 1080f and gets updated via onGloballyPositioned.
+    // isWideLayout is derived state so it recomputes when totalWidth changes.
+    val isWideLayout by remember { derivedStateOf {
+        orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && totalWidth > 1400f
+    } }
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
     var showChatPanel      by remember { mutableStateOf(false) }
@@ -1273,6 +1277,7 @@ fun ProjectShellScreen(
                         panelBg = PanelBg,
                         tabTextInactive = TabTextInactive,
                         onRunInTerminal = { cmd -> terminalCommandToRun = cmd + "\r" },
+                        heavyPanesReady = heavyPanesReady,
                     )
 
                 } // end editor Column
@@ -1400,8 +1405,13 @@ fun ProjectShellScreen(
     // P15-E: File search overlay (shown over full screen)
     if (showFileSearch) {
         ProjectFileSearchPanel(
-            workspacePath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
-            onFileSelected = { path ->
+            projectRoot = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
+            onOpenFile = { path ->
+                if (!editorTabs.contains(path)) editorTabs.add(path)
+                activeEditorTab = path
+                showFileSearch = false
+            },
+            onOpenFileAtLine = { path, _ ->
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
                 showFileSearch = false
@@ -2041,6 +2051,7 @@ private fun PssBottomPanelContent(
     panelBg: Color,
     tabTextInactive: Color,
     onRunInTerminal: (String) -> Unit = {},
+    heavyPanesReady: Boolean = false,
 ) {
     val density = LocalDensity.current
     if (!showBottomPanel) return
