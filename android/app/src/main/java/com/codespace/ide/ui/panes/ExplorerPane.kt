@@ -1129,14 +1129,14 @@ fun ExplorerSidePanel(
                                             isVid -> { previewVideoPath = f.absolutePath; showCtxMenu = false }
                                             isAud -> { previewAudioPath = f.absolutePath; showCtxMenu = false }
                                             isApkAnalyzable(f.name) -> { previewApkPath = f.absolutePath; showCtxMenu = false }
-                    isNetworkCapture(f.name) -> { previewNetworkPath = f.absolutePath }
-                    isAiModel(f.name) -> { previewAiModelPath = f.absolutePath }
-                    isAndroidRuntimeFile(f.name) -> { previewArtPath = f.absolutePath }
-                        "Binary Diff" -> { binaryDiffFileA = f; binaryDiffFileB = null }
+                                            isNetworkCapture(f.name) -> { previewNetworkPath = f.absolutePath; showCtxMenu = false }
+                                            isAiModel(f.name) -> { previewAiModelPath = f.absolutePath; showCtxMenu = false }
+                                            isAndroidRuntimeFile(f.name) -> { previewArtPath = f.absolutePath; showCtxMenu = false }
                                             isDex -> { previewDexPath = f.absolutePath; showCtxMenu = false }
                                             isElf -> { previewElfPath = f.absolutePath; showCtxMenu = false }
                                             isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
                                         }
+                                        "Binary Diff" -> { binaryDiffFileA = f; binaryDiffFileB = null; showCtxMenu = false }
                                         "Rename" -> { nameInput = f.name; showRename = true }
                                         "Copy"   -> { clipboardFile = f; clipboardCut = false }
                                         "Cut"    -> { clipboardFile = f; clipboardCut = true }
