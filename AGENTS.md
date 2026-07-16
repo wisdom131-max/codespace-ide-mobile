@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **#1320** (minimap realism fixes GREEN) |
-| Active phase | **Phase 22-K (Multi-cursor) — next to build** |
+| Active phase | **Phase 23 (Debugging System Audit) — next to build** |
 | Last green | #1320 — fix: minimap realism — missing imports, proper toggle icon, pre-computed px |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
@@ -39,7 +39,7 @@
 | **Phase 12** | **✅ COMPLETE — all 12-A through 12-M shipped (#1157 GREEN)** |
 | **Phase 21** | **✅ COMPLETE — 17 viewers shipped (Hex, PDF, APK, DEX, ELF, Smali, SQLite, Strings, etc.)** |
 | **Phase 21-X** | **✅ COMPLETE — reverse engineering: DEX/ELF/APK analyzers, disassembly, binary diff** |
-| **Next** | P22-K (Multi-cursor) -> P22-L (Peek Definition) -> Phase 23 (Debugging) -> Phase 24 (Master Audit) -> Phase X (Live Preview) |
+| **Next** | Phase 23 (Debugging System Audit) -> Phase 24 (Master IDE Audit) -> Phase X (Live Preview) |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -2406,11 +2406,11 @@ P22-I: ✅ DONE — LSP for Kotlin (kotlin-language-server, Java install, 300s t
 P22-J: ✅ DONE — Auto Import + line-number gutter alignment fix + minimap toggle (#1318 GREEN)
         Also: Line number gutter alignment fix (numbers clipped/misaligned)
         Also: Minimap toggle (dropdown button, editor fills space when minimap off)
-P22-K: Multi-cursor support (next after P22-J)
-P22-L: Peek Definition overlay
+P22-K: ✅ DONE — Multi-cursor enhancements: Select Next Occurrence, Add Cursor Above/Below, BackHandler to clear cursors
+P22-L: ✅ DONE — Peek Definition overlay: inline code preview via LSP or regex fallback, tap to jump
 ```
 
-**STATUS: P22-A through P22-J COMPLETE ✅ — P22-K (Multi-cursor) is NEXT**
+**STATUS: P22-A through P22-L ALL COMPLETE ✅ — Phase 22 DONE. Next: Phase 23 (Debugging System)**
 
 
 
