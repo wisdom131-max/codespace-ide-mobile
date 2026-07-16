@@ -1341,7 +1341,7 @@ fun CodeEditor(
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.Center,
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("▸", color = Color(0xFF4EC9B0), fontSize = 14.sp)
@@ -1372,7 +1372,7 @@ fun CodeEditor(
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.Center,
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("↑", color = Color(0xFFE5C07B), fontSize = 14.sp)
@@ -1403,7 +1403,7 @@ fun CodeEditor(
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.Center,
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("↓", color = Color(0xFFE5C07B), fontSize = 14.sp)
