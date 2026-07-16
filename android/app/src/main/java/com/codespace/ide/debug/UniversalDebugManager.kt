@@ -270,6 +270,55 @@ object UniversalDebugManager {
 
     /** Total breakpoint count. */
     fun breakpointCount(): Int = breakpoints.values.sumOf { it.size }
+
+    // ── Breakpoint persistence (P23-8) ────────────────────────────────
+    // Saves/loads breakpoints to SharedPreferences so they survive app restarts.
+
+    private const val PREFS_NAME = "debug_breakpoints"
+    private const val KEY_BREAKPOINTS = "breakpoints_json"
+
+    fun saveBreakpoints(context: android.content.Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val json = org.json.JSONArray()
+        getAllBreakpoints().forEach { bp ->
+            val obj = org.json.JSONObject()
+            obj.put("filePath", bp.filePath)
+            obj.put("line", bp.line)
+            obj.put("condition", bp.condition ?: org.json.JSONObject.NULL)
+            obj.put("logMessage", bp.logMessage ?: org.json.JSONObject.NULL)
+            obj.put("enabled", bp.enabled)
+            json.put(obj)
+        }
+        prefs.edit().putString(KEY_BREAKPOINTS, json.toString()).apply()
+    }
+
+    fun loadBreakpoints(context: android.content.Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val jsonStr = prefs.getString(KEY_BREAKPOINTS, null) ?: return
+        try {
+            val arr = org.json.JSONArray(jsonStr)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val filePath = obj.optString("filePath")
+                val line = obj.optInt("line")
+                val condition = obj.opt("condition") as? String
+                val logMessage = obj.opt("logMessage") as? String
+                val enabled = obj.optBoolean("enabled", true)
+                if (filePath.isNotEmpty()) {
+                    val list = breakpoints.getOrPut(filePath) { mutableListOf() }
+                    if (list.none { it.line == line }) {
+                        list.add(DebugBreakpoint(filePath, line, condition, logMessage, enabled))
+                    }
+                }
+            }
+            onBreakpointsChanged?.invoke()
+        } catch (_: Exception) {}
+    }
+
+    fun clearAllBreakpoints() {
+        breakpoints.clear()
+        onBreakpointsChanged?.invoke()
+    }
 }
 
 /**
