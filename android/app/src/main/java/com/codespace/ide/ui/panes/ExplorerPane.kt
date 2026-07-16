@@ -228,6 +228,10 @@ fun ExplorerSidePanel(
     var previewApkPath        by remember { mutableStateOf<String?>(null) }
     var previewSmaliPath      by remember { mutableStateOf<String?>(null) }
     var previewDisasmPath     by remember { mutableStateOf<String?>(null) }
+    // Phase 21-X Step 4 — Entropy Heatmap, Network Viewer, AI Model Viewer
+    var previewEntropyPath    by remember { mutableStateOf<String?>(null) }
+    var previewNetworkPath    by remember { mutableStateOf<String?>(null) }
+    var previewAiModelPath    by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -1092,6 +1096,9 @@ fun ExplorerSidePanel(
                         if (!f.isDirectory && (isHexBin || isArch)) add("Open as Strings" to Icons.Default.FormatListBulleted)
                         if (!f.isDirectory && isHexBin) add("Open as Binary Inspector" to Icons.Default.BugReport)
                         if (!f.isDirectory && isElf) add("Disassembly" to Icons.Default.Terminal)
+                            if (!f.isDirectory) add("Entropy Heatmap" to Icons.Default.Thermostat)
+                            if (!f.isDirectory && isNetworkCapture(f.name)) add("Network Viewer" to Icons.Default.Wifi)
+                            if (!f.isDirectory && isAiModel(f.name)) add("AI Model Viewer" to Icons.Default.Psychology)
                         if (!f.isDirectory && isApkAnalyzable(f.name)) add("APK Analyzer" to Icons.Default.Android)
                         if (!f.isDirectory && (isDex || isSmaliSource(f.name))) add("Open as Smali" to Icons.Default.Code)
                     }.forEach { (label, icon) ->
@@ -1116,6 +1123,8 @@ fun ExplorerSidePanel(
                                             isVid -> { previewVideoPath = f.absolutePath; showCtxMenu = false }
                                             isAud -> { previewAudioPath = f.absolutePath; showCtxMenu = false }
                                             isApkAnalyzable(f.name) -> { previewApkPath = f.absolutePath; showCtxMenu = false }
+                    isNetworkCapture(f.name) -> { previewNetworkPath = f.absolutePath }
+                    isAiModel(f.name) -> { previewAiModelPath = f.absolutePath }
                                             isDex -> { previewDexPath = f.absolutePath; showCtxMenu = false }
                                             isElf -> { previewElfPath = f.absolutePath; showCtxMenu = false }
                                             isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
@@ -1212,6 +1221,9 @@ fun ExplorerSidePanel(
                                         "Disassembly" -> { previewDisasmPath = f.absolutePath }
                                         "APK Analyzer" -> { previewApkPath = f.absolutePath }
                                         "Open as Smali" -> { previewSmaliPath = f.absolutePath }
+                "Entropy Heatmap" -> { previewEntropyPath = f.absolutePath }
+                "Network Viewer" -> { previewNetworkPath = f.absolutePath }
+                "AI Model Viewer" -> { previewAiModelPath = f.absolutePath }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -1492,6 +1504,27 @@ fun ExplorerSidePanel(
         DisassemblyViewerDialog(
             file = java.io.File(previewDisasmPath!!),
             onDismiss = { previewDisasmPath = null },
+        )
+    }
+    // Phase 21-X Step 4: Entropy Heatmap
+    if (previewEntropyPath != null) {
+        EntropyHeatmapDialog(
+            file = java.io.File(previewEntropyPath!!),
+            onDismiss = { previewEntropyPath = null },
+        )
+    }
+    // Phase 21-X Step 4: Network Viewer (PCAP / HAR)
+    if (previewNetworkPath != null) {
+        NetworkViewerDialog(
+            file = java.io.File(previewNetworkPath!!),
+            onDismiss = { previewNetworkPath = null },
+        )
+    }
+    // Phase 21-X Step 4: AI Model Viewer (GGUF / Safetensors / ONNX)
+    if (previewAiModelPath != null) {
+        AiModelViewerDialog(
+            file = java.io.File(previewAiModelPath!!),
+            onDismiss = { previewAiModelPath = null },
         )
     }
 
