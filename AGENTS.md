@@ -2880,3 +2880,106 @@ Produce:
 **Do not hide findings. Be brutally accurate. A feature that merely exists in the UI is not considered implemented.**
 
 **Order:** Audit first. Verify second. Repair third. Upgrade fourth. Implement fifth. Optimize sixth.
+
+---
+
+## PHASE X — LIVE PREVIEW SERVER AUDIT & INTEGRATION
+
+### Background
+
+The editor currently has no live-updating preview. Viewing changes to
+HTML/CSS/JS project files requires manually opening them in an
+external browser and refreshing by hand. This creates unnecessary
+friction compared to VS Code's Live Server experience, where saving a
+file instantly reflects in a running preview with no manual action.
+
+### Goal
+
+Add a live preview capability: as the user edits and saves web-content
+files (HTML/CSS/JS) in a project, a preview pane inside the app should
+update automatically, without the user touching an external browser
+or manually refreshing anything.
+
+### Audit First (Do NOT implement yet)
+
+Before implementing, determine each of the following and classify as
+WORKING / PARTIAL / BROKEN / MISSING:
+
+1. Whether any preview mechanism already exists in the app in any form
+2. Whether a WebView is already used anywhere for displaying content
+3. How file saves are currently detected/signaled within the editor
+   (is there an existing file-watcher or save-event hook to reuse?)
+4. Whether the proot container currently has Node/npm available and
+   in working order for installing a local dev-server tool
+5. How the app currently determines the active project's root folder
+   (this preview needs to know what folder to serve)
+6. Whether multiple projects could be open at once, and if so, whether
+   more than one preview server could end up running simultaneously
+
+### Live Preview Architecture
+
+**Concept:**
+A lightweight local HTTP server runs inside the proot container,
+serving the active project's folder. It watches the project's files
+for changes and, on save, pushes an auto-reload signal to whatever is
+currently viewing the preview. A WebView inside the app displays that
+server's output as the preview pane.
+
+**Server:**
+- Serves only the active project's root, not the whole filesystem
+- Watches for file changes and pushes reload signals automatically
+  (no polling from the app side)
+- Runs headless (no attempt to launch an external browser)
+- Binds to localhost only, never exposed beyond the device
+
+**Preview pane:**
+- A WebView (separate from the code editor / code-server WebView —
+  this is its own dedicated preview surface, could be split view,
+  tab, or toggleable panel)
+- Loads the local preview server's address
+- Requires no manual refresh action from the user at any point
+
+### Lifecycle
+
+Determine and implement sensible rules for:
+- When the preview server starts (on project open? on first preview
+  request? only for projects detected as web-type?)
+- When it stops (editor close, app background, project switch)
+- What happens if the user has no active web project open and taps
+  "Preview" anyway
+- What happens if a second project is opened while a preview server
+  is already running for a different one — avoid orphaned/conflicting
+  servers
+
+Given the device's limited RAM, the preview server should not run
+persistently in the background when not actively being viewed.
+
+### Scope Boundary
+
+This is for browser-renderable content (HTML/CSS/JS) only. It does
+not apply to non-web languages like Python — running/previewing
+script output for those is a separate, unrelated feature.
+
+### Known Risks to Verify During Audit
+
+- Port collision with anything else already running in the container
+  (code-server, any LSP servers, existing app-hardcoded ports)
+- Project paths containing spaces (established issue from the
+  terminal integration audit) — any command that launches the preview
+  server against a project path must handle this correctly
+- Whether proot's file-watching (inotify or similar) actually works
+  reliably in this container environment — some proot setups have
+  known limitations with filesystem event notifications, which the
+  auto-reload mechanism depends on entirely
+
+### Final Report
+
+Produce:
+1. Current preview/WebView capability
+2. Current file-save/change detection capability
+3. Chosen server approach and why
+4. Lifecycle rules decided
+5. Known risks confirmed or ruled out
+6. Recommended implementation plan
+
+**Priority:** 1. Audit → 2. Verify → 3. Design → 4. Implement → 5. Optimize
