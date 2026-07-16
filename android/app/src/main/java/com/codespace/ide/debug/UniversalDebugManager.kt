@@ -411,7 +411,6 @@ class PythonDebugProvider : DebugProvider {
                 .redirectErrorStream(true)
             process = pb.start()
             val proc = process!!
-            session.pid = try { proc.pid().toInt() } catch (_: Exception) { null }
             // Stream output on background thread
             Thread {
                 try {
@@ -467,7 +466,6 @@ class NodeJsDebugProvider : DebugProvider {
             val pb = ProcessBuilder(cmd).directory(workDir).redirectErrorStream(true)
             process = pb.start()
             val proc = process!!
-            session.pid = try { proc.pid().toInt() } catch (_: Exception) { null }
             Thread {
                 try {
                     proc.inputStream.bufferedReader().forEachLine { line ->
@@ -518,7 +516,6 @@ class ShellDebugProvider : DebugProvider {
                 .redirectErrorStream(true)
             process = pb.start()
             val proc = process!!
-            session.pid = try { proc.pid().toInt() } catch (_: Exception) { null }
             Thread {
                 try {
                     proc.inputStream.bufferedReader().forEachLine { line ->
@@ -568,7 +565,6 @@ class PhpDebugProvider : DebugProvider {
                 .directory(workDir).redirectErrorStream(true)
             process = pb.start()
             val proc = process!!
-            session.pid = try { proc.pid().toInt() } catch (_: Exception) { null }
             Thread {
                 try {
                     proc.inputStream.bufferedReader().forEachLine { onOutput("[php] $it") }
