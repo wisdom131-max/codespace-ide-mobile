@@ -232,6 +232,8 @@ fun ExplorerSidePanel(
     var previewEntropyPath    by remember { mutableStateOf<String?>(null) }
     var previewNetworkPath    by remember { mutableStateOf<String?>(null) }
     var previewAiModelPath    by remember { mutableStateOf<String?>(null) }
+    // Phase 21-X Step 9 — Android Runtime Viewer (OAT/VDEX/APEX)
+    var previewArtPath        by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -1099,6 +1101,7 @@ fun ExplorerSidePanel(
                             if (!f.isDirectory) add("Entropy Heatmap" to Icons.Default.Thermostat)
                             if (!f.isDirectory && isNetworkCapture(f.name)) add("Network Viewer" to Icons.Default.Wifi)
                             if (!f.isDirectory && isAiModel(f.name)) add("AI Model Viewer" to Icons.Default.Psychology)
+                            if (!f.isDirectory && isAndroidRuntimeFile(f.name)) add("Runtime Viewer" to Icons.Default.Android)
                         if (!f.isDirectory && isApkAnalyzable(f.name)) add("APK Analyzer" to Icons.Default.Android)
                         if (!f.isDirectory && (isDex || isSmaliSource(f.name))) add("Open as Smali" to Icons.Default.Code)
                     }.forEach { (label, icon) ->
@@ -1125,6 +1128,7 @@ fun ExplorerSidePanel(
                                             isApkAnalyzable(f.name) -> { previewApkPath = f.absolutePath; showCtxMenu = false }
                     isNetworkCapture(f.name) -> { previewNetworkPath = f.absolutePath }
                     isAiModel(f.name) -> { previewAiModelPath = f.absolutePath }
+                    isAndroidRuntimeFile(f.name) -> { previewArtPath = f.absolutePath }
                                             isDex -> { previewDexPath = f.absolutePath; showCtxMenu = false }
                                             isElf -> { previewElfPath = f.absolutePath; showCtxMenu = false }
                                             isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
@@ -1224,6 +1228,7 @@ fun ExplorerSidePanel(
                 "Entropy Heatmap" -> { previewEntropyPath = f.absolutePath }
                 "Network Viewer" -> { previewNetworkPath = f.absolutePath }
                 "AI Model Viewer" -> { previewAiModelPath = f.absolutePath }
+                "Runtime Viewer"  -> { previewArtPath = f.absolutePath }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -1525,6 +1530,13 @@ fun ExplorerSidePanel(
         AiModelViewerDialog(
             file = java.io.File(previewAiModelPath!!),
             onDismiss = { previewAiModelPath = null },
+        )
+    }
+    // Phase 21-X Step 9: Android Runtime Viewer (OAT / VDEX / APEX)
+    if (previewArtPath != null) {
+        AndroidRuntimeViewerDialog(
+            file = java.io.File(previewArtPath!!),
+            onDismiss = { previewArtPath = null },
         )
     }
 
