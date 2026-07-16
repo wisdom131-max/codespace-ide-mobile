@@ -28,7 +28,7 @@ data class ConflictHunk(
 object MergeConflictParser {
 
     private val CONFLICT_START = Regex("^<<<<<<< (.+)$")
-    private val CONFLICT_SEP = "^=======$"
+    private val CONFLICT_SEP = "======="
     private val CONFLICT_END = Regex("^>>>>>>> (.+)$")
 
     fun parse(content: String): List<ConflictHunk> {
@@ -45,7 +45,7 @@ object MergeConflictParser {
 
                 i++
                 // Collect ours lines until =======
-                while (i < lines.size && !lines[i].matches(CONFLICT_SEP)) {
+                while (i < lines.size && lines[i].trim() != CONFLICT_SEP) {
                     oursLines.add(lines[i])
                     i++
                 }
