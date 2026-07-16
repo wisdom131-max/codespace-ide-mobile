@@ -28,6 +28,9 @@ import com.codespace.ide.domain.EditorTab
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.CodeEditor
 import com.codespace.ide.editor.FileCache
+import com.codespace.ide.editor.MergeConflictParser
+import com.codespace.ide.editor.ConflictHunk
+import com.codespace.ide.editor.ConflictResolution
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -109,6 +112,8 @@ fun EditorPane(
     // P20-A: Git Blame
     var showBlame by remember { mutableStateOf(false) }
     var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.BlameLine>?>(null) }
+    // P22-D: Merge conflict detection
+    var conflictHunks by remember { mutableStateOf<List<ConflictHunk>?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -601,6 +606,15 @@ fun EditorPane(
                             }
                         }
                     }
+                    // P22-D: Detect merge conflicts in current file
+                    val detectedConflicts = remember(active.content) {
+                        if (MergeConflictParser.hasConflicts(active.content)) {
+                            MergeConflictParser.parse(active.content)
+                        } else null
+                    }
+                    if (conflictHunks != detectedConflicts) {
+                        conflictHunks = detectedConflicts
+                    }
                     CodeEditor(
                         content = active.content,
                         language = active.language,
@@ -665,6 +679,15 @@ fun EditorPane(
                     }
                 }
                 key(active.id) {
+                    // P22-D: Detect merge conflicts in current file
+                    val detectedConflicts = remember(active.content) {
+                        if (MergeConflictParser.hasConflicts(active.content)) {
+                            MergeConflictParser.parse(active.content)
+                        } else null
+                    }
+                    if (conflictHunks != detectedConflicts) {
+                        conflictHunks = detectedConflicts
+                    }
                     CodeEditor(
                         content = active.content,
                         language = active.language,
@@ -704,6 +727,21 @@ fun EditorPane(
                             activeId = filePath
                         },
                         blameData = if (showBlame) blameData else null,
+                        conflictData = conflictHunks,
+                        onResolveConflict = { hunk, resolution ->
+                            val idx = tabs.indexOfFirst { it.id == active.id }
+                            if (idx >= 0) {
+                                val resolved = MergeConflictParser.resolveHunk(active.content, hunk, resolution)
+                                tabs[idx] = active.copy(content = resolved, isDirty = true)
+                                if (active.path.startsWith("/")) {
+                                    try { File(active.path).writeText(resolved); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                }
+                                // Re-detect remaining conflicts
+                                conflictHunks = if (MergeConflictParser.hasConflicts(resolved)) {
+                                    MergeConflictParser.parse(resolved)
+                                } else null
+                            }
+                        },
                     )
                 }
             }
