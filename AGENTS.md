@@ -2104,3 +2104,130 @@ Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, S
 | P21-X-8 | GGUF / Safetensors / ONNX | ✅ DONE | AiModelViewerDialog.kt, 2-tab metadata viewer |
 | P21-X-9 | OAT / VDEX / APEX | 🔲 TODO | Android runtime format viewers |
 | P21-X-10 | Binary Diff Viewer | 🔲 TODO | Side-by-side byte diff |
+
+
+---
+
+## Phase 22: IDE Intelligence & Reliability Audit
+
+### MANDATE
+Before implementing any Phase 22 feature, perform a complete audit of all existing IDE systems.
+Report only — do not implement until audit findings are documented and prioritised.
+
+### AUDIT SCOPE
+
+**EDITOR INTELLIGENCE**
+Audit: IntelliSense, Auto/Smart/Predictive Completion, Inline Suggestions, Parameter Hints,
+Function Signature Help, Hover Information, Quick Fixes, Code Actions, Auto Imports,
+Snippet Support, Symbol Search, Workspace Symbol Search, Rename Symbol, Find References,
+Go To Definition, Peek Definition, Go To Declaration, Go To Type/Implementation/References,
+Breadcrumb Navigation, Outline View, Document Symbols, Workspace Symbols.
+Verify: feature exists, works, which languages, what blocks full functionality.
+
+**REAL-TIME DIAGNOSTICS**
+Required: analyse while typing, detect syntax/warning/type/import/reference/formatting errors,
+update automatically — no manual submission required.
+Verify: red/yellow underlines, error/warning tooltips, Problems panel, error navigation, quick fixes.
+If not automatic: find root cause (disconnected LSP, hidden diagnostics, plain-text open).
+
+**LANGUAGE SERVER PROTOCOL (LSP)**
+Audit: LSP Manager, Installation, Discovery, Startup, Restart, Status Indicators, Error Reporting.
+Verify per language (HTML, CSS, JS, TS, JSX, TSX, JSON, XML, YAML, Markdown, Python, Java,
+Kotlin, Dart, Rust, Go, PHP, C, C++): syntax highlighting, IntelliSense, diagnostics,
+error detection, formatting, navigation, hover, symbol support.
+
+**FILE TYPE DETECTION**
+Audit: extension, MIME, magic-byte, unknown-file detection.
+Verify icons and auto-load of correct editor/highlighting/diagnostics/LSP/formatter for:
+HTML, CSS, JS, TS, JSON, XML, YAML, MD, SVG, PNG, JPG, APK, DEX, SO, ZIP, PDF, SQLite.
+
+**FORMATTING**
+Verify: Format Document, Format Selection, Format on Save, language-specific formatting,
+formatter selection, formatter installation.
+
+**NAVIGATION**
+Verify: Go To Def, Peek Def, Go To Declaration, References, Find References, Rename Symbol,
+Symbol Search, Workspace Search, Outline Navigation, Breadcrumb Navigation.
+
+**DEBUGGING SYSTEMS**
+Editor Debugger: breakpoints, conditional breakpoints, step over/into/out,
+variable inspection, watch expressions, call stack, debug console.
+Application Debugger: Android app/APK debugging, process attachment, runtime inspection,
+Logcat integration, device/emulator debugging.
+Verify: are these separate or merged? which exists? which is functional?
+
+**EXTENSIONS & LANGUAGE SUPPORT**
+Audit: Extension Manager, installation, updates, loading, removal.
+Verify support for: Language Servers, Formatters, IntelliSense Providers, Debug Adapters,
+Theme/Icon Extensions.
+
+**EDITOR EXPERIENCE**
+Verify: Code Folding, Minimap, Split Editor, Multiple Tabs, Multi-Cursor Editing,
+Find & Replace, Workspace Search, File Search, Session Restore, Editor State Restore.
+
+**PERFORMANCE**
+Verify: LSP startup speed, diagnostics speed, completion speed, file opening speed,
+large file/project handling, memory usage, CPU usage. Identify bottlenecks.
+
+**WORKSPACE & PROJECT INTELLIGENCE**
+Audit: Project/Symbol/Workspace/Background Indexing, Workspace Health Checks,
+Missing Dependency/SDK/Package Detection, Project Analysis Systems.
+
+**GIT INTEGRATION**
+Audit: Repository Detection, Commit History Viewer, Branch Manager, Merge Conflict Viewer,
+Git Blame, Stash Manager, Diff Viewer, Repository Health Checks.
+Verify actual functionality — not only UI presence.
+
+**BUILD SYSTEMS**
+Audit: Build Output Parsing, Build Error Navigation, Build Task Discovery,
+Build Environment/SDK/JDK/Gradle/Maven Detection. Verify execution and error reporting.
+
+**TERMINAL SYSTEM**
+Audit: Terminal Startup, Stability, Session Restore, Working Directory Persistence,
+Command History Persistence, Multiple Terminal Support, Crash Recovery,
+Environment Variables, Package Installation Workflows.
+Verify state survives app restarts where designed to do so.
+
+**ANDROID DEVELOPMENT**
+Audit: ADB Detection, Device/Emulator Detection, APK Install/Uninstall,
+Logcat Integration, Package Name Detection, Android SDK Integration.
+
+**RELIABILITY**
+Verify: Crash Recovery, Auto Save, Workspace Recovery, Unsaved File Recovery,
+Terminal Recovery, Extension Failure Recovery, Corrupted Project Recovery,
+Startup Diagnostics, Safe Startup Systems.
+
+### CLASSIFICATION RULES
+- **WORKING** = UI + Backend + Successful Execution (all three required)
+- **PARTIAL** = some functionality missing or unreliable
+- **BROKEN** = exists but fails on execution
+- **MISSING** = not implemented
+- Buttons/menus/dialogs without working backend must NOT be classified as WORKING.
+
+### FEATURE CLAIM VERIFICATION (required for every feature)
+Verify: UI exists · backend implementation exists · executes successfully ·
+produces expected results · survives editor restart · survives app restart ·
+survives project reopen · handles errors correctly · integrates with existing systems.
+
+### AUDIT PRIORITIES
+1. Existing functionality verification
+2. Broken feature repair
+3. Incomplete feature completion
+4. Reliability improvements
+5. Performance improvements
+6. Missing feature implementation
+
+Prefer: Repair over replacement · Completion over duplication · Integration over recreation · Verification over assumptions.
+
+### REQUIRED FINAL REPORT FORMAT
+1. Working Features
+2. Partially Implemented Features
+3. Broken Features
+4. Missing Features
+5. Duplicate Systems
+6. High Priority Repairs
+7. High Priority Completions
+8. Recommended Next Development Phase
+
+**STATUS: 🔲 PENDING — audit must run before any Phase 22 implementation begins**
+
