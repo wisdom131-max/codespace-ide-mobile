@@ -91,6 +91,21 @@ fun isElfFile(name: String): Boolean {
     return ext == "so" || ext == "elf" || (ext.isEmpty() && !name.contains('.'))
 }
 
+fun isApkAnalyzable(name: String): Boolean {
+    val n = name.lowercase()
+    return n.endsWith(".apk") || n.endsWith(".xapk") || n.endsWith(".apks")
+}
+
+fun isSmaliSource(name: String): Boolean {
+    val n = name.lowercase()
+    return n.endsWith(".smali")
+}
+
+fun isDisassemblable(name: String): Boolean {
+    val n = name.lowercase()
+    return n.endsWith(".so") || n.endsWith(".elf") || n.endsWith(".o") || n.endsWith(".ko")
+}
+
 /** Safety net for anything NOT covered by the explicit lists above (image/archive/pdf/video/
  * audio/hex) — sniffs the first few KB for a NUL byte, which never legitimately appears in
  * text source files but is extremely common in arbitrary/unknown binary formats. Catches file

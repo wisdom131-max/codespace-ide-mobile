@@ -221,9 +221,13 @@ fun ExplorerSidePanel(
     var previewDexPath      by remember { mutableStateOf<String?>(null) }
     var previewElfPath      by remember { mutableStateOf<String?>(null) }
     // Phase 21 Step 4 — file info + fallback viewers
-    var showFileInfoDialog  by remember { mutableStateOf(false) }
-    var previewStringsPath  by remember { mutableStateOf<String?>(null) }
-    var previewBinaryPath   by remember { mutableStateOf<String?>(null) }
+    var showFileInfoDialog    by remember { mutableStateOf(false) }
+    var previewStringsPath    by remember { mutableStateOf<String?>(null) }
+    var previewBinaryPath     by remember { mutableStateOf<String?>(null) }
+    // Phase 21-X — APK analyzer, Smali viewer, Disassembly viewer
+    var previewApkPath        by remember { mutableStateOf<String?>(null) }
+    var previewSmaliPath      by remember { mutableStateOf<String?>(null) }
+    var previewDisasmPath     by remember { mutableStateOf<String?>(null) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -863,6 +867,8 @@ fun ExplorerSidePanel(
                                         previewDexPath = node.file.absolutePath
                                     } else if (isElf) {
                                         previewElfPath = node.file.absolutePath
+                                    } else if (isApkAnalyzable(node.file.name)) {
+                                        previewApkPath = node.file.absolutePath
                                     } else if (isHexBin) {
                                         // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
                                         // catches) — hex dump instead of corrupting/crashing the text editor.
@@ -1085,6 +1091,9 @@ fun ExplorerSidePanel(
                         if (!f.isDirectory) add("File Info" to Icons.Default.Info)
                         if (!f.isDirectory && (isHexBin || isArch)) add("Open as Strings" to Icons.Default.FormatListBulleted)
                         if (!f.isDirectory && isHexBin) add("Open as Binary Inspector" to Icons.Default.BugReport)
+                        if (!f.isDirectory && isElf) add("Disassembly" to Icons.Default.Terminal)
+                        if (!f.isDirectory && isApkAnalyzable(f.name)) add("APK Analyzer" to Icons.Default.Android)
+                        if (!f.isDirectory && (isDex || isSmaliSource(f.name))) add("Open as Smali" to Icons.Default.Code)
                     }.forEach { (label, icon) ->
                         Row(
                             Modifier.fillMaxWidth()
@@ -1106,6 +1115,7 @@ fun ExplorerSidePanel(
                                             isPdf -> { previewPdfPath = f.absolutePath; showCtxMenu = false }
                                             isVid -> { previewVideoPath = f.absolutePath; showCtxMenu = false }
                                             isAud -> { previewAudioPath = f.absolutePath; showCtxMenu = false }
+                                            isApkAnalyzable(f.name) -> { previewApkPath = f.absolutePath; showCtxMenu = false }
                                             isDex -> { previewDexPath = f.absolutePath; showCtxMenu = false }
                                             isElf -> { previewElfPath = f.absolutePath; showCtxMenu = false }
                                             isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
@@ -1199,6 +1209,9 @@ fun ExplorerSidePanel(
                                         "File Info" -> { showFileInfoDialog = true }
                                         "Open as Strings" -> { previewStringsPath = f.absolutePath }
                                         "Open as Binary Inspector" -> { previewBinaryPath = f.absolutePath }
+                                        "Disassembly" -> { previewDisasmPath = f.absolutePath }
+                                        "APK Analyzer" -> { previewApkPath = f.absolutePath }
+                                        "Open as Smali" -> { previewSmaliPath = f.absolutePath }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -1458,6 +1471,27 @@ fun ExplorerSidePanel(
         ElfViewerDialog(
             file = java.io.File(previewElfPath!!),
             onDismiss = { previewElfPath = null },
+        )
+    }
+    // Phase 21-X: APK Analyzer
+    if (previewApkPath != null) {
+        ApkAnalyzerDialog(
+            file = java.io.File(previewApkPath!!),
+            onDismiss = { previewApkPath = null },
+        )
+    }
+    // Phase 21-X: Smali Viewer
+    if (previewSmaliPath != null) {
+        SmaliViewerDialog(
+            file = java.io.File(previewSmaliPath!!),
+            onDismiss = { previewSmaliPath = null },
+        )
+    }
+    // Phase 21-X: Disassembly Viewer
+    if (previewDisasmPath != null) {
+        DisassemblyViewerDialog(
+            file = java.io.File(previewDisasmPath!!),
+            onDismiss = { previewDisasmPath = null },
         )
     }
 
