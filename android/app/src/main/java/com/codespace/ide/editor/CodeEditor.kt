@@ -1142,7 +1142,7 @@ fun CodeEditor(
                                     change.consume()
                                     coroutineScope.launch {
                                         val deltaLines = (dragAmount.y / miniLineHeightPx).toInt()
-                                        val newScroll = (vScroll.value + deltaLines * lineHeightPx)
+                                        val newScroll = (vScroll.value + (deltaLines * lineHeightPx).toInt())
                                             .coerceIn(0, vScroll.maxValue)
                                         vScroll.scrollTo(newScroll)
                                     }
