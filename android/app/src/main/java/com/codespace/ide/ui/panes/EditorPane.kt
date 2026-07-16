@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -468,16 +469,17 @@ fun EditorPane(
                 // P22-E: Format Document button
                 IconButton(
                     onClick = {
-                        if (active != null && !formatting) {
+                        val activeTab = tabs.firstOrNull { it.id == activeId }
+                        if (activeTab != null && !formatting) {
                             formatting = true
                             kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val result = DocumentFormatter.format(context, active.path, active.language)
+                                val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
                                 if (result.success && result.formattedContent != null) {
-                                    val idx2 = tabs.indexOfFirst { it.id == active.id }
+                                    val idx2 = tabs.indexOfFirst { it.id == activeTab.id }
                                     if (idx2 >= 0) {
-                                        tabs[idx2] = active.copy(content = result.formattedContent, isDirty = true)
-                                        if (active.path.startsWith("/")) {
-                                            try { File(active.path).writeText(result.formattedContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                        tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = true)
+                                        if (activeTab.path.startsWith("/")) {
+                                            try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
                                         }
                                     }
                                 }
@@ -491,7 +493,7 @@ fun EditorPane(
                         CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFF007ACC), modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
                         Icon(
-                            androidx.compose.material.icons.Icons.Default.Functions,
+                            Icons.Default.Functions,
                             contentDescription = "Format Document",
                             tint = androidx.compose.ui.graphics.Color(0xFF858585),
                             modifier = Modifier.size(18.dp),
