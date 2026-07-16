@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
         // P7-3 Safe mode: record this launch attempt. If the app has crashed
         // 3+ times in a row (each launch ended within 60s), isSafeMode() returns true.
         WorkspaceManager.recordLaunch(this)
+        // P23-8: Load persisted breakpoints on startup
+        com.codespace.ide.debug.UniversalDebugManager.loadBreakpoints(this)
         // Mark stable after 60s of uptime — resets the crash counter.
         Handler(Looper.getMainLooper()).postDelayed({
             WorkspaceManager.recordStable(this)
