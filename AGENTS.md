@@ -2445,3 +2445,32 @@ P22-L: Peek Definition overlay
 - P22-E: Format Document (prettier/ktlint/black via proot)
 - P22-F through P22-L: LSP groundwork → diagnostics → completions → multi-cursor
 
+
+
+---
+
+## SESSION UPDATE — July 16, 2026 (P22-A begin)
+
+**Agent read AGENTS.md:** ✅  
+**Audit before acting:** ✅ CI audited — #1291/#1292 both failed with same `ExplorerPane.kt:1135 Type mismatch String/Boolean`. Fixed in #1293 ✅. AGENTS.md updated in #1294 ✅.
+
+### P22 Pre-flight Audit (already done before writing code)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| P22-A ProblemsPanel live-update | 🔨 #1295/#1296 building | Poll lint every 2s via `produceState` loop; badge polls every 3s |
+| P22-A LintChecker.unified() | 🔨 #1295 building | Merges LintChecker + LintAnalyzer, deduplicates by (line, message) |
+| P22-B Workspace Find & Replace | ✅ ALREADY DONE | P18-A already shipped Replace All with snackbar + regex in ProjectFileSearchPanel |
+| P22-C Git blame gutter | ✅ ALREADY DONE | P20-A ships gutter rendering + `showBlame` toggle in EditorPane |
+| P22-D Merge conflict inline editor | ❌ NOT STARTED | Next after P22-A confirms green |
+| P22-E Format Document | ❌ NOT STARTED | After P22-D |
+| P22-F–L LSP groundwork | ❌ NOT STARTED | Long-horizon items |
+
+### Pattern memorised from this session
+- **Always audit for existing implementation before writing new code.** P22-B and P22-C were already done — writing them again would have created duplicates and broken builds.
+- **P22-A approach:** `produceState { while(true) { value = ...; delay(2000) } }` — correct pattern for periodic background recomputation inside a Composable without a ViewModel.
+
+### Next actions (after P22-A green)
+1. **P22-D** — Merge conflict inline editor: parse `<<<<<<<`/`=======`/`>>>>>>>` markers in CodeEditor, show Accept Ours / Accept Theirs / Accept Both buttons per hunk as overlay rows
+2. **P22-E** — Format Document: detect language → run `ktlint`/`prettier`/`black`/`gofmt` inside proot shell via `TerminalSession.runCommand()`, stream output back, replace editor content
+
