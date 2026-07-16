@@ -61,6 +61,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
+import com.codespace.ide.lsp.LspManager
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
 import com.codespace.ide.lsp.ImportEdit
 import com.codespace.ide.lsp.applyImportEdits
 import com.codespace.ide.ui.LocalEditorColors
@@ -289,6 +293,8 @@ fun CodeEditor(
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
     /** Minimap: initial visibility, can be toggled via dropdown in the editor toolbar */
     showMinimap: Boolean = true,
+    /** P22-L: Current file path for LSP definition and peek definition */
+    filePath: String = "",
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -1253,7 +1259,7 @@ fun CodeEditor(
                                 val cLine = value.text.take(cOff).count { it == '\n' }
                                 val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                                 val cCol = cOff - cLineStart
-                                val uri = activeFilePath.let { p ->
+                                val uri = filePath.let { p ->
                                     if (p.startsWith("/")) "file://$p" else p
                                 }
                                 var peekResult: PeekDefResult? = null
@@ -1268,7 +1274,7 @@ fun CodeEditor(
                                                 val defLine = loc.optJSONObject("range")
                                                     ?.optJSONObject("start")?.optInt("line", 0) ?: 0
                                                 val defPath = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
-                                                val targetText = if (defPath == activeFilePath) value.text
+                                                val targetText = if (defPath == filePath) value.text
                                                     else try { java.io.File(defPath).readText() } catch (_: Exception) { null }
                                                 if (targetText != null) {
                                                     val allLines = targetText.split("\n")
@@ -1283,14 +1289,15 @@ fun CodeEditor(
                                 }
                                 // Fallback: regex search in current file
                                 if (peekResult == null) {
-                                    val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+                                    val declKw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
+                                    val declPat = Regex(declKw + "\\s+" + Regex.escape(word) + "\\b")
                                     val textLines = value.text.split("\n")
                                     val found = textLines.indexOfFirst { declPat.containsMatchIn(it) }
                                     if (found >= 0) {
                                         val startLine = (found - 3).coerceAtLeast(0)
                                         val endLine = (found + 8).coerceAtMost(textLines.size - 1)
                                         val snippet = textLines.subList(startLine, endLine + 1)
-                                        peekResult = PeekDefResult(activeFilePath, found, snippet, found - startLine)
+                                        peekResult = PeekDefResult(filePath, found, snippet, found - startLine)
                                     }
                                 }
                                 peekDefResult = peekResult
@@ -1613,7 +1620,7 @@ fun CodeEditor(
                             Text("X", color = Color(0xFF888888), fontSize = 16.sp)
                         }
                     }
-                    HorizontalDivider(color = Color(0xFF333333))
+                    Divider(color = Color(0xFF333333))
                     // Code preview
                     Column(
                         modifier = Modifier
@@ -1646,7 +1653,7 @@ fun CodeEditor(
                         }
                     }
                     // Footer
-                    HorizontalDivider(color = Color(0xFF333333))
+                    Divider(color = Color(0xFF333333))
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
                         horizontalArrangement = Arrangement.End,
@@ -1657,7 +1664,7 @@ fun CodeEditor(
                         Spacer(Modifier.width(4.dp))
                         TextButton(
                             onClick = {
-                                if (peek.filePath == activeFilePath) {
+                                if (peek.filePath == filePath) {
                                     coroutineScope.launch {
                                         val lineHeightPx = fontSize * 1.25f
                                         vScroll.animateScrollTo((peek.line * lineHeightPx).toInt())
