@@ -79,7 +79,7 @@ object DocumentFormatter {
         val originalContent = file.readText()
 
         // Run the formatter
-        val output = ProotInstaller.execOnce(context, command, guestPath.absolutePath, timeoutSeconds = 30)
+        val output = ProotInstaller.execOnce(context, command, guestPath, timeoutSeconds = 30)
 
         // Read back the formatted content
         val formattedContent = if (file.exists()) file.readText() else originalContent
