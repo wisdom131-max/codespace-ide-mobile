@@ -274,6 +274,8 @@ fun CodeEditor(
     conflictData: List<ConflictHunk>? = null,
     /** P22-D: Called when user resolves a conflict hunk */
     onResolveConflict: ((ConflictHunk, ConflictResolution) -> Unit)? = null,
+    /** P22-G: Reports cursor position (0-based line, 0-based column) for LSP hover */
+    onCursorChange: ((Int, Int) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -745,6 +747,12 @@ fun CodeEditor(
 
                         value = updatedValue
                         onContentChange(updatedValue.text)
+                        // P22-G: Report cursor position for LSP hover
+                        val cOff = updatedValue.selection.end
+                        val cLine = updatedValue.text.take(cOff).count { it == '\n' }
+                        val cLineStart = updatedValue.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                        val cCol = cOff - cLineStart
+                        onCursorChange?.invoke(cLine, cCol)
                     },
                     textStyle = LocalTextStyle.current.merge(
                         TextStyle(

@@ -33,6 +33,8 @@ import com.codespace.ide.editor.MergeConflictParser
 import com.codespace.ide.editor.ConflictHunk
 import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
+import com.codespace.ide.lsp.LspManager
+import com.codespace.ide.lsp.parseHoverContent
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -118,6 +120,12 @@ fun EditorPane(
     var conflictHunks by remember { mutableStateOf<List<ConflictHunk>?>(null) }
     // P22-E: Format Document
     var formatting by remember { mutableStateOf(false) }
+    // P22-G: LSP diagnostics + hover
+    val lspOpenedFiles = remember { mutableStateMapOf<String, Boolean>() }
+    var lspCursorLine by remember { mutableStateOf(0) }
+    var lspCursorCol by remember { mutableStateOf(0) }
+    var showLspHover by remember { mutableStateOf(false) }
+    var lspHoverContent by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -500,6 +508,15 @@ fun EditorPane(
                         )
                     }
                 }
+                // P22-G: LSP Hover toggle
+                IconButton(onClick = { showLspHover = !showLspHover }, modifier = Modifier.size(35.dp)) {
+                    Text(
+                        text = "?",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (showLspHover) Color(0xFF007ACC) else TabTextInactive,
+                    )
+                }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
@@ -567,6 +584,43 @@ fun EditorPane(
         }
 
         val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
+
+        // P22-G: LSP server lifecycle + document sync
+        LaunchedEffect(active?.id, active?.content, active?.language) {
+            if (active != null && LspManager.isSupported(active.language) && projectRootPath != null) {
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    if (!LspManager.isServerRunning(active.language)) {
+                        withContext(Dispatchers.IO) {
+                            LspManager.startServer(context, active.language, projectRootPath)
+                        }
+                    }
+                    if (LspManager.isServerRunning(active.language)) {
+                        delay(500)
+                        if (lspOpenedFiles[active.path] != true) {
+                            LspManager.didOpen(active.language, uri, LspManager.languageId(active.language), active.content)
+                            lspOpenedFiles[active.path] = true
+                        } else {
+                            val version = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                            LspManager.didChange(active.language, uri, active.content, version)
+                        }
+                    }
+                }
+            }
+        }
+        // P22-G: LSP hover on cursor position change (debounced)
+        LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
+            if (showLspHover && active != null && LspManager.isServerRunning(active.language)) {
+                delay(300)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val hover = withContext(Dispatchers.IO) {
+                        LspManager.getHover(active.language, uri, lspCursorLine, lspCursorCol)
+                    }
+                    lspHoverContent = hover?.let { parseHoverContent(it) }
+                }
+            }
+        }
 
         // Sticky scroll — computed unconditionally (Compose rules of hooks)
         val stickyScope = remember(active?.content, scrollToLine) {
@@ -780,7 +834,32 @@ fun EditorPane(
                                 } else null
                             }
                         },
+                        onCursorChange = { line, col ->
+                            lspCursorLine = line
+                            lspCursorCol = col
+                            onCursorChange?.invoke(line, col)
+                        },
                     )
+                }
+                // P22-G: LSP hover popup
+                if (showLspHover && lspHoverContent != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .background(Color(0xFF2D2D2D))
+                            .zIndex(10f)
+                    ) {
+                        Text(
+                            text = lspHoverContent ?: "",
+                            color = Color(0xFFCCCCCC),
+                            fontSize = 12.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.padding(12.dp),
+                            maxLines = 10,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         } else {

@@ -82,6 +82,9 @@ import com.codespace.ide.ui.panes.ProjectFileSearchPanel
 import com.codespace.ide.ui.panes.BuildPanel
 import com.codespace.ide.editor.FileIndexer
 import org.json.JSONArray
+import com.codespace.ide.lsp.LspManager
+import com.codespace.ide.lsp.lspDiagnosticsToProblems
+import com.codespace.ide.domain.Language
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
 private data class IdeColors(
@@ -1771,6 +1774,7 @@ private fun PssBottomPanelContent(
                 projectId = projectId,
             )
             BottomTab.PROBLEMS -> ProblemsPanel(
+                context = context,
                 activeFilePath = activeEditorTab,
                 onJumpToSource = { onHideBottomPanel() },
             )
@@ -1889,12 +1893,26 @@ private fun buildRunCommand(path: String): String? {
     }
 }
 
-@Composable private fun ProblemsPanel(activeFilePath: String?, onJumpToSource: () -> Unit) {
+@Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, onJumpToSource: () -> Unit) {
     // P22-A: live-update — re-run lint every 2 s so edits are reflected without switching tabs
+    // P22-G: Also fetch LSP diagnostics if server is running for this language
     val problems by produceState<List<Problem>>(emptyList(), activeFilePath) {
         while (true) {
             value = if (activeFilePath.isNullOrBlank()) emptyList()
-                    else try { LintChecker.check(activeFilePath, loadFileContent(activeFilePath)) } catch (_: Exception) { emptyList() }
+                    else {
+                        val lintProblems = try { LintChecker.check(activeFilePath, loadFileContent(activeFilePath)) } catch (_: Exception) { emptyList() }
+                        val lspProblems = try {
+                            val lang = Language.fromPath(activeFilePath)
+                            if (LspManager.isServerRunning(lang)) {
+                                val uri = LspManager.fileUriFromHostPath(context, activeFilePath)
+                                if (uri != null) {
+                                    LspManager.getDiagnostics(lang, uri)?.let { diags -> lspDiagnosticsToProblems(diags) } ?: emptyList()
+                                } else emptyList()
+                            } else emptyList()
+                        } catch (_: Exception) { emptyList() }
+                        val seen = mutableSetOf<Pair<Int, String>>()
+                        (lintProblems + lspProblems).filter { seen.add(it.line to it.message) }.sortedBy { it.line }
+                    }
             kotlinx.coroutines.delay(2_000)
         }
     }
