@@ -43,6 +43,7 @@ object LspManager {
         val args: List<String>,
         val checkCommand: String,
         val installCommand: String,
+        val installTimeout: Long = 120,
     )
 
     private val configs: Map<Language, ServerConfig> = mapOf(
@@ -72,7 +73,8 @@ object LspManager {
             "kotlin-language-server",
             emptyList(),
             "which kotlin-language-server",
-            "echo 'Install kotlin-language-server from https://github.com/fwcd/kotlin-language-server'"
+            "apt-get update 2>/dev/null; apt-get install -y --no-install-recommends default-jre-headless unzip curl 2>/dev/null; curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && ln -sf /opt/kotlin-language-server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && rm -f /tmp/kls.zip && echo Kotlin-LSP-installed",
+            300
         ),
         Language.GO to ServerConfig(
             Language.GO,
@@ -129,7 +131,7 @@ object LspManager {
             return "${language.displayName} LSP server already installed"
         }
         Log.d(TAG, "Installing LSP server for ${language.displayName}...")
-        return ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = 120)
+        return ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout)
     }
 
     /**
