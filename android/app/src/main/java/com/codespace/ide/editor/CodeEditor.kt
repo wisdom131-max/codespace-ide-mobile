@@ -2,6 +2,7 @@ package com.codespace.ide.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -1000,63 +1001,160 @@ fun CodeEditor(
             }
         }
 
-        // Minimap toggle button + conditional minimap
+        // ── Minimap toggle button + realistic minimap ──────────────────────────
         val textLines = remember(value.text) { value.text.split("\n") }
-        // Toggle button — always visible at top-right corner
+        val lineCountTotal = textLines.size
+
+        // Scale: each minimap line = 2.dp when file is small, shrinks for large files
+        val minimapLineHeightDp = when {
+            lineCountTotal <= 300  -> 2.dp
+            lineCountTotal <= 600  -> (600 / lineCountTotal).coerceAtLeast(1).dp
+            lineCountTotal <= 2000 -> 1.dp
+            else                   -> 0.5.dp
+        }
+        // Minimap content height — if taller than viewport, minimap scrolls in sync
+        val minimapContentHeight = (minimapLineHeightDp.value * lineCountTotal).dp
+        // Viewport position: where in the minimap the current view is
+        val lineHeightPx = fontSize * 1.25f
+        val viewportTopLine = (vScroll.value / lineHeightPx).toInt()
+        val visibleLineCount = with(androidx.compose.ui.platform.LocalDensity.current) {
+            ((maxOf(1, vScroll.viewportSize) / lineHeightPx).toInt())
+        }
+
+        // Toggle button — small icon at top-right
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .zIndex(6f)
-                .padding(top = 2.dp, end = if (showMinimapState) 62.dp else 2.dp)
-                .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
-                .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
+                .padding(top = 2.dp, end = if (showMinimapState) 64.dp else 2.dp)
+                .background(colors.background.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
+                .border(1.dp, colors.gutter.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                 .clickable { showMinimapState = !showMinimapState }
-                .padding(horizontal = 6.dp, vertical = 3.dp),
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (showMinimapState) "▣ Map" else "▢ Map",
-                color = Color(0xFF888888),
-                fontSize = 9.sp,
+                text = if (showMinimapState) "eli" else "eli",
+                color = colors.gutter,
+                fontSize = 8.sp,
                 fontFamily = FontFamily.Monospace,
             )
         }
-        // Minimap panel — only rendered when toggled on
+
+        // Minimap panel — realistic with syntax colors + viewport indicator
         if (showMinimapState) {
-            Column(
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .width(60.dp)
                     .fillMaxHeight()
-                    .background(Color(0xFF1A1A1A))
-                    .zIndex(5f),
-            ) {
-                textLines.forEachIndexed { idx, line ->
-                    val density = (line.trimStart().length.coerceAtMost(80)).toFloat() / 80f
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .padding(horizontal = 2.dp)
-                            .clickable {
+                    .background(colors.background.copy(alpha = 0.5f))
+                    .zIndex(5f)
+                    .pointerInput(lineCountTotal) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val clickedLine = (offset.y / minimapLineHeightDp.toPx()).toInt()
+                                    .coerceIn(0, (lineCountTotal - 1).coerceAtLeast(0))
                                 coroutineScope.launch {
-                                    val lineHeightPx = fontSize * 1.25f * 2.0f
-                                    vScroll.animateScrollTo((idx * lineHeightPx).toInt())
+                                    vScroll.animateScrollTo((clickedLine * lineHeightPx).toInt())
                                 }
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val indent = line.length - line.trimStart().length
-                        Spacer(Modifier.width((indent * 0.3f).dp))
-                        Box(
-                            Modifier
-                                .weight(density.coerceAtLeast(0.05f))
-                                .fillMaxHeight()
-                                .background(Color(0xFF3C3C3C))
+                            }
                         )
-                        Spacer(Modifier.weight((1f - density).coerceAtLeast(0.05f)))
+                    },
+            ) {
+                // Sync minimap scroll with editor scroll
+                val miniScroll = rememberScrollState()
+                LaunchedEffect(vScroll.value) {
+                    val miniLHPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+                        minimapLineHeightDp.toPx()
+                    }
+                    val vpMiniH = with(androidx.compose.ui.platform.LocalDensity.current) {
+                        60.dp.toPx()
+                    }
+                    val target = (viewportTopLine * miniLHPx - vpMiniH / 2)
+                        .coerceAtLeast(0f).toInt()
+                    miniScroll.scrollTo(target)
+                }
+                // Minimap lines with syntax-aware coloring
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(miniScroll)
+                ) {
+
+                    textLines.forEachIndexed { idx, line ->
+                        // Classify line for syntax color
+                        val trimmed = line.trimStart()
+                        val lineColor = when {
+                            trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*") -> colors.comment
+                            trimmed.startsWith("\"") || trimmed.startsWith("'") -> colors.string
+                            trimmed.matches(Regex("^.*[{};].*$")) && trimmed.startsWith("import ") -> colors.keyword
+                            trimmed.startsWith("import ") || trimmed.startsWith("from ") || trimmed.startsWith("package ") -> colors.keyword
+                            trimmed.startsWith("fun ") || trimmed.startsWith("def ") || trimmed.startsWith("func ") || trimmed.startsWith("void ") -> colors.function
+                            trimmed.startsWith("class ") || trimmed.startsWith("interface ") || trimmed.startsWith("struct ") || trimmed.startsWith("enum ") -> colors.type
+                            trimmed.matches(Regex("^[A-Z][a-zA-Z0-9]*.*")) && !trimmed.contains("(") -> colors.type
+                            trimmed.isEmpty() -> Color.Transparent
+                            else -> colors.text
+                        }
+                        // Line density: how much of the line width is filled
+                        val density = (line.trimEnd().length.coerceAtMost(80)).toFloat() / 80f
+                        val indent = line.length - line.trimStart().length
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(minimapLineHeightDp)
+                                .padding(horizontal = 1.dp),
+                        ) {
+                            // Indent spacer
+                            if (indent > 0) {
+                                Spacer(Modifier.width((indent * 0.25f).coerceAtMost(20f).dp))
+                            }
+                            // Colored bar representing the code line
+                            if (density > 0f && lineColor != Color.Transparent) {
+                                Box(
+                                    Modifier
+                                        .weight(density.coerceIn(0.03f, 1f))
+                                        .fillMaxHeight()
+                                        .background(lineColor.copy(alpha = 0.5f))
+                                )
+                            }
+                            if (density < 1f) {
+                                Spacer(Modifier.weight((1f - density).coerceAtLeast(0f)))
+                            }
+                        }
                     }
                 }
+
+                // Viewport indicator rectangle — shows current scroll position
+                val miniLineHeightPx2 = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    minimapLineHeightDp.toPx()
+                }
+                val viewportTopPx = (viewportTopLine * miniLineHeightPx2)
+                val viewportHeightPx = (visibleLineCount * miniLineHeightPx2).coerceAtLeast(20f)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(y = viewportTopPx.dp)
+                        .fillMaxWidth()
+                        .height(viewportHeightPx.dp)
+                        .background(colors.currentLine.copy(alpha = 0.15f))
+                        .border(1.dp, colors.gutter.copy(alpha = 0.3f))
+                        .zIndex(4f)
+                        .pointerInput(lineCountTotal) {
+                            detectDragGestures(
+                                onDragStart = { },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    coroutineScope.launch {
+                                        val deltaLines = (dragAmount.y / miniLineHeightPx2).toInt()
+                                        val newScroll = (vScroll.value + deltaLines * lineHeightPx)
+                                            .coerceIn(0, vScroll.maxValue)
+                                        vScroll.scrollTo(newScroll)
+                                    }
+                                }
+                            )
+                        },
+                )
             }
         }
 
