@@ -25,12 +25,12 @@
 | | |
 |-|-|
 | Latest green build | **#1308** (P22-E: DocumentFormatter fix GREEN) |
-| Active phase | **Phase 22-E COMPLETE — Format Document shipped, #1308 GREEN** |
+| Active phase | **Phase 22-F IN PROGRESS — LSP groundwork (JsonRpcClient + LspManager pushed, CI pending)** |
 | Last green | #1308 — fix(P22-E): DocumentFormatter — guestPath String? fix ✅ |
-| Last pushed | 8cb4343 — fix(P22-E): DocumentFormatter — guestPath is String? from hostToGuestPath |
+| Last pushed | 01f5b4b — feat(P22-F): LSP groundwork - JsonRpcClient + LspManager |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
-| **Next** | Phase 22-F — LSP groundwork (LspManager, stdio JSON-RPC, server install via npm/pip in proot) |
+| **Next** | Phase 22-G — LSP diagnostics + hover for JS/TS (tsserver) |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -2531,4 +2531,33 @@ P22-L: Peek Definition overlay
 - `hostToGuestPath()` returns `String?`, not `File` — don't call `.absolutePath` on it, pass the String? directly
 - When referencing tabs in EditorPane, use the tabs list lookup, not an `active` variable that may be out of scope
 
-### Next: P22-F — LSP groundwork (LspManager, stdio JSON-RPC client, server install via npm/pip in proot)
+## P22-F: LSP Groundwork — ✅ PUSHED (commit 01f5b4b, CI pending)
+
+### Files created:
+1. **lsp/JsonRpcClient.kt** (new) — JSON-RPC 2.0 client over stdio with LSP Content-Length framing
+   - Background reader thread: parses Content-Length headers, reads body, dispatches messages
+   - `request(method, params, timeout)` -> Any? — synchronous request with pending-future matching by id
+   - `notify(method, params)` — fire-and-forget notification
+   - `onNotification(method, handler)` — register handler for server-pushed notifications
+   - Thread-safe: ConcurrentHashMap for pending requests, AtomicLong for ids, synchronized writes
+   - Handles both JSONObject and JSONArray results (response.opt("result") returns Any?)
+
+2. **lsp/LspManager.kt** (new) — LSP server lifecycle manager
+   - `startServer(context, language, workspacePath)` — launches LSP server in proot, auto-installs if needed, sends initialize
+   - `stopServer(language)` / `stopAll()` — sends shutdown + exit, kills process
+   - Server configs: TypeScript/JS (typescript-language-server), Python (pylsp), Kotlin, Go
+   - `isServerInstalled(context, language)` / `installServer(context, language)` — npm/pip install inside proot
+   - Text document sync: `didOpen`, `didChange`, `didClose`
+   - LSP requests: `getCompletion`, `getHover`, `getDefinition`, `getReferences`, `getSemanticTokens`
+   - Diagnostics: `getDiagnostics(language, uri)` + `setDiagnosticsHandler(language, handler)` for live-updates
+   - `fileUriFromHostPath(context, hostPath)` — converts host paths to file:// URIs (handles /host-files bind mount)
+   - `languageId(language)` — maps Language enum to LSP languageId strings
+
+### Architecture:
+- LSP servers run inside the Ubuntu proot rootfs via ProcessBuilder (same launchArgs as terminal)
+- Communication: JSON-RPC 2.0 over process stdin/stdout with Content-Length framing
+- Multiple servers can run simultaneously (one per language)
+- LspManager is an `object` (singleton), LspServer wraps process+client+state
+- No UI wiring yet — P22-G will wire diagnostics into EditorPane/ProblemsPanel
+
+### Next: P22-G — LSP diagnostics + hover for JS/TS (wire tsserver into EditorPane for live diagnostics and hover)
