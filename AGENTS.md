@@ -2386,3 +2386,62 @@ P22-L: Peek Definition overlay
 
 **STATUS: AUDIT COMPLETE ✅ — Phase 22 implementation may begin with P22-A**
 
+
+
+---
+
+## PHASE 16 — COLLABORATION & CLOUD SYNC ✅ COMPLETE (#1199 GREEN)
+
+**Goal:** Git action feedback, cloud backup/restore, session handoff, sync status indicator.
+
+### CI History
+
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1193 | ❌ FAIL | feat(P16-A): `actionToast` state used but not declared |
+| #1194–#1198 | ❌ FAIL | Same root error propagated through subsequent commits |
+| #1199 | ✅ GREEN | fix(P16-A): declare `actionToast` — tree clean |
+
+**Root cause memorised:** When adding state vars to a large Composable, ALWAYS declare them in the `remember {}` block section before using them in lambdas. The replacement script failed to insert the declaration on the first attempt due to trailing-space mismatch in the anchor string.
+
+### Files Shipped
+
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| P16-A | Fetch button + pull/push/fetch result feedback toast | `ui/panes/SourceControlPane.kt` | ✅ #1199 |
+| P16-B | CloudBackupManager — backup/restore/list as tar.gz | `project/CloudBackupManager.kt` | ✅ #1199 |
+| P16-C | SessionHandoffManager — export/import/push/pull session | `data/SessionHandoffManager.kt` | ✅ #1199 |
+| P16-D | SyncStatusMonitor — Idle/Syncing/Success/Error StateFlow | `diagnostics/PerformanceMonitor.kt` | ✅ #1199 |
+| P16-E | CloudBackupPanel UI — backup/restore/session-sync dialog | `ui/panels/CloudBackupPanel.kt` | ✅ #1199 |
+| P16-F | Sync indicator in StatusBarContent | `ui/screens/ProjectShellScreen.kt` | ✅ #1199 |
+
+---
+
+## CI FAILURE — #1291 & #1292 (July 16, 2026)
+
+**Symptom:** `ExplorerPane.kt:1135:25 Type mismatch: inferred type is String but Boolean was expected`
+
+**Root cause:** `"Binary Diff" ->` String arm was inserted at the wrong indentation level — inside the `"Preview" -> when { }` boolean-condition block instead of the outer `when (label)` String block. Additionally, the `isNetworkCapture`, `isAiModel`, `isAndroidRuntimeFile` arms from P21-X-10 were also misindented into the same block without proper closing of the preview when.
+
+**Fix (commit d868f75584b0):** Moved `"Binary Diff"` arm to the outer `when (label)` block. Re-indented `isNetworkCapture`, `isAiModel`, `isAndroidRuntimeFile` arms inside the Preview when-block with consistent 28-space indent. Added `showCtxMenu = false` to the new arms.
+
+**Pattern to memorise:** When inserting new `when` arms into a nested `when` structure, ALWAYS count brace depth and confirm whether the enclosing `when` is `when (String)` or `when { Boolean }` before inserting. A String arm inside a Boolean when-block causes a type mismatch compile error.
+
+**Tree status after fix:** Build #1293 in progress — expected GREEN.
+
+---
+
+## CURRENT SESSION — July 16, 2026
+
+**Read AGENTS.md:** ✅ Done  
+**Current HEAD:** Fix for ExplorerPane Binary Diff misindentation pushed (commit d868f75584b0)  
+**Next action:** Await #1293 CI result, then begin Phase 22 starting with **P22-A** (ProblemsPanel live-update + LintChecker/LintAnalyzer unification)
+
+**Phase 22 plan (from audit above):**
+- P22-A: ProblemsPanel live-update + LintChecker/LintAnalyzer unification
+- P22-B: Workspace Find & Replace (add replace to ProjectFileSearchPanel)
+- P22-C: Git blame gutter + inline view
+- P22-D: Merge conflict inline editor
+- P22-E: Format Document (prettier/ktlint/black via proot)
+- P22-F through P22-L: LSP groundwork → diagnostics → completions → multi-cursor
+
