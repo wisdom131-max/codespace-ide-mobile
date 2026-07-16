@@ -464,6 +464,9 @@ fun CodeEditor(
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
     var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
+    // P22-L: Peek Definition result — inline code preview
+    data class PeekDefResult(val filePath: String, val line: Int, val lines: List<String>, val defLine: Int)
+    var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
 
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
@@ -1243,6 +1246,67 @@ fun CodeEditor(
                                 Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                         }
+                        // P22-L: Peek Definition — inline code preview without navigating away
+                        TextButton(
+                            onClick = {
+                                val cOff = value.selection.end
+                                val cLine = value.text.take(cOff).count { it == '\n' }
+                                val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                val cCol = cOff - cLineStart
+                                val uri = activeFilePath.let { p ->
+                                    if (p.startsWith("/")) "file://$p" else p
+                                }
+                                var peekResult: PeekDefResult? = null
+                                // Try LSP if available
+                                if (LspManager.isSupported(language) && projectRoot != null) {
+                                    try {
+                                        val defs = LspManager.getDefinition(language, uri, cLine, cCol)
+                                        if (defs != null && defs.length() > 0) {
+                                            val loc = defs.optJSONObject(0)
+                                            if (loc != null) {
+                                                val defUri = loc.optString("uri", "")
+                                                val defLine = loc.optJSONObject("range")
+                                                    ?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                val defPath = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
+                                                val targetText = if (defPath == activeFilePath) value.text
+                                                    else try { java.io.File(defPath).readText() } catch (_: Exception) { null }
+                                                if (targetText != null) {
+                                                    val allLines = targetText.split("\n")
+                                                    val startLine = (defLine - 3).coerceAtLeast(0)
+                                                    val endLine = (defLine + 8).coerceAtMost(allLines.size - 1)
+                                                    val snippet = allLines.subList(startLine, endLine + 1)
+                                                    peekResult = PeekDefResult(defPath, defLine, snippet, defLine - startLine)
+                                                }
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                                // Fallback: regex search in current file
+                                if (peekResult == null) {
+                                    val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+                                    val textLines = value.text.split("\n")
+                                    val found = textLines.indexOfFirst { declPat.containsMatchIn(it) }
+                                    if (found >= 0) {
+                                        val startLine = (found - 3).coerceAtLeast(0)
+                                        val endLine = (found + 8).coerceAtMost(textLines.size - 1)
+                                        val snippet = textLines.subList(startLine, endLine + 1)
+                                        peekResult = PeekDefResult(activeFilePath, found, snippet, found - startLine)
+                                    }
+                                }
+                                peekDefResult = peekResult
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("👁", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                                Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
                         TextButton(
                             onClick = {
                                 renameNewName = word
@@ -1504,6 +1568,111 @@ fun CodeEditor(
                     }
                 },
             )
+        }
+
+        // ── P22-L: Peek Definition overlay ───────────────────────────────────────
+        if (peekDefResult != null) {
+            val peek = peekDefResult!!
+            Card(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.5f)
+                    .zIndex(30f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF252526))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Peek Definition",
+                            color = Color(0xFF4EC9B0),
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f),
+                        )
+                        val fileName = peek.filePath.substringAfterLast('/')
+                        Text(
+                            "$fileName:$" + "{peek.line + 1}",
+                            color = Color(0xFF888888),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(
+                            onClick = { peekDefResult = null },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
+                        ) {
+                            Text("X", color = Color(0xFF888888), fontSize = 16.sp)
+                        }
+                    }
+                    HorizontalDivider(color = Color(0xFF333333))
+                    // Code preview
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(8.dp),
+                    ) {
+                        peek.lines.forEachIndexed { idx, line ->
+                            val isDefLine = idx == peek.defLine
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (isDefLine) Color(0xFF007ACC).copy(alpha = 0.15f) else Color.Transparent)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(
+                                    "" + (peek.line - peek.defLine + idx + 1),
+                                    color = if (isDefLine) Color(0xFF007ACC) else Color(0xFF858585),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.width(36.dp),
+                                )
+                                Text(
+                                    line.take(120),
+                                    color = if (isDefLine) Color(0xFFD4D4D4) else Color(0xFFAAAAAA),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+                    // Footer
+                    HorizontalDivider(color = Color(0xFF333333))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { peekDefResult = null }) {
+                            Text("Close", color = Color(0xFF888888), fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        TextButton(
+                            onClick = {
+                                if (peek.filePath == activeFilePath) {
+                                    coroutineScope.launch {
+                                        val lineHeightPx = fontSize * 1.25f
+                                        vScroll.animateScrollTo((peek.line * lineHeightPx).toInt())
+                                    }
+                                } else {
+                                    onOpenFileAtLine?.invoke(peek.filePath, peek.line + 1)
+                                }
+                                peekDefResult = null
+                            }
+                        ) {
+                            Text("Go to Definition ->", color = Color(0xFF007ACC), fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
         }
 
         if (renameDialogWord != null) {
