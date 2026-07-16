@@ -25,8 +25,8 @@
 | | |
 |-|-|
 | Latest green build | **#1320** (minimap realism fixes GREEN) |
-| Active phase | **Phase 23 (Debugging System) — IN PROGRESS** |
-| Last green | #1320 — fix: minimap realism — missing imports, proper toggle icon, pre-computed px |
+| Active phase | **Phase 24 (Master IDE Audit) — QUEUED** |
+| Last green | #1337 — fix(P23-8): add udm param to EditorPane + null-safe call |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
 | **Phase 22-F–I** | **✅ COMPLETE — LspManager, JSON-RPC, Python/TS/Kotlin LSP, diagnostics, hover, completion** |
@@ -39,7 +39,7 @@
 | **Phase 12** | **✅ COMPLETE — all 12-A through 12-M shipped (#1157 GREEN)** |
 | **Phase 21** | **✅ COMPLETE — 17 viewers shipped (Hex, PDF, APK, DEX, ELF, Smali, SQLite, Strings, etc.)** |
 | **Phase 21-X** | **✅ COMPLETE — reverse engineering: DEX/ELF/APK analyzers, disassembly, binary diff** |
-| **Next** | Phase 23 (Debugging System Audit) -> Phase 24 (Master IDE Audit) -> Phase X (Live Preview) |
+| **Phase 23** | **✅ COMPLETE — Debugging System: UDM, 6 language providers, Android+APK providers, breakpoint persistence, enhanced debug console** |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -2592,7 +2592,19 @@ P22-L: ✅ DONE — Peek Definition overlay: inline code preview via LSP or rege
 
 ## PHASE 23 — DEBUGGING SYSTEM AUDIT, SEPARATION, REPAIR & MODERNIZATION
 
-> **Status: IN PROGRESS — Sub-Phase 23-1 (Audit) COMPLETE, 23-4 (UniversalDebugManager) BUILT, 23-2 (Activity Bar wiring) DONE, 23-8 (Breakpoint persistence) DONE, 23-6 (Non-debuggable policies) DONE, 23-9 (Debug console) DONE.**
+> **Status: ✅ COMPLETE — All sub-phases delivered. Latest green: #1337**
+>
+> **Phase 23 Final Report:**
+> 1. Activity Bar Debugger: ✅ RunDebugPanel wired to UDM — real sessions, breakpoints, step controls, variables, call stack
+> 2. Terminal Panel Debugger: ✅ DebugConsolePanel enhanced — colour-coded output, Stop button, UDM session awareness, dark themed
+> 3. Shared Backend (UDM): ✅ UniversalDebugManager — session lifecycle, provider registry, breakpoint manager, persistence
+> 4. Working Features: breakpoint toggle+persist, session start/stop, step over, debug console output, non-debuggable file policy
+> 5. Repaired: EditorPane udm wiring (Unresolved reference fixed #1337), RunDebugPanel from fake data to real UDM
+> 6. New Providers Added (P23-5): PythonDebugProvider, NodeJsDebugProvider, ShellDebugProvider, PhpDebugProvider
+> 7. New Providers Added (P23-7): AndroidDebugProvider (ADB/logcat), ApkDebugProvider (metadata + install guidance)
+> 8. Performance (P23-10): All providers are lazy — objects registered eagerly, processes only start on launch()
+> 9. Remaining: DAP (Debug Adapter Protocol) full integration deferred — needs external language servers not available on device
+> 10. Next: Phase 24 (Master IDE Audit)
 >
 > **Audit Results (23-1):**
 > - Activity Bar Debugger: All features were PARTIAL (hardcoded fake data, no real backend)

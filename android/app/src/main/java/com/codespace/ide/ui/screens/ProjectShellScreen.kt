@@ -1988,22 +1988,90 @@ private fun buildRunCommand(path: String): String? {
     onSend: (String) -> Unit,
     onRun: () -> Unit,
 ) {
+    // P23-3: Terminal Panel Debugger — UDM session awareness + colour-coded output
+    val udm = com.codespace.ide.debug.UniversalDebugManager
+    var activeSession by remember { mutableStateOf(udm.getActiveSession()) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        udm.onSessionStateChanged = { session ->
+            activeSession = if (session.state == com.codespace.ide.debug.DebugState.STOPPED ||
+                session.state == com.codespace.ide.debug.DebugState.ERROR) null else session
+        }
+        udm.onOutput = { msg ->
+            messages.add(msg)
+            scope.launch { listState.animateScrollToItem(messages.size - 1) }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("DEBUG CONSOLE", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp).clickable { onRun() })
+        // Header with Run/Stop controls
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("DEBUG CONSOLE", fontSize = 11.sp, color = Color(0xFF858585), modifier = Modifier.weight(1f))
+            // Stop button — only when session active
+            if (activeSession != null) {
+                Icon(Icons.Default.Stop, "Stop", tint = Color(0xFFE53935),
+                    modifier = Modifier.size(16.dp).clickable {
+                        activeSession?.id?.let { udm.stopSession(it) }
+                        activeSession = null
+                        messages.add("[debug] Session stopped.")
+                    })
+                Spacer(Modifier.width(8.dp))
+            }
+            // Run button
+            Icon(Icons.Default.PlayArrow, "Run", tint = Color(0xFF4EC9B0),
+                modifier = Modifier.size(16.dp).clickable { onRun() })
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { messages.clear(); messages.add("Debugger ready. Press Run to start.") })
+            Icon(Icons.Default.Delete, "Clear", tint = Color(0xFF717171),
+                modifier = Modifier.size(16.dp).clickable {
+                    messages.clear()
+                    messages.add("Debugger ready. Press ▶ to start.")
+                })
         }
-        HorizontalDivider(color = Color(0xFFE0E0E0))
-        LazyColumn(Modifier.weight(1f).padding(8.dp)) {
-            items(messages) { msg -> Text(msg, fontSize = 12.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp)) }
+        HorizontalDivider(color = Color(0xFF3C3C3C))
+        // P23-3: Colour-coded output log
+        LazyColumn(Modifier.weight(1f).background(Color(0xFF1E1E1E)).padding(8.dp), state = listState) {
+            items(messages) { msg ->
+                val color = when {
+                    msg.startsWith("[error]") || msg.contains("error:", ignoreCase = true) ||
+                    msg.contains("Exception") || msg.contains("FAILED") -> Color(0xFFF48771)
+                    msg.startsWith("[warn]") || msg.contains("warning:", ignoreCase = true) -> Color(0xFFCDB95A)
+                    msg.startsWith(">") -> Color(0xFF9CDCFE)
+                    msg.startsWith("[debug]") || msg.startsWith("[android]") ||
+                    msg.startsWith("[logcat]") -> Color(0xFF858585)
+                    msg.contains("exited with code 0") -> Color(0xFF89D185)
+                    msg.contains("exited with code") -> Color(0xFFF48771)
+                    else -> Color(0xFFCCCCCC)
+                }
+                Text(msg, fontSize = 12.sp, color = color, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(vertical = 1.dp))
+            }
         }
-        HorizontalDivider(color = Color(0xFFE0E0E0))
-        Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(">", fontSize = 13.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 8.dp))
-            androidx.compose.foundation.text.BasicTextField(value = input.value, onValueChange = { input.value = it }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF333333)), modifier = Modifier.weight(1f), singleLine = true)
-            Icon(Icons.Default.Send, null, tint = Color(0xFF007ACC), modifier = Modifier.size(18.dp).clickable { onSend(input.value) })
+        HorizontalDivider(color = Color(0xFF3C3C3C))
+        // Input row
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(">", fontSize = 13.sp, color = Color(0xFF9CDCFE),
+                fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 8.dp))
+            androidx.compose.foundation.text.BasicTextField(
+                value = input.value,
+                onValueChange = { input.value = it },
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFCCCCCC)),
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = { onSend(input.value) }
+                ),
+            )
+            Icon(Icons.Default.Send, null, tint = Color(0xFF9CDCFE),
+                modifier = Modifier.size(18.dp).clickable { onSend(input.value) })
             Spacer(Modifier.width(8.dp))
         }
     }
