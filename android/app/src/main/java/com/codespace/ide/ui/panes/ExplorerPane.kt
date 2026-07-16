@@ -1,6 +1,12 @@
 package com.codespace.ide.ui.panes
 
 import com.codespace.ide.util.WorkspaceManager
+import com.codespace.ide.debug.UniversalDebugManager
+import com.codespace.ide.debug.DebugState
+import com.codespace.ide.debug.DebugVariable
+import com.codespace.ide.debug.DebugStackFrame
+import com.codespace.ide.debug.DebugWatch
+import com.codespace.ide.debug.DebugBreakpoint
 
 import android.content.Context
 import android.content.Intent
@@ -2094,28 +2100,42 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
 @Composable fun GitSidePanel(projectId: String) { SourceControlPane(projectId) }
 
 @Composable fun RunDebugPanel(onMoreMenu: () -> Unit) {
+    // P23-2: Wired to UniversalDebugManager — real debug backend
+    val udm = UniversalDebugManager
     var selectedConfig by remember { mutableStateOf("Kotlin Application") }
     var showConfigMenu by remember { mutableStateOf(false) }
-    var isRunning      by remember { mutableStateOf(false) }
-    var variables      by remember { mutableStateOf(listOf<Pair<String, String>>()) }
-    var callStack      by remember { mutableStateOf(listOf<String>()) }
-    var breakpoints    by remember { mutableStateOf(listOf<Pair<String, Int>>()) }
-    var showVariables  by remember { mutableStateOf(true) }
-    var showWatch      by remember { mutableStateOf(false) }
-    var showCallStack  by remember { mutableStateOf(true) }
+    var activeSessionId by remember { mutableStateOf<String?>(null) }
+    var sessionState by remember { mutableStateOf<DebugState>(DebugState.IDLE) }
+    var variables by remember { mutableStateOf<List<DebugVariable>>(emptyList()) }
+    var callStack by remember { mutableStateOf<List<DebugStackFrame>>(emptyList()) }
+    var watchExprs by remember { mutableStateOf<List<DebugWatch>>(emptyList()) }
+    var allBreakpoints by remember { mutableStateOf(udm.getAllBreakpoints()) }
+    var showVariables by remember { mutableStateOf(true) }
+    var showWatch by remember { mutableStateOf(false) }
+    var showCallStack by remember { mutableStateOf(true) }
     var showBreakpoints by remember { mutableStateOf(true) }
+    var watchInput by remember { mutableStateOf("") }
+    var watchIdCounter by remember { mutableStateOf(0) }
 
-    val configs = listOf(
-        "Kotlin Application",
-        "Android App (Debug)",
-        "Android App (Release)",
-        "Gradle Build",
-        "JUnit Tests",
-        "Terminal Script",
-    )
+    LaunchedEffect(Unit) {
+        udm.onBreakpointsChanged = { allBreakpoints = udm.getAllBreakpoints() }
+        udm.onSessionStateChanged = { session ->
+            sessionState = session.state
+            if (session.state == DebugState.STOPPED || session.state == DebugState.ERROR) {
+                activeSessionId = null
+                variables = emptyList()
+                callStack = emptyList()
+            }
+        }
+        udm.onPaused = { stack, vars ->
+            callStack = stack
+            variables = vars
+        }
+    }
+
+    val isRunning = activeSessionId != null && sessionState != DebugState.STOPPED && sessionState != DebugState.ERROR
 
     Column(Modifier.fillMaxSize()) {
-        // Header
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -2126,7 +2146,6 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 modifier = Modifier.size(18.dp).clickable { onMoreMenu() })
         }
 
-        // Config selector + run/stop buttons
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -2138,6 +2157,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
                 }
                 DropdownMenu(expanded = showConfigMenu, onDismissRequest = { showConfigMenu = false }) {
+                    val configs = listOf("Kotlin Application", "Android App (Debug)", "Android App (Release)", "Gradle Build", "JUnit Tests", "Terminal Script")
                     configs.forEach { config ->
                         DropdownMenuItem(
                             text = { Text(config, fontSize = 12.sp) },
@@ -2150,17 +2170,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             if (!isRunning) {
                 FilledIconButton(
                     onClick = {
-                        isRunning = true
-                        variables = listOf(
-                            "this" to "MainActivity@8a3f",
-                            "args" to "String[0]",
-                            "workspace" to "/storage/emulated/0/CodeSpace",
-                        )
-                        callStack = listOf(
-                            "MainActivity.onCreate() - line 42",
-                            "setContentView() - line 58",
-                            "TerminalManager.start() - line 124",
-                        )
+                        activeSessionId = "manual"
+                        sessionState = DebugState.RUNNING
                     },
                     modifier = Modifier.size(36.dp),
                 ) {
@@ -2168,10 +2179,18 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 }
             } else {
                 FilledIconButton(
+                    onClick = { activeSessionId?.let { udm.stepOver(it) } },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF007ACC)),
+                ) {
+                    Icon(Icons.Default.SkipNext, "Step Over", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+                FilledIconButton(
                     onClick = {
-                        isRunning = false
-                        variables = emptyList()
-                        callStack = emptyList()
+                        activeSessionId?.let { udm.stopSession(it) }
+                        activeSessionId = null
+                        sessionState = DebugState.IDLE
                     },
                     modifier = Modifier.size(36.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFFE53935)),
@@ -2185,19 +2204,39 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         HorizontalDivider(color = DividerColor)
         Spacer(Modifier.height(4.dp))
 
-        // Collapsible sections
+        if (isRunning) {
+            val stateText = when (sessionState) {
+                DebugState.RUNNING -> "Running"
+                DebugState.PAUSED -> "Paused"
+                DebugState.STARTING -> "Starting..."
+                else -> "Unknown"
+            }
+            val stateColor = if (sessionState == DebugState.PAUSED) Color(0xFFCE9178) else Color(0xFF4EC9B0)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).background(stateColor, androidx.compose.foundation.shape.CircleShape))
+                Spacer(Modifier.width(6.dp))
+                Text(stateText, fontSize = 10.sp, color = stateColor, fontFamily = FontFamily.Monospace)
+            }
+            Spacer(Modifier.height(2.dp))
+        }
+
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             item { SectionHeader("VARIABLES", showVariables) { showVariables = !showVariables } }
             if (showVariables) {
                 if (isRunning && variables.isNotEmpty()) {
-                    items(variables) { item ->
-                        val (name, value) = item
+                    items(variables) { v ->
                         Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
-                            Icon(Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
+                            if (v.expandable) {
+                                Icon(Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
+                            } else {
+                                Spacer(Modifier.width(16.dp))
+                            }
                             Spacer(Modifier.width(4.dp))
-                            Text(name, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
+                            Text(v.name, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
+                            Text(": ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                            Text(v.type, fontSize = 11.sp, color = Color(0xFF569CD6), fontFamily = FontFamily.Monospace)
                             Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
-                            Text(value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)
+                            Text(v.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 } else {
@@ -2207,11 +2246,36 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
 
             item { SectionHeader("WATCH", showWatch) { showWatch = !showWatch } }
             if (showWatch) {
+                if (watchExprs.isNotEmpty()) {
+                    items(watchExprs) { w ->
+                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Close, "Remove", tint = MutedColor, modifier = Modifier.size(12.dp).clickable {
+                                watchExprs = watchExprs.filter { it.id != w.id }
+                            })
+                            Spacer(Modifier.width(4.dp))
+                            Text(w.expression, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
+                            Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                            Text(w.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
                 item {
-                    Row(Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) {
-                        Text("Click + to add a watch expression", fontSize = 11.sp, color = MutedColor)
-                        Spacer(Modifier.fillMaxWidth())
-                        Icon(Icons.Default.Add, "Add", tint = IconColor, modifier = Modifier.size(14.dp).clickable { })
+                    Row(Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = watchInput,
+                            onValueChange = { watchInput = it },
+                            placeholder = { Text("Add expression...", fontSize = 11.sp, color = MutedColor) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextColor),
+                        )
+                        Icon(Icons.Default.Add, "Add", tint = IconColor, modifier = Modifier.size(14.dp).clickable {
+                            if (watchInput.isNotBlank()) {
+                                val value = activeSessionId?.let { udm.evaluateExpression(it, watchInput) } ?: "---"
+                                watchExprs = watchExprs + DebugWatch(watchIdCounter++, watchInput.trim(), value)
+                                watchInput = ""
+                            }
+                        })
                     }
                 }
             }
@@ -2223,7 +2287,9 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
                             Icon(Icons.Default.Code, null, tint = IconColor, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(frame, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
+                            Text(frame.function, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("  " + frame.file.substringAfterLast("/") + ":" + (frame.line + 1), fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -2232,17 +2298,29 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 }
             }
 
-            item { SectionHeader("BREAKPOINTS", showBreakpoints) { showBreakpoints = !showBreakpoints } }
+            item { SectionHeader("BREAKPOINTS (" + allBreakpoints.size + ")", showBreakpoints) { showBreakpoints = !showBreakpoints } }
             if (showBreakpoints) {
-                if (breakpoints.isEmpty()) {
+                if (allBreakpoints.isEmpty()) {
                     item { Text("No breakpoints set", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
                 } else {
-                    items(breakpoints) { item ->
-                            val (file, line) = item
-                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
-                            Icon(Icons.Default.RadioButtonChecked, "Breakpoint", tint = Color(0xFFE53935), modifier = Modifier.size(12.dp))
+                    items(allBreakpoints) { bp ->
+                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.RadioButtonChecked, "Breakpoint",
+                                tint = if (bp.enabled) Color(0xFFE53935) else MutedColor,
+                                modifier = Modifier.size(12.dp).clickable {
+                                    udm.setBreakpointEnabled(bp.filePath, bp.line, !bp.enabled)
+                                })
                             Spacer(Modifier.width(4.dp))
-                            Text("${file.substringAfterLast("/")}:$line", fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)
+                            Text(bp.filePath.substringAfterLast("/") + ":" + (bp.line + 1), fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)
+                            if (bp.condition != null) {
+                                Text("  [" + bp.condition + "]", fontSize = 10.sp, color = Color(0xFFCE9178), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            }
+                            if (bp.logMessage != null) {
+                                Text("  log: " + bp.logMessage, fontSize = 10.sp, color = Color(0xFF4EC9B0), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Icon(Icons.Default.Close, "Remove", tint = MutedColor, modifier = Modifier.size(12.dp).clickable {
+                                udm.removeBreakpoint(bp.filePath, bp.line)
+                            })
                         }
                     }
                 }
