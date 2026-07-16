@@ -65,3 +65,32 @@ fun parseHoverContent(hover: JSONObject): String? {
         else -> null
     }
 }
+
+/**
+ * P22-H: LSP completion item — converted from LSP CompletionItem JSON.
+ */
+data class LspCompletionItem(
+    val label: String,
+    val detail: String?,
+    val insertText: String,
+    val kind: Int,
+)
+
+/**
+ * Converts LSP CompletionItem array to LspCompletionItem list.
+ * Strips snippet placeholders ($1, $2, ${1:default}) from insertText.
+ */
+fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
+    val result = mutableListOf<LspCompletionItem>()
+    for (i in 0 until items.length()) {
+        val item = items.optJSONObject(i) ?: continue
+        val label = item.optString("label", "")
+        if (label.isBlank()) continue
+        var insertText = item.optString("insertText", label)
+        insertText = insertText.replace(Regex("\$\{\d+:?[^}]*}"), "").replace(Regex("\$\d+"), "")
+        val detail = item.optString("detail", "")
+        val kind = item.optInt("kind", 1)
+        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind))
+    }
+    return result
+}

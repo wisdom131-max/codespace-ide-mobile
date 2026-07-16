@@ -35,6 +35,7 @@ import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.parseHoverContent
+import com.codespace.ide.lsp.parseLspCompletions
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -839,6 +840,15 @@ fun EditorPane(
                             lspCursorCol = col
                             onCursorChange?.invoke(line, col)
                         },
+                        lspCompletionProvider = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val items = LspManager.getCompletion(active.language, uri, line, col)
+                                    items?.let { parseLspCompletions(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
                     )
                 }
                 // P22-G: LSP hover popup

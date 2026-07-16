@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
+import com.codespace.ide.lsp.LspCompletionItem
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -276,6 +277,8 @@ fun CodeEditor(
     onResolveConflict: ((ConflictHunk, ConflictResolution) -> Unit)? = null,
     /** P22-G: Reports cursor position (0-based line, 0-based column) for LSP hover */
     onCursorChange: ((Int, Int) -> Unit)? = null,
+    /** P22-H: LSP-backed completion provider — returns LSP completion items for a position */
+    lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -385,16 +388,43 @@ fun CodeEditor(
     val prefix = remember(value) { currentWord(value.text, value.selection.end) }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
-    LaunchedEffect(prefix) { showCompletions = prefix.length >= 2 && completions.isNotEmpty() }
+    // P22-H: LSP-backed completion
+    var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
+    LaunchedEffect(prefix, value.selection.end) {
+        if (prefix.length >= 2 && lspCompletionProvider != null) {
+            kotlinx.coroutines.delay(300)
+            val cOff = value.selection.end
+            val cLine = value.text.take(cOff).count { it == '\n' }
+            val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+            val cCol = cOff - cLineStart
+            lspCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+            }
+        } else {
+            lspCompletions = emptyList()
+        }
+    }
+    val allCompletions = remember(completions, lspCompletions) {
+        val lspMapped = lspCompletions.map { item ->
+            val kind = when (item.kind) {
+                2, 3, 4, 5, 6, 7, 8, 9, 13, 22, 23 -> CompletionKind.TYPE
+                14, 15 -> CompletionKind.SNIPPET
+                else -> CompletionKind.KEYWORD
+            }
+            Completion(item.label, kind, item.insertText, item.detail)
+        }
+        (lspMapped + completions).distinctBy { it.label }.take(15)
+    }
+    LaunchedEffect(prefix, allCompletions) { showCompletions = prefix.length >= 2 && allCompletions.isNotEmpty() }
 
     // P15-D: Ghost text — shows the top IntelliSense completion as grey inline text
     // after 800ms idle with a non-empty prefix. Tab/→ accepts; any edit dismisses.
     var ghostText by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(prefix, completions) {
+    LaunchedEffect(prefix, allCompletions) {
         ghostText = null
-        if (prefix.length >= 2 && completions.isNotEmpty()) {
+        if (prefix.length >= 2 && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
-            val top = completions.firstOrNull()
+            val top = allCompletions.firstOrNull()
             if (top != null && top.insertText.startsWith(prefix)) {
                 ghostText = top.insertText.removePrefix(prefix).lines().first()
             }
@@ -1745,7 +1775,7 @@ fun CodeEditor(
         }
 
         // IntelliSense dropdown
-        if (showCompletions && completions.isNotEmpty()) {
+        if (showCompletions && allCompletions.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -1756,7 +1786,7 @@ fun CodeEditor(
                     .background(Color(0xFF252526), RoundedCornerShape(4.dp))
                     .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp)),
             ) {
-                items(completions) { comp ->
+                items(allCompletions) { comp ->
                     // Doc always visible below label — no per-item state (Compose rules)
                     Row(
                         Modifier
