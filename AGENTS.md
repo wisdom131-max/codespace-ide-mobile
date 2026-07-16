@@ -24,12 +24,12 @@
 
 | | |
 |-|-|
-| Latest green build | **#1263** (Phase 21 COMPLETE — ExplorerPane wiring green) |
-| Active phase | **Phase 21 COMPLETE ✅ — next: Phase 21-X Reverse Engineering** |
-| Last green | #1262 — feat(P21): wire FileInfoDialog + StringsViewerDialog + BinaryInspectorDialog — TREE CLEAN ✅ |
-| Last pushed | 5b985bda — docs(AGENTS): Phase 21 Step 4 COMPLETE |
+| Latest green build | **#1275** (Settings: DeletedProjectsSection fix GREEN) |
+| Active phase | **Phase 21-X IN PROGRESS — Step 3 complete (APK/Smali/Disasm pushed, CI pending)** |
+| Last green | #1275 — fix(settings): extract DeletedProjectsSection — TREE CLEAN ✅ |
+| Last pushed | f69b4ef7 — feat(P21-X): APK Analyzer, Smali Viewer, Disassembly Viewer (Step 3) |
 | **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
-| **Next** | Phase 21-X — Reverse Engineering & Advanced Binary Analysis |
+| **Next** | Phase 21-X Step 4 — wire remaining items (Entropy Heatmap, PCAP/HAR, GGUF, OAT) |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -1977,3 +1977,93 @@ Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, S
 | #1261 | ✅ GREEN | fix(P21): BinaryInspectorDialog — use list instead of Triple for 4 values |
 | #1262 | ✅ GREEN | feat(P21): wire FileInfoDialog + StringsViewerDialog + BinaryInspectorDialog into ExplorerPane |
 | #1263 | ✅ GREEN | docs(AGENTS): Phase 21 Step 4 COMPLETE — ExplorerPane wiring + CI history |
+
+---
+
+## Phase 21-X Progress (2026-07-16)
+
+### Step 1: DEX Viewer ✅ (builds #1264–#1267 GREEN)
+- `DexViewerDialog.kt` (812 lines) — pure-Kotlin DEX binary parser
+- Reads DEX header, string pool (ULEB128), type list, field/method/class def tables
+- 5-tab UI: Header · Classes · Strings · Methods · Fields
+- Class browser with package collapsing, search filter
+- `isDexFile()` helper in MediaViewers.kt (.dex/.odex/.vdex)
+- Wired in ExplorerPane: tap + context menu
+
+### Step 2: ELF Viewer ✅ (builds #1268–#1271 GREEN)
+- `ElfViewerDialog.kt` (849 lines) — pure-Kotlin ELF32/ELF64 parser
+- Reads ELF header, section headers (.text/.data/.rodata/.symtab etc.), symbol table
+- 4-tab UI: Header · Sections · Symbols · Dependencies
+- Symbol demangler: strips leading underscore, decodes Itanium C++ mangling (basic)
+- `isElfFile()` helper in MediaViewers.kt (.so/.elf/.o/.ko)
+- Wired in ExplorerPane: tap + context menu
+- Fix #1271: ByteArray.indexOf impl + replaced >5-tuple destructure with list
+
+### Step 3: APK Analyzer, Smali Viewer, Disassembly Viewer ✅ (pushed — CI pending)
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `ApkAnalyzerDialog.kt` | 555 | APK as ZIP + AXML decoder |
+| `SmaliViewerDialog.kt` | 385 | .smali reader + DEX stub synthesizer |
+| `DisassemblyViewerDialog.kt` | 550 | ARM Thumb-2 decoder + ELF .text extractor |
+
+**APK Analyzer (ApkAnalyzerDialog.kt)**
+- Parses APK (ZIP) — AndroidManifest.xml via pure-Kotlin binary AXML decoder
+  (string pool with UTF-8/UTF-16LE, XML chunk parser: NS/START/END/ATTR types)
+- 5-tab UI: Overview · Manifest · Permissions · Components · Files
+- Permissions: dangerous permissions highlighted red (CAMERA, LOCATION, SMS, STORAGE, etc.)
+- Components: Activities, Services, Receivers, Providers, Features
+- Files: all APK entries grouped by category with sizes
+
+**Smali Viewer (SmaliViewerDialog.kt)**
+- Reads .smali files from directory tree or single file
+- Falls back to synthesizing Smali stubs from DEX class definitions
+  (uses ULEB128 string decoding + class def table to get descriptor/superType/accessFlags)
+- Two-pane: filterable class list + syntax-colored source viewer
+- Token kinds: .directive (blue), opcodes (white), :labels (yellow), # comments (green)
+
+**Disassembly Viewer (DisassemblyViewerDialog.kt)**
+- ELF32 loader: section header table → finds .text + .symtab/.strtab
+- ARM Thumb-2 decoder (pure-Kotlin subset):
+  push/pop, mov/movs/movw, ldr/str (imm5/literal), b/bX<cond>/bl/blx, adds/subs/cmp
+  lsls, 16 DP ops (ands/eors/orrs etc.), nop, 32-bit BL + MOVW, .word fallback
+- Two-pane: function list from symbols + instruction listing
+  Columns: address | raw bytes | mnemonic | operands (with embedded comments)
+- Search filter by mnemonic or operand text
+
+**MediaViewers.kt** — added `isApkAnalyzable()`, `isSmaliSource()`, `isDisassemblable()` helpers
+
+**ExplorerPane.kt** — new state vars + tap routing + context menu items + wiring:
+- APK → APK Analyzer, .smali → Smali Viewer, .so/.elf/.o/.ko → Disassembly Viewer
+
+### CI Build History — Phase 21-X
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1264 | ✅ GREEN | feat(P21-X): DexViewerDialog.kt |
+| #1265 | ✅ GREEN | feat(P21-X): isDexFile() + routing in MediaViewers |
+| #1266 | ✅ GREEN | feat(P21-X): wire DexViewerDialog into ExplorerPane |
+| #1267 | ✅ GREEN | feat(P21-X): DexViewerDialog — wiring confirmed green |
+| #1268 | ❌ FAIL | feat(P21-X): ElfViewerDialog.kt — ByteArray.indexOf issue |
+| #1269 | ❌ FAIL | feat(P21-X): isElfFile() routing — inherited broken tree |
+| #1270 | ❌ FAIL | feat(P21-X): wire ElfViewerDialog — still broken tree |
+| #1271 | ✅ GREEN | fix(P21-X): ElfViewerDialog — ByteArray.indexOf + >5 destructure |
+| #1272 | ✅ GREEN | fix(projects): soften scaffold exists-check |
+| #1273 | ✅ GREEN | fix(home): delete project folder on disk |
+| #1274 | ❌ FAIL | feat(settings): add Deleted Projects section |
+| #1275 | ✅ GREEN | fix(settings): extract DeletedProjectsSection — CI GREEN |
+| TBD  | PENDING | feat(P21-X): APK Analyzer + Smali Viewer + Disassembly Viewer (Step 3) |
+
+### Phase 21-X Remaining Items
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| P21-X-1 | DEX Viewer | ✅ DONE | DexViewerDialog.kt, 5 tabs, class browser |
+| P21-X-2 | ELF Viewer | ✅ DONE | ElfViewerDialog.kt, 4 tabs, symbol table |
+| P21-X-3 | APK Analyzer | ✅ DONE (CI pending) | ApkAnalyzerDialog.kt, AXML decode |
+| P21-X-4 | Smali Viewer | ✅ DONE (CI pending) | SmaliViewerDialog.kt, DEX stub synth |
+| P21-X-5 | Disassembly Viewer | ✅ DONE (CI pending) | ARM Thumb-2 decoder |
+| P21-X-6 | Entropy Heatmap | 🔲 NEXT | Visual entropy map, any binary |
+| P21-X-7 | PCAP / HAR Viewer | 🔲 TODO | Network packet / HTTP archive viewer |
+| P21-X-8 | GGUF / Safetensors / ONNX | 🔲 TODO | AI model metadata viewer |
+| P21-X-9 | OAT / VDEX / APEX | 🔲 TODO | Android runtime format viewers |
+| P21-X-10 | Binary Diff Viewer | 🔲 TODO | Side-by-side byte diff |
