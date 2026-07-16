@@ -87,13 +87,16 @@ private object AxmlDecoder {
     private const val CHUNK_RES_IDS   = 0x00080180
 
     fun decode(bytes: ByteArray): String = try {
-        val sb = StringBuilder()
         val buf = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-
-        if (buf.remaining() < 8) return "(binary XML — too small)"
+        if (buf.remaining() < 8) {
+            "(binary XML — too small)"
+        } else {
         val fileType = buf.int
-        if (fileType != CHUNK_AXML) return "(not binary XML: type=0x${fileType.toString(16)})"
         val fileSize = buf.int
+        if (fileType != CHUNK_AXML) {
+            "(not binary XML: type=0x${fileType.toString(16)})"
+        } else {
+        val sb = StringBuilder()
 
         // String pool
         var strings = listOf<String>()
@@ -202,6 +205,8 @@ private object AxmlDecoder {
             }
         }
         sb.toString().ifBlank { "(empty XML)" }
+        } // else fileType ok
+        } // else remaining >= 8
     } catch (e: Exception) {
         "(AXML decode error: ${e.message})"
     }
