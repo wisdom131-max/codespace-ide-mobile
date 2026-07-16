@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **#1320** (minimap realism fixes GREEN) |
-| Active phase | **Phase 23 (Debugging System Audit) — next to build** |
+| Active phase | **Phase 23 (Debugging System) — IN PROGRESS** |
 | Last green | #1320 — fix: minimap realism — missing imports, proper toggle icon, pre-computed px |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
@@ -2592,7 +2592,23 @@ P22-L: ✅ DONE — Peek Definition overlay: inline code preview via LSP or rege
 
 ## PHASE 23 — DEBUGGING SYSTEM AUDIT, SEPARATION, REPAIR & MODERNIZATION
 
-> **Status: NOT STARTED — queued after P22-L. Do NOT begin until all P22 items are complete.**
+> **Status: IN PROGRESS — Sub-Phase 23-1 (Audit) COMPLETE, 23-4 (UniversalDebugManager) BUILT, 23-2 (Activity Bar wiring) DONE, 23-8 (Breakpoint persistence) DONE, 23-6 (Non-debuggable policies) DONE, 23-9 (Debug console) DONE.**
+>
+> **Audit Results (23-1):**
+> - Activity Bar Debugger: All features were PARTIAL (hardcoded fake data, no real backend)
+> - Terminal Panel Debugger: Terminal works for output but has no debug-specific controls
+> - Backend: No DebugManager, DebugService, or DebugProvider existed
+> - Breakpoints: In-memory only in EditorPane, not persisted or shared
+> - VariableInspectorPanel exists but was not wired to anything
+>
+> **Implemented:**
+> - UniversalDebugManager: shared backend with provider system, session lifecycle, breakpoint management
+> - TerminalDebugProvider: default fallback provider for all runnable languages
+> - RunDebugPanel: rewired from fake data to real UDM (breakpoints, watch, variables, call stack, step controls)
+> - EditorPane: breakpoints now sync to UDM (shared between editor and debug panel)
+> - Breakpoint persistence: save/load to SharedPreferences, loaded on app startup
+> - Debug Console: wired to UDM output
+> - Non-debuggable file policy: replaces "unsupported" with helpful alternatives (Preview, Validator, etc.)
 > Added: 2026-07-16. Source: user specification (rearranged, not changed).
 
 ### GOAL
