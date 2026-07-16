@@ -1796,7 +1796,19 @@ private fun PssBottomPanelContent(
                     } else {
                         val cmd = buildRunCommand(path)
                         if (cmd == null) {
-                            debugMessages.add("[debug] Don't know how to run '${path.substringAfterLast('/')}' — unsupported file type.")
+                            // P23-6: Non-debuggable file policy - offer alternatives
+                            val ext = path.substringAfterLast(".").lowercase()
+                            val alternatives = when (ext) {
+                                "html", "htm" -> "HTML is not directly debuggable. Try: Open Preview, Inspect DOM, or Open Console."
+                                "css", "scss", "sass" -> "CSS is not directly debuggable. Try: CSS Preview Inspector."
+                                "json" -> "JSON is not directly debuggable. Try: JSON Validation or Schema Viewer."
+                                "xml" -> "XML is not directly debuggable. Try: XML Validation."
+                                "md", "markdown" -> "Markdown is not debuggable. Try: Preview."
+                                "png", "jpg", "jpeg", "gif", "bmp", "svg" -> "Images are not debuggable. Try: Image Viewer."
+                                "pdf" -> "PDF is not debuggable. Try: PDF Viewer."
+                                else -> "Don't know how to run this file type."
+                            }
+                            debugMessages.add("[debug] " + alternatives)
                         } else {
                             debugMessages.add("> $cmd")
                             debugMessages.add("[debug] Dispatched to Terminal tab — switch there to see live output.")
