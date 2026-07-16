@@ -2983,3 +2983,180 @@ Produce:
 6. Recommended implementation plan
 
 **Priority:** 1. Audit → 2. Verify → 3. Design → 4. Implement → 5. Optimize
+
+### ═════════════════════════════════════════════════════════════════════════
+### AUDIT REPORT — LIVE PREVIEW SERVER (completed 2026-07-16)
+### ═════════════════════════════════════════════════════════════════════════
+
+---
+
+#### 1. Current Preview/WebView Capability — **WORKING (partial)**
+
+**PreviewPane.kt** (1282 lines) is a fully functional preview surface already
+wired as `BottomTab.PREVIEW` in `ProjectShellScreen`. It has 6 modes:
+
+- **HTML** — renders the active file's content inline via `loadDataWithBaseURL`
+  (no HTTP server). Supports CSS, JS, and React/JSX via Babel standalone CDN.
+  Content is read from disk with `produceState(key1 = activeFilePath)` —
+  meaning it re-reads the file **only when the active file path changes**,
+  NOT when the file content is saved while already active.
+- **Markdown** — renders markdown to HTML inline.
+- **SVG** — renders SVG content inline.
+- **Browser** — loads any URL (default `http://localhost:3000`) in a WebView.
+  Has address bar, Go button, manual reload. Used for connecting to running
+  dev servers (user must manually start the server in the terminal first).
+- **Dashboard** — interactive HTML dashboard with color palettes.
+- **Remotion** — specialized browser mode for Remotion Studio.
+
+**What works:** Static file preview for HTML/CSS/JS/MD/SVG when you switch
+to the file. Browser mode for manually pointing at a running dev server.
+
+**What's missing:** No auto-refresh on save. No live server. No file watcher.
+The preview only updates when you switch files, not when you edit and save
+the current one. There is no WebSocket/SSE push mechanism.
+
+---
+
+#### 2. File-Save/Change Detection — **PARTIAL**
+
+**How saves work today:**
+- `EditorPane.kt` line 719/790: `onContentChange` callback writes to disk
+  immediately via `File(active.path).writeText(newText)` + `FileCache.invalidate()`.
+- This happens on **every keystroke** (not on explicit save) — the file is
+  written to disk on each content change.
+- There is **no file watcher** (`FileObserver`, `inotify`, or similar) anywhere
+  in the codebase. No `android.os.FileObserver` usage found.
+- There is **no save-event hook** or callback that fires when a file is written.
+- `FileCache` only invalidates its own in-memory cache on write — no external
+  notification.
+
+**What this means:** The preview can't know when a file is saved because there's
+no signal. The current `produceState(key1 = activeFilePath)` in PreviewPane
+only re-reads when the path changes, not when content changes.
+
+**Reusable hook:** The `onContentChange` lambda in `EditorPane` is the natural
+place to fire a "file changed" event. It already runs on every write. A
+callback/flow from here to the preview pane is the cleanest hook point.
+
+---
+
+#### 3. Proot Node/npm Availability — **WORKING**
+
+- `EnvironmentProfiles.kt` defines "Web Development" and "Node.js Development"
+  profiles with `ToolchainManager.ToolId.NPM` in their toolchain list.
+- The proot container runs Ubuntu and can install Node/npm via the existing
+  `ToolchainManager` / `ProotInstaller` infrastructure.
+- `AgentApiServer.kt` already runs a `ServerSocket` on port **8765** inside
+  the app process — proving localhost HTTP servers work from both the Android
+  process and the proot container (they share the network namespace per
+  `PortsScanner.kt` documentation).
+- LSP servers are already installed via npm inside proot (tsserver, pylsp,
+  kotlin-language-server) — Node/npm are confirmed working.
+
+---
+
+#### 4. Project Root Detection — **WORKING**
+
+- `ProjectShellScreen.kt` line 628/1040:
+  `java.io.File(context.filesDir, "projects/$projectId").absolutePath`
+- `EditorPane.kt` line 115:
+  `val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }`
+- Projects are stored at `{app_internal_storage}/projects/{projectId}/`
+- The project ID is always available — one project open at a time.
+- `PortsScanner.WELL_KNOWN` already lists common dev server ports (3000, 5173,
+  8080, 4200, 5000, 8000) and scans them — this can be reused to detect if a
+  preview server is already running.
+
+---
+
+#### 5. Multi-Project / Multi-Server — **MISSING (not applicable yet)**
+
+- Only **one project** is open at a time (`projectId` is a single value).
+- There is no concept of multiple simultaneous projects.
+- Therefore only **one preview server** would ever run at a time.
+- No risk of orphaned servers from project switching — but the server MUST
+  be stopped when switching projects or closing the editor.
+
+---
+
+#### 6. Known Risks Assessment
+
+| Risk | Status | Details |
+|------|--------|---------|
+| Port collision | **LOW** | Port 8765 (AgentApiServer), 3000/5173/8080 (well-known dev ports), LSP ports (dynamic). A preview server should use a dedicated port (e.g. **5500**, VS Code Live Server's default) to avoid conflicts. `PortsScanner` can verify availability before binding. |
+| Paths with spaces | **CONFIRMED RISK** | Proot path handling has documented issues with spaces. The project root path (`context.filesDir/projects/$projectId`) typically has no spaces, but user-created project names might. Server launch commands MUST quote paths. |
+| inotify in proot | **CONFIRMED RISK** | No `FileObserver` or `inotify` usage found. Proot's filesystem event support is known to be unreliable. **Recommended approach: skip file-watching entirely** — instead use the app-side `onContentChange` hook to push reload signals directly. The app already knows when files change (it writes them). |
+
+---
+
+#### Chosen Server Approach
+
+**No external HTTP server needed.** The architecture should be:
+
+1. **Embedded HTTP server** in the app process (like `AgentApiServer` on 8765),
+   serving files from the project root directory — no Node.js, no proot
+   dependency, no external process to manage.
+2. **No file watcher needed.** The `onContentChange` callback in `EditorPane`
+   already fires on every write. Wire this to a "reload" signal.
+3. **WebView loads `http://localhost:5500/`** (or the active HTML file's URL).
+4. **Auto-reload via SSE or WebSocket** — the embedded server injects a small
+   `<script>` tag into served HTML that connects to an SSE endpoint. When the
+   app's `onContentChange` fires, it pushes a "reload" event to all connected
+   WebViews. No polling, no inotify.
+
+**Why this approach:**
+- Zero external dependencies (no Node, no npm install, no proot involvement)
+- Instant — no file-watching latency, the app IS the source of truth
+- Minimal RAM — one lightweight `ServerSocket` thread, same pattern as AgentApiServer
+- No port conflicts — dedicated port 5500
+- Works offline — no CDN needed for the reload script
+
+---
+
+#### Lifecycle Rules
+
+| Event | Action |
+|-------|--------|
+| User switches to Preview tab | Start preview server if not running |
+| User switches away from Preview | Keep server running (lightweight), but stop SSE push |
+| App backgrounded | Stop preview server |
+| App foregrounded + Preview tab active | Restart preview server |
+| Project switch | Stop server, clear served root, restart for new project |
+| No web project open + Preview tapped | Show "No active file" guide (existing behavior) |
+| File content changed (onContentChange) | Push SSE reload signal to connected WebViews |
+
+---
+
+#### Recommended Implementation Plan
+
+**Step 1: LivePreviewServer.kt** — embedded HTTP server
+- `ServerSocket` on port 5500
+- Serves static files from project root (MIME-type aware)
+- SSE endpoint at `/__live_reload__` for connected WebViews
+- Injects `<script>` into HTML responses that connects to SSE and calls
+  `location.reload()` on message
+- `reload()` method called from EditorPane on content change
+
+**Step 2: Wire onContentChange → LivePreviewServer.reload()**
+- Add a callback in EditorPane that fires `LivePreviewServer.reload()` after
+  each `writeText()` call
+- Only triggers for web file types (HTML/CSS/JS)
+
+**Step 3: PreviewPane Browser mode → load from LivePreviewServer**
+- When in HTML mode and a project is active, serve via `http://localhost:5500/`
+  instead of inline `loadDataWithBaseURL`
+- Keeps inline mode as fallback for standalone files without a project
+
+**Step 4: Lifecycle management in ProjectShellScreen**
+- Start/stop server on Preview tab enter/leave
+- Stop on app background, restart on foreground
+- Stop on project switch
+
+**Step 5: Path safety**
+- URL-encode project paths, handle spaces in filenames
+- Sanitize path traversal (no `../` escapes)
+
+---
+
+**Audit complete. Ready for implementation when approved.**
+
