@@ -2051,7 +2051,44 @@ Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, S
 | #1273 | ✅ GREEN | fix(home): delete project folder on disk |
 | #1274 | ❌ FAIL | feat(settings): add Deleted Projects section |
 | #1275 | ✅ GREEN | fix(settings): extract DeletedProjectsSection — CI GREEN |
-| TBD  | PENDING | feat(P21-X): APK Analyzer + Smali Viewer + Disassembly Viewer (Step 3) |
+| #1276 | ❌ FAIL | feat(P21-X): APK Analyzer + Smali + Disassembly — syntax error |
+| #1277 | ❌ FAIL | docs(AGENTS): Step 3 — inherited broken tree |
+| #1278 | ✅ GREEN | fix(P21-X): ApkAnalyzerDialog remove early returns |
+| #1279 | ✅ GREEN | Step 3 confirmed green |
+| TBD  | PENDING | feat(P21-X-S4): Entropy Heatmap + PCAP/HAR + AI Model Viewer (Step 4) | |
+
+
+### Step 4: Entropy Heatmap, PCAP/HAR Viewer, AI Model Viewer 🔲 (CI pending)
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `EntropyHeatmapDialog.kt` | 281 | Shannon entropy heatmap viewer |
+| `NetworkViewerDialog.kt` | 382 | PCAP binary + HAR JSON network viewer |
+| `AiModelViewerDialog.kt` | 517 | GGUF / Safetensors / ONNX metadata viewer |
+
+**Entropy Heatmap (EntropyHeatmapDialog.kt)**
+- Reads entire file, computes Shannon entropy per 256-byte block (H = -Σ p·log₂p)
+- Canvas-based heatmap: 64 cells/row, color-coded blue→green→amber→red (low→high entropy)
+- Stats bar: total blocks, avg/min/max entropy, high/med/low block counts
+- Block detail table with hex offset, entropy value, and level label
+- Interpreting high entropy (≥7 bits) → likely encrypted or compressed region
+
+**Network Viewer (NetworkViewerDialog.kt)**
+- HAR: parses JSON (org.json), extracts request method/URL/headers/body + response status/headers/body preview
+- PCAP: pure-Kotlin binary parser — global header (magic, endianness detection, nanosecond flag), packet records
+  → Ethernet II decode → IPv4 → TCP/UDP port extraction; raw hex preview for every packet
+- Master-detail UI: filterable packet/request list on left, full detail text on right
+- Supports .pcap / .pcapng / .cap / .har
+
+**AI Model Viewer (AiModelViewerDialog.kt)**
+- GGUF: RandomAccessFile parser — magic check, version, tensor_count, KV metadata (30+ value types incl. ULEB/string/array)
+  Extracts: architecture, quantization, context_length, embedding_length, head_count, layer_count, vocab_size
+- Safetensors: reads 8-byte header_size, parses JSON header — tensor dtype distribution, total param count, __metadata__
+- ONNX: protobuf3 wire-format parser — ir_version (varint), opset_import (sub-message), graph name/node count, metadata_props
+- 2-tab UI: Summary (labeled grid) + All Metadata (key-value table)
+
+**MediaViewers.kt** — added `isEntropyViewable()`, `isNetworkCapture()`, `isAiModel()` helpers
+**ExplorerPane.kt** — 3 new state vars, context menu items (Entropy Heatmap for all binary files, Network/AI for matching extensions), tap routing, dialog wiring
 
 ### Phase 21-X Remaining Items
 
@@ -2062,8 +2099,8 @@ Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, S
 | P21-X-3 | APK Analyzer | ✅ DONE (CI pending) | ApkAnalyzerDialog.kt, AXML decode |
 | P21-X-4 | Smali Viewer | ✅ DONE (CI pending) | SmaliViewerDialog.kt, DEX stub synth |
 | P21-X-5 | Disassembly Viewer | ✅ DONE (CI pending) | ARM Thumb-2 decoder |
-| P21-X-6 | Entropy Heatmap | 🔲 NEXT | Visual entropy map, any binary |
-| P21-X-7 | PCAP / HAR Viewer | 🔲 TODO | Network packet / HTTP archive viewer |
-| P21-X-8 | GGUF / Safetensors / ONNX | 🔲 TODO | AI model metadata viewer |
+| P21-X-6 | Entropy Heatmap | ✅ DONE | EntropyHeatmapDialog.kt, 256B blocks, color heatmap, stats |
+| P21-X-7 | PCAP / HAR Viewer | ✅ DONE | NetworkViewerDialog.kt, binary PCAP + HAR JSON |
+| P21-X-8 | GGUF / Safetensors / ONNX | ✅ DONE | AiModelViewerDialog.kt, 2-tab metadata viewer |
 | P21-X-9 | OAT / VDEX / APEX | 🔲 TODO | Android runtime format viewers |
 | P21-X-10 | Binary Diff Viewer | 🔲 TODO | Side-by-side byte diff |
