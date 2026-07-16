@@ -87,7 +87,7 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
         val label = item.optString("label", "")
         if (label.isBlank()) continue
         var insertText = item.optString("insertText", label)
-        insertText = insertText.replace(Regex("\$\{\d+:?[^}]*}"), "").replace(Regex("\$\d+"), "")
+        insertText = insertText.replace(Regex("""\$\{\d+:?[^}]*}"""), "").replace(Regex("""\$\d+"""), "")
         val detail = item.optString("detail", "")
         val kind = item.optInt("kind", 1)
         result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind))
