@@ -487,6 +487,10 @@ fun CodeEditor(
 
     // ── Multi-cursor state ───────────────────────────────────────────────
     var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
+    // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
+    androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
+        extraCursors = emptyList()
+    }
 
     // ── Go to Line state ─────────────────────────────────────────────────
     var goToLineInput by remember { mutableStateOf("") }
@@ -1000,7 +1004,7 @@ fun CodeEditor(
                     .padding(horizontal = 8.dp, vertical = 3.dp)
                     .zIndex(10f),
             ) {
-                Text("${extraCursors.size}× ✕", color = Color(0xFFFFFFFF), fontSize = 10.sp)
+                Text("${extraCursors.size}× cursors ✕", color = Color(0xFFFFFFFF), fontSize = 10.sp)
             }
         }
 
@@ -1307,6 +1311,103 @@ fun CodeEditor(
                                         }
                                     }
                                 }
+                            }
+                        }
+                        // P22-K: Select Next Occurrence (Ctrl+D equivalent) — add cursor at next word match
+                        TextButton(
+                            onClick = {
+                                val curPos = value.selection.end
+                                val pattern = try {
+                                    Regex("\\b" + Regex.escape(word) + "\\b")
+                                } catch (_: Exception) { null }
+                                if (pattern != null) {
+                                    // Find next occurrence after current cursor
+                                    val nextMatch = pattern.findAll(value.text)
+                                        .firstOrNull { it.range.last + 1 > curPos }
+                                        ?: pattern.findAll(value.text).firstOrNull()
+                                    if (nextMatch != null) {
+                                        val matchPos = nextMatch.range.last + 1
+                                        if (matchPos != curPos) {
+                                            extraCursors = (extraCursors + curPos).distinct().sorted()
+                                            value = value.copy(
+                                                selection = androidx.compose.ui.text.TextRange(matchPos)
+                                            )
+                                        }
+                                    }
+                                }
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("▸", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                                Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        // P22-K: Add Cursor Above
+                        TextButton(
+                            onClick = {
+                                val curPos = value.selection.end
+                                val lineStart = value.text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0)) + 1
+                                val col = curPos - lineStart
+                                val prevLineStart = if (lineStart > 0) {
+                                    value.text.lastIndexOf('\n', lineStart - 2) + 1
+                                } else 0
+                                val prevLineEnd = (lineStart - 1).coerceAtLeast(0)
+                                if (prevLineStart <= prevLineEnd) {
+                                    val newCol = col.coerceAtMost(prevLineEnd - prevLineStart)
+                                    val newPos = prevLineStart + newCol
+                                    extraCursors = (extraCursors + curPos).distinct().sorted()
+                                    value = value.copy(
+                                        selection = androidx.compose.ui.text.TextRange(newPos)
+                                    )
+                                }
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("↑", color = Color(0xFFE5C07B), fontSize = 14.sp)
+                                Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        // P22-K: Add Cursor Below
+                        TextButton(
+                            onClick = {
+                                val curPos = value.selection.end
+                                val lineStart = value.text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0)) + 1
+                                val col = curPos - lineStart
+                                val lineEnd = value.text.indexOf('\n', curPos)
+                                val nextLineStart = if (lineEnd >= 0) lineEnd + 1 else value.text.length
+                                val nextLineEnd = value.text.indexOf('\n', nextLineStart)
+                                val nextLineLen = if (nextLineEnd >= 0) nextLineEnd - nextLineStart else value.text.length - nextLineStart
+                                if (nextLineStart < value.text.length) {
+                                    val newCol = col.coerceAtMost(nextLineLen)
+                                    val newPos = nextLineStart + newCol
+                                    extraCursors = (extraCursors + curPos).distinct().sorted()
+                                    value = value.copy(
+                                        selection = androidx.compose.ui.text.TextRange(newPos)
+                                    )
+                                }
+                                contextWord = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("↓", color = Color(0xFFE5C07B), fontSize = 14.sp)
+                                Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                         }
                     }
