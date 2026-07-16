@@ -2474,3 +2474,34 @@ P22-L: Peek Definition overlay
 1. **P22-D** — Merge conflict inline editor: parse `<<<<<<<`/`=======`/`>>>>>>>` markers in CodeEditor, show Accept Ours / Accept Theirs / Accept Both buttons per hunk as overlay rows
 2. **P22-E** — Format Document: detect language → run `ktlint`/`prettier`/`black`/`gofmt` inside proot shell via `TerminalSession.runCommand()`, stream output back, replace editor content
 
+## P22-D: Merge Conflict Inline Editor — ✅ COMPLETE (build #1302 GREEN)
+
+### Files created/modified:
+1. **MergeConflictParser.kt** (new) — parses `<<<<<<<`/`=======`/`>>>>>>>` markers into `ConflictHunk` data class
+   - `parse(content)` → List<ConflictHunk> with startLine, separatorLine, endLine, branch names, ours/theirs lines
+   - `hasConflicts(content)` → Boolean quick check
+   - `resolveHunk(content, hunk, resolution)` → resolves single hunk (OURS/THEIRS/BOTH/BOTH_REVERSED)
+   - `resolveAll(content, resolution)` → resolves all hunks at once
+2. **CodeEditor.kt** (modified) — added `conflictData: List<ConflictHunk>?` and `onResolveConflict` parameters
+   - Red tint background for "ours" conflict section
+   - Green tint background for "theirs" conflict section
+   - Inline button bar at each hunk header: branch names + Ours/Theirs/Both clickable buttons
+   - Uses `Box(clickable{})` instead of `Surface(onClick)` to avoid ExperimentalMaterial3Api
+3. **EditorPane.kt** (modified) — auto-detects conflicts in active file content
+   - `remember(active.content) { MergeConflictParser.parse() }` on every content change
+   - Resolution callback writes resolved content to file, updates tab, re-detects remaining conflicts
+
+### CI Build History — P22-D
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1298 | ❌ FAIL | MergeConflictParser: .matches(String) expects Regex |
+| #1299 | ❌ FAIL | CodeEditor: bad offset import + Surface(onClick) experimental |
+| #1300 | ❌ FAIL | EditorPane: inherited broken tree from #1299 |
+| #1301 | ❌ FAIL | Fix MergeConflictParser but CodeEditor still broken |
+| #1302 | ✅ GREEN | Fixed CodeEditor — removed bad import, replaced Surface with Box(clickable) |
+
+### Existing conflict resolution (not replaced):
+- SourceControlPane.kt still has file-level ConflictResolverRow (Accept Ours/Theirs/Both for whole file)
+- P22-D adds per-hunk inline resolution in the editor itself — both coexist
+
+### Next: P22-E — Format Document
