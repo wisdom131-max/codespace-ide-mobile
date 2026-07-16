@@ -2229,5 +2229,160 @@ Prefer: Repair over replacement · Completion over duplication · Integration ov
 7. High Priority Completions
 8. Recommended Next Development Phase
 
-**STATUS: 🔲 PENDING — audit must run before any Phase 22 implementation begins**
+**STATUS: ✅ AUDIT COMPLETE (2026-07-16) — ready for Phase 22 implementation**
+
+---
+
+## Phase 22 Audit Findings
+
+### 1. Working Features ✅
+
+| Feature | Implementation | Notes |
+|---------|---------------|-------|
+| Syntax Highlighting | SyntaxTransformation.kt + SyntaxHighlighter.kt | All major languages |
+| Code Folding | CodeEditor.kt (foldableLines, foldedRanges, foldedLineIndices) | Brace/indent-based, chevron gutter icons |
+| Ghost text / Inline Suggestions | CodeEditor.kt L384–397 | Shows top completion as grey text |
+| Keyword/Snippet Completion popup | CodeEditor.kt completionsFor() + snippetsFor() | Triggers at ≥2 chars, all languages |
+| Parameter Hints / Signature Help | SignatureHelpAnalyzer.kt → CodeEditor.kt | Regex-based, common stdlib functions |
+| Hover docs | CodeEditor.kt HOVER_DOCS map | Common keywords only (no LSP) |
+| Inlay Hints | InlayHintAnalyzer.kt | Return types + param names, Kotlin/JS |
+| Real-time lint underlines | LintAnalyzer.kt → SyntaxTransformation.kt | Per-keystroke via LaunchedEffect |
+| Problems panel | LintChecker.kt → PSS ProblemsPanel | Works; read from disk on file-switch only |
+| Error badge count | PSS tab bar | LintChecker.check() per file |
+| Rename Symbol | CodeEditor.kt renameDialogWord | In-file (P18-C adds cross-file via FileIndexer) |
+| Go To Definition | CodeEditor.kt + FileIndexer.search() | Cross-file via indexed symbols |
+| Find References | CodeEditor.kt nearbyError + symbol scan | Basic, same-file |
+| Workspace File Search | ProjectFileSearchPanel.kt | File name + full-text grep modes |
+| Symbol Search (Go to Symbol) | SymbolSearchPanel.kt + SymbolParser | Regex-based, all languages |
+| Outline View | OutlinePanel.kt SymbolParser | Class/func/var tree, live |
+| Code Folding gutter | CodeEditor.kt ▼/▶ chevrons | Working |
+| Split Editor | EditorPane.kt splitId state | Side-by-side, persisted |
+| Multiple Tabs | EditorPane.kt | Pinning, reorder, restore |
+| Minimap | CodeEditor.kt L879 | Click-to-navigate working |
+| Find & Replace | CodeEditor.kt | In-file only |
+| Session Restore | EditorPane.kt autosave + TerminalSessionStore.kt | Both editor and terminal tabs |
+| Autosave / Recovery dialog | EditorPane.kt L306–335 | On next open |
+| File Type Detection | FileDetector.kt | Magic bytes + extension + MIME, 20+ types |
+| Terminal — multiple sessions | TerminalPane.kt + TerminalSessionStore.kt | Multi-tab, crash recovery |
+| Terminal — session persist | TerminalSessionStore.kt SavedTab | Survives app restart |
+| Terminal — proot Ubuntu | ProotInstaller.kt | Fully working, all commands in proot |
+| Git — status/stage/commit/push/pull | GitEngine.kt + SourceControlPane.kt | Working via proot git |
+| Git — branches (create/checkout/delete/rename/merge) | GitEngine.kt | Full branch operations |
+| Git — commit log + graph | SourceControlPane.kt ScmTab.LOG/GRAPH | Working |
+| Git — stash save/pop/list | GitEngine.kt + ScmTab.STASH | Working |
+| Git — tags create/delete/list | GitEngine.kt + ScmTab.TAGS | Working |
+| Git — inline diff | SourceControlPane.kt + DiffViewer.kt | Per-file unified diff |
+| Git — merge conflict detection | SourceControlPane.kt conflictedFiles | Lists conflicted files, banner shown |
+| Build system — Gradle detection | BuildRunner.isGradleProject() | build.gradle/gradlew detection |
+| Build system — Gradle execution | BuildRunner + ProotInstaller | Runs ./gradlew inside proot |
+| Build panel | BuildPanel.kt | Output streaming, cancel |
+| Build error parser | GradleErrorParser.kt | Line/col extraction |
+| Toolchain scanner | ToolchainManager.kt + ToolchainPanel.kt | JDK/Gradle/SDK/Node/Python/ADB/etc via proot |
+| Package manager | PackageManagerPane.kt | apt-get via ProotInstaller.execOnce() |
+| Logcat panel | LogcatPanel.kt | adb logcat stream; degrades gracefully (no adb → message) |
+| Variable Inspector UI | VariableInspectorPanel.kt | Watch expressions + call stack + locals UI |
+| Ports scanner | PortsScanner.kt | TCP port probe |
+| File indexer | FileIndexer.kt | Background indexing of workspace symbols |
+| PerformanceMonitor | PerformanceMonitor.kt | Memory, file size stats |
+
+---
+
+### 2. Partially Implemented Features ⚠️
+
+| Feature | Status | What's Missing |
+|---------|--------|---------------|
+| Problems panel real-time update | PARTIAL | `remember(activeFilePath)` — re-runs only on file switch, not on every keystroke. Editor underlines update live (LintAnalyzer via LaunchedEffect) but Problems tab content does NOT reflect current unsaved edits |
+| Go To Definition (cross-file) | PARTIAL | FileIndexer covers symbols; no AST — misses overloads, anonymous/lambda definitions, imported symbols from jars |
+| Find References | PARTIAL | Scans current file only; no workspace-wide reference search |
+| Git blame | PARTIAL | GitEngine has no `blame()` function; SourceControlPane has no blame view |
+| Merge conflict editor | PARTIAL | Detects conflicts, shows banner — no inline conflict resolution UI (no <<<, ===, >>> visualiser) |
+| Debugger — Variable Inspector | PARTIAL | UI present (watch, call stack, locals panels) but no backend: no DAP/JDWP connection, no real breakpoint engine. Static analysis only |
+| Logcat | PARTIAL | Works only if `adb` binary is on device PATH; most Android devices running this app won't have ADB on the host |
+| Auto Import | PARTIAL | No auto-import — completions suggest symbols but don't insert import statements |
+| Workspace-wide Find & Replace | PARTIAL | ProjectFileSearchPanel searches text but has no replace action |
+| Breadcrumb navigation | PARTIAL | Sticky line header in CodeEditor (shows ancestor line), but no interactive clickable breadcrumb bar |
+| Formatting | PARTIAL | No Format Document / Format on Save; LanguageSpecs defines indent rules but no formatter runs |
+
+---
+
+### 3. Broken Features ❌
+
+| Feature | Root Cause |
+|---------|------------|
+| LSP (Language Server Protocol) | **MISSING ENTIRELY** — no LspManager, no lsp4j, no tsserver/pyright/kotlin-language-server bundled or launched. All IntelliSense is purely regex/keyword based |
+| AgentScheduler.runCommand() | **FIXED in build #1291** — was calling raw ProcessBuilder(["bash", "-c", cmd]) which doesn't exist on Android host; now uses ProotInstaller.execOnce() |
+| ProblemsPanel live-update | Uses `remember(activeFilePath)` — only refreshes when the active FILE changes, not when content changes. Editing a file won't update the Problems tab until you switch away and back |
+| Git blame view | GitEngine.blame() doesn't exist; no UI for it |
+
+---
+
+### 4. Missing Features 🔲
+
+| Feature | Priority |
+|---------|----------|
+| LSP integration (tsserver, pyright, kotlin-ls, clangd) | HIGH — all advanced IntelliSense depends on this |
+| Real Language Server diagnostics (type errors, import errors, undefined symbols) | HIGH |
+| Format Document / Format on Save | HIGH |
+| Workspace-wide Find & Replace (replace action) | HIGH |
+| Git blame inline / gutter | MEDIUM |
+| Merge conflict inline editor (<<<===>>> visualiser + accept/reject buttons) | MEDIUM |
+| Extension Manager (install/remove VSCode-compatible extensions) | LOW (complex, different arch) |
+| DAP debugger backend (JDWP attach, step, breakpoint engine) | LOW (very complex) |
+| Peek Definition (inline popup, not full navigation) | MEDIUM |
+| Multi-cursor editing | MEDIUM |
+| Auto Import insertion | MEDIUM |
+| Code Actions / Quick Fixes (beyond rename) | MEDIUM (needs LSP) |
+| Workspace-wide symbol rename | MEDIUM |
+| Interactive breadcrumb bar | LOW |
+| Full-screen minimap overlay | LOW |
+
+---
+
+### 5. Duplicate Systems ⚠️
+
+| Duplicates | Notes |
+|-----------|-------|
+| LintAnalyzer.kt + LintChecker.kt | Two separate lint engines. LintAnalyzer used in CodeEditor (underlines), LintChecker used in ProblemsPanel (file-disk read). Should be unified |
+| BuildEnvironment.kt + ToolchainManager.kt | Both scan for JDK/Gradle/ADB/Node. Overlap; BuildEnvironment is older, ToolchainManager is newer and more complete |
+| CopilotChatPanelOverlay.kt (ui/screens) marked DEAD CODE in ProotInstaller.kt comment | Verify if still wired anywhere; if not, remove |
+
+---
+
+### 6. High Priority Repairs
+
+1. **ProblemsPanel live-update** — change `remember(activeFilePath)` to also key on current editor content (pass `currentContent: String` param from EditorPane → PSS → ProblemsPanel; run LintChecker on it, not from disk)
+2. **LintAnalyzer + LintChecker unification** — merge into one object; remove duplication
+3. **Workspace Find & Replace** — add replace-all action to ProjectFileSearchPanel
+4. **Dead code cleanup** — remove or archive CopilotChatPanelOverlay.kt if truly dead
+
+---
+
+### 7. High Priority Completions
+
+1. **LSP integration** — highest value unlock; enables type-accurate IntelliSense, real diagnostics, auto-import, formatting, rename, hover for ALL languages. Approach: launch LSP servers inside proot (npm install -g typescript-language-server, pip install python-lsp-server, etc.), communicate via stdio JSON-RPC from Kotlin
+2. **Format Document** — wire prettierx/ktlint/black inside proot; trigger via command palette "Format Document"
+3. **Git blame** — add `GitEngine.blame()` (git blame --porcelain) + inline gutter display
+4. **Merge conflict editor** — parse <<<===>>> markers in editor, show accept-ours/accept-theirs/both buttons per hunk
+5. **Multi-cursor** — Compose BasicTextField doesn't natively support multiple cursors; needs custom TextLayoutResult-based overlay
+
+---
+
+### 8. Recommended Phase 22 Implementation Order
+
+```
+P22-A: ProblemsPanel live-update + LintChecker/LintAnalyzer unification
+P22-B: Workspace Find & Replace (add replace to ProjectFileSearchPanel)
+P22-C: Git blame gutter + inline view
+P22-D: Merge conflict inline editor
+P22-E: Format Document (prettier/ktlint/black via proot)
+P22-F: LSP groundwork — LspManager, stdio JSON-RPC client, server install via npm/pip in proot
+P22-G: LSP diagnostics + hover for JS/TS (tsserver — most impactful first)
+P22-H: LSP diagnostics + completion for Python (pylsp)
+P22-I: LSP for Kotlin (kotlin-language-server)
+P22-J: Auto Import (LSP-backed textEdit insertions)
+P22-K: Multi-cursor support
+P22-L: Peek Definition overlay
+```
+
+**STATUS: AUDIT COMPLETE ✅ — Phase 22 implementation may begin with P22-A**
 
