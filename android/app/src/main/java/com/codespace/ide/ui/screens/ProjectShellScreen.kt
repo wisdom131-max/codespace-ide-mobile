@@ -1689,6 +1689,7 @@ private fun PssBottomPanelContent(
     onRunInTerminal: (String) -> Unit = {},
     heavyPanesReady: Boolean = false,
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     if (!showBottomPanel) return
 
