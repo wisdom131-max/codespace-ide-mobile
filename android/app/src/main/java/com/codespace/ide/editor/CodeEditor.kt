@@ -41,6 +41,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -270,6 +271,10 @@ fun CodeEditor(
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     /** P20-A: Git blame data — when non-null, shows author+date column next to line numbers */
     blameData: Map<Int, BlameLine>? = null,
+    /** P22-D: Merge conflict hunks — when non-null, shows colored backgrounds + resolve buttons per hunk */
+    conflictData: List<ConflictHunk>? = null,
+    /** P22-D: Called when user resolves a conflict hunk */
+    onResolveConflict: ((ConflictHunk, ConflictResolution) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
@@ -814,6 +819,78 @@ fun CodeEditor(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── P22-D: Merge conflict overlay ──────────────────────────────────
+        if (conflictData != null && conflictData.isNotEmpty()) {
+            val lineHeightDp = fontSize.dp * 1.25f
+            conflictData.forEach { hunk ->
+                // Ours section background (red tint)
+                Box(
+                    Modifier
+                        .padding(start = 62.dp)
+                        .fillMaxWidth()
+                        .height(lineHeightDp * (hunk.separatorLine - hunk.startLine))
+                        .offset(y = (hunk.startLine + 1) * lineHeightDp.value.dp - lineHeightDp)
+                        .background(Color(0x33FF6B6B))
+                )
+                // Theirs section background (green tint)
+                Box(
+                    Modifier
+                        .padding(start = 62.dp)
+                        .fillMaxWidth()
+                        .height(lineHeightDp * (hunk.endLine - hunk.separatorLine))
+                        .offset(y = (hunk.separatorLine + 1) * lineHeightDp.value.dp)
+                        .background(Color(0x334EC9B0))
+                )
+                // Resolve button bar at conflict start
+                Box(
+                    Modifier
+                        .padding(start = 62.dp)
+                        .offset(y = hunk.startLine * lineHeightDp.value.dp)
+                        .zIndex(10f)
+                ) {
+                    Row(
+                        Modifier.background(Color(0xFF1A1A2E)).padding(horizontal = 4.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("<<<", color = Color(0xFFE06C75), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.width(4.dp))
+                        Text(hunk.oursBranch.take(10), color = Color(0xFFE06C75), fontSize = 8.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+                        Spacer(Modifier.width(6.dp))
+                        Text("vs", color = Color(0xFF858585), fontSize = 8.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(hunk.theirsBranch.take(10), color = Color(0xFF4EC9B0), fontSize = 8.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+                        Spacer(Modifier.weight(1f))
+                        // Ours button
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color(0x66FF6B6B),
+                            onClick = { onResolveConflict?.invoke(hunk, ConflictResolution.OURS) }
+                        ) {
+                            Text("Ours", color = Color.White, fontSize = 8.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                        }
+                        Spacer(Modifier.width(3.dp))
+                        // Theirs button
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color(0x664EC9B0),
+                            onClick = { onResolveConflict?.invoke(hunk, ConflictResolution.THEIRS) }
+                        ) {
+                            Text("Theirs", color = Color.White, fontSize = 8.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                        }
+                        Spacer(Modifier.width(3.dp))
+                        // Both button
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color(0x66569CD6),
+                            onClick = { onResolveConflict?.invoke(hunk, ConflictResolution.BOTH) }
+                        ) {
+                            Text("Both", color = Color.White, fontSize = 8.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                         }
                     }
                 }
