@@ -16,20 +16,21 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-07-14. Read this FIRST before touching any code.
+> Last updated: 2026-07-16. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-07-15)
+## CURRENT STATE (2026-07-16)
 
 | | |
 |-|-|
-| Latest green build | **#1275** (Settings: DeletedProjectsSection fix GREEN) |
-| Active phase | **Phase 21-X IN PROGRESS — Step 3 complete (APK/Smali/Disasm pushed, CI pending)** |
-| Last green | #1275 — fix(settings): extract DeletedProjectsSection — TREE CLEAN ✅ |
-| Last pushed | f69b4ef7 — feat(P21-X): APK Analyzer, Smali Viewer, Disassembly Viewer (Step 3) |
-| **Phase 16** | **✅ COMPLETE — all 6 items shipped, #1199 GREEN** |
-| **Next** | Phase 21-X Step 4 — wire remaining items (Entropy Heatmap, PCAP/HAR, GGUF, OAT) |
+| Latest green build | **#1308** (P22-E: DocumentFormatter fix GREEN) |
+| Active phase | **Phase 22-E COMPLETE — Format Document shipped, #1308 GREEN** |
+| Last green | #1308 — fix(P22-E): DocumentFormatter — guestPath String? fix ✅ |
+| Last pushed | 8cb4343 — fix(P22-E): DocumentFormatter — guestPath is String? from hostToGuestPath |
+| **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
+| **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
+| **Next** | Phase 22-F — LSP groundwork (LspManager, stdio JSON-RPC, server install via npm/pip in proot) |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -2102,8 +2103,8 @@ Next: Phase 21-X — Reverse Engineering & Advanced Binary Analysis (DEX, ELF, S
 | P21-X-6 | Entropy Heatmap | ✅ DONE | EntropyHeatmapDialog.kt, 256B blocks, color heatmap, stats |
 | P21-X-7 | PCAP / HAR Viewer | ✅ DONE | NetworkViewerDialog.kt, binary PCAP + HAR JSON |
 | P21-X-8 | GGUF / Safetensors / ONNX | ✅ DONE | AiModelViewerDialog.kt, 2-tab metadata viewer |
-| P21-X-9 | OAT / VDEX / APEX | 🔲 TODO | Android runtime format viewers |
-| P21-X-10 | Binary Diff Viewer | 🔲 TODO | Side-by-side byte diff |
+| P21-X-9 | OAT / VDEX / APEX | ✅ DONE | AndroidRuntimeViewerDialog.kt, pure-Kotlin parsers, 3-tab UI |
+| P21-X-10 | Binary Diff Viewer | ✅ DONE | BinaryDiffViewerDialog.kt, side-by-side byte diff |
 
 
 ---
@@ -2462,8 +2463,8 @@ P22-L: Peek Definition overlay
 | P22-A LintChecker.unified() | 🔨 #1295 building | Merges LintChecker + LintAnalyzer, deduplicates by (line, message) |
 | P22-B Workspace Find & Replace | ✅ ALREADY DONE | P18-A already shipped Replace All with snackbar + regex in ProjectFileSearchPanel |
 | P22-C Git blame gutter | ✅ ALREADY DONE | P20-A ships gutter rendering + `showBlame` toggle in EditorPane |
-| P22-D Merge conflict inline editor | ❌ NOT STARTED | Next after P22-A confirms green |
-| P22-E Format Document | ❌ NOT STARTED | After P22-D |
+| P22-D Merge conflict inline editor | ✅ DONE (#1302 GREEN) | MergeConflictParser + CodeEditor conflict overlay + EditorPane auto-detect |
+| P22-E Format Document | ✅ DONE (#1308 GREEN) | DocumentFormatter.kt — ktlint/prettier/black/gofmt via proot, Format button in EditorPane |
 | P22-F–L LSP groundwork | ❌ NOT STARTED | Long-horizon items |
 
 ### Pattern memorised from this session
@@ -2504,4 +2505,30 @@ P22-L: Peek Definition overlay
 - SourceControlPane.kt still has file-level ConflictResolverRow (Accept Ours/Theirs/Both for whole file)
 - P22-D adds per-hunk inline resolution in the editor itself — both coexist
 
-### Next: P22-E — Format Document
+## P22-E: Format Document — ✅ COMPLETE (build #1308 GREEN)
+
+### Files created/modified:
+1. **DocumentFormatter.kt** (new) — language-aware code formatting via proot
+   - Detects language from extension → maps to formatter (ktlint, prettier, black, gofmt, clang-format)
+   - `formatFile(context, file)` → runs formatter inside proot via `ProotInstaller.execOnce()`
+   - Reads original content, runs formatter, writes back formatted content
+   - `guestPath` is `String?` from `hostToGuestPath()` — passed directly to `execOnce`
+2. **EditorPane.kt** (modified) — added "Format Document" button
+   - Language-aware: only shows for supported file types
+   - Uses tabs lookup to find active tab (not out-of-scope activeTab variable)
+   - On format complete: updates tab content, shows toast
+
+### CI Build History — P22-E
+| Build | Result | Notes |
+|-------|--------|-------|
+| #1304 | ❌ FAIL | feat(P22-E): DocumentFormatter.kt — language-aware formatting (compilation errors) |
+| #1305 | ❌ FAIL | feat(P22-E): EditorPane — Format Document button (inherited broken tree) |
+| #1306 | ❌ FAIL | fix: DocumentFormatter — use guestPath.absolutePath (guestPath is String?, not File) |
+| #1307 | ❌ FAIL | fix: EditorPane — use tabs lookup instead of out-of-scope active variable |
+| #1308 | ✅ GREEN | fix: DocumentFormatter — guestPath is String? from hostToGuestPath, pass directly to execOnce |
+
+### Pattern memorised:
+- `hostToGuestPath()` returns `String?`, not `File` — don't call `.absolutePath` on it, pass the String? directly
+- When referencing tabs in EditorPane, use the tabs list lookup, not an `active` variable that may be out of scope
+
+### Next: P22-F — LSP groundwork (LspManager, stdio JSON-RPC client, server install via npm/pip in proot)
