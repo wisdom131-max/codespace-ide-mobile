@@ -351,3 +351,20 @@ fun HexViewerDialog(filePath: String, onDismiss: () -> Unit) {
     }
     }
 }
+
+fun isEntropyViewable(name: String): Boolean =
+    !name.endsWith(".kt") && !name.endsWith(".java") && !name.endsWith(".md") &&
+    !name.endsWith(".txt") && !name.endsWith(".xml") && !name.endsWith(".json") &&
+    !name.endsWith(".yaml") && !name.endsWith(".yml") && !name.endsWith(".toml") &&
+    !name.endsWith(".html") && !name.endsWith(".css") && !name.endsWith(".js")
+
+fun isNetworkCapture(name: String): Boolean {
+    val low = name.lowercase()
+    return low.endsWith(".pcap") || low.endsWith(".pcapng") || low.endsWith(".cap") || low.endsWith(".har")
+}
+
+fun isAiModel(name: String): Boolean {
+    val low = name.lowercase()
+    return low.endsWith(".gguf") || low.endsWith(".safetensors") || low.endsWith(".onnx")
+}
+
