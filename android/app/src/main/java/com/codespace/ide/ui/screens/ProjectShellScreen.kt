@@ -1599,15 +1599,19 @@ private fun PssActivityBar(
                 } catch (_: Exception) {}
             }
         }
+        // P22-A: poll error badge every 3 s so it updates as user types
         val runBadgeCount by produceState(0, activeEditorTab) {
-            withContext(Dispatchers.IO) {
-                try {
-                    val path = activeEditorTab
-                    if (path != null) {
-                        val src = java.io.File(path).takeIf { it.exists() }?.readText() ?: ""
-                        value = LintChecker.check(path, src).count { it.severity == Problem.Severity.ERROR }
-                    }
-                } catch (_: Exception) {}
+            while (true) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val path = activeEditorTab
+                        if (path != null) {
+                            val src = java.io.File(path).takeIf { it.exists() }?.readText() ?: ""
+                            value = LintChecker.check(path, src).count { it.severity == Problem.Severity.ERROR }
+                        }
+                    } catch (_: Exception) {}
+                }
+                kotlinx.coroutines.delay(3_000)
             }
         }
         listOf(
@@ -1886,9 +1890,13 @@ private fun buildRunCommand(path: String): String? {
 }
 
 @Composable private fun ProblemsPanel(activeFilePath: String?, onJumpToSource: () -> Unit) {
-    val problems = remember(activeFilePath) {
-        if (activeFilePath.isNullOrBlank()) emptyList()
-        else try { LintChecker.check(activeFilePath, loadFileContent(activeFilePath)) } catch (_: Exception) { emptyList() }
+    // P22-A: live-update — re-run lint every 2 s so edits are reflected without switching tabs
+    val problems by produceState<List<Problem>>(emptyList(), activeFilePath) {
+        while (true) {
+            value = if (activeFilePath.isNullOrBlank()) emptyList()
+                    else try { LintChecker.check(activeFilePath, loadFileContent(activeFilePath)) } catch (_: Exception) { emptyList() }
+            kotlinx.coroutines.delay(2_000)
+        }
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
