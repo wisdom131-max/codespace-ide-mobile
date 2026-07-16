@@ -2,6 +2,8 @@ package com.codespace.ide.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
@@ -563,7 +566,7 @@ fun CodeEditor(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .padding(end = 62.dp, top = if (stickyLine != null) (fontSize * 1.4f).dp else 0.dp)
+                .padding(end = if (showMinimapState) 62.dp else 4.dp, top = if (stickyLine != null) (fontSize * 1.4f).dp else 0.dp)
                 .verticalScroll(vScroll)
         ) {
             // Gutter
@@ -1012,12 +1015,14 @@ fun CodeEditor(
             lineCountTotal <= 2000 -> 1.dp
             else                   -> 0.5.dp
         }
-        // Minimap content height — if taller than viewport, minimap scrolls in sync
-        val minimapContentHeight = (minimapLineHeightDp.value * lineCountTotal).dp
+        // Pre-compute px values for use inside pointerInput lambdas (non-composable)
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val miniLineHeightPx = with(density) { minimapLineHeightDp.toPx() }
+        val miniWidthPx = with(density) { 60.dp.toPx() }
         // Viewport position: where in the minimap the current view is
         val lineHeightPx = fontSize * 1.25f
         val viewportTopLine = (vScroll.value / lineHeightPx).toInt()
-        val visibleLineCount = with(androidx.compose.ui.platform.LocalDensity.current) {
+        val visibleLineCount = with(density) {
             ((maxOf(1, vScroll.viewportSize) / lineHeightPx).toInt())
         }
 
@@ -1034,7 +1039,7 @@ fun CodeEditor(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (showMinimapState) "eli" else "eli",
+                text = if (showMinimapState) "▣" else "▢",
                 color = colors.gutter,
                 fontSize = 8.sp,
                 fontFamily = FontFamily.Monospace,
@@ -1053,7 +1058,7 @@ fun CodeEditor(
                     .pointerInput(lineCountTotal) {
                         detectTapGestures(
                             onTap = { offset ->
-                                val clickedLine = (offset.y / minimapLineHeightDp.toPx()).toInt()
+                                val clickedLine = (offset.y / miniLineHeightPx).toInt()
                                     .coerceIn(0, (lineCountTotal - 1).coerceAtLeast(0))
                                 coroutineScope.launch {
                                     vScroll.animateScrollTo((clickedLine * lineHeightPx).toInt())
@@ -1065,13 +1070,7 @@ fun CodeEditor(
                 // Sync minimap scroll with editor scroll
                 val miniScroll = rememberScrollState()
                 LaunchedEffect(vScroll.value) {
-                    val miniLHPx = with(androidx.compose.ui.platform.LocalDensity.current) {
-                        minimapLineHeightDp.toPx()
-                    }
-                    val vpMiniH = with(androidx.compose.ui.platform.LocalDensity.current) {
-                        60.dp.toPx()
-                    }
-                    val target = (viewportTopLine * miniLHPx - vpMiniH / 2)
+                    val target = (viewportTopLine * miniLineHeightPx - miniWidthPx / 2)
                         .coerceAtLeast(0f).toInt()
                     miniScroll.scrollTo(target)
                 }
@@ -1088,11 +1087,10 @@ fun CodeEditor(
                         val lineColor = when {
                             trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*") -> colors.comment
                             trimmed.startsWith("\"") || trimmed.startsWith("'") -> colors.string
-                            trimmed.matches(Regex("^.*[{};].*$")) && trimmed.startsWith("import ") -> colors.keyword
                             trimmed.startsWith("import ") || trimmed.startsWith("from ") || trimmed.startsWith("package ") -> colors.keyword
                             trimmed.startsWith("fun ") || trimmed.startsWith("def ") || trimmed.startsWith("func ") || trimmed.startsWith("void ") -> colors.function
                             trimmed.startsWith("class ") || trimmed.startsWith("interface ") || trimmed.startsWith("struct ") || trimmed.startsWith("enum ") -> colors.type
-                            trimmed.matches(Regex("^[A-Z][a-zA-Z0-9]*.*")) && !trimmed.contains("(") -> colors.type
+                            trimmed.isNotEmpty() && trimmed[0].isUpperCase() && !trimmed.contains("(") -> colors.type
                             trimmed.isEmpty() -> Color.Transparent
                             else -> colors.text
                         }
@@ -1126,17 +1124,14 @@ fun CodeEditor(
                 }
 
                 // Viewport indicator rectangle — shows current scroll position
-                val miniLineHeightPx2 = with(androidx.compose.ui.platform.LocalDensity.current) {
-                    minimapLineHeightDp.toPx()
-                }
-                val viewportTopPx = (viewportTopLine * miniLineHeightPx2)
-                val viewportHeightPx = (visibleLineCount * miniLineHeightPx2).coerceAtLeast(20f)
+                val viewportTopPx = (viewportTopLine * miniLineHeightPx)
+                val viewportHeightPx = (visibleLineCount * miniLineHeightPx).coerceAtLeast(20f)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .offset(y = viewportTopPx.dp)
+                        .offset { IntOffset(0, viewportTopPx.toInt()) }
                         .fillMaxWidth()
-                        .height(viewportHeightPx.dp)
+                        .height(with(density) { viewportHeightPx.toDp() })
                         .background(colors.currentLine.copy(alpha = 0.15f))
                         .border(1.dp, colors.gutter.copy(alpha = 0.3f))
                         .zIndex(4f)
@@ -1146,7 +1141,7 @@ fun CodeEditor(
                                 onDrag = { change, dragAmount ->
                                     change.consume()
                                     coroutineScope.launch {
-                                        val deltaLines = (dragAmount.y / miniLineHeightPx2).toInt()
+                                        val deltaLines = (dragAmount.y / miniLineHeightPx).toInt()
                                         val newScroll = (vScroll.value + deltaLines * lineHeightPx)
                                             .coerceIn(0, vScroll.maxValue)
                                         vScroll.scrollTo(newScroll)
