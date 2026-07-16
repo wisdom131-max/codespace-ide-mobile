@@ -24,13 +24,22 @@
 
 | | |
 |-|-|
-| Latest green build | **#1315** (P22-I: Kotlin LSP install GREEN) |
-| Active phase | **Phase 22-J + Line-number fix + Minimap toggle in progress** |
-| Last green | #1315 — feat(P22-I): LSP for Kotlin ✅ |
+| Latest green build | **#1320** (minimap realism fixes GREEN) |
+| Active phase | **Phase 22-K (Multi-cursor) — next to build** |
+| Last green | #1320 — fix: minimap realism — missing imports, proper toggle icon, pre-computed px |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
 | **Phase 22-F–I** | **✅ COMPLETE — LspManager, JSON-RPC, Python/TS/Kotlin LSP, diagnostics, hover, completion** |
-| **Next** | P22-J (Auto Import) + UI fixes -> P22-K (Multi-cursor) -> P22-L (Peek Def) -> Phase 23 |
+| **Phase 22-J** | **✅ COMPLETE — Auto Import + line-number fix + minimap toggle (#1318 GREEN)** |
+| **Phase 2** | **✅ COMPLETE — all P2-1 through P2-12 done, incl. P2-5 error squiggles (SyntaxTransformation.kt)** |
+| **Phase 4** | **✅ COMPLETE — TerminalSessionStore.kt wired into TerminalPane (save/restore/crash-safe)** |
+| **Phase 7** | **✅ COMPLETE — WorkspaceManager.kt: P7-1 Snapshots, P7-2 Diagnostics, P7-3 SafeMode, P7-4 Trash** |
+| **Phase 10** | **⏸ DEFERRED — Extension System (long-term, design only)** |
+| **Phase 11** | **✅ COMPLETE — BuildEnvironment.kt: detect/validate JDK/Gradle/SDK/AAPT2/signer** |
+| **Phase 12** | **✅ COMPLETE — all 12-A through 12-M shipped (#1157 GREEN)** |
+| **Phase 21** | **✅ COMPLETE — 17 viewers shipped (Hex, PDF, APK, DEX, ELF, Smali, SQLite, Strings, etc.)** |
+| **Phase 21-X** | **✅ COMPLETE — reverse engineering: DEX/ELF/APK analyzers, disassembly, binary diff** |
+| **Next** | P22-K (Multi-cursor) -> P22-L (Peek Definition) -> Phase 23 (Debugging) -> Phase 24 (Master Audit) -> Phase X (Live Preview) |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -760,7 +769,7 @@ Each session must output:
 
 ---
 
-## PHASE 2 — CODE EDITOR INTELLIGENCE (current phase)
+## PHASE 2 — CODE EDITOR INTELLIGENCE ✅ COMPLETE
 
 Status as of 2026-07-13:
 
@@ -783,7 +792,7 @@ Status as of 2026-07-13:
 | P2-2 | Find & Replace | DONE | Bottom bar: search input, prev/next, replace input, replace-all, regex toggle, match highlight |
 | P2-3 | Multi-cursor editing | **DONE** | Amber line-highlight tint + 2dp amber cursor bar per extra cursor. Fan-out editing + clear chip already existed. commit 5e0f60e1 (#1062 green). |
 | P2-4 | Go to Definition | **DONE** | Long-press context sheet: "Go to Def" scans file for decl keywords (Kotlin/JS/Python/Rust/Go), scrolls to match; multi-result list if ambiguous; not-found msg if absent. commit 2b72e17f (#1064 fail — key= param, fixed in #1066). |
-| P2-5 | Error squiggles (lint underlines) | TODO | |
+| P2-5 | Error squiggles (lint underlines) | **DONE** | SyntaxTransformation.kt — red underline + red bg tint on LintError ranges |
 | P2-6 | Git diff gutter | **DONE** | LCS diff, green=added / yellow=modified / red triangle=deleted. `GitDiffAnalyzer.kt` (new). |
 | P2-7 | Code folding | **DONE** | Fixed: BasicTextField now receives folded view via SyntaxTransformation(foldedLineIndices). ··· placeholder with correct cursor offset mapping. |
 | P2-8 | Breadcrumb navigation | **DONE** | Clickable segments + horizontal scroll. Tapping any ancestor dir opens Explorer and auto-expands/scrolls the tree to that dir. |
@@ -897,7 +906,7 @@ Status as of 2026-07-13:
 
 ---
 
-## PHASE 4 — TERMINAL SESSION RESTORE
+## PHASE 4 — TERMINAL SESSION RESTORE ✅ COMPLETE
 
 Requirements (implement after Phase 3 audit):
 - Save on app close: tab count, working dir per tab, command history
@@ -992,7 +1001,7 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 
 ---
 
-## PHASE 7 — RECOVERY & RELIABILITY (NEXT — active)
+## PHASE 7 — RECOVERY & RELIABILITY ✅ COMPLETE
 
 **Status: starting. Latest green build: #1098. Safe to implement.**
 
@@ -1093,7 +1102,7 @@ MUST be extracted @Composable functions, not inline blocks in the main function.
 
 ---
 
-## PHASE 10 — EXTENSION SYSTEM (Long term)
+## PHASE 10 — EXTENSION SYSTEM ⏸ DEFERRED (Long term)
 
 Design principles:
 - No VSIX (requires full VS Code runtime) — implement a lightweight plugin API instead
@@ -1104,7 +1113,7 @@ Design principles:
 
 ---
 
-## PHASE 11 — ANDROID BUILD ENVIRONMENT VALIDATION & MANAGEMENT
+## PHASE 11 — ANDROID BUILD ENVIRONMENT VALIDATION & MANAGEMENT ✅ COMPLETE
 
 **Before implementing:** Audit existing Android functionality, package management, Ubuntu integration,
 and build systems. Reuse and improve before duplicating.
@@ -1195,7 +1204,7 @@ requirements → installs/repairs → successfully builds a signed APK — all f
 ---
 
 ## PHASE 12 — PROJECT SETUP, TOOLCHAIN MANAGEMENT, BUILD HISTORY & TASK RUNNER
-### Phase 12 Implementation Status: IN PROGRESS (backend done, UI panels pending)
+### Phase 12 Implementation Status: ✅ COMPLETE (all backend + UI panels shipped)
 
 **Current HEAD: #1150 GREEN ✅ — full tree compiles.**
 
@@ -1709,7 +1718,7 @@ Three runtime bugs fixed:
 
 ### Next: Phase 20-B
 
-## PHASE 21 — UNIVERSAL FILE VIEWER, INSPECTION, ANALYSIS, EXTRACTION & VIEWER ACQUISITION SYSTEM
+## PHASE 21 — UNIVERSAL FILE VIEWER, INSPECTION, ANALYSIS, EXTRACTION & VIEWER ACQUISITION SYSTEM ✅ COMPLETE
 
 ### GOAL
 Allow users to open, inspect, analyze, preview, search, extract, and manage as many file types as possible directly inside the IDE without requiring external applications whenever possible.
@@ -1846,7 +1855,7 @@ Prioritize: Reuse over duplication, Repair over replacement, Completion over rec
 10. Viewer acquisition system
 11. Advanced analysis modules (long-term)
 
-## PHASE 21-X: REVERSE ENGINEERING & ADVANCED BINARY ANALYSIS
+## PHASE 21-X: REVERSE ENGINEERING & ADVANCED BINARY ANALYSIS ✅ COMPLETE
 
 ### MANDATORY AUDIT FIRST
 Before implementing any reverse-engineering feature:
@@ -2394,14 +2403,14 @@ P22-F: ✅ DONE — LSP groundwork — LspManager, stdio JSON-RPC client, server
 P22-G: ✅ DONE — LSP diagnostics + hover for JS/TS (tsserver)
 P22-H: ✅ DONE — LSP completion for Python + LSP completion merged into popup (all languages)
 P22-I: ✅ DONE — LSP for Kotlin (kotlin-language-server, Java install, 300s timeout)
-P22-J: 🔄 IN PROGRESS — Auto Import (LSP-backed textEdit insertions)
+P22-J: ✅ DONE — Auto Import + line-number gutter alignment fix + minimap toggle (#1318 GREEN)
         Also: Line number gutter alignment fix (numbers clipped/misaligned)
         Also: Minimap toggle (dropdown button, editor fills space when minimap off)
 P22-K: Multi-cursor support (next after P22-J)
 P22-L: Peek Definition overlay
 ```
 
-**STATUS: P22-A through P22-I COMPLETE ✅ — P22-J in progress**
+**STATUS: P22-A through P22-J COMPLETE ✅ — P22-K (Multi-cursor) is NEXT**
 
 
 
