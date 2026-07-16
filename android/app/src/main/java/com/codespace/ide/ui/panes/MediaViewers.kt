@@ -368,3 +368,9 @@ fun isAiModel(name: String): Boolean {
     return low.endsWith(".gguf") || low.endsWith(".safetensors") || low.endsWith(".onnx")
 }
 
+fun isAndroidRuntimeFile(name: String): Boolean {
+    val low = name.lowercase()
+    return low.endsWith(".oat") || low.endsWith(".odex") || low.endsWith(".vdex") ||
+           low.endsWith(".apex") || low.endsWith(".capex") || low.endsWith(".art")
+}
+
