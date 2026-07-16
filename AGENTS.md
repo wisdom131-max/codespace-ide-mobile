@@ -25,12 +25,12 @@
 | | |
 |-|-|
 | Latest green build | **#1308** (P22-E: DocumentFormatter fix GREEN) |
-| Active phase | **Phase 22-F IN PROGRESS — LSP groundwork (JsonRpcClient + LspManager pushed, CI pending)** |
+| Active phase | **Phase 22-G IN PROGRESS — LSP diagnostics + hover pushed (fix for context scope, CI pending)** |
 | Last green | #1308 — fix(P22-E): DocumentFormatter — guestPath String? fix ✅ |
-| Last pushed | 01f5b4b — feat(P22-F): LSP groundwork - JsonRpcClient + LspManager |
+| Last pushed | 5755919 — fix(P22-G): add LocalContext.current to PssBottomPanelContent |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
-| **Next** | Phase 22-G — LSP diagnostics + hover for JS/TS (tsserver) |
+| **Next** | Phase 22-G (in progress) -> P22-H..L -> Phase 23 (Debugging) -> Phase 24 (Master Audit) |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -2561,3 +2561,306 @@ P22-L: Peek Definition overlay
 - No UI wiring yet — P22-G will wire diagnostics into EditorPane/ProblemsPanel
 
 ### Next: P22-G — LSP diagnostics + hover for JS/TS (wire tsserver into EditorPane for live diagnostics and hover)
+
+
+---
+
+## PHASE 23 — DEBUGGING SYSTEM AUDIT, SEPARATION, REPAIR & MODERNIZATION
+
+> **Status: NOT STARTED — queued after P22-L. Do NOT begin until all P22 items are complete.**
+> Added: 2026-07-16. Source: user specification (rearranged, not changed).
+
+### GOAL
+
+The IDE currently appears to contain TWO different debugging entry points:
+
+1. **Activity Bar Debugger** — Located in the left activity/sidebar. Uses the Run & Debug style interface. Intended to be the primary IDE debugging experience.
+2. **Terminal Panel Debugger** — Located near the terminal panel. Uses the small debug/run controls. Intended for quick execution, lightweight debugging, console interaction, and runtime monitoring.
+
+These systems must be audited separately.
+
+**IMPORTANT:**
+- Do NOT merge them into a single UI.
+- Do NOT remove either system.
+- Do NOT break existing functionality.
+- Both systems should share backend services when appropriate, but remain separate user experiences.
+
+### Architecture Goal
+
+```
+Activity Bar Debugger
+          |
+          v
+     Debug Backend
+          ^
+          |
+Terminal Panel Debugger
+```
+
+Maintain TWO user interfaces sharing ONE debug backend when possible.
+
+### Sub-Phase 23-1: Complete Debugging Audit
+
+**Activity Bar Debugger — Verify:**
+- Run & Debug panel
+- Launch configurations
+- Debug session creation
+- Breakpoint integration
+- Variable viewer
+- Watch expressions
+- Call stack
+- Thread viewer
+- Debug console
+- Provider selection
+- Session management
+
+Determine for each: Working / Partial / Broken / Missing
+
+**Terminal Panel Debugger — Audit:**
+- Run button
+- Debug button
+- Console integration
+- Process launch
+- Runtime output
+- Process monitoring
+- Quick debugging
+- Terminal interaction
+
+Determine for each: Working / Partial / Broken / Missing
+
+**If the terminal debugger already functions: DO NOT replace it. DO NOT redesign it unnecessarily. Preserve its workflow.**
+
+**Backend Audit — Inspect:**
+- DebugManager
+- DebugService
+- DebugProvider architecture
+- Session Manager
+- Breakpoint Manager
+- Launch Configuration Manager
+- Runtime Manager
+
+Determine: Existing / Duplicate / Missing / Unused implementations.
+
+### Sub-Phase 23-2: Activity Bar Debugger (Primary IDE Debugging)
+
+**Purpose:** Full IDE debugging experience (equivalent to VS Code's Run and Debug Panel).
+
+**Features:**
+- Launch configurations
+- Project debugging
+- Breakpoints (standard, conditional, log points, exception)
+- Variables, Watches, Call Stack, Threads
+- Debug Console
+- Session controls: Start, Stop, Restart, Pause, Continue, Step Over, Step Into, Step Out
+- Multi-session support
+- Persist state, restore sessions, support providers, support multiple languages
+
+**Panels:** Variables, Watches, Call Stack, Threads, Breakpoints, Debug Console
+
+### Sub-Phase 23-3: Terminal Panel Debugger (Lightweight Quick-Run)
+
+**Purpose:** Quick execution and lightweight debugging.
+
+**Preserve:** Existing terminal workflow, existing run workflow, existing quick-debug workflow.
+
+**Enhance if needed:**
+- Better output parsing
+- Better error navigation
+- Better process control
+
+**Do NOT turn it into a duplicate Activity Bar debugger.**
+
+### Sub-Phase 23-4: Universal Debug Manager
+
+**Create or upgrade:** UniversalDebugManager
+
+**Responsibilities:**
+- Detect language, detect runtime, select provider, manage sessions, route requests
+
+**Debug Button -> UniversalDebugManager -> Provider Selection -> Launch Correct Debug Provider**
+
+### Sub-Phase 23-5: Debug Provider System
+
+**Provider Interface:**
+- canDebug(), launch(), stop(), restart(), pause(), resume()
+- setBreakpoint(), removeBreakpoint()
+- getVariables(), getCallStack(), getThreads(), getConsole()
+- supportsHotReload()
+
+**Supported Providers:**
+
+| Language | Provider | Capabilities |
+|----------|----------|-------------|
+| Python | debugpy | Breakpoints, Variables, Watches, Call Stack, Hover Values |
+| JavaScript | Node Inspector | Full Debugging, Breakpoints, Console |
+| TypeScript | TypeScript Debugger | Source Maps, Breakpoints, Watches |
+| Shell | bashdb | Breakpoints, Variable Inspection |
+| PHP | Xdebug | Full Debugging |
+| Java | JDT Debugger | Full JVM Debugging |
+| Kotlin | JVM Debugger | Full JVM Debugging |
+| Dart | Dart Debugger | Full Debugging |
+| Flutter | Flutter Debugger | Hot Reload, Widget Inspection |
+| C | GDB | Native Debugging |
+| C++ | GDB / LLDB | Native Debugging |
+| Rust | GDB / LLDB | Native Debugging |
+| Go | Delve | Native Debugging |
+
+### Sub-Phase 23-6: Non-Debuggable File Policies
+
+**HTML** — NOT directly debuggable. Provide HTML Preview Provider:
+- Live Preview, DOM Inspector, Element Inspector, CSS Inspector, Console, Network Logs, Live Reload
+- When user clicks Debug on HTML: show "Open Preview / Inspect DOM / Open Console / Open Network Inspector" instead of "Unsupported"
+
+**CSS** — Provide CSS Preview Inspector: Rule Inspection, Style Inspection, Live Preview
+
+**JSON** — Provide JSON Validation Provider: Validation, Error Navigation, Schema Inspection
+
+**XML** — Provide XML Validation Provider: Validation, Error Navigation
+
+**Unsupported File Policy:** Never show "Unsupported File". Explain why debugging is unavailable and offer alternatives (Preview, DOM Inspector, Console, Validation, Schema Viewer, Metadata Viewer, EXIF Viewer, Runtime Analysis, Manifest Viewer).
+
+### Sub-Phase 23-7: Android & APK Debugging
+
+**Android Debug Provider:** App Launch, Process Attach, Runtime Inspection, Logcat, Activity Tracking, Service Tracking, Crash Monitoring
+
+**APK Debug Provider:** APK Installation, APK Launch, Runtime Attach, Logcat, Crash Monitoring, Manifest Inspection, Permission Analysis
+
+### Sub-Phase 23-8: Breakpoint System
+
+Implement or repair: Line Breakpoints, Conditional Breakpoints, Log Points, Exception Breakpoints.
+
+**Persist:** Across sessions, across app restarts, across workspace reopen.
+
+### Sub-Phase 23-9: Debug Console
+
+**Activity Bar Debugger (Full):** Expression Evaluation, Variable Inspection, Runtime Commands
+
+**Terminal Debugger (Lightweight):** Runtime Output, Quick Commands, Process Interaction
+
+### Sub-Phase 23-10: Performance Requirements
+
+- Lazy-load providers, reuse backend services, avoid duplicate processes, clean shutdown, low memory usage, mobile-friendly behavior
+
+### Sub-Phase 23-11: Bonus Features (if architecture permits)
+
+- Debug Session Recording, Debug Session Export, Crash Replay, Automatic Crash Reports
+- Memory Usage Tracking, CPU Usage Tracking, Thread Activity Viewer, Performance Timeline
+- Exception History, Runtime Diagnostics
+
+### Phase 23 Final Report
+
+Produce:
+1. Activity Bar Debugger Status
+2. Terminal Debugger Status
+3. Shared Backend Status
+4. Working Features
+5. Broken Features
+6. Missing Features
+7. Repaired Features
+8. Upgraded Features
+9. New Providers Added
+10. Recommended Next Steps
+
+**Priority Order:** Audit -> Verify -> Repair Activity Bar Debugger -> Preserve Terminal Debugger -> Reuse Existing Backend -> Upgrade Architecture -> Implement Missing Features -> Optimize
+
+**The Activity Bar Debugger and Terminal Panel Debugger must remain separate user experiences. They may share backend services, but must not become duplicates of each other.**
+
+---
+
+## PHASE 24 — MASTER IDE AUDIT, UPGRADE, MODERNIZATION & IMPLEMENTATION
+
+> **Status: NOT STARTED — queued after Phase 23.**
+> Added: 2026-07-16. Source: user specification (rearranged, not changed).
+> NOTE: Some sub-phases overlap with existing Phase 22 work (P22-F through P22-L). Audit existing implementations before building new ones.
+
+### GOAL
+
+Perform a complete audit of the IDE before implementing anything. Determine: what exists, what partially exists, what is broken, what is unfinished, what is duplicated, what can be upgraded, what should be replaced, what should be preserved.
+
+**This is NOT a request to blindly implement new features. The audit comes first.**
+
+### Audit Rules
+
+Before creating any system, search entire codebase: all modules, services, managers, UI components, hidden features, experimental features, unfinished features.
+
+If functionality exists: Verify it. Test it. Benchmark it. Repair it. Complete it. Upgrade it. **Do NOT duplicate functionality.**
+
+Prefer: Upgrade over replacement. Repair over recreation. Completion over duplication.
+
+### Feature Verification Policy
+
+A feature is only WORKING if: UI exists, backend exists, executes successfully, produces expected results, survives editor restart, survives app restart, survives project reopen.
+
+Buttons without working functionality are NOT working.
+
+Classification: WORKING / PARTIAL / BROKEN / MISSING
+
+### Sub-Phase 24-1: Complete IDE Audit
+
+**Editor:** Text rendering, Cursor rendering, Selection, Search, Replace, Multi-cursor, Folding, Minimap, Split editor, Tabs, Session restore
+
+**IntelliSense:** Auto completion, Inline completion, Predictive suggestions, Hover, Signature help, Quick fixes, Code actions, Auto imports
+
+**Navigation:** Go To Definition, Peek Definition, Find References, Rename Symbol, Symbol Search, Workspace Search, Breadcrumbs, Outline
+
+**Diagnostics:** Error detection, Warning detection, Problems panel, Error navigation, Real-time diagnostics
+
+**File Detection:** Extension detection, MIME detection, Magic byte detection, File icons, Language mapping
+
+**Debugging:** Editor Debugger (Breakpoints, Step Over/Into/Out, Watches, Variables, Debug Console), Application Debugger (Android, APK, Process Attach, Runtime Inspection, Logcat)
+
+**LSP Readiness:** LSP Manager, JSON-RPC, Socket Layer, Completion Engine, Diagnostics Renderer, Hover Engine, Definition Handler, Workspace Index
+
+**Terminal:** Startup, Stability, Crash Recovery, Session Restore, Command History, Working Directory Persistence
+
+**Reliability:** Auto Save, Crash Recovery, Workspace Recovery, Safe Startup, Startup Diagnostics
+
+### Sub-Phase 24-2: Native LSP Foundation (Overlaps with P22-F through P22-L — audit existing before building)
+
+Build ONLY if missing. Reuse existing systems whenever possible.
+
+**Core:** LspManager, LspServerRegistry, LspSession, JsonRpcClient, Tcp Transport, DiagnosticsManager, CompletionManager, HoverManager, DefinitionManager
+
+**Requirements:** TCP based, JSON-RPC 2.0, Content-Length framing, Coroutine based, Background processing, Automatic reconnect, Graceful shutdown
+
+**LSP Server Lifecycle:** One server per language. First file opens -> Start server. Additional files -> Reuse server. Last file closes -> Start idle timer (30s). After timeout -> Shutdown server, free memory.
+
+**Python First:** Implement and validate pylsp. Verify: Completion, Diagnostics, Hover, Definition, Stability, Memory cleanup. Only continue if successful.
+
+### Sub-Phase 24-3: Advanced Editor Intelligence (Overlaps with P22-G through P22-L — audit existing)
+
+- Workspace Indexing: Project Indexing, Symbol Indexing, Background Indexing, Incremental Reindexing, Dependency Tracking
+- Find References: Find References, Peek References, Workspace References
+- Rename Symbol: Variable, Function, Class, Workspace Rename
+- Document Outline: Classes, Methods, Functions, Variables, Symbols
+- Symbol Search: File Symbol, Workspace Symbol, Fuzzy Search
+- Signature Help: Function Signatures, Parameter Help, Active Parameter Highlighting
+- Semantic Highlighting: Classes, Methods, Functions, Variables, Parameters, Constants, Enums
+- Auto Imports: Missing Import Detection, Import Suggestions, Import Fixes
+- Code Actions: Quick Fixes, Refactors, Error Corrections
+- Code Lens: References, Implementations, Test Links
+- Diagnostics Panel: Errors, Warnings, Information, Tap-to-jump
+
+### Sub-Phase 24-4: Multi-Language Support (Only after Python is stable)
+
+Priority Order: 1. TypeScript, 2. JavaScript, 3. HTML, 4. CSS, 5. JSON, 6. YAML, 7. Markdown, 8. C/C++ (clangd), 9. Rust, 10. Go, 11. Kotlin, 12. Dart, 13. Java
+
+Before enabling, benchmark: Startup Time, RAM Usage, CPU Usage, Shutdown Time. Classify: SAFE / HEAVY / VERY HEAVY.
+
+### Sub-Phase 24-5: Bonus Upgrades (if architecture allows)
+
+- Workspace Health: Missing SDK Detection, Missing Dependency Detection, Broken Configuration Detection
+- Smart Project Analysis: Project Structure Analysis, Dependency Analysis, Unused File/Dependency Detection
+- Smart Error Analysis: Error Grouping, Similar Error Detection, Log Analysis
+- Editor QoL: Sticky Scroll, Breadcrumb Improvements, Better Minimap, Better Search/Replace, Better Multi-Cursor
+- Performance: Lazy Loading, Incremental Parsing/Indexing, Memory Optimizations
+
+### Phase 24 Final Report
+
+Produce:
+1. Existing Features, 2. Working Features, 3. Partial Features, 4. Broken Features, 5. Missing Features
+6. Features Upgraded, 7. Features Repaired, 8. Features Reused, 9. Duplicate Features Found, 10. Recommended Next Phase
+
+**Do not hide findings. Be brutally accurate. A feature that merely exists in the UI is not considered implemented.**
+
+**Order:** Audit first. Verify second. Repair third. Upgrade fourth. Implement fifth. Optimize sixth.
