@@ -36,6 +36,7 @@ import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
+import com.codespace.ide.lsp.parseImportEdits
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -846,6 +847,15 @@ fun EditorPane(
                                 if (uri != null) {
                                     val items = LspManager.getCompletion(active.language, uri, line, col)
                                     items?.let { parseLspCompletions(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        lspImportProvider = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val actions = LspManager.getCodeActions(active.language, uri, line, col)
+                                    actions?.let { parseImportEdits(it, uri) } ?: emptyList()
                                 } else emptyList()
                             }
                         } else null,

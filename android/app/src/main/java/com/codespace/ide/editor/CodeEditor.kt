@@ -57,6 +57,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
+import com.codespace.ide.lsp.ImportEdit
+import com.codespace.ide.lsp.applyImportEdits
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -279,12 +281,17 @@ fun CodeEditor(
     onCursorChange: ((Int, Int) -> Unit)? = null,
     /** P22-H: LSP-backed completion provider — returns LSP completion items for a position */
     lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)? = null,
+    /** P22-J: LSP-backed auto-import provider — returns ImportEdits for current cursor position */
+    lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
+    /** Minimap: initial visibility, can be toggled via dropdown in the editor toolbar */
+    showMinimap: Boolean = true,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
     val vScroll = rememberScrollState()
     val hScroll = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
+    var showMinimapState by remember { mutableStateOf(showMinimap) }
 
     // 2. Code folding state
     var foldedRanges by remember { mutableStateOf(setOf<Int>()) } // start line index (0-based)
@@ -572,13 +579,14 @@ fun CodeEditor(
                         // Visual placeholder row in gutter
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(fontSize.dp)
+                            modifier = Modifier.height((fontSize * 1.25f).dp)
                         ) {
                             Spacer(Modifier.width(20.dp))
                             Text(
                                 text = " ",
                                 color = colors.gutter,
                                 fontSize = fontSize.sp,
+                                lineHeight = (fontSize * 1.25f).sp,
                                 fontFamily = FontFamily.Monospace,
                             )
                         }
@@ -590,7 +598,7 @@ fun CodeEditor(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(fontSize.dp)
+                            modifier = Modifier.height((fontSize * 1.25f).dp)
                         ) {
                             // P2-6 diff gutter bar + deletion triangle
                             Column(modifier = Modifier.width(3.dp)) {
@@ -667,7 +675,7 @@ fun CodeEditor(
                             // P8-1 Breakpoint dot + tappable line number
                             Box(
                                 modifier = Modifier
-                                    .height(fontSize.dp)
+                                    .height((fontSize * 1.25f).dp)
                                     .clickable { onBreakpointToggle(lineNum) },
                                 contentAlignment = Alignment.CenterStart,
                             ) {
@@ -684,6 +692,7 @@ fun CodeEditor(
                                         color = if (bookmarkedLines.contains(lineNum))
                                             Color(0xFF61AFEF) else colors.gutter,
                                         fontSize = fontSize.sp,
+                                        lineHeight = (fontSize * 1.25f).sp,
                                         fontFamily = FontFamily.Monospace,
                                     )
                                 }
@@ -788,6 +797,7 @@ fun CodeEditor(
                         TextStyle(
                             color = colors.text,
                             fontSize = fontSize.sp,
+                            lineHeight = (fontSize * 1.25f).sp,
                             fontFamily = FontFamily.Monospace,
                         )
                     ),
@@ -990,41 +1000,62 @@ fun CodeEditor(
             }
         }
 
-        // Minimap
+        // Minimap toggle button + conditional minimap
         val textLines = remember(value.text) { value.text.split("\n") }
-        Column(
+        // Toggle button — always visible at top-right corner
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .width(60.dp)
-                .fillMaxHeight()
-                .background(Color(0xFF1A1A1A))
-                .zIndex(5f),
+                .zIndex(6f)
+                .padding(top = 2.dp, end = if (showMinimapState) 62.dp else 2.dp)
+                .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
+                .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
+                .clickable { showMinimapState = !showMinimapState }
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center
         ) {
-            textLines.forEachIndexed { idx, line ->
-                val density = (line.trimStart().length.coerceAtMost(80)).toFloat() / 80f
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp)
-                        .padding(horizontal = 2.dp)
-                        .clickable {
-                            // 3. Minimap click-to-navigate
-                            coroutineScope.launch {
-                                val lineHeightPx = fontSize * 1.5f * 2.0f // Simple scale factor for density
-                                vScroll.animateScrollTo((idx * lineHeightPx).toInt())
-                            }
-                        },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val indent = line.length - line.trimStart().length
-                    Spacer(Modifier.width((indent * 0.3f).dp))
-                    Box(
-                        Modifier
-                            .weight(density.coerceAtLeast(0.05f))
-                            .fillMaxHeight()
-                            .background(Color(0xFF3C3C3C))
-                    )
-                    Spacer(Modifier.weight((1f - density).coerceAtLeast(0.05f)))
+            Text(
+                text = if (showMinimapState) "▣ Map" else "▢ Map",
+                color = Color(0xFF888888),
+                fontSize = 9.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        // Minimap panel — only rendered when toggled on
+        if (showMinimapState) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .width(60.dp)
+                    .fillMaxHeight()
+                    .background(Color(0xFF1A1A1A))
+                    .zIndex(5f),
+            ) {
+                textLines.forEachIndexed { idx, line ->
+                    val density = (line.trimStart().length.coerceAtMost(80)).toFloat() / 80f
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .padding(horizontal = 2.dp)
+                            .clickable {
+                                coroutineScope.launch {
+                                    val lineHeightPx = fontSize * 1.25f * 2.0f
+                                    vScroll.animateScrollTo((idx * lineHeightPx).toInt())
+                                }
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val indent = line.length - line.trimStart().length
+                        Spacer(Modifier.width((indent * 0.3f).dp))
+                        Box(
+                            Modifier
+                                .weight(density.coerceAtLeast(0.05f))
+                                .fillMaxHeight()
+                                .background(Color(0xFF3C3C3C))
+                        )
+                        Spacer(Modifier.weight((1f - density).coerceAtLeast(0.05f)))
+                    }
                 }
             }
         }
@@ -1797,13 +1828,39 @@ fun CodeEditor(
                                 val end = cursor.coerceAtMost(text.length)
                                 var start = end
                                 while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_' || text[start - 1] == ' ')) start--
-                                val newText = text.substring(0, start) + comp.insertText + text.substring(end)
+                                var newText = text.substring(0, start) + comp.insertText + text.substring(end)
                                 val newCursor = start + comp.insertText.length
-                                value = TextFieldValue(
-                                    text = newText,
-                                    selection = androidx.compose.ui.text.TextRange(newCursor),
-                                )
-                                onContentChange(newText)
+                                // P22-J: Auto-import — fetch and apply missing import for the inserted symbol
+                                if (lspImportProvider != null) {
+                                    val cLine = text.take(cursor).count { it == '\n' }
+                                    val cLineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                    val cCol = cursor - cLineStart
+                                    coroutineScope.launch {
+                                        val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+                                        }
+                                        if (imports.isNotEmpty()) {
+                                            val patched = applyImportEdits(newText, imports)
+                                            value = TextFieldValue(
+                                                text = patched,
+                                                selection = androidx.compose.ui.text.TextRange(newCursor + (patched.length - newText.length)),
+                                            )
+                                            onContentChange(patched)
+                                        } else {
+                                            value = TextFieldValue(
+                                                text = newText,
+                                                selection = androidx.compose.ui.text.TextRange(newCursor),
+                                            )
+                                            onContentChange(newText)
+                                        }
+                                    }
+                                } else {
+                                    value = TextFieldValue(
+                                        text = newText,
+                                        selection = androidx.compose.ui.text.TextRange(newCursor),
+                                    )
+                                    onContentChange(newText)
+                                }
                                 showCompletions = false
                             }
                             .padding(horizontal = 8.dp, vertical = 5.dp),

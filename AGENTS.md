@@ -24,13 +24,13 @@
 
 | | |
 |-|-|
-| Latest green build | **#1308** (P22-E: DocumentFormatter fix GREEN) |
-| Active phase | **Phase 22-G IN PROGRESS — LSP diagnostics + hover pushed (fix for context scope, CI pending)** |
-| Last green | #1308 — fix(P22-E): DocumentFormatter — guestPath String? fix ✅ |
-| Last pushed | 5755919 — fix(P22-G): add LocalContext.current to PssBottomPanelContent |
+| Latest green build | **#1315** (P22-I: Kotlin LSP install GREEN) |
+| Active phase | **Phase 22-J + Line-number fix + Minimap toggle in progress** |
+| Last green | #1315 — feat(P22-I): LSP for Kotlin ✅ |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
-| **Next** | Phase 22-G (in progress) -> P22-H..L -> Phase 23 (Debugging) -> Phase 24 (Master Audit) |
+| **Phase 22-F–I** | **✅ COMPLETE — LspManager, JSON-RPC, Python/TS/Kotlin LSP, diagnostics, hover, completion** |
+| **Next** | P22-J (Auto Import) + UI fixes -> P22-K (Multi-cursor) -> P22-L (Peek Def) -> Phase 23 |
 | Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
 | Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
 | Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
@@ -2368,24 +2368,40 @@ Prefer: Repair over replacement · Completion over duplication · Integration ov
 
 ---
 
+### 7b. Known Risks to Verify During Audit
+
+These were flagged during review — not blocking, but should be checked before Phase 24 audit runs:
+
+1. **`/sdcard` access on Android 11+ (scoped storage)** — Confirm how the app currently grants broad storage access. `MANAGE_EXTERNAL_STORAGE` or SAF? Affects "Reveal in Explorer" and new project creation on newer Android versions.
+
+2. **"Active Environment" / "Python Version" in the status panel are ambiguous** — Which `python3` is shown? If a venv is active, does the panel reflect the venv interpreter or the container global? Define "active" before building the venv panel.
+
+3. **Git Branch in status panel should silently hide when no `.git` exists** — Must gray-out or omit entirely rather than error or show a stale value. Add explicit null-guard.
+
+4. **Symlink/mount-path mismatch is a known proot gotcha** — `/sdcard` inside proot sometimes resolves through a different real path than Android's file picker reports (`/storage/emulated/0` vs a bind mount). Explicitly verify that a path shown in the editor and a path typed in the terminal point to the same inode. This looks connected in casual testing but breaks on edge cases.
+
+---
+
 ### 8. Recommended Phase 22 Implementation Order
 
 ```
-P22-A: ProblemsPanel live-update + LintChecker/LintAnalyzer unification
-P22-B: Workspace Find & Replace (add replace to ProjectFileSearchPanel)
-P22-C: Git blame gutter + inline view
-P22-D: Merge conflict inline editor
-P22-E: Format Document (prettier/ktlint/black via proot)
-P22-F: LSP groundwork — LspManager, stdio JSON-RPC client, server install via npm/pip in proot
-P22-G: LSP diagnostics + hover for JS/TS (tsserver — most impactful first)
-P22-H: LSP diagnostics + completion for Python (pylsp)
-P22-I: LSP for Kotlin (kotlin-language-server)
-P22-J: Auto Import (LSP-backed textEdit insertions)
-P22-K: Multi-cursor support
+P22-A: ✅ DONE — ProblemsPanel live-update + LintChecker/LintAnalyzer unification
+P22-B: ✅ DONE — Workspace Find & Replace
+P22-C: ✅ DONE — Git blame gutter + inline view
+P22-D: ✅ DONE — Merge conflict inline editor
+P22-E: ✅ DONE — Format Document (prettier/ktlint/black via proot)
+P22-F: ✅ DONE — LSP groundwork — LspManager, stdio JSON-RPC client, server install via npm/pip in proot
+P22-G: ✅ DONE — LSP diagnostics + hover for JS/TS (tsserver)
+P22-H: ✅ DONE — LSP completion for Python + LSP completion merged into popup (all languages)
+P22-I: ✅ DONE — LSP for Kotlin (kotlin-language-server, Java install, 300s timeout)
+P22-J: 🔄 IN PROGRESS — Auto Import (LSP-backed textEdit insertions)
+        Also: Line number gutter alignment fix (numbers clipped/misaligned)
+        Also: Minimap toggle (dropdown button, editor fills space when minimap off)
+P22-K: Multi-cursor support (next after P22-J)
 P22-L: Peek Definition overlay
 ```
 
-**STATUS: AUDIT COMPLETE ✅ — Phase 22 implementation may begin with P22-A**
+**STATUS: P22-A through P22-I COMPLETE ✅ — P22-J in progress**
 
 
 

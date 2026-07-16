@@ -371,6 +371,36 @@ object LspManager {
         }
     }
 
+    /**
+     * P22-J: Request code actions (including auto-import fixes) for a range.
+     * Returns JSONArray of CodeAction/Command objects, or null if unsupported.
+     */
+    fun getCodeActions(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+
+        val td = JSONObject().put("uri", uri)
+        val pos = JSONObject().put("line", line).put("character", character)
+        val range = JSONObject().put("start", pos).put("end", pos)
+        val context = JSONObject().put("diagnostics", JSONArray())
+        val params = JSONObject()
+            .put("textDocument", td)
+            .put("range", range)
+            .put("context", context)
+        val response = server.client.request("textDocument/codeAction", params, timeoutSeconds = 10)
+        return when (response) {
+            null -> null
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> null
+        }
+    }
+
     fun getSemanticTokens(
         language: Language,
         uri: String,

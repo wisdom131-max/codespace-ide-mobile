@@ -94,3 +94,75 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
     }
     return result
 }
+
+/**
+ * P22-J: ImportEdit — represents a single import statement to insert at the top of a file.
+ */
+data class ImportEdit(
+    val importLine: String,   // e.g. "import kotlinx.coroutines.delay"
+    val insertAtLine: Int,    // 0-based line index where to insert
+)
+
+/**
+ * P22-J: Parses LSP CodeAction JSON array and extracts import edits.
+ * Looks for WorkspaceEdit -> changes/documentChanges -> TextEdit with import-like text.
+ * Returns a list of ImportEdit for the given file URI.
+ */
+fun parseImportEdits(actions: JSONArray, fileUri: String): List<ImportEdit> {
+    val edits = mutableListOf<ImportEdit>()
+    for (i in 0 until actions.length()) {
+        val action = actions.optJSONObject(i) ?: continue
+        val edit = action.optJSONObject("edit") ?: continue
+        // Try documentChanges first, then changes
+        val docChanges = edit.optJSONArray("documentChanges")
+        if (docChanges != null) {
+            for (j in 0 until docChanges.length()) {
+                val dc = docChanges.optJSONObject(j) ?: continue
+                val dcUri = dc.optJSONObject("textDocument")?.optString("uri", "") ?: ""
+                if (dcUri != fileUri) continue
+                val textEdits = dc.optJSONArray("edits") ?: continue
+                extractImportEdits(textEdits, edits)
+            }
+        } else {
+            val changes = edit.optJSONObject("changes") ?: continue
+            val textEdits = changes.optJSONArray(fileUri) ?: continue
+            extractImportEdits(textEdits, edits)
+        }
+    }
+    return edits.distinctBy { it.importLine }
+}
+
+private fun extractImportEdits(textEdits: JSONArray, out: MutableList<ImportEdit>) {
+    for (k in 0 until textEdits.length()) {
+        val te = textEdits.optJSONObject(k) ?: continue
+        val newText = te.optString("newText", "")
+        val startLine = te.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+        // Only include edits that look like import statements
+        val trimmed = newText.trim()
+        if (trimmed.startsWith("import ") || trimmed.startsWith("from ") ||
+            trimmed.startsWith("using ") || trimmed.startsWith("#include")) {
+            out.add(ImportEdit(trimmed.lines().first(), startLine))
+        }
+    }
+}
+
+/**
+ * P22-J: Apply import edits to file content.
+ * Inserts missing import lines at the correct positions, deduplicating against existing imports.
+ */
+fun applyImportEdits(content: String, edits: List<ImportEdit>): String {
+    if (edits.isEmpty()) return content
+    val lines = content.split("\n").toMutableList()
+    // Find the last existing import line to insert after it
+    val lastImportIdx = lines.indexOfLast { it.trim().startsWith("import ") || it.trim().startsWith("from ") }
+    val insertIdx = if (lastImportIdx >= 0) lastImportIdx + 1 else
+        lines.indexOfFirst { it.isNotBlank() }.coerceAtLeast(0)
+    val existing = lines.map { it.trim() }.toSet()
+    var offset = 0
+    for (edit in edits) {
+        if (edit.importLine in existing) continue
+        lines.add(insertIdx + offset, edit.importLine)
+        offset++
+    }
+    return lines.joinToString("\n")
+}
