@@ -317,6 +317,8 @@ fun ExplorerSidePanel(
     // "Generate Image with AI Here" (2026-07-08) — see ImageGenDialog.kt / ImageGenService.kt
     var pendingAiImageTargetDir by remember { mutableStateOf<File?>(null) }
     var showAiImageGen by remember { mutableStateOf(false) }
+    var binaryDiffFileA   by remember { mutableStateOf<java.io.File?>(null) }
+    var binaryDiffFileB   by remember { mutableStateOf<java.io.File?>(null) }
 
     // Folder picker launcher — adds to multi-root workspace
     val folderPicker = rememberLauncherForActivityResult(
@@ -1102,6 +1104,7 @@ fun ExplorerSidePanel(
                             if (!f.isDirectory && isNetworkCapture(f.name)) add("Network Viewer" to Icons.Default.Wifi)
                             if (!f.isDirectory && isAiModel(f.name)) add("AI Model Viewer" to Icons.Default.Psychology)
                             if (!f.isDirectory && isAndroidRuntimeFile(f.name)) add("Runtime Viewer" to Icons.Default.Android)
+                        if (!f.isDirectory) add("Binary Diff" to Icons.Default.CompareArrows)
                         if (!f.isDirectory && isApkAnalyzable(f.name)) add("APK Analyzer" to Icons.Default.Android)
                         if (!f.isDirectory && (isDex || isSmaliSource(f.name))) add("Open as Smali" to Icons.Default.Code)
                     }.forEach { (label, icon) ->
@@ -1129,6 +1132,7 @@ fun ExplorerSidePanel(
                     isNetworkCapture(f.name) -> { previewNetworkPath = f.absolutePath }
                     isAiModel(f.name) -> { previewAiModelPath = f.absolutePath }
                     isAndroidRuntimeFile(f.name) -> { previewArtPath = f.absolutePath }
+                        "Binary Diff" -> { binaryDiffFileA = f; binaryDiffFileB = null }
                                             isDex -> { previewDexPath = f.absolutePath; showCtxMenu = false }
                                             isElf -> { previewElfPath = f.absolutePath; showCtxMenu = false }
                                             isHexBin -> { previewHexPath = f.absolutePath; showCtxMenu = false }
@@ -1537,6 +1541,14 @@ fun ExplorerSidePanel(
         AndroidRuntimeViewerDialog(
             file = java.io.File(previewArtPath!!),
             onDismiss = { previewArtPath = null },
+        )
+    }
+    // Phase 21-X-10: Binary Diff Viewer
+    if (binaryDiffFileA != null) {
+        BinaryDiffViewerDialog(
+            fileA = binaryDiffFileA!!,
+            fileB = binaryDiffFileB,
+            onDismiss = { binaryDiffFileA = null; binaryDiffFileB = null },
         )
     }
 

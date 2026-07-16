@@ -127,12 +127,10 @@ object AgentScheduler {
         }
     }
 
-    private fun runCommand(command: String, @Suppress("UNUSED_PARAMETER") ctx: android.content.Context? = null) {
+    private fun runCommand(command: String, ctx: android.content.Context? = null) {
         try {
-            val parts = command.split("\\s+".toRegex())
-            val proc = ProcessBuilder(parts).redirectErrorStream(true).start()
-            proc.inputStream.bufferedReader().use { it.readText() }
-            proc.waitFor()
+            if (ctx != null)
+                com.codespace.ide.terminal.ProotInstaller.execOnce(ctx, command, timeoutSeconds = 60L)
         } catch (_: Exception) {}
     }
 }
