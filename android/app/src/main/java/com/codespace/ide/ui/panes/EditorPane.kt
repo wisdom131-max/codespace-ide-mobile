@@ -31,6 +31,7 @@ import com.codespace.ide.editor.FileCache
 import com.codespace.ide.editor.MergeConflictParser
 import com.codespace.ide.editor.ConflictHunk
 import com.codespace.ide.editor.ConflictResolution
+import com.codespace.ide.editor.DocumentFormatter
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -114,6 +115,8 @@ fun EditorPane(
     var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.BlameLine>?>(null) }
     // P22-D: Merge conflict detection
     var conflictHunks by remember { mutableStateOf<List<ConflictHunk>?>(null) }
+    // P22-E: Format Document
+    var formatting by remember { mutableStateOf(false) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -461,6 +464,39 @@ fun EditorPane(
                                else androidx.compose.ui.graphics.Color(0xFF858585),
                         modifier = Modifier.size(18.dp),
                     )
+                }
+                // P22-E: Format Document button
+                IconButton(
+                    onClick = {
+                        if (active != null && !formatting) {
+                            formatting = true
+                            kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val result = DocumentFormatter.format(context, active.path, active.language)
+                                if (result.success && result.formattedContent != null) {
+                                    val idx2 = tabs.indexOfFirst { it.id == active.id }
+                                    if (idx2 >= 0) {
+                                        tabs[idx2] = active.copy(content = result.formattedContent, isDirty = true)
+                                        if (active.path.startsWith("/")) {
+                                            try { File(active.path).writeText(result.formattedContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                        }
+                                    }
+                                }
+                                formatting = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.size(35.dp)
+                ) {
+                    if (formatting) {
+                        CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFF007ACC), modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            androidx.compose.material.icons.Icons.Default.Functions,
+                            contentDescription = "Format Document",
+                            tint = androidx.compose.ui.graphics.Color(0xFF858585),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
