@@ -422,7 +422,7 @@ fun AiModelViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
                         // Tabs
                         val tabs = listOf("Summary", "All Metadata")
                         TabRow(selectedTabIndex = tab, containerColor = surface,
-                            contentColor = textColor, dividerColor = border) {
+                            contentColor = textColor) {
                             tabs.forEachIndexed { i, t ->
                                 Tab(selected = tab == i, onClick = { tab = i },
                                     text = { Text(t, fontSize = 12.sp) })
