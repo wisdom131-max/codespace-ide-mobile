@@ -733,6 +733,7 @@ fun EditorPane(
                         onBreakpointToggle = { line ->
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
+                            udm.toggleBreakpoint(active.path, line)
                         },
                         projectRoot = projectRootPath,
                     )
