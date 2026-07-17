@@ -88,7 +88,7 @@ fun EntropyHeatmapDialog(file: java.io.File, onDismiss: () -> Unit) {
     var stats  by remember { mutableStateOf<EntropyStats?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error   by remember { mutableStateOf<String?>(null) }
-    var selectedBlock by remember { mutableStateOf<EntropyBlock?>(null) }
+    var _selectedBlock by remember { mutableStateOf<EntropyBlock?>(null) }
 
     LaunchedEffect(file) {
         withContext(Dispatchers.IO) {
