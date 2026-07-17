@@ -25,7 +25,7 @@ object AppModule {
     fun json(): Json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     @Provides @Singleton
-    fun okHttp(tokenStore: SecureTokenStore): OkHttpClient {
+    fun okHttp(_tokenStore: SecureTokenStore): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
             else HttpLoggingInterceptor.Level.NONE
