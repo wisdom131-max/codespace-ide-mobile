@@ -223,7 +223,7 @@ private fun parseVdex(bytes: ByteArray): ArtFileInfo {
     val magic = String(bytes, 0, 4, Charsets.ISO_8859_1)
     require(magic == "vdex") { "Not a VDEX file (magic=$magic)" }
     val version = String(bytes, 4, 4, Charsets.ISO_8859_1).trim('\u0000')
-    val versionNum = version.trimEnd('\u0000').toIntOrNull() ?: 0
+    val _versionNum = version.trimEnd('\u0000').toIntOrNull() ?: 0
 
     // Header fields vary by version — parse common subset
     var off = 8
@@ -327,7 +327,7 @@ private fun parseApex(file: java.io.File): ArtFileInfo {
     val imgEntries = entries.filter { it.first.endsWith(".img") || it.first.endsWith(".img.gz") }
     val libEntries = entries.filter { it.first.contains("/lib/") || it.first.contains("/lib64/") }
     val binEntries = entries.filter { it.first.startsWith("bin/") }
-    val etcEntries = entries.filter { it.first.startsWith("etc/") }
+    val _etcEntries = entries.filter { it.first.startsWith("etc/") }
 
     val rawHeader = listOfNotNull(
         "format"          to "APEX",
@@ -351,7 +351,7 @@ private fun parseApex(file: java.io.File): ArtFileInfo {
     )
 
     // Convert all entries to DexEntry list for the "Files" tab
-    val fileList = entries.mapIndexed { i, (name, size) ->
+    val fileList = entries.mapIndexed { i, (name, _) ->
         DexEntry(name = name, size = 0, offset = i, checksum = 0L)
     }
 
