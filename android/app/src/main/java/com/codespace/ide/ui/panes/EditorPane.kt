@@ -848,6 +848,11 @@ fun EditorPane(
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
                             if (active.path.startsWith("/")) {
                                 try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                // PhaseX: Push live reload to preview WebViews for web file types
+                                val ext = active.path.substringAfterLast('.', "").lowercase()
+                                if (ext == "html" || ext == "htm" || ext == "css" || ext == "js" || ext == "mjs") {
+                                    com.codespace.ide.preview.LivePreviewServer.reload()
+                                }
                             }
                             // P24: Show "Saved" indicator briefly + clear dirty flag
                             showSavedIndicator = true
