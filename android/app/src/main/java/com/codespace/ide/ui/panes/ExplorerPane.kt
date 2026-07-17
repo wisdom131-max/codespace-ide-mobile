@@ -284,7 +284,7 @@ fun ExplorerSidePanel(
                     ?.forEach { child -> walk(child, depth + 1) }
             }
         }
-        workspaceRoot.listFiles()
+        localWorkspaceRoot.listFiles()
             ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
             ?.forEach { walk(it, 0) }
         treeListState.animateScrollToItem(idx.coerceAtLeast(0))
