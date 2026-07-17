@@ -2845,11 +2845,11 @@ Produce:
 > **File Detection:** ✅ Extension detection, ✅ Language mapping, ⚠️ File icons (partial)
 >
 > **Items to repair/upgrade:**
-> 1. Breadcrumbs — MISSING (add file path hierarchy above editor)
-> 2. Quick fixes / Code actions — PARTIAL (only AI fix, add LSP code actions)
-> 3. LSP Python diagnostics — PARTIAL (only JS/TS diagnostics working)
-> 4. Auto Save — PARTIAL (no explicit save indicator/state)
-> 5. File icons — PARTIAL
+> 1. ~~Breadcrumbs — MISSING~~ ✅ DONE (file path hierarchy above editor)
+> 2. ~~Quick fixes / Code actions — PARTIAL~~ ✅ DONE (LSP code actions wired, lightbulb in context menu)
+> 3. ~~Auto Save — PARTIAL~~ ✅ DONE (Saved indicator in breadcrumbs bar, dirty flag auto-clears 2s after typing)
+> 4. LSP Python diagnostics — WORKING (audit confirmed: ProblemsPanel already polls LSP diagnostics for all languages every 2s)
+> 5. File icons — PARTIAL (remaining)
 > Added: 2026-07-16. Source: user specification (rearranged, not changed).
 > NOTE: Some sub-phases overlap with existing Phase 22 work (P22-F through P22-L). Audit existing implementations before building new ones.
 
