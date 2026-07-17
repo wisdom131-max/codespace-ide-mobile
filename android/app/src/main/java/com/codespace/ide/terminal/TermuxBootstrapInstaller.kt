@@ -169,7 +169,7 @@ object TermuxBootstrapInstaller {
                 linkFile.parentFile?.mkdirs()
 
                 // Determine if target is a known multi-call binary (just the basename)
-                val targetBase = target.trimStart('.', '/').substringAfterLast('/')
+                val _targetBase = target.trimStart('.', '/').substringAfterLast('/')
                 val srcFile    = copyMap[File(linkRel).name] // alias name e.g. "ls"
 
                 if (srcFile != null && srcFile.exists()) {
@@ -219,7 +219,7 @@ object TermuxBootstrapInstaller {
     fun shellArgs(context: Context): Pair<String, Array<String>> {
         val prefix = prefixDir(context).absolutePath
         val home   = File(context.filesDir, "home").apply { mkdirs() }.absolutePath
-        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val _nativeDir = context.applicationInfo.nativeLibraryDir
 
         val shell = "$prefix/bin/bash"
         val env = arrayOf(
