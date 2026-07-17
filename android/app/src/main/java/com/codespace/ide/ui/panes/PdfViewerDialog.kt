@@ -169,18 +169,19 @@ fun PdfViewerDialog(pdfPath: String, onDismiss: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(pageIndex) {
-                                    detectTransformGestures(
-                                        onGesture = { _, pan, zoom, _ ->
-                                            val newScale = (scale * zoom).coerceIn(1f, 8f)
-                                            // Clamp pan to keep page visible.
-                                            // Available overflow = (scale-1) * size / 2
-                                            val maxX = ((size.width  * (newScale - 1f)) / 2f).coerceAtLeast(0f)
-                                            val maxY = ((size.height * (newScale - 1f)) / 2f).coerceAtLeast(0f)
-                                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
-                                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                                            scale = newScale
-                                        }
-                                    )
+                                    // Capture PointerInputScope.size here — not accessible
+                                    // inside the nested onGesture lambda.
+                                    val viewW = size.width.toFloat()
+                                    val viewH = size.height.toFloat()
+                                    detectTransformGestures { _, pan, zoom, _ ->
+                                        val newScale = (scale * zoom).coerceIn(1f, 8f)
+                                        // Clamp pan to keep page visible.
+                                        val maxX = ((viewW * (newScale - 1f)) / 2f).coerceAtLeast(0f)
+                                        val maxY = ((viewH * (newScale - 1f)) / 2f).coerceAtLeast(0f)
+                                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                                        offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                                        scale = newScale
+                                    }
                                 }
                                 .graphicsLayer(
                                     scaleX = scale, scaleY = scale,
