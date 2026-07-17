@@ -44,6 +44,7 @@ data class EntropyResult(
 )
 
 @Composable
+@Suppress("UNCHECKED_CAST")
 fun BinaryInspectorDialog(file: File, onDismiss: () -> Unit) {
     var sections by remember { mutableStateOf<List<BinarySection>>(emptyList()) }
     var entropy by remember { mutableStateOf<EntropyResult?>(null) }
