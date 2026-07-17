@@ -22,7 +22,7 @@ data class Problem(
 
 object LintChecker {
 
-    fun check(path: String, content: String): List<Problem> {
+    fun check(_path: String, content: String): List<Problem> {
         val problems = mutableListOf<Problem>()
         val lines = content.split("\n")
         val stack = ArrayDeque<Pair<Char, Int>>()
