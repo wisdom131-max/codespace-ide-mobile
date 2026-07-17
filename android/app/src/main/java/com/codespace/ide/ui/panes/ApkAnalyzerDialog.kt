@@ -92,7 +92,7 @@ private object AxmlDecoder {
             "(binary XML — too small)"
         } else {
         val fileType = buf.int
-        val fileSize = buf.int
+        val _fileSize = buf.int
         if (fileType != CHUNK_AXML) {
             "(not binary XML: type=0x${fileType.toString(16)})"
         } else {
@@ -106,10 +106,10 @@ private object AxmlDecoder {
             if (chunkType == CHUNK_STRINGS) {
                 val chunkSize = buf.int
                 val strCount  = buf.int
-                val styleCount= buf.int
+                val _styleCount= buf.int
                 val flags     = buf.int
-                val strStart  = buf.int
-                val styStart  = buf.int
+                val _strStart  = buf.int
+                val _styStart  = buf.int
                 val offsets = IntArray(strCount) { buf.int }
                 val poolStart = buf.position()
                 val poolData  = ByteArray(chunkSize - (poolStart - savedPos))
@@ -157,10 +157,10 @@ private object AxmlDecoder {
                     if (buf.remaining() < chunkSize - 8) break
                     buf.int  // lineNumber
                     buf.int  // 0xFFFFFFFF
-                    val nsIdx  = buf.int
+                    val _nsIdx  = buf.int
                     val nameIdx= buf.int
-                    val attrStart = buf.short.toInt() and 0xFFFF
-                    val attrSize  = buf.short.toInt() and 0xFFFF
+                    val _attrStart = buf.short.toInt() and 0xFFFF
+                    val _attrSize  = buf.short.toInt() and 0xFFFF
                     val attrCount = buf.short.toInt() and 0xFFFF
                     buf.short  // idIndex
                     buf.short  // classIndex
@@ -171,7 +171,7 @@ private object AxmlDecoder {
                     sb.append("<$elemName")
                     repeat(attrCount) {
                         if (buf.remaining() < 20) return@repeat
-                        val attrNsIdx   = buf.int
+                        val _attrNsIdx   = buf.int
                         val attrNameIdx = buf.int
                         val attrRawIdx  = buf.int
                         val attrValueType = buf.int ushr 24
@@ -192,7 +192,7 @@ private object AxmlDecoder {
                     if (buf.remaining() < chunkSize - 8) break
                     buf.int  // lineNumber
                     buf.int  // 0xFFFFFFFF
-                    val nsIdx  = buf.int
+                    val _nsIdx  = buf.int
                     val nameIdx= buf.int
                     depth = (depth - 1).coerceAtLeast(0)
                     sb.append("${indent.repeat(depth)}</${str(nameIdx)}>\n")
@@ -272,7 +272,7 @@ private fun analyzeApk(file: File): ApkAnalysis {
             val rcvRegex  = Regex("""<receiver[^>]*name="([^"]+)"""")
             val pvdRegex  = Regex("""<provider[^>]*name="([^"]+)"""")
             val ftRegex   = Regex("""<uses-feature[^>]*name="([^"]+)"""")
-            val mainActRegex = Regex("""<action[^>]*name="android\.intent\.action\.MAIN"[\s\S]{0,200}?<activity[^>]*name="([^"]+)"""")
+            val _mainActRegex = Regex("""<action[^>]*name="android\.intent\.action\.MAIN"[\s\S]{0,200}?<activity[^>]*name="([^"]+)"""")
 
             val permissions = permRegex.findAll(xml).map { it.groupValues[1] }.toList()
             val activities  = actRegex.findAll(xml).map { it.groupValues[1] }.toList()
