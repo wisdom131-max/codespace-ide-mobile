@@ -630,7 +630,17 @@ fun EditorPane(
         // a long-running startServer() call mid-execution (install can take 10-120s).
         LaunchedEffect(active?.id, active?.language) {
             val snap = active ?: return@LaunchedEffect
-            if (!LspManager.isSupported(snap.language) || projectRootPath == null) return@LaunchedEffect
+            // BUG-7 FIX: Show informational note for unsupported languages instead of silent no-op
+            if (!LspManager.isSupported(snap.language)) {
+                // Language has no LSP server configured — keyword-only completion is used.
+                // Common unsupported: JSON, XML, Markdown, Shell (no standard LSP for these in proot)
+                AppOutputLog.log("[LSP] No LSP server configured for ${snap.language.displayName} — keyword completion only", "lsp")
+                return@LaunchedEffect
+            }
+            if (projectRootPath == null) {
+                AppOutputLog.log("[LSP] Effect-A: projectRootPath is null for ${snap.language.displayName} — file opened outside a project context", "lsp")
+                return@LaunchedEffect
+            }
             val uri = LspManager.fileUriFromHostPath(context, snap.path)
             android.util.Log.d("LspTrigger", "LSP Effect-A fired: path=${snap.path} lang=${snap.language} uri=$uri serverRunning=${LspManager.isServerRunning(snap.language)}")
             AppOutputLog.log("[LSP] Effect-A fired for ${snap.language.displayName}: ${snap.path.substringAfterLast('/')} — serverRunning=${LspManager.isServerRunning(snap.language)}", "lsp")
@@ -678,21 +688,24 @@ fun EditorPane(
                 LspManager.didChange(snap.language, uri, snap.content, version)
             }
         }
-        // P22-G: LSP hover on cursor position change (debounced)
-        LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
-            // P24-1: Subscribe to LSP diagnostics → squiggles
-            if (active != null && LspManager.isSupported(active.language)) {
-                val lang = active.language
-                val uri = LspManager.fileUriFromHostPath(context, active.path)
-                if (uri != null) {
-                    LspManager.setDiagnosticsHandler(lang) { diagUri, diags ->
-                        if (diagUri == uri) {
-                            lspSquiggles = lspDiagnosticsToLintErrors(diags, active.content)
-                        }
-                    }
+        // GAP-9 FIX: Diagnostics subscription belongs in its own stable effect, NOT in the
+        // hover effect that fires on every cursor move. Re-subscribing on every cursor move
+        // was harmless but wasteful and could cause missed diagnostics if the handler
+        // was replaced mid-delivery. Keyed on (id, language) so it re-subscribes only
+        // when the file or language changes — exactly when a new uri is in scope.
+        LaunchedEffect(active?.id, active?.language) {
+            val snap = active ?: return@LaunchedEffect
+            if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
+            val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
+            LspManager.setDiagnosticsHandler(snap.language) { diagUri, diags ->
+                if (diagUri == uri) {
+                    lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
                 }
             }
+        }
 
+        // P22-G: LSP hover on cursor position change (debounced)
+        LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
             if (showLspHover && active != null && LspManager.isServerRunning(active.language)) {
                 delay(300)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
