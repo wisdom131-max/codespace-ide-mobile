@@ -1892,7 +1892,7 @@ internal fun TerminalPane(
         if (showCustomCmds) {
             val savedCmds = remember {
                 val localPrefs = context.getSharedPreferences("custom_cmds", android.content.Context.MODE_PRIVATE)
-                val raw = prefs.getString("cmds", null)
+                val raw = localPrefs.getString("cmds", null)
                 val list = mutableStateListOf<Pair<String,String>>() // label, command
                 if (!raw.isNullOrBlank()) {
                     raw.split("|SEP|").forEach { entry ->
