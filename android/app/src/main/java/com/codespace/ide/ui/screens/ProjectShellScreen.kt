@@ -2739,7 +2739,7 @@ private fun PssEditorColumn(
 
     // Split Terminal Panel
     if (showSplitTerminal) {
-        val density = androidx.compose.ui.platform.LocalDensity.current
+        val localDensity = androidx.compose.ui.platform.LocalDensity.current
         Box(
             Modifier
                 .width(with(density) { splitTerminalWidth.toDp() })
