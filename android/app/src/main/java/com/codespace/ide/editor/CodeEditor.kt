@@ -1261,20 +1261,20 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                                             val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
                                                             val replacement = te.optString("newText", "")
                                                             val newTextLines = newText.split("\n").toMutableList()
-                                                            if (startLine == endLine && startLine < textLines.size) {
-                                                                val line = textLines[startLine]
-                                                                textLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
-                                                            } else if (startLine < textLines.size) {
-                                                                val before = textLines[startLine].substring(0, startChar.coerceAtMost(textLines[startLine].length))
-                                                                val after = if (endLine < textLines.size) textLines[endLine].substring(endChar.coerceAtMost(textLines[endLine].length)) else ""
-                                                                textLines[startLine] = before + replacement + after
-                                                                if (startLine + 1 <= endLine && endLine < textLines.size) {
+                                                            if (startLine == endLine && startLine < newTextLines.size) {
+                                                                val line = newTextLines[startLine]
+                                                                newTextLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
+                                                            } else if (startLine < newTextLines.size) {
+                                                                val before = newTextLines[startLine].substring(0, startChar.coerceAtMost(newTextLines[startLine].length))
+                                                                val after = if (endLine < newTextLines.size) newTextLines[endLine].substring(endChar.coerceAtMost(newTextLines[endLine].length)) else ""
+                                                                newTextLines[startLine] = before + replacement + after
+                                                                if (startLine + 1 <= endLine && endLine < newTextLines.size) {
                                                                     for (k in endLine downTo startLine + 1) {
-                                                                        if (k < textLines.size) textLines.removeAt(k)
+                                                                        if (k < newTextLines.size) newTextLines.removeAt(k)
                                                                     }
                                                                 }
                                                             }
-                                                            newText = textLines.joinToString("\n")
+                                                            newText = newTextLines.joinToString("\n")
                                                         }
                                                         value = TextFieldValue(newText, TextRange(value.selection.start))
                                                     }
