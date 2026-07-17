@@ -85,10 +85,27 @@ fun PreviewPane(
     activeFilePath: String = "",
     initialPort: Int? = null,
     externalState: PreviewState? = null,
+    projectId: String? = null,
 ) {
     // Rotation fix (#8): key the fullscreen Dialog on orientation so it gets a fresh,
     // correctly-sized window on rotation instead of being stuck at the pre-rotation size.
     val orientation = LocalConfiguration.current.orientation
+    val context = LocalContext.current
+
+    // PhaseX: Start LivePreviewServer when a project is active
+    val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }
+    LaunchedEffect(projectId) {
+        if (projectRootPath != null && java.io.File(projectRootPath).exists()) {
+            com.codespace.ide.preview.LivePreviewServer.start(projectRootPath)
+        }
+    }
+    DisposableEffect(projectId) {
+        onDispose {
+            // Stop server when leaving preview or switching projects
+            com.codespace.ide.preview.LivePreviewServer.stop()
+        }
+    }
+
     // Read file content from disk whenever path changes
     val content by produceState(initialValue = "", key1 = activeFilePath) {
         value = if (activeFilePath.isNotBlank()) {
@@ -448,7 +465,14 @@ private fun PreviewBody(
     onLoading: (Boolean) -> Unit,
 ) {
     when (activeMode) {
-        PreviewMode.HTML      -> HtmlPreview(content, language, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        PreviewMode.HTML      -> {
+                // PhaseX: Use LivePreviewServer for project HTML files, inline for standalone
+                val useLiveServer = projectRootPath != null && (activeFilePath.endsWith(".html") || activeFilePath.endsWith(".htm"))
+                val liveUrl = if (useLiveServer && com.codespace.ide.preview.LivePreviewServer.isRunning()) {
+                    com.codespace.ide.preview.LivePreviewServer.getPreviewUrl(activeFilePath)
+                } else null
+                HtmlPreview(content, language, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, liveUrl = liveUrl)
+            }
         PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
@@ -515,6 +539,7 @@ private fun HtmlPreview(
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
+    liveUrl: String? = null,
 ) {
     val fileChooserHandler = rememberOnShowFileChooser()
     // Detect React/JSX content
@@ -612,7 +637,12 @@ private fun HtmlPreview(
             }
         },
         update = { wv ->
-            wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+            if (liveUrl != null) {
+                // PhaseX: Load from LivePreviewServer — gets auto-reload via SSE
+                wv.loadUrl(liveUrl)
+            } else {
+                wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+            }
             onWebView(wv)
         },
         modifier = Modifier.fillMaxSize(),
