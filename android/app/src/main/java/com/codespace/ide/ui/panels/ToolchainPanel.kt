@@ -168,7 +168,7 @@ private fun ToolRow(
         ToolchainManager.ToolHealth.OK      -> Icons.Default.CheckCircle to Color(0xFF4CAF50)
         ToolchainManager.ToolHealth.MISSING -> Icons.Default.Error to Color(0xFFEF5350)
         ToolchainManager.ToolHealth.BROKEN  -> Icons.Default.Warning to Color(0xFFFF9800)
-        ToolchainManager.ToolHealth.UNKNOWN -> Icons.Default.HelpOutline to Color(0xFF9EA3B0)
+        ToolchainManager.ToolHealth.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline to Color(0xFF9EA3B0)
     }
 
     Row(
