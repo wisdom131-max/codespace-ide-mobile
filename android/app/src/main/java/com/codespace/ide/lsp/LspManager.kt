@@ -48,6 +48,23 @@ data class LspCodeAction(
  * LSPs can index cross-file symbols.
  *
  * BUG-FIX (2026-07-17): startServer guards against proot rootfs not being set up yet.
+ *
+ * CRITICAL FIX (2026-07-17): typescript pinned to 5.6.3 — typescript@7.x (latest on
+ * npm) ships ONLY tsc.js and no longer includes tsserver.js / tsserverlibrary.js.
+ * typescript-language-server requires tsserver.js at runtime and fails with
+ * "Could not find a valid TypeScript installation" when typescript@7.x is installed.
+ * Fix: npm install -g typescript-language-server typescript@5.6.3
+ * Confirmed: typescript@5.6.3 ships tsserver.js + tsserverlibrary.js in lib/.
+ *
+ * CRITICAL FIX (2026-07-17): checkCommand for TS/JS now validates tsserver.js
+ * presence (node -e "require.resolve('typescript/lib/tsserver')") not just the binary.
+ * This ensures a broken install (binary present, tsserver.js missing from @7.x) is
+ * correctly detected as "not installed" and triggers a repair install.
+ *
+ * FIX (2026-07-17): HTML/CSS servers updated to vscode-langservers-extracted.
+ * vscode-html-languageserver and vscode-css-languageserver are deprecated packages.
+ * The maintained replacement is vscode-langservers-extracted which ships
+ * vscode-html-language-server, vscode-css-language-server, etc.
  */
 object LspManager {
 
@@ -64,19 +81,38 @@ object LspManager {
 
     private val configs: Map<Language, ServerConfig> = mapOf(
         // ── JavaScript / TypeScript ──────────────────────────────────────────
+        // ── JavaScript / TypeScript ──────────────────────────────────────────
+        // CRITICAL FIX: Pin typescript@5.6.3 — typescript@7.x (latest as of 2026-07)
+        // ships ONLY tsc.js (compiler CLI) and no longer includes tsserver.js or
+        // tsserverlibrary.js. typescript-language-server requires both files at runtime
+        // and fails with "Could not find a valid TypeScript installation" without them.
+        // typescript@5.6.3 is the last 5.x release confirmed to include tsserver.js.
+        //
+        // checkCommand also validates tsserver.js presence (not just the binary) so a
+        // broken install (binary exists, tsserver.js missing) triggers a repair install.
         Language.TYPESCRIPT to ServerConfig(
             Language.TYPESCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
-            "which typescript-language-server",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript",
+            // Verify both the binary AND tsserver.js exist — if tsserver.js is missing
+            // (e.g. due to a previous unversioned typescript@7.x install), treat as not installed.
+            "which typescript-language-server && " +
+                "node -e \"require.resolve('typescript/lib/tsserver')\" 2>/dev/null && echo OK",
+            "apt-get update -qq 2>/dev/null; " +
+                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline 2>/dev/null || " +
+                "npm install -g typescript-language-server typescript@5.6.3",
         ),
         Language.JAVASCRIPT to ServerConfig(
             Language.JAVASCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
-            "which typescript-language-server",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript",
+            "which typescript-language-server && " +
+                "node -e \"require.resolve('typescript/lib/tsserver')\" 2>/dev/null && echo OK",
+            "apt-get update -qq 2>/dev/null; " +
+                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline 2>/dev/null || " +
+                "npm install -g typescript-language-server typescript@5.6.3",
         ),
         // ── Python ─────────────────────────────────────────────────────────
         Language.PYTHON to ServerConfig(
@@ -159,20 +195,28 @@ object LspManager {
             "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g intelephense",
         ),
         // ── HTML ───────────────────────────────────────────────────────────
+        // ── HTML ───────────────────────────────────────────────────────────
+        // FIX: vscode-html-languageserver is deprecated. The maintained replacement is
+        // vscode-langservers-extracted which ships html, css, json, and eslint servers.
         Language.HTML to ServerConfig(
             Language.HTML,
-            "vscode-html-languageserver",
+            "vscode-html-language-server",
             listOf("--stdio"),
-            "which vscode-html-languageserver",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g vscode-html-languageserver",
+            "which vscode-html-language-server",
+            "apt-get update -qq 2>/dev/null; " +
+                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+                "npm install -g vscode-langservers-extracted",
         ),
         // ── CSS ────────────────────────────────────────────────────────────
+        // FIX: vscode-css-languageserver is deprecated — covered by vscode-langservers-extracted.
         Language.CSS to ServerConfig(
             Language.CSS,
-            "vscode-css-languageserver",
+            "vscode-css-language-server",
             listOf("--stdio"),
-            "which vscode-css-languageserver",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g vscode-css-languageserver",
+            "which vscode-css-language-server",
+            "apt-get update -qq 2>/dev/null; " +
+                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+                "npm install -g vscode-langservers-extracted",
         ),
     )
 
@@ -221,11 +265,22 @@ object LspManager {
      * Install the LSP server binary in the proot rootfs via npm/pip/apt.
      * Returns the installation output.
      */
+    /**
+     * Install (or repair) the LSP server.
+     *
+     * FIX: Previously skipped install if the binary existed via `which` alone.
+     * For TypeScript, the binary existing is NOT sufficient — tsserver.js must also
+     * be resolvable. The checkCommand now validates both, so a broken existing install
+     * (typescript@7.x: binary present, tsserver.js absent) correctly falls through
+     * to the install command here and runs `npm install -g typescript@5.6.3` to repair.
+     */
     fun installServer(context: Context, language: Language): String {
         val config = configs[language] ?: return "No LSP server configured for ${language.displayName}"
         if (isServerInstalled(context, language)) {
+            AppOutputLog.log("[LSP] ${language.displayName} install check PASSED (binary + runtime files present) — skipping install", "lsp")
             return "${language.displayName} LSP server already installed"
         }
+        AppOutputLog.log("[LSP] ${language.displayName} install check FAILED (binary missing or runtime files broken) — running install/repair", "lsp")
         Log.d(TAG, "Installing LSP server for ${language.displayName}...")
         AppOutputLog.log("[LSP] Installing ${language.displayName} server (timeout: ${config.installTimeout}s) — this may take 1-2 minutes…", "lsp")
         val installOutput = ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout)
