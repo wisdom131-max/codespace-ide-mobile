@@ -38,6 +38,7 @@ import org.json.JSONArray
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.material3.HorizontalDivider
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
@@ -314,7 +315,7 @@ fun PreviewPane(
             }
         }
 
-        Divider(color = Border, thickness = 1.dp)
+        HorizontalDivider(color = Border, thickness = 1.dp)
 
         // (Redundant "page title" strip removed 2026-07-06 — it repeated info already visible
         // in the mode tab pill above and the editor tab/filename, adding a dead breadcrumb row
@@ -348,7 +349,7 @@ fun PreviewPane(
                             "Interactive dashboard builder with drag-and-drop components. AI generates charts, stat cards, tables, and widgets. Tap any component palette item to add it. Drag elements to reposition. Includes Chart.js for live data visualization.")
                         PreviewGuideRow("Remotion", Color(0xFFCE9178),
                             "Connects to Remotion Studio running in Ubuntu proot. Start it with 'npx remotion studio' in the terminal, then tap Go to preview video compositions, render clips, and see live previews.")
-                        Divider(color = Color(0xFF3C3C3C))
+                        HorizontalDivider(color = Color(0xFF3C3C3C))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
