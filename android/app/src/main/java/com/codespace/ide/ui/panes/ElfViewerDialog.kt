@@ -273,13 +273,13 @@ private object ElfParser {
         // ELF header fields
         val eType  = u16(16)
         val eMach  = u16(18)
-        val eVer   = u32(20).toInt()
+        val _eVer   = u32(20).toInt()
 
         val eEntry    = if (is64) u64(24)           else u32(24)
         val ePhOff    = if (is64) u64(32)           else u32(28)
         val eShOff    = if (is64) u64(40)           else u32(32)
         val eFlags    = if (is64) u32(48)           else u32(36)
-        val eEhSz     = if (is64) u16(52).toLong()  else u16(40).toLong()
+        val _eEhSz     = if (is64) u16(52).toLong()  else u16(40).toLong()
         val ePhEntSz  = if (is64) u16(54).toLong()  else u16(42).toLong()
         val ePhNum    = if (is64) u16(56).toLong()  else u16(44).toLong()
         val eShEntSz  = if (is64) u16(58).toLong()  else u16(46).toLong()
