@@ -149,7 +149,7 @@ object AgentApiServer {
                     } else JSONObject()
 
                     // Wrap args in the expected format: {"name":"...", "arguments":{...}}
-                    val wrapped = JSONObject()
+                    val _wrapped = JSONObject()
                         .put("name", toolName)
                         .put("arguments", args)
 
