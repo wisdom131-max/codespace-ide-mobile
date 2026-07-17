@@ -72,6 +72,7 @@ import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.compose.material3.HorizontalDivider
 
 private data class Completion(val label: String, val kind: CompletionKind, val insertText: String = label, val doc: String? = null)
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
@@ -1683,7 +1684,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                             Text("X", color = Color(0xFF888888), fontSize = 16.sp)
                         }
                     }
-                    Divider(color = Color(0xFF333333))
+                    HorizontalDivider(color = Color(0xFF333333))
                     // Code preview
                     Column(
                         modifier = Modifier
@@ -1716,7 +1717,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                         }
                     }
                     // Footer
-                    Divider(color = Color(0xFF333333))
+                    HorizontalDivider(color = Color(0xFF333333))
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
                         horizontalArrangement = Arrangement.End,
