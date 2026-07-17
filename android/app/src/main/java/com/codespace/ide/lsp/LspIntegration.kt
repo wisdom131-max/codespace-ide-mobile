@@ -166,3 +166,32 @@ fun applyImportEdits(content: String, edits: List<ImportEdit>): String {
     }
     return lines.joinToString("\n")
 }
+
+
+/**
+ * P24: Quick fix / Code action from LSP.
+ * Represents a single code action that can be applied to fix a diagnostic.
+ */
+data class LspCodeAction(
+    val title: String,
+    val kind: String?,       // e.g. "quickfix", "refactor", "source.organizeImports"
+    val edit: String?,       // JSON string of WorkspaceEdit, or null if it's a Command
+    val isPreferred: Boolean,
+)
+
+/**
+ * P24: Parse LSP code actions into LspCodeAction list.
+ */
+fun parseCodeActions(actions: JSONArray): List<LspCodeAction> {
+    val result = mutableListOf<LspCodeAction>()
+    for (i in 0 until actions.length()) {
+        val action = actions.optJSONObject(i) ?: continue
+        val title = action.optString("title", "")
+        if (title.isBlank()) continue
+        val kind = action.optString("kind", null)
+        val edit = action.optJSONObject("edit")?.toString()
+        val isPreferred = action.optBoolean("isPreferred", false)
+        result.add(LspCodeAction(title, kind, edit, isPreferred))
+    }
+    return result
+}

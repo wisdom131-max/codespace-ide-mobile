@@ -293,7 +293,9 @@ fun CodeEditor(
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
     /** Minimap: initial visibility, can be toggled via dropdown in the editor toolbar */
     showMinimap: Boolean = true,
-    /** P22-L: Current file path for LSP definition and peek definition */
+    /** P24: LSP code actions provider — returns quick fixes for a line */
+lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>)? = null,
+/** P22-L: Current file path for LSP definition and peek definition */
     filePath: String = "",
 ) {
     val colors = LocalEditorColors.current
