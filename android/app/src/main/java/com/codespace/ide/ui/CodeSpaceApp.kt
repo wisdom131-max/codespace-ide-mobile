@@ -52,7 +52,7 @@ object Routes {
 }
 
 @Composable
-fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
+fun CodeSpaceApp(tokenStore: SecureTokenStore, _safeMode: Boolean = false) {
     val systemDark = isSystemInDarkTheme()
     val context    = LocalContext.current
     val prefs      = remember { context.getSharedPreferences("app_prefs", 0) }
