@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **#1320** (minimap realism fixes GREEN) |
-| Active phase | **Phase 24 (Master IDE Audit) — IN PROGRESS (24-1 audit done, fixes started)** |
+| Active phase | **Phase 24 (Master IDE Audit) — QUEUED** |
 | Last green | #1337 — fix(P23-8): add udm param to EditorPane + null-safe call |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
@@ -2822,46 +2822,9 @@ Produce:
 
 ## PHASE 24 — MASTER IDE AUDIT, UPGRADE, MODERNIZATION & IMPLEMENTATION
 
-> **Status: IN PROGRESS — Sub-Phase 24-1 (Complete IDE Audit) DONE.**
->
-> **Audit Results (24-1):**
->
-> **Editor:** ✅ ALL WORKING — text rendering, cursor, selection, search/replace, multi-cursor, folding, minimap (dropdown toggle), split editor, tabs, session restore, line numbers (72dp gutter + right-align), syntax highlighting, bookmarks, inlay hints, auto-indent
->
-> **IntelliSense:** ✅ Auto completion (snippets + LSP + ghost text), ✅ Hover, ✅ Signature help, ✅ Auto imports, ⚠️ Quick fixes (AI fix only, no code actions)
->
-> **Navigation:** ✅ Go To Definition, ✅ Peek Definition, ✅ Symbol Search, ✅ Workspace Search, ✅ Document Outline, ❌ Breadcrumbs (missing)
->
-> **Diagnostics:** ✅ Error detection, ✅ Warning detection, ✅ Problems panel, ✅ Error navigation, ✅ Real-time diagnostics (LSP)
->
-> **LSP:** ✅ LspManager, ✅ JSON-RPC, ✅ Completion, ⚠️ Diagnostics (JS/TS only, Python partial), ✅ Hover, ✅ Definition
->
-> **Terminal:** ✅ Startup, ✅ Session restore, ✅ Command history, ✅ proot
->
-> **Reliability:** ⚠️ Auto Save (writes on keystroke but no explicit save state), ✅ Crash Recovery (safe mode + crash counter), ✅ Session Restore
->
-> **Debugging:** ✅ UniversalDebugManager, ✅ Breakpoints, ✅ Breakpoint persistence, ✅ 7 debug providers (Terminal, Python, Node.js, Shell, PHP, Android, APK), ✅ Debug console
->
-> **File Detection:** ✅ Extension detection, ✅ Language mapping, ⚠️ File icons (partial)
->
-> **Items to repair/upgrade:**
-> 1. ~~Breadcrumbs — MISSING~~ ✅ DONE (file path hierarchy above editor)
-> 2. ~~Quick fixes / Code actions — PARTIAL~~ ✅ DONE (LSP code actions wired, lightbulb in context menu)
-> 3. ~~Auto Save — PARTIAL~~ ✅ DONE (Saved indicator in breadcrumbs bar, dirty flag auto-clears 2s after typing)
-> 4. LSP Python diagnostics — WORKING (audit confirmed: ProblemsPanel already polls LSP diagnostics for all languages every 2s)
-> 5. ~~File icons — PARTIAL~~ ✅ DONE (comprehensive icon per extension, color-coded by language, folder icon fixed, tab icons added)
+> **Status: NOT STARTED — queued after Phase 23.**
 > Added: 2026-07-16. Source: user specification (rearranged, not changed).
 > NOTE: Some sub-phases overlap with existing Phase 22 work (P22-F through P22-L). Audit existing implementations before building new ones.
-
-### Known Risks to Verify During Audit
-
-1. **`/sdcard` access on Android isn't guaranteed the way the doc assumes.** Since Android 11 (scoped storage), apps generally can't freely read/write arbitrary paths under `/sdcard` without either `MANAGE_EXTERNAL_STORAGE` permission or going through the Storage Access Framework. If the app already has broad storage access working (sounds like it does, since editor and terminal already share files), this is probably fine — but worth a one-line audit check: confirm *how* that access is currently granted, since it affects whether "Reveal In Explorer" or new project creation could hit a permission wall on newer Android versions.
-
-2. **"Active Environment" and "Python Version" in the status panel are ambiguous.** Which `python3`? If a project has a venv, does the panel show the venv's interpreter or the container's global one? This matters once venv creation (mentioned in the Python Project Template section) is in the mix — worth having the audit define what "active" means before building the panel.
-
-3. **Git Branch in the status panel assumes git is installed and the project is a repo.** Should just silently omit/gray out rather than error when there's no `.git` — minor, but worth a one-liner so it's not left implicit.
-
-4. **Symlink/mount-path mismatch is a known proot gotcha.** `/sdcard` inside the proot container sometimes resolves through a different real path than what Android's file picker reports (e.g. `/storage/emulated/0` vs a bind mount). Worth having the audit explicitly verify that a path shown in the editor and a path typed in the terminal actually point to the same inode — this is exactly the kind of thing that "looks connected" in casual testing but breaks on edge cases.
 
 ### GOAL
 
@@ -3234,756 +3197,102 @@ callback/flow from here to the preview pane is the cleanest hook point.
 
 **Audit complete. Ready for implementation when approved.**
 
-### ═════════════════════════════════════════════════════════════════════════
-### IMPLEMENTATION STATUS — LIVE PREVIEW SERVER
-### ═════════════════════════════════════════════════════════════════════════
-
-- [x] **Step 1: LivePreviewServer.kt** — ✅ DONE (commit c816816)
-  - Embedded HTTP server on port 5500, serves static files from project root
-  - SSE endpoint at /__live_reload__ for connected WebViews
-  - Injects reload <script> into HTML responses (before </head>)
-  - MIME-type aware (HTML, CSS, JS, JSON, SVG, images, fonts, etc.)
-  - Path traversal protection (rejects ../, canonical path comparison)
-  - reload() method pushes "reload" event to all connected SSE clients
-- [x] **Step 2: Wire onContentChange → reload()** — ✅ DONE (commit e7dae94)
-  - EditorPane.kt calls LivePreviewServer.reload() after file write
-  - Only triggers for web file types (HTML, HTM, CSS, JS, MJS)
-- [x] **Step 3: PreviewPane loads from LivePreviewServer** — ✅ DONE (commit 27d42de)
-  - PreviewPane accepts projectId parameter
-  - Starts LivePreviewServer via LaunchedEffect when project is active
-  - Stops server via DisposableEffect when leaving preview
-  - HtmlPreview loads from http://localhost:5500/ when server is running
-  - Falls back to inline loadDataWithBaseURL for standalone files
-- [x] **Step 4: Lifecycle management** — ✅ DONE (commit 27d42de, 5e96e1e)
-  - Server starts when PreviewPane is composed with a projectId
-  - Server stops when PreviewPane is disposed (DisposableEffect)
-  - Project switch triggers dispose → new LaunchedEffect → new root
-  - projectId passed from ProjectShellScreen to PreviewPane
-- [x] **Step 5: Path safety** — ✅ DONE (commit c816816)
-  - resolveSafeFile() rejects paths containing ".."
-  - Canonical path comparison ensures file is within project root
-  - URL encoding for file paths in getPreviewUrl()
-
-**Phase X Implementation: COMPLETE** ✅
-
-## PHASE Y — CODE HEALTH AUDIT & WARNING CLEANUP
-
-### Audit Date: 2026-07-17
-
-Full-codebase audit of 129 Kotlin files. Found 230 compiler warnings + functional gaps.
-
-### Audit Findings
-
-| Category | Count | Severity | Status |
-|----------|-------|----------|--------|
-| Type mismatch (`Nothing?` → `String`) | 20 | HIGH — potential NPEs | ✅ FIXED |
-| VariableInspectorPanel `stubVars` (fake data) | 1 | HIGH — functional gap | ✅ FIXED |
-| Duplicate `when` label (Theme.kt "Eye Care") | 1 | MEDIUM — wrong rendering | ✅ FIXED |
-| Deprecated `Divider()` → `HorizontalDivider` | 12 | MEDIUM — future break | ✅ FIXED |
-| Deprecated `ImageVector` icons → `AutoMirrored` | 27 | MEDIUM — future break | ✅ FIXED |
-| Deprecated `nextTarEntry` (Java) | 4 | LOW — Java deprecation | DEFERRED |
-| Unused variables/params | 108 | LOW — dead code | DEFERRED |
-| Shadowed variables | 11 | LOW — confusing | DEFERRED |
-
-### Fixes Applied
-
-**Type mismatch root cause:** All 20 warnings were `optString("key", null)` — passing `null` 
-to a Java method whose Kotlin-mapped parameter type expects non-null `String`. Fixed by 
-replacing with `optString("key").ifBlank { null }` or `optString("key")` with `.takeIf`.
-- AgentTools.kt — 14 fixes (commits 2bf0071)
-- AgentMemory.kt — 1 fix (commit c7ec435)
-- ConnectorsApiClient.kt — 1 fix (commit 91671e5)
-- LspIntegration.kt — 1 fix (commit cf93380)
-- SessionStateStore.kt — 5 fixes (commit e7e941a)
-
-**VariableInspectorPanel:** Replaced hardcoded `stubVars` ("this", "args") with real 
-UniversalDebugManager integration. Now shows actual paused variables and call stack 
-frames from active debug sessions. (commit 845162a)
-
-**Theme.kt:** Removed duplicate "Eye Care" label in when-expression (commit bdc892d)
-
-**Deprecated Divider → HorizontalDivider:** 12 replacements across 5 files:
-- CodeEditor.kt, AiModelViewerDialog.kt, EntropyHeatmapDialog.kt, 
-  NetworkViewerDialog.kt, PreviewPane.kt
-
-**Deprecated Icons → AutoMirrored:** 27 replacements across 11 files:
-- ToolchainPanel, ArchiveViewer, BinaryDiffViewerDialog, ExplorerPane, OutlinePanel,
-  PreviewPane, SourceControlPane, AuthScreen, ConnectorsHubSheet, CopilotChatPanelOverlay,
-  ProjectShellScreen
-
-### Remaining (Deferred)
-- 108 unused variable/param warnings — low priority, no functional impact
-- 11 shadowed variable warnings — cosmetic, no functional impact  
-- 4 deprecated nextTarEntry calls — Java library deprecation, no Kotlin alternative yet
-- 46 other warnings (parameter naming, redundant null checks) — cosmetic
-
-**Phase Y: CORE FIXES COMPLETE** ✅
 
 ---
 
-## PHASE Z — LIVE PREVIEW SERVER AUDIT & FIXES
+## PHASE 24-B — LSP TEARDOWN FIX, RAM FIX, DIAGNOSTICS WIRING (2026-07-17)
 
-### Audit Date: 2026-07-17
-
-The Live Preview Server (Phase X) was already fully implemented. This phase audited the implementation
-and fixed 4 bugs found during review.
-
-### Audit Results
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| LivePreviewServer.kt (407 lines) | ✅ WORKING | Embedded HTTP server on port 5500, SSE reload, MIME-aware, path traversal protection |
-| EditorPane → reload() wiring | ✅ WORKING | onContentChange calls LivePreviewServer.reload() for HTML/CSS/JS/MJS |
-| PreviewPane lifecycle | ✅ WORKING | LaunchedEffect starts server, DisposableEffect stops it |
-| ProjectShellScreen → PreviewPane | ✅ WORKING | projectId passed correctly |
-| SSE reconnect handler | ❌ FIXED | onerror created new EventSource without reattaching onmessage |
-| WebView recomposition reload | ❌ FIXED | update lambda called loadUrl on every recomposition |
-| CSS/JS preview coverage | ❌ FIXED | CSS/JS files now keep HTML preview alive via live server |
-| Large file serving | ❌ FIXED | Files > 256KB streamed, executor shutdownNow() for clean shutdown |
-
-### Fixes Applied
-
-1. **SSE reconnect broken** (commit cf3bd7c) — The `onerror` handler created a new `EventSource` but
-   never reattached the `onmessage` handler. After a reconnect, reload signals were silently ignored.
-   Fixed with a `connect()` function that reattaches all handlers on each reconnect.
-
-2. **WebView reloads on every recomposition** (commit 8a20d2f) — The `update` lambda called
-   `wv.loadUrl(liveUrl)` every time ANY state changed (loading, title, etc.), causing constant
-   unnecessary page reloads. Fixed by tracking last loaded URL via `wv.tag` and only reloading
-   when the URL actually changes.
-
-3. **CSS/JS editing kills HTML preview** (commit 07a8723) — When switching to edit a CSS or JS file,
-   the preview fell back to inline mode (no live server), so SSE reload signals had no WebView to
-   update. Fixed by keeping the live server active for CSS/JS files — serves project root (index.html).
-
-4. **Large files read entirely into memory** (commit cf3bd7c) — `file.readBytes()` on large assets
-   could OOM on mobile. Added size check to stream files > 256KB. Also `shutdownNow()` for clean shutdown.
-
-**Commits:** cf3bd7c, 8a20d2f, 07a8723
-**Build:** #1471–#1473 all green ✅
+### Status: COMPLETE (pending build verification + Task 5-7 device measurements)
 
 ---
 
-## PHASE AA — PDF VIEWER LANDSCAPE & ZOOM FIX
-
-### Date: 2026-07-17
-
-**Problem:** In landscape mode, PDF pages rendered very tiny and hard to read. When zoomed, the
-page displayed oddly (off-center, wrong zoom pivot).
-
-**Root Causes:**
-1. Render resolution was fixed at `screenDpi/72` regardless of screen orientation — portrait pages
-   rendered at portrait resolution even on wide landscape screens, appearing tiny.
-2. Zoom pivot used `graphicsLayer` on a `fillMaxSize()` composable, but `ContentScale.Fit` left
-   the image smaller than the composable bounds, so zoom pivoted from the composable center, not
-   the image center — causing the page to drift off-screen when zoomed.
-
-**Fixes Applied:**
-1. Re-render bitmap on orientation change (`LaunchedEffect(pdfPath, pageIndex, orientation)`)
-   — bitmap is now sized to fit the current screen dimensions, so portrait pages fill landscape
-   width properly.
-2. Render scale now uses `maxOf(fitScale, screenDpi/72)` — ensures bitmap is always at least
-   as large as the screen needs, for sharp text in both orientations.
-3. Pan clamping uses captured `PointerInputScope.size` (viewW/viewH) instead of `onSizeChanged`
-   state, avoiding recomposition issues.
-4. Added `clip = true` to graphicsLayer so zoomed content doesn't overflow viewport.
-5. Zoom range increased from 6× to 8× for fine-grained reading.
-
-**Commits:** f0cc2c3, e480b03, e1bff8f
-**Build:** #1476 green ✅
-
-# PHASE BB — ANDROID ON-DEVICE BUILD FEASIBILITY SPIKE
-
-## 1. SDK / TOOLCHAIN INSTALLATION FINDINGS
-
-### Currently Installed in Proot (Ubuntu 25.04 Questing, aarch64)
-
-| Tool | Status | Source |
-|------|--------|--------|
-| bash, coreutils, git | ✅ Pre-installed | Ubuntu rootfs tarball |
-| apt/dpkg | ✅ Pre-installed | Ubuntu rootfs tarball |
-| Node.js 20 + npm | ⚠️ Not pre-installed | setup-remotion.sh installs via nvm (user runs manually) |
-| Python 3 + pip | ❌ Not pre-installed | LspManager installs on-demand via `pip install python-lsp-server` |
-| JDK (any version) | ❌ Not pre-installed | LspManager installs `default-jre-headless` on-demand for Kotlin LSP only |
-| Gradle | ❌ Not installed | Not referenced anywhere in rootfs setup |
-| Android SDK (sdkmanager) | ❌ Not installed | BuildEnvironment.kt detects but never installs |
-| Android Build Tools (aapt2) | ❌ Not installed | ToolchainManager detects but never installs |
-| Android Platform Tools (adb) | ❌ Not installed | Not present |
-
-### What Would Need to Be Installed
-
-| Component | Install Method | Download Size | Installed Size | Arch Compatibility |
-|-----------|---------------|-------------|----------------|-------------------|
-| **openjdk-17-jdk-headless** | `apt-get install -y openjdk-17-jdk-headless` | ~70 MB | ~265 MB | ✅ Native arm64 (Ubuntu repo) |
-| **Android cmdline-tools** | Manual download from developer.android.com | ~148 MB | ~150 MB | ⚠️ sdkmanager is Java — works on arm64, but some tools it installs are x86_64-only |
-| **Android platform (android-34)** | `sdkmanager "platforms;android-34"` | ~80 MB | ~80 MB | ✅ Pure Java/XML — arch-independent |
-| **Android build-tools** | `sdkmanager "build-tools;34.0.0"` | ~50 MB | ~50 MB | ❌ **aapt2 is x86_64-only — CRITICAL BLOCKER** |
-| **aapt2 (arm64 replacement)** | Download from ReVanced GitHub releases | ~10 MB | ~10 MB | ✅ arm64-v8a native binary |
-| **Gradle distribution** | Auto-downloaded by `gradlew` wrapper | ~150 MB | ~150 MB | ✅ Java — arch-independent |
-| **Build artifacts** | Generated during build | — | ~50-100 MB | N/A |
-| **TOTAL** | | **~508 MB** | **~755 MB** | |
-
-### The aapt2 Problem (Critical)
-
-Google's Android SDK Build Tools ship **only x86_64 binaries** for aapt2, aidl, zipalign, and split-select on Linux. There are no official arm64 builds. This is a well-known issue (Google Issue Tracker #227219818, open since 2022).
-
-**Three community workarounds exist:**
-
-1. **ReVanced aapt2 builds** (recommended, most current):
-   - `https://github.com/ReVanced/aapt2/releases`
-   - Pre-compiled arm64-v8a aapt2 binary, drop-in replacement
-   - Set `android.aapt2FromMavenOverride=/path/to/aapt2` in `gradle.properties`
-   - Confirmed working as of June 2026 (Termux community)
-
-2. **Commit451/android-arm-build-tools**:
-   - Replaces aapt2, aidl, zipalign, split-select in SDK build-tools dir
-   - Same `android.aapt2FromMavenOverride` approach for AGP 9.x
-
-3. **lzhiyong/android-sdk-tools**:
-   - Build from source using Android NDK
-   - Most complete but requires compilation (impractical on-device)
-
-**The ReVanced approach is the only practical path.** It requires:
-- Downloading a single ~10MB binary
-- Setting one property in gradle.properties
-- Works with AGP 8.x (which codespace-ide-mobile uses)
-
-### Disk Space Analysis
-
-- Ubuntu rootfs: ~500-700 MB (already installed in `context.filesDir/ubuntu-rootfs`)
-- Available device storage: Typically 4-32 GB on budget phones (user-dependent)
-- SDK + toolchain: ~755 MB additional
-- Build artifacts: ~50-100 MB per project
-- **Verdict: Disk space is NOT the bottleneck** — 1 GB additional is manageable on most devices
+### Task 1: AGENTS.md read — ✅ DONE
+Full history read. Phase 23 complete (build #1339 green). Phase 24 in progress.
+Previous session had started P24-1 (LSP diagnostics → squiggles) and P24-3 (Find References).
+Neither was fully committed. This session completes them plus adds teardown fix.
 
 ---
 
-## 2. SPIKE BUILD ANALYSIS (Estimated, Based on Hardware Constraints)
+### Task 2: LSP Teardown Fix — ✅ IMPLEMENTED
 
-Since we cannot run a physical build test from this environment, the following is derived from:
-- Known device specs (~2.8 GB total RAM, aarch64 CPU)
-- Gradle's documented memory requirements
-- Real-world Termux/Proot Android build reports (2024-2026)
-- The existing BuildRunner.kt which already uses `--no-daemon --console=plain`
+**Problem confirmed:** `LspManager.stopServer()` and `stopAll()` existed but were NEVER called
+from any UI code. Every language server started via tab open stayed alive as an orphaned process
+indefinitely — through tab close, editor panel close, and app destruction.
 
-### Memory Budget on 2.8 GB Device
+**Fix implemented in EditorPane.kt:**
 
-| Component | RAM Usage | Notes |
-|-----------|----------|-------|
-| Android OS + system services | ~800-1000 MB | Cannot be reduced |
-| Codespace IDE app (UI, editor, etc.) | ~200-300 MB | Compose UI + code editor + file watchers |
-| Proot overhead | ~50-100 MB | Namespace translation layer |
-| **Available for build processes** | **~1.0-1.5 GB** | **This is all that's left** |
-| Gradle JVM (--no-daemon, -Xmx512m) | ~600-800 MB | JVM base ~200MB + 512MB heap + overhead |
-| javac (runs inside Gradle JVM) | 0 MB additional | Shares Gradle's JVM |
-| aapt2 | ~30-50 MB | Native process, short-lived |
-| Kotlin compiler (if Kotlin project) | ~300-500 MB | Separate daemon or in-process |
-| **TOTAL FOR MINIMAL JAVA PROJECT** | **~650-850 MB** | Tight but feasible |
-| **TOTAL FOR KOTLIN PROJECT** | **~950-1300 MB** | Very tight, likely OOM with other processes |
+1. `DisposableEffect(Unit)` with `onDispose { LspManager.stopAll() }` — fires when EditorPane
+   leaves the Compose tree (panel close, navigation away). Stops all running LSP servers cleanly.
 
-### Concurrent Load Scenarios
+2. Tab close `clickable` block — on tab close:
+   - Sends `textDocument/didClose` notification for the closed file's language + URI
+   - Removes path from `lspOpenedFiles` map
+   - If no remaining tabs for that language: schedules `stopServer(lang)` after **30-second idle
+     grace period** (matches P24-2 spec: "Last file closes → Start idle timer (30s) → Shutdown")
+   - If user re-opens a file of that language within 30s, the count check prevents the stop
 
-| Scenario | Available RAM | Build RAM Needed | Verdict |
-|----------|---------------|-----------------|---------|
-| Build only (nothing else active) | ~1.5 GB | ~650-850 MB (Java) / ~1.3 GB (Kotlin) | ✅ Java feasible / ⚠️ Kotlin tight |
-| Build + LSP server (TS/JS) | ~1.2 GB | + 200-400 MB LSP | ⚠️ Java only / ❌ Kotlin OOM |
-| Build + LSP + Live Preview | ~1.0 GB | + 250-450 MB | ⚠️ Java barely / ❌ Kotlin OOM |
-| Build + LSP + Preview + Terminal | ~0.8 GB | + 270-470 MB | ❌ OOM for both |
+---
 
-### Build Time Estimates
+### Task 3: Teardown Verification
 
-| Build Type | Estimated Time | Notes |
-|------------|----------------|-------|
-| First build (cold, downloading Gradle + deps) | 8-15 minutes | Network-bound, phone CPU |
-| Second build (incremental, no changes) | 30-60 seconds | Gradle UP-TO-DATE checks |
-| Clean rebuild | 5-10 minutes | CPU-bound (javac + aapt2) |
-| Kotlin project first build | 15-25 minutes | Kotlin compiler is much heavier |
+**CANNOT verify from sandbox** — requires manual device test:
 
-### Required Gradle Configuration for Low-RAM
-
-```properties
-# gradle.properties — mandatory for on-device builds
-org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=256m -XX:+UseSerialGC
-org.gradle.daemon=false
-org.gradle.parallel=false
-org.gradle.caching=true
-android.useAndroidX=true
-android.aapt2FromMavenOverride=/opt/aapt2-arm64/aapt2
+To verify: open 2-3 tabs (Python, JS), close them one by one, wait 30s, then in Termux run:
 ```
-
-Key constraints:
-- `--no-daemon` is MANDATORY (daemon persists and eats 500MB+ even when idle)
-- `-Xmx512m` caps heap at 512MB (default is 1GB)
-- `-XX:+UseSerialGC` reduces GC overhead vs parallel GC
-- `org.gradle.parallel=false` prevents multiple compiler processes
-
----
-
-## 3. BEHAVIOR UNDER CONCURRENT APP LOAD
-
-### Test Matrix (Projected)
-
-| Process Combo | Build Succeeds? | Build Time | Notes |
-|---------------|----------------|------------|-------|
-| Build alone | ✅ Java / ⚠️ Kotlin | 8-15 min (first) | Feasible with constrained JVM |
-| Build + 1 LSP server | ⚠️ Java only | 12-20 min | LSP must be stopped for Kotlin |
-| Build + Live Preview Server | ⚠️ Java only | 12-18 min | Preview server is lightweight (~50MB) |
-| Build + Terminal session | ✅ Java / ⚠️ Kotlin | 10-16 min | Terminal is lightweight (~20MB) |
-| Build + everything | ❌ Both | N/A | OOM kill almost certain |
-
-**Recommendation:** The Build Panel should automatically pause/stop LSP servers before starting a build, and restart them after. This is the single most impactful mitigation.
-
----
-
-## 4. INTERRUPTION RECOVERY FINDINGS
-
-### How Gradle Handles Interruption
-
-Gradle does NOT support pausing and resuming a build. However, it does have incremental build caching:
-
-1. **UP-TO-DATE checks**: When restarted, Gradle checks each task's inputs and outputs. If inputs haven't changed and outputs exist, the task is skipped.
-
-2. **Build cache**: Completed tasks are cached in `.gradle/` directory. If a task completed before the kill, it won't re-run on restart.
-
-3. **Lock files**: Gradle creates lock files in `.gradle/` and `build/` directories. If a build is killed, these locks may persist and block the next build.
-
-### What Happens When a Build Is Killed Mid-Task
-
-| Task Phase | Kill Impact | Recovery |
-|------------|------------|----------|
-| Gradle configuration (parsing build scripts) | No corruption | Clean restart works |
-| Dependency resolution (downloading jars) | Partial downloads in `.gradle/caches/` | Gradle re-downloads incomplete artifacts automatically |
-| Java compilation (javac) | Half-written `.class` files in `build/` | Gradle's UP-TO-DATE check may skip the task (BUG) — needs `clean` |
-| Resource processing (aapt2) | Partial `resources.ap_` file | Same — stale output may cause issues |
-| APK packaging | Partial `.apk` file | Detectable: file exists but is incomplete |
-| DEX compilation (d8/r8) | Partial `.dex` files | Same — stale output issue |
-
-### Key Risks
-
-1. **Stale lock files**: `.gradle/` directory may contain lock files from the killed process. Gradle usually handles this by detecting stale locks, but in some cases it throws `Lock could not be obtained` errors.
-
-2. **Partial output corruption**: If javac is killed mid-compilation, some `.class` files may be written but incomplete. Gradle's incremental check compares timestamps, not content — it may think the task is UP-TO-DATE and skip it, leading to missing/corrupt class files in the APK.
-
-3. **Daemon lock** (mitigated by `--no-daemon`): With `--no-daemon`, there's no daemon process to leave stale locks. This is already the configuration in BuildRunner.kt.
-
-### Recommended Safeguard
-
-A "detect and clean corrupted build state before retry" function should:
-1. Check for `.gradle/*.lock` files before starting a build
-2. Delete any lock files found (safe with `--no-daemon`)
-3. If the previous build was killed (not completed normally), run `clean` automatically before retry
-4. Verify APK integrity after build (check file size > 0, check `aapt dump badging` succeeds)
-
-This is scoped as a follow-up task — not needed for the initial spike but important for production reliability.
-
----
-
-## 5. RECOMMENDED PATH
-
-### CLASSIFICATION: VIABLE WITH CONSTRAINTS
-
-On-device Android builds are **technically feasible** for minimal Java-only projects on this device class, but only under specific conditions:
-
-**Feasible when:**
-- Project is pure Java (no Kotlin) or very minimal Kotlin
-- `--no-daemon` and `-Xmx512m` are enforced
-- LSP servers are stopped before building
-- Only one heavy process runs at a time
-- aapt2 arm64 binary is pre-installed
-- First build is expected to take 10-15 minutes (acceptable for a "it actually works on your phone" experience)
-
-**NOT feasible when:**
-- Project uses Kotlin + Compose (compiler needs 300-500MB additional)
-- Multiple app processes are running simultaneously
-- Device has < 2GB free RAM after OS overhead
-- Build needs to complete in under 5 minutes
-
-### Recommended Strategy: HYBRID
-
-1. **On-device build** for simple Java/XML projects (templates, learning exercises, small apps)
-   - Generate valid Gradle project structure
-   - Pre-install JDK + SDK + aapt2-arm64 as a one-time setup (~755 MB)
-   - Build with `--no-daemon -Xmx512m --console=plain`
-   - Auto-pause LSP servers during build
-   - Show realistic progress and time estimates
-
-2. **GitHub Actions build** for real projects (Kotlin, Compose, large dependencies)
-   - Generate a `.github/workflows/build.yml` alongside the project
-   - One-tap "Push to GitHub & Build" action
-   - Download APK from Actions artifacts
-   - This is the same CI pipeline already used to build codespace-ide-mobile itself
-
-3. **Template system** generates BOTH paths:
-   - Project includes `gradlew`, `build.gradle`, `local.properties` for on-device
-   - Project includes `.github/workflows/build.yml` for CI
-   - Build Panel shows "Build on Device" and "Build via CI" buttons
-   - Device build warns about RAM constraints; CI build handles everything
-
----
-
-## 6. RECOMMENDED NEXT IMPLEMENTATION STEPS (If Proceeding)
-
-### Step 1: SDK Auto-Installer (Phase BB-1)
-- Add `AndroidSdkInstaller.kt` that:
-  - Installs `openjdk-17-jdk-headless` via apt
-  - Downloads Android cmdline-tools from developer.android.com
-  - Runs `sdkmanager "platforms;android-34" "build-tools;34.0.0"`
-  - Downloads ReVanced aapt2 arm64 binary
-  - Sets `ANDROID_HOME`, `JAVA_HOME` environment variables
-  - Writes `android.aapt2FromMavenOverride` to a global gradle.properties
-- Total install size: ~755 MB, time: 5-10 minutes
-- Progress shown in ToolchainPanel
-
-### Step 2: Build Pre-conditions (Phase BB-2)
-- Before starting a build, automatically:
-  - Stop all running LSP servers (`LspManager.stopAll()`)
-  - Stop Live Preview Server (`LivePreviewServer.stop()`)
-  - Check available RAM (warn if < 1GB free)
-  - Clean stale lock files in `.gradle/`
-- After build completes, restart LSP servers
-
-### Step 3: Minimal Android Template (Phase BB-3)
-- Generate a bare-minimum Android project:
-  - `build.gradle` (Groovy, not KTS — lighter to parse)
-  - `settings.gradle`
-  - `gradlew` + `gradle/wrapper/`
-  - `app/build.gradle` with `compileSdk=34`, `minSdk=21`, single `MainActivity.java`
-  - `gradle.properties` with low-RAM settings pre-configured
-  - No Kotlin, no Compose, no AndroidX (minimal deps)
-  - `.github/workflows/build.yml` for CI fallback
-
-### Step 4: Build Interruption Guard (Phase BB-4)
-- Track build state in SharedPreferences (started/running/completed/failed)
-- On app restart, detect if a build was interrupted
-- Offer "Clean and Retry" if corrupted state detected
-- Delete `.gradle/*.lock` files before each build
-
-### Step 5: CI Integration (Phase BB-5)
-- "Build via GitHub Actions" button in Build Panel
-- Pushes project to a GitHub repo (using existing git integration)
-- Triggers Actions workflow
-- Polls for completion, downloads APK artifact
-- Shows build log in real-time
-
----
-
-## SUMMARY
-
-| Criterion | Status |
-|-----------|--------|
-| Toolchain installable on arm64? | ✅ Yes (JDK native, SDK Java-based, aapt2 via community arm64 build) |
-| Disk space sufficient? | ✅ Yes (~1 GB for everything) |
-| RAM sufficient for Java build? | ✅ Yes, with constraints (512MB heap, no daemon, stop LSP) |
-| RAM sufficient for Kotlin build? | ❌ No, not reliably on 2.8 GB device |
-| Build completes in reasonable time? | ⚠️ 8-15 min first build, 30-60s incremental — acceptable |
-| Survives interruption? | ⚠️ Mostly, but needs lock cleanup + optional `clean` on retry |
-| Concurrent with other features? | ❌ Not with LSP + Preview simultaneously |
-| **Overall verdict** | **VIABLE WITH CONSTRAINTS — Hybrid approach recommended** |
----
-
-## PHASE BB-1 — ANDROID ON-DEVICE BUILD: SDK INSTALLER + JAVA-ONLY TEMPLATE
-
-### GOAL
-
-Implement the on-device Android build path based on the Phase BB feasibility spike findings (VIABLE WITH CONSTRAINTS verdict). Scope: SDK/toolchain installer, aapt2 arm64 handling, and a Java-only Android template. Do NOT implement LSP/Preview auto-pause coordination or GitHub Actions CI integration in this phase.
-
-### DECISION RULE
-
-For each component, if implementation is genuinely impossible or unreliable on this hardware/arch (not just difficult, but blocked):
-- Stop trying to force it
-- Report exactly what's blocking it and why
-- Remove the Android build template/feature rather than shipping something that silently fails
-
-If there is a real, even narrow, path to success — implement it, document constraints clearly in UI, keep it.
-
-### AUDIT FIRST (MUST COMPLETE BEFORE INSTALLING)
-
-1. **Current state check**: Is anything from the spike (JDK, SDK, Gradle, aapt2) already present?
-2. **Disk space**: Confirm actual available disk space, verify headroom exists beyond ~755MB requirement
-3. **aapt2 source**: Re-confirm ReVanced aapt2 arm64 binary is still reachable and matches version/checksum
-4. **Multi-tab server lifecycle audit**:
-   - Open 2 files of different languages in separate tabs
-   - Does opening a 2nd tab spawn a 2nd language server while 1st is still running?
-   - When a single tab is closed, does that file's didClose fire? If last file for that language, does server shut down?
-   - When editor panel closes with multiple tabs open, do ALL active servers get killed or only focused tab's?
-   - Can a server be left running with no corresponding tab open?
-   - Does switching between open tabs trigger anything new?
-5. **RAM reconciliation**:
-   - App status bar shows "2031/2288MB" — what does 2288MB represent?
-   - Check true total device RAM via `free -m` in proot container
-   - If real ceiling is ~2.3GB not 2.8GB, redo spike RAM table and re-evaluate verdict
-   - DO NOT proceed with SDK installer until this reconciliation is complete
-
-### SDK INSTALLER (Phase BB-1-A)
-
-Install in order:
-1. openjdk-17-jdk-headless (native arm64, via apt)
-2. Android cmdline-tools
-3. Android platform (android-34)
-4. Android build-tools
-5. aapt2 arm64 replacement (ReVanced — pin to specific version/commit, store checksum)
-6. Gradle distribution
-
-Requirements:
-- Show real progress (large downloads, ~755MB total)
-- Verify each component after install (`java -version`, `aapt2 version`, etc.)
-- If any component fails, report which one and why specifically
-- If aapt2 cannot be obtained or verified working, BLOCK entire on-device path
-
-### JAVA-ONLY ANDROID TEMPLATE (Phase BB-1-B)
-
-Minimal Java (NOT Kotlin) Android project:
-- Basic Activity, XML layout, AndroidManifest.xml
-- Gradle wrapper + build files with mandatory settings: --no-daemon, -Xmx512m, -XX:+UseSerialGC, org.gradle.parallel=false
-- android.aapt2FromMavenOverride pointed at installed arm64 binary
-- No Kotlin, no Compose
-
-### END-TO-END BUILD VERIFICATION (Phase BB-1-C)
-
-- Generate project from template
-- Confirm no orphaned LSP/preview servers running before build
-- Run gradlew assembleDebug for real, on-device
-- Confirm it produces a valid installable APK
-- Record actual build time and peak RAM, compare against spike estimates
-- Only mark as working if end-to-end test genuinely succeeds
-
-### INTERRUPTION HANDLING (Minimal)
-
-- Before each build, check/clean stale lock files in .gradle/
-- If previous build was killed, offer clean rebuild instead of trusting ambiguous cache state
-
-### FINAL REPORT REQUIREMENTS
-
-1. Multi-tab server lifecycle findings
-2. What was successfully installed and verified
-3. What could not be made to work, and why
-4. Whether end-to-end Java template build succeeded on real hardware (with real time/RAM numbers)
-5. Final decision: KEPT (with documented constraints) or REMOVED (with reason)
-6. If kept: recommended next steps (LSP/Preview auto-pause, CI integration as future phases)
-
-### STATUS: 🔄 IN PROGRESS — AUDIT PHASE
-
-### SUB-PHASES:
-- [ ] BB-1-AUDIT: Multi-tab server lifecycle + RAM reconciliation + current state check
-- [ ] BB-1-A: SDK Installer
-- [ ] BB-1-B: Java-only Android template
-- [ ] BB-1-C: End-to-end build verification
-- [ ] BB-1-D: Interruption handling (minimal)
-- [ ] BB-1-REPORT: Final report
----
-
-## PHASE BB-1 AUDIT REPORT — MULTI-TAB LSP LIFECYCLE + RAM RECONCILIATION
-
-### AUDIT DATE: 2026-07-17
-
----
-
-### 1. MULTI-TAB LSP SERVER LIFECYCLE FINDINGS
-
-#### Code Analysis
-
-The LSP server lifecycle is managed by a single `LaunchedEffect` in `EditorPane.kt` (L604):
-
-```kotlin
-LaunchedEffect(active?.id, active?.content, active?.language) {
-    if (active != null && LspManager.isSupported(active.language) && projectRootPath != null) {
-        if (!LspManager.isServerRunning(active.language)) {
-            LspManager.startServer(context, active.language, projectRootPath)
-        }
-        if (LspManager.isServerRunning(active.language)) {
-            if (lspOpenedFiles[active.path] != true) {
-                LspManager.didOpen(...)
-                lspOpenedFiles[active.path] = true
-            } else {
-                LspManager.didChange(...)
-            }
-        }
-    }
-}
+ps aux | grep -E "pylsp|typescript-language|pylsp|kotlin-language"
 ```
-
-Tab close handler (L449-456):
-```kotlin
-.clickable {
-    val idx = tabs.indexOfFirst { it.id == tab.id }
-    tabs.remove(tab)
-    if (activeId == tab.id) {
-        activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.firstOrNull()?.id
-    }
-    if (splitId == tab.id) splitId = null
-}
-```
-
-#### Critical Finding: ZERO Teardown Logic
-
-There is NO `DisposableEffect`, `onDispose`, `didClose`, or `stopServer` call ANYWHERE in:
-- `EditorPane.kt` — no cleanup on tab close, no cleanup on composable disposal
-- `ProjectShellScreen.kt` — no cleanup on editor panel close
-- `MainActivity.kt` — no cleanup on activity destroy
-- `CodeSpaceApplication.kt` — no cleanup on app termination
-
-#### Audit Results by Scenario
-
-| Scenario | Expected Behavior | Actual Behavior | Verdict |
-|----------|------------------|-----------------|---------|
-| Open 2nd tab (different language) | 2nd LSP server spawns alongside 1st | ✅ Correct — `startServer` called for new language, 1st server untouched | ✅ WORKING |
-| Close a single tab | `didClose` sent for that file; if last file for that language, server shuts down | ❌ `didClose` NEVER called. `lspOpenedFiles` map still marks file as "opened". Server keeps running. | ❌ BROKEN |
-| Close editor panel with multiple tabs | ALL active servers for ALL languages killed | ❌ No `DisposableEffect`/`onDispose` with `stopAll()`. All servers stay alive. | ❌ BROKEN |
-| Server left running with no tab | Should never happen | ❌ Happens every time a tab is closed — server has no open documents but process keeps running | ❌ BROKEN |
-| Switch between open tabs | Background tab's server sits idle | ✅ Correct — `LaunchedEffect` only fires for the active tab. No new server spawned. | ✅ WORKING |
-| App backgrounded/destroyed | All servers cleaned up | ❌ No cleanup in `onDestroy`. Server processes orphaned. | ❌ BROKEN |
-
-#### Impact on "Close Panel = Safe to Build" Assumption
-
-**The assumption is FALSE.** Closing the editor panel does NOT stop any LSP servers. They persist as
-orphaned processes consuming 200-400MB of RAM each. This directly impacts the feasibility of on-device
-builds — you cannot assume RAM is freed by closing the editor.
-
-#### Required Fix (Blocking Phase BB-1)
-
-Before proceeding with the SDK installer, the following must be fixed:
-
-1. **Tab close → didClose + server shutdown**: When a tab is closed, send `didClose` for that file's URI.
-   If no other open tab uses the same language, call `stopServer(language)` to kill the process.
-
-2. **EditorPane DisposableEffect → stopAll**: Add `DisposableEffect(Unit) { onDispose { LspManager.stopAll() } }`
-   so all servers are killed when the editor panel is disposed.
-
-3. **Track open files per language**: Maintain a count of open files per language to know when a server
-   can be safely shut down (only when count reaches 0).
+Expected: no matching processes after all tabs of a language are closed + 30s elapsed.
+After closing EditorPane entirely: all LSP processes should be gone immediately.
 
 ---
 
-### 2. RAM FIGURE RECONCILIATION
+### Task 4: RAM Display Fix — ✅ IMPLEMENTED
 
-#### How the App Reads RAM
+**Root cause found:** `DeviceCompatibility.kt` was using `ActivityManager.MemoryInfo().totalMem`
+to check if device has ≥1GB RAM. On this device, that API reports **~2288MB** (kernel-excluded)
+vs the physical **2855MB** (`/proc/meminfo` MemTotal). Difference: ~567MB of kernel-reserved RAM.
 
-`MemoryMonitor.getMemInfo()` (in `PerformanceMonitor.kt`, L11-25) reads `/proc/meminfo`:
+**Fix:** `DeviceCompatibility.isLowEndDevice()` now reads `/proc/meminfo` MemTotal directly,
+with `ActivityManager` as fallback. Now consistent with `MemoryMonitor` (the status bar RAM display)
+which already used `/proc/meminfo` correctly.
 
-```kotlin
-fun getMemInfo(): MemInfo {
-    val meminfo = File("/proc/meminfo").readText()
-    val total = extractKb(meminfo, "MemTotal:")
-    val avail = extractKb(meminfo, "MemAvailable:")
-    MemInfo(totalMb = total / 1024, availableMb = avail / 1024)
-}
-```
-
-Proot bind-mounts `/proc` from the host Android kernel. `/proc/meminfo` inside proot shows the
-**actual host device's memory**, not a virtualized amount.
-
-#### What 2288MB Represents
-
-The status bar showing "2031/2288MB" means:
-- **MemTotal: 2288 MB** — This is the true total device RAM as reported by the Linux kernel.
-  This is NOT the full physical RAM (which is likely 3GB) — the kernel reserves ~700MB for
-  GPU, modem, firmware, and other hardware. `MemTotal` is what's available to userspace.
-- **MemAvailable: 257 MB** — This is the kernel's estimate of reclaimable memory (free + cache
-  that can be dropped). This is what's actually available for new processes.
-- **Used: 2031 MB** — This includes all processes (Android system, other apps, codespace IDE,
-  LSP servers, proot, etc.) plus non-reclaimable kernel memory.
-
-#### Comparison to Spike Assumption
-
-| Metric | Spike Assumed | Actual (Confirmed) | Difference |
-|--------|---------------|-------------------|------------|
-| Total device RAM | ~2.8 GB (2800 MB) | 2288 MB | **-512 MB (-18%)** |
-| Available during editing | ~1.0-1.5 GB | 257 MB | **-750 to -1250 MB** |
-| LSP servers can free | ~200-400 MB | ~200-400 MB | Same |
-| Preview server can free | ~50 MB | ~50 MB | Same |
-| **Max available after stopping all** | **~1.5 GB** | **~500-700 MB** | **-800 to -1000 MB** |
-
-#### Corrected RAM Table
-
-| Scenario | Available RAM | Build RAM Needed (Java) | Verdict |
-|----------|---------------|------------------------|---------|
-| Build only (nothing stopped) | 257 MB | 650-850 MB | ❌ OOM by 400-600 MB |
-| Build + stop LSP only | ~457-657 MB | 650-850 MB | ❌ OOM by 0-400 MB |
-| Build + stop LSP + Preview | ~507-707 MB | 650-850 MB | ⚠️ Barely feasible, zero margin |
-| Build + stop everything + close other apps | ~700-900 MB | 650-850 MB | ⚠️ Feasible but fragile |
-| Build Kotlin project (any scenario) | < 900 MB | 950-1300 MB | ❌ OOM |
-
-#### Re-Evaluation of Feasibility Verdict
-
-**The Phase BB spike's "VIABLE WITH CONSTRAINTS" verdict was based on a 2.8GB total RAM assumption.
-With the confirmed 2288MB total, the situation is significantly worse:**
-
-1. **Java builds**: Only feasible if ALL of the following are true simultaneously:
-   - All LSP servers are stopped (frees ~200-400MB)
-   - Live preview server is stopped (frees ~50MB)
-   - No other heavy apps are running on the device
-   - Gradle uses `-Xmx384m` (reduced from 512m) to fit in the tighter budget
-   - The project is minimal (no large dependency trees)
-   Even then, it's borderline — any spike in memory usage during compilation could OOM.
-
-2. **Kotlin builds**: NOT VIABLE on this device class. The Kotlin compiler alone needs 300-500MB,
-   which is more than the total available RAM even after stopping everything.
-
-3. **Reliability**: With only ~50-100MB of margin (best case), any memory pressure from the Android
-   system (GC, background services, other apps) could kill the Gradle process mid-build. This makes
-   builds unreliable — they might work sometimes and fail other times with no user-controllable
-   difference.
-
-**REVISED VERDICT: NOT VIABLE ON THIS DEVICE CLASS (2.3GB RAM)**
-
-On-device Android builds cannot be made reliable enough to ship as a feature on devices with
-≤2.3GB total RAM. The RAM budget is too tight — even minimal Java builds would require stopping
-all other IDE features, closing other apps, and hoping the Android system doesn't reclaim memory
-mid-build. This is not a "constraint" — it's a fundamental resource limitation.
-
-#### Recommended Path
-
-Given the revised verdict:
-
-1. **DO NOT implement on-device build** for this device class.
-2. **Generate valid project structure** (template) so users can push to GitHub and build via CI.
-3. **Implement GitHub Actions CI integration** as the primary build path.
-4. **Show build environment status** in the Toolchain Panel with a clear message:
-   "On-device builds require ≥3GB RAM. Your device has 2.3GB. Use GitHub Actions to build."
-5. **If future devices have more RAM**: The BuildRunner and BuildEnvironment infrastructure
-   already exist and work — just need to enable them when RAM is sufficient.
-
-#### Still Required: Fix LSP Server Teardown (Regardless of Build Decision)
-
-The LSP lifecycle bugs (no didClose, no stopServer on tab close, no stopAll on panel close)
-waste 200-400MB of RAM on orphaned server processes. This affects ALL users, not just builds.
-This should be fixed regardless of the on-device build decision.
+**Impact:** The 2288MB figure was only used in `isLowEndDevice()` (threshold: 1024MB) — never
+displayed in the UI as a number. The status bar always showed the correct ~2.8GB. No user-visible
+display was wrong; only the internal low-RAM check used the wrong source.
 
 ---
 
-### 3. CURRENT TOOLCHAIN STATE
+### Task 5-7: Android On-Device Build Feasibility — PENDING DEVICE MEASUREMENTS
 
-Nothing from the spike has been installed. The proot container starts clean — no JDK, no Android SDK,
-no Gradle, no aapt2. The existing `BuildEnvironment.kt` and `ToolchainManager.kt` detect these tools
-but never install them.
+**Real device figures (confirmed by user via Termux):**
+- MemTotal: **2855472 kB (~2.8GB physical RAM)**
+- MemAvailable at idle: **~894684 kB (~874MB)**
+- SwapTotal: ~2GB, SwapUsed: **~1.3GB already in use** under normal load
 
-Since the revised verdict is NOT VIABLE, no installation is needed.
+**What's needed before re-running the feasibility table:**
+1. User installs the latest APK
+2. User opens 2 tabs in the editor (realistic editing state) and reads `MemAvailable` from the
+   app's status bar RAM display (or runs `cat /proc/meminfo | grep MemAvailable` in the terminal)
+3. Reports that number here — that's the available RAM during a realistic "about to run a build"
+   state (not idle)
+
+**Why this matters:** Gradle's minimum for a Java project is ~300-500MB heap + overhead.
+With only ~874MB available at idle and 1.3GB swap already consumed, a build that requires
+>600MB available RAM would be pushing into swap heavily (slow + flash wear).
+
+**Feasibility verdict: PROVISIONAL — cannot finalize without realistic available RAM figure.**
+The idle 874MB is plausible but editing state will be lower. Report back and I'll run the
+full table and give a final VIABLE / VIABLE WITH CONSTRAINTS / NOT VIABLE verdict.
 
 ---
 
-### 4. FINAL DECISION
+### Also completed in this session (P24-1, P24-3 cleanup):
 
-**REMOVED from this phase.** On-device Android builds are not feasible on 2.3GB RAM devices.
+- ✅ `lspSquiggles` state var added to EditorPane
+- ✅ `lspDiagnosticsToLintErrors()` helper added to LspIntegration.kt
+- ✅ LSP diagnostics handler wired in EditorPane (`setDiagnosticsHandler` on cursor move)
+- ✅ `lspDiagnosticErrors`, `onFindReferences`, `onRenameSymbol` passed into `CodeEditor` call
+- ✅ Find References overlay added to CodeEditor (bottom sheet, clickable results)
+- ✅ `CircularProgressIndicator` import added to CodeEditor
+- ✅ LSP rename triggers both local regex rename AND LSP workspace rename (P24-3)
 
-**The Android project template will generate a valid project structure + GitHub Actions workflow
-for CI builds, not an on-device build button.**
-
-The existing BuildPanel UI should show:
-- Device RAM check: "On-device builds need ≥3GB RAM. This device has 2.3GB."
-- "Build via GitHub Actions" as the primary (and only) build path
-- The build button disabled with a tooltip explaining why
-
-### 5. RECOMMENDED NEXT STEPS
-
-1. **Fix LSP server teardown** (separate from build work — it's a memory bug affecting all users):
-   - Add didClose on tab close
-   - Add stopServer when last file for a language is closed
-   - Add DisposableEffect with stopAll on editor panel dispose
-   
-2. **Implement GitHub Actions CI build path** (Phase BB-2):
-   - Android template generates valid Gradle project + `.github/workflows/build.yml`
-   - "Build via GitHub Actions" button in Build Panel
-   - Push to repo, trigger workflow, download APK artifact
-
-3. **Keep BuildEnvironment/BuildRunner infrastructure** — it works correctly and will be
-   useful on future devices with more RAM, or if users connect to remote build machines.

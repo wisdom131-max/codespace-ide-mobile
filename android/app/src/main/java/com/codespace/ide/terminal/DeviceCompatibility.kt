@@ -11,12 +11,24 @@ class DeviceCompatibility(private val context: Context) {
     fun isLowEndDevice(): Boolean {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
 
-        // Use actual total RAM (not per-app memoryClass which is often 128–256MB
-        // even on high-end devices and causes Ubuntu to be hidden incorrectly)
-        val memInfo = ActivityManager.MemoryInfo()
-        activityManager?.getMemoryInfo(memInfo)
-        val totalRamMb = (memInfo.totalMem / (1024 * 1024)).toInt()
-        val lowRam = totalRamMb < 1024  // require at least 1GB actual RAM
+        // Read physical RAM from /proc/meminfo (MemTotal) — more accurate than
+        // ActivityManager.totalMem which excludes kernel-reserved memory and can
+        // report ~2288MB on a 2855MB device (difference: ~567MB kernel overhead).
+        val totalRamMb = try {
+            val line = java.io.File("/proc/meminfo").readLines()
+                .firstOrNull { it.startsWith("MemTotal:") } ?: ""
+            line.filter { it.isDigit() }.toIntOrNull()?.let { it / 1024 } ?: run {
+                // Fallback to ActivityManager if /proc/meminfo unavailable
+                val memInfo = ActivityManager.MemoryInfo()
+                activityManager?.getMemoryInfo(memInfo)
+                (memInfo.totalMem / (1024 * 1024)).toInt()
+            }
+        } catch (_: Exception) {
+            val memInfo = ActivityManager.MemoryInfo()
+            activityManager?.getMemoryInfo(memInfo)
+            (memInfo.totalMem / (1024 * 1024)).toInt()
+        }
+        val lowRam = totalRamMb < 1024  // require at least 1GB physical RAM
 
         val storageFreeBytes = try {
             StatFs(context.filesDir.absolutePath).availableBytes

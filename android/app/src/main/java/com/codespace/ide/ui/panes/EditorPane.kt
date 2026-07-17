@@ -15,13 +15,13 @@ import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.DisposableEffect
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,15 +38,13 @@ import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
-import com.codespace.ide.lsp.parseCodeActions
+import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
 import com.codespace.ide.data.SessionStateStore
 import androidx.compose.foundation.lazy.items
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -129,10 +127,22 @@ fun EditorPane(
     var formatting by remember { mutableStateOf(false) }
     // P22-G: LSP diagnostics + hover
     val lspOpenedFiles = remember { mutableStateMapOf<String, Boolean>() }
+
+    // P24-2: LSP server teardown — stop all servers when EditorPane leaves composition
+    DisposableEffect(Unit) {
+        onDispose {
+            // stopAll sends LSP shutdown + exit to every running server, killing their processes.
+            // No need to individually didClose each file — shutdown covers it.
+            try { LspManager.stopAll() } catch (_: Exception) {}
+            lspOpenedFiles.clear()
+        }
+    }
     var lspCursorLine by remember { mutableStateOf(0) }
     var lspCursorCol by remember { mutableStateOf(0) }
     var showLspHover by remember { mutableStateOf(false) }
     var lspHoverContent by remember { mutableStateOf<String?>(null) }
+    // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
+    var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -423,14 +433,6 @@ fun EditorPane(
                             Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            // P24: File type icon in tab
-                            Icon(
-                                com.codespace.ide.ui.panes.fileIcon(tab.name),
-                                null,
-                                tint = com.codespace.ide.ui.panes.fileIconColor(tab.name),
-                                modifier = Modifier.size(12.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
                             Text(
                                 (if (tab.isDirty) "● " else "") + tab.name,
                                 fontSize = 11.sp,
@@ -448,11 +450,30 @@ fun EditorPane(
                                     .size(14.dp)
                                     .clickable {
                                         val idx = tabs.indexOfFirst { it.id == tab.id }
+                                        // P24-2: LSP didClose before removing tab
+                                        val closedPath = tab.path
+                                        val closedLang = tab.language
+                                        val closedUri = "file://$closedPath"
+                                        if (lspOpenedFiles[closedPath] == true && LspManager.isServerRunning(closedLang)) {
+                                            try { LspManager.didClose(closedLang, closedUri) } catch (_: Exception) {}
+                                            lspOpenedFiles.remove(closedPath)
+                                        }
                                         tabs.remove(tab)
                                         if (activeId == tab.id) {
                                             activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.firstOrNull()?.id
                                         }
                                         if (splitId == tab.id) splitId = null
+                                        // P24-2: Stop server if no more files open for this language (30s grace)
+                                        val remainingForLang = tabs.count { it.language == closedLang }
+                                        if (remainingForLang == 0 && LspManager.isServerRunning(closedLang)) {
+                                            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                kotlinx.coroutines.delay(30_000) // 30s idle grace period
+                                                val stillZero = tabs.count { it.language == closedLang } == 0
+                                                if (stillZero) {
+                                                    try { LspManager.stopServer(closedLang) } catch (_: Exception) {}
+                                                }
+                                            }
+                                        }
                                     },
                             )
                         }
@@ -568,7 +589,7 @@ fun EditorPane(
                         .background(Color(0xFF252526)),
                 ) {
                     items(allBookmarks) { (filePath, lineIdx) ->
-                        val _fileName = java.io.File(filePath).name
+                        val fileName = java.io.File(filePath).name
                         val lineContent = try {
                             java.io.File(filePath).readLines().getOrElse(lineIdx) { "" }.trim()
                         } catch (_: Exception) { "" }
@@ -625,6 +646,19 @@ fun EditorPane(
         }
         // P22-G: LSP hover on cursor position change (debounced)
         LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
+            // P24-1: Subscribe to LSP diagnostics → squiggles
+            if (active != null && LspManager.isSupported(active.language)) {
+                val lang = active.language
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    LspManager.setDiagnosticsHandler(lang) { diagUri, diags ->
+                        if (diagUri == uri) {
+                            lspSquiggles = lspDiagnosticsToLintErrors(diags, active.content)
+                        }
+                    }
+                }
+            }
+
             if (showLspHover && active != null && LspManager.isServerRunning(active.language)) {
                 delay(300)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
@@ -645,49 +679,7 @@ fun EditorPane(
                 val scopeKeywords = listOf("fun ", "class ", "object ", "interface ", "enum ", "@Composable", "if ", "when ", "for ", "while ", "struct ", "impl ", "fn ", "def ", "func ")
                 (scrollToLine - 1 downTo 0)
                     .map { i -> lines.getOrNull(i)?.trim() }
-                    .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line.contains(kw) } }
-            }
-        }
-
-        // P24: Auto-save indicator state
-        val scope = rememberCoroutineScope()
-        var showSavedIndicator by remember { mutableStateOf(false) }
-        var savedIndicatorJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-
-        // P24: Breadcrumbs — file path hierarchy above editor
-        if (active != null) {
-            val pathParts = active.path.split("/").filter { it.isNotBlank() }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1E1E1E).copy(alpha = 0.6f))
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                pathParts.forEachIndexed { idx, part ->
-                    if (idx > 0) {
-                        Text(" > ", fontSize = 10.sp, color = Color(0xFF6B6B6B), fontFamily = FontFamily.Monospace)
-                    }
-                    val isLast = idx == pathParts.lastIndex
-                    Text(
-                        text = part,
-                        fontSize = 10.sp,
-                        color = if (isLast) Color(0xFFE0E0E0) else Color(0xFF888888),
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // P24: Auto-save indicator
-                if (showSavedIndicator) {
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "Saved",
-                        fontSize = 9.sp,
-                        color = Color(0xFF4EC9B0),
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
+                    .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line!!.contains(kw) } }
             }
         }
 
@@ -696,7 +688,7 @@ fun EditorPane(
             if (splitTab != null) {
                 Row(Modifier.fillMaxSize()) {
                     // P20-A: Fetch git blame data
-                    if (showBlame) {
+                    if (showBlame && active != null) {
                         val blamePath = active.path
                         LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
@@ -726,7 +718,7 @@ fun EditorPane(
                         }
                     }
                     // P20-A: Fetch git blame data
-                    if (showBlame) {
+                    if (showBlame && active != null) {
                         val blamePath = active.path
                         LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
@@ -848,20 +840,6 @@ fun EditorPane(
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
                             if (active.path.startsWith("/")) {
                                 try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
-                                // PhaseX: Push live reload to preview WebViews for web file types
-                                val ext = active.path.substringAfterLast('.', "").lowercase()
-                                if (ext == "html" || ext == "htm" || ext == "css" || ext == "js" || ext == "mjs") {
-                                    com.codespace.ide.preview.LivePreviewServer.reload()
-                                }
-                            }
-                            // P24: Show "Saved" indicator briefly + clear dirty flag
-                            showSavedIndicator = true
-                            savedIndicatorJob?.cancel()
-                            savedIndicatorJob = scope.launch {
-                                delay(2000)
-                                showSavedIndicator = false
-                                val idx2 = tabs.indexOfFirst { it.id == active.id }
-                                if (idx2 >= 0) tabs[idx2] = tabs[idx2].copy(isDirty = false)
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
@@ -875,7 +853,7 @@ fun EditorPane(
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
-                        onOpenFileAtLine = { filePath, _ ->
+                        onOpenFileAtLine = { filePath, line ->
                             val file = java.io.File(filePath)
                             if (tabs.none { it.path == filePath }) {
                                 tabs.add(EditorTab(
@@ -929,15 +907,40 @@ fun EditorPane(
                                 } else emptyList()
                             }
                         } else null,
-                        // P24: Quick fixes — LSP code actions for the current line
-                        lspCodeActionProvider = if (LspManager.isServerRunning(active.language)) {
-                            { line ->
+                        // P24-1: Pass LSP diagnostic squiggles to editor
+                        lspDiagnosticErrors = lspSquiggles,
+                        // P24-3: Find References via LSP
+                        onFindReferences = if (LspManager.isServerRunning(active.language)) {
+                            { word ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
-                                    val col = 0
-                                    val actions = LspManager.getCodeActions(active.language, uri, line, col)
-                                    actions?.let { parseCodeActions(it) } ?: emptyList()
+                                    val refs = try {
+                                        LspManager.getReferences(active.language, uri, lspCursorLine, lspCursorCol)
+                                    } catch (_: Exception) { null }
+                                    refs?.let { arr ->
+                                        (0 until arr.length()).mapNotNull { i ->
+                                            val loc = arr.optJSONObject(i) ?: return@mapNotNull null
+                                            val refUri = loc.optString("uri", "")
+                                            val refPath = if (refUri.startsWith("file://")) refUri.removePrefix("file://") else refUri
+                                            val line = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            val snippet = try { java.io.File(refPath).readLines().getOrElse(line) { "" } } catch (_: Exception) { "" }
+                                            Triple(refPath, line, snippet)
+                                        }
+                                    } ?: emptyList()
                                 } else emptyList()
+                            }
+                        } else null,
+                        // P24-3: Rename Symbol — triggers LSP workspace rename after regex rename
+                        onRenameSymbol = if (LspManager.isServerRunning(active.language)) {
+                            { word, newName ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        try {
+                                            LspManager.rename(active.language, uri, lspCursorLine, lspCursorCol, newName)
+                                        } catch (_: Exception) {}
+                                    }
+                                }
                             }
                         } else null,
                     )

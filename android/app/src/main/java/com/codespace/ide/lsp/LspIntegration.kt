@@ -1,5 +1,7 @@
 package com.codespace.ide.lsp
 
+import com.codespace.ide.editor.LintError
+
 import com.codespace.ide.diagnostics.Problem
 import org.json.JSONArray
 import org.json.JSONObject
@@ -167,31 +169,32 @@ fun applyImportEdits(content: String, edits: List<ImportEdit>): String {
     return lines.joinToString("\n")
 }
 
-
 /**
- * P24: Quick fix / Code action from LSP.
- * Represents a single code action that can be applied to fix a diagnostic.
+ * P24-1: Convert LSP publishDiagnostics JSONArray to LintError list for editor squiggles.
+ * Maps LSP line/character positions to character offsets in the file content string.
  */
-data class LspCodeAction(
-    val title: String,
-    val kind: String?,       // e.g. "quickfix", "refactor", "source.organizeImports"
-    val edit: String?,       // JSON string of WorkspaceEdit, or null if it's a Command
-    val isPreferred: Boolean,
-)
+fun lspDiagnosticsToLintErrors(diagnostics: JSONArray, fileContent: String): List<LintError> {
+    val lines = fileContent.split("\n")
+    // Pre-compute line start offsets
+    val lineOffsets = IntArray(lines.size + 1)
+    for (i in lines.indices) {
+        lineOffsets[i + 1] = lineOffsets[i] + lines[i].length + 1 // +1 for \n
+    }
 
-/**
- * P24: Parse LSP code actions into LspCodeAction list.
- */
-fun parseCodeActions(actions: JSONArray): List<LspCodeAction> {
-    val result = mutableListOf<LspCodeAction>()
-    for (i in 0 until actions.length()) {
-        val action = actions.optJSONObject(i) ?: continue
-        val title = action.optString("title", "")
-        if (title.isBlank()) continue
-        val kind = action.optString("kind").ifBlank { null }
-        val edit = action.optJSONObject("edit")?.toString()
-        val isPreferred = action.optBoolean("isPreferred", false)
-        result.add(LspCodeAction(title, kind, edit, isPreferred))
+    val result = mutableListOf<LintError>()
+    for (i in 0 until diagnostics.length()) {
+        val diag = diagnostics.optJSONObject(i) ?: continue
+        val range = diag.optJSONObject("range") ?: continue
+        val start = range.optJSONObject("start") ?: continue
+        val end = range.optJSONObject("end") ?: continue
+        val startLine = start.optInt("line", 0).coerceIn(0, lines.size - 1)
+        val startChar = start.optInt("character", 0).coerceIn(0, lines.getOrElse(startLine) { "" }.length)
+        val endLine = end.optInt("line", startLine).coerceIn(0, lines.size - 1)
+        val endChar = end.optInt("character", startChar + 1).coerceIn(0, lines.getOrElse(endLine) { "" }.length + 1)
+        val startOffset = (lineOffsets[startLine] + startChar).coerceIn(0, fileContent.length)
+        val endOffset = (lineOffsets[endLine] + endChar).coerceIn(startOffset + 1, fileContent.length)
+        val message = diag.optString("message", "LSP diagnostic")
+        result.add(LintError(start = startOffset, end = endOffset, message = message))
     }
     return result
 }

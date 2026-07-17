@@ -420,7 +420,28 @@ object LspManager {
         }
     }
 
+
+    /**
+     * P24-3: Rename symbol at position across the workspace.
+     * Returns a map of uri -> list of TextEdits (newText + range).
+     */
+    fun rename(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+        newName: String,
+    ): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = positionParams(uri, line, character)
+        params.put("newName", newName)
+        val response = server.client.request("textDocument/rename", params, timeoutSeconds = 15)
+        return response as? JSONObject
+    }
+
     // ── Diagnostics ────────────────────────────────────────────────
+
 
     fun getDiagnostics(language: Language, uri: String): JSONArray? {
         return servers[language]?.diagnostics?.get(uri)

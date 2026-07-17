@@ -65,6 +65,7 @@ import com.codespace.ide.lsp.LspCompletionItem
 import com.codespace.ide.lsp.LspManager
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import com.codespace.ide.lsp.ImportEdit
 import com.codespace.ide.lsp.applyImportEdits
@@ -293,6 +294,12 @@ fun CodeEditor(
     lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)? = null,
     /** P22-J: LSP-backed auto-import provider — returns ImportEdits for current cursor position */
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
+    /** P24-1: LSP diagnostics as LintErrors — shown as squiggles on top of syntax highlighting */
+    lspDiagnosticErrors: List<LintError> = emptyList(),
+    /** P24-3: Find References — called with word at cursor, returns list of (filePath, line, snippet) */
+    onFindReferences: ((String) -> List<Triple<String, Int, String>>)? = null,
+    /** P24-3: Rename Symbol — called with (word, newName) to apply workspace rename */
+    onRenameSymbol: ((String, String) -> Unit)? = null,
     /** Minimap: initial visibility, can be toggled via dropdown in the editor toolbar */
     showMinimap: Boolean = true,
     /** P24: LSP code actions provider — returns quick fixes for a line */
@@ -459,6 +466,11 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
         SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
     }
 
+    // ── Find References state ─────────────────────────────────────────────
+    var findRefWord by remember { mutableStateOf<String?>(null) }
+    var findRefResults by remember { mutableStateOf<List<Triple<String, Int, String>>>(emptyList()) }
+    var findRefLoading by remember { mutableStateOf(false) }
+
     // ── Rename Symbol state ────────────────────────────────────────────────
     var renameDialogWord by remember { mutableStateOf<String?>(null) }  // null = closed
     var renameNewName by remember { mutableStateOf("") }
@@ -488,7 +500,16 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
     var lintErrors by remember { mutableStateOf<List<LintError>>(emptyList()) }
     LaunchedEffect(value.text, language) {
         kotlinx.coroutines.delay(500)   // debounce — only lint after 500 ms idle
-        lintErrors = LintAnalyzer.analyze(value.text, language)
+        val localErrors = LintAnalyzer.analyze(value.text, language)
+        // P24-1: merge LSP diagnostics as squiggles — deduplicate by start offset
+        val combined = (localErrors + lspDiagnosticErrors).distinctBy { it.start }
+        lintErrors = combined
+    }
+
+    // P24-1: Re-merge when LSP diagnostics arrive (server push)
+    LaunchedEffect(lspDiagnosticErrors) {
+        val localErrors = LintAnalyzer.analyze(value.text, language)
+        lintErrors = (localErrors + lspDiagnosticErrors).distinctBy { it.start }
     }
 
     // ── P2-11 Inlay hints state ─────────────────────────────────────────
@@ -1483,6 +1504,33 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                 Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                         }
+                        // P24-3: Find References
+                        if (onFindReferences != null) {
+                            TextButton(
+                                onClick = {
+                                    findRefWord = word
+                                    findRefLoading = true
+                                    findRefResults = emptyList()
+                                    contextWord = null
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList() }
+                                        findRefResults = refs
+                                        findRefLoading = false
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("⊛", color = Color(0xFF9CDCFE), fontSize = 14.sp)
+                                    Text("Find References", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                }
+                            }
+                        }
+
                         // P22-K: Add Cursor Above
                         TextButton(
                             onClick = {
@@ -1857,6 +1905,77 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                     }
                 },
             )
+        }
+
+        // ── P24-3: Find References Overlay ───────────────────────────────────────
+        if (findRefWord != null) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.45f)
+                    .zIndex(28f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth().background(Color(0xFF252526))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "References: ${findRefWord}",
+                            color = Color(0xFF9CDCFE), fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f),
+                        )
+                        if (findRefLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Color(0xFF007ACC))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        TextButton(onClick = { findRefWord = null; findRefResults = emptyList() },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                            Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
+                        }
+                    }
+                    Divider(color = Color(0xFF333333))
+                    if (!findRefLoading && findRefResults.isEmpty()) {
+                        Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                            Text("No references found for '${findRefWord}'.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
+                            items(findRefResults) { (refPath, refLine, snippet) ->
+                                val fileName = refPath.substringAfterLast('/')
+                                TextButton(
+                                    onClick = {
+                                        if (refPath == filePath) {
+                                            coroutineScope.launch {
+                                                val lineHeightPx = fontSize * 1.25f
+                                                vScroll.animateScrollTo((refLine * lineHeightPx).toInt())
+                                            }
+                                        } else {
+                                            onOpenFileAtLine?.invoke(refPath, refLine)
+                                        }
+                                        findRefWord = null
+                                        findRefResults = emptyList()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(fileName, color = Color(0xFF4EC9B0), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                            Text(":${refLine + 1}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                        Text(snippet.trim().take(100), color = Color(0xFFAAAAAA), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                Divider(color = Color(0xFF2A2A2A))
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // ── Go to Line Bar ──────────────────────────────────────────────────
