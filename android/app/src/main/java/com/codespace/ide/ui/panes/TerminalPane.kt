@@ -68,7 +68,7 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var onCursorStateChange: ((Boolean) -> Unit)? = null
     var appContext: Context? = null
 
-    fun initBell(_ctx: Context) { /* sound pool reserved for future beep mode */ }
+    fun initBell(ctx: Context) { /* sound pool reserved for future beep mode */ }
     fun releaseBell() {}
 
     override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
