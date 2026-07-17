@@ -1041,41 +1041,24 @@ fun CodeEditor(
             ((maxOf(1, vScroll.viewportSize) / lineHeightPx).toInt())
         }
 
-        // Minimap toggle — dropdown menu at top-right
-        var showMinimapMenu by remember { mutableStateOf(false) }
+        // Toggle button — small icon at top-right
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .zIndex(6f)
                 .padding(top = 2.dp, end = if (showMinimapState) 64.dp else 2.dp)
+                .background(colors.background.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
+                .border(1.dp, colors.gutter.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                .clickable { showMinimapState = !showMinimapState }
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .background(colors.background.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
-                    .border(1.dp, colors.gutter.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                    .clickable { showMinimapMenu = true }
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "⋮",
-                    color = colors.gutter,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            androidx.compose.material3.DropdownMenu(
-                expanded = showMinimapMenu,
-                onDismissRequest = { showMinimapMenu = false }
-            ) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text(if (showMinimapState) "Hide Minimap" else "Show Minimap", fontSize = 12.sp) },
-                    onClick = {
-                        showMinimapState = !showMinimapState
-                        showMinimapMenu = false
-                    },
-                )
-            }
+            Text(
+                text = if (showMinimapState) "▣" else "▢",
+                color = colors.gutter,
+                fontSize = 8.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
 
         // Minimap panel — realistic with syntax colors + viewport indicator
