@@ -472,10 +472,19 @@ private fun PreviewBody(
 ) {
     when (activeMode) {
         PreviewMode.HTML      -> {
-                // PhaseX: Use LivePreviewServer for project HTML files, inline for standalone
-                val useLiveServer = projectRootPath != null && (activeFilePath.endsWith(".html") || activeFilePath.endsWith(".htm"))
+                // PhaseX: Use LivePreviewServer for project web files, inline for standalone
+                val isWebFile = activeFilePath.endsWith(".html") || activeFilePath.endsWith(".htm") ||
+                    activeFilePath.endsWith(".css") || activeFilePath.endsWith(".js") ||
+                    activeFilePath.endsWith(".mjs")
+                val useLiveServer = projectRootPath != null && isWebFile
                 val liveUrl = if (useLiveServer && com.codespace.ide.preview.LivePreviewServer.isRunning()) {
-                    com.codespace.ide.preview.LivePreviewServer.getPreviewUrl(activeFilePath)
+                    if (activeFilePath.endsWith(".html") || activeFilePath.endsWith(".htm")) {
+                        com.codespace.ide.preview.LivePreviewServer.getPreviewUrl(activeFilePath)
+                    } else {
+                        // CSS/JS file — serve the project root (index.html) so the
+                        // preview shows the rendered page, and SSE reloads it on change
+                        com.codespace.ide.preview.LivePreviewServer.getPreviewUrl("")
+                    }
                 } else null
                 HtmlPreview(content, language, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, liveUrl = liveUrl)
             }
