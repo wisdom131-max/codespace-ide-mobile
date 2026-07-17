@@ -45,7 +45,7 @@ fun BuildPanel(
     var selectedTask by remember { mutableStateOf("assembleDebug") }
     var showEnvDetails by remember { mutableStateOf(false) }
 
-    val buildStatus by BuildRunner.buildStatus.collectAsState()
+    val _buildStatus by BuildRunner.buildStatus.collectAsState()
     val liveOutput by BuildRunner.buildOutput.collectAsState()
 
     Column(
