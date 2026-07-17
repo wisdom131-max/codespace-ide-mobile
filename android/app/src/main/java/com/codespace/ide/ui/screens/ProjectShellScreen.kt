@@ -2071,7 +2071,7 @@ private fun buildRunCommand(path: String): String? {
                     onDone = { onSend(input.value) }
                 ),
             )
-            Icon(Icons.Default.Send, null, tint = Color(0xFF9CDCFE),
+            Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color(0xFF9CDCFE),
                 modifier = Modifier.size(18.dp).clickable { onSend(input.value) })
             Spacer(Modifier.width(8.dp))
         }
