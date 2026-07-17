@@ -52,7 +52,7 @@ object DownloadCenter {
      * @return true on success, false on failure
      */
     suspend fun download(
-        context: Context,
+        _context: Context,
         id: String,
         name: String,
         url: String,
