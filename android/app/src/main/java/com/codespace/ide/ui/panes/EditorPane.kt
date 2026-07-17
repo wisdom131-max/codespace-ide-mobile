@@ -46,6 +46,7 @@ import com.codespace.ide.data.SessionStateStore
 import androidx.compose.foundation.lazy.items
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -649,6 +650,7 @@ fun EditorPane(
         }
 
         // P24: Auto-save indicator state
+        val scope = rememberCoroutineScope()
         var showSavedIndicator by remember { mutableStateOf(false) }
         var savedIndicatorJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
