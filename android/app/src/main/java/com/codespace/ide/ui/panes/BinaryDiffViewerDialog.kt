@@ -308,7 +308,7 @@ private fun BinaryDiffRow(row: DiffRow) {
 @Composable
 private fun RowScope.SideCell(
     bytes: ByteArray?,
-    _diffPos: Set<Int>,
+    diffPos: Set<Int>,
     kind: ByteDiffKind,
     isLeft: Boolean,
 ) {
