@@ -637,6 +637,33 @@ fun EditorPane(
             }
         }
 
+        // P24: Breadcrumbs — file path hierarchy above editor
+        if (active != null) {
+            val pathParts = active.path.split("/").filter { it.isNotBlank() }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1E1E1E).copy(alpha = 0.6f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                pathParts.forEachIndexed { idx, part ->
+                    if (idx > 0) {
+                        Text(" > ", fontSize = 10.sp, color = Color(0xFF6B6B6B), fontFamily = FontFamily.Monospace)
+                    }
+                    val isLast = idx == pathParts.lastIndex
+                    Text(
+                        text = part,
+                        fontSize = 10.sp,
+                        color = if (isLast) Color(0xFFE0E0E0) else Color(0xFF888888),
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
         if (active != null) {
             val splitTab = splitId?.let { id -> tabs.firstOrNull { it.id == id && it.id != active.id } }
             if (splitTab != null) {
