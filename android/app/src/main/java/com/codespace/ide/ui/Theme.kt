@@ -160,7 +160,6 @@ fun themeColors(name: String) = when (name) {
     "Quiet Light"     -> lightColorScheme(primary = Color(0xFF4078F2), background = Color(0xFFF5F5F5), surface = Color(0xFFEAEAEA), onBackground = Color(0xFF333333), onSurface = Color(0xFF333333))
     "Solarized Light" -> lightColorScheme(primary = Color(0xFF268BD2), background = Color(0xFFFDF6E3), surface = Color(0xFFEEE8D5), onBackground = Color(0xFF657B83), onSurface = Color(0xFF657B83))
     "Eye Care"        -> lightColorScheme(primary = Color(0xFF7A4F3A), background = Color(0xFFF5F0E8), surface = Color(0xFFEDE8DF), onBackground = Color(0xFF3C3328), onSurface = Color(0xFF3C3328))
-    "Eye Care"        -> lightColorScheme(primary = Color(0xFF7A4F3A), background = Color(0xFFF5F0E8), surface = Color(0xFFEDE8DF), onBackground = Color(0xFF3C3328), onSurface = Color(0xFF3C3328))
     else              -> darkColorScheme(primary = Color(0xFF569CD6), background = Color(0xFF1E1E1E), surface = Color(0xFF252526), onBackground = Color(0xFFD4D4D4), onSurface = Color(0xFFD4D4D4))
 }
 
