@@ -59,7 +59,7 @@ object ConnectorsApiClient {
                     name = o.getString("name"),
                     connected = o.optBoolean("connected", false),
                     configured = o.optBoolean("configured", false),
-                    scope = if (o.isNull("scope")) null else o.optString("scope", null),
+                    scope = if (o.isNull("scope")) null else o.optString("scope"),
                 )
             }
         }
