@@ -2742,7 +2742,7 @@ private fun PssEditorColumn(
         val localDensity = androidx.compose.ui.platform.LocalDensity.current
         Box(
             Modifier
-                .width(with(density) { splitTerminalWidth.toDp() })
+                .width(with(localDensity) { splitTerminalWidth.toDp() })
                 .fillMaxHeight()
         ) {
             Column(Modifier.fillMaxSize()) {
