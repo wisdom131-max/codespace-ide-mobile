@@ -177,7 +177,7 @@ private object DexParser {
         val endianTag = buf.int.toUInt().toString(16)
         val linkSize = buf.int
         buf.int // linkOff
-        val mapOff = buf.int
+        val _mapOff = buf.int
         val stringIdsSize = buf.int
         val stringIdsOff = buf.int
         val typeIdsSize = buf.int
@@ -287,9 +287,9 @@ private object DexParser {
                 val superclassIdx   = b.int
                 val interfacesOff   = b.int
                 val sourceFileIdx   = b.int
-                val annotationsOff  = b.int
+                val _annotationsOff  = b.int
                 val classDataOff    = b.int
-                val staticValuesOff = b.int
+                val _staticValuesOff = b.int
 
                 val rawClassName  = if (classIdx in types.indices) types[classIdx] else "?"
                 val className     = typeDesc(rawClassName)
