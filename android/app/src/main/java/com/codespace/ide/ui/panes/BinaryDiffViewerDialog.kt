@@ -167,13 +167,13 @@ fun BinaryDiffViewerDialog(
                     Modifier.fillMaxWidth().background(BgHeader).padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.CompareArrows, null, tint = Accent, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.CompareArrows, null, tint = Accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Binary Diff", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextMain)
                     Spacer(Modifier.width(8.dp))
                     Text(fileA.name, fontSize = 11.sp, color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     if (fileB != null) {
-                        Icon(Icons.Default.CompareArrows, null, tint = TextMuted, modifier = Modifier.size(14.dp).padding(horizontal = 4.dp))
+                        Icon(Icons.AutoMirrored.Filled.CompareArrows, null, tint = TextMuted, modifier = Modifier.size(14.dp).padding(horizontal = 4.dp))
                         Text(fileB.name, fontSize = 11.sp, color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                     if (onPickFileB != null) {
@@ -195,7 +195,7 @@ fun BinaryDiffViewerDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Icon(Icons.Default.CompareArrows, null, tint = TextMuted, modifier = Modifier.size(48.dp))
+                        Icon(Icons.AutoMirrored.Filled.CompareArrows, null, tint = TextMuted, modifier = Modifier.size(48.dp))
                         Spacer(Modifier.height(16.dp))
                         Text("Select a second file to compare", color = TextMuted, fontSize = 14.sp)
                         if (onPickFileB != null) {
