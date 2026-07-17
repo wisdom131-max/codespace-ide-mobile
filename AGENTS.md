@@ -3234,3 +3234,35 @@ callback/flow from here to the preview pane is the cleanest hook point.
 
 **Audit complete. Ready for implementation when approved.**
 
+### ═════════════════════════════════════════════════════════════════════════
+### IMPLEMENTATION STATUS — LIVE PREVIEW SERVER
+### ═════════════════════════════════════════════════════════════════════════
+
+- [x] **Step 1: LivePreviewServer.kt** — ✅ DONE (commit c816816)
+  - Embedded HTTP server on port 5500, serves static files from project root
+  - SSE endpoint at /__live_reload__ for connected WebViews
+  - Injects reload <script> into HTML responses (before </head>)
+  - MIME-type aware (HTML, CSS, JS, JSON, SVG, images, fonts, etc.)
+  - Path traversal protection (rejects ../, canonical path comparison)
+  - reload() method pushes "reload" event to all connected SSE clients
+- [x] **Step 2: Wire onContentChange → reload()** — ✅ DONE (commit e7dae94)
+  - EditorPane.kt calls LivePreviewServer.reload() after file write
+  - Only triggers for web file types (HTML, HTM, CSS, JS, MJS)
+- [x] **Step 3: PreviewPane loads from LivePreviewServer** — ✅ DONE (commit 27d42de)
+  - PreviewPane accepts projectId parameter
+  - Starts LivePreviewServer via LaunchedEffect when project is active
+  - Stops server via DisposableEffect when leaving preview
+  - HtmlPreview loads from http://localhost:5500/ when server is running
+  - Falls back to inline loadDataWithBaseURL for standalone files
+- [x] **Step 4: Lifecycle management** — ✅ DONE (commit 27d42de, 5e96e1e)
+  - Server starts when PreviewPane is composed with a projectId
+  - Server stops when PreviewPane is disposed (DisposableEffect)
+  - Project switch triggers dispose → new LaunchedEffect → new root
+  - projectId passed from ProjectShellScreen to PreviewPane
+- [x] **Step 5: Path safety** — ✅ DONE (commit c816816)
+  - resolveSafeFile() rejects paths containing ".."
+  - Canonical path comparison ensures file is within project root
+  - URL encoding for file paths in getPreviewUrl()
+
+**Phase X Implementation: COMPLETE** ✅
+
