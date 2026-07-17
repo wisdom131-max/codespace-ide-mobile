@@ -158,7 +158,7 @@ object BusyboxInstaller {
     private fun buildOfflineProfile(context: Context): String = buildString {
         val home = File(context.filesDir, "home").absolutePath
         val bin  = binDir(context).absolutePath
-        val busybox = busyboxPath(context)
+        val _busybox = busyboxPath(context)
         val prefs = context.getSharedPreferences("vncode_prefs", Context.MODE_PRIVATE)
         val backendUrl = prefs.getString("backend_url", "") ?: ""
 
