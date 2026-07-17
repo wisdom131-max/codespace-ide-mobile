@@ -1828,6 +1828,7 @@ private fun PssBottomPanelContent(
                 activeFilePath = activeEditorTab ?: "",
                 initialPort = previewPort ?: 0,
                 externalState = sharedPreviewState,
+                projectId = projectId,
             )
             BottomTab.LOGCAT   -> if (heavyPanesReady) {
                 LogcatPanel(modifier = Modifier.fillMaxSize())
