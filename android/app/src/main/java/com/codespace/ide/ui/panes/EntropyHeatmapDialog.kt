@@ -32,6 +32,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.ln
 import kotlin.math.log2
 import kotlin.math.min
+import androidx.compose.material3.HorizontalDivider
 
 // ── Entropy Heatmap Viewer ────────────────────────────────────────────────────
 // Computes Shannon entropy per 256-byte block and renders a color-coded heatmap.
@@ -174,7 +175,7 @@ fun EntropyHeatmapDialog(file: java.io.File, onDismiss: () -> Unit) {
                                 StatChip("Med (4-7)", "${s.medCount}", muted, Color(0xFFF9A825))
                                 StatChip("Low (<4)", "${s.lowCount}", muted, Color(0xFF66BB6A))
                             }
-                            Divider(color = border)
+                            HorizontalDivider(color = border)
                         }
 
                         // ── Heatmap canvas
@@ -200,7 +201,7 @@ fun EntropyHeatmapDialog(file: java.io.File, onDismiss: () -> Unit) {
                             }
                         }
 
-                        Divider(color = border)
+                        HorizontalDivider(color = border)
 
                         // ── Legend
                         Row(
@@ -216,7 +217,7 @@ fun EntropyHeatmapDialog(file: java.io.File, onDismiss: () -> Unit) {
                             LegendEntry(Color(0xFFB71C1C), "7–8 Encrypted/Compressed")
                         }
 
-                        Divider(color = border)
+                        HorizontalDivider(color = border)
 
                         // ── Block table (first 200)
                         Text("Block Details (256-byte blocks):",
