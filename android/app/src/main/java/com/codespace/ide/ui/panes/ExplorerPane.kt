@@ -68,6 +68,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
+import androidx.compose.material.icons.automirrored.filled.*
 
 private val BgColor      = Color(0xFFFFFFFF)
 private val SelectedBg   = Color(0xFFCCE5FF)
@@ -592,7 +593,7 @@ fun ExplorerSidePanel(
                 }
                 Spacer(Modifier.width(6.dp))
                 // Outline toggle
-                Icon(Icons.Default.List, null, tint = if (showOutline) IconColor else MutedColor,
+                Icon(Icons.AutoMirrored.Filled.List, null, tint = if (showOutline) IconColor else MutedColor,
                     modifier = Modifier.size(16.dp).clickable { showOutline = !showOutline })
                 Spacer(Modifier.width(6.dp))
                 // Add folder to workspace (multi-root)
@@ -606,7 +607,7 @@ fun ExplorerSidePanel(
                     modifier = Modifier.size(16.dp).clickable { showDeviceFolders = !showDeviceFolders })
                 Spacer(Modifier.width(6.dp))
                 // Change folder
-                Icon(Icons.Default.OpenInNew, null, tint = MutedColor,
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
                         folderPicker.launch(null)
                     })
@@ -647,7 +648,7 @@ fun ExplorerSidePanel(
                             when (label) {
                                 "DCIM (Camera)" -> Icons.Default.PhotoCamera
                                 "Downloads" -> Icons.Default.Download
-                                "Documents" -> Icons.Default.Article
+                                "Documents" -> Icons.AutoMirrored.Filled.Article
                                 "Music" -> Icons.Default.MusicNote
                                 "Movies" -> Icons.Default.Movie
                                 else -> Icons.Default.Image
@@ -763,7 +764,7 @@ fun ExplorerSidePanel(
                             when (label) {
                                 "DCIM (Camera)" -> Icons.Default.PhotoCamera
                                 "Downloads" -> Icons.Default.Download
-                                "Documents" -> Icons.Default.Article
+                                "Documents" -> Icons.AutoMirrored.Filled.Article
                                 "Music" -> Icons.Default.MusicNote
                                 "Movies" -> Icons.Default.Movie
                                 else -> Icons.Default.Image
@@ -1083,7 +1084,7 @@ fun ExplorerSidePanel(
                     val hasPreview = isImg || isArch || isPdf || isVid || isAud || isHexBin
                     val hasPaste = clipboardFile != null
                     buildList {
-                        add("Open" to Icons.Default.OpenInNew)
+                        add("Open" to Icons.AutoMirrored.Filled.OpenInNew)
                         if (hasPreview) add("Preview" to Icons.Default.Image)
                         add("Rename" to Icons.Default.Edit)
                         add("Copy" to Icons.Default.ContentCopy)
@@ -1103,14 +1104,14 @@ fun ExplorerSidePanel(
                         add("Compress" to Icons.Default.FolderZip)
                         add("Permissions" to Icons.Default.Lock)
                         if (!f.isDirectory) add("File Info" to Icons.Default.Info)
-                        if (!f.isDirectory && (isHexBin || isArch)) add("Open as Strings" to Icons.Default.FormatListBulleted)
+                        if (!f.isDirectory && (isHexBin || isArch)) add("Open as Strings" to Icons.AutoMirrored.Filled.FormatListBulleted)
                         if (!f.isDirectory && isHexBin) add("Open as Binary Inspector" to Icons.Default.BugReport)
                         if (!f.isDirectory && isElf) add("Disassembly" to Icons.Default.Terminal)
                             if (!f.isDirectory) add("Entropy Heatmap" to Icons.Default.Thermostat)
                             if (!f.isDirectory && isNetworkCapture(f.name)) add("Network Viewer" to Icons.Default.Wifi)
                             if (!f.isDirectory && isAiModel(f.name)) add("AI Model Viewer" to Icons.Default.Psychology)
                             if (!f.isDirectory && isAndroidRuntimeFile(f.name)) add("Runtime Viewer" to Icons.Default.Android)
-                        if (!f.isDirectory) add("Binary Diff" to Icons.Default.CompareArrows)
+                        if (!f.isDirectory) add("Binary Diff" to Icons.AutoMirrored.Filled.CompareArrows)
                         if (!f.isDirectory && isApkAnalyzable(f.name)) add("APK Analyzer" to Icons.Default.Android)
                         if (!f.isDirectory && (isDex || isSmaliSource(f.name))) add("Open as Smali" to Icons.Default.Code)
                     }.forEach { (label, icon) ->
@@ -1837,8 +1838,8 @@ fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
         // Build
         "gradle", "gradlew" -> Icons.Default.Build
         // Markdown / Text
-        "md", "markdown" -> Icons.Default.Article
-        "txt", "log" -> Icons.Default.Article
+        "md", "markdown" -> Icons.AutoMirrored.Filled.Article
+        "txt", "log" -> Icons.AutoMirrored.Filled.Article
         // Images
         "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico" -> Icons.Default.Image
         // Archives
@@ -1869,7 +1870,7 @@ fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
         // Git
         "gitignore", "gitattributes", "gitmodules" -> Icons.Default.AccountTree
         // Default
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
 
@@ -2154,7 +2155,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                            if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             null, tint = MutedColor, modifier = Modifier.size(16.dp)
                         )
                         Spacer(Modifier.width(4.dp))
@@ -2318,7 +2319,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     items(variables) { v ->
                         Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
                             if (v.expandable) {
-                                Icon(Icons.Default.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
                             } else {
                                 Spacer(Modifier.width(16.dp))
                             }
@@ -2427,7 +2428,7 @@ private fun SectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+            if (expanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
             null, tint = MutedColor, modifier = Modifier.size(16.dp)
         )
         Spacer(Modifier.width(4.dp))
