@@ -274,7 +274,7 @@ fun ExplorerSidePanel(
         // nodes is recomputed from expanded — find the index of the target
         // We can't reference `nodes` here (it's computed below), so we do a
         // best-effort scroll by counting visible dirs above the target.
-        val workspaceRoot = workspacePath?.let { java.io.File(it) } ?: return@LaunchedEffect
+        val localWorkspaceRoot = workspacePath?.let { java.io.File(it) } ?: return@LaunchedEffect
         var idx = 0
         fun walk(f: java.io.File, depth: Int) {
             idx++
@@ -1267,7 +1267,7 @@ fun ExplorerSidePanel(
         var zipName by remember(f.absolutePath) { mutableStateOf(defaultName) }
         var compressing by remember { mutableStateOf(false) }
         var compressDone by remember { mutableStateOf(false) }
-        val scope = rememberCoroutineScope()
+        val localScope = rememberCoroutineScope()
         AlertDialog(
             onDismissRequest = { if (!compressing) { showCompressDialog = false; compressDone = false } },
             title = { Text("Compress", fontSize = 14.sp) },
@@ -1337,7 +1337,7 @@ fun ExplorerSidePanel(
                 )
             )
         }
-        val scope = rememberCoroutineScope()
+        val localScope = rememberCoroutineScope()
         AlertDialog(
             onDismissRequest = { showPermDialog = false },
             title = { Text("Permissions — ${f.name}", fontSize = 13.sp) },
