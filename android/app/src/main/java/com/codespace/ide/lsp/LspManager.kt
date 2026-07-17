@@ -125,10 +125,12 @@ object LspManager {
     fun isServerInstalled(context: Context, language: Language): Boolean {
         val config = configs[language] ?: return false
         val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 10)
-        return output.isNotBlank() &&
+        val installed = output.isNotBlank() &&
                !output.contains("not found") &&
                !output.contains("Error") &&
                !output.contains("Exit code")
+        Log.d(TAG, "isServerInstalled(${language.displayName}): output=${output.take(120)} → $installed")
+        return installed
     }
 
     /**
@@ -151,25 +153,36 @@ object LspManager {
      */
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
         val config = configs[language] ?: return false
+        Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
 
         // Stop existing server if running
         stopServer(language)
 
         // Check if installed, install if needed
+        Log.d(TAG, "startServer: checking isServerInstalled for ${language.displayName} via: ${config.checkCommand}")
         if (!isServerInstalled(context, language)) {
+            Log.d(TAG, "startServer: NOT installed — running installServer for ${language.displayName}")
             val installResult = installServer(context, language)
             Log.d(TAG, "Install result: $installResult")
             if (!isServerInstalled(context, language)) {
-                Log.e(TAG, "Failed to install LSP server for ${language.displayName}")
+                Log.e(TAG, "startServer: FAILED — still not installed after install attempt for ${language.displayName}")
                 return false
             }
+            Log.d(TAG, "startServer: install SUCCEEDED for ${language.displayName}")
+        } else {
+            Log.d(TAG, "startServer: already installed for ${language.displayName}")
         }
 
-        // Build proot command with LSP server instead of bash
+        // Build proot command — wrap server in bash -lc to source PATH/profile,
+        // matching execOnce() which is proven to work in the terminal.
+        // Direct execution without bash misses ~/.profile PATH entries on some setups.
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
         val headArgs = baseArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
-        val serverArgs = arrayOf(config.command, *config.args.toTypedArray())
-        val fullArgs = arrayOf(*headArgs, *serverArgs)
+        val serverCmd = config.command + if (config.args.isEmpty()) "" else " " + config.args.joinToString(" ")
+        // Wrap in bash -lc so PATH and profile are sourced, exactly like execOnce()
+        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)
+        val cmdLine = listOf(proot) + fullArgs.drop(1).toList()
+        Log.d(TAG, "startServer: spawning command: ${cmdLine.joinToString(" ")}")
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)
@@ -182,9 +195,19 @@ object LspManager {
         val process = try {
             pb.start()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start LSP server: ${e.message}")
+            Log.e(TAG, "startServer: ProcessBuilder.start() THREW: ${e.message}")
             return false
         }
+        Log.d(TAG, "startServer: process spawned, pid=${android.os.Process.myPid()} isAlive=${process.isAlive}")
+
+        // Drain stderr in background thread so it doesn't block stdout (JSON-RPC) reads
+        Thread {
+            try {
+                process.errorStream.bufferedReader().forEachLine { line ->
+                    Log.w(TAG, "LSP-STDERR [${language.displayName}]: $line")
+                }
+            } catch (_: Exception) {}
+        }.also { it.isDaemon = true }.start()
 
         // Convert workspace path to guest path for rootUri
         val guestPath = workspaceGuestPath(context, workspacePath) ?: "/root"
@@ -210,12 +233,14 @@ object LspManager {
         initParams.put("rootUri", rootUri)
         initParams.put("capabilities", JSONObject())
 
+        Log.d(TAG, "startServer: sending initialize request to ${language.displayName} server (30s timeout)...")
         val response = client.request("initialize", initParams, timeoutSeconds = 30)
         if (response == null) {
-            Log.e(TAG, "LSP initialize failed for ${language.displayName}")
+            Log.e(TAG, "startServer: LSP initialize TIMED OUT or returned null for ${language.displayName}")
             stopServer(language)
             return false
         }
+        Log.d(TAG, "startServer: initialize response received for ${language.displayName}: ${response.toString().take(200)}")
 
         val caps = response as? JSONObject
         server.capabilities = caps
@@ -224,7 +249,7 @@ object LspManager {
         // Send initialized notification
         client.notify("initialized")
 
-        Log.d(TAG, "LSP server started for ${language.displayName} at $rootUri")
+        Log.d(TAG, "startServer: SUCCESS — LSP server RUNNING for ${language.displayName} at $rootUri")
         return true
     }
 
