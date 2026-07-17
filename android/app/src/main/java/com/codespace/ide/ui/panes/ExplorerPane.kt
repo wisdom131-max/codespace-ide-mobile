@@ -187,7 +187,7 @@ fun ExplorerSidePanel(
     onOpenFile: (String) -> Unit,
     onFileRenamed: ((oldPath: String, newPath: String) -> Unit)? = null,
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
-    _onMoreMenu: () -> Unit,
+    onMoreMenu: () -> Unit,
     onOpenInTerminal: (String) -> Unit = {},
     openTabs: List<String> = emptyList(),
     activeFilePath: String? = null,
