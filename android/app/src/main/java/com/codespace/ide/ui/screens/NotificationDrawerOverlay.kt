@@ -27,7 +27,7 @@ internal data class NotifItem(val id: Long, val msg: String, val type: String)
 @Composable
 internal fun NotificationDrawerOverlay(
     // Legacy param ignored — real data comes from the global NotificationStore
-    _notifList: List<NotifItem> = emptyList(),
+    notifList: List<NotifItem> = emptyList(),
     onDismiss: () -> Unit,
     onClear: () -> Unit,
 ) {
