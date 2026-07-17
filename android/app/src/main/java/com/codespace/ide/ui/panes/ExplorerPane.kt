@@ -241,6 +241,10 @@ fun ExplorerSidePanel(
     var previewAiModelPath    by remember { mutableStateOf<String?>(null) }
     // Phase 21-X Step 9 — Android Runtime Viewer (OAT/VDEX/APEX)
     var previewArtPath        by remember { mutableStateOf<String?>(null) }
+    // Phase 21-X Step 10 — Binary Diff Viewer
+    var diffFileA             by remember { mutableStateOf<java.io.File?>(null) }
+    var diffFileB             by remember { mutableStateOf<java.io.File?>(null) }
+    var showDiffViewer        by remember { mutableStateOf(false) }
     val previewAlpha = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
@@ -1111,6 +1115,12 @@ fun ExplorerSidePanel(
                             if (!f.isDirectory && isNetworkCapture(f.name)) add("Network Viewer" to Icons.Default.Wifi)
                             if (!f.isDirectory && isAiModel(f.name)) add("AI Model Viewer" to Icons.Default.Psychology)
                             if (!f.isDirectory && isAndroidRuntimeFile(f.name)) add("Runtime Viewer" to Icons.Default.Android)
+                            if (!f.isDirectory) {
+                                val aLabel = if (diffFileA == null) "Diff: Set File A" else "Diff: Set File A (${diffFileA!!.name})"
+                                add(aLabel to Icons.Default.CompareArrows)
+                                if (diffFileA != null && diffFileA!!.absolutePath != f.absolutePath)
+                                    add("Diff: Set File B" to Icons.Default.CompareArrows)
+                            }
                         if (!f.isDirectory) add("Binary Diff" to Icons.AutoMirrored.Filled.CompareArrows)
                         if (!f.isDirectory && isApkAnalyzable(f.name)) add("APK Analyzer" to Icons.Default.Android)
                         if (!f.isDirectory && (isDex || isSmaliSource(f.name))) add("Open as Smali" to Icons.Default.Code)
@@ -1240,6 +1250,8 @@ fun ExplorerSidePanel(
                 "Network Viewer" -> { previewNetworkPath = f.absolutePath }
                 "AI Model Viewer" -> { previewAiModelPath = f.absolutePath }
                 "Runtime Viewer"  -> { previewArtPath = f.absolutePath }
+                "Diff: Set File A" -> { diffFileA = f; if (diffFileA != null && diffFileB != null) showDiffViewer = true }
+                "Diff: Set File B" -> { diffFileB = f; if (diffFileA != null && diffFileB != null) showDiffViewer = true }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -1548,6 +1560,14 @@ fun ExplorerSidePanel(
         AndroidRuntimeViewerDialog(
             file = java.io.File(previewArtPath!!),
             onDismiss = { previewArtPath = null },
+        )
+    }
+    // Phase 21-X Step 10: Binary Diff Viewer
+    if (showDiffViewer) {
+        BinaryDiffViewerDialog(
+            fileA = diffFileA,
+            fileB = diffFileB,
+            onDismiss = { showDiffViewer = false },
         )
     }
     // Phase 21-X-10: Binary Diff Viewer
