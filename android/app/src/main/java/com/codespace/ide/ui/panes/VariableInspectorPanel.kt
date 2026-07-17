@@ -173,14 +173,34 @@ fun VariableInspectorPanel(
                     fontFamily = FontFamily.Monospace,
                 )
             } else {
-                val stubVars = remember(activeFilePath) {
-                    listOf(
-                        VarEntry("this", "object", "{ }", 0, true),
-                        VarEntry("args", "String[]", "[0 items]", 0, true),
-                    )
+                // PhaseY: Show real variables from UniversalDebugManager
+                var pausedVars by remember { mutableStateOf<List<com.codespace.ide.debug.DebugVariable>>(emptyList()) }
+                LaunchedEffect(Unit) {
+                    com.codespace.ide.debug.UniversalDebugManager.onPaused = { _, vars ->
+                        pausedVars = vars
+                    }
                 }
-                stubVars.forEach { v ->
-                    VarRow(v)
+                val session = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()
+                if (session == null) {
+                    Text(
+                        "  No active debug session — set breakpoints and press Run",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = Color(0xFF666666),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                } else if (pausedVars.isEmpty()) {
+                    Text(
+                        "  Running... (variables appear when paused at breakpoint)",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = Color(0xFF666666),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                } else {
+                    pausedVars.forEach { v ->
+                        VarRow(VarEntry(v.name, v.type, v.value, v.depth, v.expandable))
+                    }
                 }
             }
         }
@@ -194,15 +214,43 @@ fun VariableInspectorPanel(
             onToggle = { toggleSection("stack") },
         )
         if ("stack" in expandedSections) {
-            Text(
-                "  No active debug session — set breakpoints and press Run",
-                modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                    .clickable { onJumpToSource() },
-                color = Color(0xFF666666),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-            )
+            // PhaseY: Show real call stack from UniversalDebugManager
+            var pausedStack by remember { mutableStateOf<List<com.codespace.ide.debug.DebugStackFrame>>(emptyList()) }
+            LaunchedEffect(Unit) {
+                com.codespace.ide.debug.UniversalDebugManager.onPaused = { stack, _ ->
+                    pausedStack = stack
+                }
+            }
+            val session = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()
+            if (session == null) {
+                Text(
+                    "  No active debug session — set breakpoints and press Run",
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clickable { onJumpToSource() },
+                    color = Color(0xFF666666),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            } else if (pausedStack.isEmpty()) {
+                Text(
+                    "  Running...",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    color = Color(0xFF666666),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            } else {
+                pausedStack.forEach { frame ->
+                    VarRow(VarEntry(
+                        name = frame.function,
+                        type = frame.file,
+                        value = "line " + frame.line,
+                        depth = 0,
+                        expandable = false,
+                    ))
+                }
+            }
         }
     }
 }
