@@ -114,22 +114,22 @@ private fun parseDexClassListForSmali(file: File): List<Pair<String, String>> {
     if (bytes.size < 112) return emptyList()
     // DEX header fields
     buf.position(32) // skip magic(8)+checksum(4)+sha1(20)
-    val fileSize    = buf.int
-    val headerSize  = buf.int
-    val endianTag   = buf.int
-    val linkSize    = buf.int
-    val linkOff     = buf.int
-    val mapOff      = buf.int
+    val _fileSize    = buf.int
+    val _headerSize  = buf.int
+    val _endianTag   = buf.int
+    val _linkSize    = buf.int
+    val _linkOff     = buf.int
+    val _mapOff      = buf.int
     val stringCount = buf.int
     val stringOff   = buf.int
     val typeCount   = buf.int
     val typeOff     = buf.int
-    val protoCount  = buf.int
-    val protoOff    = buf.int
-    val fieldCount  = buf.int
-    val fieldOff    = buf.int
-    val methodCount = buf.int
-    val methodOff   = buf.int
+    val _protoCount  = buf.int
+    val _protoOff    = buf.int
+    val _fieldCount  = buf.int
+    val _fieldOff    = buf.int
+    val _methodCount = buf.int
+    val _methodOff   = buf.int
     val classCount  = buf.int
     val classOff    = buf.int
 
@@ -170,7 +170,7 @@ private fun parseDexClassListForSmali(file: File): List<Pair<String, String>> {
 
         if (descriptor.isEmpty() || !descriptor.startsWith("L")) continue
         val smaliPath = descriptor.removePrefix("L").removeSuffix(";") + ".smali"
-        val className = descriptor.removePrefix("L").removeSuffix(";").replace('/', '.')
+        val _className = descriptor.removePrefix("L").removeSuffix(";").replace('/', '.')
         val superName = if (superTypeIdx != 0xFFFFFF.inv() && superDesc.isNotEmpty())
             superDesc.removePrefix("L").removeSuffix(";").replace('/', '.') else "java.lang.Object"
 
