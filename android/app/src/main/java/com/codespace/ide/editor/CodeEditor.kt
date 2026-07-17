@@ -260,7 +260,7 @@ fun CodeEditor(
     modifier: Modifier = Modifier,
     savedContent: String = "",
     wordWrap: Boolean = false,
-    _scrollToLine: Int = 0,
+    scrollToLine: Int = 0,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
     goToLineOpen: Boolean = false,
