@@ -984,7 +984,7 @@ fun ExplorerSidePanel(
                     Spacer(Modifier.width(4.dp))
                     Text("OUTLINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
-                    Text(activeFilePath!!.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
+                    Text(activeFilePath.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
                 }
                 val outlineItems = remember(activeFilePath) {
                     if (activeFilePath != null) {
@@ -1011,7 +1011,7 @@ fun ExplorerSidePanel(
                         Row(
                             Modifier.fillMaxWidth()
                                 .clickable {
-                                    val fp = activeFilePath ?: return@clickable
+                                    val fp = activeFilePath
                                     onOpenFile(fp)
                                     onOpenFileAtLine?.invoke(fp, line)
                                 }
