@@ -47,7 +47,7 @@ class SyntaxTransformation(
         var origIdx = 0   // walking through original char positions
         var dispIdx = 0   // walking through display char positions
 
-        var lineNum = 0
+        var _lineNum = 0
         var inFoldBlock = false
 
         for ((idx, line) in lines.withIndex()) {
