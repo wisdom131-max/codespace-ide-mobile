@@ -187,7 +187,7 @@ fun ExplorerSidePanel(
     onOpenFile: (String) -> Unit,
     onFileRenamed: ((oldPath: String, newPath: String) -> Unit)? = null,
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
-    onMoreMenu: () -> Unit,
+    _onMoreMenu: () -> Unit,
     onOpenInTerminal: (String) -> Unit = {},
     openTabs: List<String> = emptyList(),
     activeFilePath: String? = null,
@@ -388,7 +388,7 @@ fun ExplorerSidePanel(
     // Create Document launcher — opens Android file picker to create a new file
     var pendingFileName by remember { mutableStateOf("") }
     var pendingTargetDir by remember { mutableStateOf<java.io.File?>(null) }
-    val createFileLauncher = rememberLauncherForActivityResult(
+    val _createFileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("*/*")
     ) { uri: Uri? ->
         if (uri != null) {
