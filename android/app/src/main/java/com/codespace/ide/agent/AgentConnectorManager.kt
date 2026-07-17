@@ -74,7 +74,7 @@ object AgentConnectorManager {
      * afterward (or reopen the Connectors sheet) to see the updated CONNECTED status —
      * there's no separate "paste the code back" step anymore.
      */
-    fun connectService(service: String, _scopes: JSONArray?, context: Context): String {
+    fun connectService(service: String, scopes: JSONArray?, context: Context): String {
         if (service !in SERVICES) {
             return "Unknown or unsupported service: $service. Available: ${SERVICES.joinToString(", ")}. " +
                 "For GitHub, use Settings > Accounts > Sign in with GitHub instead."
