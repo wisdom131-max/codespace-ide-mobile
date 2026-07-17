@@ -36,7 +36,7 @@ object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val ROOTFS_URL =
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
-    private const val VERSION = "ubuntu-questing-v4.30.1-r7"
+    const val VERSION = "ubuntu-questing-v4.30.1-r7"  // internal: used by LspManager marker repair
 
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).

@@ -59,6 +59,7 @@ import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.domain.AiProviderId
 import com.codespace.ide.terminal.BackupManager
+import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -469,6 +470,88 @@ fun SettingsScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+                    },
+                )
+                }
+            }
+
+            HorizontalDivider()
+
+            // ── Reset Ubuntu Container ────────────────────────────────────────
+            Text("Ubuntu Container", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+
+            var showResetConfirm by remember { mutableStateOf(false) }
+            var resetStatus by remember { mutableStateOf("") }
+            var resetRunning by remember { mutableStateOf(false) }
+
+            ListItem(
+                headlineContent = { Text("Reinstall Ubuntu rootfs") },
+                supportingContent = {
+                    Text(
+                        resetStatus.ifEmpty {
+                            "Wipe and reinstall the Ubuntu container from scratch. " +
+                            "Use this if Terminal won't start or LSP reports 'rootfs not installed'. " +
+                            "⚠ All installed packages, files, and settings inside Ubuntu will be deleted."
+                        }
+                    )
+                },
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                OutlinedButton(
+                    enabled = !resetRunning,
+                    onClick = { showResetConfirm = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text(if (resetRunning) "Reinstalling…" else "Reinstall Ubuntu") }
+            }
+
+            if (showResetConfirm) {
+                key(orientation) {
+                AlertDialog(
+                    onDismissRequest = { showResetConfirm = false },
+                    title = { Text("Reinstall Ubuntu?") },
+                    text = {
+                        Text(
+                            "This will completely wipe your Ubuntu container and reinstall from scratch.\n\n" +
+                            "Everything inside Ubuntu will be deleted:\n" +
+                            "• All installed packages (Node.js, Python, etc.)\n" +
+                            "• All files in /root and /home\n" +
+                            "• All language server installations\n" +
+                            "• Shell history and profile customisations\n\n" +
+                            "Your project files (outside Ubuntu) are NOT affected.\n\n" +
+                            "Back up your container first if you have important data inside it."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showResetConfirm = false
+                                resetRunning = true
+                                scope.launch {
+                                    withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        try {
+                                            // Wipe rootfs dir and version marker
+                                            val rootfsDir = ProotInstaller.rootfsDir(context)
+                                            rootfsDir.deleteRecursively()
+                                            val versionFile = java.io.File(context.filesDir, ".ubuntu_version")
+                                            versionFile.delete()
+                                            // Reinstall
+                                            ProotInstaller.install(context) { msg ->
+                                                resetStatus = msg
+                                            }
+                                        } catch (e: Exception) {
+                                            resetStatus = "Error: ${e.message}"
+                                        }
+                                    }
+                                    resetRunning = false
+                                    if (!resetStatus.startsWith("Error")) {
+                                        resetStatus = "Reinstall complete ✓ — open Terminal to finish setup"
+                                    }
+                                }
+                            }
+                        ) { Text("Reinstall", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showResetConfirm = false }) { Text("Cancel") }
                     },
                 )
                 }

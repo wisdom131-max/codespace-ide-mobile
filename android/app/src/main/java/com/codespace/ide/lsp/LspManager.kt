@@ -261,10 +261,27 @@ object LspManager {
             stopServer(language)
         }
 
-        // BUG-FIX: Guard against proot rootfs not being installed yet
+        // BUG-FIX: Guard against proot rootfs not being installed yet.
+        // If bash exists but the version marker is missing/stale (happens when rootfs was
+        // carried forward from an older build), we repair the marker silently rather than
+        // blocking LSP entirely — the rootfs itself is functional.
         if (!ProotInstaller.isInstalled(context)) {
-            AppOutputLog.log("[LSP] ERROR: Ubuntu rootfs not installed — cannot start LSP server. Set up the terminal first.", "lsp")
-            return false
+            val bashExists = java.io.File(ProotInstaller.rootfsDir(context), "usr/bin/bash").exists()
+            if (bashExists) {
+                // Rootfs is functional but marker is missing/stale — repair it
+                val versionFile = java.io.File(context.filesDir, ".ubuntu_version")
+                try {
+                    versionFile.writeText(ProotInstaller.VERSION)
+                    AppOutputLog.log("[LSP] Repaired missing .ubuntu_version marker — rootfs was functional, marker was stale", "lsp")
+                } catch (e: Exception) {
+                    AppOutputLog.log("[LSP] WARNING: Could not write .ubuntu_version marker: ${e.message}", "lsp")
+                }
+            }
+            // Re-check after potential repair
+            if (!ProotInstaller.isInstalled(context)) {
+                AppOutputLog.log("[LSP] ERROR: Ubuntu rootfs not installed — cannot start LSP server. Open Terminal tab to set up Ubuntu first.", "lsp")
+                return false
+            }
         }
 
         // Check if installed, install if needed
