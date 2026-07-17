@@ -663,6 +663,16 @@ fun EditorPane(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                // P24: Auto-save indicator
+                if (showSavedIndicator) {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "Saved",
+                        fontSize = 9.sp,
+                        color = Color(0xFF4EC9B0),
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
         }
 
@@ -823,6 +833,15 @@ fun EditorPane(
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
                             if (active.path.startsWith("/")) {
                                 try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                            }
+                            // P24: Show "Saved" indicator briefly + clear dirty flag
+                            showSavedIndicator = true
+                            savedIndicatorJob?.cancel()
+                            savedIndicatorJob = kotlinx.coroutines.GlobalScope.launch {
+                                kotlinx.coroutines.delay(2000)
+                                showSavedIndicator = false
+                                val idx2 = tabs.indexOfFirst { it.id == active.id }
+                                if (idx2 >= 0) tabs[idx2] = tabs[idx2].copy(isDirty = false)
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
