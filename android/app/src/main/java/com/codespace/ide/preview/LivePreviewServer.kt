@@ -73,19 +73,21 @@ object LivePreviewServer {
 (function(){
   if(window.__liveReloadConnected) return;
   window.__liveReloadConnected = true;
-  var es = new EventSource('/__live_reload__');
-  es.onmessage = function(e){
-    if(e.data === 'reload'){
+  function connect(){
+    var es = new EventSource('/__live_reload__');
+    es.onmessage = function(e){
+      if(e.data === 'reload'){
+        try{ es.close(); }catch(_){}
+        location.reload();
+      }
+    };
+    es.onerror = function(){
       try{ es.close(); }catch(_){}
-      location.reload();
-    }
-  };
-  es.onerror = function(){
-    // Reconnect after 1s on error (server might be restarting)
-    setTimeout(function(){
-      try{ es = new EventSource('/__live_reload__'); }catch(_){}
-    }, 1000);
-  };
+      // Reconnect after 1s on error (server might be restarting)
+      setTimeout(connect, 1000);
+    };
+  }
+  connect();
 })();
 </script>
 </head>"""
@@ -134,7 +136,7 @@ object LivePreviewServer {
         sseClients.forEach { try { it.close() } catch (_: Exception) {} }
         sseClients.clear()
 
-        executor?.shutdown()
+        executor?.shutdownNow()
         serverSocket = null
         projectRoot = null
         Log.i(TAG, "Live preview server stopped")
@@ -338,7 +340,12 @@ object LivePreviewServer {
         val ext = file.extension.lowercase()
         val mimeType = mimeTypes[ext] ?: "application/octet-stream"
 
-        val content = file.readBytes()
+        val content = if (file.length() > 256 * 1024) {
+            // Large file — stream directly to avoid OOM on mobile
+            file.inputStream().use { it.readBytes() }
+        } else {
+            file.readBytes()
+        }
 
         // For HTML files, inject the reload script before </head>
         val isHtml = ext == "html" || ext == "htm"
