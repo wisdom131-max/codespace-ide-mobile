@@ -423,6 +423,14 @@ fun EditorPane(
                             Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            // P24: File type icon in tab
+                            Icon(
+                                com.codespace.ide.ui.panes.fileIcon(tab.name),
+                                null,
+                                tint = com.codespace.ide.ui.panes.fileIconColor(tab.name),
+                                modifier = Modifier.size(12.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
                             Text(
                                 (if (tab.isDirty) "● " else "") + tab.name,
                                 fontSize = 11.sp,
