@@ -2826,6 +2826,16 @@ Produce:
 > Added: 2026-07-16. Source: user specification (rearranged, not changed).
 > NOTE: Some sub-phases overlap with existing Phase 22 work (P22-F through P22-L). Audit existing implementations before building new ones.
 
+### Known Risks to Verify During Audit
+
+1. **`/sdcard` access on Android isn't guaranteed the way the doc assumes.** Since Android 11 (scoped storage), apps generally can't freely read/write arbitrary paths under `/sdcard` without either `MANAGE_EXTERNAL_STORAGE` permission or going through the Storage Access Framework. If the app already has broad storage access working (sounds like it does, since editor and terminal already share files), this is probably fine — but worth a one-line audit check: confirm *how* that access is currently granted, since it affects whether "Reveal In Explorer" or new project creation could hit a permission wall on newer Android versions.
+
+2. **"Active Environment" and "Python Version" in the status panel are ambiguous.** Which `python3`? If a project has a venv, does the panel show the venv's interpreter or the container's global one? This matters once venv creation (mentioned in the Python Project Template section) is in the mix — worth having the audit define what "active" means before building the panel.
+
+3. **Git Branch in the status panel assumes git is installed and the project is a repo.** Should just silently omit/gray out rather than error when there's no `.git` — minor, but worth a one-liner so it's not left implicit.
+
+4. **Symlink/mount-path mismatch is a known proot gotcha.** `/sdcard` inside the proot container sometimes resolves through a different real path than what Android's file picker reports (e.g. `/storage/emulated/0` vs a bind mount). Worth having the audit explicitly verify that a path shown in the editor and a path typed in the terminal actually point to the same inode — this is exactly the kind of thing that "looks connected" in casual testing but breaks on edge cases.
+
 ### GOAL
 
 Perform a complete audit of the IDE before implementing anything. Determine: what exists, what partially exists, what is broken, what is unfinished, what is duplicated, what can be upgraded, what should be replaced, what should be preserved.
