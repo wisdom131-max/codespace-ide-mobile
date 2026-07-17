@@ -2,6 +2,7 @@ package com.codespace.ide.lsp
 
 import android.content.Context
 import android.util.Log
+import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.domain.Language
 import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
@@ -124,12 +125,14 @@ object LspManager {
      */
     fun isServerInstalled(context: Context, language: Language): Boolean {
         val config = configs[language] ?: return false
+        AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${config.checkCommand}", "lsp")
         val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 10)
         val installed = output.isNotBlank() &&
                !output.contains("not found") &&
                !output.contains("Error") &&
                !output.contains("Exit code")
         Log.d(TAG, "isServerInstalled(${language.displayName}): output=${output.take(120)} → $installed")
+        AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (raw: ${output.take(80).trim()})", "lsp")
         return installed
     }
 
@@ -143,7 +146,10 @@ object LspManager {
             return "${language.displayName} LSP server already installed"
         }
         Log.d(TAG, "Installing LSP server for ${language.displayName}...")
-        return ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout)
+        AppOutputLog.log("[LSP] Installing ${language.displayName} server (timeout: ${config.installTimeout}s) — this may take 1-2 minutes…", "lsp")
+        val installOutput = ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout)
+        AppOutputLog.log("[LSP] Install output for ${language.displayName}: ${installOutput.take(200).trim()}", "lsp")
+        return installOutput
     }
 
     /**
@@ -154,6 +160,7 @@ object LspManager {
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
         val config = configs[language] ?: return false
         Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
+        AppOutputLog.log("[LSP] startServer BEGIN: ${language.displayName} workspace=$workspacePath", "lsp")
 
         // Stop existing server if running
         stopServer(language)
@@ -162,15 +169,19 @@ object LspManager {
         Log.d(TAG, "startServer: checking isServerInstalled for ${language.displayName} via: ${config.checkCommand}")
         if (!isServerInstalled(context, language)) {
             Log.d(TAG, "startServer: NOT installed — running installServer for ${language.displayName}")
+            AppOutputLog.log("[LSP] ${language.displayName} server not installed — starting install…", "lsp")
             val installResult = installServer(context, language)
             Log.d(TAG, "Install result: $installResult")
             if (!isServerInstalled(context, language)) {
                 Log.e(TAG, "startServer: FAILED — still not installed after install attempt for ${language.displayName}")
+                AppOutputLog.log("[LSP] ERROR: ${language.displayName} server still not installed after install attempt. Output: ${installResult.take(200)}", "lsp")
                 return false
             }
             Log.d(TAG, "startServer: install SUCCEEDED for ${language.displayName}")
+            AppOutputLog.log("[LSP] ${language.displayName} server install SUCCEEDED", "lsp")
         } else {
             Log.d(TAG, "startServer: already installed for ${language.displayName}")
+            AppOutputLog.log("[LSP] ${language.displayName} server already installed — skipping install", "lsp")
         }
 
         // Build proot command — wrap server in bash -lc to source PATH/profile,
@@ -183,6 +194,7 @@ object LspManager {
         val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)
         val cmdLine = listOf(proot) + fullArgs.drop(1).toList()
         Log.d(TAG, "startServer: spawning command: ${cmdLine.joinToString(" ")}")
+        AppOutputLog.log("[LSP] Spawning ${language.displayName} server process: ${serverCmd}", "lsp")
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)
@@ -196,15 +208,21 @@ object LspManager {
             pb.start()
         } catch (e: Exception) {
             Log.e(TAG, "startServer: ProcessBuilder.start() THREW: ${e.message}")
+            AppOutputLog.log("[LSP] ERROR: Failed to spawn ${language.displayName} process: ${e.message}", "lsp")
             return false
         }
         Log.d(TAG, "startServer: process spawned, pid=${android.os.Process.myPid()} isAlive=${process.isAlive}")
+        AppOutputLog.log("[LSP] Process spawned for ${language.displayName} — isAlive=${process.isAlive}", "lsp")
 
         // Drain stderr in background thread so it doesn't block stdout (JSON-RPC) reads
         Thread {
             try {
                 process.errorStream.bufferedReader().forEachLine { line ->
                     Log.w(TAG, "LSP-STDERR [${language.displayName}]: $line")
+                    // Mirror stderr to the Output panel so it's visible without adb
+                    if (line.isNotBlank()) {
+                        AppOutputLog.log("[LSP][${language.displayName}][stderr] $line", "lsp")
+                    }
                 }
             } catch (_: Exception) {}
         }.also { it.isDaemon = true }.start()
@@ -223,6 +241,7 @@ object LspManager {
             val diags = params.optJSONArray("diagnostics") ?: JSONArray()
             server.diagnostics[uri] = diags
             diagnosticsHandlers[language]?.invoke(uri, diags)
+            AppOutputLog.log("[LSP] publishDiagnostics for ${language.displayName}: ${diags.length()} diagnostic(s) in ${uri.substringAfterLast('/')}", "lsp")
         }
 
         client.start()
@@ -234,13 +253,16 @@ object LspManager {
         initParams.put("capabilities", JSONObject())
 
         Log.d(TAG, "startServer: sending initialize request to ${language.displayName} server (30s timeout)...")
+        AppOutputLog.log("[LSP] Sending LSP initialize to ${language.displayName} server (rootUri=$rootUri, 30s timeout)…", "lsp")
         val response = client.request("initialize", initParams, timeoutSeconds = 30)
         if (response == null) {
             Log.e(TAG, "startServer: LSP initialize TIMED OUT or returned null for ${language.displayName}")
+            AppOutputLog.log("[LSP] ERROR: initialize TIMED OUT (30s) for ${language.displayName} — server process alive=${process.isAlive}", "lsp")
             stopServer(language)
             return false
         }
         Log.d(TAG, "startServer: initialize response received for ${language.displayName}: ${response.toString().take(200)}")
+        AppOutputLog.log("[LSP] initialize response received from ${language.displayName} server ✓", "lsp")
 
         val caps = response as? JSONObject
         server.capabilities = caps
@@ -250,6 +272,7 @@ object LspManager {
         client.notify("initialized")
 
         Log.d(TAG, "startServer: SUCCESS — LSP server RUNNING for ${language.displayName} at $rootUri")
+        AppOutputLog.log("[LSP] ✓ ${language.displayName} server RUNNING at $rootUri", "lsp")
         return true
     }
 
@@ -264,6 +287,7 @@ object LspManager {
         server.client.stop()
         server.process.destroyForcibly()
         Log.d(TAG, "LSP server stopped for ${language.displayName}")
+        AppOutputLog.log("[LSP] Server stopped for ${language.displayName}", "lsp")
     }
 
     fun stopAll() {
@@ -291,6 +315,7 @@ object LspManager {
         val params = JSONObject()
         params.put("textDocument", td)
         server.client.notify("textDocument/didOpen", params)
+        AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId)", "lsp")
         return true
     }
 
