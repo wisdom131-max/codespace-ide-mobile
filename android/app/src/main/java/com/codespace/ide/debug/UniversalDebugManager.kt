@@ -142,7 +142,7 @@ object UniversalDebugManager {
     fun startDebug(
         language: Language,
         filePath: String,
-        projectRoot: String? = null,
+        _projectRoot: String? = null,
     ): String? {
         val provider = selectProvider(language, filePath)
             ?: return null
