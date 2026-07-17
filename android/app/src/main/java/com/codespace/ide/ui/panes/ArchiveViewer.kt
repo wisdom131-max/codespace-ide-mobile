@@ -33,6 +33,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipFile
+import androidx.compose.material.icons.automirrored.filled.*
 
 // Same palette as ExplorerPane, kept local so this stays a self-contained, drop-in viewer.
 private val ArchBg        = Color(0xFF1E1E1E)
@@ -112,7 +113,7 @@ private fun iconFor(name: String): androidx.compose.ui.graphics.vector.ImageVect
         ext == "so" -> Icons.Default.Memory
         ext in setOf("png", "jpg", "jpeg", "webp") -> Icons.Default.Image
         ext in TEXT_EXTENSIONS -> Icons.Default.Description
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
 
