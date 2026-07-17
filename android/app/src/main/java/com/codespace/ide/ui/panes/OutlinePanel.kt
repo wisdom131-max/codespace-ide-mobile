@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.Language
+import androidx.compose.material.icons.automirrored.filled.*
 
 /** A parsed symbol from the current file */
 data class CodeSymbol(
@@ -309,7 +310,7 @@ fun OutlinePanel(
                             SymbolKind.VARIABLE -> Icons.Default.Code
                             SymbolKind.INTERFACE -> Icons.Default.Hub
                             SymbolKind.PROPERTY -> Icons.Default.Build
-                            SymbolKind.ENUM -> Icons.Default.List
+                            SymbolKind.ENUM -> Icons.AutoMirrored.Filled.List
                             SymbolKind.MODULE -> Icons.Default.ViewModule
                             SymbolKind.CONSTANT -> Icons.Default.Lock
                         }
