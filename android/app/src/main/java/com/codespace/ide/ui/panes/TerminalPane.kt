@@ -1891,7 +1891,7 @@ internal fun TerminalPane(
         // ── Custom commands drawer ────────────────────────────────────────────
         if (showCustomCmds) {
             val savedCmds = remember {
-                val prefs = context.getSharedPreferences("custom_cmds", android.content.Context.MODE_PRIVATE)
+                val localPrefs = context.getSharedPreferences("custom_cmds", android.content.Context.MODE_PRIVATE)
                 val raw = prefs.getString("cmds", null)
                 val list = mutableStateListOf<Pair<String,String>>() // label, command
                 if (!raw.isNullOrBlank()) {
