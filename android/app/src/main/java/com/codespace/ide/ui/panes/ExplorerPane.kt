@@ -1814,7 +1814,7 @@ private fun String.matchesSimpleGlob(pattern: String): Boolean {
     return try { Regex(regex, RegexOption.IGNORE_CASE).matches(this) } catch (_: Exception) { this.contains(pattern, ignoreCase = true) }
 }
 
-private fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
+fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when (ext) {
         // Kotlin
@@ -1874,7 +1874,7 @@ private fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVec
 }
 
 /** P24: File type color — returns a tint color based on file extension for visual differentiation. */
-private fun fileIconColor(name: String): Color {
+fun fileIconColor(name: String): Color {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when (ext) {
         // Kotlin — purple
