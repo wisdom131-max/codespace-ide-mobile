@@ -3483,3 +3483,55 @@ margin. Do NOT reduce it; some first-install scenarios (cold cache, slow storage
 see live `npm` output lines streaming through. The install should complete in ~30s instead of
 timing out at 120s.
 
+
+---
+
+## LSP Critical Bug Report & Fixes (2026-07-17)
+
+### Root Cause: typescript@7.x breaks TypeScript LSP
+
+**Reported by user, confirmed manually.**
+
+#### The bug
+`npm install -g typescript-language-server typescript` (unpinned) resolves `typescript`
+to the latest version — **typescript@7.0.2** as of 2026-07. This version ships **only**
+`tsc.js` (the compiler CLI). The files required by `typescript-language-server` at runtime:
+- `lib/tsserver.js`
+- `lib/tsserverlibrary.js`
+
+...are **not present** in typescript@7.x. The language server fails at `initialize` with:
+
+```
+Could not find a valid TypeScript installation.
+```
+
+The old `checkCommand` only ran `which typescript-language-server` — the binary exists
+(npm creates it), so `isServerInstalled()` returned `true`. But the install was silently
+broken. The 120-second timeout previously reported was likely masking **this failure**,
+not a literal npm install hang.
+
+#### All fixes applied (commit 1cec3535)
+
+| # | Fix | File | Detail |
+|---|-----|------|--------|
+| 1 | Pin typescript@5.6.3 | `LspManager.kt` | `npm install -g typescript-language-server typescript@5.6.3` for TYPESCRIPT + JAVASCRIPT configs. 5.6.3 confirmed to ship tsserver.js + tsserverlibrary.js in `lib/`. |
+| 2 | tsserver.js health-check in `checkCommand` | `LspManager.kt` | `which typescript-language-server && node -e "require.resolve('typescript/lib/tsserver')" && echo OK` — a broken @7.x install (binary present, tsserver.js absent) now correctly triggers a repair install. |
+| 3 | HTML/CSS server package fix | `LspManager.kt` | `vscode-html-languageserver` and `vscode-css-languageserver` are **deprecated** packages. Replaced with `vscode-langservers-extracted` (the maintained successor). Binary names updated to `vscode-html-language-server` / `vscode-css-language-server` (hyphenated). |
+| 4 | Repair install path documented | `LspManager.kt` | `installServer()` now logs whether it's a fresh install or a repair of a broken existing install, making future debugging easier. |
+
+#### Remaining LSP audit items (not yet fixed)
+
+| Item | Severity | Description |
+|------|----------|-------------|
+| golang-go apt version | Medium | `apt-get install golang-go` installs Go 1.18 on Ubuntu 22.04 — too old for `go install golang.org/x/tools/gopls@latest`. Should use `snap install go` or official tarball. |
+| rust-analyzer fallback URL | Medium | Fallback binary URL uses `latest` (redirecting CDN URL) — may break if release naming changes. Should pin a specific version like `2024-01-01`. |
+| kotlin-language-server version | Low | Pinned to 1.3.13 — this is 2+ years old. Should check for 1.3.x+ releases. |
+| jdtls URL | Low | Pinned to 1.9.0/202203031534 — Eclipse JDT.LS has had many releases since. Should update to a recent milestone. |
+| installTimeout for npm servers | Low | TypeScript/JS/PHP/HTML/CSS all use the default 120s timeout. npm installs in a proot rootfs over mobile data can legitimately take longer. Should increase to 180s. |
+
+#### Lesson recorded
+When writing LSP install commands: **always pin npm package versions**. The `typescript`
+package is a well-known example of a package that changes behavior significantly across
+major versions. The pattern `npm install -g <package>` should always include a pinned
+version for any package used as a language service runtime, not just the LSP binary itself.
+
