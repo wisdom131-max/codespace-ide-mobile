@@ -24,25 +24,30 @@ data class LspCodeAction(
  *
  * P22-F: LSP groundwork - LspManager, stdio JSON-RPC client, server install via npm/pip in proot.
  *
- * Supported language servers:
- * - TypeScript/JavaScript: typescript-language-server --stdio
- * - Python: pylsp
- * - Kotlin: kotlin-language-server
- * - Go: gopls
+ * Supported language servers (auto-detected by file extension, auto-installed on first use):
+ * - TypeScript/JavaScript: typescript-language-server --stdio  (npm)
+ * - Python:                pylsp                               (pip3)
+ * - Kotlin:                kotlin-language-server              (curl+unzip)
+ * - Go:                    gopls                               (go install)
+ * - Java:                  jdtls (eclipse.jdt.ls)             (apt + curl)
+ * - C / C++:               clangd                             (apt)
+ * - Rust:                  rust-analyzer                      (rustup)
+ * - PHP:                   intelephense                       (npm)
+ * - HTML:                  vscode-html-languageserver         (npm)
+ * - CSS:                   vscode-css-languageserver          (npm)
  *
- * Language servers run inside the Ubuntu proot rootfs and communicate via
- * JSON-RPC 2.0 over stdio (see JsonRpcClient).
+ * All servers run inside the Ubuntu proot rootfs and communicate via JSON-RPC 2.0 over stdio.
  *
- * Usage:
- *   1. LspManager.startServer(context, Language.TYPESCRIPT, workspacePath)
- *   2. LspManager.didOpen(language, uri, languageId, text)
- *   3. LspManager.getCompletion(language, uri, line, char)  // returns JSONArray
- *   4. LspManager.getHover(language, uri, line, char)       // returns JSONObject
- *   5. LspManager.didClose(language, uri)
- *   6. LspManager.stopServer(language)
+ * BUG-FIX (2026-07-17): startServer no longer kills a healthy server when a 2nd file
+ * of the same language is opened. It only restarts if the existing process is dead.
  *
- * Diagnostics are pushed by the server via textDocument/publishDiagnostics
- * and can be retrieved with getDiagnostics() or via a registered handler.
+ * BUG-FIX (2026-07-17): initialize now declares full client capabilities so servers
+ * know to push diagnostics, completions, hover, and signatureHelp.
+ *
+ * BUG-FIX (2026-07-17): workspaceFolders included in initialize so Kotlin/Python/Java
+ * LSPs can index cross-file symbols.
+ *
+ * BUG-FIX (2026-07-17): startServer guards against proot rootfs not being set up yet.
  */
 object LspManager {
 
@@ -58,41 +63,116 @@ object LspManager {
     )
 
     private val configs: Map<Language, ServerConfig> = mapOf(
+        // ── JavaScript / TypeScript ──────────────────────────────────────────
         Language.TYPESCRIPT to ServerConfig(
             Language.TYPESCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
             "which typescript-language-server",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript",
         ),
         Language.JAVASCRIPT to ServerConfig(
             Language.JAVASCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
             "which typescript-language-server",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript",
         ),
+        // ── Python ─────────────────────────────────────────────────────────
         Language.PYTHON to ServerConfig(
             Language.PYTHON,
             "pylsp",
             emptyList(),
             "which pylsp",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends python3-pip 2>/dev/null; pip3 install python-lsp-server[all]"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends python3-pip 2>/dev/null; pip3 install 'python-lsp-server[all]' 2>/dev/null || pip3 install python-lsp-server",
         ),
+        // ── Kotlin ─────────────────────────────────────────────────────────
         Language.KOTLIN to ServerConfig(
             Language.KOTLIN,
             "kotlin-language-server",
             emptyList(),
             "which kotlin-language-server",
-            "apt-get update 2>/dev/null; apt-get install -y --no-install-recommends default-jre-headless unzip curl 2>/dev/null; curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && ln -sf /opt/kotlin-language-server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && rm -f /tmp/kls.zip && echo Kotlin-LSP-installed",
-            300
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends default-jre-headless unzip curl 2>/dev/null; " +
+                "curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && " +
+                "unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && " +
+                "ln -sf /opt/kotlin-language-server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && " +
+                "rm -f /tmp/kls.zip && echo Kotlin-LSP-installed",
+            300,
         ),
+        // ── Go ─────────────────────────────────────────────────────────────
         Language.GO to ServerConfig(
             Language.GO,
             "gopls",
             emptyList(),
             "which gopls",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends golang-go 2>/dev/null; go install golang.org/x/tools/gopls@latest"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends golang-go 2>/dev/null; go install golang.org/x/tools/gopls@latest",
+        ),
+        // ── Java ───────────────────────────────────────────────────────────
+        // Uses eclipse.jdt.ls (jdtls). Lighter than IntelliJ, runs on JRE 17+.
+        Language.JAVA to ServerConfig(
+            Language.JAVA,
+            "/opt/jdtls/bin/jdtls",
+            listOf("-data", "/tmp/jdtls-workspace"),
+            "test -f /opt/jdtls/bin/jdtls && echo found",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends default-jre-headless curl unzip 2>/dev/null; " +
+                "mkdir -p /opt/jdtls && " +
+                "curl -fsSL https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz | tar -xz -C /opt/jdtls 2>/dev/null && " +
+                "chmod +x /opt/jdtls/bin/jdtls && echo jdtls-installed",
+            300,
+        ),
+        // ── C / C++ ────────────────────────────────────────────────────────
+        // clangd is in the Ubuntu apt repos — simple install, great LSP.
+        Language.C to ServerConfig(
+            Language.C,
+            "clangd",
+            listOf("--background-index", "--clang-tidy"),
+            "which clangd",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends clangd",
+        ),
+        Language.CPP to ServerConfig(
+            Language.CPP,
+            "clangd",
+            listOf("--background-index", "--clang-tidy"),
+            "which clangd",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends clangd",
+        ),
+        // ── Rust ───────────────────────────────────────────────────────────
+        Language.RUST to ServerConfig(
+            Language.RUST,
+            "rust-analyzer",
+            emptyList(),
+            "which rust-analyzer",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends curl 2>/dev/null; " +
+                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null; " +
+                "source \$HOME/.cargo/env 2>/dev/null; " +
+                "rustup component add rust-analyzer 2>/dev/null || " +
+                "curl -fsSL https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-aarch64-unknown-linux-gnu.gz | gunzip -c > /usr/local/bin/rust-analyzer && " +
+                "chmod +x /usr/local/bin/rust-analyzer && echo rust-analyzer-installed",
+            300,
+        ),
+        // ── PHP ────────────────────────────────────────────────────────────
+        Language.PHP to ServerConfig(
+            Language.PHP,
+            "intelephense",
+            listOf("--stdio"),
+            "which intelephense",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g intelephense",
+        ),
+        // ── HTML ───────────────────────────────────────────────────────────
+        Language.HTML to ServerConfig(
+            Language.HTML,
+            "vscode-html-languageserver",
+            listOf("--stdio"),
+            "which vscode-html-languageserver",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g vscode-html-languageserver",
+        ),
+        // ── CSS ────────────────────────────────────────────────────────────
+        Language.CSS to ServerConfig(
+            Language.CSS,
+            "vscode-css-languageserver",
+            listOf("--stdio"),
+            "which vscode-css-languageserver",
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g vscode-css-languageserver",
         ),
     )
 
@@ -130,14 +210,15 @@ object LspManager {
         val installed = output.isNotBlank() &&
                !output.contains("not found") &&
                !output.contains("Error") &&
-               !output.contains("Exit code")
+               !output.contains("Exit code") &&
+               !output.contains("error")
         Log.d(TAG, "isServerInstalled(${language.displayName}): output=${output.take(120)} → $installed")
         AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (raw: ${output.take(80).trim()})", "lsp")
         return installed
     }
 
     /**
-     * Install the LSP server binary in the proot rootfs via npm/pip.
+     * Install the LSP server binary in the proot rootfs via npm/pip/apt.
      * Returns the installation output.
      */
     fun installServer(context: Context, language: Language): String {
@@ -156,14 +237,35 @@ object LspManager {
      * Start an LSP server for the given language and workspace.
      * Automatically installs the server if not present.
      * Returns true if the server started and initialized successfully.
+     *
+     * BUG-FIX: If a server is already running and healthy for this language,
+     * reuse it instead of killing and restarting. Only kill dead processes.
      */
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
-        val config = configs[language] ?: return false
+        val config = configs[language] ?: run {
+            AppOutputLog.log("[LSP] No server config for ${language.displayName} — language not supported", "lsp")
+            return false
+        }
         Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
         AppOutputLog.log("[LSP] startServer BEGIN: ${language.displayName} workspace=$workspacePath", "lsp")
 
-        // Stop existing server if running
-        stopServer(language)
+        // BUG-FIX: Don't kill a healthy server just because a 2nd file of the same
+        // language was opened. Only stop if the process has already died.
+        val existing = servers[language]
+        if (existing != null && existing.process.isAlive && existing.initialized) {
+            AppOutputLog.log("[LSP] ${language.displayName} server already running and healthy — reusing", "lsp")
+            return true
+        }
+        if (existing != null) {
+            AppOutputLog.log("[LSP] ${language.displayName} server found but dead (isAlive=${existing.process.isAlive}) — restarting", "lsp")
+            stopServer(language)
+        }
+
+        // BUG-FIX: Guard against proot rootfs not being installed yet
+        if (!ProotInstaller.isInstalled(context)) {
+            AppOutputLog.log("[LSP] ERROR: Ubuntu rootfs not installed — cannot start LSP server. Set up the terminal first.", "lsp")
+            return false
+        }
 
         // Check if installed, install if needed
         Log.d(TAG, "startServer: checking isServerInstalled for ${language.displayName} via: ${config.checkCommand}")
@@ -186,15 +288,13 @@ object LspManager {
 
         // Build proot command — wrap server in bash -lc to source PATH/profile,
         // matching execOnce() which is proven to work in the terminal.
-        // Direct execution without bash misses ~/.profile PATH entries on some setups.
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
         val headArgs = baseArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
         val serverCmd = config.command + if (config.args.isEmpty()) "" else " " + config.args.joinToString(" ")
-        // Wrap in bash -lc so PATH and profile are sourced, exactly like execOnce()
         val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)
         val cmdLine = listOf(proot) + fullArgs.drop(1).toList()
         Log.d(TAG, "startServer: spawning command: ${cmdLine.joinToString(" ")}")
-        AppOutputLog.log("[LSP] Spawning ${language.displayName} server process: ${serverCmd}", "lsp")
+        AppOutputLog.log("[LSP] Spawning ${language.displayName} server: $serverCmd", "lsp")
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)
@@ -211,7 +311,7 @@ object LspManager {
             AppOutputLog.log("[LSP] ERROR: Failed to spawn ${language.displayName} process: ${e.message}", "lsp")
             return false
         }
-        Log.d(TAG, "startServer: process spawned, pid=${android.os.Process.myPid()} isAlive=${process.isAlive}")
+        Log.d(TAG, "startServer: process spawned, isAlive=${process.isAlive}")
         AppOutputLog.log("[LSP] Process spawned for ${language.displayName} — isAlive=${process.isAlive}", "lsp")
 
         // Drain stderr in background thread so it doesn't block stdout (JSON-RPC) reads
@@ -219,7 +319,6 @@ object LspManager {
             try {
                 process.errorStream.bufferedReader().forEachLine { line ->
                     Log.w(TAG, "LSP-STDERR [${language.displayName}]: $line")
-                    // Mirror stderr to the Output panel so it's visible without adb
                     if (line.isNotBlank()) {
                         AppOutputLog.log("[LSP][${language.displayName}][stderr] $line", "lsp")
                     }
@@ -235,7 +334,7 @@ object LspManager {
         val server = LspServer(language, process, client, rootUri)
         servers[language] = server
 
-        // Set up diagnostics handler
+        // Set up diagnostics push handler
         client.onNotification("textDocument/publishDiagnostics") { params ->
             val uri = params.optString("uri", "")
             val diags = params.optJSONArray("diagnostics") ?: JSONArray()
@@ -246,34 +345,134 @@ object LspManager {
 
         client.start()
 
-        // Send LSP initialize request
-        val initParams = JSONObject()
-        initParams.put("processId", android.os.Process.myPid())
-        initParams.put("rootUri", rootUri)
-        initParams.put("capabilities", JSONObject())
+        // ── LSP initialize request ────────────────────────────────────────
+        // BUG-FIX: Send full client capabilities so servers know what we support.
+        // Empty {} causes many servers to skip diagnostics, completions, and hover.
+        // BUG-FIX: Include workspaceFolders so Kotlin/Python/Java LSPs can index project.
+        val workspaceFolder = JSONObject().apply {
+            put("uri", rootUri)
+            put("name", workspacePath.substringAfterLast('/'))
+        }
+        val workspaceFoldersArray = JSONArray().apply { put(workspaceFolder) }
 
-        Log.d(TAG, "startServer: sending initialize request to ${language.displayName} server (30s timeout)...")
-        AppOutputLog.log("[LSP] Sending LSP initialize to ${language.displayName} server (rootUri=$rootUri, 30s timeout)…", "lsp")
+        val capabilities = buildClientCapabilities()
+
+        val initParams = JSONObject().apply {
+            put("processId", android.os.Process.myPid())
+            put("rootUri", rootUri)
+            put("workspaceFolders", workspaceFoldersArray)
+            put("capabilities", capabilities)
+            put("clientInfo", JSONObject().apply {
+                put("name", "CodeSpace IDE")
+                put("version", "1.0")
+            })
+            put("initializationOptions", JSONObject())
+        }
+
+        Log.d(TAG, "startServer: sending initialize to ${language.displayName} (30s timeout)...")
+        AppOutputLog.log("[LSP] Sending initialize to ${language.displayName} server (rootUri=$rootUri, 30s timeout)…", "lsp")
         val response = client.request("initialize", initParams, timeoutSeconds = 30)
         if (response == null) {
-            Log.e(TAG, "startServer: LSP initialize TIMED OUT or returned null for ${language.displayName}")
+            Log.e(TAG, "startServer: LSP initialize TIMED OUT for ${language.displayName}")
             AppOutputLog.log("[LSP] ERROR: initialize TIMED OUT (30s) for ${language.displayName} — server process alive=${process.isAlive}", "lsp")
             stopServer(language)
             return false
         }
-        Log.d(TAG, "startServer: initialize response received for ${language.displayName}: ${response.toString().take(200)}")
+        Log.d(TAG, "startServer: initialize response for ${language.displayName}: ${response.toString().take(200)}")
         AppOutputLog.log("[LSP] initialize response received from ${language.displayName} server ✓", "lsp")
 
         val caps = response as? JSONObject
         server.capabilities = caps
         server.initialized = true
 
-        // Send initialized notification
         client.notify("initialized")
 
         Log.d(TAG, "startServer: SUCCESS — LSP server RUNNING for ${language.displayName} at $rootUri")
         AppOutputLog.log("[LSP] ✓ ${language.displayName} server RUNNING at $rootUri", "lsp")
         return true
+    }
+
+    /**
+     * Build the full LSP client capabilities object declaring everything the app uses.
+     * This is sent in the initialize request so servers know what to advertise.
+     */
+    private fun buildClientCapabilities(): JSONObject {
+        // textDocument.synchronization
+        val sync = JSONObject().apply {
+            put("didSave", true)
+            put("willSave", false)
+            put("dynamicRegistration", false)
+        }
+        // textDocument.completion
+        val completionItem = JSONObject().apply {
+            put("snippetSupport", false)          // we strip snippets in parseLspCompletions
+            put("documentationFormat", JSONArray().apply { put("plaintext"); put("markdown") })
+        }
+        val completion = JSONObject().apply {
+            put("completionItem", completionItem)
+            put("dynamicRegistration", false)
+        }
+        // textDocument.hover
+        val hover = JSONObject().apply {
+            put("contentFormat", JSONArray().apply { put("plaintext"); put("markdown") })
+            put("dynamicRegistration", false)
+        }
+        // textDocument.signatureHelp
+        val signatureInformation = JSONObject().apply {
+            put("documentationFormat", JSONArray().apply { put("plaintext") })
+        }
+        val signatureHelp = JSONObject().apply {
+            put("signatureInformation", signatureInformation)
+            put("dynamicRegistration", false)
+        }
+        // textDocument.definition, references, rename
+        val basic = JSONObject().apply { put("dynamicRegistration", false) }
+        // textDocument.publishDiagnostics
+        val publishDiagnostics = JSONObject().apply {
+            put("relatedInformation", false)
+            put("versionSupport", false)
+        }
+        // textDocument.codeAction
+        val codeAction = JSONObject().apply {
+            put("dynamicRegistration", false)
+            put("codeActionLiteralSupport", JSONObject().apply {
+                put("codeActionKind", JSONObject().apply {
+                    put("valueSet", JSONArray().apply {
+                        put(""); put("quickfix"); put("refactor"); put("source")
+                    })
+                })
+            })
+        }
+        // textDocument.semanticTokens (declared as supported but minimal)
+        val semanticTokens = JSONObject().apply {
+            put("dynamicRegistration", false)
+            put("requests", JSONObject().apply { put("full", true) })
+            put("tokenTypes", JSONArray())
+            put("tokenModifiers", JSONArray())
+            put("formats", JSONArray().apply { put("relative") })
+        }
+        val textDocument = JSONObject().apply {
+            put("synchronization", sync)
+            put("completion", completion)
+            put("hover", hover)
+            put("signatureHelp", signatureHelp)
+            put("definition", basic)
+            put("references", basic)
+            put("rename", basic)
+            put("publishDiagnostics", publishDiagnostics)
+            put("codeAction", codeAction)
+            put("semanticTokens", semanticTokens)
+        }
+        // workspace capabilities
+        val workspace = JSONObject().apply {
+            put("applyEdit", false)
+            put("workspaceFolders", true)
+            put("symbol", JSONObject().apply { put("dynamicRegistration", false) })
+        }
+        return JSONObject().apply {
+            put("textDocument", textDocument)
+            put("workspace", workspace)
+        }
     }
 
     fun stopServer(language: Language) {
@@ -306,14 +505,13 @@ object LspManager {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
 
-        val td = JSONObject()
-        td.put("uri", uri)
-        td.put("languageId", languageId)
-        td.put("version", version)
-        td.put("text", text)
-
-        val params = JSONObject()
-        params.put("textDocument", td)
+        val td = JSONObject().apply {
+            put("uri", uri)
+            put("languageId", languageId)
+            put("version", version)
+            put("text", text)
+        }
+        val params = JSONObject().apply { put("textDocument", td) }
         server.client.notify("textDocument/didOpen", params)
         AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId)", "lsp")
         return true
@@ -328,18 +526,16 @@ object LspManager {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
 
-        val td = JSONObject()
-        td.put("uri", uri)
-        td.put("version", version)
-
-        val change = JSONObject()
-        change.put("text", text)
-        val changes = JSONArray()
-        changes.put(change)
-
-        val params = JSONObject()
-        params.put("textDocument", td)
-        params.put("contentChanges", changes)
+        val td = JSONObject().apply {
+            put("uri", uri)
+            put("version", version)
+        }
+        val change = JSONObject().apply { put("text", text) }
+        val changes = JSONArray().apply { put(change) }
+        val params = JSONObject().apply {
+            put("textDocument", td)
+            put("contentChanges", changes)
+        }
         server.client.notify("textDocument/didChange", params)
         return true
     }
@@ -348,11 +544,8 @@ object LspManager {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
 
-        val td = JSONObject()
-        td.put("uri", uri)
-
-        val params = JSONObject()
-        params.put("textDocument", td)
+        val td = JSONObject().apply { put("uri", uri) }
+        val params = JSONObject().apply { put("textDocument", td) }
         server.client.notify("textDocument/didClose", params)
         return true
     }
@@ -389,6 +582,25 @@ object LspManager {
 
         val params = positionParams(uri, line, character)
         val response = server.client.request("textDocument/hover", params, timeoutSeconds = 10)
+        return response as? JSONObject
+    }
+
+    /**
+     * Request LSP signatureHelp at the given cursor position.
+     * Returns a JSONObject with 'signatures' array, 'activeSignature', 'activeParameter',
+     * or null if the server doesn't support it or no call is active.
+     */
+    fun getSignatureHelp(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/signatureHelp", params, timeoutSeconds = 5)
         return response as? JSONObject
     }
 
@@ -433,7 +645,6 @@ object LspManager {
 
     /**
      * P22-J: Request code actions (including auto-import fixes) for a range.
-     * Returns JSONArray of CodeAction/Command objects, or null if unsupported.
      */
     fun getCodeActions(
         language: Language,
@@ -468,10 +679,8 @@ object LspManager {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
-        val td = JSONObject()
-        td.put("uri", uri)
-        val params = JSONObject()
-        params.put("textDocument", td)
+        val td = JSONObject().apply { put("uri", uri) }
+        val params = JSONObject().apply { put("textDocument", td) }
         val response = server.client.request("textDocument/semanticTokens/full", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -480,10 +689,8 @@ object LspManager {
         }
     }
 
-
     /**
      * P24-3: Rename symbol at position across the workspace.
-     * Returns a map of uri -> list of TextEdits (newText + range).
      */
     fun rename(
         language: Language,
@@ -502,7 +709,6 @@ object LspManager {
 
     // ── Diagnostics ────────────────────────────────────────────────
 
-
     fun getDiagnostics(language: Language, uri: String): JSONArray? {
         return servers[language]?.diagnostics?.get(uri)
     }
@@ -519,7 +725,6 @@ object LspManager {
 
     /**
      * Convert a host filesystem path to a file:// URI for LSP.
-     * Handles both the filesDir bind mount (/host-files) and rootfs paths.
      */
     fun fileUriFromHostPath(context: Context, hostPath: String): String? {
         val guestPath = workspaceGuestPath(context, hostPath) ?: return null
@@ -568,14 +773,14 @@ object LspManager {
     // ── Private helpers ────────────────────────────────────────────
 
     private fun positionParams(uri: String, line: Int, character: Int): JSONObject {
-        val td = JSONObject()
-        td.put("uri", uri)
-        val pos = JSONObject()
-        pos.put("line", line)
-        pos.put("character", character)
-        val params = JSONObject()
-        params.put("textDocument", td)
-        params.put("position", pos)
-        return params
+        val td = JSONObject().apply { put("uri", uri) }
+        val pos = JSONObject().apply {
+            put("line", line)
+            put("character", character)
+        }
+        return JSONObject().apply {
+            put("textDocument", td)
+            put("position", pos)
+        }
     }
 }
