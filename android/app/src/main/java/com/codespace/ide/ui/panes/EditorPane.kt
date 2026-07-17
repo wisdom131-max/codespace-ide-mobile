@@ -38,6 +38,7 @@ import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
+import com.codespace.ide.lsp.parseCodeActions
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -886,6 +887,17 @@ fun EditorPane(
                                 if (uri != null) {
                                     val actions = LspManager.getCodeActions(active.language, uri, line, col)
                                     actions?.let { parseImportEdits(it, uri) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P24: Quick fixes — LSP code actions for the current line
+                        lspCodeActionProvider = if (LspManager.isServerRunning(active.language)) {
+                            { line ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val col = 0
+                                    val actions = LspManager.getCodeActions(active.language, uri, line, col)
+                                    actions?.let { parseCodeActions(it) } ?: emptyList()
                                 } else emptyList()
                             }
                         } else null,

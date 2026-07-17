@@ -1229,6 +1229,64 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                             }
                         }
 
+                        // P24: Quick Fixes from LSP — show code actions for the current line
+                        if (lspCodeActionProvider != null) {
+                            val quickFixes = remember(value.selection.start) {
+                                val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                                try { lspCodeActionProvider.invoke(cursorLine) } catch (_: Exception) { emptyList() }
+                            }
+                            if (quickFixes.isNotEmpty()) {
+                                quickFixes.forEach { fix ->
+                                    TextButton(onClick = {
+                                        if (fix.edit != null) {
+                                            // Apply the workspace edit — parse and apply text edits
+                                            try {
+                                                val wsEdit = org.json.JSONObject(fix.edit)
+                                                val docChanges = wsEdit.optJSONArray("documentChanges")
+                                                if (docChanges != null) {
+                                                    for (j in 0 until docChanges.length()) {
+                                                        val dc = docChanges.optJSONObject(j) ?: continue
+                                                        val textEdits = dc.optJSONArray("edits") ?: continue
+                                                        var newText = value.text
+                                                        // Apply edits in reverse order so offsets don't shift
+                                                        val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                            .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                        for (te in edits) {
+                                                            val rng = te.optJSONObject("range") ?: continue
+                                                            val startLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                            val startChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                            val endLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                            val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                            val replacement = te.optString("newText", "")
+                                                            val textLines = newText.split("\n").toMutableList()
+                                                            if (startLine == endLine && startLine < textLines.size) {
+                                                                val line = textLines[startLine]
+                                                                textLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
+                                                            } else if (startLine < textLines.size) {
+                                                                val before = textLines[startLine].substring(0, startChar.coerceAtMost(textLines[startLine].length))
+                                                                val after = if (endLine < textLines.size) textLines[endLine].substring(endChar.coerceAtMost(textLines[endLine].length)) else ""
+                                                                textLines[startLine] = before + replacement + after
+                                                                if (startLine + 1 <= endLine && endLine < textLines.size) {
+                                                                    for (k in endLine downTo startLine + 1) {
+                                                                        if (k < textLines.size) textLines.removeAt(k)
+                                                                    }
+                                                                }
+                                                            }
+                                                            newText = textLines.joinToString("\n")
+                                                        }
+                                                        value = TextFieldValue(newText, TextRange(value.selection.start))
+                                                    }
+                                                }
+                                            } catch (_: Exception) {}
+                                        }
+                                        contextWord = null
+                                    }) {
+                                        Text("💡 ${fix.title}", color = Color(0xFFE5C07B), fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+
                         TextButton(
                             onClick = {
                                 val lines = value.text.split("\n")
