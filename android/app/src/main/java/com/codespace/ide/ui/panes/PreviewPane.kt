@@ -126,7 +126,7 @@ fun PreviewPane(
         }
     }
     // Auto-detect mode from file language
-    val defaultMode = when (language) {
+    val _defaultMode = when (language) {
         Language.HTML                          -> PreviewMode.HTML
         Language.MARKDOWN                      -> PreviewMode.MARKDOWN
         Language.XML                           -> if (activeFilePath.endsWith(".svg")) PreviewMode.SVG else PreviewMode.HTML
