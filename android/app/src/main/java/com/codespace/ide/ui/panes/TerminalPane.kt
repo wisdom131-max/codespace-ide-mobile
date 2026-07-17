@@ -68,7 +68,7 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var onCursorStateChange: ((Boolean) -> Unit)? = null
     var appContext: Context? = null
 
-    fun initBell(ctx: Context) { /* sound pool reserved for future beep mode */ }
+    fun initBell(_ctx: Context) { /* sound pool reserved for future beep mode */ }
     fun releaseBell() {}
 
     override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
@@ -239,7 +239,7 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean {
         val isCtrl  = e?.isCtrlPressed  == true
         val isAlt   = e?.isAltPressed   == true
-        val isShift = e?.isShiftPressed == true
+        val _isShift = e?.isShiftPressed == true
         // Track modifier state for readControlKey()/readAltKey()
         if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT  || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT)  { ctrlKeyDown = true;  return false }
         if (keyCode == KeyEvent.KEYCODE_ALT_LEFT   || keyCode == KeyEvent.KEYCODE_ALT_RIGHT)   { altKeyDown  = true;  return false }
@@ -901,7 +901,7 @@ internal fun TerminalPane(
     var urlBarDismissed    by remember { mutableStateOf(false) }
     // P14-F: quick command palette (recent 5 commands strip)
     var showCmdPalette     by remember { mutableStateOf(false) }
-    var showSttHint       by remember { mutableStateOf(false) }
+    var _showSttHint       by remember { mutableStateOf(false) }
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
