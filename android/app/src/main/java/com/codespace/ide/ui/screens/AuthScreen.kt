@@ -215,7 +215,7 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
                         enabled  = !loading,
                     ) {
                         Icon(
-                            imageVector        = Icons.Default.ArrowForward,
+                            imageVector        = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "Continue",
                             tint               = if (email.isNotBlank())
                                 MaterialTheme.colorScheme.primary
