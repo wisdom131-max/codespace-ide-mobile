@@ -182,7 +182,7 @@ fun VideoPlayerDialog(videoPath: String, onDismiss: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun AudioPlayerDialog(audioPath: String, onDismiss: () -> Unit) {
-    val context = LocalContext.current
+    val _context = LocalContext.current
     // Rotation fix (#8): see VideoPlayerDialog above for rationale.
     val orientation = LocalConfiguration.current.orientation
     var error by remember { mutableStateOf<String?>(null) }
