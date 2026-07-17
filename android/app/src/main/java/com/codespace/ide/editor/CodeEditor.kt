@@ -590,7 +590,7 @@ fun CodeEditor(
                 if (savedContent.isEmpty()) null
                 else GitDiffAnalyzer.diff(currentLines, savedLines)
             }
-            Column(modifier = Modifier.padding(horizontal = 4.dp).width(62.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 4.dp).width(72.dp)) {
                 displayLines.forEach { (lineNum, _) ->
                     if (lineNum == -1) {
                         // Visual placeholder row in gutter
@@ -692,9 +692,10 @@ fun CodeEditor(
                             // P8-1 Breakpoint dot + tappable line number
                             Box(
                                 modifier = Modifier
+                                    .weight(1f)
                                     .height((fontSize * 1.25f).dp)
                                     .clickable { onBreakpointToggle(lineNum) },
-                                contentAlignment = Alignment.CenterStart,
+                                contentAlignment = Alignment.CenterEnd,
                             ) {
                                 if (breakpointLines.contains(lineNum)) {
                                     Box(
@@ -711,6 +712,7 @@ fun CodeEditor(
                                         fontSize = fontSize.sp,
                                         lineHeight = (fontSize * 1.25f).sp,
                                         fontFamily = FontFamily.Monospace,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
                                     )
                                 }
                             }
@@ -828,7 +830,7 @@ fun CodeEditor(
         if (showInlayHints && inlayHints.isNotEmpty()) {
             val density = androidx.compose.ui.platform.LocalDensity.current
             val lineHeightDp = with(density) { fontSize.sp.toDp() }
-            val gutterWidthDp = if (blameData != null) 62.dp + 120.dp else 62.dp
+            val gutterWidthDp = if (blameData != null) 72.dp + 120.dp else 72.dp
             inlayHints.forEach { hint ->
                 val displayIdx = displayLines.indexOfFirst { it.first == hint.line }
                 if (displayIdx < 0) return@forEach
@@ -864,7 +866,7 @@ fun CodeEditor(
         if (blameData != null && blameData.isNotEmpty()) {
             Box(
                 Modifier
-                    .padding(start = 62.dp)
+                    .padding(start = 72.dp)
                     .width(120.dp)
                     .fillMaxHeight()
                     .background(colors.gutter.copy(alpha = 0.3f))
@@ -902,7 +904,7 @@ fun CodeEditor(
                 // Ours section background (red tint)
                 Box(
                     Modifier
-                        .padding(start = 62.dp)
+                        .padding(start = 72.dp)
                         .fillMaxWidth()
                         .height(oursHeight)
                         .offset(y = oursY)
@@ -911,7 +913,7 @@ fun CodeEditor(
                 // Theirs section background (green tint)
                 Box(
                     Modifier
-                        .padding(start = 62.dp)
+                        .padding(start = 72.dp)
                         .fillMaxWidth()
                         .height(theirsHeight)
                         .offset(y = theirsY)
@@ -920,7 +922,7 @@ fun CodeEditor(
                 // Resolve button bar at conflict start
                 Box(
                     Modifier
-                        .padding(start = 62.dp)
+                        .padding(start = 72.dp)
                         .offset(y = barY)
                         .zIndex(10f)
                 ) {
@@ -968,7 +970,7 @@ fun CodeEditor(
         if (extraCursors.isNotEmpty()) {
             val lineHeightPx = fontSize * 1.25f
             val charWidthPx  = fontSize * 0.6f
-            val gutterDp     = 64f
+            val gutterDp     = 74f
             extraCursors.forEach { off ->
                 val clamped  = off.coerceIn(0, value.text.length)
                 val lineIdx  = value.text.take(clamped).count { it == '\n' }
@@ -1007,7 +1009,7 @@ fun CodeEditor(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 64.dp, top = 4.dp)
+                    .padding(end = 74.dp, top = 4.dp)
                     .background(Color(0xFF007ACC), RoundedCornerShape(3.dp))
                     .clickable { extraCursors = emptyList() }
                     .padding(horizontal = 8.dp, vertical = 3.dp)
@@ -1039,24 +1041,41 @@ fun CodeEditor(
             ((maxOf(1, vScroll.viewportSize) / lineHeightPx).toInt())
         }
 
-        // Toggle button — small icon at top-right
+        // Minimap toggle — dropdown menu at top-right
+        var showMinimapMenu by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .zIndex(6f)
                 .padding(top = 2.dp, end = if (showMinimapState) 64.dp else 2.dp)
-                .background(colors.background.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
-                .border(1.dp, colors.gutter.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                .clickable { showMinimapState = !showMinimapState }
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = if (showMinimapState) "▣" else "▢",
-                color = colors.gutter,
-                fontSize = 8.sp,
-                fontFamily = FontFamily.Monospace,
-            )
+            Box(
+                modifier = Modifier
+                    .background(colors.background.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
+                    .border(1.dp, colors.gutter.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                    .clickable { showMinimapMenu = true }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "⋮",
+                    color = colors.gutter,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            androidx.compose.material3.DropdownMenu(
+                expanded = showMinimapMenu,
+                onDismissRequest = { showMinimapMenu = false }
+            ) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(if (showMinimapState) "Hide Minimap" else "Show Minimap", fontSize = 12.sp) },
+                    onClick = {
+                        showMinimapState = !showMinimapState
+                        showMinimapMenu = false
+                    },
+                )
+            }
         }
 
         // Minimap panel — realistic with syntax colors + viewport indicator
@@ -1170,7 +1189,7 @@ fun CodeEditor(
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = 62.dp)
+                .padding(start = 72.dp)
                 .zIndex(1f),
         ) {
             val maxIndent = remember(value.text) {
@@ -2125,7 +2144,7 @@ fun CodeEditor(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 64.dp, top = (popupLineIdx * fontSize * 1.25f).dp)
+                    .padding(start = 74.dp, top = (popupLineIdx * fontSize * 1.25f).dp)
                     .widthIn(max = 320.dp)
                     .zIndex(10f)
                     .background(Color(0xFF252526), RoundedCornerShape(4.dp))
@@ -2180,7 +2199,7 @@ fun CodeEditor(
             LazyColumn(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 64.dp, top = ((value.text.take(value.selection.end).count { it == '\n' } + 1) * fontSize * 1.25f).dp)
+                    .padding(start = 74.dp, top = ((value.text.take(value.selection.end).count { it == '\n' } + 1) * fontSize * 1.25f).dp)
                     .widthIn(min = 160.dp, max = 260.dp)
                     .heightIn(max = 200.dp)
                     .zIndex(10f)
