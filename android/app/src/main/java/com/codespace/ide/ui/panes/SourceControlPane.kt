@@ -31,6 +31,7 @@ import com.codespace.ide.data.SecureTokenStore
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.material.icons.automirrored.filled.*
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 private val BgColor        = Color(0xFFFFFFFF)
@@ -873,7 +874,7 @@ private fun ChangeRow(change: GitChange, onStage: (() -> Unit)?, onUnstage: (() 
             }
             if (onStage   != null) { Icon(Icons.Default.Add,   "Stage",   tint = IconColor,    modifier = Modifier.size(15.dp).clickable { onStage() });   Spacer(Modifier.width(4.dp)) }
             if (onUnstage != null) { Icon(Icons.Default.Remove, "Unstage", tint = MutedColor,  modifier = Modifier.size(15.dp).clickable { onUnstage() }); Spacer(Modifier.width(4.dp)) }
-            if (onDiscard != null) { Icon(Icons.Default.Undo,   "Discard", tint = DeletedColor, modifier = Modifier.size(15.dp).clickable { onDiscard() }) }
+            if (onDiscard != null) { Icon(Icons.AutoMirrored.Filled.Undo,   "Discard", tint = DeletedColor, modifier = Modifier.size(15.dp).clickable { onDiscard() }) }
         }
         if (expanded) {
             if (loadingDiff) {
