@@ -215,7 +215,7 @@ object ProotInstaller {
             // about 80 MB decoder RAM — 96 MB gives 16 MB headroom, safely within budget.
             XZCompressorInputStream(tarXzFile.inputStream(), false, XZ_MEMORY_LIMIT_KIB).use { xz ->
                 TarArchiveInputStream(xz).use { tar ->
-                    var entry = tar.nextTarEntry
+                    var entry = tar.nextEntry
                     while (entry != null) {
                         if (!entry.name.contains("/dev/") || entry.name.endsWith("/dev/")) {
                             val stripped = entry.name.split("/", limit = 2)
@@ -255,7 +255,7 @@ object ProotInstaller {
                                 }
                             }
                         }
-                        entry = tar.nextTarEntry
+                        entry = tar.nextEntry
                     }
                 }
             }
