@@ -60,7 +60,7 @@ object BuildRunner {
      * Validate project before building.
      * Checks: gradle files exist, gradlew is executable, local.properties if needed.
      */
-    suspend fun validateProject(_context: Context, projectPath: String): List<String> {
+    suspend fun validateProject(context: Context, projectPath: String): List<String> {
         val issues = mutableListOf<String>()
         val dir = File(projectPath)
 
