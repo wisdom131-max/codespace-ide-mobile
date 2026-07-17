@@ -39,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.automirrored.filled.*
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
@@ -214,7 +215,7 @@ fun PreviewPane(
                     )
                 }
                 Icon(
-                    Icons.Default.HelpOutline,
+                    Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = "How to use Preview",
                     tint = TextMuted,
                     modifier = Modifier
