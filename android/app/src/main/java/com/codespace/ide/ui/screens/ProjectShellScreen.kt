@@ -113,7 +113,7 @@ private data class IdeColors(
 
 @Composable
 private fun ideColors(themeName: String): IdeColors {
-    val isDark = !themeName.contains("Light")
+    val _isDark = !themeName.contains("Light")
     return when (themeName) {
         "Dracula" -> IdeColors(
             BgColor = Color(0xFF282A36), ActivityBarBg = Color(0xFF21222C),
@@ -462,7 +462,7 @@ fun ProjectShellScreen(
     isDark: Boolean,
     currentTheme: String = if (isDark) "Dark (Default)" else "Light (Default)",
     onSelectTheme: (String) -> Unit = {},
-    onToggleTheme: () -> Unit,
+    _onToggleTheme: () -> Unit,
     onBack: () -> Unit,
     onSignOut: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
@@ -502,17 +502,17 @@ fun ProjectShellScreen(
     val PanelBg = t.PanelBg
     val SectionHeaderText = t.SectionHeaderText
     val MenuBg = t.MenuBg
-    val MenuBorder = t.MenuBorder
+    val _MenuBorder = t.MenuBorder
     val MenuText = t.MenuText
     val CmdSelectedBg = t.CmdSelectedBg
     val CmdSelectedText = t.CmdSelectedText
     val KeyboardToolbarBg = t.KeyboardToolbarBg
     val restoredState = remember(projectId) { sessionStateStore.loadShellState(projectId) }
-    val prefs = remember { context.getSharedPreferences("app_prefs", 0) }
+    val _prefs = remember { context.getSharedPreferences("app_prefs", 0) }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     val showBottomPanelMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }; var showBottomPanel by showBottomPanelMs
     val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
-    val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var splitTerminalWidth by splitTerminalWidthMs
+    val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var _splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
     // FIX #12 (2026-07-08): this was previously unkeyed, so Compose handed back the SAME
     // TerminalState (same tabs, same live TerminalSession/PTY) no matter which project was
@@ -530,47 +530,47 @@ fun ProjectShellScreen(
     // P15-H: two-column layout on wide landscape screens (tablets / foldables)
     // NOTE: totalWidth starts at 1080f and gets updated via onGloballyPositioned.
     // isWideLayout is derived state so it recomputes when totalWidth changes.
-    val isWideLayout by remember { derivedStateOf {
+    val _isWideLayout by remember { derivedStateOf {
         orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && totalWidth > 1400f
     } }
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
     val showChatPanelMs = remember { mutableStateOf(false) }; var showChatPanel by showChatPanelMs
-    val aiPanelWidthMs = remember { mutableFloatStateOf(300f) }; var aiPanelWidth by aiPanelWidthMs
-    val bottomPanelHeightMs = remember { mutableFloatStateOf(300f) }; var bottomPanelHeight by bottomPanelHeightMs
-    val bottomPanelPrevHeightMs = remember { mutableFloatStateOf(300f) }; var bottomPanelPrevHeight by bottomPanelPrevHeightMs
-    val bottomPanelMaximizedMs = remember { mutableStateOf(false) }; var bottomPanelMaximized by bottomPanelMaximizedMs
+    val aiPanelWidthMs = remember { mutableFloatStateOf(300f) }; var _aiPanelWidth by aiPanelWidthMs
+    val bottomPanelHeightMs = remember { mutableFloatStateOf(300f) }; var _bottomPanelHeight by bottomPanelHeightMs
+    val bottomPanelPrevHeightMs = remember { mutableFloatStateOf(300f) }; var _bottomPanelPrevHeight by bottomPanelPrevHeightMs
+    val bottomPanelMaximizedMs = remember { mutableStateOf(false) }; var _bottomPanelMaximized by bottomPanelMaximizedMs
     val showSymbolSearchMs = remember { mutableStateOf(false) }; var showSymbolSearch by showSymbolSearchMs
     // P15-E: File search overlay (Ctrl+P / 🔍 icon)
     val showFileSearchMs = remember { mutableStateOf(false) }; var showFileSearch by showFileSearchMs
     // P15-G: delay heavy panels 8s after launch to not block editor warmup
     var heavyPanesReady    by remember { mutableStateOf(false) }
     val indexerScope = rememberCoroutineScope()
-    val isDraggingBottomPanelMs = remember { mutableStateOf(false) }; var isDraggingBottomPanel by isDraggingBottomPanelMs
+    val isDraggingBottomPanelMs = remember { mutableStateOf(false) }; var _isDraggingBottomPanel by isDraggingBottomPanelMs
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
     var showCommandPalette by remember { mutableStateOf(false) }
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     val showFindBarMs = remember { mutableStateOf(false) }; var showFindBar by showFindBarMs
-    val wordWrapMs = remember { mutableStateOf(false) }; var wordWrap by wordWrapMs
-    val showInlayHintsMs = remember { mutableStateOf(true) }; var showInlayHints by showInlayHintsMs  // P2-11
+    val wordWrapMs = remember { mutableStateOf(false) }; var _wordWrap by wordWrapMs
+    val showInlayHintsMs = remember { mutableStateOf(true) }; var _showInlayHints by showInlayHintsMs  // P2-11
     val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
     var goToLineInput      by remember { mutableStateOf("") }
     val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
-    val findQueryMs = remember { mutableStateOf("") }; var findQuery by findQueryMs
-    val replaceQueryMs = remember { mutableStateOf("") }; var replaceQuery by replaceQueryMs
+    val findQueryMs = remember { mutableStateOf("") }; var _findQuery by findQueryMs
+    val replaceQueryMs = remember { mutableStateOf("") }; var _replaceQuery by replaceQueryMs
     val showReplaceRowMs = remember { mutableStateOf(false) }; var showReplaceRow by showReplaceRowMs
     var showMoreMenu       by remember { mutableStateOf(false) }
     var showPersonMenu     by remember { mutableStateOf(false) }
-    var chatInput          by remember { mutableStateOf("") }
+    var _chatInput          by remember { mutableStateOf("") }
     val terminalCommandToRunMs = remember { mutableStateOf<String?>(null) }; var terminalCommandToRun by terminalCommandToRunMs
-    val previewPortMs = remember { mutableStateOf<Int?>(null) }; var previewPort by previewPortMs
+    val previewPortMs = remember { mutableStateOf<Int?>(null) }; var _previewPort by previewPortMs
     var showGearMenu       by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
     var showPanelMenu      by remember { mutableStateOf(false) }
     var showExplorerMore   by remember { mutableStateOf(false) }
     var commandQuery       by remember { mutableStateOf("") }
-    var commandTab         by remember { mutableStateOf("Commands") }
+    var _commandTab         by remember { mutableStateOf("Commands") }
     var notificationMsg    by remember { mutableStateOf<String?>(null) }
     var notificationType   by remember { mutableStateOf("info") }
     // Persistent notification list (bell drawer)
@@ -581,7 +581,7 @@ fun ProjectShellScreen(
     // Connectors hub (replaces Person menu)
     var showConnectorsSheet by remember { mutableStateOf(false) }
     val terminalEnhancements = remember { TerminalEnhancementManager(context) }
-    var terminalTheme by remember { mutableStateOf(terminalEnhancements.currentTheme()) }
+    var _terminalTheme by remember { mutableStateOf(terminalEnhancements.currentTheme()) }
     var showTerminalThemePicker by remember { mutableStateOf(false) }
     val debugInput = remember { mutableStateOf("") }
     val debugMessages = remember { mutableStateListOf("Debugger ready. Press Run to start.") }
@@ -602,7 +602,7 @@ fun ProjectShellScreen(
     val editorFontSizeMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }; var editorFontSize by editorFontSizeMs
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
     val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
-    val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var keyboardInsert by keyboardInsertMs
+    val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var _keyboardInsert by keyboardInsertMs
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
     val breadcrumbNavDirMs = remember { mutableStateOf<String?>(null) }; var breadcrumbNavDir by breadcrumbNavDirMs
 
@@ -1147,7 +1147,7 @@ private fun PssOverlays(
     onShowGoToLineChange: (Boolean) -> Unit,
     goToLineInput: String,
     onGoToLineInputChange: (String) -> Unit,
-    scrollTargetLine: Int,
+    _scrollTargetLine: Int,
     onScrollTargetLineChange: (Int) -> Unit,
     showPersonMenu: Boolean,
     onShowPersonMenuChange: (Boolean) -> Unit,
@@ -1163,8 +1163,8 @@ private fun PssOverlays(
     onEditorFontSizeChange: (Int) -> Unit,
     notifList: androidx.compose.runtime.snapshots.SnapshotStateList<NotifItem>,
     // Colors
-    BgColor: Color,
-    ActivityBarIconActive: Color,
+    _BgColor: Color,
+    _ActivityBarIconActive: Color,
     TabActiveIndicator: Color,
     TabTextInactive: Color,
     DividerColor: Color,
@@ -2159,7 +2159,7 @@ private fun buildRunCommand(path: String): String? {
 
 @Composable
 private fun SymbolSearchOverlay(
-    activeEditorTab: String?,
+    _activeEditorTab: String?,
     onNavigate: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -2176,7 +2176,7 @@ private fun SymbolSearchOverlay(
                 .clickable { /* consume click */ }
         ) {
             SymbolSearchPanel(
-                onNavigate = { filePath, line ->
+                onNavigate = { filePath, _ ->
                     onNavigate(filePath)
                 },
                 onDismiss = onDismiss,
@@ -2356,7 +2356,7 @@ private fun PssEditorColumn(
     // Local function aliases — these mirror the original local fun declarations in PSS
     // so the extracted body code works with zero changes
     val showNotification: (String, String) -> Unit = onShowNotification
-    val handleMenuAction: (String) -> Unit = onHandleMenuAction
+    val _handleMenuAction: (String) -> Unit = onHandleMenuAction
     fun pushNavEntry(path: String?, line: Int) = onPushNavEntry(path, line)
     fun navBack() = onNavBack()
     fun navForward() = onNavForward()
@@ -2367,7 +2367,7 @@ private fun PssEditorColumn(
     var bottomPanelHeight by bottomPanelHeightMs
     var bottomPanelMaximized by bottomPanelMaximizedMs
     var bottomPanelPrevHeight by bottomPanelPrevHeightMs
-    var breadcrumbNavDir by breadcrumbNavDirMs
+    var _breadcrumbNavDir by breadcrumbNavDirMs
     var cursorCol by cursorColMs
     var cursorLine by cursorLineMs
     var editorFontSize by editorFontSizeMs
@@ -2379,11 +2379,11 @@ private fun PssEditorColumn(
     var scrollTargetLine by scrollTargetLineMs
     var showBottomPanel by showBottomPanelMs
     var showChatPanel by showChatPanelMs
-    var showFileSearch by showFileSearchMs
+    var _showFileSearch by showFileSearchMs
     var showFindBar by showFindBarMs
     var showReplaceRow by showReplaceRowMs
     var showSplitTerminal by showSplitTerminalMs
-    var showSymbolSearch by showSymbolSearchMs
+    var _showSymbolSearch by showSymbolSearchMs
     var splitTerminalWidth by splitTerminalWidthMs
     var terminalCommandToRun by terminalCommandToRunMs
 
@@ -2821,7 +2821,7 @@ private fun PssEditorColumn(
                     if (!editorTabs.contains(path)) editorTabs.add(path)
                     activeEditorTab = path
                 },
-                onSwitchToPreview = { path ->
+                onSwitchToPreview = { _ ->
                     showBottomPanel = true
                     activeBottomTab = BottomTab.PREVIEW
                     // activeEditorTab drives PreviewPane.activeFilePath — already set in onOpenFile
