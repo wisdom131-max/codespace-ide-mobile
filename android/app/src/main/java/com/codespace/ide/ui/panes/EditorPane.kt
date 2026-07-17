@@ -44,6 +44,7 @@ import java.io.File
 import com.codespace.ide.R
 import com.codespace.ide.data.SessionStateStore
 import androidx.compose.foundation.lazy.items
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
