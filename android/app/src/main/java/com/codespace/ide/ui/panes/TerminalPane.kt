@@ -1064,6 +1064,9 @@ internal fun TerminalPane(
                     }
                     writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
                 } else if (isFirstTimeInstall) {
+                    // P24: explicitly tell user no backup was found — so a ~250MB download
+                    // is expected and not mistaken for a bug or unnecessary reinstall.
+                    writeToDisplay(progressSession, "[Ubuntu] No container backup found in /sdcard/CodespaceIDE/ — fresh install.\r\n")
                     writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
                     writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
                     ProotInstaller.install(ctx) { msg ->

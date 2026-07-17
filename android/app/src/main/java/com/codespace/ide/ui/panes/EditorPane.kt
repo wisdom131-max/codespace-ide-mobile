@@ -143,6 +143,8 @@ fun EditorPane(
     var lspHoverContent by remember { mutableStateOf<String?>(null) }
     // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
     var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
+    // P24: visible banner shown when LSP server fails to start (not just logcat)
+    var lspStatusMessage by remember { mutableStateOf<String?>(null) }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
@@ -627,9 +629,12 @@ fun EditorPane(
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
                     if (!LspManager.isServerRunning(active.language)) {
-                        withContext(Dispatchers.IO) {
+                        lspStatusMessage = "Starting ${active.language.displayName} language server..."
+                        val lspStarted = withContext(Dispatchers.IO) {
                             LspManager.startServer(context, active.language, projectRootPath)
                         }
+                        lspStatusMessage = if (lspStarted) null
+                        else "LSP unavailable: ${active.language.displayName} server failed to start. Check npm/pip in terminal."
                     }
                     if (LspManager.isServerRunning(active.language)) {
                         delay(500)
@@ -755,6 +760,29 @@ fun EditorPane(
                     }
                     if (conflictHunks != detectedConflicts) {
                         conflictHunks = detectedConflicts
+                    }
+                    // P24: LSP status banner — visible in editor when server fails
+                    lspStatusMessage?.let { msg ->
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(androidx.compose.ui.graphics.Color(0xFF3A2A00))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = msg,
+                                color = androidx.compose.ui.graphics.Color(0xFFFFCC44),
+                                fontSize = 11.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            androidx.compose.material3.TextButton(
+                                onClick = { lspStatusMessage = null },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                            ) {
+                                Text("✕", color = androidx.compose.ui.graphics.Color(0xFFFFCC44), fontSize = 11.sp)
+                            }
+                        }
                     }
                     CodeEditor(
                         content = active.content,

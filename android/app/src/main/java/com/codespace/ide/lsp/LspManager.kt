@@ -62,21 +62,21 @@ object LspManager {
             "typescript-language-server",
             listOf("--stdio"),
             "which typescript-language-server",
-            "npm install -g typescript-language-server typescript"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript"
         ),
         Language.JAVASCRIPT to ServerConfig(
             Language.JAVASCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
             "which typescript-language-server",
-            "npm install -g typescript-language-server typescript"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript"
         ),
         Language.PYTHON to ServerConfig(
             Language.PYTHON,
             "pylsp",
             emptyList(),
             "which pylsp",
-            "pip install python-lsp-server[all]"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends python3-pip 2>/dev/null; pip3 install python-lsp-server[all]"
         ),
         Language.KOTLIN to ServerConfig(
             Language.KOTLIN,
@@ -91,7 +91,7 @@ object LspManager {
             "gopls",
             emptyList(),
             "which gopls",
-            "go install golang.org/x/tools/gopls@latest"
+            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends golang-go 2>/dev/null; go install golang.org/x/tools/gopls@latest"
         ),
     )
 
