@@ -2822,7 +2822,34 @@ Produce:
 
 ## PHASE 24 — MASTER IDE AUDIT, UPGRADE, MODERNIZATION & IMPLEMENTATION
 
-> **Status: NOT STARTED — queued after Phase 23.**
+> **Status: IN PROGRESS — Sub-Phase 24-1 (Complete IDE Audit) DONE.**
+>
+> **Audit Results (24-1):**
+>
+> **Editor:** ✅ ALL WORKING — text rendering, cursor, selection, search/replace, multi-cursor, folding, minimap (dropdown toggle), split editor, tabs, session restore, line numbers (72dp gutter + right-align), syntax highlighting, bookmarks, inlay hints, auto-indent
+>
+> **IntelliSense:** ✅ Auto completion (snippets + LSP + ghost text), ✅ Hover, ✅ Signature help, ✅ Auto imports, ⚠️ Quick fixes (AI fix only, no code actions)
+>
+> **Navigation:** ✅ Go To Definition, ✅ Peek Definition, ✅ Symbol Search, ✅ Workspace Search, ✅ Document Outline, ❌ Breadcrumbs (missing)
+>
+> **Diagnostics:** ✅ Error detection, ✅ Warning detection, ✅ Problems panel, ✅ Error navigation, ✅ Real-time diagnostics (LSP)
+>
+> **LSP:** ✅ LspManager, ✅ JSON-RPC, ✅ Completion, ⚠️ Diagnostics (JS/TS only, Python partial), ✅ Hover, ✅ Definition
+>
+> **Terminal:** ✅ Startup, ✅ Session restore, ✅ Command history, ✅ proot
+>
+> **Reliability:** ⚠️ Auto Save (writes on keystroke but no explicit save state), ✅ Crash Recovery (safe mode + crash counter), ✅ Session Restore
+>
+> **Debugging:** ✅ UniversalDebugManager, ✅ Breakpoints, ✅ Breakpoint persistence, ✅ 7 debug providers (Terminal, Python, Node.js, Shell, PHP, Android, APK), ✅ Debug console
+>
+> **File Detection:** ✅ Extension detection, ✅ Language mapping, ⚠️ File icons (partial)
+>
+> **Items to repair/upgrade:**
+> 1. Breadcrumbs — MISSING (add file path hierarchy above editor)
+> 2. Quick fixes / Code actions — PARTIAL (only AI fix, add LSP code actions)
+> 3. LSP Python diagnostics — PARTIAL (only JS/TS diagnostics working)
+> 4. Auto Save — PARTIAL (no explicit save indicator/state)
+> 5. File icons — PARTIAL
 > Added: 2026-07-16. Source: user specification (rearranged, not changed).
 > NOTE: Some sub-phases overlap with existing Phase 22 work (P22-F through P22-L). Audit existing implementations before building new ones.
 
