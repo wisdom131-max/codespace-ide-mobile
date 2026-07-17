@@ -1127,16 +1127,16 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                 Spacer(Modifier.width((indent * 0.25f).coerceAtMost(20f).dp))
                             }
                             // Colored bar representing the code line
-                            if (density > 0f && lineColor != Color.Transparent) {
+                            if (localDensity > 0f && lineColor != Color.Transparent) {
                                 Box(
                                     Modifier
-                                        .weight(density.coerceIn(0.03f, 1f))
+                                        .weight(localDensity.coerceIn(0.03f, 1f))
                                         .fillMaxHeight()
                                         .background(lineColor.copy(alpha = 0.5f))
                                 )
                             }
-                            if (density < 1f) {
-                                Spacer(Modifier.weight((1f - density).coerceAtLeast(0f)))
+                            if (localDensity < 1f) {
+                                Spacer(Modifier.weight((1f - localDensity).coerceAtLeast(0f)))
                             }
                         }
                     }
@@ -1356,11 +1356,11 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                     val declKw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
                                     val declPat = Regex(declKw + "\\s+" + Regex.escape(word) + "\\b")
                                     val localTextLines = value.text.split("\n")
-                                    val found = textLines.indexOfFirst { declPat.containsMatchIn(it) }
+                                    val found = localTextLines.indexOfFirst { declPat.containsMatchIn(it) }
                                     if (found >= 0) {
                                         val startLine = (found - 3).coerceAtLeast(0)
-                                        val endLine = (found + 8).coerceAtMost(textLines.size - 1)
-                                        val snippet = textLines.subList(startLine, endLine + 1)
+                                        val endLine = (found + 8).coerceAtMost(localTextLines.size - 1)
+                                        val snippet = localTextLines.subList(startLine, endLine + 1)
                                         peekResult = PeekDefResult(filePath, found, snippet, found - startLine)
                                     }
                                 }
@@ -1585,7 +1585,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                     onClick = {
                                         coroutineScope.launch {
                                             val localLineHeightPx = fontSize * 1.25f
-                                            vScroll.animateScrollTo((def.line * lineHeightPx).toInt())
+                                            vScroll.animateScrollTo((def.line * localLineHeightPx).toInt())
                                         }
                                         gotoResults = null
                                     },
@@ -1731,7 +1731,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                 if (peek.filePath == filePath) {
                                     coroutineScope.launch {
                                         val localLineHeightPx = fontSize * 1.25f
-                                        vScroll.animateScrollTo((peek.line * lineHeightPx).toInt())
+                                        vScroll.animateScrollTo((peek.line * localLineHeightPx).toInt())
                                     }
                                 } else {
                                     onOpenFileAtLine?.invoke(peek.filePath, peek.line + 1)
@@ -1906,7 +1906,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                             )
                             coroutineScope.launch {
                                 val localLineHeightPx = fontSize * 2.0f
-                                vScroll.animateScrollTo(((clamped - 1) * lineHeightPx).toInt())
+                                vScroll.animateScrollTo(((clamped - 1) * localLineHeightPx).toInt())
                             }
                             goToLineInput = ""
                             onGoToLineClose()
