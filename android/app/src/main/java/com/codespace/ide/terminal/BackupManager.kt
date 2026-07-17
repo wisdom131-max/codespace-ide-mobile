@@ -129,7 +129,7 @@ object BackupManager {
         var filesWritten = 0
         GzipCompressorInputStream(f.inputStream()).use { gz ->
             TarArchiveInputStream(gz).use { tar ->
-                var entry = tar.nextTarEntry
+                var entry = tar.nextEntry
                 while (entry != null) {
                     val outFile = File(rootfs, entry.name)
                     when {
@@ -155,7 +155,7 @@ object BackupManager {
                     }
                     filesWritten++
                     if (filesWritten % 500 == 0) onProgress("Restored $filesWritten files...")
-                    entry = tar.nextTarEntry
+                    entry = tar.nextEntry
                 }
             }
         }
