@@ -98,7 +98,7 @@ private object ArmThumbDecoder {
     }
 
     private fun decodeThumb16(w: Int, pc: Long): Pair<String, String> {
-        val op10 = w ushr 6
+        val _op10 = w ushr 6
         return when {
             // PUSH / POP
             w and 0xFE00 == 0xB400 -> {
@@ -201,7 +201,7 @@ private object ArmThumbDecoder {
     }
 
     private fun decodeThumb32(hw1: Int, hw2: Int, pc: Long): Pair<String, String> {
-        val op1 = (hw1 ushr 11) and 3
+        val _op1 = (hw1 ushr 11) and 3
         // BL imm24
         if (hw1 and 0xF800 == 0xF000 && hw2 and 0xD000 == 0xD000) {
             val s = (hw1 ushr 10) and 1
@@ -265,7 +265,7 @@ private suspend fun disassembleElfFile(file: File): DisasmResult = withContext(D
         val shstrOff = (shoff + shstrndx.toLong() * shentsize).toInt()
         if (shstrOff + 40 > bytes.size) return@withContext DisasmResult(arch, emptyList(), emptyList(), "shstrtab out of range")
         val shstrSecOff = ByteBuffer.wrap(bytes, shstrOff + 16, 4).order(ByteOrder.LITTLE_ENDIAN).int
-        val shstrSecSize= ByteBuffer.wrap(bytes, shstrOff + 20, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        val _shstrSecSize= ByteBuffer.wrap(bytes, shstrOff + 20, 4).order(ByteOrder.LITTLE_ENDIAN).int
 
         fun secName(nameOff: Int): String {
             val abs = shstrSecOff + nameOff
@@ -280,7 +280,7 @@ private suspend fun disassembleElfFile(file: File): DisasmResult = withContext(D
             val secOff = (shoff + idx.toLong() * shentsize).toInt()
             if (secOff + 40 > bytes.size) return@mapNotNull null
             val nameOff = ByteBuffer.wrap(bytes, secOff, 4).order(ByteOrder.LITTLE_ENDIAN).int
-            val secType = ByteBuffer.wrap(bytes, secOff + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
+            val _secType = ByteBuffer.wrap(bytes, secOff + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
             val secAddr = ByteBuffer.wrap(bytes, secOff + 12, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
             val secFileOff = ByteBuffer.wrap(bytes, secOff + 16, 4).order(ByteOrder.LITTLE_ENDIAN).int
             val secSize = ByteBuffer.wrap(bytes, secOff + 20, 4).order(ByteOrder.LITTLE_ENDIAN).int
@@ -322,7 +322,7 @@ private suspend fun disassembleElfFile(file: File): DisasmResult = withContext(D
                 val size     = ByteBuffer.wrap(bytes, off + 8, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong()
                 val info     = bytes[off + 12].toInt() and 0xFF
                 val symType  = info and 0xF
-                val symBind  = info ushr 4
+                val _symBind  = info ushr 4
                 if (symType != 2 /* STT_FUNC */) return@mapNotNull null
                 val nameAbs  = strtabSec.off + nameOff
                 if (nameAbs < 0 || nameAbs >= bytes.size) return@mapNotNull null
