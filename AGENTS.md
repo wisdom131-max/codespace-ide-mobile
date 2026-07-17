@@ -3679,3 +3679,94 @@ On-device Android builds are **technically feasible** for minimal Java-only proj
 | Survives interruption? | ⚠️ Mostly, but needs lock cleanup + optional `clean` on retry |
 | Concurrent with other features? | ❌ Not with LSP + Preview simultaneously |
 | **Overall verdict** | **VIABLE WITH CONSTRAINTS — Hybrid approach recommended** |
+---
+
+## PHASE BB-1 — ANDROID ON-DEVICE BUILD: SDK INSTALLER + JAVA-ONLY TEMPLATE
+
+### GOAL
+
+Implement the on-device Android build path based on the Phase BB feasibility spike findings (VIABLE WITH CONSTRAINTS verdict). Scope: SDK/toolchain installer, aapt2 arm64 handling, and a Java-only Android template. Do NOT implement LSP/Preview auto-pause coordination or GitHub Actions CI integration in this phase.
+
+### DECISION RULE
+
+For each component, if implementation is genuinely impossible or unreliable on this hardware/arch (not just difficult, but blocked):
+- Stop trying to force it
+- Report exactly what's blocking it and why
+- Remove the Android build template/feature rather than shipping something that silently fails
+
+If there is a real, even narrow, path to success — implement it, document constraints clearly in UI, keep it.
+
+### AUDIT FIRST (MUST COMPLETE BEFORE INSTALLING)
+
+1. **Current state check**: Is anything from the spike (JDK, SDK, Gradle, aapt2) already present?
+2. **Disk space**: Confirm actual available disk space, verify headroom exists beyond ~755MB requirement
+3. **aapt2 source**: Re-confirm ReVanced aapt2 arm64 binary is still reachable and matches version/checksum
+4. **Multi-tab server lifecycle audit**:
+   - Open 2 files of different languages in separate tabs
+   - Does opening a 2nd tab spawn a 2nd language server while 1st is still running?
+   - When a single tab is closed, does that file's didClose fire? If last file for that language, does server shut down?
+   - When editor panel closes with multiple tabs open, do ALL active servers get killed or only focused tab's?
+   - Can a server be left running with no corresponding tab open?
+   - Does switching between open tabs trigger anything new?
+5. **RAM reconciliation**:
+   - App status bar shows "2031/2288MB" — what does 2288MB represent?
+   - Check true total device RAM via `free -m` in proot container
+   - If real ceiling is ~2.3GB not 2.8GB, redo spike RAM table and re-evaluate verdict
+   - DO NOT proceed with SDK installer until this reconciliation is complete
+
+### SDK INSTALLER (Phase BB-1-A)
+
+Install in order:
+1. openjdk-17-jdk-headless (native arm64, via apt)
+2. Android cmdline-tools
+3. Android platform (android-34)
+4. Android build-tools
+5. aapt2 arm64 replacement (ReVanced — pin to specific version/commit, store checksum)
+6. Gradle distribution
+
+Requirements:
+- Show real progress (large downloads, ~755MB total)
+- Verify each component after install (`java -version`, `aapt2 version`, etc.)
+- If any component fails, report which one and why specifically
+- If aapt2 cannot be obtained or verified working, BLOCK entire on-device path
+
+### JAVA-ONLY ANDROID TEMPLATE (Phase BB-1-B)
+
+Minimal Java (NOT Kotlin) Android project:
+- Basic Activity, XML layout, AndroidManifest.xml
+- Gradle wrapper + build files with mandatory settings: --no-daemon, -Xmx512m, -XX:+UseSerialGC, org.gradle.parallel=false
+- android.aapt2FromMavenOverride pointed at installed arm64 binary
+- No Kotlin, no Compose
+
+### END-TO-END BUILD VERIFICATION (Phase BB-1-C)
+
+- Generate project from template
+- Confirm no orphaned LSP/preview servers running before build
+- Run gradlew assembleDebug for real, on-device
+- Confirm it produces a valid installable APK
+- Record actual build time and peak RAM, compare against spike estimates
+- Only mark as working if end-to-end test genuinely succeeds
+
+### INTERRUPTION HANDLING (Minimal)
+
+- Before each build, check/clean stale lock files in .gradle/
+- If previous build was killed, offer clean rebuild instead of trusting ambiguous cache state
+
+### FINAL REPORT REQUIREMENTS
+
+1. Multi-tab server lifecycle findings
+2. What was successfully installed and verified
+3. What could not be made to work, and why
+4. Whether end-to-end Java template build succeeded on real hardware (with real time/RAM numbers)
+5. Final decision: KEPT (with documented constraints) or REMOVED (with reason)
+6. If kept: recommended next steps (LSP/Preview auto-pause, CI integration as future phases)
+
+### STATUS: 🔄 IN PROGRESS — AUDIT PHASE
+
+### SUB-PHASES:
+- [ ] BB-1-AUDIT: Multi-tab server lifecycle + RAM reconciliation + current state check
+- [ ] BB-1-A: SDK Installer
+- [ ] BB-1-B: Java-only Android template
+- [ ] BB-1-C: End-to-end build verification
+- [ ] BB-1-D: Interruption handling (minimal)
+- [ ] BB-1-REPORT: Final report
