@@ -323,7 +323,7 @@ private object DexParser {
                     val (virtualMethodsSize, _)   = next()
 
                     // Fields
-                    var fieldIdx
+                    var fieldIdx = 0
                     for (isStatic in listOf(true, false)) {
                         val count = if (isStatic) staticFieldsSize else instanceFieldsSize
                         fieldIdx
@@ -340,7 +340,7 @@ private object DexParser {
                     }
 
                     // Methods
-                    var methodIdx
+                    var methodIdx = 0
                     for (isVirtual in listOf(false, true)) {
                         val count = if (!isVirtual) directMethodsSize else virtualMethodsSize
                         methodIdx
