@@ -623,30 +623,50 @@ fun EditorPane(
 
         val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
 
-        // P22-G: LSP server lifecycle + document sync
-        LaunchedEffect(active?.id, active?.content, active?.language) {
-            if (active != null && LspManager.isSupported(active.language) && projectRootPath != null) {
-                val uri = LspManager.fileUriFromHostPath(context, active.path)
-                if (uri != null) {
-                    if (!LspManager.isServerRunning(active.language)) {
-                        lspStatusMessage = "Starting ${active.language.displayName} language server..."
-                        val lspStarted = withContext(Dispatchers.IO) {
-                            LspManager.startServer(context, active.language, projectRootPath)
-                        }
-                        lspStatusMessage = if (lspStarted) null
-                        else "LSP unavailable: ${active.language.displayName} server failed to start. Check npm/pip in terminal."
-                    }
-                    if (LspManager.isServerRunning(active.language)) {
-                        delay(500)
-                        if (lspOpenedFiles[active.path] != true) {
-                            LspManager.didOpen(active.language, uri, LspManager.languageId(active.language), active.content)
-                            lspOpenedFiles[active.path] = true
-                        } else {
-                            val version = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
-                            LspManager.didChange(active.language, uri, active.content, version)
-                        }
-                    }
+        // P22-G / LSP-FIX: Split into two effects.
+        // Effect A: keyed on (id, language) ONLY — starts the server and sends didOpen.
+        // NOT keyed on content: prevents keystroke-triggered recomposition from cancelling
+        // a long-running startServer() call mid-execution (install can take 10-120s).
+        LaunchedEffect(active?.id, active?.language) {
+            val snap = active ?: return@LaunchedEffect
+            if (!LspManager.isSupported(snap.language) || projectRootPath == null) return@LaunchedEffect
+            val uri = LspManager.fileUriFromHostPath(context, snap.path)
+            android.util.Log.d("LspTrigger", "LSP Effect-A fired: path=${snap.path} lang=${snap.language} uri=$uri serverRunning=${LspManager.isServerRunning(snap.language)}")
+            if (uri == null) {
+                android.util.Log.e("LspTrigger", "LSP Effect-A: uri is null for path=${snap.path} — file not in filesDir or rootfs bind-mount. LSP skipped.")
+                lspStatusMessage = "LSP unavailable: file path not accessible inside Ubuntu rootfs (${snap.path})"
+                return@LaunchedEffect
+            }
+            if (!LspManager.isServerRunning(snap.language)) {
+                lspStatusMessage = "Starting ${snap.language.displayName} language server..."
+                android.util.Log.d("LspTrigger", "LSP Effect-A: calling startServer for ${snap.language.displayName}")
+                val lspStarted = withContext(Dispatchers.IO) {
+                    LspManager.startServer(context, snap.language, projectRootPath)
                 }
+                android.util.Log.d("LspTrigger", "LSP Effect-A: startServer returned $lspStarted for ${snap.language.displayName}")
+                lspStatusMessage = if (lspStarted) null
+                else "LSP unavailable: ${snap.language.displayName} server failed to start. Check npm/pip in terminal."
+            }
+            if (LspManager.isServerRunning(snap.language)) {
+                delay(300)
+                if (lspOpenedFiles[snap.path] != true) {
+                    android.util.Log.d("LspTrigger", "LSP Effect-A: sending didOpen for ${snap.path}")
+                    LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content)
+                    lspOpenedFiles[snap.path] = true
+                }
+            }
+        }
+        // Effect B: keyed on (id, content) — sends didChange on every edit.
+        // Server startup is NOT here so cancellation on keystroke is harmless.
+        LaunchedEffect(active?.id, active?.content) {
+            val snap = active ?: return@LaunchedEffect
+            if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
+            if (!LspManager.isServerRunning(snap.language)) return@LaunchedEffect
+            if (lspOpenedFiles[snap.path] != true) return@LaunchedEffect
+            val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
+            val version = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+            withContext(Dispatchers.IO) {
+                LspManager.didChange(snap.language, uri, snap.content, version)
             }
         }
         // P22-G: LSP hover on cursor position change (debounced)
