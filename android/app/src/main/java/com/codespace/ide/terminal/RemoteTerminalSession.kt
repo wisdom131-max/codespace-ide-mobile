@@ -33,27 +33,27 @@ class RemoteTerminalSession(private val backendUrl: String) {
             .build()
 
         val listener = object : WebSocketListener() {
-            override fun onOpen(ws: WebSocket, response: Response) {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
                 webSocket = ws
             }
 
-            override fun onMessage(ws: WebSocket, text: String) {
+            override fun onMessage(webSocket: WebSocket, text: String) {
                 trySend(text)
             }
 
-            override fun onMessage(ws: WebSocket, bytes: ByteString) {
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                 trySend(bytes.utf8())
             }
 
-            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 close(t)
             }
 
-            override fun onClosing(ws: WebSocket, code: Int, reason: String) {
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                 close()
             }
 
-            override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 close()
             }
         }
