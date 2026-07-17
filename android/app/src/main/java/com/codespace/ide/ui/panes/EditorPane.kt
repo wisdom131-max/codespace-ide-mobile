@@ -568,7 +568,7 @@ fun EditorPane(
                         .background(Color(0xFF252526)),
                 ) {
                     items(allBookmarks) { (filePath, lineIdx) ->
-                        val fileName = java.io.File(filePath).name
+                        val _fileName = java.io.File(filePath).name
                         val lineContent = try {
                             java.io.File(filePath).readLines().getOrElse(lineIdx) { "" }.trim()
                         } catch (_: Exception) { "" }
@@ -875,7 +875,7 @@ fun EditorPane(
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
-                        onOpenFileAtLine = { filePath, line ->
+                        onOpenFileAtLine = { filePath, _ ->
                             val file = java.io.File(filePath)
                             if (tabs.none { it.path == filePath }) {
                                 tabs.add(EditorTab(
