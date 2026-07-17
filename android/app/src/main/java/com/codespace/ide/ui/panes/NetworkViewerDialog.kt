@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.compose.material3.HorizontalDivider
 
 // ── Network Viewer: PCAP + HAR ─────────────────────────────────────────────────
 // HAR: JSON-based HTTP Archive parsed via org.json (bundled in Android).
@@ -313,7 +314,7 @@ fun NetworkViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
                             )
                             Text("${filtered.size} entries", color = muted, fontSize = 11.sp,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
-                            Divider(color = border)
+                            HorizontalDivider(color = border)
                             LazyColumn(Modifier.fillMaxSize()) {
                                 items(filtered) { entry ->
                                     val isSelected = selected == entry
@@ -349,7 +350,7 @@ fun NetworkViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
                                             Text("${entry.size}B  ${entry.time}", color = muted, fontSize = 10.sp)
                                         }
                                     }
-                                    Divider(color = border.copy(alpha = 0.4f))
+                                    HorizontalDivider(color = border.copy(alpha = 0.4f))
                                 }
                             }
                         }
