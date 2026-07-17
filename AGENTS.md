@@ -3318,3 +3318,76 @@ frames from active debug sessions. (commit 845162a)
 - 46 other warnings (parameter naming, redundant null checks) — cosmetic
 
 **Phase Y: CORE FIXES COMPLETE** ✅
+
+---
+
+## PHASE Z — LIVE PREVIEW SERVER AUDIT & FIXES
+
+### Audit Date: 2026-07-17
+
+The Live Preview Server (Phase X) was already fully implemented. This phase audited the implementation
+and fixed 4 bugs found during review.
+
+### Audit Results
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| LivePreviewServer.kt (407 lines) | ✅ WORKING | Embedded HTTP server on port 5500, SSE reload, MIME-aware, path traversal protection |
+| EditorPane → reload() wiring | ✅ WORKING | onContentChange calls LivePreviewServer.reload() for HTML/CSS/JS/MJS |
+| PreviewPane lifecycle | ✅ WORKING | LaunchedEffect starts server, DisposableEffect stops it |
+| ProjectShellScreen → PreviewPane | ✅ WORKING | projectId passed correctly |
+| SSE reconnect handler | ❌ FIXED | onerror created new EventSource without reattaching onmessage |
+| WebView recomposition reload | ❌ FIXED | update lambda called loadUrl on every recomposition |
+| CSS/JS preview coverage | ❌ FIXED | CSS/JS files now keep HTML preview alive via live server |
+| Large file serving | ❌ FIXED | Files > 256KB streamed, executor shutdownNow() for clean shutdown |
+
+### Fixes Applied
+
+1. **SSE reconnect broken** (commit cf3bd7c) — The `onerror` handler created a new `EventSource` but
+   never reattached the `onmessage` handler. After a reconnect, reload signals were silently ignored.
+   Fixed with a `connect()` function that reattaches all handlers on each reconnect.
+
+2. **WebView reloads on every recomposition** (commit 8a20d2f) — The `update` lambda called
+   `wv.loadUrl(liveUrl)` every time ANY state changed (loading, title, etc.), causing constant
+   unnecessary page reloads. Fixed by tracking last loaded URL via `wv.tag` and only reloading
+   when the URL actually changes.
+
+3. **CSS/JS editing kills HTML preview** (commit 07a8723) — When switching to edit a CSS or JS file,
+   the preview fell back to inline mode (no live server), so SSE reload signals had no WebView to
+   update. Fixed by keeping the live server active for CSS/JS files — serves project root (index.html).
+
+4. **Large files read entirely into memory** (commit cf3bd7c) — `file.readBytes()` on large assets
+   could OOM on mobile. Added size check to stream files > 256KB. Also `shutdownNow()` for clean shutdown.
+
+**Commits:** cf3bd7c, 8a20d2f, 07a8723
+**Build:** #1471–#1473 all green ✅
+
+---
+
+## PHASE AA — PDF VIEWER LANDSCAPE & ZOOM FIX
+
+### Date: 2026-07-17
+
+**Problem:** In landscape mode, PDF pages rendered very tiny and hard to read. When zoomed, the
+page displayed oddly (off-center, wrong zoom pivot).
+
+**Root Causes:**
+1. Render resolution was fixed at `screenDpi/72` regardless of screen orientation — portrait pages
+   rendered at portrait resolution even on wide landscape screens, appearing tiny.
+2. Zoom pivot used `graphicsLayer` on a `fillMaxSize()` composable, but `ContentScale.Fit` left
+   the image smaller than the composable bounds, so zoom pivoted from the composable center, not
+   the image center — causing the page to drift off-screen when zoomed.
+
+**Fixes Applied:**
+1. Re-render bitmap on orientation change (`LaunchedEffect(pdfPath, pageIndex, orientation)`)
+   — bitmap is now sized to fit the current screen dimensions, so portrait pages fill landscape
+   width properly.
+2. Render scale now uses `maxOf(fitScale, screenDpi/72)` — ensures bitmap is always at least
+   as large as the screen needs, for sharp text in both orientations.
+3. Pan clamping uses captured `PointerInputScope.size` (viewW/viewH) instead of `onSizeChanged`
+   state, avoiding recomposition issues.
+4. Added `clip = true` to graphicsLayer so zoomed content doesn't overflow viewport.
+5. Zoom range increased from 6× to 8× for fine-grained reading.
+
+**Commits:** f0cc2c3, e480b03, e1bff8f
+**Build:** #1476 green ✅
