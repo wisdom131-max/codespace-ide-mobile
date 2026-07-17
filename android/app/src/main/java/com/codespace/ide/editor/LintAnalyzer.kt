@@ -124,7 +124,7 @@ object LintAnalyzer {
 
     // ── 2. Unterminated string literals ──────────────────────────────────
     private fun checkStringTermination(
-        text: String, errors: MutableList<LintError>, language: Language
+        text: String, errors: MutableList<LintError>, _language: Language
     ) {
         val lines = text.split("\n")
         var offset = 0
@@ -148,7 +148,7 @@ object LintAnalyzer {
                     break
                 }
                 // Python raw/f-strings prefix
-                val isStringStart = (c == '"' || c == '\'') &&
+                val _isStringStart = (c == '"' || c == '\'') &&
                     (i == 0 || !line[i - 1].isLetter() ||
                         (i >= 1 && line[i - 1] in listOf('r', 'f', 'b', 'u', 'R', 'F', 'B', 'U')))
                 if (c == '"' || c == '\'') {
