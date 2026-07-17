@@ -146,21 +146,21 @@ You can use multiple tools in sequence. When done, give a final summary.
     fun executeTool(name: String, args: JSONObject, context: Context): String {
         return try {
             when (name) {
-                "run_command" -> runCommand(args.getString("command"), args.optString("workdir", null), context)
+                "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
                 "read_file" -> readFile(args.getString("path"))
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"))
                 "list_files" -> listFiles(args.getString("path"))
                 "search_files" -> searchFiles(args.getString("path"), args.getString("pattern"))
-                "git_commit_push" -> gitCommitPush(args.getString("message"), args.optString("repo_dir", null), context)
-                "git_pull_rebase" -> gitPullRebase(args.optString("repo_dir", null), context)
-                "git_branch" -> gitBranch(args.getString("action"), args.optString("name", ""), args.optString("repo_dir", null), context)
-                "git_status" -> gitStatus(args.optString("repo_dir", null), context)
-                "git_diff" -> gitDiff(args.optBoolean("staged", false), args.optString("repo_dir", null), context)
-                "render_remotion" -> renderRemotion(args.getString("composition"), args.getString("output"), args.optString("project_dir", null), context)
+                "git_commit_push" -> gitCommitPush(args.getString("message"), args.optString("repo_dir").ifBlank { null }, context)
+                "git_pull_rebase" -> gitPullRebase(args.optString("repo_dir").ifBlank { null }, context)
+                "git_branch" -> gitBranch(args.getString("action"), args.optString("name", ""), args.optString("repo_dir").ifBlank { null }, context)
+                "git_status" -> gitStatus(args.optString("repo_dir").ifBlank { null }, context)
+                "git_diff" -> gitDiff(args.optBoolean("staged", false), args.optString("repo_dir").ifBlank { null }, context)
+                "render_remotion" -> renderRemotion(args.getString("composition"), args.getString("output"), args.optString("project_dir").ifBlank { null }, context)
                 "save_secret" -> saveSecret(args.getString("key"), args.getString("value"), context)
                 "get_secret" -> getSecret(args.getString("key"), context)
-                "detect_secrets" -> detectSecrets(args.optString("text", null), args.optString("path", null))
-                "web_fetch" -> webFetch(args.getString("url"), args.optString("headers", null))
+                "detect_secrets" -> detectSecrets(args.optString("text").ifBlank { null }, args.optString("path").ifBlank { null })
+                "web_fetch" -> webFetch(args.getString("url"), args.optString("headers").ifBlank { null })
                 "web_search" -> webSearch(args.getString("query"))
                 "save_memory" -> AgentMemory.save(args.getString("key"), args.getString("value"), context)
                 "read_memory" -> AgentMemory.readAll(context)
@@ -169,7 +169,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "connect_service" -> AgentConnectorManager.connectService(args.getString("service"), args.optJSONArray("scopes"), context)
                 "use_connector" -> AgentConnectorManager.useConnector(args.getString("service"), args.getString("method"), args.getString("endpoint"), args.optString("body", "{}"), context)
                 "create_entity" -> AgentEntityManager.create(args.getString("entity"), args.getString("data"), context)
-                "read_entities" -> AgentEntityManager.read(args.getString("entity"), args.optString("filter", null), context)
+                "read_entities" -> AgentEntityManager.read(args.getString("entity"), args.optString("filter").ifBlank { null }, context)
                 "update_entity" -> AgentEntityManager.update(args.getString("entity"), args.getString("filter"), args.getString("data"), context)
                 "delete_entity" -> AgentEntityManager.delete(args.getString("entity"), args.getString("filter"), context)
                 "schedule_task" -> AgentScheduler.schedule(args.getString("name"), args.getString("cron"), args.getString("command"), context)
@@ -177,7 +177,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "cancel_task" -> AgentScheduler.cancel(args.getString("name"), context)
                 "generate_image" -> generateImage(args.getString("prompt"), args.getString("output"), context)
                 "upload_file" -> uploadFile(args.getString("path"), args.getString("url"))
-                "install_package" -> installPackage(args.getString("manager"), args.getString("package"), args.optString("project_dir", null), context)
+                "install_package" -> installPackage(args.getString("manager"), args.getString("package"), args.optString("project_dir").ifBlank { null }, context)
                 else -> "Unknown tool: $name"
             }
         } catch (e: Exception) {
