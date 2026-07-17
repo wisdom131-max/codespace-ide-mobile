@@ -462,7 +462,7 @@ fun ProjectShellScreen(
     isDark: Boolean,
     currentTheme: String = if (isDark) "Dark (Default)" else "Light (Default)",
     onSelectTheme: (String) -> Unit = {},
-    _onToggleTheme: () -> Unit,
+    onToggleTheme: () -> Unit,
     onBack: () -> Unit,
     onSignOut: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
@@ -1147,7 +1147,7 @@ private fun PssOverlays(
     onShowGoToLineChange: (Boolean) -> Unit,
     goToLineInput: String,
     onGoToLineInputChange: (String) -> Unit,
-    _scrollTargetLine: Int,
+    scrollTargetLine: Int,
     onScrollTargetLineChange: (Int) -> Unit,
     showPersonMenu: Boolean,
     onShowPersonMenuChange: (Boolean) -> Unit,
@@ -1163,8 +1163,8 @@ private fun PssOverlays(
     onEditorFontSizeChange: (Int) -> Unit,
     notifList: androidx.compose.runtime.snapshots.SnapshotStateList<NotifItem>,
     // Colors
-    _BgColor: Color,
-    _ActivityBarIconActive: Color,
+    BgColor: Color,
+    ActivityBarIconActive: Color,
     TabActiveIndicator: Color,
     TabTextInactive: Color,
     DividerColor: Color,
@@ -2159,7 +2159,7 @@ private fun buildRunCommand(path: String): String? {
 
 @Composable
 private fun SymbolSearchOverlay(
-    _activeEditorTab: String?,
+    activeEditorTab: String?,
     onNavigate: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
