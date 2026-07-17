@@ -260,7 +260,7 @@ fun CodeEditor(
     modifier: Modifier = Modifier,
     savedContent: String = "",
     wordWrap: Boolean = false,
-    scrollToLine: Int = 0,
+    _scrollToLine: Int = 0,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
     goToLineOpen: Boolean = false,
@@ -383,7 +383,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
         list
     }
 
-    val lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
+    val _lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
     // P15-C: Sticky scroll — derives the "current scope" line from the scroll position.
     // Uses the line height formula: lineIdx = scrollPx / (fontSize * 1.25f).
@@ -520,7 +520,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
     }
 
     // Bracket matching
-    val bracketMatch = remember(value) {
+    val _bracketMatch = remember(value) {
         val pos = value.selection.end
         if (pos == 0 || pos > value.text.length) null
         else {
@@ -876,7 +876,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                     .background(colors.gutter.copy(alpha = 0.3f))
             ) {
                 Column(Modifier.verticalScroll(vScroll)) {
-                    blameData.entries.sortedBy { it.key }.forEach { (lineIdx, blame) ->
+                    blameData.entries.sortedBy { it.key }.forEach { (_, blame) ->
                         Box(
                             Modifier.height(fontSize.dp * 1.25f).fillMaxWidth().padding(start = 4.dp),
                             contentAlignment = Alignment.CenterStart,
@@ -1100,7 +1100,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                         .verticalScroll(miniScroll)
                 ) {
 
-                    textLines.forEachIndexed { idx, line ->
+                    textLines.forEachIndexed { _, line ->
                         // Classify line for syntax color
                         val trimmed = line.trimStart()
                         val lineColor = when {
