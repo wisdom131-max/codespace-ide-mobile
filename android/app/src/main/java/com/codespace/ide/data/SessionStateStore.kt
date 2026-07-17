@@ -178,13 +178,13 @@ class SessionStateStore(private val context: Context) {
             }
             ShellState(
                 projectId      = obj.optString("projectId", ""),
-                activePanel    = obj.optString("activePanel", null).takeIf { !it.isNullOrBlank() },
-                bottomTab      = obj.optString("bottomTab",  null).takeIf { !it.isNullOrBlank() },
+                activePanel    = obj.optString("activePanel").takeIf { !it.isNullOrBlank() },
+                bottomTab      = obj.optString("bottomTab").takeIf { !it.isNullOrBlank() },
                 showBottomPanel = obj.optBoolean("showBottomPanel", true),
-                activeFilePath = obj.optString("activeFilePath", null).takeIf { !it.isNullOrBlank() },
+                activeFilePath = obj.optString("activeFilePath").takeIf { !it.isNullOrBlank() },
                 openFilePaths  = strList("openFilePaths"),
                 pinnedFilePaths = strList("pinnedFilePaths"),
-                splitFilePath  = obj.optString("splitFilePath", null).takeIf { !it.isNullOrBlank() },
+                splitFilePath  = obj.optString("splitFilePath").takeIf { !it.isNullOrBlank() },
                 editorFontSize = obj.optInt("editorFontSize", 13),
             )
         } catch (_: Exception) { null }
@@ -201,7 +201,7 @@ class SessionStateStore(private val context: Context) {
                 for (i in 0 until arr.length()) { val s = arr.optString(i); if (s.isNotBlank()) add(s) }
             }
             return TerminalMemory(
-                workingDirectory = obj.optString("workingDirectory", null).takeIf { !it.isNullOrBlank() },
+                workingDirectory = obj.optString("workingDirectory").takeIf { !it.isNullOrBlank() },
                 recentCommands   = cmds,
             )
         }
