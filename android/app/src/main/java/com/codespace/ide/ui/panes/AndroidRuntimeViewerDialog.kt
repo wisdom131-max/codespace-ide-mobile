@@ -108,7 +108,7 @@ private fun parseOat(bytes: ByteArray): ArtFileInfo {
     }
 
     // Find .rodata section — first find the section-name string table offset
-    var rodataOffset = -1L; var rodataSize = 0L
+    var rodataOffset = -1L; @Suppress("unused") var rodataSize = 0L
     val strtabEntry = (shOff + shStrIdx.toLong() * shEntSize).toInt()
     val strtabOff: Long = if (strtabEntry + shEntSize <= bytes.size) {
         if (is64) bytes.u32le(strtabEntry + 24) else u32(strtabEntry + 16)
@@ -296,7 +296,7 @@ private fun parseVdex(bytes: ByteArray): ArtFileInfo {
 // We use ZipFile to read the manifest and list contents.
 private fun parseApex(file: java.io.File): ArtFileInfo {
     val entries = mutableListOf<Pair<String, String>>()
-    var manifestText = ""
+    @Suppress("unused") var manifestText = ""
     var apexName = ""; var apexVersion = ""; var targetSdk = ""
 
     try {
