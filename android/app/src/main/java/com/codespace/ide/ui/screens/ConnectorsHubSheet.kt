@@ -27,6 +27,7 @@ import com.codespace.ide.data.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.material.icons.automirrored.filled.*
 
 /**
  * Connectors Hub — Gmail/Calendar/Drive/Slack rows now show REAL live status from the
@@ -119,7 +120,7 @@ internal fun ConnectorsHubSheet(
                             "gmail" to Icons.Default.Email,
                             "gcalendar" to Icons.Default.CalendarMonth,
                             "gdrive" to Icons.Default.Cloud,
-                            "slack" to Icons.Default.Chat,
+                            "slack" to Icons.AutoMirrored.Filled.Chat,
                         )
                         val colorFor = mapOf(
                             "gmail" to Color(0xFFD93025),
