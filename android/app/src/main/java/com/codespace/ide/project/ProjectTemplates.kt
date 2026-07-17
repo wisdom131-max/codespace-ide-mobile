@@ -35,7 +35,7 @@ object ProjectTemplates {
      * Create project scaffold on disk.
      */
     suspend fun scaffold(
-        _context: Context,
+        context: Context,
         projectName: String,
         type: ProjectType,
         rootParent: File,
