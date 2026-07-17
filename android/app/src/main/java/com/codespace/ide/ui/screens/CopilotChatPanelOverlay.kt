@@ -45,6 +45,7 @@ import com.codespace.ide.agent.AgentTools
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.domain.AiProviderId
 import java.util.concurrent.TimeUnit
+import androidx.compose.material.icons.automirrored.filled.*
 
 // Theme colors passed from parent — matches the app's current theme
 data class ChatPanelColors(
@@ -739,7 +740,7 @@ internal fun CopilotChatPanelOverlay(
                     onClick = { send(chatInput.trim()) },
                     enabled = !chatLoading && chatInput.isNotBlank(),
                 ) {
-                    Icon(Icons.Default.Send, null, tint = colors.accent, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.Send, null, tint = colors.accent, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -1127,7 +1128,7 @@ internal fun CopilotChatPanelInline(
                     val modeIcon = when (m) {
                         ChatMode.ASK   -> Icons.Default.QuestionAnswer
                         ChatMode.AGENT -> Icons.Default.AutoMode
-                        ChatMode.PLAN  -> Icons.Default.ListAlt
+                        ChatMode.PLAN  -> Icons.AutoMirrored.Filled.ListAlt
                     }
                     Icon(modeIcon, null, tint = modeColor, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
@@ -1215,7 +1216,7 @@ internal fun CopilotChatPanelInline(
                 onClick = { scope.launch { send(chatInput) } },
                 enabled = !chatLoading && chatInput.isNotBlank(),
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Send", tint = colors.accent)
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = colors.accent)
             }
         }
             } // end chat column
