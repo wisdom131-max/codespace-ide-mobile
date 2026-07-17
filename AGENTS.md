@@ -2849,7 +2849,7 @@ Produce:
 > 2. ~~Quick fixes / Code actions — PARTIAL~~ ✅ DONE (LSP code actions wired, lightbulb in context menu)
 > 3. ~~Auto Save — PARTIAL~~ ✅ DONE (Saved indicator in breadcrumbs bar, dirty flag auto-clears 2s after typing)
 > 4. LSP Python diagnostics — WORKING (audit confirmed: ProblemsPanel already polls LSP diagnostics for all languages every 2s)
-> 5. File icons — PARTIAL (remaining)
+> 5. ~~File icons — PARTIAL~~ ✅ DONE (comprehensive icon per extension, color-coded by language, folder icon fixed, tab icons added)
 > Added: 2026-07-16. Source: user specification (rearranged, not changed).
 > NOTE: Some sub-phases overlap with existing Phase 22 work (P22-F through P22-L). Audit existing implementations before building new ones.
 
