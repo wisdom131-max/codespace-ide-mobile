@@ -30,7 +30,7 @@ object McpShellProfile {
     private const val API_PORT = 8765
     private const val API_URL = "http://localhost:$API_PORT"
 
-    fun install(context: Context, backendUrl: String? = null, authToken: String? = null) {
+    fun install(context: Context, _backendUrl: String? = null, _authToken: String? = null) {
         // Start the local Agent API server (gives terminal AI full 32-tool access)
         AgentApiServer.start(context)
 
