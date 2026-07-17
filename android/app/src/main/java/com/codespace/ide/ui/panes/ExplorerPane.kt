@@ -711,7 +711,7 @@ fun ExplorerSidePanel(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(Icons.Default.Description, null, tint = Color(0xFFDDDDDD),
+                Icon(Icons.Default.Folder, null, tint = Color(0xFFDDDDDD),
                     modifier = Modifier.size(48.dp))
                 Spacer(Modifier.height(12.dp))
                 Text("No folder opened", fontSize = 14.sp, color = MutedColor,
@@ -799,7 +799,7 @@ fun ExplorerSidePanel(
                 Icon(Icons.Default.KeyboardArrowDown, null,
                     tint = MutedColor, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Icon(Icons.Default.Description, null,
+                Icon(Icons.Default.Folder, null,
                     tint = FolderColor, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(workspaceRoot.name, fontSize = 13.sp,
@@ -2158,7 +2158,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             null, tint = MutedColor, modifier = Modifier.size(16.dp)
                         )
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Default.Description, null, tint = IconColor, modifier = Modifier.size(14.dp))
+                        Icon(fileIcon(filePath.substringAfterLast("/")), null, tint = fileIconColor(filePath.substringAfterLast("/")), modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
                             filePath.substringAfterLast("/"),
