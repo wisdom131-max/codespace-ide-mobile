@@ -643,11 +643,17 @@ private fun HtmlPreview(
             }
         },
         update = { wv ->
-            if (liveUrl != null) {
-                // PhaseX: Load from LivePreviewServer — gets auto-reload via SSE
-                wv.loadUrl(liveUrl)
-            } else {
-                wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+            // Track last loaded URL to avoid reloading on every recomposition
+            val lastUrl = wv.tag as? String
+            val currentUrl = if (liveUrl != null) liveUrl else "__inline__"
+            if (lastUrl != currentUrl) {
+                wv.tag = currentUrl
+                if (liveUrl != null) {
+                    // PhaseX: Load from LivePreviewServer — gets auto-reload via SSE
+                    wv.loadUrl(liveUrl)
+                } else {
+                    wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+                }
             }
             onWebView(wv)
         },
