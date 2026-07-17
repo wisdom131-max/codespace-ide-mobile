@@ -498,7 +498,7 @@ fun AiModelViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
 @Composable
 private fun SummaryGrid(
     entries: List<Pair<String, String>>,
-    textColor: Color, muted: Color, accent: Color
+    textColor: Color, muted: Color, _accent: Color
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         entries.forEach { (label, value) ->
