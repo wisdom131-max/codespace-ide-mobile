@@ -248,7 +248,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         return ProotInstaller.execOnce(context, "git $quoted", repo.path)
     }
 
-    private fun getRepoDir(repoDir: String?, _context: Context): File =
+    private fun getRepoDir(repoDir: String?, context: Context): File =
         File(repoDir ?: "/root")
 
     private fun gitCommitPush(message: String, repoDir: String?, context: Context): String {
@@ -396,7 +396,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     // ── Media ────────────────────────────────────────────────────────────
-    private fun generateImage(prompt: String, output: String, _context: Context): String {
+    private fun generateImage(prompt: String, output: String, context: Context): String {
         return try {
             val outFile = File(output); outFile.parentFile?.mkdirs()
             val conn = URL("http://localhost:11434/api/generate").openConnection() as HttpURLConnection
