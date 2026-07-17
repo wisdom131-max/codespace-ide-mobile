@@ -1,19 +1,5 @@
 package com.codespace.ide.lsp
 
-/**
- * P24: LSP Code Action — a quick fix or refactoring suggestion returned by the language server.
- * [title]  Human-readable label (e.g. "Add missing import", "Fix nullability")
- * [kind]   LSP action kind (e.g. "quickfix", "refactor") — optional
- * [edit]   Serialised WorkspaceEdit JSON string — null if this action only sends a command
- * [command] LSP Command JSON string — null if this action only carries an edit
- */
-data class LspCodeAction(
-    val title: String,
-    val kind: String? = null,
-    val edit: String? = null,
-    val command: String? = null,
-)
-
 import android.content.Context
 import android.util.Log
 import com.codespace.ide.domain.Language
@@ -21,6 +7,16 @@ import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * P24: LSP Code Action — a quick fix or refactoring suggestion returned by the language server.
+ */
+data class LspCodeAction(
+    val title: String,
+    val kind: String? = null,
+    val edit: String? = null,
+    val command: String? = null,
+)
 
 /**
  * LspManager - manages LSP server lifecycle and provides LSP operations.
