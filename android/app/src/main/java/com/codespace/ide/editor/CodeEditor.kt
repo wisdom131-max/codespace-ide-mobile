@@ -1114,7 +1114,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                             else -> colors.text
                         }
                         // Line density: how much of the line width is filled
-                        val density = (line.trimEnd().length.coerceAtMost(80)).toFloat() / 80f
+                        val localDensity = (line.trimEnd().length.coerceAtMost(80)).toFloat() / 80f
                         val indent = line.length - line.trimStart().length
                         Row(
                             modifier = Modifier
@@ -1260,7 +1260,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                                             val endLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
                                                             val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
                                                             val replacement = te.optString("newText", "")
-                                                            val textLines = newText.split("\n").toMutableList()
+                                                            val newTextLines = newText.split("\n").toMutableList()
                                                             if (startLine == endLine && startLine < textLines.size) {
                                                                 val line = textLines[startLine]
                                                                 textLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
@@ -1355,7 +1355,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                 if (peekResult == null) {
                                     val declKw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
                                     val declPat = Regex(declKw + "\\s+" + Regex.escape(word) + "\\b")
-                                    val textLines = value.text.split("\n")
+                                    val localTextLines = value.text.split("\n")
                                     val found = textLines.indexOfFirst { declPat.containsMatchIn(it) }
                                     if (found >= 0) {
                                         val startLine = (found - 3).coerceAtLeast(0)
@@ -1584,7 +1584,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                 TextButton(
                                     onClick = {
                                         coroutineScope.launch {
-                                            val lineHeightPx = fontSize * 1.25f
+                                            val localLineHeightPx = fontSize * 1.25f
                                             vScroll.animateScrollTo((def.line * lineHeightPx).toInt())
                                         }
                                         gotoResults = null
@@ -1730,7 +1730,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                             onClick = {
                                 if (peek.filePath == filePath) {
                                     coroutineScope.launch {
-                                        val lineHeightPx = fontSize * 1.25f
+                                        val localLineHeightPx = fontSize * 1.25f
                                         vScroll.animateScrollTo((peek.line * lineHeightPx).toInt())
                                     }
                                 } else {
@@ -1905,7 +1905,7 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
                                 selection = androidx.compose.ui.text.TextRange(safeOffset),
                             )
                             coroutineScope.launch {
-                                val lineHeightPx = fontSize * 2.0f
+                                val localLineHeightPx = fontSize * 2.0f
                                 vScroll.animateScrollTo(((clamped - 1) * lineHeightPx).toInt())
                             }
                             goToLineInput = ""
