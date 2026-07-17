@@ -52,6 +52,7 @@ object AgentMemory {
     }
 
     fun get(key: String, context: Context): String? {
-        return readMap(context).optString(key, null)
+        val v = readMap(context).optString(key)
+        return v.ifBlank { null }
     }
 }
