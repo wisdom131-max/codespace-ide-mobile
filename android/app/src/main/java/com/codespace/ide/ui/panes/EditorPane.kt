@@ -34,6 +34,7 @@ import com.codespace.ide.editor.MergeConflictParser
 import com.codespace.ide.editor.ConflictHunk
 import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
+import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
@@ -632,27 +633,35 @@ fun EditorPane(
             if (!LspManager.isSupported(snap.language) || projectRootPath == null) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path)
             android.util.Log.d("LspTrigger", "LSP Effect-A fired: path=${snap.path} lang=${snap.language} uri=$uri serverRunning=${LspManager.isServerRunning(snap.language)}")
+            AppOutputLog.log("[LSP] Effect-A fired for ${snap.language.displayName}: ${snap.path.substringAfterLast('/')} — serverRunning=${LspManager.isServerRunning(snap.language)}", "lsp")
             if (uri == null) {
                 android.util.Log.e("LspTrigger", "LSP Effect-A: uri is null for path=${snap.path} — file not in filesDir or rootfs bind-mount. LSP skipped.")
+                AppOutputLog.log("[LSP] ERROR: Cannot map path to proot guest path — LSP skipped (${snap.path})", "lsp")
                 lspStatusMessage = "LSP unavailable: file path not accessible inside Ubuntu rootfs (${snap.path})"
                 return@LaunchedEffect
             }
             if (!LspManager.isServerRunning(snap.language)) {
                 lspStatusMessage = "Starting ${snap.language.displayName} language server..."
                 android.util.Log.d("LspTrigger", "LSP Effect-A: calling startServer for ${snap.language.displayName}")
+                AppOutputLog.log("[LSP] Effect-A: starting ${snap.language.displayName} server for project $projectRootPath…", "lsp")
                 val lspStarted = withContext(Dispatchers.IO) {
                     LspManager.startServer(context, snap.language, projectRootPath)
                 }
                 android.util.Log.d("LspTrigger", "LSP Effect-A: startServer returned $lspStarted for ${snap.language.displayName}")
+                AppOutputLog.log("[LSP] Effect-A: startServer returned $lspStarted for ${snap.language.displayName}", "lsp")
                 lspStatusMessage = if (lspStarted) null
                 else "LSP unavailable: ${snap.language.displayName} server failed to start. Check npm/pip in terminal."
+            } else {
+                AppOutputLog.log("[LSP] Effect-A: ${snap.language.displayName} server already running — skipping startServer", "lsp")
             }
             if (LspManager.isServerRunning(snap.language)) {
                 delay(300)
                 if (lspOpenedFiles[snap.path] != true) {
                     android.util.Log.d("LspTrigger", "LSP Effect-A: sending didOpen for ${snap.path}")
+                    AppOutputLog.log("[LSP] Effect-A: sending didOpen for ${snap.path.substringAfterLast('/')}", "lsp")
                     LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content)
                     lspOpenedFiles[snap.path] = true
+                    AppOutputLog.log("[LSP] Effect-A: didOpen complete for ${snap.path.substringAfterLast('/')}", "lsp")
                 }
             }
         }
