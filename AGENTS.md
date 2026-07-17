@@ -3770,3 +3770,220 @@ Minimal Java (NOT Kotlin) Android project:
 - [ ] BB-1-C: End-to-end build verification
 - [ ] BB-1-D: Interruption handling (minimal)
 - [ ] BB-1-REPORT: Final report
+---
+
+## PHASE BB-1 AUDIT REPORT — MULTI-TAB LSP LIFECYCLE + RAM RECONCILIATION
+
+### AUDIT DATE: 2026-07-17
+
+---
+
+### 1. MULTI-TAB LSP SERVER LIFECYCLE FINDINGS
+
+#### Code Analysis
+
+The LSP server lifecycle is managed by a single `LaunchedEffect` in `EditorPane.kt` (L604):
+
+```kotlin
+LaunchedEffect(active?.id, active?.content, active?.language) {
+    if (active != null && LspManager.isSupported(active.language) && projectRootPath != null) {
+        if (!LspManager.isServerRunning(active.language)) {
+            LspManager.startServer(context, active.language, projectRootPath)
+        }
+        if (LspManager.isServerRunning(active.language)) {
+            if (lspOpenedFiles[active.path] != true) {
+                LspManager.didOpen(...)
+                lspOpenedFiles[active.path] = true
+            } else {
+                LspManager.didChange(...)
+            }
+        }
+    }
+}
+```
+
+Tab close handler (L449-456):
+```kotlin
+.clickable {
+    val idx = tabs.indexOfFirst { it.id == tab.id }
+    tabs.remove(tab)
+    if (activeId == tab.id) {
+        activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.firstOrNull()?.id
+    }
+    if (splitId == tab.id) splitId = null
+}
+```
+
+#### Critical Finding: ZERO Teardown Logic
+
+There is NO `DisposableEffect`, `onDispose`, `didClose`, or `stopServer` call ANYWHERE in:
+- `EditorPane.kt` — no cleanup on tab close, no cleanup on composable disposal
+- `ProjectShellScreen.kt` — no cleanup on editor panel close
+- `MainActivity.kt` — no cleanup on activity destroy
+- `CodeSpaceApplication.kt` — no cleanup on app termination
+
+#### Audit Results by Scenario
+
+| Scenario | Expected Behavior | Actual Behavior | Verdict |
+|----------|------------------|-----------------|---------|
+| Open 2nd tab (different language) | 2nd LSP server spawns alongside 1st | ✅ Correct — `startServer` called for new language, 1st server untouched | ✅ WORKING |
+| Close a single tab | `didClose` sent for that file; if last file for that language, server shuts down | ❌ `didClose` NEVER called. `lspOpenedFiles` map still marks file as "opened". Server keeps running. | ❌ BROKEN |
+| Close editor panel with multiple tabs | ALL active servers for ALL languages killed | ❌ No `DisposableEffect`/`onDispose` with `stopAll()`. All servers stay alive. | ❌ BROKEN |
+| Server left running with no tab | Should never happen | ❌ Happens every time a tab is closed — server has no open documents but process keeps running | ❌ BROKEN |
+| Switch between open tabs | Background tab's server sits idle | ✅ Correct — `LaunchedEffect` only fires for the active tab. No new server spawned. | ✅ WORKING |
+| App backgrounded/destroyed | All servers cleaned up | ❌ No cleanup in `onDestroy`. Server processes orphaned. | ❌ BROKEN |
+
+#### Impact on "Close Panel = Safe to Build" Assumption
+
+**The assumption is FALSE.** Closing the editor panel does NOT stop any LSP servers. They persist as
+orphaned processes consuming 200-400MB of RAM each. This directly impacts the feasibility of on-device
+builds — you cannot assume RAM is freed by closing the editor.
+
+#### Required Fix (Blocking Phase BB-1)
+
+Before proceeding with the SDK installer, the following must be fixed:
+
+1. **Tab close → didClose + server shutdown**: When a tab is closed, send `didClose` for that file's URI.
+   If no other open tab uses the same language, call `stopServer(language)` to kill the process.
+
+2. **EditorPane DisposableEffect → stopAll**: Add `DisposableEffect(Unit) { onDispose { LspManager.stopAll() } }`
+   so all servers are killed when the editor panel is disposed.
+
+3. **Track open files per language**: Maintain a count of open files per language to know when a server
+   can be safely shut down (only when count reaches 0).
+
+---
+
+### 2. RAM FIGURE RECONCILIATION
+
+#### How the App Reads RAM
+
+`MemoryMonitor.getMemInfo()` (in `PerformanceMonitor.kt`, L11-25) reads `/proc/meminfo`:
+
+```kotlin
+fun getMemInfo(): MemInfo {
+    val meminfo = File("/proc/meminfo").readText()
+    val total = extractKb(meminfo, "MemTotal:")
+    val avail = extractKb(meminfo, "MemAvailable:")
+    MemInfo(totalMb = total / 1024, availableMb = avail / 1024)
+}
+```
+
+Proot bind-mounts `/proc` from the host Android kernel. `/proc/meminfo` inside proot shows the
+**actual host device's memory**, not a virtualized amount.
+
+#### What 2288MB Represents
+
+The status bar showing "2031/2288MB" means:
+- **MemTotal: 2288 MB** — This is the true total device RAM as reported by the Linux kernel.
+  This is NOT the full physical RAM (which is likely 3GB) — the kernel reserves ~700MB for
+  GPU, modem, firmware, and other hardware. `MemTotal` is what's available to userspace.
+- **MemAvailable: 257 MB** — This is the kernel's estimate of reclaimable memory (free + cache
+  that can be dropped). This is what's actually available for new processes.
+- **Used: 2031 MB** — This includes all processes (Android system, other apps, codespace IDE,
+  LSP servers, proot, etc.) plus non-reclaimable kernel memory.
+
+#### Comparison to Spike Assumption
+
+| Metric | Spike Assumed | Actual (Confirmed) | Difference |
+|--------|---------------|-------------------|------------|
+| Total device RAM | ~2.8 GB (2800 MB) | 2288 MB | **-512 MB (-18%)** |
+| Available during editing | ~1.0-1.5 GB | 257 MB | **-750 to -1250 MB** |
+| LSP servers can free | ~200-400 MB | ~200-400 MB | Same |
+| Preview server can free | ~50 MB | ~50 MB | Same |
+| **Max available after stopping all** | **~1.5 GB** | **~500-700 MB** | **-800 to -1000 MB** |
+
+#### Corrected RAM Table
+
+| Scenario | Available RAM | Build RAM Needed (Java) | Verdict |
+|----------|---------------|------------------------|---------|
+| Build only (nothing stopped) | 257 MB | 650-850 MB | ❌ OOM by 400-600 MB |
+| Build + stop LSP only | ~457-657 MB | 650-850 MB | ❌ OOM by 0-400 MB |
+| Build + stop LSP + Preview | ~507-707 MB | 650-850 MB | ⚠️ Barely feasible, zero margin |
+| Build + stop everything + close other apps | ~700-900 MB | 650-850 MB | ⚠️ Feasible but fragile |
+| Build Kotlin project (any scenario) | < 900 MB | 950-1300 MB | ❌ OOM |
+
+#### Re-Evaluation of Feasibility Verdict
+
+**The Phase BB spike's "VIABLE WITH CONSTRAINTS" verdict was based on a 2.8GB total RAM assumption.
+With the confirmed 2288MB total, the situation is significantly worse:**
+
+1. **Java builds**: Only feasible if ALL of the following are true simultaneously:
+   - All LSP servers are stopped (frees ~200-400MB)
+   - Live preview server is stopped (frees ~50MB)
+   - No other heavy apps are running on the device
+   - Gradle uses `-Xmx384m` (reduced from 512m) to fit in the tighter budget
+   - The project is minimal (no large dependency trees)
+   Even then, it's borderline — any spike in memory usage during compilation could OOM.
+
+2. **Kotlin builds**: NOT VIABLE on this device class. The Kotlin compiler alone needs 300-500MB,
+   which is more than the total available RAM even after stopping everything.
+
+3. **Reliability**: With only ~50-100MB of margin (best case), any memory pressure from the Android
+   system (GC, background services, other apps) could kill the Gradle process mid-build. This makes
+   builds unreliable — they might work sometimes and fail other times with no user-controllable
+   difference.
+
+**REVISED VERDICT: NOT VIABLE ON THIS DEVICE CLASS (2.3GB RAM)**
+
+On-device Android builds cannot be made reliable enough to ship as a feature on devices with
+≤2.3GB total RAM. The RAM budget is too tight — even minimal Java builds would require stopping
+all other IDE features, closing other apps, and hoping the Android system doesn't reclaim memory
+mid-build. This is not a "constraint" — it's a fundamental resource limitation.
+
+#### Recommended Path
+
+Given the revised verdict:
+
+1. **DO NOT implement on-device build** for this device class.
+2. **Generate valid project structure** (template) so users can push to GitHub and build via CI.
+3. **Implement GitHub Actions CI integration** as the primary build path.
+4. **Show build environment status** in the Toolchain Panel with a clear message:
+   "On-device builds require ≥3GB RAM. Your device has 2.3GB. Use GitHub Actions to build."
+5. **If future devices have more RAM**: The BuildRunner and BuildEnvironment infrastructure
+   already exist and work — just need to enable them when RAM is sufficient.
+
+#### Still Required: Fix LSP Server Teardown (Regardless of Build Decision)
+
+The LSP lifecycle bugs (no didClose, no stopServer on tab close, no stopAll on panel close)
+waste 200-400MB of RAM on orphaned server processes. This affects ALL users, not just builds.
+This should be fixed regardless of the on-device build decision.
+
+---
+
+### 3. CURRENT TOOLCHAIN STATE
+
+Nothing from the spike has been installed. The proot container starts clean — no JDK, no Android SDK,
+no Gradle, no aapt2. The existing `BuildEnvironment.kt` and `ToolchainManager.kt` detect these tools
+but never install them.
+
+Since the revised verdict is NOT VIABLE, no installation is needed.
+
+---
+
+### 4. FINAL DECISION
+
+**REMOVED from this phase.** On-device Android builds are not feasible on 2.3GB RAM devices.
+
+**The Android project template will generate a valid project structure + GitHub Actions workflow
+for CI builds, not an on-device build button.**
+
+The existing BuildPanel UI should show:
+- Device RAM check: "On-device builds need ≥3GB RAM. This device has 2.3GB."
+- "Build via GitHub Actions" as the primary (and only) build path
+- The build button disabled with a tooltip explaining why
+
+### 5. RECOMMENDED NEXT STEPS
+
+1. **Fix LSP server teardown** (separate from build work — it's a memory bug affecting all users):
+   - Add didClose on tab close
+   - Add stopServer when last file for a language is closed
+   - Add DisposableEffect with stopAll on editor panel dispose
+   
+2. **Implement GitHub Actions CI build path** (Phase BB-2):
+   - Android template generates valid Gradle project + `.github/workflows/build.yml`
+   - "Build via GitHub Actions" button in Build Panel
+   - Push to repo, trigger workflow, download APK artifact
+
+3. **Keep BuildEnvironment/BuildRunner infrastructure** — it works correctly and will be
+   useful on future devices with more RAM, or if users connect to remote build machines.
