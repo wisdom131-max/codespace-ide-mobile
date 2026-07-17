@@ -645,7 +645,7 @@ fun EditorPane(
                 val scopeKeywords = listOf("fun ", "class ", "object ", "interface ", "enum ", "@Composable", "if ", "when ", "for ", "while ", "struct ", "impl ", "fn ", "def ", "func ")
                 (scrollToLine - 1 downTo 0)
                     .map { i -> lines.getOrNull(i)?.trim() }
-                    .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line!!.contains(kw) } }
+                    .firstOrNull { line -> line != null && scopeKeywords.any { kw -> line.contains(kw) } }
             }
         }
 
@@ -696,7 +696,7 @@ fun EditorPane(
             if (splitTab != null) {
                 Row(Modifier.fillMaxSize()) {
                     // P20-A: Fetch git blame data
-                    if (showBlame && active != null) {
+                    if (showBlame) {
                         val blamePath = active.path
                         LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
@@ -726,7 +726,7 @@ fun EditorPane(
                         }
                     }
                     // P20-A: Fetch git blame data
-                    if (showBlame && active != null) {
+                    if (showBlame) {
                         val blamePath = active.path
                         LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
