@@ -3266,3 +3266,55 @@ callback/flow from here to the preview pane is the cleanest hook point.
 
 **Phase X Implementation: COMPLETE** ✅
 
+## PHASE Y — CODE HEALTH AUDIT & WARNING CLEANUP
+
+### Audit Date: 2026-07-17
+
+Full-codebase audit of 129 Kotlin files. Found 230 compiler warnings + functional gaps.
+
+### Audit Findings
+
+| Category | Count | Severity | Status |
+|----------|-------|----------|--------|
+| Type mismatch (`Nothing?` → `String`) | 20 | HIGH — potential NPEs | ✅ FIXED |
+| VariableInspectorPanel `stubVars` (fake data) | 1 | HIGH — functional gap | ✅ FIXED |
+| Duplicate `when` label (Theme.kt "Eye Care") | 1 | MEDIUM — wrong rendering | ✅ FIXED |
+| Deprecated `Divider()` → `HorizontalDivider` | 12 | MEDIUM — future break | ✅ FIXED |
+| Deprecated `ImageVector` icons → `AutoMirrored` | 27 | MEDIUM — future break | ✅ FIXED |
+| Deprecated `nextTarEntry` (Java) | 4 | LOW — Java deprecation | DEFERRED |
+| Unused variables/params | 108 | LOW — dead code | DEFERRED |
+| Shadowed variables | 11 | LOW — confusing | DEFERRED |
+
+### Fixes Applied
+
+**Type mismatch root cause:** All 20 warnings were `optString("key", null)` — passing `null` 
+to a Java method whose Kotlin-mapped parameter type expects non-null `String`. Fixed by 
+replacing with `optString("key").ifBlank { null }` or `optString("key")` with `.takeIf`.
+- AgentTools.kt — 14 fixes (commits 2bf0071)
+- AgentMemory.kt — 1 fix (commit c7ec435)
+- ConnectorsApiClient.kt — 1 fix (commit 91671e5)
+- LspIntegration.kt — 1 fix (commit cf93380)
+- SessionStateStore.kt — 5 fixes (commit e7e941a)
+
+**VariableInspectorPanel:** Replaced hardcoded `stubVars` ("this", "args") with real 
+UniversalDebugManager integration. Now shows actual paused variables and call stack 
+frames from active debug sessions. (commit 845162a)
+
+**Theme.kt:** Removed duplicate "Eye Care" label in when-expression (commit bdc892d)
+
+**Deprecated Divider → HorizontalDivider:** 12 replacements across 5 files:
+- CodeEditor.kt, AiModelViewerDialog.kt, EntropyHeatmapDialog.kt, 
+  NetworkViewerDialog.kt, PreviewPane.kt
+
+**Deprecated Icons → AutoMirrored:** 27 replacements across 11 files:
+- ToolchainPanel, ArchiveViewer, BinaryDiffViewerDialog, ExplorerPane, OutlinePanel,
+  PreviewPane, SourceControlPane, AuthScreen, ConnectorsHubSheet, CopilotChatPanelOverlay,
+  ProjectShellScreen
+
+### Remaining (Deferred)
+- 108 unused variable/param warnings — low priority, no functional impact
+- 11 shadowed variable warnings — cosmetic, no functional impact  
+- 4 deprecated nextTarEntry calls — Java library deprecation, no Kotlin alternative yet
+- 46 other warnings (parameter naming, redundant null checks) — cosmetic
+
+**Phase Y: CORE FIXES COMPLETE** ✅
