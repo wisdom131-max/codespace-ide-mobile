@@ -83,7 +83,7 @@ object WorkspaceManager {
      * Returns the output File on success, throws on error.
      * Must be called from a coroutine (does IO on Dispatchers.IO).
      */
-    suspend fun createSnapshot(_ctx: Context, projectDir: File): File = withContext(Dispatchers.IO) {
+    suspend fun createSnapshot(ctx: Context, projectDir: File): File = withContext(Dispatchers.IO) {
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
         val name  = "${projectDir.name}_snapshot_$stamp.zip"
 
