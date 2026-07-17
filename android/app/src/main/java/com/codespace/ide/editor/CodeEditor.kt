@@ -69,6 +69,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import com.codespace.ide.lsp.ImportEdit
 import com.codespace.ide.lsp.applyImportEdits
+import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -303,7 +304,7 @@ fun CodeEditor(
     /** Minimap: initial visibility, can be toggled via dropdown in the editor toolbar */
     showMinimap: Boolean = true,
     /** P24: LSP code actions provider — returns quick fixes for a line */
-lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>)? = null,
+lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 /** P22-L: Current file path for LSP definition and peek definition */
     filePath: String = "",
 ) {
@@ -1254,10 +1255,12 @@ lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>
 
                         // P24: Quick Fixes from LSP — show code actions for the current line
                         if (lspCodeActionProvider != null) {
-                            val quickFixes = remember(value.selection.start) {
-                                val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
-                                try { lspCodeActionProvider.invoke(cursorLine) } catch (_: Exception) { emptyList() }
-                            }
+                            val quickFixes: List<LspCodeAction> =
+                                remember(value.selection.start) {
+                                    val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                                    try { lspCodeActionProvider.invoke(cursorLine) }
+                                    catch (_: Exception) { emptyList<LspCodeAction>() }
+                                }
                             if (quickFixes.isNotEmpty()) {
                                 quickFixes.forEach { fix ->
                                     TextButton(onClick = {
