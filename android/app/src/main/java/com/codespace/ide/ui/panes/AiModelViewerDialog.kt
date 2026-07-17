@@ -29,6 +29,7 @@ import org.json.JSONObject
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import androidx.compose.material3.HorizontalDivider
 
 // ── AI Model Viewer: GGUF · Safetensors · ONNX ────────────────────────────────
 // Pure-Kotlin binary metadata parsers for the three most common AI model formats.
@@ -469,7 +470,7 @@ fun AiModelViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
                                             Text("Value", color = muted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.weight(1.5f))
                                         }
-                                        Divider(color = border)
+                                        HorizontalDivider(color = border)
                                     }
                                     items(m.extraMeta) { (k, v) ->
                                         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
@@ -482,7 +483,7 @@ fun AiModelViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
                                                 modifier = Modifier.weight(1.5f), maxLines = 3,
                                                 overflow = TextOverflow.Ellipsis)
                                         }
-                                        Divider(color = border.copy(alpha = 0.4f))
+                                        HorizontalDivider(color = border.copy(alpha = 0.4f))
                                     }
                                 }
                             }
@@ -511,7 +512,7 @@ private fun SummaryGrid(
                     modifier = Modifier.weight(1f)
                 )
             }
-            Divider(color = Color(0xFF3C3C3C).copy(alpha = 0.5f))
+            HorizontalDivider(color = Color(0xFF3C3C3C).copy(alpha = 0.5f))
         }
     }
 }
