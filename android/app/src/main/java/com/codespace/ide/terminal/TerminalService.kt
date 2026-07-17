@@ -309,7 +309,7 @@ class TerminalService : Service() {
             if (prootWorkspace != null) {
                 session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
                 session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
-                if (workDir != null && workDir.startsWith("/root") && workDir != "/root") {
+                if (workDir.startsWith("/root") && workDir != "/root") {
                     session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
                 }
             }
