@@ -59,7 +59,7 @@ import kotlin.math.abs
 @Composable
 fun PdfViewerDialog(pdfPath: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val density = LocalDensity.current
+    val _density = LocalDensity.current
     // Rotation fix (#8): key on orientation so this fullscreen Dialog gets a fresh,
     // correctly-sized window on rotate instead of a stuck stale one.
     val orientation = LocalConfiguration.current.orientation
