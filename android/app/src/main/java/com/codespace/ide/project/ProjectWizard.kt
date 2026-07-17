@@ -220,7 +220,7 @@ private fun ProjectTypeCard(
     else
         MaterialTheme.colorScheme.surfaceVariant
 
-    val borderColor = if (selected)
+    val _borderColor = if (selected)
         MaterialTheme.colorScheme.primary
     else
         MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
