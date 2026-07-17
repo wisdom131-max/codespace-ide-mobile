@@ -463,6 +463,7 @@ private fun PreviewBody(
     activeFilePath: String,
     browserUrl: String,
     remotionUrl: String,
+    projectRootPath: String?,
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
