@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **#1320** (minimap realism fixes GREEN) |
-| Active phase | **Phase 24 (Master IDE Audit) — QUEUED** |
+| Active phase | **Phase 24 (Master IDE Audit) — IN PROGRESS (24-1 audit done, fixes started)** |
 | Last green | #1337 — fix(P23-8): add udm param to EditorPane + null-safe call |
 | **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
 | **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
