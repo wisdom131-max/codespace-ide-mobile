@@ -44,7 +44,6 @@ import java.io.File
 import com.codespace.ide.R
 import com.codespace.ide.data.SessionStateStore
 import androidx.compose.foundation.lazy.items
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -649,6 +648,10 @@ fun EditorPane(
             }
         }
 
+        // P24: Auto-save indicator state
+        var showSavedIndicator by remember { mutableStateOf(false) }
+        var savedIndicatorJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
         // P24: Breadcrumbs — file path hierarchy above editor
         if (active != null) {
             val pathParts = active.path.split("/").filter { it.isNotBlank() }
@@ -847,8 +850,8 @@ fun EditorPane(
                             // P24: Show "Saved" indicator briefly + clear dirty flag
                             showSavedIndicator = true
                             savedIndicatorJob?.cancel()
-                            savedIndicatorJob = kotlinx.coroutines.GlobalScope.launch {
-                                kotlinx.coroutines.delay(2000)
+                            savedIndicatorJob = scope.launch {
+                                delay(2000)
                                 showSavedIndicator = false
                                 val idx2 = tabs.indexOfFirst { it.id == active.id }
                                 if (idx2 >= 0) tabs[idx2] = tabs[idx2].copy(isDirty = false)
