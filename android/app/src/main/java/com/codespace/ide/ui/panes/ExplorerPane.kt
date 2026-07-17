@@ -914,7 +914,7 @@ fun ExplorerSidePanel(
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(Modifier.width(2.dp))
-                            Icon(Icons.Default.Description, null,
+                            Icon(Icons.Default.Folder, null,
                                 tint = FolderColor, modifier = Modifier.size(16.dp))
                         } else {
                             if (isImage) {
@@ -939,7 +939,7 @@ fun ExplorerSidePanel(
                             } else {
                                 Spacer(Modifier.width(18.dp))
                                 Icon(fileIcon(node.file.name), null,
-                                    tint = IconColor, modifier = Modifier.size(16.dp))
+                                    tint = fileIconColor(node.file.name), modifier = Modifier.size(16.dp))
                             }
                         }
                         Spacer(Modifier.width(6.dp))
@@ -1814,21 +1814,112 @@ private fun String.matchesSimpleGlob(pattern: String): Boolean {
     return try { Regex(regex, RegexOption.IGNORE_CASE).matches(this) } catch (_: Exception) { this.contains(pattern, ignoreCase = true) }
 }
 
-private fun fileIcon(name: String) = when {
-    name.endsWith(".kt") || name.endsWith(".kts") -> Icons.Default.Code
-    name.endsWith(".java")  -> Icons.Default.Code
-    name.endsWith(".py")    -> Icons.Default.Code
-    name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".tsx") || name.endsWith(".jsx") -> Icons.Default.Code
-    name.endsWith(".html") || name.endsWith(".xml") -> Icons.Default.Code
-    name.endsWith(".json")  -> Icons.Default.Code
-    name.endsWith(".md")    -> Icons.Default.Article
-    name.endsWith(".gradle") -> Icons.Default.Build
-    name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".svg") || name.endsWith(".webp") -> Icons.Default.Image
-    name.endsWith(".zip") || name.endsWith(".apk") -> Icons.Default.FolderZip
-    name.endsWith(".sh")    -> Icons.Default.Computer
-    name.endsWith(".txt")   -> Icons.Default.Article
-    name.endsWith(".pdf")   -> Icons.Default.Article
-    else                    -> Icons.Default.Article
+private fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        // Kotlin
+        "kt", "kts" -> Icons.Default.Code
+        // Java
+        "java" -> Icons.Default.Coffee
+        // Python
+        "py", "pyw", "pyi" -> Icons.Default.Code
+        // JavaScript / TypeScript
+        "js", "mjs", "cjs" -> Icons.Default.Javascript
+        "ts", "tsx", "jsx" -> Icons.Default.Javascript
+        // Web
+        "html", "htm" -> Icons.Default.Html
+        "css", "scss", "sass", "less" -> Icons.Default.Css
+        "xml", "svg" -> Icons.Default.Code
+        // Data / Config
+        "json" -> Icons.Default.DataObject
+        "yaml", "yml", "toml", "ini", "cfg", "conf" -> Icons.Default.Settings
+        "env" -> Icons.Default.Settings
+        // Build
+        "gradle", "gradlew" -> Icons.Default.Build
+        // Markdown / Text
+        "md", "markdown" -> Icons.Default.Article
+        "txt", "log" -> Icons.Default.Article
+        // Images
+        "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico" -> Icons.Default.Image
+        // Archives
+        "zip", "apk", "jar", "aar", "tar", "gz", "7z", "rar" -> Icons.Default.FolderZip
+        // Shell / Scripts
+        "sh", "bash", "zsh", "fish" -> Icons.Default.Terminal
+        // Binaries
+        "dex", "so", "o", "a" -> Icons.Default.Memory
+        "db", "sqlite", "sqlite3" -> Icons.Default.Storage
+        // Documents
+        "pdf" -> Icons.Default.PictureAsPdf
+        // C/C++
+        "c", "cpp", "cc", "cxx", "h", "hpp" -> Icons.Default.Code
+        // Rust
+        "rs" -> Icons.Default.Code
+        // Go
+        "go" -> Icons.Default.Code
+        // Swift
+        "swift" -> Icons.Default.Code
+        // Dart
+        "dart" -> Icons.Default.Code
+        // Ruby
+        "rb" -> Icons.Default.Code
+        // PHP
+        "php" -> Icons.Default.Code
+        // Lua
+        "lua" -> Icons.Default.Code
+        // Git
+        "gitignore", "gitattributes", "gitmodules" -> Icons.Default.AccountTree
+        // Default
+        else -> Icons.Default.InsertDriveFile
+    }
+}
+
+/** P24: File type color — returns a tint color based on file extension for visual differentiation. */
+private fun fileIconColor(name: String): Color {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        // Kotlin — purple
+        "kt", "kts" -> Color(0xFF7F52FF)
+        // Java — orange/red
+        "java" -> Color(0xFFE76F00)
+        // Python — blue/yellow
+        "py", "pyw", "pyi" -> Color(0xFF4584B6)
+        // JavaScript — amber
+        "js", "mjs", "cjs" -> Color(0xFFF0DB4F)
+        // TypeScript — blue
+        "ts", "tsx", "jsx" -> Color(0xFF3178C6)
+        // Web — orange/red
+        "html", "htm" -> Color(0xFFE44D26)
+        "css", "scss", "sass", "less" -> Color(0xFF264DE4)
+        "xml" -> Color(0xFF0066CC)
+        // Data — amber
+        "json" -> Color(0xFFCCA700)
+        "yaml", "yml", "toml" -> Color(0xFFCB171E)
+        // Build — green
+        "gradle" -> Color(0xFF02303A)
+        // Markdown — blue
+        "md", "markdown" -> Color(0xFF4A90D9)
+        // Images — pink
+        "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico" -> Color(0xFFD63384)
+        // Archives — brown
+        "zip", "apk", "jar", "aar", "tar", "gz" -> Color(0xFF8B5E3C)
+        // Shell — green
+        "sh", "bash", "zsh" -> Color(0xFF4EAA25)
+        // Binaries — dark gray
+        "dex", "so", "o", "a" -> Color(0xFF555555)
+        "db", "sqlite", "sqlite3" -> Color(0xFF00897B)
+        // C/C++ — blue
+        "c", "cpp", "cc", "cxx", "h", "hpp" -> Color(0xFF659AD2)
+        // Rust — orange
+        "rs" -> Color(0xFFDEA584)
+        // Go — cyan
+        "go" -> Color(0xFF00ADD8)
+        // Swift — orange
+        "swift" -> Color(0xFFFF6B35)
+        // Dart — blue
+        "dart" -> Color(0xFF0175C2)
+        // Default
+        else -> IconColor
+    }
 }
 
 // ── Stub panels ──────────────────────────────────────────────────────────────
