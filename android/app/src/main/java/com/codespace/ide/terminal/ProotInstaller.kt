@@ -1144,18 +1144,48 @@ exit 0
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
             pb.redirectErrorStream(true)
+            // Redirect stdin to /dev/null — proot must not inherit the JVM's live stdin.
+            // With a live stdin fd the --bind=/proc/self/fd/0:/dev/stdin mount targets a
+            // pipe that proot can't sanitize, producing the "can't sanitize binding
+            // '/proc/self/fd/0': No such file" warning. More critically, some guest
+            // processes (bash readline, apt progress UIs) may attempt to read stdin and
+            // stall if it stays open. /dev/null gives instant EOF.
+            pb.redirectInput(java.io.File("/dev/null"))
             val envMap = pb.environment()
             envVars.forEach { kv ->
                 val idx = kv.indexOf('=')
                 if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
             }
             val process = pb.start()
+
+            // ── Concurrent stdout drain (CRITICAL — fixes pipe-buffer deadlock) ──────
+            // ProcessBuilder gives us a synchronous pipe for stdout. If we call
+            // process.waitFor() BEFORE draining the pipe and the child writes more output
+            // than the OS pipe buffer (~64 KB on Android), the child blocks on write(),
+            // waitFor() blocks waiting for child exit — permanent deadlock that looks
+            // exactly like a timeout even though the command finishes in seconds manually.
+            // Fix: drain stdout on a background thread concurrently with waitFor().
+            val outputLines = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val MAX_LINES = 2000  // cap memory; installs can emit thousands of lines
+            val readerThread = Thread {
+                try {
+                    process.inputStream.bufferedReader().forEachLine { line ->
+                        if (outputLines.size < MAX_LINES) outputLines.add(line)
+                        // Stream each line to the Output tab so installs are visible live
+                        com.codespace.ide.diagnostics.AppOutputLog.log(line, "lsp-install")
+                    }
+                } catch (_: Exception) { /* stream closed on process exit */ }
+            }
+            readerThread.isDaemon = true
+            readerThread.start()
+
             val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+            readerThread.join(2000)  // let reader flush last lines (max 2s)
             if (!finished) {
                 process.destroyForcibly()
                 return "Timed out after ${timeoutSeconds}s running: $command"
             }
-            val output = process.inputStream.bufferedReader().use { it.readText() }
+            val output = outputLines.joinToString("\n")
             val exit = process.exitValue()
             if (exit == 0) output.trim().ifBlank { "(command completed, no output)" }
             else "Exit code $exit\n${output.trim()}"

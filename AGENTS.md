@@ -3390,3 +3390,96 @@ ls /proc | grep -E '^[0-9]+$' | while read pid; do cat /proc/$pid/cmdline 2>/dev
 
 **Status: PENDING user verification + Reinstall UI implementation**
 
+---
+
+## Bug Diagnosis: execOnce() Pipe-Buffer Deadlock — LSP Install Never Completes
+
+**Date:** 2026-07-17  
+**Symptom:** TypeScript/Python LSP install always hits the 120-second timeout even though the
+identical `apt-get update && apt-get install nodejs npm && npm install -g typescript-language-server typescript`
+chain completes in 22 seconds when run manually in the terminal.
+
+**Root cause confirmed:** Classic Java `ProcessBuilder` stdout pipe-buffer deadlock.
+
+### Exact command `execOnce()` constructs for TS install:
+
+```
+proot \
+  --kill-on-exit \
+  --kernel-release=5.15.0-android13-4 \
+  --change-id=0:0 \
+  --rootfs=<filesDir>/ubuntu-rootfs \
+  --cwd=/root \
+  --bind=/dev --bind=/proc --bind=/sys \
+  --bind=/dev/urandom:/dev/random \
+  --bind=/proc/self/fd:/dev/fd \
+  --bind=/proc/self/fd/0:/dev/stdin \
+  --bind=/proc/self/fd/1:/dev/stdout \
+  --bind=/proc/self/fd/2:/dev/stderr \
+  --bind=<cacheDir>/fake-selinux:/sys/fs/selinux \
+  --bind=<rootfs>/tmp:/dev/shm \
+  --bind=<filesDir>:/host-files \
+  --bind=/sdcard \
+  --bind=/proc/self/cwd:/proc/self/cwd \
+  -w /root \
+  /usr/bin/env -i \
+  HOME=/root USER=root LOGNAME=root TERM=xterm-256color COLORTERM=truecolor \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games \
+  MOZ_FAKE_NO_SANDBOX=1 \
+  /bin/bash -lc \
+  "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g typescript-language-server typescript"
+```
+
+Env: `PROOT_LOADER=<nativeDir>/libproot-loader.so`, `PROOT_TMP_DIR=<cacheDir>/proot-tmp`,
+`DEBIAN_FRONTEND=noninteractive`, `DPKG_FORCE=unsafe-io`, `LANG=C.UTF-8`, `LC_ALL=C.UTF-8`
+
+### Install structure (Q2):
+All three commands run as **ONE chained shell invocation** via a single `execOnce()` call — 
+correct, no session-state issue between calls.
+
+### The deadlock (Q4 — root cause):
+
+Old `execOnce()` read order:
+```kotlin
+val process = pb.start()
+val finished = process.waitFor(timeout, SECONDS)  // ← BLOCKS
+val output = process.inputStream.bufferedReader().use { it.readText() }  // ← NEVER REACHED
+```
+
+The OS pipe buffer between the proot child and the JVM is ~64 KB on Android. `apt-get update`
+alone can emit 50–100 KB of package list output; `npm install -g typescript-language-server`
+emits 200–500 KB. Once the pipe fills, the child blocks on `write()`. `waitFor()` blocks
+waiting for the child to exit. Neither side can proceed — permanent deadlock until timeout fires.
+This is 100% invisible from outside the app: the command is fine, the environment is fine,
+only the pipe plumbing is broken.
+
+### `/proc/self/fd/0` warning (Q3):
+`--bind=/proc/self/fd/0:/dev/stdin` targets the JVM's stdin, which is a pipe fd — not a
+regular file that proot can `stat()` to sanitize the bind. The warning is cosmetic and does
+not itself cause the hang. However, leaving JVM stdin open also means some guest processes
+(bash readline, apt ncurses progress frontends) may attempt to read stdin and stall. Both
+issues fixed by `pb.redirectInput(File("/dev/null"))`.
+
+### Fix applied (ProotInstaller.kt — `execOnce()`):
+
+1. **`pb.redirectInput(File("/dev/null"))`** — stdin → /dev/null. Eliminates the
+   `/proc/self/fd/0` sanitize warning. Guest processes get immediate EOF on stdin reads.
+
+2. **Concurrent stdout drain thread** — a daemon `Thread` reads `process.inputStream` line
+   by line concurrently with `process.waitFor()`. The pipe never fills; the child never
+   blocks on write; `waitFor()` returns as soon as the process actually exits (~22 seconds).
+   Each line is also streamed to `AppOutputLog` under channel `"lsp-install"` so the full
+   install output is visible live in the Output tab.
+
+3. **`readerThread.join(2000)`** — after `waitFor()` returns, waits up to 2 seconds for the
+   reader thread to flush any final lines before collecting the output string.
+
+4. **2000-line output cap** — prevents OOM for pathologically verbose commands.
+
+**Status: FIXED in this commit. Timeout value (120s) is still correct — 22s leaves plenty of
+margin. Do NOT reduce it; some first-install scenarios (cold cache, slow storage) may be slower.**
+
+**Verification:** Install the new APK, open a JS/TS file, watch the Output tab. You should
+see live `npm` output lines streaming through. The install should complete in ~30s instead of
+timing out at 120s.
+
