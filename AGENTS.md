@@ -4421,8 +4421,37 @@ Fill each cell with: ✅ Works, ⚠️ Partial, ❌ Not supported, N/A
 
 ### STATUS
 
-- [ ] Phase 26-1: Finish current debugger (breakpoints, variables, watches, call stack, debug console, session management)
+- [~] Phase 26-1: Finish current debugger — IN PROGRESS (build #1542 green)
+  - [x] 26-1a: Breakpoints — gutter toggle ✅, persistence ✅, pdb injection ✅, Node injection ✅
+  - [x] 26-1b: Variables — onPaused now fires with real pdb locals parsing + type inference ✅
+  - [x] 26-1c: Watches — live re-evaluation on each pause ✅
+  - [x] 26-1d: Call Stack — parsed from pdb `where` + node `backtrace`, clickable frames ✅
+  - [x] 26-1e: Debug Console — expression eval (pdb `p expr` / node `exec expr`) ✅
+  - [x] 26-1f: Session Management — start/stop/state tracking ✅
+  - [~] 26-1g: Language Completeness — Python ✅, Node ✅, Shell (trace only), PHP/Android/APK (audit pending)
+  - [x] 26-1h: Non-Debuggable File Policy — already implemented (Phase 23-6)
+  - [ ] Callback conflict fix — DONE (multi-listener pattern)
+  - [ ] Debug controls — DONE (Continue/Pause, Step Over/Into/Out, Stop)
+  - [ ] onPaused parsing — DONE (pdb prompt detection + variable extraction)
+  - [ ] Call stack navigation — DONE (click frame → open file)
+  - [ ] Remaining: line scrolling, object expansion, PHP/Android/APK audit
 - [ ] Phase 26-2: DAP abstraction layer + Python DAP adapter (debugpy)
 - [ ] Phase 26-3: Node.js DAP + attach mode + capability negotiation + multi-session
 - [ ] Phase 26-4: Remaining languages to DAP-compatible adapters
 - [ ] VS Code Parity Audit: Full checklist completed
+
+### Phase 26-1 Build History
+
+| Build | Commit | Result | Issue |
+|-------|--------|--------|-------|
+| #1534 | 66f45d2 | ✅ GREEN | UDM multi-listener callbacks |
+| #1535 | 068851e | ✅ GREEN | RunDebugPanel full debug controls + live watches |
+| #1536 | 0715573 | ✅ GREEN | VariableInspectorPanel multi-listener |
+| #1537 | 3e0af1e | ✅ GREEN | DebugConsolePanel multi-listener |
+| #1538 | 2bf9f5e | ❌ FAIL | DebugStackFrame missing `active` field + Regex illegal escape |
+| #1539 | f4783c8 | ❌ FAIL | `frame.active` unresolved (same root cause) |
+| #1540 | 8456af7 | ❌ FAIL | `onOpenFile` unresolved in PSS scope |
+| #1541 | 3080c16 | ❌ FAIL | `onOpenFile` still unresolved (UDM fix landed but PSS not yet) |
+| #1542 | fec56b7 | ✅ GREEN | All fixes applied — onPaused parsing + controls + navigation working |
+
+**Commits this phase:** 66f45d2, 068851e, 0715573, 3e0af1e, 2bf9f5e, f4783c8, 8456af7, 3080c16, fec56b7
