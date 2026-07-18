@@ -24,9 +24,10 @@
 
 | | |
 |-|-|
-| Latest green build | **#1586** |
-| Active phase | **Phase 26-3** (Node.js DAP + Attach Mode + Multi-Session) |
-| Last green | #1586 — feat(P26-2d): UDM PythonDAPAdapter registered, resolveAdapter() DAP-first |
+| Latest green build | **#1589** |
+| Active phase | **Phase 26-4** (Debug UI — Attach Dialog, Capability-Aware Controls, Multi-Session Switcher) |
+| Last green | #1589 — feat(P26-3b/c/d): UDM attachDebug(), getActiveSessions(), getAdapterCapabilities(), NodeDAPAdapter registered |
+| **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
 | **Phase 26-1** | **✅ COMPLETE** — Type Definition, Find Implementations, Code Lens, Inlay Hints, Outline LSP, Code Folding |
 | **Phase 25** | **✅ COMPLETE** — Full IDE Intelligence + UI Reliability Audit (TS pin, Preview fix, LSP pipeline) |
@@ -55,6 +56,24 @@
 | 26-2b | DebugAdapter interface + LegacyDebugAdapter wrapper | ✅ DONE (#1584) | debug/DebugAdapter.kt |
 | 26-2c | PythonDAPAdapter — debugpy over DAP, fallback to legacy pdb | ✅ DONE (#1585) | debug/PythonDAPAdapter.kt |
 | 26-2d | UDM — register PythonDAPAdapter, resolveAdapter() DAP-first/legacy fallback | ✅ DONE (#1586) | debug/UniversalDebugManager.kt |
+
+### Phase 26-3 — Node.js DAP + Attach Mode + Multi-Session ✅ COMPLETE (build #1589)
+
+| # | Item | Status | Files |
+|---|------|--------|-------|
+| 26-3a | NodeDAPAdapter.kt — @vscode/js-debug over proot stdin/stdout, full DAP lifecycle | ✅ DONE (#1588) | debug/NodeDAPAdapter.kt |
+| 26-3b | Attach mode — attach(context, session, port, pid) in NodeDAPAdapter + attachDebug() in UDM | ✅ DONE (#1589) | debug/NodeDAPAdapter.kt, debug/UniversalDebugManager.kt |
+| 26-3c | Capability negotiation — InitializeResponse → DAPCapabilities, getAdapterCapabilities(sessionId) | ✅ DONE (#1589) | debug/UniversalDebugManager.kt |
+| 26-3d | Multi-session — getActiveSessions(), getSessionById(), activeSessionId, setActiveSession() | ✅ DONE (#1589) | debug/UniversalDebugManager.kt |
+
+### Phase 26-4 — Debug UI (next)
+
+| # | Item | Status | Files |
+|---|------|--------|-------|
+| 26-4a | Attach Dialog — port/PID picker sheet, Attach… button in debugger panel | 🔲 TODO | ui/debug/AttachDebugDialog.kt |
+| 26-4b | Capability-aware controls — hide step/pause/evaluate buttons when adapter doesn't support them | 🔲 TODO | ui/debug/DebugPanelToolbar.kt |
+| 26-4c | Multi-session switcher — session tab bar in debug panel when >1 session active | 🔲 TODO | ui/panes/DebugConsolePanel.kt or ProjectShellScreen |
+| 26-4d | UDM.startDebug() call sites — pass context param so DAP adapters get context for proot launch | 🔲 TODO | all call sites in ProjectShellScreen / TerminalPane |
 
 ### Phase 26-1 ✅ COMPLETE (build #1582 docs, #1581 code green)
 
