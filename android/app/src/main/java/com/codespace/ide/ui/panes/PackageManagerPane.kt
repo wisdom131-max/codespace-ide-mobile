@@ -170,7 +170,7 @@ internal fun ExtensionsPanel() {
             } catch (e: Exception) {
                 op.output.add("Error: ${e.message}")
                 op.done = true; op.success = false
-                scope.launch(Dispatchers.Main) { activeOperation = op.copy(cancelRef = op.cancelRef) // P25-3: preserve cancelRef through copy }
+                scope.launch(Dispatchers.Main) { activeOperation = op.copy(cancelRef = op.cancelRef) } // P25-3: preserve cancelRef through copy
             }
         }
     }
