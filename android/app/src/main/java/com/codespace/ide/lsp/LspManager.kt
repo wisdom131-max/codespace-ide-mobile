@@ -1184,4 +1184,53 @@ object LspManager {
             put("position", pos)
         }
     }
+
+    // P26-1: LSP Code Lens — inline annotations (references count, test/run, etc.)
+    fun getCodeLens(language: Language, uri: String): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+        }
+        val response = server.client.request("textDocument/codeLens", params, timeoutSeconds = 5)
+        return response as? JSONArray
+    }
+
+    // P26-1: LSP Inlay Hints — inline type/parameter hints
+    fun getInlayHints(language: Language, uri: String): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("range", JSONObject().apply {
+                put("start", JSONObject().apply { put("line", 0); put("character", 0) })
+                put("end", JSONObject().apply { put("line", Int.MAX_VALUE); put("character", 0) })
+            })
+        }
+        val response = server.client.request("textDocument/inlayHint", params, timeoutSeconds = 5)
+        return response as? JSONArray
+    }
+
+    // P26-1: LSP Document Link — clickable links in comments/strings
+    fun getDocumentLinks(language: Language, uri: String): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+        }
+        val response = server.client.request("textDocument/documentLink", params, timeoutSeconds = 5)
+        return response as? JSONArray
+    }
+
+    // P26-1: LSP didSave — notify server on file save
+    fun didSave(language: Language, uri: String, content: String): Boolean {
+        val server = servers[language] ?: return false
+        if (!server.initialized) return false
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("text", content)
+        }
+        server.client.notify("textDocument/didSave", params)
+        return true
+    }
 }
