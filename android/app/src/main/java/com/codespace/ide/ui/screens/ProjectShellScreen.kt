@@ -1077,7 +1077,8 @@ fun ProjectShellScreen(
                 onOpenInTerminal = {
                     showBottomPanel = true
                     activeBottomTab = BottomTab.TERMINAL
-                    terminalCommandToRun = "cd "$projectRootPath""
+                    val p = java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                    terminalCommandToRun = "cd \"$p\""
                 },
                 onDismiss = { showExplorerMore = false },
             )
