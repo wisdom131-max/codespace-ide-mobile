@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **#1592** |
-| Active phase | **Phase 30** (next — TBD) |
+| Active phase | **Phase 31** (next — TBD) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
@@ -4813,3 +4813,18 @@ api.codespace-ide.app → Railway service. Verify /api/v1/health responds.
 **Build target:** green
 
 
+
+
+
+## Phase 30: Full File-Type Icon Coverage ✅ COMPLETE
+**Goal:** Every file in the explorer tree should show a meaningful icon + brand colour instead of the generic blue document fallback.
+**Commit:** 5e80cf51 — ExplorerPane.kt
+
+**Approach:**
+- `fileIcon()`: Two-tier matching — full filename first (catches Dockerfile, Makefile, LICENSE, README, package.json, yarn.lock, .gitignore, .env, .babelrc, .eslintrc, docker-compose.yml, etc.), then extension-based (60+ extensions).
+- `fileIconColor()`: Same two-tier — every type gets its real brand colour.
+
+**New icons added:** .vue (Extension/green), .svelte (Extension/orange), .astro (Extension), .graphql/.gql (AccountTree/pink), .sql/.csv/.prisma (Storage/DataObject), .mp4/.mov (Movie), .mp3/.wav (MusicNote), .ttf/.otf/.woff (TextFields), .pem/.key/.cert (Lock/gold), .apk/.aab (PhoneAndroid/Android green), .cs (Code/purple), .r (Functions/blue), .elm/.hs (Functions), .ex/.erl (Code), .jl (Functions), .coffee (Code), .wasm (Memory), .rb (Code/red), .php (Code/purple), .lua, .scala, .pl, .proto, .doc/.ppt (Description), .xls (DataObject), special named files (Dockerfile/Build, LICENSE/Description, README/Article, .gitignore/AccountTree, .env/Lock, package.json/DataObject, .babelrc/Build, .eslintrc/Settings, Makefile/Build, Gemfile, Podfile, Cargo.toml, go.mod, requirements.txt, pubspec.yaml, docker-compose.yml, tsconfig.json)
+
+**Before:** ~25 file types had icons. All others showed generic blue file icon.
+**After:** 80+ file types + special named files all have unique icons + brand colours.
