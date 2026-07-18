@@ -3550,7 +3550,7 @@ version for any package used as a language service runtime, not just the LSP bin
 | P25-0 | TypeScript version pinning (confirmed fix) | ✅ DONE (commit 1cec353, build #1496) |
 | P25-0B | Safe LSP upgrade-check mechanism | ⬜ QUEUED |
 | P25-1 | Proot/shell output isolation | ✅ DONE (commit 4134c07) |
-| P25-2 | Debug panel audit | ⬜ QUEUED |
+| P25-2 | Debug panel audit | ✅ DONE |
 | P25-3 | Extensions panel audit + Cancel fix | ✅ DONE (commit d0e4e28) |
 | P25-4 | Preview blank screen (high priority) | ✅ DONE (commits 1c1f312 + 6aea436) |
 | P25-5 | Full LSP/IntelliSense audit (all languages) | ⬜ QUEUED |
@@ -3637,12 +3637,45 @@ Also audit Python/Go/Kotlin LSP for the same class of unpinned-dependency risk.
 
 **Observed confusion:** There appears to be a sidebar Debug panel AND a separate debug-adjacent feature near the Terminal. Unclear if these are the same thing or two separate implementations.
 
-**Investigation steps:**
-1. Read `DebugPane.kt` / whatever file backs the sidebar Debug tab
-2. Read the terminal-adjacent debug feature's source
-3. Classify: WORKING / PARTIAL / BROKEN / MISSING with specific file references and observed behavior
+**Investigation:**
+- `RunDebugPanel` — defined in `ExplorerPane.kt` L2214, NOT in a separate file. Called from `ProjectShellScreen.kt` L929 when `SidePanel.RUN` is active.
+- `DebugConsolePanel` — defined in `ProjectShellScreen.kt` L1987. Shown in the bottom panel when `BottomTab.DEBUG` is active.
 
-**Status:** ⬜ QUEUED
+**Classification: TWO SEPARATE IMPLEMENTATIONS — BY DESIGN (not a bug)**
+
+| Feature | RunDebugPanel (sidebar) | DebugConsolePanel (bottom panel) |
+|---------|------------------------|----------------------------------|
+| Location | Activity Bar → Run & Debug | Bottom Panel → DEBUG tab |
+| Source file | `ExplorerPane.kt` L2214 | `ProjectShellScreen.kt` L1987 |
+| Scope | Full IDE debugger: config selector, variables, watch, call stack, breakpoints, step over/stop | Lightweight console: run/stop/clear, color-coded output, input field |
+| UDM integration | ✅ Full — `onBreakpointsChanged`, `onSessionStateChanged`, `onPaused` callbacks, `stepOver`, `stopSession`, `evaluateExpression`, `getAllBreakpoints` | ✅ Lightweight — `onSessionStateChanged`, `onOutput` callbacks, `stopSession` |
+| Shared state | Owns its own state (variables, callStack, watchExprs, breakpoints) | Shares `debugMessages` + `debugInput` with ProjectShellScreen (passed as params) |
+| Run button | Starts a session by setting `activeSessionId = "manual"` — **TODO: should call `udm.startSession()`** | Calls `buildRunCommand()` then dispatches to Terminal tab |
+| Config menu | Has config dropdown (Kotlin App, Android App, Gradle, JUnit, Terminal Script) — UI only, not wired to UDM | No config menu — just runs the current file |
+
+**Key findings:**
+
+1. **TWO DIFFERENT THINGS — intentionally.** The sidebar panel is the VS Code-style debug sidebar (variables/watch/callstack/breakpoints). The bottom panel is the debug console (output log + REPL input). This is the correct separation per the Phase 23 design spec (UDM + Activity Bar Debugger + Terminal Panel Debugger).
+
+2. **Both use UniversalDebugManager (UDM) as the shared backend** — ✅ CORRECT per the documented architecture.
+
+3. **Run button in RunDebugPanel is a stub** — sets `activeSessionId = "manual"` and `sessionState = DebugState.RUNNING` but never calls `udm.startSession()`. This means the sidebar Run button creates a fake running state without actually launching a debug session. The bottom panel Run button correctly calls `buildRunCommand()` and dispatches to the terminal.
+
+4. **debugMessages/debugInput are NOT shared between the two panels.** The sidebar RunDebugPanel does not use `debugMessages` — it has its own `udm.onOutput` callback. The bottom panel uses the shared `debugMessages` list. So debug output from the UDM goes to the sidebar's variables/callStack display, while terminal-style output goes to the bottom panel's message list. This is acceptable — they serve different purposes.
+
+5. **Config dropdown in RunDebugPanel is cosmetic** — selecting "Kotlin Application" vs "Android App (Debug)" doesn't change any behavior. It's a UI placeholder.
+
+**Verdict:**
+- Architecture: ✅ CORRECT (two panels, shared UDM backend, per Phase 23 spec)
+- Sidebar Run button: ⚠️ STUB (creates fake session, doesn't call UDM.startSession)
+- Config dropdown: ⚠️ COSMETIC (not wired to anything)
+- Bottom panel Run button: ✅ WORKING (builds command, dispatches to terminal)
+- Bottom panel Stop button: ✅ WORKING (calls udm.stopSession)
+- Breakpoints: ✅ WORKING (loaded from UDM, displayed with toggle)
+
+**Recommendation:** The sidebar Run button should call `udm.startSession()` with the selected config instead of setting a fake "manual" session ID. This is a P25-2 fix, not critical — the bottom panel Run button already works for actual debugging.
+
+**Status:** ✅ DONE — audit complete, architecture is correct, one stub identified (Run button)
 
 ---
 
