@@ -3,6 +3,7 @@ package com.codespace.ide.util
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import android.os.Environment
 import androidx.core.content.FileProvider
 import com.codespace.ide.BuildConfig
@@ -249,5 +250,91 @@ object WorkspaceManager {
     /** Empties the entire trash for [projectDir]. */
     fun emptyTrash(projectDir: File) {
         trashDir(projectDir).listFiles()?.forEach { it.deleteRecursively() }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // P29  PROJECT-LEVEL TRASH — recycle bin for whole deleted projects
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private fun projectsTrashDir(context: Context): File =
+        File(context.filesDir, "projects/.trash").apply { mkdirs() }
+
+    /** Data class for a trashed project. */
+    data class TrashedProject(
+        val name: String,
+        val trashedDir: File,
+        val deletedAtMs: Long,
+        val sizeBytes: Long,
+    )
+
+    /**
+     * Moves an entire project directory to the project-level trash bin.
+     * The project is NOT permanently deleted — call [purTrashedProject] for that.
+     * Returns true on success.
+     */
+    fun moveProjectToTrash(context: Context, projectDir: File): Boolean {
+        if (!projectDir.exists()) return false
+        val trash = projectsTrashDir(context)
+        val stamp = System.currentTimeMillis()
+        val destName = "${stamp}-${projectDir.name}"
+        val dest = File(trash, destName)
+        val ok = projectDir.renameTo(dest)
+        if (ok) Log.d("WorkspaceManager", "Project moved to trash: ${projectDir.name} -> $destName")
+        return ok
+    }
+
+    /** Lists all projects currently in the trash bin. */
+    fun listTrashedProjects(context: Context): List<TrashedProject> {
+        val trash = projectsTrashDir(context)
+        return trash.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedByDescending { 
+                val dashIdx = it.name.indexOf('-')
+                if (dashIdx > 0) it.name.substring(0, dashIdx).toLongOrNull() ?: 0L else 0L
+            }
+            ?.map { dir ->
+                val dashIdx = dir.name.indexOf('-')
+                val stamp = if (dashIdx > 0) dir.name.substring(0, dashIdx).toLongOrNull() ?: 0L else 0L
+                val origName = if (dashIdx > 0) dir.name.substring(dashIdx + 1) else dir.name
+                TrashedProject(
+                    name = origName,
+                    trashedDir = dir,
+                    deletedAtMs = stamp,
+                    sizeBytes = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() },
+                )
+            }
+            ?: emptyList()
+    }
+
+    /**
+     * Restores a trashed project back to the projects directory.
+     * If a project with the same name already exists, appends _restored suffix.
+     * Returns the restored File on success, null on failure.
+     */
+    fun restoreTrashedProject(context: Context, entry: TrashedProject): File? {
+        val projectsRoot = File(context.filesDir, "projects")
+        projectsRoot.mkdirs()
+        var dest = File(projectsRoot, entry.name)
+        if (dest.exists()) dest = File(projectsRoot, "${entry.name}_restored")
+        val ok = entry.trashedDir.renameTo(dest)
+        return if (ok) dest else null
+    }
+
+    /** Permanently deletes a trashed project. Cannot be undone. */
+    fun purgeTrashedProject(context: Context, entry: TrashedProject): Boolean {
+        return entry.trashedDir.deleteRecursively()
+    }
+
+    /** Empties the entire project trash bin. */
+    fun emptyProjectTrash(context: Context) {
+        projectsTrashDir(context).listFiles()?.forEach { it.deleteRecursively() }
+    }
+
+    /** Formats a byte count into a human-readable string. */
+    fun formatSize(bytes: Long): String {
+        if (bytes < 1024) return "${bytes} B"
+        if (bytes < 1024 * 1024) return "${bytes / 1024} KB"
+        if (bytes < 1024 * 1024 * 1024) return "${bytes / (1024 * 1024)} MB"
+        return "${bytes / (1024 * 1024 * 1024)} GB"
     }
 }
