@@ -1113,7 +1113,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(end = 8.dp, top = topDpCL.dp + 1)
+                        .padding(end = 8.dp, top = (topDpCL + 1).dp)
                         .zIndex(4f),
                 ) {
                     Text(
