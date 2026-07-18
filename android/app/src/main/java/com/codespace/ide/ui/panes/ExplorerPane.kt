@@ -2212,7 +2212,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
 
 @Composable fun GitSidePanel(projectId: String) { SourceControlPane(projectId) }
 
-@Composable fun RunDebugPanel(onMoreMenu: () -> Unit, activeFilePath: String = "") {
+@Composable fun RunDebugPanel(onMoreMenu: () -> Unit, activeFilePath: String = "", onJumpToSource: (file: String, line: Int) -> Unit = { _, _ -> }) {
     // P23-2: Wired to UniversalDebugManager — real debug backend
     val udm = UniversalDebugManager
     var selectedConfig by remember { mutableStateOf("Kotlin Application") }
@@ -2463,11 +2463,17 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             if (showCallStack) {
                 if (isRunning && callStack.isNotEmpty()) {
                     items(callStack) { frame ->
-                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
-                            Icon(Icons.Default.Code, null, tint = IconColor, modifier = Modifier.size(12.dp))
+                        Row(
+                            Modifier
+                                .padding(start = 24.dp, top = 2.dp, bottom = 2.dp)
+                                .fillMaxWidth()
+                                .clickable { onJumpToSource(frame.file, frame.line) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Code, null, tint = if (frame.active) Color(0xFF569CD6) else IconColor, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(frame.function, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(frame.function, fontSize = 11.sp, color = if (frame.active) Color(0xFF569CD6) else TextColor, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (frame.active) FontWeight.Bold else FontWeight.Normal)
                             Text("  " + frame.file.substringAfterLast("/") + ":" + (frame.line + 1), fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -2483,7 +2489,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     item { Text("No breakpoints set", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
                 } else {
                     items(allBreakpoints) { bp ->
-                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp).fillMaxWidth()
+                            .clickable { onJumpToSource(bp.filePath, bp.line) }, verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.RadioButtonChecked, "Breakpoint",
                                 tint = if (bp.enabled) Color(0xFFE53935) else MutedColor,
                                 modifier = Modifier.size(12.dp).clickable {
