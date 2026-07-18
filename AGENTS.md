@@ -3551,7 +3551,7 @@ version for any package used as a language service runtime, not just the LSP bin
 | P25-0B | Safe LSP upgrade-check mechanism | ⬜ QUEUED |
 | P25-1 | Proot/shell output isolation | ✅ DONE (commit 4134c07) |
 | P25-2 | Debug panel audit | ⬜ QUEUED |
-| P25-3 | Extensions panel audit + Cancel fix | ⬜ QUEUED |
+| P25-3 | Extensions panel audit + Cancel fix | ✅ DONE (commit d0e4e28) |
 | P25-4 | Preview blank screen (high priority) | ⬜ QUEUED |
 | P25-5 | Full LSP/IntelliSense audit (all languages) | ⬜ QUEUED |
 | P25-6 | Completion/hover/signature/diagnostics pipeline audit | ⬜ QUEUED |
@@ -3657,7 +3657,18 @@ Also audit Python/Go/Kotlin LSP for the same class of unpinned-dependency risk.
 2. Find the Cancel button handler — does it call `Process.destroy()`? Does it hold a reference to the install process?
 3. Fix: Cancel must call `destroyForcibly()` on the running install process and reset UI state
 
-**Status:** ⬜ QUEUED
+**Status:** ✅ DONE — commit `d0e4e28`
+
+**Cancel button root cause:** `PkgOperation.process` was `@Transient` and never assigned — `execOnce()` didn't expose the underlying `Process` object. Cancel called `op.process?.destroy()` which was always null.
+
+**Fixes:**
+- Added `execOnceWithProcess()` to `ProotInstaller` — identical to `execOnce()` but fires `onProcess: (Process)->Unit` callback immediately after `Process.start()` so caller can store the ref before blocking.
+- `PkgOperation` gets `cancelRef: AtomicReference<Process?>` field.
+- Install coroutine assigns `cancelRef` and passes it to `execOnceWithProcess`.
+- Cancel button now calls `cancelRef.get()?.destroyForcibly()` and marks `op.done=true`.
+- Package list: already backed by `apt-cache search` (dynamic) — confirmed not hardcoded for the search flow. The default browsable list IS a curated hardcoded set (intentional, not a bug).
+
+**Also fixed in this commit:** P25-1 full audit across all 18 execOnce callers (see P25-1 entry).
 
 ---
 
