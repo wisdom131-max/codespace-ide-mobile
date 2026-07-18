@@ -308,6 +308,10 @@ fun CodeEditor(
 lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 /** P22-L: Current file path for LSP definition and peek definition */
     filePath: String = "",
+    /** P25-LSP: LSP-backed signature help — returns signature info from the language server */
+    lspSignatureHelpProvider: ((line: Int, col: Int) -> SignatureInfo?)? = null,
+    /** P25-LSP: LSP-backed document formatting — called when user taps Format */
+    onFormat: (() -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
