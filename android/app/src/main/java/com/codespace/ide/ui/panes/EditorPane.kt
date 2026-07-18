@@ -158,6 +158,22 @@ fun EditorPane(
     var lspHighlightLines by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
     // P26-1: LSP Completion Resolve — richer completion info
     var lspResolvedDetail by remember { mutableStateOf<String?>(null) }
+    // P26-1: LSP Document Symbol — outline structure (classes, functions, etc.)
+    var lspDocumentSymbols by remember { mutableStateOf<JSONArray?>(null) }
+    // P26-1: LSP Folding Range — LSP-based code folding
+    var lspFoldingRanges by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
+    // P26-1: LSP Code Lens — inline annotations (ref count, run/test)
+    var lspCodeLenses by remember { mutableStateOf<JSONArray?>(null) }
+    // P26-1: LSP Inlay Hints — inline type/parameter hints
+    var lspInlayHints by remember { mutableStateOf<JSONArray?>(null) }
+    // P26-1: LSP Document Links — clickable links in comments
+    var lspDocumentLinks by remember { mutableStateOf<JSONArray?>(null) }
+    // P26-1: LSP Type Definition — Go to Type Definition result
+    var lspTypeDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
+    // P26-1: LSP Implementation — Find Implementations result
+    var lspImplResults by remember { mutableStateOf<List<Triple<String, Int, String>>>(emptyList()) }
+    // P26-1: LSP Workspace Symbol search results
+    var lspSymbolResults by remember { mutableStateOf<List<Triple<String, Int, String>>>(emptyList()) }
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
@@ -783,6 +799,93 @@ fun EditorPane(
                 }
             } else {
                 lspHighlightLines = emptyList()
+            }
+        }
+
+        // P26-1: LSP Document Symbol — fetch outline structure on file open (debounced)
+        LaunchedEffect(active?.path) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(500)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val symbols = withContext(Dispatchers.IO) {
+                        LspManager.getDocumentSymbol(active.language, uri)
+                    }
+                    lspDocumentSymbols = symbols
+                }
+            } else {
+                lspDocumentSymbols = null
+            }
+        }
+
+        // P26-1: LSP Folding Range — fetch foldable regions on file open
+        LaunchedEffect(active?.path) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(600)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val ranges = withContext(Dispatchers.IO) {
+                        LspManager.getFoldingRange(active.language, uri)
+                    }
+                    if (ranges != null && ranges.length() > 0) {
+                        val foldRanges = mutableListOf<Pair<Int, Int>>()
+                        for (i in 0 until ranges.length()) {
+                            val r = ranges.optJSONObject(i) ?: continue
+                            val startLine = r.optInt("startLine", -1)
+                            val endLine = r.optInt("endLine", -1)
+                            if (startLine >= 0 && endLine > startLine) foldRanges.add(startLine to endLine)
+                        }
+                        lspFoldingRanges = foldRanges
+                    }
+                }
+            }
+        }
+
+        // P26-1: LSP Code Lens — fetch inline annotations (ref count, run/test)
+        LaunchedEffect(active?.path) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(700)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val lenses = withContext(Dispatchers.IO) {
+                        LspManager.getCodeLens(active.language, uri)
+                    }
+                    lspCodeLenses = lenses
+                }
+            } else {
+                lspCodeLenses = null
+            }
+        }
+
+        // P26-1: LSP Inlay Hints — fetch inline type/parameter hints
+        LaunchedEffect(active?.path, active?.content) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(800)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val hints = withContext(Dispatchers.IO) {
+                        LspManager.getInlayHints(active.language, uri)
+                    }
+                    lspInlayHints = hints
+                }
+            } else {
+                lspInlayHints = null
+            }
+        }
+
+        // P26-1: LSP Document Links — fetch clickable links in comments/strings
+        LaunchedEffect(active?.path) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(500)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val links = withContext(Dispatchers.IO) {
+                        LspManager.getDocumentLinks(active.language, uri)
+                    }
+                    lspDocumentLinks = links
+                }
+            } else {
+                lspDocumentLinks = null
             }
         }
 
