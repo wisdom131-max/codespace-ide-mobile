@@ -3547,12 +3547,12 @@ version for any package used as a language service runtime, not just the LSP bin
 
 | Phase | Title | Status |
 |-------|-------|--------|
-| P25-0 | TypeScript version pinning (confirmed fix) | 🔄 IN PROGRESS |
+| P25-0 | TypeScript version pinning (confirmed fix) | ✅ DONE (commit 1cec353, build #1496) |
 | P25-0B | Safe LSP upgrade-check mechanism | ⬜ QUEUED |
 | P25-1 | Proot/shell output isolation | ✅ DONE (commit 4134c07) |
 | P25-2 | Debug panel audit | ⬜ QUEUED |
 | P25-3 | Extensions panel audit + Cancel fix | ✅ DONE (commit d0e4e28) |
-| P25-4 | Preview blank screen (high priority) | ⬜ QUEUED |
+| P25-4 | Preview blank screen (high priority) | ✅ DONE (commits 1c1f312 + 6aea436) |
 | P25-5 | Full LSP/IntelliSense audit (all languages) | ⬜ QUEUED |
 | P25-6 | Completion/hover/signature/diagnostics pipeline audit | ⬜ QUEUED |
 | P25-7 | Final report | ⬜ QUEUED |
@@ -3573,7 +3573,7 @@ Also audit Python/Go/Kotlin LSP for the same class of unpinned-dependency risk.
 - Open a `.ts` file → LSP starts → completions show real types → hover shows full signature
 - `ps aux | grep typescript-language-server` returns a running process
 
-**Status:** ⬜ QUEUED — apply this first before any other phase
+**Status:** ✅ DONE — typescript@5.6.3 pinned in LspManager.kt install commands (commit 1cec353, build #1496 GREEN). Health-check now verifies tsserver.js exists before declaring server installed.
 
 ---
 
@@ -3594,7 +3594,7 @@ Also audit Python/Go/Kotlin LSP for the same class of unpinned-dependency risk.
 
 **Honest ceiling:** Since typescript-language-server@5.3.0 declares NO peerDependencies today, full automated compatibility detection is not possible. This feature surfaces a human-readable prompt when something changes worth checking — it is NOT silent auto-upgrading.
 
-**Status:** ⬜ QUEUED — implement after P25-0 is confirmed working
+**Status:** ✅ DONE — root cause was `initialPort = previewPort ?: 0` passing 0 (triggering BROWSER mode) instead of null. Fixed in commits 1c1f312 + 6aea436. Additional fixes: stable WebView load keys (HTML/Markdown/SVG), localhost:0 guard, placeholder for no-port state. Fullscreen dialog simplified (removed DisposableEffect that caused permanent status bar hide). — implement after P25-0 is confirmed working
 
 ---
 
