@@ -317,9 +317,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var value by remember { mutableStateOf(TextFieldValue(content)) }
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes
+    val scrollDensity = androidx.compose.ui.platform.LocalDensity.current
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
-            val lineHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { (fontSize * 1.25f).dp.toPx() }
+            val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
             vScroll.animateScrollTo((scrollToLine * lineHeightPx).toInt())
         }
     }
