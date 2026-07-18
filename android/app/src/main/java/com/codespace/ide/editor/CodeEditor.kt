@@ -1,6 +1,7 @@
 package com.codespace.ide.editor
 
 import androidx.compose.foundation.background
+import org.json.JSONObject
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
