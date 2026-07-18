@@ -316,6 +316,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val colors = LocalEditorColors.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
     val vScroll = rememberScrollState()
+    // P26-1: Scroll to line when scrollToLine parameter changes
+    LaunchedEffect(scrollToLine) {
+        if (scrollToLine > 0) {
+            val lineHeightPx = fontSize * 1.25f * density.density
+            vScroll.animateScrollTo((scrollToLine * lineHeightPx).toInt())
+        }
+    }
     val hScroll = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
     var showMinimapState by remember { mutableStateOf(showMinimap) }
