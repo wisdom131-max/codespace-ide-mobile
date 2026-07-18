@@ -2283,20 +2283,15 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 FilledIconButton(
                     onClick = {
                         // P25-2 FIX: Start a REAL debug session via UDM, not a fake "manual" ID.
-                        // Map the config dropdown to a UDM provider + build a run command.
+                        // Map the config dropdown to a UDM provider.
                         val udm2 = UniversalDebugManager
-                        val activeFilePath = udm2.getActiveSession()?.filePath
-                        val sessionId = udm2.startSession(
-                            language = when (selectedConfig) {
-                                "Kotlin Application", "Android App (Debug)", "Android App (Release)" -> Language.KOTLIN
-                                "Gradle Build" -> Language.KOTLIN
-                                "JUnit Tests" -> Language.JAVA
-                                "Terminal Script" -> Language.SHELL
-                                else -> Language.KOTLIN
-                            },
-                            filePath = activeFilePath ?: "",
-                            config = selectedConfig,
-                        )
+                        val dbgLang = when (selectedConfig) {
+                            "Kotlin Application", "Android App (Debug)", "Android App (Release)", "Gradle Build" -> Language.KOTLIN
+                            "JUnit Tests" -> Language.JAVA
+                            "Terminal Script" -> Language.SHELL
+                            else -> Language.KOTLIN
+                        }
+                        val sessionId = udm2.startDebug(dbgLang, "", null)
                         if (sessionId != null) {
                             activeSessionId = sessionId
                             sessionState = DebugState.STARTING
