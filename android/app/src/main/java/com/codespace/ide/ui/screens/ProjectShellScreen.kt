@@ -34,6 +34,7 @@ import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -2015,14 +2016,22 @@ private fun buildRunCommand(path: String): String? {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
 
+    val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
+        activeSession = if (session.state == com.codespace.ide.debug.DebugState.STOPPED ||
+            session.state == com.codespace.ide.debug.DebugState.ERROR) null else session
+    }
+    val outputListener: (String) -> Unit = { msg ->
+        messages.add(msg)
+        scope.launch { listState.animateScrollToItem(messages.size - 1) }
+    }
     LaunchedEffect(Unit) {
-        udm.onSessionStateChanged = { session ->
-            activeSession = if (session.state == com.codespace.ide.debug.DebugState.STOPPED ||
-                session.state == com.codespace.ide.debug.DebugState.ERROR) null else session
-        }
-        udm.onOutput = { msg ->
-            messages.add(msg)
-            scope.launch { listState.animateScrollToItem(messages.size - 1) }
+        udm.addOnSessionStateChangedListener(stateListener)
+        udm.addOnOutputListener(outputListener)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            udm.removeOnSessionStateChangedListener(stateListener)
+            udm.removeOnOutputListener(outputListener)
         }
     }
 
