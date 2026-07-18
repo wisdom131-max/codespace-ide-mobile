@@ -152,6 +152,8 @@ fun EditorPane(
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
     // P8-1 Breakpoints: path → set of breakpoint line indices (0-based)
     val fileBreakpoints = remember { mutableStateMapOf<String, Set<Int>>() }
+    // P26-1: Scroll to line (from debug call stack click)
+    var scrollToLine by remember { mutableStateOf(0) }
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
@@ -881,6 +883,7 @@ fun EditorPane(
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
                         breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
+                        scrollToLine = scrollToLine,
                         onBreakpointToggle = { line ->
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
