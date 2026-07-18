@@ -83,6 +83,14 @@ interface DebugProvider {
 }
 
 /**
+ * P25-DEBUG: Providers that support interactive stdin (like pdb, node inspect).
+ * The Debug Console input field sends text to these providers' running process.
+ */
+interface InteractiveDebugProvider : DebugProvider {
+    fun sendInput(session: DebugSession, text: String)
+}
+
+/**
  * Universal Debug Manager — singleton that manages all debug sessions.
  * Both the Activity Bar Debugger and Terminal Panel Debugger use this.
  */
@@ -228,6 +236,28 @@ object UniversalDebugManager {
         val session = sessions[sessionId] ?: return null
         val provider = providers.find { it.id == session.providerId }
         return provider?.evaluate(session, expression)
+    }
+
+    /**
+     * P25-DEBUG: Send user input to the running debug session's stdin.
+     * Used by the Debug Console to send commands to pdb, node inspect, etc.
+     */
+    fun sendInput(sessionId: String, text: String) {
+        val session = sessions[sessionId] ?: return
+        val provider = providers.find { it.id == session.providerId }
+        if (provider is InteractiveDebugProvider) {
+            provider.sendInput(session, text)
+        }
+    }
+
+    /**
+     * P25-DEBUG: Check if the active session supports interactive input.
+     */
+    fun sessionSupportsInput(sessionId: String?): Boolean {
+        if (sessionId == null) return false
+        val session = sessions[sessionId] ?: return false
+        val provider = providers.find { it.id == session.providerId }
+        return provider is InteractiveDebugProvider
     }
 
     fun getActiveSession(): DebugSession? = sessions.values.firstOrNull { it.state == DebugState.RUNNING || it.state == DebugState.PAUSED }
@@ -389,11 +419,12 @@ class TerminalDebugProvider : DebugProvider {
  * Full debugpy integration is a future enhancement once DAP is wired;
  * for now it gives real process output + exit-code reporting.
  */
-class PythonDebugProvider : DebugProvider {
+class PythonDebugProvider : InteractiveDebugProvider {
     override val id = "python"
-    override val displayName = "Python (python3)"
+    override val displayName = "Python (pdb)"
     override val supportedLanguages = setOf(Language.PYTHON)
     private var process: Process? = null
+    private var stdinWriter: java.io.PrintWriter? = null
 
     override fun canDebug(language: Language, filePath: String) =
         language == Language.PYTHON && filePath.endsWith(".py")
@@ -406,16 +437,31 @@ class PythonDebugProvider : DebugProvider {
     ): Boolean {
         return try {
             val workDir = File(session.filePath).parentFile ?: File("/")
-            val pb = ProcessBuilder("python3", "-u", session.filePath)
+            // P25-DEBUG: Use pdb for real debugging — breakpoint injection, stepping, variable inspection
+            // pdb reads commands from stdin, so we can send 'n' (next), 's' (step), 'c' (continue), 'p var' (print)
+            val pb = ProcessBuilder("python3", "-m", "pdb", session.filePath)
                 .directory(workDir)
                 .redirectErrorStream(true)
             process = pb.start()
             val proc = process!!
+            stdinWriter = java.io.PrintWriter(proc.outputStream, true)
+            // Inject breakpoints before running
+            if (breakpoints.isNotEmpty()) {
+                Thread.sleep(200) // Wait for pdb to initialize
+                for (bp in breakpoints) {
+                    // pdb uses 1-based line numbers
+                    stdinWriter?.println("break ${session.filePath}:${bp.line + 1}")
+                    stdinWriter?.flush()
+                }
+            }
+            // Start execution
+            stdinWriter?.println("continue")
+            stdinWriter?.flush()
             // Stream output on background thread
             Thread {
                 try {
                     proc.inputStream.bufferedReader().forEachLine { line ->
-                        onOutput("[python] $line")
+                        onOutput(line)
                     }
                     val exit = proc.waitFor()
                     onOutput("[python] Process exited with code $exit")
@@ -428,23 +474,38 @@ class PythonDebugProvider : DebugProvider {
         }
     }
 
-    override fun stop(session: DebugSession) { process?.destroyForcibly(); process = null }
-    override fun pause(session: DebugSession) { /* SIGSTOP not available on Android proot */ }
-    override fun resume(session: DebugSession) { /* SIGCONT */ }
-    override fun stepOver(session: DebugSession) {}
-    override fun stepInto(session: DebugSession) {}
-    override fun stepOut(session: DebugSession) {}
-    override fun evaluate(session: DebugSession, expression: String): String? = null
+    override fun sendInput(session: DebugSession, text: String) {
+        stdinWriter?.println(text)
+        stdinWriter?.flush()
+    }
+
+    override fun stop(session: DebugSession) {
+        stdinWriter?.close()
+        process?.destroyForcibly()
+        process = null
+        stdinWriter = null
+    }
+    override fun pause(session: DebugSession) { sendInput(session, "!import signal; signal.raise_signal(signal.SIGINT)") }
+    override fun resume(session: DebugSession) { sendInput(session, "continue") }
+    override fun stepOver(session: DebugSession) { sendInput(session, "next") }
+    override fun stepInto(session: DebugSession) { sendInput(session, "step") }
+    override fun stepOut(session: DebugSession) { sendInput(session, "return") }
+    override fun evaluate(session: DebugSession, expression: String): String? {
+        // Can't synchronously get result from pdb — user types 'p expr' in console
+        sendInput(session, "p $expression")
+        return "(sent to pdb — see console output)"
+    }
 }
 
 /**
  * JavaScript / Node.js debug provider — runs `node` directly.
  */
-class NodeJsDebugProvider : DebugProvider {
+class NodeJsDebugProvider : InteractiveDebugProvider {
     override val id = "nodejs"
-    override val displayName = "Node.js"
+    override val displayName = "Node.js (inspect)"
     override val supportedLanguages = setOf(Language.JAVASCRIPT, Language.TYPESCRIPT)
     private var process: Process? = null
+    private var stdinWriter: java.io.PrintWriter? = null
 
     override fun canDebug(language: Language, filePath: String) =
         language in supportedLanguages && (filePath.endsWith(".js") || filePath.endsWith(".mjs") || filePath.endsWith(".cjs") || filePath.endsWith(".ts"))
@@ -457,19 +518,22 @@ class NodeJsDebugProvider : DebugProvider {
     ): Boolean {
         return try {
             val workDir = File(session.filePath).parentFile ?: File("/")
+            // P25-DEBUG: Use node inspect for real debugging
             // TypeScript: try ts-node, fall back to node
             val cmd = if (session.filePath.endsWith(".ts")) {
-                listOf("ts-node", session.filePath)
+                listOf("node", "--inspect-brk", "-r", "ts-node/register", session.filePath)
             } else {
-                listOf("node", session.filePath)
+                listOf("node", "inspect", session.filePath)
             }
             val pb = ProcessBuilder(cmd).directory(workDir).redirectErrorStream(true)
             process = pb.start()
             val proc = process!!
+            stdinWriter = java.io.PrintWriter(proc.outputStream, true)
+            // Stream output on background thread
             Thread {
                 try {
                     proc.inputStream.bufferedReader().forEachLine { line ->
-                        onOutput("[node] $line")
+                        onOutput(line)
                     }
                     val exit = proc.waitFor()
                     onOutput("[node] Process exited with code $exit")
@@ -482,19 +546,33 @@ class NodeJsDebugProvider : DebugProvider {
         }
     }
 
-    override fun stop(session: DebugSession) { process?.destroyForcibly(); process = null }
-    override fun pause(session: DebugSession) {}
-    override fun resume(session: DebugSession) {}
-    override fun stepOver(session: DebugSession) {}
-    override fun stepInto(session: DebugSession) {}
-    override fun stepOut(session: DebugSession) {}
-    override fun evaluate(session: DebugSession, expression: String): String? = null
+    override fun sendInput(session: DebugSession, text: String) {
+        stdinWriter?.println(text)
+        stdinWriter?.flush()
+    }
+
+    override fun stop(session: DebugSession) {
+        stdinWriter?.close()
+        process?.destroyForcibly()
+        process = null
+        stdinWriter = null
+    }
+    override fun pause(session: DebugSession) { sendInput(session, "pause") }
+    override fun resume(session: DebugSession) { sendInput(session, "cont") }
+    override fun stepOver(session: DebugSession) { sendInput(session, "next") }
+    override fun stepInto(session: DebugSession) { sendInput(session, "step") }
+    override fun stepOut(session: DebugSession) { sendInput(session, "out") }
+    override fun evaluate(session: DebugSession, expression: String): String? {
+        sendInput(session, "repl")
+        sendInput(session, expression)
+        return "(sent to node inspect — see console output)"
+    }
 }
 
 /**
  * Shell / Bash debug provider — runs shell scripts via bash.
  */
-class ShellDebugProvider : DebugProvider {
+class ShellDebugProvider : InteractiveDebugProvider {
     override val id = "shell"
     override val displayName = "Shell (bash)"
     override val supportedLanguages = setOf(Language.SHELL)
@@ -538,6 +616,10 @@ class ShellDebugProvider : DebugProvider {
     override fun stepOver(session: DebugSession) {}
     override fun stepInto(session: DebugSession) {}
     override fun stepOut(session: DebugSession) {}
+    override fun sendInput(session: DebugSession, text: String) {
+        process?.outputStream?.write("$text\n".toByteArray())
+        process?.outputStream?.flush()
+    }
     override fun evaluate(session: DebugSession, expression: String): String? = null
 }
 
