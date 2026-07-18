@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.EditorTab
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.CodeEditor
+import com.codespace.ide.editor.PeekDefResult
 import com.codespace.ide.editor.FileCache
 import com.codespace.ide.editor.MergeConflictParser
 import com.codespace.ide.editor.ConflictHunk
