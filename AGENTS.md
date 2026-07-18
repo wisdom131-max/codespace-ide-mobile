@@ -3535,3 +3535,219 @@ package is a well-known example of a package that changes behavior significantly
 major versions. The pattern `npm install -g <package>` should always include a pinned
 version for any package used as a language service runtime, not just the LSP binary itself.
 
+
+
+---
+
+# Phase 25 — Full IDE Intelligence + UI Reliability Audit (2026-07-18)
+
+> **Rule:** Update this section as each phase completes. Mark items ✅ DONE / 🔄 IN PROGRESS / ❌ BROKEN / ⚠️ PARTIAL. Never mark an item done based on code review alone — require observed, reproducible evidence.
+
+## Status Overview
+
+| Phase | Title | Status |
+|-------|-------|--------|
+| P25-0 | TypeScript version pinning (confirmed fix) | 🔄 IN PROGRESS |
+| P25-0B | Safe LSP upgrade-check mechanism | ⬜ QUEUED |
+| P25-1 | Proot/shell output isolation | ⬜ QUEUED |
+| P25-2 | Debug panel audit | ⬜ QUEUED |
+| P25-3 | Extensions panel audit + Cancel fix | ⬜ QUEUED |
+| P25-4 | Preview blank screen (high priority) | ⬜ QUEUED |
+| P25-5 | Full LSP/IntelliSense audit (all languages) | ⬜ QUEUED |
+| P25-6 | Completion/hover/signature/diagnostics pipeline audit | ⬜ QUEUED |
+| P25-7 | Final report | ⬜ QUEUED |
+
+---
+
+## P25-0 — TypeScript Version Pinning
+
+**Trigger:** Manually confirmed on-device. typescript@7.x ships no `tsserver.js` — language server fails at initialize with "Could not find a valid TypeScript installation." Fix is to pin `typescript@5.6.3` in the install command.
+
+**Files to change:** `LspManager.kt`
+
+**Change:** `npm install -g typescript-language-server typescript@5.6.3` (was unpinned `typescript`)
+
+Also audit Python/Go/Kotlin LSP for the same class of unpinned-dependency risk.
+
+**Verification needed (requires device):**
+- Open a `.ts` file → LSP starts → completions show real types → hover shows full signature
+- `ps aux | grep typescript-language-server` returns a running process
+
+**Status:** ⬜ QUEUED — apply this first before any other phase
+
+---
+
+## P25-0B — Safe LSP Upgrade-Check Mechanism
+
+**Goal:** Periodic (weekly or on-demand) check that asks: "Is it now safe to bump a pinned LSP dependency?" — NOT a silent auto-upgrade.
+
+**Check logic (in order):**
+1. `npm view typescript-language-server@latest peerDependencies` — does it now declare a TS version range?
+2. `npm view typescript@latest dist-tags` — what is latest?
+3. Only if (1) returns a range that includes (2): surface a prompt, not a silent upgrade
+4. If inconclusive (no peerDeps declared, as today): do nothing, log "inconclusive"
+5. Apply same pattern to pylsp, gopls, kotlin-language-server
+
+**UI:** "Check for LSP updates" button in Settings → shows result inline, user approves or dismisses
+
+**Logging:** Every check outcome written to AGENTS.md (or AppOutputLog under `[lsp-upgrade-check]` tag)
+
+**Honest ceiling:** Since typescript-language-server@5.3.0 declares NO peerDependencies today, full automated compatibility detection is not possible. This feature surfaces a human-readable prompt when something changes worth checking — it is NOT silent auto-upgrading.
+
+**Status:** ⬜ QUEUED — implement after P25-0 is confirmed working
+
+---
+
+## P25-1 — Proot/Shell Output Isolation
+
+**Observed bugs:**
+- Source Control panel shows raw proot bind warnings (`proot: /proc/self/fd/0`, locale generation text, "Generating locales... done") mixed with git output
+- "Exit code 128", "Exit code 129", "fatal: not a git repository" appear alongside this noise
+- "132 merge conflicts" label appearing alongside raw shell noise
+
+**Root cause hypothesis:** Git commands may be run through a persistent shell session (which emits login/profile noise) rather than a clean `ProcessBuilder` invocation that captures only the command's own stdout/stderr.
+
+**Investigation steps:**
+1. Read `GitEngine.kt` — does it use `execOnce()` (ProcessBuilder) or a live PTY session?
+2. Check if proot login-profile scripts emit noise on every invocation
+3. Verify whether the project has a `.git` directory (confirm if "not a git repo" is expected or a bug)
+
+**Design rule to enforce:**
+- Terminal tab: raw PTY output including proot noise ✅ (legitimate)
+- Source Control, Extensions, Output panels: ONLY the actual command's stdout/stderr parsed result
+- Proot noise: captured to AppOutputLog under `[proot-startup]` tag, never shown in structured panels
+
+**Status:** ⬜ QUEUED
+
+---
+
+## P25-2 — Debug Panel Audit
+
+**Observed confusion:** There appears to be a sidebar Debug panel AND a separate debug-adjacent feature near the Terminal. Unclear if these are the same thing or two separate implementations.
+
+**Investigation steps:**
+1. Read `DebugPane.kt` / whatever file backs the sidebar Debug tab
+2. Read the terminal-adjacent debug feature's source
+3. Classify: WORKING / PARTIAL / BROKEN / MISSING with specific file references and observed behavior
+
+**Status:** ⬜ QUEUED
+
+---
+
+## P25-3 — Extensions Panel Audit
+
+**Observed bugs:**
+1. Package list is limited/incomplete — unclear if hardcoded or dynamic
+2. Cancel button during install does not actually cancel
+
+**Investigation steps:**
+1. Read `ExtensionsPane.kt` — what populates the package list? Is it a hardcoded array?
+2. Find the Cancel button handler — does it call `Process.destroy()`? Does it hold a reference to the install process?
+3. Fix: Cancel must call `destroyForcibly()` on the running install process and reset UI state
+
+**Status:** ⬜ QUEUED
+
+---
+
+## P25-4 — Preview Blank/Black Screen (HIGH PRIORITY)
+
+**Observed:** Tapping the Preview tab shows a fully blank black screen. Treat as crash/hard failure.
+
+**Investigation steps:**
+1. Read `PreviewPane.kt` — what URL does the WebView load? Is there a local HTTP server?
+2. Check if the server is started, what port it uses, and whether it's actually listening
+3. Check for exceptions in the WebView client (`onReceivedError`, `onPageFinished`)
+4. Check if `WebView.loadUrl()` is called before the server is ready
+
+**Possible causes:**
+- Server not started / wrong port
+- WebView loads too early (race condition)
+- Missing INTERNET permission (unlikely but check)
+- Black screen = WebView shows before page loads (background color issue)
+
+**Verification:** Fix is only complete when an actual web page renders in the Preview tab, not just when no crash occurs.
+
+**Status:** ⬜ QUEUED
+
+---
+
+## P25-5 — Full LSP / IntelliSense Audit (All Languages)
+
+**Reference baseline:** JavaScript completions and hover confirmed working end-to-end (after P25-0 TypeScript pin). Use as known-good reference.
+
+**Languages to audit:**
+
+| Language | Server | Config exists? | Server installed? | Completions | Hover | Diagnostics | Notes |
+|----------|--------|---------------|-------------------|-------------|-------|-------------|-------|
+| JavaScript | typescript-language-server | ✅ | TBD | TBD | TBD | TBD | Baseline |
+| TypeScript/TSX | typescript-language-server | ✅ | TBD | TBD | TBD | TBD | Same server as JS |
+| Python | pylsp | ✅ | TBD | TBD | TBD | TBD | |
+| Go | gopls | ✅ | TBD | TBD | TBD | TBD | golang-go apt version risk |
+| Kotlin | kotlin-language-server | ✅ | TBD | TBD | TBD | TBD | Version 1.3.13 may be stale |
+| Java | jdtls | ✅ | TBD | TBD | TBD | TBD | Eclipse JDT.LS |
+| C/C++ | clangd | TBD | TBD | TBD | TBD | TBD | |
+| Rust | rust-analyzer | TBD | TBD | TBD | TBD | TBD | Fallback URL uses "latest" |
+| HTML | vscode-langservers-extracted | ✅ (fixed) | TBD | TBD | TBD | TBD | |
+| CSS | vscode-langservers-extracted | ✅ (fixed) | TBD | TBD | TBD | TBD | |
+| PHP | intelephense | TBD | TBD | TBD | TBD | TBD | |
+
+**File type routing audit** — verify extension → language detection → LSP assignment for:
+`.js, .mjs, .cjs, .ts, .tsx, .jsx, .py, .java, .kt, .c, .cpp, .cs, .go, .rs, .php, .rb, .swift, .dart, .lua, .sh, .ps1, .html, .css, .scss, .less, .xml, .json, .yaml, .toml, .md, .sql, .vue, .svelte`
+
+**Status:** ⬜ QUEUED — depends on P25-0 being confirmed
+
+---
+
+## P25-6 — Completion / Hover / Signature / Diagnostics Pipeline Audit
+
+**Pipelines to verify:**
+
+### Completion
+`Editor keystroke → debounce → LspManager.complete() → JSON-RPC textDocument/completion → parse CompletionList → rank/sort → show in dropdown`
+
+Check: requests sent? responses arrive? parsed correctly? snippets override real LSP? fuzzy match works?
+
+### Hover
+`Cursor position → LspManager.hover() → textDocument/hover → parse MarkedString/MarkupContent → show tooltip`
+
+Check: works for ALL languages (not just JS), correct content, positioned correctly.
+
+### Signature Help
+`Typing "(" → LspManager.signatureHelp() → textDocument/signatureHelp → parse signatures → show parameter hints`
+
+Check: overloads shown, active parameter highlighted.
+
+### Diagnostics
+`Document change → LSP analysis → textDocument/publishDiagnostics → parse → squiggles in editor + Problems panel count`
+
+Check: real squiggles (not just badge count), all severity levels, updates live.
+
+### Process/Logging audit
+For every LSP process: log launch command, args, cwd, env vars, PATH, PID, stdout, stderr — visible in Output tab (not just logcat).
+
+### Timeout audit
+Document every timeout path. Do NOT assume a timeout means "slow install" — the TypeScript investigation showed a fast-but-broken install and a slow install look identical from a timeout log alone.
+
+**Status:** ⬜ QUEUED
+
+---
+
+## P25-7 — Final Report
+
+Produced after all phases complete. Template:
+
+| Part | Finding | Evidence | Fixed? | Remaining |
+|------|---------|----------|--------|-----------|
+| P25-0 | TypeScript pin | On-device confirmed | ⬜ | |
+| P25-0B | Upgrade check | | ⬜ | |
+| P25-1 | Shell output isolation | | ⬜ | |
+| P25-2 | Debug panel | | ⬜ | |
+| P25-3 | Extensions | | ⬜ | |
+| P25-4 | Preview blank | | ⬜ | |
+| P25-5 | LSP all languages | | ⬜ | |
+| P25-6 | Pipelines | | ⬜ | |
+
+**Status:** ⬜ QUEUED — final step
+
+---
+
