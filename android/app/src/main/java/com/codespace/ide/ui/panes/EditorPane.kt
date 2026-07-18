@@ -560,7 +560,7 @@ fun EditorPane(
                 // P25-LSP: Format document button — calls LSP formatting when available
                 IconButton(
                     onClick = {
-                        val tab = activeTab
+                        val tab = tabs.firstOrNull { it.id == activeId }
                         if (tab != null && LspManager.isServerRunning(tab.language)) {
                             val uri = LspManager.fileUriFromHostPath(context, tab.path)
                             if (uri != null) {
@@ -584,7 +584,10 @@ fun EditorPane(
                         text = "{}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (activeTab != null && LspManager.isServerRunning(activeTab.language)) Color(0xFF4EC9B0) else TabTextInactive,
+                        color = run {
+                            val t = tabs.firstOrNull { it.id == activeId }
+                            if (t != null && LspManager.isServerRunning(t.language)) Color(0xFF4EC9B0) else TabTextInactive
+                        },
                     )
                 }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
