@@ -3914,4 +3914,71 @@ Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
 - Rust fallback URL should be pinned to a specific version
 - JSON LSP could be added for free (vscode-json-language-server already installed)
 
-**Status:** ✅ DONE — Phase 25 complete.
+**Status:** ✅ DONE — Phase 25 complete.## Phase 25 — LSP Enhancement + Debug System Wiring (COMPLETE)
+**Date:** 2026-07-18
+**Build:** #1528 (282c2d6) GREEN ✅
+**Commits:** db94c95 → bacf709 → 127605b → 30658e9 → 282c2d6 (and intermediate)
+
+### LSP Enhancement
+- **10+ new LSP methods** added to LspManager: documentSymbol, documentHighlight, formatting, rangeFormatting, onTypeFormatting, typeDefinition, implementation, foldingRange, selectionRange, resolveCompletion, prepareRename, workspaceSymbol
+- **Client capabilities** updated to declare all new features to language servers (matches VS Code's LSP feature set)
+- **JSON LSP config** added (vscode-langservers-extracted)
+- **13 new Language enum entries**: YAML, TOML, Vue, Svelte, C#, Ruby, Swift, Dart, Lua, SQL, PowerShell, Scala, R
+- **LanguageId mappings** added for all 13 new languages in LspManager
+- **Language specs** added for all 13 new languages in LanguageSpecs.kt (keywords, types, comment syntax)
+- **LSP signature help** wired to CodeEditor + EditorPane (was the biggest gap — method existed but was never called)
+- **LSP formatting** — Format button added to editor toolbar, applies LSP TextEdits to content
+- **Rust fallback URL** pinned to specific version instead of "latest/"
+
+### Debug System Wiring (VS Code Architecture Research + Implementation)
+**Research:** VS Code uses DAP (Debug Adapter Protocol) with two UI surfaces:
+1. Run & Debug view (Activity Bar sidebar) — call stack, breakpoints, variables, watches
+2. Debug Console (bottom panel) — interactive REPL, program output, stdin
+3. Debug toolbar (floating) — Continue/Pause, Step Over/Into/Out, Restart, Stop
+4. Terminal integration — debuggee can run in integrated terminal via runInTerminal request
+5. Status bar — shows active debug config, changes color during session
+
+**Audit findings:**
+- 7 debug providers exist: Terminal, Python, NodeJs, Shell, PHP, Android, APK
+- All providers had `launch()` implemented but stepping/pause/resume were no-ops
+- Python/Node providers just ran programs (no breakpoints, no variable inspection)
+- Run button in RunDebugPanel was a STUB (set fake "manual" session ID)
+- Bottom panel Run menu didn't call UDM at all (just added a debug message)
+- Debug console input dispatched to terminal, not to running debug session
+
+**Fixes implemented:**
+1. **InteractiveDebugProvider** interface — new interface for providers with stdin support
+2. **UDM.sendInput()** — sends user input to running debug session's stdin
+3. **UDM.sessionSupportsInput()** — checks if active session supports interactive input
+4. **PythonDebugProvider** upgraded from `python3 -u` to `python3 -m pdb`:
+   - Breakpoint injection via pdb's `break` command before running
+   - Step Over → `next`, Step Into → `step`, Step Out → `return`
+   - Resume → `continue`, Pause → SIGINT signal
+   - Evaluate → `p expr` (print expression)
+   - User can type any pdb command in the Debug Console
+5. **NodeJsDebugProvider** upgraded from `node` to `node inspect`:
+   - Pause → `pause`, Resume → `cont`
+   - Step Over → `next`, Step Into → `step`, Step Out → `out`
+   - Evaluate → enters REPL mode
+6. **ShellDebugProvider** upgraded to InteractiveDebugProvider (stdin support)
+7. **RunDebugPanel** — passes active file path, detects language from extension
+8. **Bottom panel Run** — calls UDM.startDebug() with active file path
+9. **Debug console input** — sends to running session via UDM.sendInput() (pdb/node inspect commands)
+
+### Build Error Resolution (15 failed builds #1513-1527)
+1. LanguageSpecs.kt non-exhaustive `when` → added `else` branch
+2. CodeEditor.kt missing `lspSignatureHelpProvider` + `onFormat` params → added
+3. EditorPane.kt `activeTab` out of scope → replaced with inline `tabs.firstOrNull`
+4. ExplorerPane.kt missing `Language` import → added
+5. EditorPane.kt `FormatAlignLeft` icon unresolved → replaced with text icon "{"
+
+### What Still Needs Work
+- TerminalDebugProvider still a stub (just signals "ready to run" — doesn't execute)
+- PhpDebugProvider, AndroidDebugProvider, ApkDebugProvider not upgraded to Interactive
+- LSP documentSymbol not yet wired to OutlinePanel
+- LSP documentHighlight not yet wired to editor (word occurrence highlighting)
+- LSP code folding (foldingRange) not yet wired to editor
+- No DAP (Debug Adapter Protocol) integration — custom providers only
+- No launch.json equivalent — debug configs are hardcoded in dropdown
+
+
