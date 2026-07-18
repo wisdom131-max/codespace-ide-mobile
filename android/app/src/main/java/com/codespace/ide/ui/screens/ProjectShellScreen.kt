@@ -1055,7 +1055,7 @@ fun ProjectShellScreen(
                 debugMessages = debugMessages,
                 scope = scope,
                 context = context,
-                projectRootPath = projectRootPath,
+                projectRootPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
                 onShowBottomPanel = { showBottomPanel = true },
                 onSetActiveTab = { activeBottomTab = it },
                 onShowSplitTerminal = { showSplitTerminal = true },
@@ -3357,8 +3357,8 @@ private fun handlePanelMenuAction(
                 try {
                     // CloudBackupManager.backupProject needs backendUrl + authToken — not deployed yet.
                     // Local fallback: tar.gz the project directory to cache.
-                    val projectDir = java.io.File(context.filesDir, "projects/$projectId")
-                    val backupFile = java.io.File(context.cacheDir, "backup_${projectId}_${System.currentTimeMillis()}.tar.gz")
+                    val projectDir = java.io.File(projectRootPath)
+                    val backupFile = java.io.File(context.cacheDir, "backup_${projectRootPath.substringAfterLast("/")}_${System.currentTimeMillis()}.tar.gz")
                     if (projectDir.exists()) {
                         backupFile.writeBytes(byteArrayOf()) // placeholder
                         onShowNotification("Backup queued (backend offline)", "info")
