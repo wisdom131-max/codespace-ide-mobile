@@ -560,17 +560,18 @@ fun EditorPane(
                 // P25-LSP: Format document button — calls LSP formatting when available
                 IconButton(
                     onClick = {
-                        if (LspManager.isServerRunning(active.language)) {
-                            val uri = LspManager.fileUriFromHostPath(context, active.path)
+                        val tab = activeTab
+                        if (tab != null && LspManager.isServerRunning(tab.language)) {
+                            val uri = LspManager.fileUriFromHostPath(context, tab.path)
                             if (uri != null) {
-                                val edits = try { LspManager.getFormatting(active.language, uri) } catch (_: Exception) { null }
+                                val edits = try { LspManager.getFormatting(tab.language, uri) } catch (_: Exception) { null }
                                 if (edits != null && edits.length() > 0) {
-                                    val newContent = applyTextEdits(active.content, edits)
-                                    if (newContent != active.content) {
-                                        val idx = tabs.indexOfFirst { it.id == active.id }
-                                        if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
-                                        if (active.path.startsWith("/")) {
-                                            try { java.io.File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                    val newContent = applyTextEdits(tab.content, edits)
+                                    if (newContent != tab.content) {
+                                        val idx = tabs.indexOfFirst { it.id == tab.id }
+                                        if (idx >= 0) tabs[idx] = tab.copy(content = newContent, isDirty = true)
+                                        if (tab.path.startsWith("/")) {
+                                            try { java.io.File(tab.path).writeText(newContent); FileCache.invalidate(tab.path) } catch (_: Exception) {}
                                         }
                                     }
                                 }
@@ -579,11 +580,11 @@ fun EditorPane(
                     },
                     modifier = Modifier.size(35.dp)
                 ) {
-                    Icon(
-                        Icons.Default.FormatAlignLeft,
-                        contentDescription = "Format",
-                        tint = if (LspManager.isServerRunning(active.language)) Color(0xFF4EC9B0) else TabTextInactive,
-                        modifier = Modifier.size(16.dp)
+                    Text(
+                        text = "{}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (activeTab != null && LspManager.isServerRunning(activeTab.language)) Color(0xFF4EC9B0) else TabTextInactive,
                     )
                 }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
