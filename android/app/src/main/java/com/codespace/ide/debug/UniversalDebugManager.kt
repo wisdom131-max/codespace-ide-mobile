@@ -1,5 +1,7 @@
 package com.codespace.ide.debug
 
+import android.content.Context
+import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.FileIndexer
 import java.io.File
@@ -97,10 +99,44 @@ interface InteractiveDebugProvider : DebugProvider {
  */
 object UniversalDebugManager {
 
+    private val TAG = "UDM"
+
     private val providers = mutableListOf<DebugProvider>()
     private val sessions = mutableMapOf<String, DebugSession>()
     private val breakpoints = mutableMapOf<String, MutableList<DebugBreakpoint>>() // filePath -> breakpoints
     private var sessionCounter = 0
+
+    // P26-2d: DAP adapters — tried before legacy providers; prefer DAP when available.
+    // Each real adapter (PythonDAPAdapter, etc.) wraps its own DAPClient lifecycle.
+    // LegacyDebugAdapter wraps existing DebugProviders as fallback.
+    private val adapters = mutableListOf<DebugAdapter>()
+    // Active adapter per session
+    private val sessionAdapters = mutableMapOf<String, DebugAdapter>()
+
+    /** Register a DAP adapter. Called in init/registerProviders. */
+    fun registerAdapter(adapter: DebugAdapter) {
+        adapters.removeAll { it.id == adapter.id }
+        adapters.add(0, adapter) // prepend — higher priority than legacy
+    }
+
+    /** P26-2d: Resolve the best adapter for a session. DAP first, legacy fallback. */
+    fun resolveAdapter(context: Context, session: DebugSession): DebugAdapter {
+        // Try real DAP adapters first
+        val dap = adapters.firstOrNull { it !is LegacyDebugAdapter && it.canDebug(session.language, session.filePath) }
+        if (dap != null) {
+            Log.d(TAG, "resolveAdapter: using DAP adapter '${dap.displayName}' for ${session.language}")
+            return dap
+        }
+        // Fall back to a LegacyDebugAdapter wrapping the matching provider
+        val provider = providers.firstOrNull { it.canDebug(session.language, session.filePath) }
+        if (provider != null) {
+            Log.d(TAG, "resolveAdapter: using legacy adapter '${provider.displayName}' for ${session.language}")
+            return LegacyDebugAdapter(provider)
+        }
+        // Last resort: return a no-op legacy adapter
+        Log.w(TAG, "resolveAdapter: no adapter found for ${session.language}")
+        return LegacyDebugAdapter(providers.first())
+    }
 
     /** Breakpoint persistence — stored per file path. */
     val allBreakpoints: Map<String, List<DebugBreakpoint>> get() = breakpoints.mapValues { it.value.toList() }
@@ -141,6 +177,8 @@ object UniversalDebugManager {
     private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
 
     init {
+        // P26-2d: Register DAP adapters (tried before legacy providers)
+        registerAdapter(PythonDAPAdapter())
         // Register built-in providers — P23-10: language providers registered eagerly
         // (lightweight objects, no processes started until launch() is called)
         registerProvider(TerminalDebugProvider())
