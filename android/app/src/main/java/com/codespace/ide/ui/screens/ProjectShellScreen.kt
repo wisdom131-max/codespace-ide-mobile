@@ -1802,6 +1802,12 @@ private fun PssBottomPanelContent(
                     if (text.isNotBlank()) {
                         debugMessages.add("> $text")
                         debugInput.value = ""
+                        // P25-DEBUG: Send input to running debug session if active
+                        val udm = com.codespace.ide.debug.UniversalDebugManager
+                        val activeSession = udm.getActiveSession()
+                        if (activeSession != null && udm.sessionSupportsInput(activeSession.id)) {
+                            udm.sendInput(activeSession.id, text)
+                        }
                     }
                 },
                 onRun = {
@@ -1809,9 +1815,14 @@ private fun PssBottomPanelContent(
                     if (path.isNullOrBlank()) {
                         debugMessages.add("[debug] No file open — open a file first, then press Run.")
                     } else {
-                        val cmd = buildRunCommand(path)
-                        if (cmd == null) {
-                            // P23-6: Non-debuggable file policy - offer alternatives
+                        // P25-DEBUG: Start real debug session via UDM
+                        val lang = Language.fromPath(path)
+                        val udm = com.codespace.ide.debug.UniversalDebugManager
+                        val sessionId = udm.startDebug(lang, path, null)
+                        if (sessionId != null) {
+                            debugMessages.add("[debug] Session started: ${lang.displayName} — ${path.substringAfterLast('/')}")
+                        } else {
+                            // Fallback: non-debuggable file policy
                             val ext = path.substringAfterLast(".").lowercase()
                             val alternatives = when (ext) {
                                 "html", "htm" -> "HTML is not directly debuggable. Try: Open Preview, Inspect DOM, or Open Console."
@@ -1824,10 +1835,7 @@ private fun PssBottomPanelContent(
                                 else -> "Don't know how to run this file type."
                             }
                             debugMessages.add("[debug] " + alternatives)
-                        } else {
-                            debugMessages.add("> $cmd")
-                            debugMessages.add("[debug] Dispatched to Terminal tab — switch there to see live output.")
-                            AppOutputLog.log("Running ${path.substringAfterLast('/')}", "debug")
+                        }
                             onRunInTerminal(cmd)
                             onActiveBottomTabChange(BottomTab.TERMINAL)
                         }
