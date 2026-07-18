@@ -148,5 +148,6 @@ object LanguageSpecs {
         )
         Language.MARKDOWN -> spec(keywords = emptySet(), comments = null)
         Language.PLAIN, Language.PLAINTEXT -> spec(keywords = emptySet(), comments = null)
+        else -> spec(keywords = emptySet(), comments = null)
     }
 }
