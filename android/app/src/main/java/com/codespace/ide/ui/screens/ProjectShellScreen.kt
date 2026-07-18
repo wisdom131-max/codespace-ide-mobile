@@ -941,7 +941,17 @@ fun ProjectShellScreen(
                                 },
                             )
                             SidePanel.GIT        -> GitSidePanel(projectId)
-                            SidePanel.RUN        -> RunDebugPanel(onMoreMenu = { showRunMenu = true }, activeFilePath = activeEditorTab ?: "")
+                            SidePanel.RUN        -> RunDebugPanel(
+                onMoreMenu = { showRunMenu = true },
+                activeFilePath = activeEditorTab ?: "",
+                onJumpToSource = { file, line ->
+                    // P26-1: Navigate to source file and line
+                    if (file.isNotBlank()) {
+                        onOpenFile(file)
+                        // TODO: scroll to line — would need a scrollToLine state passed to EditorPane
+                    }
+                }
+            )
                             SidePanel.EXTENSIONS -> {
                                     ExtensionsPanel()
                                     androidx.compose.material3.HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 1.dp)
