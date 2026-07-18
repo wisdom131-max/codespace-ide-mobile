@@ -319,7 +319,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P26-1: Scroll to line when scrollToLine parameter changes
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
-            val lineHeightPx = fontSize * 1.25f * density.density
+            val lineHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { (fontSize * 1.25f).dp.toPx() }
             vScroll.animateScrollTo((scrollToLine * lineHeightPx).toInt())
         }
     }
