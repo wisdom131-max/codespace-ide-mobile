@@ -1144,7 +1144,7 @@ fun EditorPane(
                                                 val resolved = try { LspManager.resolveCompletion(active.language, first) } catch (_: Exception) { null }
                                                 if (resolved != null) {
                                                     val detail = resolved.optString("detail", "")
-                                                    val docs = resolved.optJSONObject("documentation")
+                                                    val docs = resolved.opt("documentation")
                                                     val docText = when (docs) {
                                                         is org.json.JSONObject -> docs.optString("value", "")
                                                         is String -> docs
@@ -1265,6 +1265,8 @@ fun EditorPane(
                                             }
                                         }
                                     }
+                                    // P26-1: Notify server of save
+                                    try { LspManager.didSave(active.language, uri, active.content) } catch (_: Exception) {}
                                 }
                             }
                         } else null,
@@ -1331,7 +1333,7 @@ fun EditorPane(
                             { startLine, endLine ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
-                                    try { LspManager.getRangeFormatting(active.language, uri, startLine, endLine) } catch (_: Exception) { null }
+                                    try { LspManager.getRangeFormatting(active.language, uri, startLine, 0, endLine, Int.MAX_VALUE) } catch (_: Exception) { null }
                                 } else null
                             }
                         } else null,
@@ -1370,32 +1372,6 @@ fun EditorPane(
                                     }
                                 }
                                 lspSymbolResults = results
-                            }
-                        } else null,
-                        // P26-1: LSP didSave on format
-                        onFormat = if (LspManager.isServerRunning(active.language)) {
-                            {
-                                val uri = LspManager.fileUriFromHostPath(context, active.path)
-                                if (uri != null) {
-                                    val edits = try {
-                                        LspManager.getFormatting(active.language, uri)
-                                    } catch (_: Exception) { null }
-                                    if (edits != null && edits.length() > 0) {
-                                        // Apply TextEdits to the content
-                                        val content = active.content
-                                        val newContent = applyTextEdits(content, edits)
-                                        if (newContent != content) {
-                                            val idx = tabs.indexOfFirst { it.id == active.id }
-                                            if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
-                                            if (active.path.startsWith("/")) {
-                                                try { java.io.File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
-                                            }
-                                        }
-                                    }
-                                    // P26-1: Notify server of save
-                                    try { LspManager.didSave(active.language, uri, active.content) } catch (_: Exception) {}
-                                }
-                                null
                             }
                         } else null,
                     )
