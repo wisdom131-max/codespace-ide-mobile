@@ -4565,6 +4565,14 @@ This matches our architecture:
 - Terminal Panel Debugger (lightweight/quick-run) ↔ TerminalService
 - UniversalDebugManager (UDM) — shared backend for both
 
+
+### Visual Rendering (Build #1571 — GREEN)
+- **Code Lens**: Teal (#4EC9B0) inline annotations at end of lines (e.g. "3 references"), rounded background, zIndex(4f)
+- **Inlay Hints**: Gray (#9C9C9C) inline type/parameter hints at exact positions, 2px smaller than code font
+- **Document Links**: Blue (#569CD6) underlined clickable links, opens via onOpenFileAtLine callback, zIndex(5f)
+- All overlays use FontFamily.Monospace for consistency
+- All positioned using fontSize * 1.25f line height + 74dp gutter offset
+
 ### Roadmap
 - Phase 26-1 (LSP Full Wiring): ✅ COMPLETE
 - Next: Wire LSP features into CodeEditor context menu (Type Definition, Implementation menu items)
