@@ -232,6 +232,47 @@ object SymbolParser {
     }
 }
 
+
+/**
+ * Parse LSP DocumentSymbol JSONArray into CodeSymbol list.
+ * LSP symbols have hierarchical children — we flatten them with indent.
+ * More accurate than regex-based SymbolParser when LSP server is running.
+ */
+object LspSymbolParser {
+    fun parse(symbols: org.json.JSONArray, indent: Int = 0): List<CodeSymbol> {
+        val result = mutableListOf<CodeSymbol>()
+        for (i in 0 until symbols.length()) {
+            val sym = symbols.optJSONObject(i) ?: continue
+            val name = sym.optString("name", "")
+            if (name.isBlank()) continue
+            val kind = sym.optInt("kind", 13)
+            val selectionRange = sym.optJSONObject("selectionRange") ?: sym.optJSONObject("range")
+            val line = (selectionRange?.optJSONObject("start")?.optInt("line", 0) ?: 0) + 1 // LSP is 0-based, CodeSymbol is 1-based
+            val symbolKind = when (kind) {
+                5 -> SymbolKind.CLASS
+                6, 9 -> SymbolKind.FUNCTION  // Method, Constructor
+                7, 8 -> SymbolKind.PROPERTY   // Property, Field
+                10 -> SymbolKind.ENUM
+                11 -> SymbolKind.INTERFACE
+                12 -> SymbolKind.FUNCTION
+                13 -> SymbolKind.VARIABLE
+                14 -> SymbolKind.CONSTANT
+                2, 3, 4 -> SymbolKind.MODULE
+                23 -> SymbolKind.CLASS  // Struct -> Class
+                22 -> SymbolKind.PROPERTY  // EnumMember -> Property
+                else -> SymbolKind.VARIABLE
+            }
+            result.add(CodeSymbol(name, symbolKind, line, indent))
+            // Recursively parse children
+            val children = sym.optJSONArray("children")
+            if (children != null && children.length() > 0) {
+                result.addAll(parse(children, indent + 1))
+            }
+        }
+        return result
+    }
+}
+
 /**
  * Outline panel composable — shows symbol tree, tapping a symbol calls onJumpToLine.
  * Also exports a BreadcrumbBar composable for the top of the editor.
@@ -243,9 +284,15 @@ fun OutlinePanel(
     currentLine: Int = 1,
     onJumpToLine: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    lspSymbols: org.json.JSONArray? = null,
 ) {
-    val symbols = remember(text, language) {
-        SymbolParser.parse(text, language)
+    // P26-1: Use LSP document symbols when available (more accurate), fall back to regex parser
+    val symbols = remember(text, language, lspSymbols) {
+        if (lspSymbols != null && lspSymbols.length() > 0) {
+            LspSymbolParser.parse(lspSymbols)
+        } else {
+            SymbolParser.parse(text, language)
+        }
     }
 
     // Find the active symbol closest to currentLine (the last symbol starting at or before currentLine)
@@ -355,9 +402,15 @@ fun BreadcrumbBar(
     filePath: String,
     onJumpToLine: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    lspSymbols: org.json.JSONArray? = null,
 ) {
-    val symbols = remember(text, language) {
-        SymbolParser.parse(text, language)
+    // P26-1: Use LSP symbols when available for breadcrumbs too
+    val symbols = remember(text, language, lspSymbols) {
+        if (lspSymbols != null && lspSymbols.length() > 0) {
+            LspSymbolParser.parse(lspSymbols)
+        } else {
+            SymbolParser.parse(text, language)
+        }
     }
 
     // Parse filename from path
