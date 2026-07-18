@@ -280,6 +280,28 @@ fun CodeEditor(
     onBreakpointToggle: (Int) -> Unit = {},
     /** P26-1: LSP document highlight — lines to highlight (0-based startLine, endLine pairs). */
     lspHighlightLines: List<Pair<Int, Int>> = emptyList(),
+    /** P26-1: LSP document symbols — outline structure (JSONArray of DocumentSymbol). */
+    lspDocumentSymbols: org.json.JSONArray? = null,
+    /** P26-1: LSP folding ranges — pairs of (startLine, endLine) for LSP-based folding. */
+    lspFoldingRanges: List<Pair<Int, Int>> = emptyList(),
+    /** P26-1: LSP code lens — inline annotations (JSONArray of CodeLens). */
+    lspCodeLenses: org.json.JSONArray? = null,
+    /** P26-1: LSP inlay hints — inline type/parameter hints (JSONArray of InlayHint). */
+    lspInlayHints: org.json.JSONArray? = null,
+    /** P26-1: LSP document links — clickable links in comments (JSONArray of DocumentLink). */
+    lspDocumentLinks: org.json.JSONArray? = null,
+    /** P26-1: LSP Type Definition — called from context menu to peek type definition. */
+    onLspTypeDefinition: (() -> Unit)? = null,
+    /** P26-1: LSP Implementation — called from context menu to find implementations. */
+    onLspImplementation: (() -> Unit)? = null,
+    /** P26-1: LSP Range Formatting — format a selected range (startLine, endLine). */
+    onLspRangeFormat: ((Int, Int) -> org.json.JSONArray?)? = null,
+    /** P26-1: LSP Selection Range — expand selection to semantic boundary (line, col). */
+    onLspSelectionRange: ((Int, Int) -> org.json.JSONArray?)? = null,
+    /** P26-1: LSP Prepare Rename — check if symbol at position can be renamed (line, col). */
+    onLspPrepareRename: ((Int, Int) -> JSONObject?)? = null,
+    /** P26-1: LSP Workspace Symbol — search symbols across workspace (query string). */
+    onLspWorkspaceSymbol: ((String) -> Unit)? = null,
     /** P15-A: Fix with AI — called with a pre-formatted prompt when user taps "Fix with AI". */
     onAiFixRequest: ((String) -> Unit)? = null,
     /** P18-C: Project root path for cross-file rename. Null = single-file only. */
