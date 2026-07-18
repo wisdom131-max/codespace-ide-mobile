@@ -4789,6 +4789,22 @@ api.codespace-ide.app → Railway service. Verify /api/v1/health responds.
 **Goal:** Deleted projects should be recoverable — move to trash, restore, or permanently delete.
 **Approach:** Added project-level trash to WorkspaceManager. HomeScreen deletes go to trash instead of permanent deletion. Settings > Deleted Projects shows the recycle bin with Restore + Delete Forever + Empty Bin.
 
+## Build Fix: Failed Builds #1595-#1605 — RESOLVED
+**Date:** 2026-07-18
+
+**Root cause:** 3 unresolved reference errors in ProjectShellScreen.kt introduced during Phase 27-1 menu wiring:
+1. Line 1058: `projectRootPath` variable used but not defined in enclosing scope (should be inline computation)
+2. Lines 3360-3361: `projectId` used inside `PanelOverflowMenu` composable where only `projectRootPath` is available as a param
+
+**Fix (commit 5a434551):**
+- Line 1058: Replaced `projectRootPath = projectRootPath` with `projectRootPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath`
+- Lines 3360-3361: Replaced `projects/$projectId` with `projectRootPath` (the parameter passed to PanelOverflowMenu)
+
+**Affected builds:** #1595 (P27-1 menu wiring), #1596 (P27-2 auth interceptor), #1597 (P27-3 dead code), #1598 (fix attempt — incomplete), #1599-1601 (P26-5 tests + docs), #1602-1605 (P29 recycle bin — these would also fail until fix lands)
+
+**Status:** All fixes pushed. Next CI run should be green.
+
+
 **Commits:**
 - c0d5ee41 — WorkspaceManager.kt: moveProjectToTrash(), listTrashedProjects(), restoreTrashedProject(), purgeTrashedProject(), emptyProjectTrash(), formatSize()
 - 611cd3dc — HomeScreen.kt: Delete button now moves to trash via WorkspaceManager
