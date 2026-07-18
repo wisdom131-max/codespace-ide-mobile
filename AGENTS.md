@@ -3549,7 +3549,7 @@ version for any package used as a language service runtime, not just the LSP bin
 |-------|-------|--------|
 | P25-0 | TypeScript version pinning (confirmed fix) | 🔄 IN PROGRESS |
 | P25-0B | Safe LSP upgrade-check mechanism | ⬜ QUEUED |
-| P25-1 | Proot/shell output isolation | ⬜ QUEUED |
+| P25-1 | Proot/shell output isolation | ✅ DONE (commit 4134c07) |
 | P25-2 | Debug panel audit | ⬜ QUEUED |
 | P25-3 | Extensions panel audit + Cancel fix | ⬜ QUEUED |
 | P25-4 | Preview blank screen (high priority) | ⬜ QUEUED |
@@ -3617,7 +3617,19 @@ Also audit Python/Go/Kotlin LSP for the same class of unpinned-dependency risk.
 - Source Control, Extensions, Output panels: ONLY the actual command's stdout/stderr parsed result
 - Proot noise: captured to AppOutputLog under `[proot-startup]` tag, never shown in structured panels
 
-**Status:** ⬜ QUEUED
+**Status:** ✅ DONE — commit `4134c07`
+
+**Root cause found:** `execOnce()` used `/bin/bash -lc` (login shell) on every call, triggering `/etc/profile.d/00-locale.sh` which runs `locale-gen` and emits output. Plus proot bind warnings. This noise leaked into every panel.
+
+**What was fixed:**
+- `ProotInstaller.execOnce()`: added `stripProotNoise()` helper that filters proot bind warnings and locale-gen lines from every return value. Stripped noise saved to `AppOutputLog.logInternal("proot-startup")` — hidden from UI but findable for debugging.
+- `execOnce()`: added `logToOutput: Boolean = false` — only LSP installs stream to Output panel. Git/status/blame/check calls no longer flood it.
+- `AppOutputLog`: added `logInternal()` + `internalLines` — hidden-from-UI store for debugging.
+- `SourceControlPane.runGit()`: normalizes `Exit code NNN` → `Error:` prefix so all callers' `.startsWith("Error:")` checks work correctly. Previously `Exit code 128` fell through as a branch name.
+
+**Affected panels fixed:** Source Control, Output, Extensions/PackageManager, LSP checks, git blame in editor.
+
+**Needs device verification:** Noise should no longer appear in Source Control or Output panel on next APK install.
 
 ---
 
