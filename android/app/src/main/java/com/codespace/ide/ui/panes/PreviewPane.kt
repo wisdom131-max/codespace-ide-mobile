@@ -40,9 +40,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
@@ -400,23 +397,15 @@ fun PreviewPane(
     // every sub-tab (HTML, Markdown, SVG, Browser, Dashboard, Remotion) since it just re-renders
     // the shared PreviewBody at fillMaxSize.
     if (isFullscreen) {
-        // P25-4: restore system bars (status + nav) when the fullscreen dialog is dismissed.
-        // decorFitsSystemWindows=false tells Android the window handles insets itself.
-        // Without this DisposableEffect, status bar stays hidden after pressing ✕ or back.
-        val view = LocalView.current
-        DisposableEffect(Unit) {
-            val window = (view.context as? android.app.Activity)?.window ?: return@DisposableEffect onDispose {}
-            val controller = WindowInsetsControllerCompat(window, view)
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-            onDispose {
-                controller.show(WindowInsetsCompat.Type.statusBars())
-            }
-        }
         key(orientation) {
         Dialog(
             onDismissRequest = { isFullscreen = false },
-            // P25-4: decorFitsSystemWindows=false lets content draw behind status bar.
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+            // P25-4: usePlatformDefaultWidth=false makes it fill the screen.
+            // decorFitsSystemWindows is NOT set to false — leaving it at the default (true)
+            // means Android manages system bar insets normally and they are never hidden.
+            // The previous fix incorrectly hid the status bar via a DisposableEffect, which
+            // made the blank-status-bar bug permanent while in fullscreen instead of fixing it.
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Column(
                 Modifier
