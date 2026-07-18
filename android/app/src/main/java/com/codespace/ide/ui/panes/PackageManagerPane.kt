@@ -57,6 +57,8 @@ data class PkgOperation(
     var done: Boolean = false,
     var success: Boolean = false,
     @Transient var process: Process? = null,
+    // P25-3: holds the live subprocess so the Cancel button can kill it
+    @Transient var cancelRef: java.util.concurrent.atomic.AtomicReference<Process?>? = null,
 )
 
 // ─── Featured packages ────────────────────────────────────────────────────────
@@ -162,13 +164,13 @@ internal fun ExtensionsPanel() {
                 if (op.success && action == "install") installedPkgs = installedPkgs + pkg
                 if (op.success && action == "remove")  installedPkgs = installedPkgs - pkg
                 scope.launch(Dispatchers.Main) {
-                    activeOperation = op.copy()
+                    activeOperation = op.copy(cancelRef = op.cancelRef) // P25-3: preserve cancelRef through copy
                     installHistory  = loadHistory(context)
                 }
             } catch (e: Exception) {
                 op.output.add("Error: ${e.message}")
                 op.done = true; op.success = false
-                scope.launch(Dispatchers.Main) { activeOperation = op.copy() }
+                scope.launch(Dispatchers.Main) { activeOperation = op.copy(cancelRef = op.cancelRef) // P25-3: preserve cancelRef through copy }
             }
         }
     }
