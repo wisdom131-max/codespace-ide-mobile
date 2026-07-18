@@ -173,12 +173,16 @@ fun VariableInspectorPanel(
                     fontFamily = FontFamily.Monospace,
                 )
             } else {
-                // PhaseY: Show real variables from UniversalDebugManager
+                // P26-1: Multi-listener — no callback conflict with RunDebugPanel
                 var pausedVars by remember { mutableStateOf<List<com.codespace.ide.debug.DebugVariable>>(emptyList()) }
+                val varsListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { _, vars ->
+                    pausedVars = vars
+                }
                 LaunchedEffect(Unit) {
-                    com.codespace.ide.debug.UniversalDebugManager.onPaused = { _, vars ->
-                        pausedVars = vars
-                    }
+                    com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(varsListener)
+                }
+                DisposableEffect(Unit) {
+                    onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnPausedListener(varsListener) }
                 }
                 val session = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()
                 if (session == null) {
@@ -214,12 +218,16 @@ fun VariableInspectorPanel(
             onToggle = { toggleSection("stack") },
         )
         if ("stack" in expandedSections) {
-            // PhaseY: Show real call stack from UniversalDebugManager
+            // P26-1: Multi-listener for call stack
             var pausedStack by remember { mutableStateOf<List<com.codespace.ide.debug.DebugStackFrame>>(emptyList()) }
+            val stackListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { stack, _ ->
+                pausedStack = stack
+            }
             LaunchedEffect(Unit) {
-                com.codespace.ide.debug.UniversalDebugManager.onPaused = { stack, _ ->
-                    pausedStack = stack
-                }
+                com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(stackListener)
+            }
+            DisposableEffect(Unit) {
+                onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnPausedListener(stackListener) }
             }
             val session = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()
             if (session == null) {
