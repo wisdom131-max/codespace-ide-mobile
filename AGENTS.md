@@ -4421,20 +4421,22 @@ Fill each cell with: ✅ Works, ⚠️ Partial, ❌ Not supported, N/A
 
 ### STATUS
 
-- [~] Phase 26-1: Finish current debugger — IN PROGRESS (build #1542 green)
+- [~] Phase 26-1: Finish current debugger — IN PROGRESS (build #1551 green)
   - [x] 26-1a: Breakpoints — gutter toggle ✅, persistence ✅, pdb injection ✅, Node injection ✅
-  - [x] 26-1b: Variables — onPaused now fires with real pdb locals parsing + type inference ✅
-  - [x] 26-1c: Watches — live re-evaluation on each pause ✅
-  - [x] 26-1d: Call Stack — parsed from pdb `where` + node `backtrace`, clickable frames ✅
+  - [x] 26-1b: Variables — onPaused fires with real pdb locals parsing + type inference ✅
+  - [x] 26-1c: Watches — live re-evaluation on each pause (both panels) ✅
+  - [x] 26-1d: Call Stack — parsed from pdb + node backtrace, clickable frames → open file ✅
   - [x] 26-1e: Debug Console — expression eval (pdb `p expr` / node `exec expr`) ✅
   - [x] 26-1f: Session Management — start/stop/state tracking ✅
   - [~] 26-1g: Language Completeness — Python ✅, Node ✅, Shell (trace only), PHP/Android/APK (audit pending)
   - [x] 26-1h: Non-Debuggable File Policy — already implemented (Phase 23-6)
-  - [ ] Callback conflict fix — DONE (multi-listener pattern)
-  - [ ] Debug controls — DONE (Continue/Pause, Step Over/Into/Out, Stop)
-  - [ ] onPaused parsing — DONE (pdb prompt detection + variable extraction)
-  - [ ] Call stack navigation — DONE (click frame → open file)
-  - [ ] Remaining: line scrolling, object expansion, PHP/Android/APK audit
+  - [x] Callback conflict fix — multi-listener pattern (UDM listener lists) ✅
+  - [x] Debug controls — Continue/Pause, Step Over/Into/Out, Stop ✅
+  - [x] onPaused parsing — pdb prompt detection + variable extraction + node backtrace ✅
+  - [x] Call stack navigation — click frame → open file + scrollToLine ✅
+  - [x] Object expansion — expandable variables (dict/list) with expand/collapse in VIP ✅
+  - [x] Line scrolling — CodeEditor scrollToLine LaunchedEffect wired ✅
+  - [ ] Remaining: PHP/Android/APK provider audit, LSP parity audit
 - [ ] Phase 26-2: DAP abstraction layer + Python DAP adapter (debugpy)
 - [ ] Phase 26-3: Node.js DAP + attach mode + capability negotiation + multi-session
 - [ ] Phase 26-4: Remaining languages to DAP-compatible adapters
@@ -4453,5 +4455,15 @@ Fill each cell with: ✅ Works, ⚠️ Partial, ❌ Not supported, N/A
 | #1540 | 8456af7 | ❌ FAIL | `onOpenFile` unresolved in PSS scope |
 | #1541 | 3080c16 | ❌ FAIL | `onOpenFile` still unresolved (UDM fix landed but PSS not yet) |
 | #1542 | fec56b7 | ✅ GREEN | All fixes applied — onPaused parsing + controls + navigation working |
+| #1543 | 83bf3e6 | ✅ GREEN | AGENTS.md Phase 26-1 progress update |
+| #1544 | 9183879 | ❌ FAIL | VIP object expansion — missing KeyboardArrowDown import |
+| #1545 | 785eec7 | ❌ FAIL | CodeEditor scrollToLine — LocalDensity in non-composable scope |
+| #1546 | e67b7f5 | ❌ FAIL | EditorPane — duplicate scrollToLine parameter |
+| #1547 | 4267d74 | ❌ FAIL | PSS — onOpenFile scope (cascaded from #1545) |
+| #1548 | 2962312 | ❌ FAIL | CodeEditor — LocalDensity in LaunchedEffect lambda |
+| #1549 | ae8bf03 | ❌ FAIL | CodeEditor density capture — EditorPane + VIP not yet fixed |
+| #1550 | bd3ba05 | ❌ FAIL | EditorPane fix — VIP imports not yet fixed |
+| #1551 | d1b29e7 | ✅ GREEN | All fixes applied — VIP imports + EditorPane dedup + CodeEditor density |
 
-**Commits this phase:** 66f45d2, 068851e, 0715573, 3e0af1e, 2bf9f5e, f4783c8, 8456af7, 3080c16, fec56b7
+**Commits this phase:** 66f45d2, 068851e, 0715573, 3e0af1e, 2bf9f5e, f4783c8, 8456af7, 3080c16, fec56b7,
+  83bf3e6, 9183879, 785eec7, e67b7f5, 4267d74, 2962312, ae8bf03, bd3ba05, d1b29e7
