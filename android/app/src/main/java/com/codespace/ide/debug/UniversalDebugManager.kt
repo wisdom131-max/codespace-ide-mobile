@@ -454,6 +454,9 @@ class PythonDebugProvider : InteractiveDebugProvider {
     override val supportedLanguages = setOf(Language.PYTHON)
     private var process: Process? = null
     private var stdinWriter: java.io.PrintWriter? = null
+    // P26-1: Pending evaluation result capture
+    @Volatile private var pendingEvalResult: String? = null
+    @Volatile private var capturingEval: Boolean = false
 
     override fun canDebug(language: Language, filePath: String) =
         language == Language.PYTHON && filePath.endsWith(".py")
@@ -466,8 +469,6 @@ class PythonDebugProvider : InteractiveDebugProvider {
     ): Boolean {
         return try {
             val workDir = File(session.filePath).parentFile ?: File("/")
-            // P25-DEBUG: Use pdb for real debugging — breakpoint injection, stepping, variable inspection
-            // pdb reads commands from stdin, so we can send 'n' (next), 's' (step), 'c' (continue), 'p var' (print)
             val pb = ProcessBuilder("python3", "-m", "pdb", session.filePath)
                 .directory(workDir)
                 .redirectErrorStream(true)
@@ -476,21 +477,93 @@ class PythonDebugProvider : InteractiveDebugProvider {
             stdinWriter = java.io.PrintWriter(proc.outputStream, true)
             // Inject breakpoints before running
             if (breakpoints.isNotEmpty()) {
-                Thread.sleep(200) // Wait for pdb to initialize
+                Thread.sleep(200)
                 for (bp in breakpoints) {
-                    // pdb uses 1-based line numbers
                     stdinWriter?.println("break ${session.filePath}:${bp.line + 1}")
                     stdinWriter?.flush()
                 }
             }
-            // Start execution
             stdinWriter?.println("continue")
             stdinWriter?.flush()
-            // Stream output on background thread
+            // P26-1: Parse pdb output to detect pause, extract variables + call stack
             Thread {
                 try {
-                    proc.inputStream.bufferedReader().forEachLine { line ->
+                    val reader = proc.inputStream.bufferedReader()
+                    var currentFile: String? = null
+                    var currentLine: Int = -1
+                    var currentFunc: String = ""
+                    var lastPromptWasPause = false
+                    while (true) {
+                        val line = reader.readLine() ?: break
                         onOutput(line)
+                        // Detect pdb prompt → execution paused
+                        if (line.trim() == "(Pdb)" || line.trim() == "(Pdb+)") {
+                            lastPromptWasPause = true
+                            // Parse stack: send 'where' and 'a' (args) + 'p' for locals
+                            if (currentFile != null && currentLine >= 0) {
+                                // Build a basic stack frame from the current location
+                                val stack = listOf(DebugStackFrame(
+                                    function = currentFunc,
+                                    file = currentFile ?: session.filePath,
+                                    line = currentLine,
+                                    active = true
+                                ))
+                                // Request local variables: send 'p dir()' then parse on next pause
+                                // For now, send 'a' (args) + 'p locals()' to get variables
+                                stdinWriter?.println("a")
+                                stdinWriter?.flush()
+                                Thread.sleep(100)
+                                stdinWriter?.println("p list(locals().items())")
+                                stdinWriter?.flush()
+                                Thread.sleep(150)
+                                // Read the variable output (lines before next prompt)
+                                val vars = mutableListOf<DebugVariable>()
+                                while (true) {
+                                    val vline = reader.readLine() ?: break
+                                    onOutput(vline)
+                                    if (vline.trim() == "(Pdb)" || vline.trim() == "(Pdb+)" || vline.trim().isEmpty() && vars.isNotEmpty()) {
+                                        break
+                                    }
+                                    // Parse variable lines: "name = value" or "('name', value)"
+                                    if ("=" in vline && !vline.startsWith(">") && !vline.startsWith("-")) {
+                                        val parts = vline.split("=", limit = 2)
+                                        if (parts.size == 2) {
+                                            val name = parts[0].trim()
+                                            val value = parts[1].trim()
+                                            if (name.isNotEmpty() && name.isNotBlank()) {
+                                                val type = when {
+                                                    value.startsWith("'") || value.startsWith("\"") -> "str"
+                                                    value.startsWith("[") -> "list"
+                                                    value.startsWith("{") -> "dict"
+                                                    value.startsWith("(") -> "tuple"
+                                                    value == "True" || value == "False" -> "bool"
+                                                    value.toIntOrNull() != null -> "int"
+                                                    value.toDoubleOrNull() != null -> "float"
+                                                    value == "None" -> "NoneType"
+                                                    else -> "obj"
+                                                }
+                                                vars.add(DebugVariable(name = name, type = type, value = value.take(200), depth = 0, expandable = value.startsWith("[") || value.startsWith("{")))
+                                            }
+                                        }
+                                    }
+                                }
+                                onPaused(stack, vars)
+                            }
+                        }
+                        // Parse "> file(line)function()" to track current location
+                        if (line.startsWith(">") && "(" in line && ")" in line) {
+                            // Pattern: > /path/to/file.py(10)function()
+                            val match = Regex(">(.*)\((\d+)\)(.*)").find(line)
+                            if (match != null) {
+                                currentFile = match.groupValues[1].trim()
+                                currentLine = match.groupValues[2].toIntOrNull()?.minus(1) ?: -1
+                                currentFunc = match.groupValues[3].trim()
+                            }
+                        }
+                        // Also capture "break in file.js:line" for breakpoint hits
+                        if (line.contains("Breakpoint") && line.contains("at")) {
+                            // e.g. "Breakpoint 1 at /path/file.py:10"
+                        }
                     }
                     val exit = proc.waitFor()
                     onOutput("[python] Process exited with code $exit")
@@ -520,9 +593,8 @@ class PythonDebugProvider : InteractiveDebugProvider {
     override fun stepInto(session: DebugSession) { sendInput(session, "step") }
     override fun stepOut(session: DebugSession) { sendInput(session, "return") }
     override fun evaluate(session: DebugSession, expression: String): String? {
-        // Can't synchronously get result from pdb — user types 'p expr' in console
         sendInput(session, "p $expression")
-        return "(sent to pdb — see console output)"
+        return "(sent to pdb — see console)"
     }
 }
 
