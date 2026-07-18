@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **#1592** |
-| Active phase | **Phase 29** (next — TBD) |
+| Active phase | **Phase 30** (next — TBD) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
@@ -4783,4 +4783,17 @@ api.codespace-ide.app → Railway service. Verify /api/v1/health responds.
   - AutoSave: EditorPane.kt (30s timer, .autosave/)
   - Crash logger: CodeSpaceApplication.kt + JNI native handler
   - BackupManager: rootfs tar.gz for Ubuntu container
+
+
+## Phase 29: Project Recycle Bin ✅ COMPLETE
+**Goal:** Deleted projects should be recoverable — move to trash, restore, or permanently delete.
+**Approach:** Added project-level trash to WorkspaceManager. HomeScreen deletes go to trash instead of permanent deletion. Settings > Deleted Projects shows the recycle bin with Restore + Delete Forever + Empty Bin.
+
+**Commits:**
+- c0d5ee41 — WorkspaceManager.kt: moveProjectToTrash(), listTrashedProjects(), restoreTrashedProject(), purgeTrashedProject(), emptyProjectTrash(), formatSize()
+- 611cd3dc — HomeScreen.kt: Delete button now moves to trash via WorkspaceManager
+- bed1dbe4 — SettingsScreen.kt: Recycle Bin UI with restore, permanent delete, empty bin
+
+**Build target:** green
+
 
