@@ -1050,6 +1050,25 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // P26-1: LSP Document Highlight — subtle background tint on all occurrences
+        if (lspHighlightLines.isNotEmpty()) {
+            val lineHeightPxHighlight = fontSize * 1.25f
+            val gutterDpHighlight = 74f
+            lspHighlightLines.forEach { (startLine, endLine) ->
+                val topDp = startLine * lineHeightPxHighlight
+                val heightDp = (endLine - startLine + 1) * lineHeightPxHighlight
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .padding(start = gutterDpHighlight.dp, top = topDp.dp)
+                        .height(heightDp.dp)
+                        .background(Color(0xFF569CD6).copy(alpha = 0.12f))
+                        .zIndex(3f),
+                )
+            }
+        }
+
         // Extra-cursor clear chip
         if (extraCursors.isNotEmpty()) {
             Box(
