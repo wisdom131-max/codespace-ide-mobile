@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FindReplace
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1498,7 +1500,19 @@ fun EditorPane(
                         Spacer(Modifier.width(4.dp))
                         TextButton(
                             onClick = {
-                                onOpenFileAtLine?.invoke(peek.filePath, peek.line + 1)
+                                val fp = peek.filePath
+                                if (tabs.none { it.path == fp }) {
+                                    tabs.add(EditorTab(
+                                        id = fp,
+                                        path = fp,
+                                        name = fp.substringAfterLast('/'),
+                                        content = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                        language = Language.fromPath(fp),
+                                        isDirty = false,
+                                        savedContent = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                    ))
+                                }
+                                activeId = fp
                                 lspTypeDefResult = null
                             }
                         ) {
@@ -1529,7 +1543,19 @@ fun EditorPane(
                             val fileName = path.substringAfterLast('/')
                             TextButton(
                                 onClick = {
-                                    onOpenFileAtLine?.invoke(path, line + 1)
+                                    val fp = path
+                                    if (tabs.none { it.path == fp }) {
+                                        tabs.add(EditorTab(
+                                            id = fp,
+                                            path = fp,
+                                            name = fp.substringAfterLast('/'),
+                                            content = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                            language = Language.fromPath(fp),
+                                            isDirty = false,
+                                            savedContent = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                        ))
+                                    }
+                                    activeId = fp
                                     lspImplResults = emptyList()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
