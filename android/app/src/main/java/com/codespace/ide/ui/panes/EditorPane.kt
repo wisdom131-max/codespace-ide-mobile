@@ -154,6 +154,10 @@ fun EditorPane(
     val fileBreakpoints = remember { mutableStateMapOf<String, Set<Int>>() }
     // P26-1: Scroll to line (from debug call stack click)
     var scrollToLine by remember { mutableStateOf(0) }
+    // P26-1: LSP Document Highlight — auto-highlight all occurrences of symbol under cursor
+    var lspHighlightLines by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
+    // P26-1: LSP Completion Resolve — richer completion info
+    var lspResolvedDetail by remember { mutableStateOf<String?>(null) }
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
@@ -751,6 +755,34 @@ fun EditorPane(
                     }
                     lspHoverContent = hover?.let { parseHoverContent(it) }
                 }
+            }
+        }
+
+        // P26-1: LSP Document Highlight — highlight all occurrences on cursor move (debounced)
+        LaunchedEffect(lspCursorLine, lspCursorCol) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(400)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val highlights = withContext(Dispatchers.IO) {
+                        LspManager.getDocumentHighlight(active.language, uri, lspCursorLine, lspCursorCol)
+                    }
+                    if (highlights != null && highlights.length() > 0) {
+                        val ranges = mutableListOf<Pair<Int, Int>>()
+                        for (i in 0 until highlights.length()) {
+                            val hl = highlights.optJSONObject(i) ?: continue
+                            val range = hl.optJSONObject("range") ?: continue
+                            val startLine = range.optJSONObject("start")?.optInt("line", -1) ?: -1
+                            val endLine = range.optJSONObject("end")?.optInt("line", -1) ?: -1
+                            if (startLine >= 0) ranges.add(startLine to endLine)
+                        }
+                        lspHighlightLines = ranges
+                    } else {
+                        lspHighlightLines = emptyList()
+                    }
+                }
+            } else {
+                lspHighlightLines = emptyList()
             }
         }
 
