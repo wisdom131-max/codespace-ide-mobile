@@ -105,10 +105,39 @@ object UniversalDebugManager {
     val allBreakpoints: Map<String, List<DebugBreakpoint>> get() = breakpoints.mapValues { it.value.toList() }
 
     /** Callbacks for UI updates. */
-    var onBreakpointsChanged: (() -> Unit)? = null
-    var onSessionStateChanged: ((DebugSession) -> Unit)? = null
-    var onOutput: ((String) -> Unit)? = null
-    var onPaused: ((List<DebugStackFrame>, List<DebugVariable>) -> Unit)? = null
+    // P26-1: Multi-listener support — prevents panels from overwriting each other
+    private val breakpointListeners = mutableListOf<() -> Unit>()
+    private val sessionStateListeners = mutableListOf<(DebugSession) -> Unit>()
+    private val outputListeners = mutableListOf<(String) -> Unit>()
+    private val pausedListeners = mutableListOf<(List<DebugStackFrame>, List<DebugVariable>) -> Unit>()
+    
+    fun addOnBreakpointsChangedListener(l: () -> Unit) { breakpointListeners.add(l) }
+    fun removeOnBreakpointsChangedListener(l: () -> Unit) { breakpointListeners.remove(l) }
+    fun addOnSessionStateChangedListener(l: (DebugSession) -> Unit) { sessionStateListeners.add(l) }
+    fun removeOnSessionStateChangedListener(l: (DebugSession) -> Unit) { sessionStateListeners.remove(l) }
+    fun addOnOutputListener(l: (String) -> Unit) { outputListeners.add(l) }
+    fun removeOnOutputListener(l: (String) -> Unit) { outputListeners.remove(l) }
+    fun addOnPausedListener(l: (List<DebugStackFrame>, List<DebugVariable>) -> Unit) { pausedListeners.add(l) }
+    fun removeOnPausedListener(l: (List<DebugStackFrame>, List<DebugVariable>) -> Unit) { pausedListeners.remove(l) }
+    
+    // Backward-compatible single-callback setters (delegate to list)
+    var onBreakpointsChanged: (() -> Unit)?
+        get() = null
+        set(value) { value?.let { breakpointListeners.add(it) } }
+    var onSessionStateChanged: ((DebugSession) -> Unit)?
+        get() = null
+        set(value) { value?.let { sessionStateListeners.add(it) } }
+    var onOutput: ((String) -> Unit)?
+        get() = null
+        set(value) { value?.let { outputListeners.add(it) } }
+    var onPaused: ((List<DebugStackFrame>, List<DebugVariable>) -> Unit)?
+        get() = null
+        set(value) { value?.let { pausedListeners.add(it) } }
+    
+    private fun notifyBreakpointsChanged() = breakpointListeners.forEach { it() }
+    private fun notifySessionStateChanged(s: DebugSession) = sessionStateListeners.forEach { it(s) }
+    private fun notifyOutput(msg: String) = outputListeners.forEach { it(msg) }
+    private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
 
     init {
         // Register built-in providers — P23-10: language providers registered eagerly
@@ -163,19 +192,19 @@ object UniversalDebugManager {
             state = DebugState.STARTING,
         )
         sessions[session.id] = session
-        onSessionStateChanged?.invoke(session)
+        notifySessionStateChanged(session)
 
         val fileBreakpoints = breakpoints[filePath] ?: emptyList()
         val launched = provider.launch(
             session,
             fileBreakpoints,
             onOutput = { msg ->
-                onOutput?.invoke(msg)
+                notifyOutput(msg)
             },
             onPaused = { stack, vars ->
                 session.state = DebugState.PAUSED
-                onSessionStateChanged?.invoke(session)
-                onPaused?.invoke(stack, vars)
+                notifySessionStateChanged(session)
+                notifyPaused(stack, vars)
             }
         )
 
@@ -184,7 +213,7 @@ object UniversalDebugManager {
         } else {
             session.state = DebugState.ERROR
         }
-        onSessionStateChanged?.invoke(session)
+        notifySessionStateChanged(session)
 
         return if (launched) session.id else null
     }
@@ -193,10 +222,10 @@ object UniversalDebugManager {
         val session = sessions[sessionId] ?: return
         val provider = providers.find { it.id == session.providerId }
         session.state = DebugState.STOPPING
-        onSessionStateChanged?.invoke(session)
+        notifySessionStateChanged(session)
         provider?.stop(session)
         session.state = DebugState.STOPPED
-        onSessionStateChanged?.invoke(session)
+        notifySessionStateChanged(session)
         sessions.remove(sessionId)
     }
 
@@ -211,7 +240,7 @@ object UniversalDebugManager {
         val provider = providers.find { it.id == session.providerId }
         provider?.resume(session)
         session.state = DebugState.RUNNING
-        onSessionStateChanged?.invoke(session)
+        notifySessionStateChanged(session)
     }
 
     fun stepOver(sessionId: String) {
@@ -268,14 +297,14 @@ object UniversalDebugManager {
         val list = breakpoints.getOrPut(filePath) { mutableListOf() }
         if (list.none { it.filePath == filePath && it.line == line }) {
             list.add(DebugBreakpoint(filePath, line, condition, logMessage))
-            onBreakpointsChanged?.invoke()
+            notifyBreakpointsChanged()
         }
     }
 
     fun removeBreakpoint(filePath: String, line: Int) {
         breakpoints[filePath]?.removeAll { it.line == line }
         if (breakpoints[filePath]?.isEmpty() == true) breakpoints.remove(filePath)
-        onBreakpointsChanged?.invoke()
+        notifyBreakpointsChanged()
     }
 
     fun toggleBreakpoint(filePath: String, line: Int) {
@@ -286,7 +315,7 @@ object UniversalDebugManager {
         } else {
             list.add(DebugBreakpoint(filePath, line))
         }
-        onBreakpointsChanged?.invoke()
+        notifyBreakpointsChanged()
     }
 
     fun getBreakpoints(filePath: String): List<DebugBreakpoint> = breakpoints[filePath]?.toList() ?: emptyList()
@@ -298,7 +327,7 @@ object UniversalDebugManager {
         breakpoints[filePath]?.find { it.line == line }?.let { bp ->
             val idx = breakpoints[filePath]!!.indexOf(bp)
             breakpoints[filePath]!![idx] = bp.copy(enabled = enabled)
-            onBreakpointsChanged?.invoke()
+            notifyBreakpointsChanged()
         }
     }
 
@@ -348,13 +377,13 @@ object UniversalDebugManager {
                     }
                 }
             }
-            onBreakpointsChanged?.invoke()
+            notifyBreakpointsChanged()
         } catch (_: Exception) {}
     }
 
     fun clearAllBreakpoints() {
         breakpoints.clear()
-        onBreakpointsChanged?.invoke()
+        notifyBreakpointsChanged()
     }
 }
 
