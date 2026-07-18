@@ -557,6 +557,35 @@ fun EditorPane(
                         color = if (showLspHover) Color(0xFF007ACC) else TabTextInactive,
                     )
                 }
+                // P25-LSP: Format document button — calls LSP formatting when available
+                IconButton(
+                    onClick = {
+                        if (LspManager.isServerRunning(active.language)) {
+                            val uri = LspManager.fileUriFromHostPath(context, active.path)
+                            if (uri != null) {
+                                val edits = try { LspManager.getFormatting(active.language, uri) } catch (_: Exception) { null }
+                                if (edits != null && edits.length() > 0) {
+                                    val newContent = applyTextEdits(active.content, edits)
+                                    if (newContent != active.content) {
+                                        val idx = tabs.indexOfFirst { it.id == active.id }
+                                        if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
+                                        if (active.path.startsWith("/")) {
+                                            try { java.io.File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.size(35.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FormatAlignLeft,
+                        contentDescription = "Format",
+                        tint = if (LspManager.isServerRunning(active.language)) Color(0xFF4EC9B0) else TabTextInactive,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
