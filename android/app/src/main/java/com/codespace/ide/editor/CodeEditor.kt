@@ -1166,7 +1166,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     maxLines = 1,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = (leftDpIH + paddingLeft).dp, top = topDpIH.dp + 2)
+                        .padding(start = (leftDpIH + paddingLeft).dp, top = (topDpIH + 2).dp)
                         .zIndex(4f)
                 )
             }
