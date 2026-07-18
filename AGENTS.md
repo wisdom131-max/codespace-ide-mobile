@@ -4636,3 +4636,139 @@ Latest green build: **#1581** (cefcd7cea6)
 
 ### Next: Phase 26-2 — DAP Abstraction Layer
 See Phase 26 plan above for full spec.
+
+---
+
+# FULL APP AUDIT — 2026-07-18 (Build #1592)
+
+> Conducted before Phase 27 planning. Every subsystem checked for wiring completeness,
+> dead code, stubs, and real-life test readiness. Findings verified by reading source,
+> not pattern-matching.
+
+## ✅ CONFIRMED WORKING (no action needed)
+
+| Subsystem | Status | Evidence |
+|-----------|--------|----------|
+| LSP (26/26 capabilities) | ✅ Wired | LspManager 31 methods → EditorPane 31 LaunchedEffects → CodeEditor 20 params. Zero stubs. |
+| DAP Debug stack | ✅ Wired | DAPClient (Content-Length framing, seq correlation), DebugAdapter interface, PythonDAPAdapter (debugpy + auto-install + legacy fallback), NodeDAPAdapter (js-debug + auto-install + legacy fallback). UDM resolveAdapter() tries DAP first. |
+| Debug UI | ✅ Wired | AttachDebugDialog → attachDebug(), capability-aware toolbar (getAdapterCapabilities), multi-session switcher (LazyRow → setActiveSession), DebugConsolePanel gets context + activeFilePath + input → sendInput. |
+| Terminal | ✅ Wired | ProotInstaller (1289 lines, real proot args, no stubs), BusyboxInstaller (calls OllamaSetup.installProfile during bootstrap), NativePty, TerminalService, TerminalSession. TextExpansion + McpShellProfile + BackupManager + SshManager wired into TerminalPane. |
+| Terminal Enhancements | ✅ Wired | TerminalEnhancementManager instantiated in PSS, ensureProfile/backupProfile/restoreProfile called. OllamaSetup called from BusyboxInstaller. |
+| Editor | ✅ Wired | CodeEditor (2690 lines), FileCache (LRU 20), FileIndexer, SyntaxHighlighter, MergeConflictParser. |
+| Git | ✅ Wired | GitEngine (311 lines, zero stubs). |
+| SSH | ✅ Wired | SshManager (264 lines, zero stubs), SshManagerSheet wired into PSS. |
+| 17 viewers | ✅ Shipped | DEX, ELF, APK, Smali, Binary diff, Disassembly, Entropy, Hex, SQLite, Strings, Network, Archive, PDF, Image, Media, AndroidRuntime, AiModelViewer. |
+| Backend (code) | ✅ Wired | NestJS, 9 modules (auth, users, repos, ai, sync, terminal, projects, connectors, health). AI service proxies 5 providers with normalized SSE. MCP service present. |
+| CI | ✅ Green | 16 consecutive green builds (#1584→#1593). APK signed with debug.keystore, versionCode auto-increments. |
+
+## ⚠️ CONFIRMED ISSUES (require action)
+
+### Issue 1: Panel Overflow Menu — 44 of 45 items are dead clicks
+**File:** `ui/screens/ProjectShellScreen.kt` line ~1050
+**Problem:** The `when (item)` block inside the panel menu only handles `"New Terminal"`.
+All other 44 menu items (Split Terminal, Kill Terminal, Clear, Clear Output, Copy All,
+Filter, Show Errors Only, Clear Console, Forward Port, Stop Forwarding, Pin Split,
+Swap Panels, Kill Split, Refresh Preview, Open in Browser, HTML Mode, Markdown Mode,
+Clear Log, Pause, Resume, Add Watch, Build, Clean, Check Environment, Cancel Build,
+Scan Tools, Run Task, Cancel Task, Clear History, Export Log, Refresh, Open Folder,
+Delete All, Clear Completed, Retry Failed, Backup Now, Restore, etc.) display in the
+menu but do nothing when tapped — they just close the menu.
+
+### Issue 2: Explorer More Menu — all 5 items are dead clicks
+**File:** `ui/screens/ProjectShellScreen.kt` line ~1051
+**Problem:** No `when` block at all. "New File", "New Folder", "Refresh", "Collapse All",
+"Open in Terminal" all just call `showExplorerMore = false`.
+
+### Issue 3: Auth Interceptor is a no-op
+**File:** `di/AppModule.kt` line ~42
+**Problem:** `authInterceptor = Interceptor { chain -> chain.proceed(chain.request()) }`
+— passes through with zero token injection. Comment says "access token held in memory by
+an AuthRepository in prod" but no AuthRepository exists. All authenticated API calls
+(login, repo sync, PR creation) go out without auth headers.
+
+### Issue 4: Backend is not deployed
+**Problem:** `api.codespace-ide.app` and `staging-api.codespace-ide.app` do not resolve in DNS.
+CI builds `assembleProdDebug` which sets `API_BASE_URL = https://api.codespace-ide.app/api/v1`.
+So on the APK: login, repo sync, PR creation, AI proxy, session sync, connectors — none work.
+
+### Issue 5: Dead code — TerminalSessionRenameDialog.kt
+**File:** `ui/panes/TerminalSessionRenameDialog.kt` (orphaned)
+**Problem:** File exists but is never imported. TerminalPane has its own inline rename
+dialog (lines 1516-1531) that works correctly. The file is dead code.
+
+### Issue 6: ProjectShellScreen.kt is 3071 lines (architectural risk)
+**Problem:** Was 2160 at Phase 9 documentation, grew to 3071 through Phase 26-4.
+JVM 64KB method limit getting closer. The panel menu and explorer menu blocks are each
+single lines of 2000+ characters — unmaintainable and inflate method size.
+
+### Issue 7: Phase 26-5 not started
+**Problem:** Active phase per docs is "JS-Debug Install Verification + DebugConsolePanel
+integration tests" but no commits exist for it yet.
+
+### Issue 8: Phase 7 still open (GitHub issue #1)
+**Problem:** AutoSave, Crash recovery, Workspace snapshots, Diagnostics report,
+Emergency recovery mode — created 2026-07-14, still open.
+
+---
+
+# PHASE 27 — AUDIT FIX-UP PLAN
+
+> Split into independently shippable sub-phases. Each must end green.
+> Order: quick wins first, then structural, then deployment.
+
+## Phase 27-1: Panel Menu + Explorer Menu Wiring
+**Goal:** Wire all 44 dead panel menu items + 5 dead explorer menu items.
+**Approach:** Extract both menus into separate @Composable functions (also fixes Issue 6
+by shrinking the main PSS function). Each item gets a real action lambda.
+**Files:** `ui/screens/ProjectShellScreen.kt`
+**Build target:** green
+
+### Panel Menu Items to Wire (by tab):
+- **TERMINAL:** New Terminal ✅(done), Split Terminal, Kill Terminal, Clear
+- **OUTPUT:** Clear Output, Copy All
+- **PROBLEMS:** Filter, Show Errors Only
+- **DEBUG:** Clear Console, Copy All
+- **PORTS:** Forward Port, Stop Forwarding
+- **SPLIT:** New Terminal, Pin Split, Swap Panels, Kill Split
+- **PREVIEW:** Refresh Preview, Open in Browser, HTML Mode, Markdown Mode
+- **LOGCAT:** Clear Log, Pause, Resume, Filter
+- **VARIABLES:** Add Watch, Clear All, Copy All
+- **BUILD:** Build, Clean, Check Environment, Cancel Build
+- **TOOLCHAIN:** Scan Tools, Refresh
+- **TASKS:** Run Task, Cancel Task, Clear Log
+- **HISTORY:** Clear History, Export Log
+- **ARTIFACTS:** Refresh, Open Folder, Delete All
+- **DOWNLOADS:** Clear Completed, Retry Failed
+- **BACKUP:** Backup Now, Restore
+
+### Explorer Menu Items to Wire:
+- New File, New Folder, Refresh, Collapse All, Open in Terminal
+
+## Phase 27-2: Auth Interceptor Wiring
+**Goal:** Inject auth tokens into OkHttp requests.
+**Approach:** Wire SecureTokenStore into the auth interceptor. Read access token,
+inject as `Authorization: Bearer <token>`. Handle 401 → trigger refresh.
+**Files:** `di/AppModule.kt`
+**Build target:** green
+
+## Phase 27-3: Dead Code Cleanup
+**Goal:** Remove orphaned files.
+**Files:** Delete `ui/panes/TerminalSessionRenameDialog.kt`
+**Build target:** green
+
+## Phase 27-4: PSS Composable Extraction
+**Goal:** Reduce ProjectShellScreen.kt method size risk.
+**Approach:** Extract panel menu → `PanelOverflowMenu()`, explorer menu → `ExplorerOverflowMenu()`.
+These are already done as part of 27-1 if implemented correctly. Verify line count after.
+**Build target:** green
+
+## Phase 27-5: Backend Deployment
+**Goal:** Deploy NestJS backend so APK features work end-to-end.
+**Approach:** Deploy to Railway (railway.json already configured). Point DNS for
+api.codespace-ide.app → Railway service. Verify /api/v1/health responds.
+**Prerequisite:** Railway account + domain configured.
+
+## Phase 28: Phase 26-5 (JS-Debug Verification) + Phase 7 (Recovery)
+**Goal:** Complete the existing active phase + close issue #1.
+**27-5 and 28 can run in parallel — they're independent.**
+
