@@ -251,6 +251,10 @@ private fun currentWord(text: String, cursor: Int): String {
     return text.substring(start, end)
 }
 
+
+/** P22-L: Peek Definition result — inline code preview without navigating away. */
+data class PeekDefResult(val filePath: String, val line: Int, val lines: List<String>, val defLine: Int)
+
 /** P20-A: Git blame info per line */
 data class BlameLine(val author: String, val date: String, val shortSha: String)
 
@@ -532,8 +536,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
     var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
-    // P22-L: Peek Definition result — inline code preview
-    data class PeekDefResult(val filePath: String, val line: Int, val lines: List<String>, val defLine: Int)
+    // P22-L: Peek Definition result — inline code preview (class moved to top-level)
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
 
     // ── Find & Replace state ────────────────────────────────────────────
