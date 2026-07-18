@@ -4011,3 +4011,418 @@ Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
 - LSP documentHighlight not yet wired to editor
 - LSP code folding (foldingRange) not yet wired to editor
 - No launch.json equivalent — debug configs are hardcoded in dropdown
+
+---
+
+## PHASE 26 — DAP MIGRATION & VS CODE DEBUGGING PARITY
+
+**Date:** 2026-07-18
+**Status:** PLANNED — not yet started
+**Prerequisite:** Phase 25 complete (build #1528+ green)
+**Critical Rule:** DO NOT immediately replace the current debugger. Phased approach — each phase must be independently shippable and green before the next begins.
+
+### GOAL
+
+Achieve a debugging architecture comparable to VS Code:
+
+```
+Editor
+  ↔ LSP (language intelligence)
+  ↔ DAP (Debug Adapter Protocol — JSON-RPC over stdin/stdout)
+  ↔ Debug Adapter (per-language: debugpy, js-debug-adapter, gdb-mi, etc.)
+  ↔ Runtime (Python, Node, Java, C++, etc.)
+```
+
+with breakpoints, stepping, variable inspection, watches, call stack, debug console, problems panel, output panel, and terminal integration all properly wired together.
+
+### CURRENT STATE (as of Phase 25)
+
+**Architecture:** Editor → DebugProvider interface → ProcessBuilder → Native Debugger (pdb, node inspect, bash -x)
+- 7 providers: Terminal, Python (pdb), NodeJs (inspect), Shell (bash -x), PHP, Android, APK
+- InteractiveDebugProvider interface for stdin support
+- UDM.sendInput() sends user input to running session
+- Python uses `python3 -m pdb` with breakpoint injection + real stepping (next/step/return)
+- Node uses `node inspect` with real stepping (next/step/out)
+- Shell uses `bash -x` (trace mode)
+
+**What's NOT there:**
+- No DAP (Debug Adapter Protocol) layer — no JSON-RPC, no capability negotiation
+- No structured responses (variables/stack come as typed objects in DAP; parsed text here)
+- Each provider is hand-rolled with its own command syntax
+- Adding a new language requires writing a new provider from scratch
+- No attach mode (connecting to already-running process)
+- No multi-session support (one session at a time)
+- No launch.json equivalent (debug configs hardcoded in dropdown)
+- TerminalDebugProvider is a stub (just signals "ready to run")
+- PhpDebugProvider, AndroidDebugProvider, ApkDebugProvider not upgraded to Interactive
+
+### MIGRATION PHASES
+
+---
+
+#### PHASE 26-1 — FINISH CURRENT DEBUGGER (NO DAP YET)
+
+**Goal:** Complete the existing DebugProvider architecture to full functionality. Do NOT replace it yet. Make what exists work properly and completely.
+
+**26-1a: Breakpoints**
+- Verify breakpoints can be set from editor gutter (tap line number = toggle red dot)
+- Verify breakpoints persist across sessions (SharedPreferences — already implemented in Phase 23)
+- Verify breakpoints are synchronized with the running debugger:
+  - Python: breakpoints injected via pdb `break` command before `continue`
+  - Node: breakpoints set via `setBreakpoint` in inspect mode
+  - Shell: breakpoints not applicable (trace mode only)
+- Verify breakpoints can be toggled, disabled, and cleared
+- Verify breakpoint hit pauses execution and shows current line in editor
+- Verify clicking a breakpoint in the list navigates to that line in the editor
+
+**26-1b: Variables**
+- Verify local variables appear when execution pauses:
+  - Python: `w` (where) + `p var` for each local, or `interact` for full inspection
+  - Node: `repl .scope` or `list` to get locals
+- Verify global variables appear
+- Verify scope hierarchy works (locals → enclosing → globals)
+- Verify variables update while stepping (re-read after each step)
+- Verify object expansion works (expand dict/object to see keys/values)
+- Verify arrays can be inspected (expand to see elements)
+- The VariableInspectorPanel must show real data from UDM, not stub values
+
+**26-1c: Watches**
+- Verify expressions can be added to the watch panel
+- Verify expressions update live (re-evaluated after each step)
+- Verify expression evaluation works:
+  - Python: `p <expr>` in pdb
+  - Node: `<expr>` in repl mode
+- Verify watch expressions show type and value
+- Verify invalid expressions show error message (not crash)
+
+**26-1d: Call Stack**
+- Verify call stack is displayed when execution pauses:
+  - Python: `w` (where) command output parsed into frames
+  - Node: `.scope` or backtrace output parsed into frames
+- Verify current frame is highlighted
+- Verify clicking a stack frame navigates the editor to that file:line
+- Verify frame locals update when switching to a different frame (if supported)
+
+**26-1e: Debug Console**
+- Verify expression evaluation works (type `x + 1` → see result)
+- Verify runtime logs appear (stdout/stderr from debuggee)
+- Verify errors appear (exceptions, syntax errors)
+- Verify stack traces appear on unhandled exceptions
+- Verify user can type interactive commands (pdb commands, node repl commands)
+
+**26-1f: Session Management**
+- Verify starting a session works (UDM.startDebug returns session ID)
+- Verify stopping a session works (UDM.stopSession kills process, cleans up)
+- Verify only one active session at a time (or warn if starting a second)
+- Verify session state is tracked (running, paused, stopped, error)
+- Verify session output is captured and displayed in debug console
+- Verify terminal and debug sessions can coexist (terminal tab works independently)
+
+**26-1g: Language Completeness**
+Verify debugging works for ALL current supported languages:
+- Python: pdb — breakpoints, stepping, variables, call stack ✅ (implemented in P25)
+- JavaScript: node inspect — breakpoints, stepping ✅ (implemented in P25)
+- Shell: bash -x — trace mode only (no breakpoints/stepping) — DOCUMENT this limitation in UI
+- PHP: xdebug — audit current state, upgrade if feasible
+- Terminal: stub — decide: implement basic run or document as "not debuggable"
+- Android: audit current state (APK install + logcat? or full debug?)
+- APK: audit current state
+
+**26-1h: Non-Debuggable File Policy**
+- Files that cannot be debugged (HTML, CSS, JSON, XML, images, PDFs) must show helpful alternatives, NOT "Unsupported"
+- Already implemented in Phase 23-6 — verify it still works after P25 changes
+
+**Exit Criteria for Phase 26-1:**
+- All 7 providers audited and either working or documented with limitations
+- Breakpoints, variables, watches, call stack, debug console all functional for Python and Node
+- No stub data anywhere — everything backed by real UDM calls
+- Build green
+
+---
+
+#### PHASE 26-2 — DAP ABSTRACTION LAYER + PYTHON DAP ADAPTER
+
+**Goal:** Design and implement a DAP client that speaks JSON-RPC over stdin/stdout. Use it for Python first (via debugpy). Keep legacy DebugProviders as fallback.
+
+**26-2a: DAP Client Design**
+- Create `DAPClient` class:
+  - JSON-RPC over stdin/stdout (standard DAP transport)
+  - Send: `initialize`, `launch`, `attach`, `configurationDone`, `setBreakpoints`, `setExceptionBreakpoints`, `continue`, `next`, `stepIn`, `stepOut`, `pause`, `stackTrace`, `scopes`, `variables`, `evaluate`, `disconnect`, `terminate`
+  - Receive: `initialized`, `stopped`, `continued`, `terminated`, `output`, `breakpoint`, `thread`
+  - Request/response correlation via sequence numbers
+  - Event handling (stopped → pause UI, output → debug console, terminated → cleanup)
+  - Timeout handling (if adapter doesn't respond in N seconds)
+  - Logging: all DAP messages logged to Output Panel for debugging
+
+**26-2b: DebugAdapter Abstraction**
+- Create `DebugAdapter` interface:
+  - `fun start(): Process` — spawn the adapter process
+  - `fun initialize(): InitializeResponse` — capability negotiation
+  - `fun launch(config): LaunchResponse` — start debugging
+  - `fun setBreakpoints(file, lines): SetBreakpointsResponse`
+  - `fun continue(threadId): void`
+  - `fun next(threadId): void` (step over)
+  - `fun stepIn(threadId): void`
+  - `fun stepOut(threadId): void`
+  - `fun pause(threadId): void`
+  - `fun stackTrace(threadId): StackTraceResponse`
+  - `fun scopes(frameId): ScopesResponse`
+  - `fun variables(variablesReference): VariablesResponse`
+  - `fun evaluate(expression, frameId): EvaluateResponse`
+  - `fun disconnect(): void`
+- Create `LegacyDebugAdapter` wrapper: wraps existing DebugProvider as a DAP-compatible adapter (so old providers still work through the new interface)
+
+**26-2c: Python DAP Adapter (debugpy)**
+- Install debugpy in the proot environment: `pip install debugpy`
+- Create `PythonDAPAdapter`:
+  - Start: `python3 -m debugpy --listen-on-stdin --wait-for-client <script>`
+  - Or: `python3 -m debugpy.adapter` (if using adapter mode)
+  - Capabilities: breakpoints (line + conditional + logpoint), stepping, variables, scopes, evaluate, exception breakpoints
+  - This replaces the current pdb-based PythonDebugProvider
+  - Keep pdb-based provider as `LegacyPythonProvider` fallback if debugpy not installed
+
+**26-2d: UDM Integration**
+- UDM chooses DAP adapter if available, falls back to legacy DebugProvider if not
+- UDM routes DAP events to UI: stopped → show pause state, output → debug console, etc.
+- UDM translates DAP variables/scopes to the existing VariableInspectorPanel format
+- UDM translates DAP stackTrace to the existing CallStackPanel format
+- Both DAP and legacy providers feed the same UI — user sees no difference except better data from DAP
+
+**Exit Criteria for Phase 26-2:**
+- DAPClient implemented and tested with debugpy
+- Python debugging works via DAP (better variable inspection, structured call stack)
+- Legacy pdb provider still works as fallback
+- All DAP messages logged to Output Panel
+- Build green
+
+---
+
+#### PHASE 26-3 — NODE.JS DAP + ATTACH MODE + MULTI-SESSION
+
+**Goal:** Migrate Node.js to DAP adapter. Add attach mode. Add capability negotiation. Add multi-session support.
+
+**26-3a: Node.js DAP Adapter**
+- Install js-debug-adapter (or use `node --inspect` with DAP wrapper)
+- Create `NodeDAPAdapter`:
+  - Start: `node --inspect-brk=<port> <script>` + DAP client connecting to port
+  - Or: use `js-debug-adapter` npm package if available in proot
+  - Capabilities: breakpoints, stepping, variables, scopes, evaluate, exception breakpoints
+  - This replaces the current node-inspect-based NodeJsDebugProvider
+  - Keep inspect-based provider as fallback
+
+**26-3b: Attach Mode**
+- Add "Attach" option to debug config dropdown
+- User specifies: process ID or port + host
+- DAP `attach` request instead of `launch`
+- Works with: Python (debugpy attach), Node (inspect attach), any DAP-compatible debugger
+- Use case: attach to a running server process, debug without restarting
+
+**26-3c: Capability Negotiation**
+- Read `InitializeResponse` from adapter — store supported capabilities
+- UI adapts: if adapter doesn't support conditional breakpoints, hide that option
+- If adapter doesn't support logpoints, hide that option
+- If adapter doesn't support hit-count breakpoints, hide that option
+- If adapter supports `supportsTerminateRequest`, show Stop button (otherwise use disconnect)
+
+**26-3d: Multi-Session Support**
+- UDM tracks multiple concurrent sessions (Map<String, DebugSession>)
+- Each session has its own: adapter, state, output buffer, breakpoints
+- UI shows active session in dropdown — switch between sessions
+- Stopping one session doesn't affect others
+- Output from each session goes to its own debug console (or a combined view with session labels)
+
+**Exit Criteria for Phase 26-3:**
+- Node.js debugging works via DAP
+- Attach mode works for Python and Node
+- Capability negotiation hides unsupported features
+- Multiple debug sessions can run concurrently
+- Legacy providers still work as fallback
+- Build green
+
+---
+
+#### PHASE 26-4 — REMAINING LANGUAGES TO DAP
+
+**Goal:** Move remaining languages to DAP-compatible adapters where available. Fall back to legacy providers where DAP adapters don't exist.
+
+**Languages and DAP adapters:**
+
+| Language | DAP Adapter | Available? | Fallback |
+|----------|------------|------------|----------|
+| Python | debugpy | ✅ pip install | Legacy pdb |
+| JavaScript | js-debug-adapter / node --inspect | ✅ npm | Legacy node inspect |
+| TypeScript | js-debug-adapter (ts-node) | ✅ npm | Legacy node inspect |
+| Java | java-debug (Microsoft) | ✅ but needs JDK | Legacy (none) |
+| Kotlin | kotlin-debug-adapter | ⚠️ check availability | Legacy (none) |
+| C/C++ | codelldb / gdb-mi adapter | ⚠️ check arm64 | Legacy (none) |
+| C# | netcoredbg | ⚠️ check arm64 | Legacy (none) |
+| Go | delve (dlv) | ✅ go install | Legacy (none) |
+| Rust | rust-lldb / lldb-mi | ⚠️ check arm64 | Legacy (none) |
+| Dart | dart debug adapter (built-in) | ✅ dart | Legacy (none) |
+| PHP | php-debug-adapter | ⚠️ check availability | Legacy xdebug |
+| Ruby | rdbg (debug gem) | ✅ gem install | Legacy (none) |
+| Lua | lua-debug | ⚠️ check availability | Legacy (none) |
+| Shell | (no DAP adapter) | ❌ | Legacy bash -x (trace only) |
+
+**Priority order:** Go (delve), Rust (if arm64 lldb available), Java (java-debug), then remaining
+
+**For each language:**
+1. Check if DAP adapter exists and works on arm64 in proot
+2. If yes: install, create adapter class, test breakpoints + stepping + variables
+3. If no: keep legacy provider or document as "not debuggable" with helpful alternatives
+4. If adapter exists but is unreliable on this hardware: use legacy with documented limitations
+
+**Exit Criteria for Phase 26-4:**
+- All supported languages audited
+- DAP adapters used where available
+- Legacy fallback documented where DAP not available
+- Build green
+
+---
+
+### VS CODE PARITY AUDIT — FULL CHECKLIST
+
+This audit must be performed as part of Phase 26-1 (before DAP migration) and re-run after each phase.
+
+#### ARCHITECTURE & COMMUNICATION
+
+Verify the architecture and communication between these components:
+
+- [ ] Editor — can set breakpoints, show current line, highlight paused line
+- [ ] Explorer/File Tree — can right-click file → "Run" or "Debug" (if implemented)
+- [ ] Problems Panel — compiler errors from LSP appear, clicking navigates to source
+- [ ] Output Panel — LSP logs, debug adapter logs, build logs appear
+- [ ] Debug Console — expression evaluation, runtime logs, errors, stack traces
+- [ ] Terminal — separate from debug sessions, can coexist
+- [ ] Run & Debug Panel — start/stop sessions, view call stack, breakpoints, variables, watches
+- [ ] Breakpoint Manager — create, toggle, delete, persist, sync with debugger
+- [ ] Variable Inspector — show locals, globals, scope hierarchy, expansion
+- [ ] Watch Expressions — add, evaluate, live update
+- [ ] Call Stack Viewer — display frames, highlight current, click to navigate
+- [ ] Debug Adapter Protocol — implemented (Phase 26-2+), messages logged
+- [ ] Language Servers (LSP) — diagnostics, hover, completion, signature help
+- [ ] Workspace System — per-project debug configs (launch.json equivalent)
+
+#### EDITOR ↔ DEBUGGER INTEGRATION
+
+- [ ] Clicking Run starts the correct debugger for the file's language
+- [ ] Clicking Debug starts a debug session (not just opens a terminal)
+- [ ] Editor can communicate with debugger (send breakpoints, receive pause/resume events)
+- [ ] Breakpoints can be set from gutter (tap line number)
+- [ ] Breakpoints persist across sessions (SharedPreferences)
+- [ ] Breakpoints are synchronized with debugger (sent on session start, updated on toggle)
+
+#### DAP PROTOCOL (after Phase 26-2)
+
+- [ ] DAP implemented correctly (JSON-RPC over stdin/stdout)
+- [ ] Requests and responses logged to Output Panel
+- [ ] Launch requests work
+- [ ] Attach requests work
+- [ ] Continue works
+- [ ] Pause works
+- [ ] Stop works
+- [ ] Step Over works
+- [ ] Step Into works
+- [ ] Step Out works
+
+#### VARIABLE INSPECTION
+
+- [ ] Local variables appear
+- [ ] Global variables appear
+- [ ] Scope hierarchy works (locals → enclosing → globals)
+- [ ] Variables update while stepping
+- [ ] Object expansion works (expand dict/object to see keys/values)
+- [ ] Arrays can be inspected (expand to see elements)
+
+#### WATCH PANEL
+
+- [ ] Expressions can be added
+- [ ] Expressions update live (re-evaluated after each step)
+- [ ] Expression evaluation works (type `x + 1` → see result)
+- [ ] Invalid expressions show error (not crash)
+
+#### CALL STACK
+
+- [ ] Call stack is displayed when execution pauses
+- [ ] Current frame is highlighted
+- [ ] Clicking stack frames navigates editor to that file:line
+- [ ] Frame switching shows that frame's variables (if supported)
+
+#### DEBUG CONSOLE
+
+- [ ] Expression evaluation works
+- [ ] Runtime logs appear (stdout/stderr from debuggee)
+- [ ] Errors appear (exceptions, syntax errors)
+- [ ] Stack traces appear on unhandled exceptions
+- [ ] User can type interactive commands
+
+#### TERMINAL INTEGRATION
+
+- [ ] Debugging is separate from terminal execution (different tab, different process)
+- [ ] Running code does not automatically become debugging
+- [ ] Terminal and debugger can coexist (both tabs work independently)
+- [ ] Debug sessions can launch terminals when required (DAP `runInTerminal` request — Phase 26-2+)
+
+#### PROBLEMS PANEL
+
+- [ ] Compiler errors appear (from LSP diagnostics)
+- [ ] Runtime errors appear (from debugger exceptions)
+- [ ] Clicking an error navigates to source line
+
+#### OUTPUT PANEL
+
+- [ ] Language server logs appear
+- [ ] Debug adapter logs appear (DAP message log — Phase 26-2+)
+- [ ] Build logs appear
+- [ ] Extension logs appear (if extension system is active)
+
+#### WORKSPACE INTEGRATION
+
+- [ ] launch.json equivalent exists (per-project debug configurations)
+- [ ] tasks.json equivalent exists (per-project build/run tasks)
+- [ ] Per-project debug configurations work (different configs for different projects)
+- [ ] Debug configs stored in project root (like `.vscode/launch.json`)
+- [ ] Debug configs include: program path, args, env vars, working directory, stop on entry
+
+#### SUPPORTED LANGUAGES AUDIT
+
+Audit debugging support for ALL supported languages:
+
+| Language | Breakpoints | Stepping | Variables | Call Stack | Attach | Status |
+|----------|------------|----------|-----------|-----------|--------|--------|
+| JavaScript | | | | | | |
+| TypeScript | | | | | | |
+| Python | | | | | | |
+| Java | | | | | | |
+| Kotlin | | | | | | |
+| C | | | | | | |
+| C++ | | | | | | |
+| C# | | | | | | |
+| Go | | | | | | |
+| Rust | | | | | | |
+| Dart | | | | | | |
+| PHP | | | | | | |
+| Ruby | | | | | | |
+| Lua | | | | | | |
+| Shell | | | | | | |
+
+Fill each cell with: ✅ Works, ⚠️ Partial, ❌ Not supported, N/A
+
+### IMPLEMENTATION RULES
+
+1. **Do NOT replace the current debugger until Phase 26-1 is complete.** Finish what exists first.
+2. **Each phase must be independently shippable.** Build must be green after each phase.
+3. **Legacy providers must always work as fallback.** If a DAP adapter is not installed or fails, fall back to legacy.
+4. **All changes to the debug system must be auditable.** Log all DAP messages, all session state changes, all errors.
+5. **No stub data.** Every UI element must be backed by real data from the debugger.
+6. **No silent failures.** If something doesn't work, show a clear error message to the user.
+7. **Follow the existing separation:** Activity Bar Debugger = full IDE features (sidebar), Terminal Panel Debugger = lightweight quick-run (bottom panel). Both share UDM backend.
+8. **Test on real hardware.** Don't assume something works — verify on the actual device (aarch64, proot, 2.3GB RAM).
+
+### STATUS
+
+- [ ] Phase 26-1: Finish current debugger (breakpoints, variables, watches, call stack, debug console, session management)
+- [ ] Phase 26-2: DAP abstraction layer + Python DAP adapter (debugpy)
+- [ ] Phase 26-3: Node.js DAP + attach mode + capability negotiation + multi-session
+- [ ] Phase 26-4: Remaining languages to DAP-compatible adapters
+- [ ] VS Code Parity Audit: Full checklist completed
