@@ -1836,9 +1836,6 @@ private fun PssBottomPanelContent(
                             }
                             debugMessages.add("[debug] " + alternatives)
                         }
-                            onRunInTerminal(cmd)
-                            onActiveBottomTabChange(BottomTab.TERMINAL)
-                        }
                     }
                 },
             )
