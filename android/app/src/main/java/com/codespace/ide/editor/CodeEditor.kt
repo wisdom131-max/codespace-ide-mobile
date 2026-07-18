@@ -370,43 +370,64 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val rawLines = remember(value.text) { value.text.split("\n") }
     
     // Determine which line indices are foldable
-    val foldableLines = remember(rawLines) {
-        val set = mutableSetOf<Int>()
-        for (i in rawLines.indices) {
-            val line = rawLines[i].trimEnd()
-            if (line.endsWith("{") || line.endsWith("(") || line.endsWith("[") || line.endsWith(":")) {
-                set.add(i)
-            } else if (i < rawLines.lastIndex) {
-                val currentIndent = rawLines[i].length - rawLines[i].trimStart().length
-                val nextIndent = rawLines[i + 1].length - rawLines[i + 1].trimStart().length
-                if (nextIndent > currentIndent && rawLines[i + 1].trim().isNotEmpty()) {
+    // P26-1: Use LSP folding ranges when available (more accurate), fall back to regex
+    val foldableLines = remember(rawLines, lspFoldingRanges) {
+        if (lspFoldingRanges.isNotEmpty()) {
+            // LSP folding ranges: List<Pair<Int,Int>> — (startLine, endLine) 0-based
+            lspFoldingRanges.map { it.first }.toSet()
+        } else {
+            // Regex fallback: lines ending with { ( [ : or having indent increase on next line
+            val set = mutableSetOf<Int>()
+            for (i in rawLines.indices) {
+                val line = rawLines[i].trimEnd()
+                if (line.endsWith("{") || line.endsWith("(") || line.endsWith("[") || line.endsWith(":")) {
                     set.add(i)
+                } else if (i < rawLines.lastIndex) {
+                    val currentIndent = rawLines[i].length - rawLines[i].trimStart().length
+                    val nextIndent = rawLines[i + 1].length - rawLines[i + 1].trimStart().length
+                    if (nextIndent > currentIndent && rawLines[i + 1].trim().isNotEmpty()) {
+                        set.add(i)
+                    }
                 }
             }
+            set
         }
-        set
     }
 
     // Determine the range of folded lines
-    val foldedLineIndices = remember(foldedRanges, rawLines) {
+    // P26-1: Use LSP folding ranges for precise fold boundaries when available
+    val foldedLineIndices = remember(foldedRanges, rawLines, lspFoldingRanges) {
         val set = mutableSetOf<Int>()
+        // Build a map of fold start -> end from LSP ranges
+        val lspEndMap = if (lspFoldingRanges.isNotEmpty()) {
+            lspFoldingRanges.associate { it.first to it.second }
+        } else null
         for (startIdx in foldedRanges) {
             if (startIdx >= rawLines.size) continue
-            val startIndent = rawLines[startIdx].length - rawLines[startIdx].trimStart().length
-            var j = startIdx + 1
-            while (j < rawLines.size) {
-                val lineTrimmed = rawLines[j].trim()
-                if (lineTrimmed.isEmpty()) {
+            if (lspEndMap != null) {
+                // LSP mode: use precise end line from LSP
+                val endIdx = lspEndMap[startIdx] ?: startIdx
+                for (j in (startIdx + 1)..endIdx) {
                     set.add(j)
-                    j++
-                    continue
                 }
-                val indent = rawLines[j].length - rawLines[j].trimStart().length
-                if (indent > startIndent) {
-                    set.add(j)
-                    j++
-                } else {
-                    break
+            } else {
+                // Regex fallback: indent-based fold boundary detection
+                val startIndent = rawLines[startIdx].length - rawLines[startIdx].trimStart().length
+                var j = startIdx + 1
+                while (j < rawLines.size) {
+                    val lineTrimmed = rawLines[j].trim()
+                    if (lineTrimmed.isEmpty()) {
+                        set.add(j)
+                        j++
+                        continue
+                    }
+                    val indent = rawLines[j].length - rawLines[j].trimStart().length
+                    if (indent > startIndent) {
+                        set.add(j)
+                        j++
+                    } else {
+                        break
+                    }
                 }
             }
         }
