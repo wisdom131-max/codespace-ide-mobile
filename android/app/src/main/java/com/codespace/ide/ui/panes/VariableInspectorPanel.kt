@@ -139,10 +139,12 @@ fun VariableInspectorPanel(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            we.value,
-                            color = Color(0xFF808080),
+                            "= ${we.value}",
+                            color = if (we.value == "—" || we.value == "---") Color(0xFF666666) else Color(0xFF89D185),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         IconButton(
                             onClick = { watchExprs = watchExprs.filterNot { it.id == we.id } },
@@ -177,6 +179,15 @@ fun VariableInspectorPanel(
                 var pausedVars by remember { mutableStateOf<List<com.codespace.ide.debug.DebugVariable>>(emptyList()) }
                 val varsListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { _, vars ->
                     pausedVars = vars
+                    // P26-1c: Live watch — re-evaluate all watch expressions on each pause
+                    val udm = com.codespace.ide.debug.UniversalDebugManager
+                    val sid = udm.getActiveSession()?.id
+                    if (sid != null && watchExprs.isNotEmpty()) {
+                        watchExprs = watchExprs.map { w ->
+                            val newVal = udm.evaluateExpression(sid, w.expression) ?: "—"
+                            w.copy(value = newVal)
+                        }
+                    }
                 }
                 LaunchedEffect(Unit) {
                     com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(varsListener)
@@ -202,8 +213,38 @@ fun VariableInspectorPanel(
                         fontFamily = FontFamily.Monospace,
                     )
                 } else {
+                    // P26-1b: Object expansion — expandable variables can be clicked to show children
+                    var expandedVars by remember { mutableStateOf(setOf<String>()) }
                     pausedVars.forEach { v ->
-                        VarRow(VarEntry(v.name, v.type, v.value, v.depth, v.expandable))
+                        val isExpanded = v.name in expandedVars
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = (12 + v.depth * 16).dp, end = 8.dp, top = 1.dp, bottom = 1.dp)
+                                .clickable {
+                                    if (v.expandable) {
+                                        expandedVars = if (isExpanded) expandedVars - v.name else expandedVars + v.name
+                                    }
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (v.expandable) {
+                                Icon(
+                                    if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    null, tint = Color(0xFF808080),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            } else {
+                                Spacer(Modifier.width(12.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(v.name, color = Color(0xFF9CDCFE), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            Text(": ", color = Color(0xFF808080), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            Text(v.type, color = Color(0xFF569CD6), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            Text(" = ", color = Color(0xFF808080), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            Text(v.value, color = Color(0xFFD4D4D4), fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                maxLines = if (isExpanded) 5 else 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
