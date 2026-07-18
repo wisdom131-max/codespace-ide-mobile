@@ -329,9 +329,11 @@ fun HomeScreen(
                                     projects.remove(toRemove)
                                     saveProjectsLocal(context, projects.toList())
                                     scope.launch {
-                                        // Also wipe the on-disk folder so the name can be reused
+                                        // P29: Move to trash instead of permanent delete
                                         val projectDir = java.io.File(context.filesDir, "projects/${toRemove.name}")
-                                        if (projectDir.exists()) projectDir.deleteRecursively()
+                                        if (projectDir.exists()) {
+                                            com.codespace.ide.util.WorkspaceManager.moveProjectToTrash(context, projectDir)
+                                        }
                                         deleteProjectFromCloud(accessToken, toRemove.id)
                                     }
                                 }) {
