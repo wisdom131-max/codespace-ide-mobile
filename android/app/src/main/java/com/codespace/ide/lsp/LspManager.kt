@@ -584,6 +584,9 @@ object LspManager {
             put("formatting", formatting)
             put("rangeFormatting", formatting)
             put("onTypeFormatting", formatting)
+            put("codeLens", JSONObject().apply { put("dynamicRegistration", false) })
+            put("inlayHint", JSONObject().apply { put("dynamicRegistration", false) })
+            put("documentLink", JSONObject().apply { put("dynamicRegistration", false); put("tooltipSupport", true) })
         }
         // workspace capabilities
         val workspace = JSONObject().apply {
