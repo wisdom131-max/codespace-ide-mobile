@@ -2211,7 +2211,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
 
 @Composable fun GitSidePanel(projectId: String) { SourceControlPane(projectId) }
 
-@Composable fun RunDebugPanel(onMoreMenu: () -> Unit) {
+@Composable fun RunDebugPanel(onMoreMenu: () -> Unit, activeFilePath: String = "") {
     // P23-2: Wired to UniversalDebugManager — real debug backend
     val udm = UniversalDebugManager
     var selectedConfig by remember { mutableStateOf("Kotlin Application") }
@@ -2228,6 +2228,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var showBreakpoints by remember { mutableStateOf(true) }
     var watchInput by remember { mutableStateOf("") }
     var watchIdCounter by remember { mutableStateOf(0) }
+    var debugInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         udm.onBreakpointsChanged = { allBreakpoints = udm.getAllBreakpoints() }
@@ -2282,16 +2283,20 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             if (!isRunning) {
                 FilledIconButton(
                     onClick = {
-                        // P25-2 FIX: Start a REAL debug session via UDM, not a fake "manual" ID.
-                        // Map the config dropdown to a UDM provider.
+                        // P25-DEBUG: Start a REAL debug session via UDM with the active file path.
+                        // Detect language from the file extension if possible.
                         val udm2 = UniversalDebugManager
-                        val dbgLang = when (selectedConfig) {
-                            "Kotlin Application", "Android App (Debug)", "Android App (Release)", "Gradle Build" -> Language.KOTLIN
-                            "JUnit Tests" -> Language.JAVA
-                            "Terminal Script" -> Language.SHELL
-                            else -> Language.KOTLIN
+                        val dbgLang = if (activeFilePath.isNotBlank()) {
+                            com.codespace.ide.domain.Language.fromPath(activeFilePath)
+                        } else {
+                            when (selectedConfig) {
+                                "Kotlin Application", "Android App (Debug)", "Android App (Release)", "Gradle Build" -> Language.KOTLIN
+                                "JUnit Tests" -> Language.JAVA
+                                "Terminal Script" -> Language.SHELL
+                                else -> Language.KOTLIN
+                            }
                         }
-                        val sessionId = udm2.startDebug(dbgLang, "", null)
+                        val sessionId = udm2.startDebug(dbgLang, activeFilePath, null)
                         if (sessionId != null) {
                             activeSessionId = sessionId
                             sessionState = DebugState.STARTING
