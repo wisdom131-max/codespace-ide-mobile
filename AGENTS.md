@@ -24,9 +24,10 @@
 
 | | |
 |-|-|
-| Latest green build | **#1589** |
-| Active phase | **Phase 26-4** (Debug UI — Attach Dialog, Capability-Aware Controls, Multi-Session Switcher) |
-| Last green | #1589 — feat(P26-3b/c/d): UDM attachDebug(), getActiveSessions(), getAdapterCapabilities(), NodeDAPAdapter registered |
+| Latest green build | **#1592** |
+| Active phase | **Phase 26-5** (JS-Debug Install Verification + DebugConsolePanel integration tests) |
+| Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
+| **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
 | **Phase 26-1** | **✅ COMPLETE** — Type Definition, Find Implementations, Code Lens, Inlay Hints, Outline LSP, Code Folding |
@@ -66,14 +67,15 @@
 | 26-3c | Capability negotiation — InitializeResponse → DAPCapabilities, getAdapterCapabilities(sessionId) | ✅ DONE (#1589) | debug/UniversalDebugManager.kt |
 | 26-3d | Multi-session — getActiveSessions(), getSessionById(), activeSessionId, setActiveSession() | ✅ DONE (#1589) | debug/UniversalDebugManager.kt |
 
-### Phase 26-4 — Debug UI (next)
+### Phase 26-4 — Debug UI ✅ COMPLETE (build #1592)
 
 | # | Item | Status | Files |
 |---|------|--------|-------|
-| 26-4a | Attach Dialog — port/PID picker sheet, Attach… button in debugger panel | 🔲 TODO | ui/debug/AttachDebugDialog.kt |
-| 26-4b | Capability-aware controls — hide step/pause/evaluate buttons when adapter doesn't support them | 🔲 TODO | ui/debug/DebugPanelToolbar.kt |
-| 26-4c | Multi-session switcher — session tab bar in debug panel when >1 session active | 🔲 TODO | ui/panes/DebugConsolePanel.kt or ProjectShellScreen |
-| 26-4d | UDM.startDebug() call sites — pass context param so DAP adapters get context for proot launch | 🔲 TODO | all call sites in ProjectShellScreen / TerminalPane |
+| 26-4a | AttachDebugDialog.kt — port/PID picker, Attach button, progress indicator, inline error | ✅ DONE (#1591) | ui/panes/AttachDebugDialog.kt |
+| 26-4b | Capability-aware step toolbar — ▶ Continue, ⏸ Pause, ↷ Step Over, ↓ Step Into, ↑ Step Out; DAP badge | ✅ DONE (#1592) | ui/screens/ProjectShellScreen.kt |
+| 26-4c | Multi-session switcher — LazyRow tab bar, setActiveSession(), per-session stop/step | ✅ DONE (#1592) | ui/screens/ProjectShellScreen.kt |
+| 26-4d | startDebug() context param wired at both call sites; DebugConsolePanel gets context+activeFilePath | ✅ DONE (#1592) | ui/screens/ProjectShellScreen.kt |
+| 26-4e | DebugToolbarBtn extracted private composable for step controls | ✅ DONE (#1592) | ui/screens/ProjectShellScreen.kt |
 
 ### Phase 26-1 ✅ COMPLETE (build #1582 docs, #1581 code green)
 
