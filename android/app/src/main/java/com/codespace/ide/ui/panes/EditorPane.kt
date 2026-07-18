@@ -1136,6 +1136,28 @@ fun EditorPane(
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
                                     val items = LspManager.getCompletion(active.language, uri, line, col)
+                                    // P26-1: Resolve first item for richer docs
+                                    items?.let { arr ->
+                                        if (arr.length() > 0) {
+                                            val first = arr.optJSONObject(0)
+                                            if (first != null) {
+                                                val resolved = try { LspManager.resolveCompletion(active.language, first) } catch (_: Exception) { null }
+                                                if (resolved != null) {
+                                                    val detail = resolved.optString("detail", "")
+                                                    val docs = resolved.optJSONObject("documentation")
+                                                    val docText = when (docs) {
+                                                        is org.json.JSONObject -> docs.optString("value", "")
+                                                        is String -> docs
+                                                        else -> ""
+                                                    }
+                                                    if (detail.isNotBlank() || docText.isNotBlank()) {
+                                                        lspResolvedDetail = (if (detail.isNotBlank()) detail else "") +
+                                                            (if (docText.isNotBlank()) "\n$docText" else "")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     items?.let { parseLspCompletions(it) } ?: emptyList()
                                 } else emptyList()
                             }
@@ -1244,6 +1266,136 @@ fun EditorPane(
                                         }
                                     }
                                 }
+                            }
+                        } else null,
+                        // P26-1: LSP Document Highlight lines
+                        lspHighlightLines = lspHighlightLines,
+                        // P26-1: LSP Document Symbols (outline)
+                        lspDocumentSymbols = lspDocumentSymbols,
+                        // P26-1: LSP Folding Ranges
+                        lspFoldingRanges = lspFoldingRanges,
+                        // P26-1: LSP Code Lens
+                        lspCodeLenses = lspCodeLenses,
+                        // P26-1: LSP Inlay Hints
+                        lspInlayHints = lspInlayHints,
+                        // P26-1: LSP Document Links
+                        lspDocumentLinks = lspDocumentLinks,
+                        // P26-1: LSP Type Definition (context menu)
+                        onLspTypeDefinition = if (LspManager.isServerRunning(active.language)) {
+                            {
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val typeDefs = try { LspManager.getTypeDefinition(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    if (typeDefs != null && typeDefs.length() > 0) {
+                                        val loc = typeDefs.optJSONObject(0)
+                                        if (loc != null) {
+                                            val defUri = loc.optString("uri", "")
+                                            val defLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            val defPath = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
+                                            val targetText = if (defPath == active.path) active.content else try { java.io.File(defPath).readText() } catch (_: Exception) { null }
+                                            if (targetText != null) {
+                                                val allLines = targetText.split("\n")
+                                                val startLine = (defLine - 3).coerceAtLeast(0)
+                                                val endLine = (defLine + 8).coerceAtMost(allLines.size - 1)
+                                                val snippet = allLines.subList(startLine, endLine + 1)
+                                                lspTypeDefResult = PeekDefResult(defPath, defLine, snippet, defLine - startLine)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else null,
+                        // P26-1: LSP Implementation (context menu)
+                        onLspImplementation = if (LspManager.isServerRunning(active.language)) {
+                            {
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val impls = try { LspManager.getImplementation(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    val results = mutableListOf<Triple<String, Int, String>>()
+                                    if (impls != null) {
+                                        for (i in 0 until impls.length()) {
+                                            val loc = impls.optJSONObject(i) ?: continue
+                                            val implUri = loc.optString("uri", "")
+                                            val implLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            val implPath = if (implUri.startsWith("file://")) implUri.removePrefix("file://") else implUri
+                                            val snippet = try { java.io.File(implPath).readLines().getOrElse(implLine) { "" } } catch (_: Exception) { "" }
+                                            results.add(Triple(implPath, implLine, snippet))
+                                        }
+                                    }
+                                    lspImplResults = results
+                                }
+                            }
+                        } else null,
+                        // P26-1: LSP Range Formatting
+                        onLspRangeFormat = if (LspManager.isServerRunning(active.language)) {
+                            { startLine, endLine ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    try { LspManager.getRangeFormatting(active.language, uri, startLine, endLine) } catch (_: Exception) { null }
+                                } else null
+                            }
+                        } else null,
+                        // P26-1: LSP Selection Range
+                        onLspSelectionRange = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    try { LspManager.getSelectionRange(active.language, uri, line, col) } catch (_: Exception) { null }
+                                } else null
+                            }
+                        } else null,
+                        // P26-1: LSP Prepare Rename
+                        onLspPrepareRename = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    try { LspManager.prepareRename(active.language, uri, line, col) } catch (_: Exception) { null }
+                                } else null
+                            }
+                        } else null,
+                        // P26-1: LSP Workspace Symbol search
+                        onLspWorkspaceSymbol = if (LspManager.isServerRunning(active.language)) {
+                            { query ->
+                                val symbols = try { LspManager.getWorkspaceSymbol(active.language, query) } catch (_: Exception) { null }
+                                val results = mutableListOf<Triple<String, Int, String>>()
+                                if (symbols != null) {
+                                    for (i in 0 until symbols.length()) {
+                                        val sym = symbols.optJSONObject(i) ?: continue
+                                        val name = sym.optString("name", "")
+                                        val loc = sym.optJSONObject("location")
+                                        val symUri = loc?.optString("uri", "") ?: ""
+                                        val symLine = loc?.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                        val symPath = if (symUri.startsWith("file://")) symUri.removePrefix("file://") else symUri
+                                        results.add(Triple(symPath, symLine, name))
+                                    }
+                                }
+                                lspSymbolResults = results
+                            }
+                        } else null,
+                        // P26-1: LSP didSave on format
+                        onFormat = if (LspManager.isServerRunning(active.language)) {
+                            {
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val edits = try {
+                                        LspManager.getFormatting(active.language, uri)
+                                    } catch (_: Exception) { null }
+                                    if (edits != null && edits.length() > 0) {
+                                        // Apply TextEdits to the content
+                                        val content = active.content
+                                        val newContent = applyTextEdits(content, edits)
+                                        if (newContent != content) {
+                                            val idx = tabs.indexOfFirst { it.id == active.id }
+                                            if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
+                                            if (active.path.startsWith("/")) {
+                                                try { java.io.File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                            }
+                                        }
+                                    }
+                                    // P26-1: Notify server of save
+                                    try { LspManager.didSave(active.language, uri, active.content) } catch (_: Exception) {}
+                                }
+                                null
                             }
                         } else null,
                     )
