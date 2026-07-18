@@ -952,7 +952,7 @@ fun ProjectShellScreen(
                             editorTabs.add(path)
                         }
                         activeEditorTab = path
-                        // TODO: scroll to line — needs scrollToLine state passed to EditorPane
+                        // P26-1: TODO — line scrolling needs EditorPane to expose scrollToLine as parameter
                     }
                 }
             )
