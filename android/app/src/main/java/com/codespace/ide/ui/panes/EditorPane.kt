@@ -1416,6 +1416,152 @@ fun EditorPane(
                 }
             }
         }
+
+        // P26-1: LSP Type Definition Peek overlay
+        if (lspTypeDefResult != null) {
+            val peek = lspTypeDefResult!!
+            androidx.compose.material3.Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.5f),
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = androidx.compose.ui.graphics.Color(0xFF1E1E1E)
+                ),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            ) {
+                androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(androidx.compose.ui.graphics.Color(0xFF252526))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Type Definition",
+                            color = androidx.compose.ui.graphics.Color(0xFFC586C0),
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f),
+                        )
+                        val fileName = peek.filePath.substringAfterLast('/')
+                        Text(
+                            "$" + "fileName:$" + "{peek.line + 1}",
+                            color = androidx.compose.ui.graphics.Color(0xFF888888),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { lspTypeDefResult = null }) {
+                            Text("X", color = androidx.compose.ui.graphics.Color(0xFF888888), fontSize = 16.sp)
+                        }
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFF333333))
+                    androidx.compose.foundation.layout.Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(8.dp),
+                    ) {
+                        peek.lines.forEachIndexed { idx, line ->
+                            val isDefLine = idx == peek.defLine
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (isDefLine) androidx.compose.ui.graphics.Color(0xFF007ACC).copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(
+                                    "" + (peek.line - peek.defLine + idx + 1),
+                                    color = if (isDefLine) androidx.compose.ui.graphics.Color(0xFF007ACC) else androidx.compose.ui.graphics.Color(0xFF858585),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.width(36.dp),
+                                )
+                                Text(
+                                    line.take(120),
+                                    color = if (isDefLine) androidx.compose.ui.graphics.Color(0xFFD4D4D4) else androidx.compose.ui.graphics.Color(0xFFAAAAAA),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFF333333))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { lspTypeDefResult = null }) {
+                            Text("Close", color = androidx.compose.ui.graphics.Color(0xFF888888), fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        TextButton(
+                            onClick = {
+                                onOpenFileAtLine?.invoke(peek.filePath, peek.line + 1)
+                                lspTypeDefResult = null
+                            }
+                        ) {
+                            Text("Go to Definition ->", color = androidx.compose.ui.graphics.Color(0xFF007ACC), fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+        // P26-1: LSP Find Implementations results overlay
+        if (lspImplResults.isNotEmpty()) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { lspImplResults = emptyList() },
+                containerColor = androidx.compose.ui.graphics.Color(0xFF252526),
+                title = {
+                    Text(
+                        "Implementations (${lspImplResults.size})",
+                        color = androidx.compose.ui.graphics.Color(0xFF4EC9B0),
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                },
+                text = {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(lspImplResults) { (path, line, snippet) ->
+                            val fileName = path.substringAfterLast('/')
+                            TextButton(
+                                onClick = {
+                                    onOpenFileAtLine?.invoke(path, line + 1)
+                                    lspImplResults = emptyList()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        "$fileName:${line + 1}",
+                                        color = androidx.compose.ui.graphics.Color(0xFF569CD6),
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                    Text(
+                                        snippet.trim().take(100),
+                                        color = androidx.compose.ui.graphics.Color(0xFFAAAAAA),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { lspImplResults = emptyList() }) {
+                        Text("Close", color = androidx.compose.ui.graphics.Color(0xFF888888), fontSize = 12.sp)
+                    }
+                },
+            )
+        }
     }
 }
 
