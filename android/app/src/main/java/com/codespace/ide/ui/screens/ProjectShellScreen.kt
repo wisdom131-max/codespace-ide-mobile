@@ -947,8 +947,12 @@ fun ProjectShellScreen(
                 onJumpToSource = { file, line ->
                     // P26-1: Navigate to source file and line
                     if (file.isNotBlank()) {
-                        onOpenFile(file)
-                        // TODO: scroll to line — would need a scrollToLine state passed to EditorPane
+                        val path = file
+                        if (path !in editorTabs) {
+                            editorTabs.add(path)
+                        }
+                        activeEditorTab = path
+                        // TODO: scroll to line — needs scrollToLine state passed to EditorPane
                     }
                 }
             )
