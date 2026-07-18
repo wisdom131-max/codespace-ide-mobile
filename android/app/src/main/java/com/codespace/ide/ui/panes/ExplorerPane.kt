@@ -1837,108 +1837,363 @@ private fun String.matchesSimpleGlob(pattern: String): Boolean {
 }
 
 fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
-    val ext = name.substringAfterLast('.', "").lowercase()
-    return when (ext) {
-        // Kotlin
-        "kt", "kts" -> Icons.Default.Code
-        // Java
-        "java" -> Icons.Default.Coffee
-        // Python
-        "py", "pyw", "pyi" -> Icons.Default.Code
-        // JavaScript / TypeScript
-        "js", "mjs", "cjs" -> Icons.Default.Javascript
-        "ts", "tsx", "jsx" -> Icons.Default.Javascript
-        // Web
-        "html", "htm" -> Icons.Default.Html
-        "css", "scss", "sass", "less" -> Icons.Default.Css
-        "xml", "svg" -> Icons.Default.Code
-        // Data / Config
-        "json" -> Icons.Default.DataObject
-        "yaml", "yml", "toml", "ini", "cfg", "conf" -> Icons.Default.Settings
-        "env" -> Icons.Default.Settings
-        // Build
-        "gradle", "gradlew" -> Icons.Default.Build
-        // Markdown / Text
-        "md", "markdown" -> Icons.AutoMirrored.Filled.Article
-        "txt", "log" -> Icons.AutoMirrored.Filled.Article
-        // Images
-        "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico" -> Icons.Default.Image
-        // Archives
-        "zip", "apk", "jar", "aar", "tar", "gz", "7z", "rar" -> Icons.Default.FolderZip
-        // Shell / Scripts
-        "sh", "bash", "zsh", "fish" -> Icons.Default.Terminal
-        // Binaries
-        "dex", "so", "o", "a" -> Icons.Default.Memory
-        "db", "sqlite", "sqlite3" -> Icons.Default.Storage
-        // Documents
-        "pdf" -> Icons.Default.PictureAsPdf
-        // C/C++
-        "c", "cpp", "cc", "cxx", "h", "hpp" -> Icons.Default.Code
-        // Rust
-        "rs" -> Icons.Default.Code
-        // Go
-        "go" -> Icons.Default.Code
-        // Swift
-        "swift" -> Icons.Default.Code
-        // Dart
-        "dart" -> Icons.Default.Code
-        // Ruby
-        "rb" -> Icons.Default.Code
-        // PHP
-        "php" -> Icons.Default.Code
-        // Lua
-        "lua" -> Icons.Default.Code
-        // Git
-        "gitignore", "gitattributes", "gitmodules" -> Icons.Default.AccountTree
-        // Default
-        else -> Icons.AutoMirrored.Filled.InsertDriveFile
+    // P30: Special full-name matching first (Dockerfile, Makefile, LICENSE, README, etc.)
+    return when (name.lowercase()) {
+        "dockerfile", ".dockerfile"        -> Icons.Default.Build
+        "makefile", "gnumakefile"          -> Icons.Default.Build
+        "cmakelists.txt"                   -> Icons.Default.Build
+        "procfile"                         -> Icons.Default.Terminal
+        "license", "licence",
+        "license.txt", "licence.txt",
+        "license.md", "licence.md"         -> Icons.Default.Description
+        "readme", "readme.txt",
+        "readme.md", "readme.rst"          -> Icons.AutoMirrored.Filled.Article
+        "package.json",
+        "package-lock.json",
+        "yarn.lock", "pnpm-lock.yaml",
+        "bun.lockb"                        -> Icons.Default.DataObject
+        "tsconfig.json",
+        "jsconfig.json"                    -> Icons.Default.Settings
+        ".editorconfig", ".prettierrc",
+        ".prettierrc.json", ".prettierrc.yaml",
+        ".eslintrc", ".eslintrc.js",
+        ".eslintrc.json", ".eslintrc.yaml",
+        ".stylelintrc", ".huskyrc",
+        ".lintstagedrc"                    -> Icons.Default.Settings
+        ".babelrc", ".babelrc.js",
+        ".babelrc.json", "babel.config.js",
+        "babel.config.ts"                  -> Icons.Default.Build
+        ".gitignore", ".gitattributes",
+        ".gitmodules"                      -> Icons.Default.AccountTree
+        ".env", ".env.local",
+        ".env.development", ".env.production",
+        ".env.test", ".env.example"        -> Icons.Default.Lock
+        ".nvmrc", ".node-version"          -> Icons.Default.Settings
+        "gemfile", "gemfile.lock"          -> Icons.Default.Code
+        "podfile", "podfile.lock"          -> Icons.Default.Build
+        "pubspec.yaml", "pubspec.lock"     -> Icons.Default.DataObject
+        "cargo.toml", "cargo.lock"         -> Icons.Default.Build
+        "go.mod", "go.sum"                 -> Icons.Default.Build
+        "requirements.txt", "pipfile",
+        "pipfile.lock", "pyproject.toml",
+        "setup.py", "setup.cfg"            -> Icons.Default.Settings
+        "dockerfile.dev",
+        "docker-compose.yml",
+        "docker-compose.yaml"              -> Icons.Default.Build
+        else -> {
+            // Extension-based matching
+            val ext = name.substringAfterLast('.', "").lowercase()
+            when (ext) {
+                // Kotlin
+                "kt", "kts"                       -> Icons.Default.Code
+                // Java
+                "java"                            -> Icons.Default.Coffee
+                // Python
+                "py", "pyw", "pyi"                -> Icons.Default.Code
+                // JavaScript
+                "js", "mjs", "cjs"                -> Icons.Default.Javascript
+                // TypeScript
+                "ts", "d.ts"                      -> Icons.Default.Javascript
+                // JSX / TSX
+                "jsx", "tsx"                      -> Icons.Default.Javascript
+                // Vue / Svelte / Astro / Angular — component files
+                "vue", "svelte", "astro",
+                "component.ts", "component.html"  -> Icons.Default.Extension
+                // Web markup
+                "html", "htm", "xhtml"            -> Icons.Default.Html
+                "css"                             -> Icons.Default.Css
+                "scss", "sass", "less", "styl"    -> Icons.Default.Css
+                // XML / SVG
+                "xml", "xsl", "xslt"              -> Icons.Default.Code
+                "svg"                             -> Icons.Default.Image
+                // Data / Config
+                "json", "jsonc", "json5"          -> Icons.Default.DataObject
+                "yaml", "yml"                     -> Icons.Default.Settings
+                "toml", "ini", "cfg", "conf",
+                "config", "properties"            -> Icons.Default.Settings
+                // GraphQL
+                "graphql", "gql"                  -> Icons.Default.AccountTree
+                // SQL / Database
+                "sql", "mysql", "psql",
+                "sqlite", "sqlite3", "db"         -> Icons.Default.Storage
+                "csv", "tsv"                      -> Icons.Default.DataObject
+                // Prisma / ORM
+                "prisma"                          -> Icons.Default.Storage
+                // Proto
+                "proto"                           -> Icons.Default.Code
+                // Build / Gradle
+                "gradle", "gradlew"               -> Icons.Default.Build
+                "pro"                             -> Icons.Default.Build
+                // Markdown / Docs
+                "md", "markdown", "mdx"           -> Icons.AutoMirrored.Filled.Article
+                "rst", "adoc", "asciidoc"         -> Icons.AutoMirrored.Filled.Article
+                "txt", "log", "out"               -> Icons.AutoMirrored.Filled.Article
+                // Images
+                "png", "jpg", "jpeg", "gif",
+                "bmp", "webp", "ico", "tiff",
+                "tif", "heic", "heif"             -> Icons.Default.Image
+                // Vector / Design
+                "psd", "ai", "sketch", "fig",
+                "xd"                              -> Icons.Default.Image
+                // Video
+                "mp4", "mov", "avi", "mkv",
+                "webm", "flv", "m4v", "3gp"      -> Icons.Default.Movie
+                // Audio
+                "mp3", "wav", "flac", "ogg",
+                "m4a", "aac", "opus", "wma"       -> Icons.Default.MusicNote
+                // Archives
+                "zip", "tar", "gz", "bz2",
+                "xz", "7z", "rar", "tgz"         -> Icons.Default.FolderZip
+                "apk", "aab", "apks", "xapk"     -> Icons.Default.PhoneAndroid
+                "jar", "aar", "war", "ear"        -> Icons.Default.FolderZip
+                // Shell / Scripts
+                "sh", "bash", "zsh", "fish",
+                "ps1", "psm1", "bat", "cmd"       -> Icons.Default.Terminal
+                // Binaries / Native
+                "dex", "so", "o", "a", "lib",
+                "dll", "exe", "bin"               -> Icons.Default.Memory
+                // Certs / Keys
+                "pem", "cert", "crt", "cer",
+                "key", "p12", "pfx", "jks",
+                "keystore"                        -> Icons.Default.Lock
+                // Documents
+                "pdf"                             -> Icons.Default.PictureAsPdf
+                "doc", "docx", "odt"              -> Icons.Default.Description
+                "xls", "xlsx", "ods"              -> Icons.Default.DataObject
+                "ppt", "pptx", "odp"              -> Icons.Default.Description
+                // Fonts
+                "ttf", "otf", "woff", "woff2",
+                "eot"                             -> Icons.Default.TextFields
+                // C / C++
+                "c", "cpp", "cc", "cxx",
+                "h", "hpp", "hxx"                 -> Icons.Default.Code
+                // Rust
+                "rs"                              -> Icons.Default.Code
+                // Go
+                "go"                              -> Icons.Default.Code
+                // Swift
+                "swift"                           -> Icons.Default.Code
+                // Dart
+                "dart"                            -> Icons.Default.Code
+                // Ruby
+                "rb", "rake", "gemspec"           -> Icons.Default.Code
+                // PHP
+                "php", "phtml"                    -> Icons.Default.Code
+                // Lua
+                "lua"                             -> Icons.Default.Code
+                // C#
+                "cs", "csx"                       -> Icons.Default.Code
+                // F#
+                "fs", "fsx", "fsi"                -> Icons.Default.Code
+                // Scala
+                "scala", "sc"                     -> Icons.Default.Code
+                // Haskell / Elm / Clojure / Erlang / Elixir / Julia
+                "hs", "lhs"                       -> Icons.Default.Functions
+                "elm"                             -> Icons.Default.Functions
+                "clj", "cljs", "cljc"             -> Icons.Default.Functions
+                "ex", "exs"                       -> Icons.Default.Code
+                "erl", "hrl"                      -> Icons.Default.Code
+                "jl"                              -> Icons.Default.Functions
+                // R
+                "r", "rmd", "rnw"                 -> Icons.Default.Functions
+                // CoffeeScript
+                "coffee", "litcoffee"             -> Icons.Default.Code
+                // Perl
+                "pl", "pm", "t"                   -> Icons.Default.Code
+                // WASM
+                "wasm", "wat"                     -> Icons.Default.Memory
+                // Git
+                "gitignore", "gitattributes",
+                "gitmodules"                      -> Icons.Default.AccountTree
+                // Default
+                else                              -> Icons.AutoMirrored.Filled.InsertDriveFile
+            }
+        }
     }
 }
 
-/** P24: File type color — returns a tint color based on file extension for visual differentiation. */
+/** P30: File type color — full-name + extension matching for maximum visual coverage. */
 fun fileIconColor(name: String): Color {
+    // Special full-name colours first
+    val nameLower = name.lowercase()
+    val specialColor = when (nameLower) {
+        "dockerfile", ".dockerfile",
+        "docker-compose.yml", "docker-compose.yaml",
+        "dockerfile.dev"                            -> Color(0xFF1D63ED) // Docker blue
+        "makefile", "gnumakefile",
+        "cmakelists.txt"                            -> Color(0xFF6C9EF8)
+        "procfile"                                  -> Color(0xFF4EAA25)
+        "license", "licence",
+        "license.txt", "licence.txt",
+        "license.md", "licence.md"                  -> Color(0xFFFFA500)
+        "readme", "readme.txt",
+        "readme.md", "readme.rst"                   -> Color(0xFF4A90D9)
+        "package.json", "package-lock.json",
+        "yarn.lock", "pnpm-lock.yaml",
+        "bun.lockb"                                 -> Color(0xFFCB3837) // npm red
+        "tsconfig.json", "jsconfig.json"            -> Color(0xFF3178C6)
+        ".editorconfig", ".prettierrc",
+        ".prettierrc.json", ".prettierrc.yaml",
+        ".eslintrc", ".eslintrc.js",
+        ".eslintrc.json", ".eslintrc.yaml",
+        ".stylelintrc", ".huskyrc",
+        ".lintstagedrc"                             -> Color(0xFF4B32C3)
+        ".babelrc", ".babelrc.js",
+        ".babelrc.json", "babel.config.js",
+        "babel.config.ts"                           -> Color(0xFFF5DA55) // Babel yellow
+        ".gitignore", ".gitattributes",
+        ".gitmodules"                               -> Color(0xFFF14E32) // Git orange-red
+        ".env", ".env.local",
+        ".env.development", ".env.production",
+        ".env.test", ".env.example"                 -> Color(0xFFFFD700)
+        "pubspec.yaml", "pubspec.lock"              -> Color(0xFF0175C2) // Dart blue
+        "cargo.toml", "cargo.lock"                  -> Color(0xFFDEA584) // Rust orange
+        "go.mod", "go.sum"                          -> Color(0xFF00ADD8) // Go cyan
+        "gemfile", "gemfile.lock"                   -> Color(0xFFCC342D) // Ruby red
+        "podfile", "podfile.lock"                   -> Color(0xFFEF5B25) // CocoaPods orange
+        "requirements.txt", "pipfile",
+        "pipfile.lock", "pyproject.toml",
+        "setup.py", "setup.cfg"                     -> Color(0xFF4584B6) // Python blue
+        else                                        -> null
+    }
+    if (specialColor != null) return specialColor
+
+    // Extension-based colours
     val ext = name.substringAfterLast('.', "").lowercase()
     return when (ext) {
         // Kotlin — purple
-        "kt", "kts" -> Color(0xFF7F52FF)
-        // Java — orange/red
-        "java" -> Color(0xFFE76F00)
-        // Python — blue/yellow
-        "py", "pyw", "pyi" -> Color(0xFF4584B6)
+        "kt", "kts"                                 -> Color(0xFF7F52FF)
+        // Java — orange
+        "java"                                      -> Color(0xFFE76F00)
+        // Python — blue
+        "py", "pyw", "pyi"                          -> Color(0xFF4584B6)
         // JavaScript — amber
-        "js", "mjs", "cjs" -> Color(0xFFF0DB4F)
+        "js", "mjs", "cjs"                          -> Color(0xFFF0DB4F)
         // TypeScript — blue
-        "ts", "tsx", "jsx" -> Color(0xFF3178C6)
-        // Web — orange/red
-        "html", "htm" -> Color(0xFFE44D26)
-        "css", "scss", "sass", "less" -> Color(0xFF264DE4)
-        "xml" -> Color(0xFF0066CC)
-        // Data — amber
-        "json" -> Color(0xFFCCA700)
-        "yaml", "yml", "toml" -> Color(0xFFCB171E)
-        // Build — green
-        "gradle" -> Color(0xFF02303A)
-        // Markdown — blue
-        "md", "markdown" -> Color(0xFF4A90D9)
+        "ts", "d.ts"                                -> Color(0xFF3178C6)
+        // JSX / TSX — cyan-blue
+        "jsx", "tsx"                                -> Color(0xFF61DAFB)
+        // Vue — green
+        "vue"                                       -> Color(0xFF42B883)
+        // Svelte — orange
+        "svelte"                                    -> Color(0xFFFF3E00)
+        // Astro — purple
+        "astro"                                     -> Color(0xFFFF5D01)
+        // HTML — orange
+        "html", "htm", "xhtml"                      -> Color(0xFFE44D26)
+        // CSS
+        "css"                                       -> Color(0xFF264DE4)
+        "scss", "sass"                              -> Color(0xFFCC6699)
+        "less"                                      -> Color(0xFF1D365D)
+        "styl"                                      -> Color(0xFF4EAA25)
+        // XML
+        "xml", "xsl", "xslt"                        -> Color(0xFF0066CC)
+        // SVG — green
+        "svg"                                       -> Color(0xFFFFB13B)
+        // JSON — amber
+        "json", "jsonc", "json5"                    -> Color(0xFFCCA700)
+        // YAML — red
+        "yaml", "yml"                               -> Color(0xFFCB171E)
+        "toml"                                      -> Color(0xFF9C4221)
+        "ini", "cfg", "conf", "config",
+        "properties"                                -> Color(0xFF6C9EF8)
+        // GraphQL — pink
+        "graphql", "gql"                            -> Color(0xFFE10098)
+        // SQL — teal
+        "sql", "mysql", "psql"                      -> Color(0xFF00897B)
+        "sqlite", "sqlite3", "db"                   -> Color(0xFF00897B)
+        "csv", "tsv"                                -> Color(0xFF4CAF50)
+        // Prisma — dark teal
+        "prisma"                                    -> Color(0xFF2D3748)
+        // Proto — blue-gray
+        "proto"                                     -> Color(0xFF4285F4)
+        // Gradle
+        "gradle", "gradlew"                         -> Color(0xFF02303A)
+        // Markdown
+        "md", "markdown", "mdx"                     -> Color(0xFF4A90D9)
+        "rst", "adoc"                               -> Color(0xFF6C9EF8)
+        // Text
+        "txt", "log", "out"                         -> Color(0xFF9E9E9E)
         // Images — pink
-        "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico" -> Color(0xFFD63384)
+        "png", "jpg", "jpeg", "gif",
+        "bmp", "webp", "ico", "tiff",
+        "tif", "heic", "heif"                       -> Color(0xFFD63384)
+        "psd", "ai", "sketch", "fig", "xd"          -> Color(0xFF0FA3B1)
+        // Video — deep purple
+        "mp4", "mov", "avi", "mkv",
+        "webm", "flv", "m4v", "3gp"                -> Color(0xFF7B1FA2)
+        // Audio — indigo
+        "mp3", "wav", "flac", "ogg",
+        "m4a", "aac", "opus", "wma"                -> Color(0xFF3F51B5)
         // Archives — brown
-        "zip", "apk", "jar", "aar", "tar", "gz" -> Color(0xFF8B5E3C)
+        "zip", "tar", "gz", "bz2",
+        "xz", "7z", "rar", "tgz"                   -> Color(0xFF8B5E3C)
+        "apk", "aab", "apks", "xapk"               -> Color(0xFF3DDC84) // Android green
+        "jar", "aar", "war", "ear"                  -> Color(0xFFE76F00)
         // Shell — green
-        "sh", "bash", "zsh" -> Color(0xFF4EAA25)
-        // Binaries — dark gray
-        "dex", "so", "o", "a" -> Color(0xFF555555)
-        "db", "sqlite", "sqlite3" -> Color(0xFF00897B)
-        // C/C++ — blue
-        "c", "cpp", "cc", "cxx", "h", "hpp" -> Color(0xFF659AD2)
+        "sh", "bash", "zsh", "fish"                 -> Color(0xFF4EAA25)
+        "ps1", "psm1", "bat", "cmd"                 -> Color(0xFF012456) // PowerShell blue
+        // Binaries — gray
+        "dex", "so", "o", "a",
+        "lib", "dll", "exe", "bin"                  -> Color(0xFF555555)
+        // Certs / Keys — gold
+        "pem", "cert", "crt", "cer",
+        "key", "p12", "pfx", "jks",
+        "keystore"                                  -> Color(0xFFFFD700)
+        // PDF — red
+        "pdf"                                       -> Color(0xFFE53935)
+        // Docs
+        "doc", "docx", "odt"                        -> Color(0xFF1E88E5)
+        "xls", "xlsx", "ods"                        -> Color(0xFF43A047)
+        "ppt", "pptx", "odp"                        -> Color(0xFFE53935)
+        // Fonts — pink-purple
+        "ttf", "otf", "woff", "woff2", "eot"        -> Color(0xFFAB47BC)
+        // C / C++ — blue
+        "c", "cpp", "cc", "cxx",
+        "h", "hpp", "hxx"                           -> Color(0xFF659AD2)
         // Rust — orange
-        "rs" -> Color(0xFFDEA584)
+        "rs"                                        -> Color(0xFFDEA584)
         // Go — cyan
-        "go" -> Color(0xFF00ADD8)
+        "go"                                        -> Color(0xFF00ADD8)
         // Swift — orange
-        "swift" -> Color(0xFFFF6B35)
+        "swift"                                     -> Color(0xFFFF6B35)
         // Dart — blue
-        "dart" -> Color(0xFF0175C2)
+        "dart"                                      -> Color(0xFF0175C2)
+        // Ruby — red
+        "rb", "rake", "gemspec"                     -> Color(0xFFCC342D)
+        // PHP — purple
+        "php", "phtml"                              -> Color(0xFF8892BF)
+        // Lua — blue
+        "lua"                                       -> Color(0xFF000080)
+        // C# — purple
+        "cs", "csx"                                 -> Color(0xFF9B4993)
+        // F# — blue
+        "fs", "fsx", "fsi"                          -> Color(0xFF378BBA)
+        // Scala — red
+        "scala", "sc"                               -> Color(0xFFDE3423)
+        // Haskell — purple
+        "hs", "lhs"                                 -> Color(0xFF5E5086)
+        // Elm — green-teal
+        "elm"                                       -> Color(0xFF60B5CC)
+        // Clojure — green
+        "clj", "cljs", "cljc"                       -> Color(0xFF5881D8)
+        // Elixir — purple
+        "ex", "exs"                                 -> Color(0xFF9B30FF)
+        // Erlang — red
+        "erl", "hrl"                                -> Color(0xFFB83998)
+        // Julia — purple
+        "jl"                                        -> Color(0xFF9558B2)
+        // R — blue
+        "r", "rmd", "rnw"                           -> Color(0xFF276DC2)
+        // CoffeeScript — brown
+        "coffee", "litcoffee"                       -> Color(0xFF3E2723)
+        // Perl — blue
+        "pl", "pm", "t"                             -> Color(0xFF0298C3)
+        // WASM — purple
+        "wasm", "wat"                               -> Color(0xFF654FF0)
+        // Git
+        "gitignore", "gitattributes",
+        "gitmodules"                                -> Color(0xFFF14E32)
         // Default
         else -> IconColor
     }
