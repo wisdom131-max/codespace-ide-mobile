@@ -33,8 +33,9 @@ data class LspCodeAction(
  * - C / C++:               clangd                             (apt)
  * - Rust:                  rust-analyzer                      (rustup)
  * - PHP:                   intelephense                       (npm)
- * - HTML:                  vscode-html-languageserver         (npm)
- * - CSS:                   vscode-css-languageserver          (npm)
+ * - HTML:                  vscode-html-language-server        (npm)
+ * - CSS:                   vscode-css-language-server         (npm)
+ * - JSON:                  vscode-json-language-server        (npm)
  *
  * All servers run inside the Ubuntu proot rootfs and communicate via JSON-RPC 2.0 over stdio.
  *
@@ -182,7 +183,7 @@ object LspManager {
                 "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null; " +
                 "source \$HOME/.cargo/env 2>/dev/null; " +
                 "rustup component add rust-analyzer 2>/dev/null || " +
-                "curl -fsSL https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-aarch64-unknown-linux-gnu.gz | gunzip -c > /usr/local/bin/rust-analyzer && " +
+                "curl -fsSL https://github.com/rust-lang/rust-analyzer/releases/download/2024-04-21/rust-analyzer-aarch64-unknown-linux-gnu.gz | gunzip -c > /usr/local/bin/rust-analyzer && " +
                 "chmod +x /usr/local/bin/rust-analyzer && echo rust-analyzer-installed",
             300,
         ),
@@ -214,6 +215,18 @@ object LspManager {
             "vscode-css-language-server",
             listOf("--stdio"),
             "which vscode-css-language-server",
+            "apt-get update -qq 2>/dev/null; " +
+                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+                "npm install -g vscode-langservers-extracted",
+        ),
+        // ── JSON ───────────────────────────────────────────────────────────
+        // vscode-langservers-extracted also ships vscode-json-language-server.
+        // Since HTML/CSS already install it, JSON LSP is essentially free.
+        Language.JSON to ServerConfig(
+            Language.JSON,
+            "vscode-json-language-server",
+            listOf("--stdio"),
+            "which vscode-json-language-server",
             "apt-get update -qq 2>/dev/null; " +
                 "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
@@ -523,17 +536,54 @@ object LspManager {
             put("tokenModifiers", JSONArray())
             put("formats", JSONArray().apply { put("relative") })
         }
+        // textDocument.formatting, rangeFormatting, onTypeFormatting
+        val formatting = JSONObject().apply { put("dynamicRegistration", false) }
+        // textDocument.documentSymbol
+        val documentSymbol = JSONObject().apply {
+            put("dynamicRegistration", false)
+            put("hierarchicalDocumentSymbolSupport", true)
+            put("labelSupport", JSONObject().apply { put("labelDetailsSupport", true) })
+        }
+        // textDocument.foldingRange
+        val foldingRange = JSONObject().apply {
+            put("dynamicRegistration", false)
+            put("rangeLimit", 5000)
+            put("lineFoldingOnly", true)
+        }
+        // textDocument.selectionRange
+        val selectionRange = JSONObject().apply { put("dynamicRegistration", false) }
+        // textDocument.documentHighlight
+        val documentHighlight = JSONObject().apply { put("dynamicRegistration", false) }
+        // textDocument.typeDefinition
+        val typeDefinition = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
+        // textDocument.implementation
+        val implementation = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
+        // textDocument.prepareRename
+        val prepareSupport = JSONObject().apply { put("prepareSupport", true) }
+
         val textDocument = JSONObject().apply {
             put("synchronization", sync)
             put("completion", completion)
             put("hover", hover)
             put("signatureHelp", signatureHelp)
             put("definition", basic)
+            put("typeDefinition", typeDefinition)
+            put("implementation", implementation)
             put("references", basic)
-            put("rename", basic)
+            put("rename", JSONObject().apply {
+                put("dynamicRegistration", false)
+                put("prepareSupport", true)
+            })
             put("publishDiagnostics", publishDiagnostics)
             put("codeAction", codeAction)
             put("semanticTokens", semanticTokens)
+            put("documentSymbol", documentSymbol)
+            put("foldingRange", foldingRange)
+            put("selectionRange", selectionRange)
+            put("documentHighlight", documentHighlight)
+            put("formatting", formatting)
+            put("rangeFormatting", formatting)
+            put("onTypeFormatting", formatting)
         }
         // workspace capabilities
         val workspace = JSONObject().apply {
@@ -777,6 +827,269 @@ object LspManager {
         params.put("newName", newName)
         val response = server.client.request("textDocument/rename", params, timeoutSeconds = 15)
         return response as? JSONObject
+    }
+
+
+    // ── Document Symbol (Outline) ──────────────────────────────
+
+    /**
+     * Request document symbols for the outline panel / breadcrumbs.
+     * Returns a JSONArray of SymbolInformation or DocumentSymbol entries.
+     */
+    fun getDocumentSymbol(
+        language: Language,
+        uri: String,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+        }
+        val response = server.client.request("textDocument/documentSymbol", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    // ── Document Highlight ─────────────────────────────────────
+
+    /**
+     * Request document highlights (e.g. all occurrences of the symbol under cursor).
+     * Returns a JSONArray of DocumentHighlight { range, kind }.
+     */
+    fun getDocumentHighlight(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/documentHighlight", params, timeoutSeconds = 5)
+        return response as? JSONArray
+    }
+
+    // ── Formatting ──────────────────────────────────────────────
+
+    /**
+     * Request full document formatting.
+     * Returns a JSONArray of TextEdit entries to apply.
+     */
+    fun getFormatting(
+        language: Language,
+        uri: String,
+        tabSize: Int = 4,
+        insertSpaces: Boolean = true,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("options", JSONObject().apply {
+                put("tabSize", tabSize)
+                put("insertSpaces", insertSpaces)
+            })
+        }
+        val response = server.client.request("textDocument/formatting", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * Request range formatting (format a selected range).
+     * Returns a JSONArray of TextEdit entries.
+     */
+    fun getRangeFormatting(
+        language: Language,
+        uri: String,
+        startLine: Int, startChar: Int,
+        endLine: Int, endChar: Int,
+        tabSize: Int = 4,
+        insertSpaces: Boolean = true,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("range", JSONObject().apply {
+                put("start", JSONObject().apply { put("line", startLine); put("character", startChar) })
+                put("end", JSONObject().apply { put("line", endLine); put("character", endChar) })
+            })
+            put("options", JSONObject().apply {
+                put("tabSize", tabSize)
+                put("insertSpaces", insertSpaces)
+            })
+        }
+        val response = server.client.request("textDocument/rangeFormatting", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * Request on-type formatting (e.g. auto-format after typing `}`, `;`, etc.).
+     */
+    fun getOnTypeFormatting(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+        ch: String,
+        tabSize: Int = 4,
+        insertSpaces: Boolean = true,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("position", JSONObject().apply { put("line", line); put("character", character) })
+            put("ch", ch)
+            put("options", JSONObject().apply {
+                put("tabSize", tabSize)
+                put("insertSpaces", insertSpaces)
+            })
+        }
+        val response = server.client.request("textDocument/onTypeFormatting", params, timeoutSeconds = 5)
+        return response as? JSONArray
+    }
+
+    // ── Type Definition & Implementation ────────────────────────
+
+    /**
+     * Request the type definition of the symbol at position.
+     * Returns a JSONArray of Location entries (like getDefinition).
+     */
+    fun getTypeDefinition(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/typeDefinition", params, timeoutSeconds = 10)
+        return when (response) {
+            null -> null
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> null
+        }
+    }
+
+    /**
+     * Request the implementations of an interface/abstract symbol at position.
+     * Returns a JSONArray of Location entries.
+     */
+    fun getImplementation(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/implementation", params, timeoutSeconds = 10)
+        return when (response) {
+            null -> null
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> null
+        }
+    }
+
+    // ── Folding Range ──────────────────────────────────────────
+
+    /**
+     * Request folding ranges for code folding.
+     * Returns a JSONArray of FoldingRange { startLine, endLine, kind? }.
+     */
+    fun getFoldingRange(
+        language: Language,
+        uri: String,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+        }
+        val response = server.client.request("textDocument/foldingRange", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    // ── Selection Range ────────────────────────────────────────
+
+    /**
+     * Request selection ranges for expand/shrink selection.
+     * Returns a JSONArray of SelectionRange { range, parent? }.
+     */
+    fun getSelectionRange(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("positions", JSONArray().apply {
+                put(JSONObject().apply { put("line", line); put("character", character) })
+            })
+        }
+        val response = server.client.request("textDocument/selectionRange", params, timeoutSeconds = 5)
+        return response as? JSONArray
+    }
+
+    // ── Completion Resolve ─────────────────────────────────────
+
+    /**
+     * Resolve a completion item to get additional documentation/detail.
+     * The server fills in `documentation`, `detail`, etc. on the returned item.
+     */
+    fun resolveCompletion(
+        language: Language,
+        item: JSONObject,
+    ): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val response = server.client.request("completionItem/resolve", item, timeoutSeconds = 5)
+        return response as? JSONObject
+    }
+
+    // ── Prepare Rename ──────────────────────────────────────────
+
+    /**
+     * Request the range of the symbol at position that can be renamed.
+     * Returns a Range JSONObject { start, end } or null if not renameable.
+     */
+    fun prepareRename(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/prepareRename", params, timeoutSeconds = 5)
+        return response as? JSONObject
+    }
+
+    // ── Workspace Symbol ────────────────────────────────────────
+
+    /**
+     * Request workspace symbols matching a query string.
+     * Returns a JSONArray of SymbolInformation { name, kind, location, containerName? }.
+     */
+    fun getWorkspaceSymbol(
+        language: Language,
+        query: String,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("query", query)
+        }
+        val response = server.client.request("workspace/symbol", params, timeoutSeconds = 10)
+        return response as? JSONArray
     }
 
     // ── Diagnostics ────────────────────────────────────────────────
