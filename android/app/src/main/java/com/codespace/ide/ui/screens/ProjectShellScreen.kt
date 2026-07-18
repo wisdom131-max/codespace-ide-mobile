@@ -764,8 +764,22 @@ fun ProjectShellScreen(
             }
             "Run Program", "Start Debugging" -> {
                 showBottomPanel = true; activeBottomTab = BottomTab.DEBUG
-                debugMessages.add("[debug] Launching session...")
-                showNotification("Starting debug session…", "info")
+                val filePath = activeEditorTab ?: ""
+                if (filePath.isNotBlank()) {
+                    val lang = com.codespace.ide.domain.Language.fromPath(filePath)
+                    val udm = com.codespace.ide.debug.UniversalDebugManager
+                    val sessionId = udm.startDebug(lang, filePath, null)
+                    if (sessionId != null) {
+                        debugMessages.add("[debug] Session started: ${lang.displayName} — ${filePath.substringAfterLast('/')}")
+                        showNotification("Debugging ${filePath.substringAfterLast('/')}", "info")
+                    } else {
+                        debugMessages.add("[debug] No debugger available for ${lang.displayName}")
+                        showNotification("No debugger for ${lang.displayName}", "error")
+                    }
+                } else {
+                    debugMessages.add("[debug] No file open — open a file first, then press Run.")
+                    showNotification("Open a file first", "error")
+                }
             }
             "Terminal Theme" -> { showTerminalThemePicker = true }
             "Setup Shell Profile" -> {
@@ -926,7 +940,7 @@ fun ProjectShellScreen(
                                 },
                             )
                             SidePanel.GIT        -> GitSidePanel(projectId)
-                            SidePanel.RUN        -> RunDebugPanel(onMoreMenu = { showRunMenu = true })
+                            SidePanel.RUN        -> RunDebugPanel(onMoreMenu = { showRunMenu = true }, activeFilePath = activeEditorTab ?: "")
                             SidePanel.EXTENSIONS -> {
                                     ExtensionsPanel()
                                     androidx.compose.material3.HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 1.dp)
