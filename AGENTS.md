@@ -16,48 +16,56 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-07-16. Read this FIRST before touching any code.
+> Last updated: 2026-07-18. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-07-16)
+## CURRENT STATE (2026-07-18)
 
 | | |
 |-|-|
-| Latest green build | **#1320** (minimap realism fixes GREEN) |
-| Active phase | **Phase 24 (Master IDE Audit) — QUEUED** |
-| Last green | #1337 — fix(P23-8): add udm param to EditorPane + null-safe call |
-| **Phase 21-X** | **✅ COMPLETE — all 10 items shipped, #1278/#1290 GREEN** |
-| **Phase 22-A–E** | **✅ COMPLETE — ProblemsPanel live-update, merge conflict editor, format document** |
-| **Phase 22-F–I** | **✅ COMPLETE — LspManager, JSON-RPC, Python/TS/Kotlin LSP, diagnostics, hover, completion** |
-| **Phase 22-J** | **✅ COMPLETE — Auto Import + line-number fix + minimap toggle (#1318 GREEN)** |
-| **Phase 2** | **✅ COMPLETE — all P2-1 through P2-12 done, incl. P2-5 error squiggles (SyntaxTransformation.kt)** |
-| **Phase 4** | **✅ COMPLETE — TerminalSessionStore.kt wired into TerminalPane (save/restore/crash-safe)** |
-| **Phase 7** | **✅ COMPLETE — WorkspaceManager.kt: P7-1 Snapshots, P7-2 Diagnostics, P7-3 SafeMode, P7-4 Trash** |
-| **Phase 10** | **⏸ DEFERRED — Extension System (long-term, design only)** |
-| **Phase 11** | **✅ COMPLETE — BuildEnvironment.kt: detect/validate JDK/Gradle/SDK/AAPT2/signer** |
-| **Phase 12** | **✅ COMPLETE — all 12-A through 12-M shipped (#1157 GREEN)** |
-| **Phase 21** | **✅ COMPLETE — 17 viewers shipped (Hex, PDF, APK, DEX, ELF, Smali, SQLite, Strings, etc.)** |
-| **Phase 21-X** | **✅ COMPLETE — reverse engineering: DEX/ELF/APK analyzers, disassembly, binary diff** |
-| **Phase 23** | **✅ COMPLETE — Debugging System: UDM, 6 language providers, Android+APK providers, breakpoint persistence, enhanced debug console** |
-| Phase 18 | ✅ COMPLETE — Multi-file edit & refactoring |
-| Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit & refactoring |
-| Phase 17 | ✅ COMPLETE (build #1208 GREEN) — File mgmt polish: local history, trash restore, compress, permissions, cloud backup tab |
-| Phase 18 | ✅ COMPLETE (build #1219 GREEN) — Multi-file edit: Replace in Files, Select All Occurrences, Cross-file Rename Symbol |
-| Phase 16 | ✅ COMPLETE (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync, Sync UI |
-| Phase 15 | ✅ COMPLETE (build #1183 GREEN) |
-| Phase 14 | ✅ COMPLETE (build #1176) |
-| Phase 13 | ✅ COMPLETE (build #1172) — Runtime UX Polish & Stability |
-| Phase 12 | ✅ COMPLETE (build #1157) — Project Setup & Toolchain |
-| Phase 11 | ✅ COMPLETE (build #1137) — Android Build Environment |
-| Phase 9 | ✅ COMPLETE (build #1129) — Performance & Monitoring |
-| Phase 8 | ✅ COMPLETE (build #1119) — Debugging Infrastructure |
-| Phase 7 | ✅ COMPLETE (build #1108) |
-| Phase 6 | ✅ COMPLETE (build #1098) |
-| Phase 5 | ✅ COMPLETE (build #1096) |
-| Phase 4 | ✅ COMPLETE (build #1086) |
-| Phase 3 | ✅ COMPLETE (build #1085) |
-| Phase 2 | ✅ COMPLETE (build #1068) |
+| Latest green build | **#1586** |
+| Active phase | **Phase 26-3** (Node.js DAP + Attach Mode + Multi-Session) |
+| Last green | #1586 — feat(P26-2d): UDM PythonDAPAdapter registered, resolveAdapter() DAP-first |
+| **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
+| **Phase 26-1** | **✅ COMPLETE** — Type Definition, Find Implementations, Code Lens, Inlay Hints, Outline LSP, Code Folding |
+| **Phase 25** | **✅ COMPLETE** — Full IDE Intelligence + UI Reliability Audit (TS pin, Preview fix, LSP pipeline) |
+| **Phase 24** | **✅ COMPLETE** — LSP teardown fix, RAM fix, diagnostics squiggles, Find References, Rename |
+| **Phase 23** | **✅ COMPLETE** — UDM, 6 language debug providers, Android+APK, breakpoint persistence |
+| **Phase 22** | **✅ COMPLETE** — ProblemsPanel live-update, merge conflict editor, LSP/JSON-RPC full stack |
+| **Phase 21-X** | **✅ COMPLETE** — DEX/ELF/APK analyzers, disassembly, binary diff (#1290 GREEN) |
+| **Phase 21** | **✅ COMPLETE** — 17 viewers shipped (#1262 GREEN) |
+| **Phase 18** | **✅ COMPLETE** (build #1219 GREEN) — Multi-file edit & refactoring |
+| **Phase 17** | **✅ COMPLETE** (build #1208 GREEN) — File mgmt polish |
+| **Phase 16** | **✅ COMPLETE** (build #1199 GREEN) — Fetch, Cloud Backup, Session Sync |
+| **Phase 15** | **✅ COMPLETE** (build #1183 GREEN) |
+| **Phase 14** | **✅ COMPLETE** (build #1176) |
+| **Phase 13** | **✅ COMPLETE** (build #1172) — Runtime UX Polish & Stability |
+| **Phase 12** | **✅ COMPLETE** (build #1157) — Project Setup & Toolchain |
+| **Phase 11** | **✅ COMPLETE** (build #1137) — Android Build Environment |
+| **Phase 9** | **✅ COMPLETE** (build #1129) — Performance & Monitoring |
+| **Phase 8** | **✅ COMPLETE** (build #1119) — Debugging Infrastructure |
+| **Phase 2** | **✅ COMPLETE** (build #1068) |
+
+### Phase 26-2 — DAP Abstraction Layer ✅ COMPLETE (build #1586)
+
+| # | Item | Status | Files |
+|---|------|--------|-------|
+| 26-2a | DAPClient.kt — JSON-RPC over stdin/stdout, seq correlation, event dispatch | ✅ DONE (#1583) | debug/DAPClient.kt |
+| 26-2b | DebugAdapter interface + LegacyDebugAdapter wrapper | ✅ DONE (#1584) | debug/DebugAdapter.kt |
+| 26-2c | PythonDAPAdapter — debugpy over DAP, fallback to legacy pdb | ✅ DONE (#1585) | debug/PythonDAPAdapter.kt |
+| 26-2d | UDM — register PythonDAPAdapter, resolveAdapter() DAP-first/legacy fallback | ✅ DONE (#1586) | debug/UniversalDebugManager.kt |
+
+### Phase 26-1 ✅ COMPLETE (build #1582 docs, #1581 code green)
+
+| Item | Status |
+|------|--------|
+| Code Lens, Inlay Hints, Document Links rendered in CodeEditor | ✅ DONE |
+| LSP code folding (folding ranges from LSP, regex fallback) | ✅ DONE |
+| Document Symbol Outline Panel (LSP-powered, sidebar) | ✅ DONE |
+| Type Definition peek overlay | ✅ DONE |
+| Find Implementations overlay | ✅ DONE |
+
 
 ### Phase 8 — Debugging Infrastructure ✅ COMPLETE (build #1119)
 
