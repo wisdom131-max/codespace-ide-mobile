@@ -1609,6 +1609,44 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                         }
+                        // P26-1: Go to Type Definition — uses LSP to peek the type definition of the symbol
+                        if (onLspTypeDefinition != null) {
+                            TextButton(
+                                onClick = {
+                                    contextWord = null
+                                    onLspTypeDefinition.invoke()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("T", color = Color(0xFFC586C0), fontSize = 14.sp)
+                                    Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                }
+                            }
+                        }
+                        // P26-1: Find Implementations — uses LSP to find all implementations of an interface/abstract
+                        if (onLspImplementation != null) {
+                            TextButton(
+                                onClick = {
+                                    contextWord = null
+                                    onLspImplementation.invoke()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("I", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                                    Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                }
+                            }
+                        }
                         TextButton(
                             onClick = {
                                 renameNewName = word
