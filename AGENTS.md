@@ -4573,6 +4573,16 @@ This matches our architecture:
 - All overlays use FontFamily.Monospace for consistency
 - All positioned using fontSize * 1.25f line height + 74dp gutter offset
 
+
+### Document Symbol Outline Panel (Build #1574 — GREEN)
+- **OutlinePanel.kt** upgraded with `LspSymbolParser` — converts LSP JSON to CodeSymbol list with hierarchy
+- Uses LSP document symbols when available (more accurate), falls back to regex `SymbolParser`
+- `OutlinePanel` and `BreadcrumbBar` both accept optional `lspSymbols: JSONArray?` parameter
+- Added `SidePanel.OUTLINE` to activity bar — tree icon, click to show symbol outline for active file
+- Symbols rendered as tree with kind icons (class=blue, function=yellow, variable=green, interface=cyan)
+- Clicking a symbol navigates to its line in the editor
+- Active symbol highlighted based on cursor position
+
 ### Roadmap
 - Phase 26-1 (LSP Full Wiring): ✅ COMPLETE
 - Next: Wire LSP features into CodeEditor context menu (Type Definition, Implementation menu items)
