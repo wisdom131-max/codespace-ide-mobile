@@ -1097,6 +1097,124 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
+        if (lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
+            val lineHeightPxCL = fontSize * 1.25f
+            val gutterDpCL = 74f
+            for (i in 0 until lspCodeLenses!!.length()) {
+                val lens = lspCodeLenses!!.optJSONObject(i) ?: continue
+                val range = lens.optJSONObject("range") ?: continue
+                val startLine = range.optJSONObject("start")?.optInt("line", -1) ?: -1
+                if (startLine < 0) continue
+                val command = lens.optJSONObject("command")
+                val title = command?.optString("title", "") ?: lens.optString("title", "")
+                if (title.isBlank()) continue
+                val topDpCL = startLine * lineHeightPxCL
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 8.dp, top = topDpCL.dp + 1)
+                        .zIndex(4f),
+                ) {
+                    Text(
+                        text = title,
+                        color = Color(0xFF4EC9B0),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .background(Color(0xFF1E1E1E).copy(alpha = 0.8f), RoundedCornerShape(2.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
+        }
+
+        // P26-1: LSP Inlay Hints — inline type/parameter hints within code
+        if (lspInlayHints != null && lspInlayHints!!.length() > 0) {
+            val lineHeightPxIH = fontSize * 1.25f
+            val gutterDpIH = 74f
+            val charWidthPx = fontSize * 0.6f
+            for (i in 0 until lspInlayHints!!.length()) {
+                val hint = lspInlayHints!!.optJSONObject(i) ?: continue
+                val position = hint.optJSONObject("position") ?: continue
+                val line = position.optInt("line", -1)
+                val character = position.optInt("character", -1)
+                if (line < 0 || character < 0) continue
+                val label = when (val l = hint.opt("label")) {
+                    is String -> l
+                    is org.json.JSONArray -> {
+                        val sb = StringBuilder()
+                        for (j in 0 until l.length()) {
+                            val part = l.optJSONObject(j)?.optString("value", "") ?: ""
+                            sb.append(part)
+                        }
+                        sb.toString()
+                    }
+                    else -> ""
+                }
+                if (label.isBlank()) continue
+                val topDpIH = line * lineHeightPxIH
+                val leftDpIH = gutterDpIH + character * charWidthPx
+                val paddingLeft = if (hint.optBoolean("paddingLeft", false)) 2f else 0f
+                val paddingRight = if (hint.optBoolean("paddingRight", false)) 2f else 0f
+                Text(
+                    text = label,
+                    color = Color(0xFF9C9C9C),
+                    fontSize = (fontSize - 2).sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = (leftDpIH + paddingLeft).dp, top = topDpIH.dp + 2)
+                        .zIndex(4f)
+                )
+            }
+        }
+
+        // P26-1: LSP Document Links — clickable underlined links in comments
+        if (lspDocumentLinks != null && lspDocumentLinks!!.length() > 0) {
+            val lineHeightPxDL = fontSize * 1.25f
+            val gutterDpDL = 74f
+            val charWidthPxDL = fontSize * 0.6f
+            for (i in 0 until lspDocumentLinks!!.length()) {
+                val link = lspDocumentLinks!!.optJSONObject(i) ?: continue
+                val range = link.optJSONObject("range") ?: continue
+                val startLine = range.optJSONObject("start")?.optInt("line", -1) ?: -1
+                val startChar = range.optJSONObject("start")?.optInt("character", -1) ?: -1
+                val endChar = range.optJSONObject("end")?.optInt("character", -1) ?: -1
+                if (startLine < 0 || startChar < 0) continue
+                val target = link.optString("target", "")
+                val tooltip = link.optString("tooltip", target)
+                if (target.isBlank()) continue
+                val topDpDL = startLine * lineHeightPxDL
+                val leftDpDL = gutterDpDL + startChar * charWidthPxDL
+                val widthDp = (endChar - startChar) * charWidthPxDL
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = leftDpDL.dp, top = topDpDL.dp)
+                        .width(widthDp.dp.coerceAtLeast(20.dp))
+                        .height((fontSize + 2).dp)
+                        .clickable {
+                            // Open link in browser (handled by caller)
+                            onOpenFileAtLine?.invoke(target, 0)
+                        }
+                        .zIndex(5f),
+                ) {
+                    Text(
+                        text = tooltip.take(40),
+                        color = Color(0xFF569CD6),
+                        fontSize = (fontSize - 1).sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textDecoration = TextDecoration.Underline,
+                    )
+                }
+            }
+        }
+
         // Extra-cursor clear chip
         if (extraCursors.isNotEmpty()) {
             Box(
