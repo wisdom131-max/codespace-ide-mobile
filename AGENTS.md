@@ -3914,71 +3914,100 @@ Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
 - Rust fallback URL should be pinned to a specific version
 - JSON LSP could be added for free (vscode-json-language-server already installed)
 
-**Status:** ✅ DONE — Phase 25 complete.## Phase 25 — LSP Enhancement + Debug System Wiring (COMPLETE)
+**Status:** ✅ DONE — Phase 25 complete.## Phase 25 — LSP Enhancement + Debug System Wiring (COMPLETE ✅)
 **Date:** 2026-07-18
 **Build:** #1528 (282c2d6) GREEN ✅
-**Commits:** db94c95 → bacf709 → 127605b → 30658e9 → 282c2d6 (and intermediate)
+**Commits:** db94c95 → bacf709 → 127605b → 30658e9 → 282c2d6 → 18f269e
 
-### LSP Enhancement
-- **10+ new LSP methods** added to LspManager: documentSymbol, documentHighlight, formatting, rangeFormatting, onTypeFormatting, typeDefinition, implementation, foldingRange, selectionRange, resolveCompletion, prepareRename, workspaceSymbol
-- **Client capabilities** updated to declare all new features to language servers (matches VS Code's LSP feature set)
-- **JSON LSP config** added (vscode-langservers-extracted)
-- **13 new Language enum entries**: YAML, TOML, Vue, Svelte, C#, Ruby, Swift, Dart, Lua, SQL, PowerShell, Scala, R
-- **LanguageId mappings** added for all 13 new languages in LspManager
-- **Language specs** added for all 13 new languages in LanguageSpecs.kt (keywords, types, comment syntax)
-- **LSP signature help** wired to CodeEditor + EditorPane (was the biggest gap — method existed but was never called)
-- **LSP formatting** — Format button added to editor toolbar, applies LSP TextEdits to content
-- **Rust fallback URL** pinned to specific version instead of "latest/"
+### Failed Build Audit (#1513-#1527 — 15 failures, all resolved)
 
-### Debug System Wiring (VS Code Architecture Research + Implementation)
-**Research:** VS Code uses DAP (Debug Adapter Protocol) with two UI surfaces:
-1. Run & Debug view (Activity Bar sidebar) — call stack, breakpoints, variables, watches
-2. Debug Console (bottom panel) — interactive REPL, program output, stdin
-3. Debug toolbar (floating) — Continue/Pause, Step Over/Into/Out, Restart, Stop
-4. Terminal integration — debuggee can run in integrated terminal via runInTerminal request
-5. Status bar — shows active debug config, changes color during session
+| Build | Commit | Root Cause | Fix |
+|-------|--------|-----------|-----|
+| #1513 | fb08a97 | LanguageSpecs.kt:24 non-exhaustive `when` (13 new enum entries) + LspManager.kt:1137 same | #1520 tried but failed (replace didn't match) → #1525 added `else` branch |
+| #1514 | e6969b3 | Same — LspManager `when` not exhaustive | Fixed in same commit (added all 13 languageId mappings) ✅ |
+| #1515 | 56f5b00 | CodeEditor.kt:467 `lspSignatureHelpProvider` unresolved (param not added) | #1524 (bacf709) added param ✅ |
+| #1516 | 8de280f | Same cascading errors | Same fixes needed |
+| #1517 | a47a91c | Same | Same |
+| #1518 | 0df53d2 | Same | Same |
+| #1519 | 97f7e33 | EditorPane.kt:563 `active` not in scope + FormatAlignLeft unresolved + ExplorerPane Language import missing | #1526 tried activeTab (also wrong scope) → #1528 used inline `tabs.firstOrNull` ✅ |
+| #1520 | 9601b45 | LanguageSpecs replace pattern didn't match actual file | #1525 (127605b) correct replace ✅ |
+| #1521 | 8785fde | UDM changes added but cascading errors | Fixed by upstream commits |
+| #1522 | b9577fa | ExplorerPane changes but cascading errors | Fixed by #1527 import ✅ |
+| #1523 | cc94e70 | ProjectShellScreen changes but cascading errors | Fixed by upstream commits |
+| #1524 | bacf709 | Fixed CodeEditor params but 4 errors remain | LanguageSpecs + EditorPane + ExplorerPane still needed |
+| #1525 | 127605b | Fixed LanguageSpecs else but 3 errors remain | EditorPane + ExplorerPane still needed |
+| #1526 | 5c1a8fa | Tried activeTab (also out of scope) + ExplorerPane import missing | #1527 fixed import, #1528 fixed activeTab ✅ |
+| #1527 | 30658e9 | Fixed ExplorerPane import but EditorPane activeTab still wrong | #1528 (282c2d6) used inline expression ✅ |
+| #1528 | 282c2d6 | ALL FIXES IN PLACE | GREEN ✅ |
+| #1529 | 18f269e | docs + debug console onSend/onRun wired to UDM | (verifying) |
 
-**Audit findings:**
-- 7 debug providers exist: Terminal, Python, NodeJs, Shell, PHP, Android, APK
-- All providers had `launch()` implemented but stepping/pause/resume were no-ops
-- Python/Node providers just ran programs (no breakpoints, no variable inspection)
-- Run button in RunDebugPanel was a STUB (set fake "manual" session ID)
-- Bottom panel Run menu didn't call UDM at all (just added a debug message)
-- Debug console input dispatched to terminal, not to running debug session
+**5 distinct root causes, fixed one at a time:**
+1. LanguageSpecs.kt non-exhaustive `when` → `else` branch (fixed #1525)
+2. CodeEditor.kt missing `lspSignatureHelpProvider` + `onFormat` params (fixed #1524)
+3. EditorPane.kt `active`/`activeTab` out of scope → inline `tabs.firstOrNull` (fixed #1528)
+4. EditorPane.kt `FormatAlignLeft` icon not available → text icon "{}" (fixed #1528)
+5. ExplorerPane.kt missing `Language` import (fixed #1527)
 
-**Fixes implemented:**
-1. **InteractiveDebugProvider** interface — new interface for providers with stdin support
-2. **UDM.sendInput()** — sends user input to running debug session's stdin
-3. **UDM.sessionSupportsInput()** — checks if active session supports interactive input
-4. **PythonDebugProvider** upgraded from `python3 -u` to `python3 -m pdb`:
-   - Breakpoint injection via pdb's `break` command before running
-   - Step Over → `next`, Step Into → `step`, Step Out → `return`
-   - Resume → `continue`, Pause → SIGINT signal
-   - Evaluate → `p expr` (print expression)
-   - User can type any pdb command in the Debug Console
-5. **NodeJsDebugProvider** upgraded from `node` to `node inspect`:
-   - Pause → `pause`, Resume → `cont`
-   - Step Over → `next`, Step Into → `step`, Step Out → `out`
-   - Evaluate → enters REPL mode
-6. **ShellDebugProvider** upgraded to InteractiveDebugProvider (stdin support)
-7. **RunDebugPanel** — passes active file path, detects language from extension
-8. **Bottom panel Run** — calls UDM.startDebug() with active file path
-9. **Debug console input** — sends to running session via UDM.sendInput() (pdb/node inspect commands)
+### Fix Verification (all confirmed in current codebase ✅)
+- ✅ LanguageSpecs.kt: `else -> spec(keywords = emptySet(), comments = null)` present
+- ✅ LspManager.kt: all 13 new languageId mappings present
+- ✅ CodeEditor.kt: `lspSignatureHelpProvider` + `onFormat` params present
+- ✅ EditorPane.kt: inline `tabs.firstOrNull { it.id == activeId }` (no stale activeTab ref)
+- ✅ EditorPane.kt: text icon "{}" (no FormatAlignLeft)
+- ✅ ExplorerPane.kt: `import com.codespace.ide.domain.Language` present
+- ✅ ExplorerPane.kt: `activeFilePath` param + `Language.fromPath(activeFilePath)` present
+- ✅ ProjectShellScreen.kt: `udm.startDebug(lang, filePath, null)` in Run menu
+- ✅ ProjectShellScreen.kt: `udm.sendInput(activeSession.id, text)` in debug console onSend
+- ✅ ProjectShellScreen.kt: `RunDebugPanel(activeFilePath = activeEditorTab)` 
+- ✅ UDM: `InteractiveDebugProvider` interface present
+- ✅ UDM: `sendInput(sessionId, text)` method present
+- ✅ UDM: Python uses `python3 -m pdb` with breakpoint injection
+- ✅ UDM: Node uses `node inspect`
+- ✅ UDM: Real stepping commands (next/step/return for pdb, next/step/out for node)
 
-### Build Error Resolution (15 failed builds #1513-1527)
-1. LanguageSpecs.kt non-exhaustive `when` → added `else` branch
-2. CodeEditor.kt missing `lspSignatureHelpProvider` + `onFormat` params → added
-3. EditorPane.kt `activeTab` out of scope → replaced with inline `tabs.firstOrNull`
-4. ExplorerPane.kt missing `Language` import → added
-5. EditorPane.kt `FormatAlignLeft` icon unresolved → replaced with text icon "{"
+### LSP Enhancement Summary
+- 10+ new LSP methods added to LspManager (documentSymbol, documentHighlight, formatting, rangeFormatting, onTypeFormatting, typeDefinition, implementation, foldingRange, selectionRange, resolveCompletion, prepareRename, workspaceSymbol)
+- Client capabilities updated to declare all new features
+- JSON LSP config added (vscode-langservers-extracted)
+- 13 new Language enum entries: YAML, TOML, Vue, Svelte, C#, Ruby, Swift, Dart, Lua, SQL, PowerShell, Scala, R
+- LanguageId mappings for all 13 new languages in LspManager
+- Language specs for all 13 new languages in LanguageSpecs.kt
+- LSP signature help wired to CodeEditor + EditorPane
+- LSP formatting — Format button in editor toolbar, applies LSP TextEdits
+- Rust fallback URL pinned to specific version
 
-### What Still Needs Work
-- TerminalDebugProvider still a stub (just signals "ready to run" — doesn't execute)
+### Debug System Wiring Summary
+**VS Code architecture (researched):**
+- DAP (Debug Adapter Protocol) — standardized JSON-RPC between editor and debug adapter
+- Two UI surfaces: Run & Debug view (sidebar) + Debug Console (bottom panel)
+- Debug toolbar (floating): Continue/Pause, Step Over/Into/Out, Restart, Stop
+- Terminal integration via runInTerminal request
+- Status bar shows active debug config
+
+**Current architecture (implemented):**
+- Custom DebugProvider interface (NOT DAP — no JSON-RPC protocol layer)
+- 7 providers: Terminal, Python (pdb), NodeJs (inspect), Shell (bash -x), PHP, Android, APK
+- InteractiveDebugProvider interface for providers with stdin support
+- UDM.sendInput() sends user input to running debug session's stdin
+- Python upgraded: `python3 -m pdb` with breakpoint injection, real stepping (next/step/return)
+- Node upgraded: `node inspect` with real stepping (next/step/out)
+- RunDebugPanel passes active file path, detects language from extension
+- Bottom panel Run calls UDM.startDebug() with active file path
+- Debug console onSend sends to running session via UDM.sendInput()
+- Debug console onRun starts new session via UDM.startDebug()
+
+**NOT using DAP — key gap:**
+- No Editor → DAP → Debugger architecture (uses Editor → DebugProvider → ProcessBuilder instead)
+- No standardized JSON-RPC protocol, no capability negotiation
+- No structured responses (variables/stack come as typed objects in DAP, parsed text here)
+- Each provider is hand-rolled with its own command syntax
+- Adding a new language requires writing a new provider from scratch
+- DAP integration would be a future phase to make the system properly extensible
+
+### Remaining Work (from Phase 25 + Phase BB-1)
+- TerminalDebugProvider still a stub (just signals "ready to run")
 - PhpDebugProvider, AndroidDebugProvider, ApkDebugProvider not upgraded to Interactive
 - LSP documentSymbol not yet wired to OutlinePanel
-- LSP documentHighlight not yet wired to editor (word occurrence highlighting)
+- LSP documentHighlight not yet wired to editor
 - LSP code folding (foldingRange) not yet wired to editor
-- No DAP (Debug Adapter Protocol) integration — custom providers only
 - No launch.json equivalent — debug configs are hardcoded in dropdown
-
-
