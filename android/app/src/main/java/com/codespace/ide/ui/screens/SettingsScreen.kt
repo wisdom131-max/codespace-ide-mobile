@@ -68,8 +68,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOff
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.util.WorkspaceManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -621,32 +624,27 @@ fun SettingsScreen(
 
 @Composable
 private fun DeletedProjectsSection(context: android.content.Context) {
-    val projectsRoot = remember { File(context.filesDir, "projects") }
-    var refreshDeleted by remember { mutableStateOf(0) }
-    val deletedList by produceState<List<File>>(emptyList(), refreshDeleted) {
+    var refreshKey by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    // P29: Load trashed projects from WorkspaceManager project-level trash bin
+    val trashedProjects by produceState<List<WorkspaceManager.TrashedProject>>(emptyList(), refreshKey) {
         value = withContext(kotlinx.coroutines.Dispatchers.IO) {
-            projectsRoot.listFiles()
-                ?.filter { dir ->
-                    dir.isDirectory && (
-                        dir.listFiles()?.all { it.name == ".ide-trash" } == true ||
-                        dir.listFiles()?.isEmpty() == true
-                    )
-                }
-                ?.sortedByDescending { it.lastModified() }
-                ?: emptyList()
+            WorkspaceManager.listTrashedProjects(context)
         }
     }
 
     HorizontalDivider()
     Text(
-        "Deleted Projects",
+        "Deleted Projects (Recycle Bin)",
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
     )
-    if (deletedList.isEmpty()) {
+
+    if (trashedProjects.isEmpty()) {
         ListItem(
             headlineContent = {
-                Text("No deleted projects", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Recycle bin is empty", color = MaterialTheme.colorScheme.onSurfaceVariant)
             },
             leadingContent = {
                 Icon(Icons.Default.CheckCircle, null,
@@ -655,42 +653,94 @@ private fun DeletedProjectsSection(context: android.content.Context) {
         )
     } else {
         Column(Modifier.fillMaxWidth()) {
-            deletedList.forEach { dir ->
+            trashedProjects.forEach { entry ->
                 val deletedDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                    .format(Date(dir.lastModified()))
-                var showConfirm by remember(dir.absolutePath) { mutableStateOf(false) }
+                    .format(Date(entry.deletedAtMs))
+                var showRestoreConfirm by remember(entry.trashedDir.absolutePath) { mutableStateOf(false) }
+                var showDeleteConfirm by remember(entry.trashedDir.absolutePath) { mutableStateOf(false) }
+
                 ListItem(
-                    headlineContent = { Text(dir.name) },
+                    headlineContent = { Text(entry.name) },
                     supportingContent = {
-                        Text("Deleted around $deletedDate", fontSize = 11.sp)
+                        Text(
+                            "Deleted $deletedDate \u2022 ${WorkspaceManager.formatSize(entry.sizeBytes)}",
+                            fontSize = 11.sp
+                        )
                     },
                     leadingContent = {
                         Icon(Icons.Default.FolderOff, null,
                             tint = MaterialTheme.colorScheme.error)
                     },
                     trailingContent = {
-                        OutlinedButton(
-                            onClick = { showConfirm = true },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error
-                            ),
-                        ) { Text("Delete Forever") }
+                        Row {
+                            // Restore button
+                            OutlinedButton(
+                                onClick = { showRestoreConfirm = true },
+                                modifier = Modifier.padding(end = 4.dp),
+                            ) {
+                                Icon(Icons.Default.Restore, null, modifier = Modifier.padding(end = 4.dp))
+                                Text("Restore")
+                            }
+                            // Delete Forever button
+                            OutlinedButton(
+                                onClick = { showDeleteConfirm = true },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                ),
+                            ) {
+                                Icon(Icons.Default.DeleteForever, null, modifier = Modifier.padding(end = 4.dp))
+                                Text("Delete")
+                            }
+                        }
                     },
                 )
                 HorizontalDivider()
-                if (showConfirm) {
+
+                // Restore confirmation dialog
+                if (showRestoreConfirm) {
                     AlertDialog(
-                        onDismissRequest = { showConfirm = false },
-                        title = { Text("Permanently delete \"${dir.name}\"?") },
-                        text  = {
-                            Text("This cannot be undone. The project name will be freed for reuse.")
+                        onDismissRequest = { showRestoreConfirm = false },
+                        title = { Text("Restore \"${entry.name}\"?") },
+                        text = {
+                            Text("The project will be moved back to your projects list. " +
+                                "If a project with the same name exists, it will be restored with _restored suffix.")
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                scope.launch {
+                                    withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        WorkspaceManager.restoreTrashedProject(context, entry)
+                                    }
+                                    refreshKey++
+                                }
+                                showRestoreConfirm = false
+                            }) { Text("Restore") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+                        },
+                    )
+                }
+
+                // Delete Forever confirmation dialog
+                if (showDeleteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirm = false },
+                        title = { Text("Permanently delete \"${entry.name}\"?") },
+                        text = {
+                            Text("This cannot be undone. All files in this project will be " +
+                                "permanently deleted and the project name will be freed for reuse.")
                         },
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    dir.deleteRecursively()
-                                    refreshDeleted++
-                                    showConfirm = false
+                                    scope.launch {
+                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            WorkspaceManager.purgeTrashedProject(context, entry)
+                                        }
+                                        refreshKey++
+                                    }
+                                    showDeleteConfirm = false
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.error
@@ -698,10 +748,28 @@ private fun DeletedProjectsSection(context: android.content.Context) {
                             ) { Text("Delete Forever") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
+                            TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
                         },
                     )
                 }
+            }
+
+            // Empty trash button at the bottom
+            if (trashedProjects.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                WorkspaceManager.emptyProjectTrash(context)
+                            }
+                            refreshKey++
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                ) { Text("Empty Recycle Bin") }
             }
         }
     }
