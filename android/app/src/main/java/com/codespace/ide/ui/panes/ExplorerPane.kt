@@ -2231,19 +2231,37 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var watchIdCounter by remember { mutableStateOf(0) }
     var debugInput by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        udm.onBreakpointsChanged = { allBreakpoints = udm.getAllBreakpoints() }
-        udm.onSessionStateChanged = { session ->
-            sessionState = session.state
-            if (session.state == DebugState.STOPPED || session.state == DebugState.ERROR) {
-                activeSessionId = null
-                variables = emptyList()
-                callStack = emptyList()
+    val bpListener: () -> Unit = { allBreakpoints = udm.getAllBreakpoints() }
+    val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
+        sessionState = session.state
+        if (session.state == DebugState.STOPPED || session.state == DebugState.ERROR) {
+            activeSessionId = null
+            variables = emptyList()
+            callStack = emptyList()
+        }
+    }
+    val pausedListener: (List<DebugStackFrame>, List<DebugVariable>) -> Unit = { stack, vars ->
+        callStack = stack
+        variables = vars
+        // P26-1c: Live watch — re-evaluate all watch expressions on each pause
+        if (activeSessionId != null && watchExprs.isNotEmpty()) {
+            val sid = activeSessionId!!
+            watchExprs = watchExprs.map { w ->
+                val newVal = udm.evaluateExpression(sid, w.expression) ?: "—"
+                w.copy(value = newVal)
             }
         }
-        udm.onPaused = { stack, vars ->
-            callStack = stack
-            variables = vars
+    }
+    LaunchedEffect(Unit) {
+        udm.addOnBreakpointsChangedListener(bpListener)
+        udm.addOnSessionStateChangedListener(stateListener)
+        udm.addOnPausedListener(pausedListener)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            udm.removeOnBreakpointsChangedListener(bpListener)
+            udm.removeOnSessionStateChangedListener(stateListener)
+            udm.removeOnPausedListener(pausedListener)
         }
     }
 
@@ -2308,12 +2326,43 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     Icon(Icons.Default.PlayArrow, "Run", tint = Color.White)
                 }
             } else {
+                // P26-1: Full debug controls — Continue/Pause, Step Over, Step Into, Step Out, Stop
                 FilledIconButton(
-                    onClick = { activeSessionId?.let { udm.stepOver(it) } },
+                    onClick = { activeSessionId?.let {
+                        if (sessionState == DebugState.PAUSED) udm.resumeSession(it) else udm.pauseSession(it)
+                    } },
                     modifier = Modifier.size(36.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF007ACC)),
                 ) {
+                    Icon(
+                        if (sessionState == DebugState.PAUSED) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        if (sessionState == DebugState.PAUSED) "Continue" else "Pause",
+                        tint = Color.White, modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                FilledIconButton(
+                    onClick = { activeSessionId?.let { udm.stepOver(it) } },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF3C3C3C)),
+                ) {
                     Icon(Icons.Default.SkipNext, "Step Over", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+                FilledIconButton(
+                    onClick = { activeSessionId?.let { udm.stepInto(it) } },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF3C3C3C)),
+                ) {
+                    Icon(Icons.Default.ArrowDownward, "Step Into", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+                FilledIconButton(
+                    onClick = { activeSessionId?.let { udm.stepOut(it) } },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF3C3C3C)),
+                ) {
+                    Icon(Icons.Default.ArrowUpward, "Step Out", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(4.dp))
                 FilledIconButton(
