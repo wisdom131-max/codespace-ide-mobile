@@ -4421,7 +4421,7 @@ Fill each cell with: ✅ Works, ⚠️ Partial, ❌ Not supported, N/A
 
 ### STATUS
 
-- [~] Phase 26-1: Finish current debugger — IN PROGRESS (build #1551 green)
+- [x] Phase 26-1: Full LSP wiring + visual rendering + context menu — COMPLETE (build #1581 green)
   - [x] 26-1a: Breakpoints — gutter toggle ✅, persistence ✅, pdb injection ✅, Node injection ✅
   - [x] 26-1b: Variables — onPaused fires with real pdb locals parsing + type inference ✅
   - [x] 26-1c: Watches — live re-evaluation on each pause (both panels) ✅
@@ -4592,16 +4592,18 @@ This matches our architecture:
 - Clicking a chevron toggles the fold, hiding inner lines and showing `···` placeholder
 
 
-### LSP-Based Code Folding (Build #1576 — GREEN)
-- `foldableLines` now uses LSP folding ranges (start lines) when `lspFoldingRanges` is not empty
-- `foldedLineIndices` uses precise LSP end lines for fold boundaries instead of indent-based detection
-- Falls back to regex-based indent detection when LSP server is not running
-- Gutter chevron icons (▼ expanded / ▶ folded) already wired, now driven by accurate LSP data
-- Clicking a chevron toggles the fold, hiding inner lines and showing `···` placeholder
+### Type Definition + Find Implementations (Build #1581 — GREEN)
+- **Go to Type Definition** context menu item wired (CodeEditor #1579, EditorPane #1580/#1581)
+- Calls `LspManager.getTypeDefinition()`, shows inline `PeekDefResult` overlay with "Go to Definition →" button
+- **Find Implementations** context menu item wired
+- Calls `LspManager.getImplementation()`, shows `AlertDialog` list of all implementation locations
+- Each result is clickable — opens file and navigates to line
+- Build #1580 failed: `FontFamily` and `verticalScroll` unresolved + `onOpenFileAtLine` captured incorrectly in overlay lambdas
+- Build #1581 fixed all import issues — **GREEN ✅**
 
-### Roadmap
-- Phase 26-1 (LSP Full Wiring): ✅ COMPLETE
-- Next: Wire LSP features into CodeEditor context menu (Type Definition, Implementation menu items)
-- Next: Render Code Lens, Inlay Hints, Document Links visually in editor
-- Next: Document Symbol outline panel
-- Next: LSP-based code folding UI
+### Phase 26-1 — COMPLETE ✅
+All 26 LSP capabilities wired, visually rendered, and surfaced in context menu.
+Latest green build: **#1581** (cefcd7cea6)
+
+### Next: Phase 26-2 — DAP Abstraction Layer
+See Phase 26 plan above for full spec.
