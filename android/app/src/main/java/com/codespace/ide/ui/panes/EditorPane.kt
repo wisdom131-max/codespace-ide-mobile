@@ -883,7 +883,6 @@ fun EditorPane(
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
                         breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
-                        scrollToLine = scrollToLine,
                         onBreakpointToggle = { line ->
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
@@ -952,7 +951,6 @@ fun EditorPane(
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
-                        scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
                         goToLineOpen = goToLineOpen,
