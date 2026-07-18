@@ -80,7 +80,13 @@ private fun runGit(context: Context, dir: File, vararg args: String): String {
             "x-access-token:$githubToken".toByteArray(), android.util.Base64.NO_WRAP)
         "-c 'http.extraheader=Authorization: Basic $basic' "
     } else ""
-    return ProotInstaller.execOnce(context, "git $authFlag$quoted", guestPath)
+    val raw = ProotInstaller.execOnce(context, "git $authFlag$quoted", guestPath)
+    // P25-1: Normalize "Exit code NNN" (proot/git error) into "Error:" prefix that callers check.
+    // "Exit code 128" = not a git repo or auth failure. "Exit code 129" = bad args.
+    // stripProotNoise already removed proot/locale lines; this catches remaining git exit errors.
+    return if (raw.startsWith("Exit code"))
+        "Error: git ${args.firstOrNull().orEmpty()} failed (${raw.substringBefore("\n").trim()}) — ${raw.substringAfter("\n").take(200).trim().ifBlank { raw.substringBefore("\n").trim() }}"
+    else raw
 }
 
 private fun loadWorkspacePath(context: Context, projectId: String): String? =

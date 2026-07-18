@@ -1135,7 +1135,46 @@ exit 0
      * exists inside the Ubuntu rootfs, so any command-execution tool must go through proot.
      * See AGENTS.md "AI tool access + Git wiring audit" entry.
      */
-    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60): String {
+
+    /**
+     * P25-1: Strip proot/shell startup noise from structured command output.
+     *
+     * The interactive PTY terminal (TerminalPane) shows raw proot output — that is correct,
+     * proot bind warnings and locale-gen text are visible in the Terminal tab and that is fine.
+     * But execOnce is used for structured operations (git status, git blame, LSP checks,
+     * apt queries, Extensions panel). In those contexts, this noise appears as garbage text
+     * mixed in with real command output and breaks parsing in the Source Control panel,
+     * Output panel, and any other structured consumer.
+     *
+     * Noise sources:
+     *   - proot bind warnings: "proot: warning: can't sanitize binding '/proc/self/fd/0'"
+     *   - locale-gen output from /etc/profile.d/00-locale.sh (runs on every -lc login shell):
+     *       "Generating locales..."  /  "  en_US.UTF-8... done"  /  "Generation complete."
+     *   - Any blank lines left behind after stripping the above
+     *
+     * The stripped noise is silently logged under the "proot-startup" channel in AppOutputLog
+     * (which is not displayed in the Output panel UI) so debugging sessions can still find it.
+     */
+    private fun stripProotNoise(raw: String): String {
+        val noisePatterns = listOf(
+            Regex("""^proot:.*"""),                                // proot: warning: can't sanitize...
+            Regex("""^Generating locales\.\.\."""),                // locale-gen header
+            Regex("""^\s{2}[a-zA-Z_\-]+\.UTF-8\.\.\.\s*done$"""),// "  en_US.UTF-8... done"
+            Regex("""^Generation complete\.$"""),                  // locale-gen footer
+        )
+        val lines = raw.lines()
+        val noiseLines = lines.filter { line -> noisePatterns.any { it.containsMatchIn(line) } }
+        val cleanLines = lines.filter { line -> noisePatterns.none { it.containsMatchIn(line) } }
+        if (noiseLines.isNotEmpty()) {
+            // Keep noise available internally for debugging — hidden from Output panel UI
+            com.codespace.ide.diagnostics.AppOutputLog.logInternal(
+                noiseLines.joinToString("\n"), "proot-startup"
+            )
+        }
+        return cleanLines.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }.joinToString("\n")
+    }
+
+    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false): String {
         val (proot, baseArgs, envVars) = launchArgs(context)
         // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -lc <command>.
         val headArgs = baseArgs.dropLast(2).toTypedArray()
@@ -1171,8 +1210,9 @@ exit 0
                 try {
                     process.inputStream.bufferedReader().forEachLine { line ->
                         if (outputLines.size < MAX_LINES) outputLines.add(line)
-                        // Stream each line to the Output tab so installs are visible live
-                        com.codespace.ide.diagnostics.AppOutputLog.log(line, "lsp-install")
+                        // Stream to Output tab ONLY for explicit install calls (logToOutput=true).
+                        // Git/blame/check/status calls must NOT write to Output — they flood it with noise.
+                        if (logToOutput) com.codespace.ide.diagnostics.AppOutputLog.log(line, "lsp-install")
                     }
                 } catch (_: Exception) { /* stream closed on process exit */ }
             }
@@ -1185,7 +1225,8 @@ exit 0
                 process.destroyForcibly()
                 return "Timed out after ${timeoutSeconds}s running: $command"
             }
-            val output = outputLines.joinToString("\n")
+            val rawOutput = outputLines.joinToString("\n")
+            val output = stripProotNoise(rawOutput)  // P25-1: remove proot/locale noise before returning
             val exit = process.exitValue()
             if (exit == 0) output.trim().ifBlank { "(command completed, no output)" }
             else "Exit code $exit\n${output.trim()}"

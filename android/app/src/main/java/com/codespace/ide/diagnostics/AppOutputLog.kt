@@ -37,4 +37,21 @@ object AppOutputLog {
         lines.clear()
         lines.add("[info]  Output cleared")
     }
+
+    /**
+     * P25-1: Internal-only log channel.
+     * Lines written here are stored in [internalLines] but NOT shown in the Output panel UI.
+     * Used for proot startup noise, which is noise in end-user panels but valuable for
+     * debugging sessions that need to inspect the raw proot environment output.
+     * Capped at 200 lines (noise is high-volume; we don't need a full history).
+     */
+    private const val MAX_INTERNAL_LINES = 200
+    val internalLines = mutableStateListOf<String>()
+
+    @Synchronized
+    fun logInternal(message: String, channel: String = "internal") {
+        val ts = timeFmt.format(Date())
+        internalLines.add("[$ts] [$channel]  $message")
+        while (internalLines.size > MAX_INTERNAL_LINES) internalLines.removeAt(0)
+    }
 }
