@@ -769,7 +769,7 @@ fun ProjectShellScreen(
                 if (filePath.isNotBlank()) {
                     val lang = com.codespace.ide.domain.Language.fromPath(filePath)
                     val udm = com.codespace.ide.debug.UniversalDebugManager
-                    val sessionId = udm.startDebug(lang, filePath, null)
+                    val sessionId = udm.startDebug(lang, filePath, null, context)
                     if (sessionId != null) {
                         debugMessages.add("[debug] Session started: ${lang.displayName} — ${filePath.substringAfterLast('/')}")
                         showNotification("Debugging ${filePath.substringAfterLast('/')}", "info")
@@ -1812,6 +1812,8 @@ private fun PssBottomPanelContent(
             )
             BottomTab.OUTPUT   -> OutputPanel()
             BottomTab.DEBUG    -> DebugConsolePanel(
+                context = context,
+                activeFilePath = activeEditorTab,
                 messages = debugMessages,
                 input = debugInput,
                 onSend = { text ->
@@ -1834,7 +1836,7 @@ private fun PssBottomPanelContent(
                         // P25-DEBUG: Start real debug session via UDM
                         val lang = Language.fromPath(path)
                         val udm = com.codespace.ide.debug.UniversalDebugManager
-                        val sessionId = udm.startDebug(lang, path, null)
+                        val sessionId = udm.startDebug(lang, path, null, context)
                         if (sessionId != null) {
                             debugMessages.add("[debug] Session started: ${lang.displayName} — ${path.substringAfterLast('/')}")
                         } else {
@@ -2020,20 +2022,46 @@ private fun buildRunCommand(path: String): String? {
 }
 
 @Composable private fun DebugConsolePanel(
+    context: android.content.Context,
+    activeFilePath: String?,
     messages: SnapshotStateList<String>,
     input: MutableState<String>,
     onSend: (String) -> Unit,
     onRun: () -> Unit,
 ) {
-    // P23-3: Terminal Panel Debugger — UDM session awareness + colour-coded output
+    // P23-3 / P26-4b/c/d: Debug console with capability-aware toolbar + multi-session switcher
     val udm = com.codespace.ide.debug.UniversalDebugManager
+    val orientation = LocalConfiguration.current.orientation
     var activeSession by remember { mutableStateOf(udm.getActiveSession()) }
+    // P26-4c: Multi-session — all currently non-stopped sessions
+    var allSessions by remember { mutableStateOf(udm.getActiveSessions()) }
+    // P26-4b: Capability negotiation — what this adapter actually supports
+    var caps by remember { mutableStateOf<com.codespace.ide.debug.DAPCapabilities?>(null) }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
+    // P26-4a: Attach dialog visibility
+    var showAttachDialog by remember { mutableStateOf(false) }
+
+    // Determine if attach mode is applicable (JS/TS files only for now)
+    val isNodeFile = activeFilePath != null && (
+        activeFilePath.endsWith(".js") || activeFilePath.endsWith(".mjs") ||
+        activeFilePath.endsWith(".cjs") || activeFilePath.endsWith(".ts")
+    )
 
     val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
-        activeSession = if (session.state == com.codespace.ide.debug.DebugState.STOPPED ||
-            session.state == com.codespace.ide.debug.DebugState.ERROR) null else session
+        val stopped = session.state == com.codespace.ide.debug.DebugState.STOPPED ||
+                      session.state == com.codespace.ide.debug.DebugState.ERROR
+        // Update the focused session: if this session stopped, pick another active one or null
+        if (stopped && activeSession?.id == session.id) {
+            activeSession = udm.getActiveSessions().firstOrNull { it.id != session.id }
+        } else if (!stopped && activeSession == null) {
+            activeSession = session
+            udm.setActiveSession(session.id)
+        }
+        // Refresh multi-session list
+        allSessions = udm.getActiveSessions()
+        // Refresh caps for the newly active session
+        caps = activeSession?.id?.let { udm.getAdapterCapabilities(it) }
     }
     val outputListener: (String) -> Unit = { msg ->
         messages.add(msg)
@@ -2051,18 +2079,32 @@ private fun buildRunCommand(path: String): String? {
     }
 
     Column(Modifier.fillMaxSize()) {
-        // Header with Run/Stop controls
+
+        // ── Header: title + Attach + Stop + Run + Clear ──────────────────────
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("DEBUG CONSOLE", fontSize = 11.sp, color = Color(0xFF858585), modifier = Modifier.weight(1f))
+            // P26-4a: Attach button — only for JS/TS files, only when no session already running
+            if (isNodeFile && activeSession == null) {
+                TextButton(
+                    onClick = { showAttachDialog = true },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    modifier = Modifier.height(24.dp),
+                ) {
+                    Text("Attach", fontSize = 10.sp, color = Color(0xFF4EC9B0))
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             // Stop button — only when session active
             if (activeSession != null) {
                 Icon(Icons.Default.Stop, "Stop", tint = Color(0xFFE53935),
                     modifier = Modifier.size(16.dp).clickable {
                         activeSession?.id?.let { udm.stopSession(it) }
                         activeSession = null
+                        allSessions = udm.getActiveSessions()
+                        caps = null
                         messages.add("[debug] Session stopped.")
                     })
                 Spacer(Modifier.width(8.dp))
@@ -2078,7 +2120,110 @@ private fun buildRunCommand(path: String): String? {
                 })
         }
         HorizontalDivider(color = Color(0xFF3C3C3C))
-        // P23-3: Colour-coded output log
+
+        // ── P26-4c: Multi-session switcher — only visible when >1 session ────
+        if (allSessions.size > 1) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) {
+                items(allSessions) { session ->
+                    val isSelected = session.id == activeSession?.id
+                    val label = "${session.language.displayName} — ${session.filePath.substringAfterLast("/")}"
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (isSelected) Color(0xFF37373D) else Color.Transparent,
+                        modifier = Modifier.clickable {
+                            activeSession = session
+                            udm.setActiveSession(session.id)
+                            caps = udm.getAdapterCapabilities(session.id)
+                        },
+                    ) {
+                        Text(
+                            label,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            fontSize = 10.sp,
+                            color = if (isSelected) Color(0xFFD4D4D4) else Color(0xFF808080),
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = Color(0xFF3C3C3C))
+        }
+
+        // ── P26-4b: Capability-aware step toolbar — only when session active ─
+        if (activeSession != null) {
+            // Determine which step controls are supported.
+            // If caps is null (legacy adapter) show all controls as a best-effort fallback.
+            // DAPCapabilities doesn't have explicit step flags, but all adapters that return
+            // capabilities() support the standard step commands (next/stepIn/stepOut).
+            // We hide the entire toolbar only when the session is running (not paused).
+            val isPaused = activeSession?.state == com.codespace.ide.debug.DebugState.PAUSED
+            val sid = activeSession?.id
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF2D2D30))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Continue (Resume)
+                DebugToolbarBtn(
+                    label = "▶",
+                    tooltip = "Continue",
+                    enabled = isPaused && sid != null,
+                    color = Color(0xFF4EC9B0),
+                ) { sid?.let { udm.resumeSession(it) } }
+                // Pause
+                DebugToolbarBtn(
+                    label = "⏸",
+                    tooltip = "Pause",
+                    enabled = activeSession?.state == com.codespace.ide.debug.DebugState.RUNNING && sid != null,
+                    color = Color(0xFFD7BA7D),
+                ) { sid?.let { udm.pauseSession(it) } }
+                Spacer(Modifier.width(4.dp))
+                // Step Over
+                DebugToolbarBtn(
+                    label = "↷",
+                    tooltip = "Step Over",
+                    enabled = isPaused && sid != null,
+                    color = Color(0xFFCCCCCC),
+                ) { sid?.let { udm.stepOver(it) } }
+                // Step Into
+                DebugToolbarBtn(
+                    label = "↓",
+                    tooltip = "Step Into",
+                    enabled = isPaused && sid != null,
+                    color = Color(0xFFCCCCCC),
+                ) { sid?.let { udm.stepInto(it) } }
+                // Step Out
+                DebugToolbarBtn(
+                    label = "↑",
+                    tooltip = "Step Out",
+                    enabled = isPaused && sid != null,
+                    color = Color(0xFFCCCCCC),
+                ) { sid?.let { udm.stepOut(it) } }
+                Spacer(Modifier.weight(1f))
+                // Show adapter name when caps are known
+                if (caps != null) {
+                    Text(
+                        "DAP",
+                        fontSize = 9.sp,
+                        color = Color(0xFF4EC9B0),
+                        modifier = Modifier
+                            .background(Color(0xFF1A3A2A), RoundedCornerShape(3.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            HorizontalDivider(color = Color(0xFF3C3C3C))
+        }
+
+        // ── P23-3: Colour-coded output log ─────────────────────────────────
         LazyColumn(Modifier.weight(1f).background(Color(0xFF1E1E1E)).padding(8.dp), state = listState) {
             items(messages) { msg ->
                 val color = when {
@@ -2097,7 +2242,8 @@ private fun buildRunCommand(path: String): String? {
             }
         }
         HorizontalDivider(color = Color(0xFF3C3C3C))
-        // Input row
+
+        // ── Input row ──────────────────────────────────────────────────────
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -2119,6 +2265,56 @@ private fun buildRunCommand(path: String): String? {
                 modifier = Modifier.size(18.dp).clickable { onSend(input.value) })
             Spacer(Modifier.width(8.dp))
         }
+    }
+
+    // ── P26-4a: Attach dialog ──────────────────────────────────────────────
+    if (showAttachDialog && activeFilePath != null) {
+        key(orientation) {
+        AttachDebugDialog(
+            context = context,
+            activeFilePath = activeFilePath,
+            onDismiss = { showAttachDialog = false },
+            onAttached = { sessionId ->
+                allSessions = udm.getActiveSessions()
+                activeSession = udm.getSessionById(sessionId)
+                caps = udm.getAdapterCapabilities(sessionId)
+                messages.add("[debug] Attached to process — session $sessionId")
+            },
+            onAttachFailed = { reason ->
+                messages.add("[error] Attach failed: $reason")
+            },
+        )
+        }
+    }
+}
+
+/**
+ * P26-4b: Small debug toolbar button — label is a unicode symbol, used for step controls.
+ * Uses text instead of Material Icons to avoid depending on specific icon availability.
+ */
+@Composable
+private fun DebugToolbarBtn(
+    label: String,
+    tooltip: String,
+    enabled: Boolean,
+    color: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .background(
+                if (enabled) Color(0xFF37373D) else Color.Transparent,
+                RoundedCornerShape(4.dp),
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            fontSize = 14.sp,
+            color = if (enabled) color else Color(0xFF555555),
+        )
     }
 }
 
