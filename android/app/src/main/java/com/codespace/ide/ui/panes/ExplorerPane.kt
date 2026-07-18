@@ -1,5 +1,6 @@
 package com.codespace.ide.ui.panes
 
+import com.codespace.ide.domain.Language
 import com.codespace.ide.util.WorkspaceManager
 import com.codespace.ide.debug.UniversalDebugManager
 import com.codespace.ide.debug.DebugState
