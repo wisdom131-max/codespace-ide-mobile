@@ -45,6 +45,7 @@ data class DebugStackFrame(
     val function: String,
     val file: String,
     val line: Int,
+    val active: Boolean = false,
 )
 
 /** A breakpoint — line breakpoints, conditional, log points. */
@@ -553,7 +554,7 @@ class PythonDebugProvider : InteractiveDebugProvider {
                         // Parse "> file(line)function()" to track current location
                         if (line.startsWith(">") && "(" in line && ")" in line) {
                             // Pattern: > /path/to/file.py(10)function()
-                            val match = Regex(">(.*)\((\d+)\)(.*)").find(line)
+                            val match = Regex(""">(.*)\((\d+)\)(.*)""").find(line)
                             if (match != null) {
                                 currentFile = match.groupValues[1].trim()
                                 currentLine = match.groupValues[2].toIntOrNull()?.minus(1) ?: -1
