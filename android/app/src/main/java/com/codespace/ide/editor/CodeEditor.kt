@@ -278,6 +278,8 @@ fun CodeEditor(
     breakpointLines: Set<Int> = emptySet(),
     /** P8-1 Breakpoints: called when user taps a line number to toggle a breakpoint. */
     onBreakpointToggle: (Int) -> Unit = {},
+    /** P26-1: LSP document highlight — lines to highlight (0-based startLine, endLine pairs). */
+    lspHighlightLines: List<Pair<Int, Int>> = emptyList(),
     /** P15-A: Fix with AI — called with a pre-formatted prompt when user taps "Fix with AI". */
     onAiFixRequest: ((String) -> Unit)? = null,
     /** P18-C: Project root path for cross-file rename. Null = single-file only. */
