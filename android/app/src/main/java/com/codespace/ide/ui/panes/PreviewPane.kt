@@ -40,6 +40,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewPane — live preview for HTML/CSS/JS, Markdown, SVG, and local servers
@@ -397,9 +400,22 @@ fun PreviewPane(
     // every sub-tab (HTML, Markdown, SVG, Browser, Dashboard, Remotion) since it just re-renders
     // the shared PreviewBody at fillMaxSize.
     if (isFullscreen) {
+        // P25-4: restore system bars (status + nav) when the fullscreen dialog is dismissed.
+        // decorFitsSystemWindows=false tells Android the window handles insets itself.
+        // Without this DisposableEffect, status bar stays hidden after pressing ✕ or back.
+        val view = LocalView.current
+        DisposableEffect(Unit) {
+            val window = (view.context as? android.app.Activity)?.window ?: return@DisposableEffect onDispose {}
+            val controller = WindowInsetsControllerCompat(window, view)
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            onDispose {
+                controller.show(WindowInsetsCompat.Type.statusBars())
+            }
+        }
         key(orientation) {
         Dialog(
             onDismissRequest = { isFullscreen = false },
+            // P25-4: decorFitsSystemWindows=false lets content draw behind status bar.
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
             Column(
@@ -652,11 +668,12 @@ private fun HtmlPreview(
             }
         },
         update = { wv ->
-            // Track last loaded URL to avoid reloading on every recomposition
-            val lastUrl = wv.tag as? String
-            val currentUrl = if (liveUrl != null) liveUrl else "__inline__"
-            if (lastUrl != currentUrl) {
-                wv.tag = currentUrl
+            // P25-4: stable key — compare liveUrl OR a hash of inline html so
+            // content edits trigger reload but recompositions without edits do not
+            val lastTag = wv.tag as? String
+            val currentTag = if (liveUrl != null) liveUrl else html.take(64)
+            if (lastTag != currentTag) {
+                wv.tag = currentTag
                 if (liveUrl != null) {
                     // PhaseX: Load from LivePreviewServer — gets auto-reload via SSE
                     wv.loadUrl(liveUrl)
@@ -729,7 +746,12 @@ private fun MarkdownPreview(
             }
         },
         update = { wv ->
-            wv.loadDataWithBaseURL("https://cdn.jsdelivr.net", html, "text/html", "UTF-8", null)
+            // P25-4: stable load key — only reload when content actually changes
+            val tag = wv.tag as? String
+            if (tag != html.take(64)) {
+                wv.tag = html.take(64)
+                wv.loadDataWithBaseURL("https://cdn.jsdelivr.net", html, "text/html", "UTF-8", null)
+            }
             onWebView(wv)
         },
         modifier = Modifier.fillMaxSize(),
@@ -764,7 +786,12 @@ private fun SvgPreview(
             }
         },
         update = { wv ->
-            wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+            // P25-4: stable key to avoid SVG reload on every recomposition
+            val tag = wv.tag as? String
+            if (tag != html.take(64)) {
+                wv.tag = html.take(64)
+                wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+            }
             onWebView(wv)
         },
         modifier = Modifier.fillMaxSize(),
@@ -826,7 +853,10 @@ private fun BrowserPreview(
             }
         },
         update = { wv ->
-            if (lastLoadedUrl != url) {
+            // P25-4: only load if url changed AND is a real address (not localhost:0 from a
+            // cold open with no port forwarded — that was the root cause of the blank screen bug)
+            val isRealUrl = url.isNotBlank() && url != "http://localhost:0" && url != "http://localhost:"
+            if (lastLoadedUrl != url && isRealUrl) {
                 lastLoadedUrl = url
                 val clean = url.substringBefore('?').substringBefore('#').lowercase()
                 val videoExts = listOf(".mp4", ".webm", ".mov", ".mkv", ".m4v")
@@ -848,6 +878,18 @@ private fun BrowserPreview(
                     )
                     else -> wv.loadUrl(url)
                 }
+            } else if (!isRealUrl && lastLoadedUrl.isEmpty()) {
+                // Show a helpful waiting placeholder instead of a blank white page
+                wv.loadDataWithBaseURL(null, """
+                    <html><body style="background:#1e1e1e;color:#717171;font-family:sans-serif;
+                    display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;margin:0;">
+                    <div>
+                      <div style="font-size:36px;margin-bottom:12px;">🌐</div>
+                      <p style="color:#d4d4d4;font-size:15px;margin-bottom:8px;">Browser Preview</p>
+                      <p style="font-size:13px;">Enter a URL above and tap <b style="color:#007acc;">Go</b></p>
+                      <p style="font-size:12px;margin-top:8px;">or forward a port from the <b>Ports</b> tab</p>
+                    </div></body></html>
+                """.trimIndent(), "text/html", "UTF-8", null)
             }
             onWebView(wv)
         },
@@ -917,7 +959,9 @@ private fun RemotionPreview(
             }
         },
         update = { wv ->
-            if (wv.url != remotionUrl) wv.loadUrl(remotionUrl)
+            // P25-4: guard against loading localhost:0 (no port connected)
+            val isRealUrl = remotionUrl.isNotBlank() && remotionUrl != "http://localhost:0"
+            if (wv.url != remotionUrl && isRealUrl) wv.loadUrl(remotionUrl)
             onWebView(wv)
         },
         modifier = Modifier.fillMaxSize(),
@@ -1016,7 +1060,13 @@ private fun DashboardPreview(
             }
         },
         update = { wv ->
-            wv.loadDataWithBaseURL("https://cdn.jsdelivr.net", dashboardHtml, "text/html", "UTF-8", null)
+            // P25-4: only reload when HTML actually changed — prevents constant recomposition
+            // re-loading which caused blank flashes during drag or any state change
+            val tag = wv.tag as? String
+            if (tag != dashboardHtml.take(64)) {
+                wv.tag = dashboardHtml.take(64)
+                wv.loadDataWithBaseURL("https://cdn.jsdelivr.net", dashboardHtml, "text/html", "UTF-8", null)
+            }
             onWebView(wv)
         },
         modifier = Modifier.fillMaxSize(),

@@ -1827,7 +1827,7 @@ private fun PssBottomPanelContent(
             BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
             BottomTab.PREVIEW  -> PreviewPane(
                 activeFilePath = activeEditorTab ?: "",
-                initialPort = previewPort ?: 0,
+                initialPort = previewPort,  // P25-4: pass null (not 0) — 0 was triggering BROWSER mode on every cold open
                 externalState = sharedPreviewState,
                 projectId = projectId,
             )
