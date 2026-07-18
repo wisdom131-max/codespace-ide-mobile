@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
+import com.codespace.ide.editor.SignatureInfo
 import com.codespace.ide.lsp.LspManager
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -460,11 +461,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
-    // ── P2-12 Parameter hints / signature help ─────────────────────────────
-    // Cheap local backward-scan (no debounce needed, unlike the whole-file
-    // inlay-hint/lint analyzers) — recomputed on every cursor move/edit.
-    val activeSignature = remember(value.text, value.selection.end, language) {
-        SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
+    // ── P2-12 / P25-LSP Parameter hints / signature help ────────────────────
+    // Prefer LSP signature help when available (knows ALL functions in the codebase),
+    // fall back to the local curated signature DB (SignatureHelpAnalyzer) otherwise.
+    val activeSignature = remember(value.text, value.selection.end, language, lspSignatureHelpProvider) {
+        if (lspSignatureHelpProvider != null) {
+            val cLine = value.text.take(value.selection.end).count { it == '\n' }
+            val cCol = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
+            try { lspSignatureHelpProvider.invoke(cLine, cCol) } catch (_: Exception) { null }
+                ?: SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
+        } else {
+            SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
+        }
     }
 
     // ── Find References state ─────────────────────────────────────────────
