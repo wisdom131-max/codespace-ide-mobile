@@ -4591,6 +4591,14 @@ This matches our architecture:
 - Gutter chevron icons (▼ expanded / ▶ folded) already wired, now driven by accurate LSP data
 - Clicking a chevron toggles the fold, hiding inner lines and showing `···` placeholder
 
+
+### LSP-Based Code Folding (Build #1576 — GREEN)
+- `foldableLines` now uses LSP folding ranges (start lines) when `lspFoldingRanges` is not empty
+- `foldedLineIndices` uses precise LSP end lines for fold boundaries instead of indent-based detection
+- Falls back to regex-based indent detection when LSP server is not running
+- Gutter chevron icons (▼ expanded / ▶ folded) already wired, now driven by accurate LSP data
+- Clicking a chevron toggles the fold, hiding inner lines and showing `···` placeholder
+
 ### Roadmap
 - Phase 26-1 (LSP Full Wiring): ✅ COMPLETE
 - Next: Wire LSP features into CodeEditor context menu (Type Definition, Implementation menu items)
