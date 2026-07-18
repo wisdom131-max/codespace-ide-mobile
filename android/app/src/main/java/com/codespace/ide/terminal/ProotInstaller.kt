@@ -1234,5 +1234,56 @@ exit 0
             "Error running command in Ubuntu rootfs: ${e.message}"
         }
     }
-}
 
+    /**
+     * P25-3: Variant of execOnce that exposes the underlying Process so callers can cancel it.
+     * The [onProcess] callback fires immediately after Process.start() — before any output
+     * is read — giving the caller time to store the reference for cancellation.
+     * All other behaviour (noise stripping, logToOutput, timeout, drain thread) is identical.
+     */
+    fun execOnceWithProcess(
+        context: Context,
+        command: String,
+        workdir: String? = null,
+        timeoutSeconds: Long = 60,
+        logToOutput: Boolean = false,
+        onProcess: (Process) -> Unit = {},
+    ): String {
+        val (proot, baseArgs, envVars) = launchArgs(context)
+        val headArgs = baseArgs.dropLast(2).toTypedArray()
+        val cd = if (workdir != null) "cd \"$workdir\" 2>/dev/null; " else ""
+        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
+        return try {
+            val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
+            pb.redirectErrorStream(true)
+            pb.redirectInput(java.io.File("/dev/null"))
+            val envMap = pb.environment()
+            envVars.forEach { kv ->
+                val idx = kv.indexOf('=')
+                if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
+            }
+            val process = pb.start()
+            onProcess(process)
+            val outputLines = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val MAX_LINES = 2000
+            val readerThread = Thread {
+                try {
+                    process.inputStream.bufferedReader().forEachLine { line ->
+                        if (outputLines.size < MAX_LINES) outputLines.add(line)
+                        if (logToOutput) com.codespace.ide.diagnostics.AppOutputLog.log(line, "pkg-install")
+                    }
+                } catch (_: Exception) {}
+            }
+            readerThread.isDaemon = true
+            readerThread.start()
+            val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+            readerThread.join(2000)
+            if (!finished) { process.destroyForcibly(); return "Timed out after ${timeoutSeconds}s" }
+            val rawOutput = outputLines.joinToString("\n")
+            val output = stripProotNoise(rawOutput)
+            val exit = process.exitValue()
+            if (exit == 0) output.trim().ifBlank { "(done)" } else "Exit code $exit\n${output.trim()}"
+        } catch (e: Exception) { "Error: ${e.message}" }
+    }
+
+}

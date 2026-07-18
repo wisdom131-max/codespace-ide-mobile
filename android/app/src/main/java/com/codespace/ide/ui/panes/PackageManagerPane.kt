@@ -29,6 +29,7 @@ import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -149,7 +150,11 @@ internal fun ExtensionsPanel() {
                     "upgrade-all" -> "apt-get upgrade -y 2>&1"
                     else          -> "apt-get install -y $pkg 2>&1"
                 }
-                val result = ProotInstaller.execOnce(context, cmdStr, timeoutSeconds = 120L)
+                val cancelRef = java.util.concurrent.atomic.AtomicReference<Process?>(null)
+                op.cancelRef = cancelRef  // P25-3: expose to Cancel button
+                val result = ProotInstaller.execOnceWithProcess(
+                    context, cmdStr, timeoutSeconds = 120L, logToOutput = true
+                ) { proc -> cancelRef.set(proc) }
                 op.output.addAll(result.lines())
                 op.success = !result.startsWith("Exit code") && !result.startsWith("Error") && !result.startsWith("Timed out")
                 op.done    = true
@@ -376,7 +381,10 @@ internal fun ExtensionsPanel() {
                         TextButton(
                             onClick = {
                                 scope.launch(Dispatchers.IO) {
-                                    try { op.process?.destroy() } catch (_: Exception) {}
+                                    // P25-3: cancel the actual running process via cancelRef (op.process was always null)
+                                try { op.cancelRef?.get()?.destroyForcibly() } catch (_: Exception) {}
+                                op.done = true; op.success = false
+                                op.output.add("[Cancelled by user]")
                                 }
                             },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
