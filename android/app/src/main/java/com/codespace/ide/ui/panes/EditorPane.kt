@@ -40,6 +40,7 @@ import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
 import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
+import com.codespace.ide.editor.SignatureInfo
 import androidx.compose.ui.zIndex
 import java.io.File
 import com.codespace.ide.R
@@ -1013,6 +1014,67 @@ fun EditorPane(
                                 }
                             }
                         } else null,
+                        // P25-LSP: LSP-backed signature help — knows ALL functions in codebase
+                        lspSignatureHelpProvider = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val sigHelp = try {
+                                        LspManager.getSignatureHelp(active.language, uri, line, col)
+                                    } catch (_: Exception) { null }
+                                    if (sigHelp != null) {
+                                        val sigs = sigHelp.optJSONArray("signatures")
+                                        val activeSig = sigHelp.optInt("activeSignature", 0)
+                                        val activeParam = sigHelp.optInt("activeParameter", 0)
+                                        if (sigs != null && sigs.length() > 0) {
+                                            val sig = sigs.optJSONObject(activeSig.coerceAtMost(sigs.length() - 1))
+                                            if (sig != null) {
+                                                val label = sig.optString("label", "")
+                                                val params = sig.optJSONArray("parameters")
+                                                val paramList = if (params != null) {
+                                                    (0 until params.length()).mapNotNull { i ->
+                                                        val p = params.optJSONObject(i)
+                                                        p?.optString("label", "")?.takeIf { it.isNotBlank() }
+                                                    }
+                                                } else {
+                                                    // Fallback: try to parse params from the label
+                                                    label.substringAfter("(", "").substringBefore(")", "").split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                                }
+                                                SignatureInfo(
+                                                    name = label.substringBefore("(").trim(),
+                                                    params = paramList,
+                                                    returnType = sig.optString("documentation", "").takeIf { it.isNotBlank() },
+                                                    activeParam = activeParam,
+                                                )
+                                            } else null
+                                        } else null
+                                    } else null
+                                } else null
+                            }
+                        } else null,
+                        // P25-LSP: Format document via LSP
+                        onFormat = if (LspManager.isServerRunning(active.language)) {
+                            {
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val edits = try {
+                                        LspManager.getFormatting(active.language, uri)
+                                    } catch (_: Exception) { null }
+                                    if (edits != null && edits.length() > 0) {
+                                        // Apply TextEdits to the content
+                                        val content = active.content
+                                        val newContent = applyTextEdits(content, edits)
+                                        if (newContent != content) {
+                                            val idx = tabs.indexOfFirst { it.id == active.id }
+                                            if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
+                                            if (active.path.startsWith("/")) {
+                                                try { java.io.File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else null,
                     )
                 }
                 // P22-G: LSP hover popup
@@ -1084,3 +1146,58 @@ def fibonacci(n: int) -> list[int]:
 if __name__ == "__main__":
     print(fibonacci(10))
 """.trimIndent()
+
+/**
+ * P25-LSP: Apply LSP TextEdits (JSONArray of {range: {start, end}, newText}) to content.
+ * TextEdits are sorted from end to start so earlier edits don't shift positions of later ones.
+ */
+private fun applyTextEdits(content: String, edits: org.json.JSONArray): String {
+    val editList = (0 until edits.length()).mapNotNull { i ->
+        val edit = edits.optJSONObject(i) ?: return@mapNotNull null
+        val range = edit.optJSONObject("range") ?: return@mapNotNull null
+        val start = range.optJSONObject("start")
+        val end = range.optJSONObject("end")
+        if (start == null || end == null) return@mapNotNull null
+        val newText = edit.optString("newText", "")
+        TextEdit(
+            startLine = start.optInt("line", 0),
+            startChar = start.optInt("character", 0),
+            endLine = end.optInt("line", 0),
+            endChar = end.optInt("character", 0),
+            newText = newText,
+        )
+    }.sortedByDescending { it.startLine * 100000 + it.startChar }
+
+    var result = content
+    val lines = result.split("\n").toMutableList()
+    for (edit in editList) {
+        if (edit.startLine >= lines.size) continue
+        if (edit.startLine == edit.endLine) {
+            // Single-line edit
+            val line = lines[edit.startLine]
+            val s = edit.startChar.coerceIn(0, line.length)
+            val e = edit.endChar.coerceIn(0, line.length)
+            lines[edit.startLine] = line.substring(0, s) + edit.newText + line.substring(e)
+        } else {
+            // Multi-line edit — replace from start to end
+            val firstLine = lines[edit.startLine]
+            val lastLine = if (edit.endLine < lines.size) lines[edit.endLine] else ""
+            val before = firstLine.substring(0, edit.startChar.coerceIn(0, firstLine.length))
+            val after = if (edit.endLine < lines.size) lastLine.substring(edit.endChar.coerceIn(0, lastLine.length)) else ""
+            val replacement = before + edit.newText + after
+            // Remove lines from startLine to endLine, insert replacement
+            val newLines = lines.subList(0, edit.startLine) + replacement.split("\n") + lines.subList(minOf(edit.endLine + 1, lines.size), lines.size)
+            lines.clear()
+            lines.addAll(newLines)
+        }
+    }
+    return lines.joinToString("\n")
+}
+
+private data class TextEdit(
+    val startLine: Int,
+    val startChar: Int,
+    val endLine: Int,
+    val endChar: Int,
+    val newText: String,
+)
