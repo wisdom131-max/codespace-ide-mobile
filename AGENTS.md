@@ -3548,14 +3548,14 @@ version for any package used as a language service runtime, not just the LSP bin
 | Phase | Title | Status |
 |-------|-------|--------|
 | P25-0 | TypeScript version pinning (confirmed fix) | ✅ DONE (commit 1cec353, build #1496) |
-| P25-0B | Safe LSP upgrade-check mechanism | ⬜ QUEUED |
+| P25-0B | Safe LSP upgrade-check mechanism | ⬜ DEFERRED |
 | P25-1 | Proot/shell output isolation | ✅ DONE (commit 4134c07) |
 | P25-2 | Debug panel audit | ✅ DONE |
 | P25-3 | Extensions panel audit + Cancel fix | ✅ DONE (commit d0e4e28) |
 | P25-4 | Preview blank screen (high priority) | ✅ DONE (commits 1c1f312 + 6aea436) |
 | P25-5 | Full LSP/IntelliSense audit (all languages) | ✅ DONE |
 | P25-6 | Completion/hover/signature/diagnostics pipeline audit | ✅ DONE |
-| P25-7 | Final report | ⬜ QUEUED |
+| P25-7 | Final report | ✅ DONE |
 
 ---
 
@@ -3879,20 +3879,39 @@ All properly declared: `completion`, `hover`, `signatureHelp`, `definition`, `re
 
 ## P25-7 — Final Report
 
-Produced after all phases complete. Template:
-
 | Part | Finding | Evidence | Fixed? | Remaining |
 |------|---------|----------|--------|-----------|
-| P25-0 | TypeScript pin | On-device confirmed | ⬜ | |
-| P25-0B | Upgrade check | | ⬜ | |
-| P25-1 | Shell output isolation | | ⬜ | |
-| P25-2 | Debug panel | | ⬜ | |
-| P25-3 | Extensions | | ⬜ | |
-| P25-4 | Preview blank | | ⬜ | |
-| P25-5 | LSP all languages | | ⬜ | |
-| P25-6 | Pipelines | | ⬜ | |
+| P25-0 | TypeScript pin @5.6.3 | typescript@7.x ships no tsserver.js | ✅ Fixed (commit 1cec353) | Needs device verification |
+| P25-0B | LSP upgrade-check mechanism | Would auto-detect when pinned versions can be safely bumped | ⬜ DEFERRED | Low priority — manual bumps are fine for now |
+| P25-1 | Proot/shell output isolation | execOnce used login shell, noise leaked to all panels | ✅ Fixed (commit 4134c07) | Needs device verification |
+| P25-2 | Debug panel audit | Two implementations by design (sidebar + bottom panel), shared UDM backend | ✅ Audited | Run button in sidebar is a stub (sets fake session ID) |
+| P25-3 | Extensions Cancel fix | cancelRef: AtomicReference<Process?> added, Cancel calls destroyForcibly | ✅ Fixed (commit d0e4e28) | Build broke (comment/brace), fixed (commit 37a33b3) |
+| P25-4 | Preview blank screen | initialPort=0 triggered BROWSER mode on cold open; WebView reload storms | ✅ Fixed (commits 1c1f312 + 6aea436) | Needs device verification |
+| P25-5 | LSP all languages | 12 languages with configs, 4 without (JSON, MD, Shell, XML), 11 missing from enum | ✅ Audited | JSON LSP could be added for free; Rust fallback URL unpinned |
+| P25-6 | Pipeline audit | Completion ✅, Hover ✅, Diagnostics ✅, Definition/References/Rename ✅ | ✅ Audited | Signature Help NOT wired to UI; Semantic Tokens unverified |
+| P25-7 | This report | — | ✅ Done | — |
 
-**Status:** ⬜ QUEUED — final step
+### Build Status
+- Builds 1501-1505: FAILED (cancelRef unresolved → comment swallowing closing brace)
+- Build 1506: ✅ GREEN (fix commit 37a33b3)
 
----
+### Summary of Phase 25
 
+Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
+1. TypeScript version pinning — root cause found and fixed (tsserver.js removed in v7)
+2. Shell output isolation — root cause found and fixed (login shell noise)
+3. Extensions Cancel button — root cause found and fixed (process ref was null)
+4. Preview blank screen — root cause found and fixed (port 0 + WebView reload storms)
+5. Debug panel architecture — confirmed correct (two panels, shared UDM)
+6. LSP language coverage — 12 configs, gaps documented
+7. LSP pipeline integrity — 1 gap found (signature help not wired)
+
+### Remaining Items (Deferred / Needs Device)
+- P25-0B: LSP upgrade-check mechanism — deferred (low priority)
+- Signature Help UI wiring — `getSignatureHelp()` exists but not called from EditorPane
+- Semantic Tokens — implemented but not verified in UI
+- All fixes need on-device verification (cannot test from sandbox)
+- Rust fallback URL should be pinned to a specific version
+- JSON LSP could be added for free (vscode-json-language-server already installed)
+
+**Status:** ✅ DONE — Phase 25 complete.
