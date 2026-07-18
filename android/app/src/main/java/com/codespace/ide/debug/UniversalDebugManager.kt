@@ -177,8 +177,9 @@ object UniversalDebugManager {
     private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
 
     init {
-        // P26-2d: Register DAP adapters (tried before legacy providers)
+        // P26-2d/P26-3a: Register DAP adapters (tried before legacy providers)
         registerAdapter(PythonDAPAdapter())
+        registerAdapter(NodeDAPAdapter())
         // Register built-in providers — P23-10: language providers registered eagerly
         // (lightweight objects, no processes started until launch() is called)
         registerProvider(TerminalDebugProvider())
@@ -219,6 +220,7 @@ object UniversalDebugManager {
         language: Language,
         filePath: String,
         projectRoot: String? = null,
+        context: Context? = null,
     ): String? {
         val provider = selectProvider(language, filePath)
             ?: return null
@@ -234,6 +236,10 @@ object UniversalDebugManager {
         notifySessionStateChanged(session)
 
         val fileBreakpoints = breakpoints[filePath] ?: emptyList()
+        // P26-3: Try to resolve a DAP adapter for capability negotiation (context may be null for legacy callers)
+        if (context != null) {
+            sessionAdapters[session.id] = resolveAdapter(context, session)
+        }
         val launched = provider.launch(
             session,
             fileBreakpoints,
@@ -266,6 +272,98 @@ object UniversalDebugManager {
         session.state = DebugState.STOPPED
         notifySessionStateChanged(session)
         sessions.remove(sessionId)
+    }
+
+    /**
+     * P26-3b: Attach to a running process via DAP.
+     * Works with any adapter that exposes an attach() function (currently NodeDAPAdapter).
+     *
+     * @param language  Language of the debug target.
+     * @param filePath  Reference file path (used for breakpoints and scope).
+     * @param port      Localhost port the target is listening on (--inspect). Default 9229.
+     * @param pid       Process ID to attach to. Used when port == -1.
+     */
+    fun attachDebug(
+        context: Context,
+        language: Language,
+        filePath: String,
+        port: Int = 9229,
+        pid: Int = -1,
+    ): String? {
+        val session = DebugSession(
+            id = "attach-${sessionCounter++}",
+            language = language,
+            filePath = filePath,
+            providerId = "node-dap",
+            state = DebugState.STARTING,
+        )
+        sessions[session.id] = session
+        notifySessionStateChanged(session)
+
+        val nodeAdapter = adapters.filterIsInstance<NodeDAPAdapter>().firstOrNull()
+            ?: run {
+                Log.e(TAG, "attachDebug: NodeDAPAdapter not registered")
+                session.state = DebugState.ERROR
+                notifySessionStateChanged(session)
+                return null
+            }
+
+        sessionAdapters[session.id] = nodeAdapter
+        val fileBreakpoints = breakpoints[filePath] ?: emptyList()
+
+        val launched = nodeAdapter.attach(
+            context, session, port, pid,
+            onOutput = { msg -> notifyOutput(msg) },
+            onPaused = { stack, vars ->
+                session.state = DebugState.PAUSED
+                notifySessionStateChanged(session)
+                notifyPaused(stack, vars)
+            },
+            onStopped = {
+                session.state = DebugState.STOPPED
+                notifySessionStateChanged(session)
+                sessions.remove(session.id)
+                sessionAdapters.remove(session.id)
+            }
+        )
+
+        session.state = if (launched) DebugState.RUNNING else DebugState.ERROR
+        notifySessionStateChanged(session)
+        return if (launched) session.id else null
+    }
+
+    /**
+     * P26-3d: Multi-session — return all active sessions (any state except IDLE/STOPPED).
+     */
+    fun getActiveSessions(): List<DebugSession> =
+        sessions.values.filter { it.state != DebugState.IDLE && it.state != DebugState.STOPPED }
+
+    /**
+     * P26-3d: Get a specific session by ID.
+     */
+    fun getSessionById(sessionId: String): DebugSession? = sessions[sessionId]
+
+    /**
+     * P26-3c: Capability negotiation — returns the DAP capabilities for the active session's adapter.
+     * The UI uses this to hide controls that the adapter doesn't support.
+     * Returns null if the session uses a legacy adapter (no DAP capabilities).
+     */
+    fun getAdapterCapabilities(sessionId: String): DAPCapabilities? {
+        val adapter = sessionAdapters[sessionId] ?: return null
+        return adapter.capabilities()
+    }
+
+    /**
+     * P26-3d: Switch the "active" session for single-pane UI views.
+     * Multi-pane UIs should use getActiveSessions() and bind directly.
+     */
+    @Volatile var activeSessionId: String? = null
+        private set
+
+    fun setActiveSession(sessionId: String) {
+        if (sessions.containsKey(sessionId)) {
+            activeSessionId = sessionId
+        }
     }
 
     fun pauseSession(sessionId: String) {
