@@ -97,8 +97,11 @@ object LspManager {
             listOf("--stdio"),
             // Verify both the binary AND tsserver.js exist — if tsserver.js is missing
             // (e.g. due to a previous unversioned typescript@7.x install), treat as not installed.
+            // Check binary exists AND typescript package has tsserver.js at the global npm path.
+            // require.resolve() was unreliable — it searches from cwd, not global node_modules.
+            // Direct file test is simpler and works regardless of NODE_PATH.
             "which typescript-language-server && " +
-                "node -e \"try{require.resolve('typescript/lib/tsserver');process.stdout.write('OK')}catch(e){process.exit(1)}\"  && echo OK",
+                "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
             "apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
@@ -108,8 +111,11 @@ object LspManager {
             Language.JAVASCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
+            // Check binary exists AND typescript package has tsserver.js at the global npm path.
+            // require.resolve() was unreliable — it searches from cwd, not global node_modules.
+            // Direct file test is simpler and works regardless of NODE_PATH.
             "which typescript-language-server && " +
-                "node -e \"try{require.resolve('typescript/lib/tsserver');process.stdout.write('OK')}catch(e){process.exit(1)}\"  && echo OK",
+                "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
             "apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
