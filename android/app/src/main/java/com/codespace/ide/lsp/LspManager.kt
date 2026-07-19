@@ -97,31 +97,37 @@ object LspManager {
             listOf("--stdio"),
             // Verify both the binary AND tsserver.js exist — if tsserver.js is missing
             // (e.g. due to a previous unversioned typescript@7.x install), treat as not installed.
-            // Check binary exists AND typescript package has tsserver.js at the global npm path.
-            // require.resolve() was unreliable — it searches from cwd, not global node_modules.
-            // Direct file test is simpler and works regardless of NODE_PATH.
             "which typescript-language-server && " +
                 "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
-            "dpkg --configure -a 2>/dev/null; " +
-                "apt-get update -qq; " +
-                "apt-get install -y --no-install-recommends nodejs npm; " +
-                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
+            // P31-LSP-FIX: Clear stale dpkg/apt lock files before every install attempt.
+            // A previous timed-out install (destroyForcibly) leaves lock files on disk.
+            // On the next attempt dpkg hits "Unable to acquire the dpkg frontend lock"
+            // immediately and the whole install fails without even reaching npm install.
+            // Also: skip apt-get install if nodejs/npm are already present to cut time.
+            // installTimeout bumped 120->300s: full chain (apt-update+install+npm) needs ~200s.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
                 "npm install -g typescript-language-server typescript@5.6.3",
+            300,
         ),
         Language.JAVASCRIPT to ServerConfig(
             Language.JAVASCRIPT,
             "typescript-language-server",
             listOf("--stdio"),
-            // Check binary exists AND typescript package has tsserver.js at the global npm path.
-            // require.resolve() was unreliable — it searches from cwd, not global node_modules.
-            // Direct file test is simpler and works regardless of NODE_PATH.
+            // Same check as TypeScript — both use typescript-language-server + tsserver.js.
             "which typescript-language-server && " +
                 "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
-            "dpkg --configure -a 2>/dev/null; " +
-                "apt-get update -qq; " +
-                "apt-get install -y --no-install-recommends nodejs npm; " +
-                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
+            // P31-LSP-FIX: Same lock-clear + node/npm pre-check + 300s timeout as TS.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
                 "npm install -g typescript-language-server typescript@5.6.3",
+            300,
         ),
         // ── Python ─────────────────────────────────────────────────────────
         Language.PYTHON to ServerConfig(
@@ -129,7 +135,14 @@ object LspManager {
             "pylsp",
             emptyList(),
             "which pylsp",
-            "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends python3-pip; pip3 install 'python-lsp-server[all]' || pip3 install python-lsp-server",
+            // P31-LSP-FIX: Clear stale dpkg locks + skip apt-get if pip3 already present.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "command -v pip3 >/dev/null 2>&1 || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends python3-pip ); " +
+                "pip3 install 'python-lsp-server[all]' || pip3 install python-lsp-server",
+            240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
         Language.KOTLIN to ServerConfig(
@@ -172,14 +185,23 @@ object LspManager {
             "clangd",
             listOf("--background-index", "--clang-tidy"),
             "which clangd",
-            "apt-get update -qq; apt-get install -y --no-install-recommends clangd",
+            // P31-LSP-FIX: Clear stale dpkg locks before apt-get.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "apt-get update -qq && apt-get install -y --no-install-recommends clangd",
+            180,
         ),
         Language.CPP to ServerConfig(
             Language.CPP,
             "clangd",
             listOf("--background-index", "--clang-tidy"),
             "which clangd",
-            "apt-get update -qq; apt-get install -y --no-install-recommends clangd",
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "apt-get update -qq && apt-get install -y --no-install-recommends clangd",
+            180,
         ),
         // ── Rust ───────────────────────────────────────────────────────────
         Language.RUST to ServerConfig(
@@ -201,7 +223,14 @@ object LspManager {
             "intelephense",
             listOf("--stdio"),
             "which intelephense",
-            "apt-get update -qq; apt-get install -y --no-install-recommends nodejs npm; npm install -g intelephense",
+            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm install -g intelephense",
+            240,
         ),
         // ── HTML ───────────────────────────────────────────────────────────
         // ── HTML ───────────────────────────────────────────────────────────
@@ -212,9 +241,14 @@ object LspManager {
             "vscode-html-language-server",
             listOf("--stdio"),
             "which vscode-html-language-server",
-            "apt-get update -qq; " +
-                "apt-get install -y --no-install-recommends nodejs npm; " +
+            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
                 "npm install -g vscode-langservers-extracted",
+            240,
         ),
         // ── CSS ────────────────────────────────────────────────────────────
         // FIX: vscode-css-languageserver is deprecated — covered by vscode-langservers-extracted.
@@ -223,9 +257,14 @@ object LspManager {
             "vscode-css-language-server",
             listOf("--stdio"),
             "which vscode-css-language-server",
-            "apt-get update -qq; " +
-                "apt-get install -y --no-install-recommends nodejs npm; " +
+            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
                 "npm install -g vscode-langservers-extracted",
+            240,
         ),
         // ── JSON ───────────────────────────────────────────────────────────
         // vscode-langservers-extracted also ships vscode-json-language-server.
@@ -235,9 +274,14 @@ object LspManager {
             "vscode-json-language-server",
             listOf("--stdio"),
             "which vscode-json-language-server",
-            "apt-get update -qq; " +
-                "apt-get install -y --no-install-recommends nodejs npm; " +
+            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
                 "npm install -g vscode-langservers-extracted",
+            240,
         ),
     )
 
