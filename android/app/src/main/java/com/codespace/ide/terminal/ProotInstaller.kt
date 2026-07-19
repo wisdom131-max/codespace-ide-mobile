@@ -192,9 +192,9 @@ object ProotInstaller {
             shimScript.setExecutable(true, false)
             shimScript.setReadable(true, false)
             Log.i(TAG, "ensureShimInstalled: wrote 00-ld-preload-shim.sh to rootfs profile.d")
-            if (copiedShim) {
-                com.codespace.ide.diagnostics.AppOutputLog.log("[proot] Self-healed: 00-ld-preload-shim.sh written to profile.d (LD_PRELOAD now set for new shells)", "lsp")
-            }
+            // Always log to Output tab — the user needs to see this confirmation
+            // regardless of whether the .so was freshly copied or already present.
+            com.codespace.ide.diagnostics.AppOutputLog.log("[proot] ✓ 00-ld-preload-shim.sh ready in profile.d — LD_PRELOAD will be set for new shells", "lsp")
         } catch (e: Exception) {
             Log.w(TAG, "ensureShimInstalled: failed to write 00-ld-preload-shim.sh: ${e.message}")
             com.codespace.ide.diagnostics.AppOutputLog.log("[proot] WARNING: Could not write 00-ld-preload-shim.sh: ${e.message}", "lsp")
