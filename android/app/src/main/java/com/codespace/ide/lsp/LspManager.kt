@@ -112,7 +112,8 @@ object LspManager {
             // (5) autoremove orphans, (6) NodeSource setup_20.x + apt install nodejs,
             // (7) npm install language server.
             // installTimeout 300s: full chain needs ~200-250s on Android proot.
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
@@ -137,7 +138,8 @@ object LspManager {
                 "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
             // P32-LSP-FIX: Same NodeSource install + 300s timeout as TS.
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
@@ -158,7 +160,8 @@ object LspManager {
             emptyList(),
             "which pylsp",
             // P31-LSP-FIX: Clear stale dpkg locks + skip apt-get if pip3 already present.
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "command -v pip3 >/dev/null 2>&1 || " +
@@ -208,7 +211,8 @@ object LspManager {
             listOf("--background-index", "--clang-tidy"),
             "which clangd",
             // P31-LSP-FIX: Clear stale dpkg locks before apt-get.
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "apt-get update -qq && apt-get install -y --no-install-recommends clangd",
@@ -219,7 +223,8 @@ object LspManager {
             "clangd",
             listOf("--background-index", "--clang-tidy"),
             "which clangd",
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "apt-get update -qq && apt-get install -y --no-install-recommends clangd",
@@ -246,7 +251,8 @@ object LspManager {
             listOf("--stdio"),
             "which intelephense",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
@@ -270,7 +276,8 @@ object LspManager {
             listOf("--stdio"),
             "which vscode-html-language-server",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
@@ -292,7 +299,8 @@ object LspManager {
             listOf("--stdio"),
             "which vscode-css-language-server",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
@@ -315,7 +323,8 @@ object LspManager {
             listOf("--stdio"),
             "which vscode-json-language-server",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
-            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +

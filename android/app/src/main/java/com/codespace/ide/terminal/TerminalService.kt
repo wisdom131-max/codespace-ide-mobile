@@ -283,6 +283,13 @@ class TerminalService : Service() {
         client.appContext = applicationContext
 
         if (isUbuntu) {
+            // P32-FIX: Ensure the dpkg LD_PRELOAD shim is in the rootfs BEFORE the terminal
+            // session starts. Previously this only ran from LspManager.startServer(), so if
+            // the user ran apt-get manually in the terminal before ever opening an LSP file,
+            // the shim wasn't in the rootfs yet — dpkg's link() calls failed with EACCES
+            // ("unable to make backup link of '...' before installing new version").
+            // Calling it here means every terminal session guarantees the shim is present.
+            ProotInstaller.ensureShimInstalled(this)
             val (proot, args, envVars) = ProotInstaller.launchArgs(this)
             val session = TerminalSession(proot, "/", args, envVars, 4000, client)
             liveSessions.add(TrackedSession(session, projectId))
