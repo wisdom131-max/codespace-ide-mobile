@@ -188,7 +188,11 @@ class NodeDAPAdapter : DebugAdapter {
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
         val headArgs = baseArgs.dropLast(2).toTypedArray()
         val serverCmd = "node '$serverPath' --stdio"
-        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)
+        // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
+        // Same fix as LSP startServer — prevents [Agent] banner text from corrupting
+        // the DAP JSON-RPC stream on stdout.
+        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec $serverCmd"
+        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)

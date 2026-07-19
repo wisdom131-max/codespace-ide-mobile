@@ -97,11 +97,11 @@ class PythonDAPAdapter : DebugAdapter {
         // 3. Spawn: python3 -m debugpy --listen-on-stdin --wait-for-client <script>
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
         val headArgs = baseArgs.dropLast(2).toTypedArray()
-        val scriptArgs = arrayOf(
-            "/bin/bash", "-lc",
-            "python3 -m debugpy --listen-on-stdin --wait-for-client \"$guestPath\""
-        )
-        val fullArgs = arrayOf(*headArgs, *scriptArgs)
+        // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
+        // Same fix as LSP startServer — prevents [Agent] banner text from corrupting
+        // the DAP JSON-RPC stream on stdout.
+        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec python3 -m debugpy --listen-on-stdin --wait-for-client \"$guestPath\""
+        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)
