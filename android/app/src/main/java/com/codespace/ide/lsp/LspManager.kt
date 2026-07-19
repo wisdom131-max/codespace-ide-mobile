@@ -594,7 +594,7 @@ object LspManager {
         val response = client.request("initialize", initParams, timeoutSeconds = 30)
         if (response == null) {
             Log.e(TAG, "startServer: LSP initialize TIMED OUT for ${language.displayName}")
-            AppOutputLog.log("[LSP] ERROR: initialize TIMED OUT (30s) for ${language.displayName} — server process alive=${process.isAlive}", "lsp")
+            AppOutputLog.log("[LSP] ERROR: initialize failed for ${language.displayName} — server process alive=${process.isAlive}. Check [LSP][rpc] messages above for cause (TIMEOUT vs CONNECTION ERROR).", "lsp")
             stopServer(language)
             return false
         }
