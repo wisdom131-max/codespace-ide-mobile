@@ -98,10 +98,10 @@ object LspManager {
             // Verify both the binary AND tsserver.js exist — if tsserver.js is missing
             // (e.g. due to a previous unversioned typescript@7.x install), treat as not installed.
             "which typescript-language-server && " +
-                "node -e \"require.resolve('typescript/lib/tsserver')\" 2>/dev/null && echo OK",
-            "apt-get update -qq 2>/dev/null; " +
-                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
-                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline 2>/dev/null || " +
+                "node -e \"try{require.resolve('typescript/lib/tsserver');process.stdout.write('OK')}catch(e){process.exit(1)}\"  && echo OK",
+            "apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends nodejs npm; " +
+                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
                 "npm install -g typescript-language-server typescript@5.6.3",
         ),
         Language.JAVASCRIPT to ServerConfig(
@@ -109,10 +109,10 @@ object LspManager {
             "typescript-language-server",
             listOf("--stdio"),
             "which typescript-language-server && " +
-                "node -e \"require.resolve('typescript/lib/tsserver')\" 2>/dev/null && echo OK",
-            "apt-get update -qq 2>/dev/null; " +
-                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
-                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline 2>/dev/null || " +
+                "node -e \"try{require.resolve('typescript/lib/tsserver');process.stdout.write('OK')}catch(e){process.exit(1)}\"  && echo OK",
+            "apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends nodejs npm; " +
+                "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
                 "npm install -g typescript-language-server typescript@5.6.3",
         ),
         // ── Python ─────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ object LspManager {
             "pylsp",
             emptyList(),
             "which pylsp",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends python3-pip 2>/dev/null; pip3 install 'python-lsp-server[all]' 2>/dev/null || pip3 install python-lsp-server",
+            "apt-get update -qq; apt-get install -y --no-install-recommends python3-pip; pip3 install 'python-lsp-server[all]' || pip3 install python-lsp-server",
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
         Language.KOTLIN to ServerConfig(
@@ -129,7 +129,7 @@ object LspManager {
             "kotlin-language-server",
             emptyList(),
             "which kotlin-language-server",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends default-jre-headless unzip curl 2>/dev/null; " +
+            "apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless unzip curl; " +
                 "curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && " +
                 "unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && " +
                 "ln -sf /opt/kotlin-language-server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && " +
@@ -142,7 +142,7 @@ object LspManager {
             "gopls",
             emptyList(),
             "which gopls",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends golang-go 2>/dev/null; go install golang.org/x/tools/gopls@latest",
+            "apt-get update -qq; apt-get install -y --no-install-recommends golang-go; go install golang.org/x/tools/gopls@latest",
         ),
         // ── Java ───────────────────────────────────────────────────────────
         // Uses eclipse.jdt.ls (jdtls). Lighter than IntelliJ, runs on JRE 17+.
@@ -151,9 +151,9 @@ object LspManager {
             "/opt/jdtls/bin/jdtls",
             listOf("-data", "/tmp/jdtls-workspace"),
             "test -f /opt/jdtls/bin/jdtls && echo found",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends default-jre-headless curl unzip 2>/dev/null; " +
+            "apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless curl unzip; " +
                 "mkdir -p /opt/jdtls && " +
-                "curl -fsSL https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz | tar -xz -C /opt/jdtls 2>/dev/null && " +
+                "curl -fsSL https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz | tar -xz -C /opt/jdtls && " +
                 "chmod +x /opt/jdtls/bin/jdtls && echo jdtls-installed",
             300,
         ),
@@ -164,14 +164,14 @@ object LspManager {
             "clangd",
             listOf("--background-index", "--clang-tidy"),
             "which clangd",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends clangd",
+            "apt-get update -qq; apt-get install -y --no-install-recommends clangd",
         ),
         Language.CPP to ServerConfig(
             Language.CPP,
             "clangd",
             listOf("--background-index", "--clang-tidy"),
             "which clangd",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends clangd",
+            "apt-get update -qq; apt-get install -y --no-install-recommends clangd",
         ),
         // ── Rust ───────────────────────────────────────────────────────────
         Language.RUST to ServerConfig(
@@ -179,10 +179,10 @@ object LspManager {
             "rust-analyzer",
             emptyList(),
             "which rust-analyzer",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends curl 2>/dev/null; " +
-                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null; " +
-                "source \$HOME/.cargo/env 2>/dev/null; " +
-                "rustup component add rust-analyzer 2>/dev/null || " +
+            "apt-get update -qq; apt-get install -y --no-install-recommends curl; " +
+                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable; " +
+                "source \$HOME/.cargo/env; " +
+                "rustup component add rust-analyzer || " +
                 "curl -fsSL https://github.com/rust-lang/rust-analyzer/releases/download/2024-04-21/rust-analyzer-aarch64-unknown-linux-gnu.gz | gunzip -c > /usr/local/bin/rust-analyzer && " +
                 "chmod +x /usr/local/bin/rust-analyzer && echo rust-analyzer-installed",
             300,
@@ -193,7 +193,7 @@ object LspManager {
             "intelephense",
             listOf("--stdio"),
             "which intelephense",
-            "apt-get update -qq 2>/dev/null; apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; npm install -g intelephense",
+            "apt-get update -qq; apt-get install -y --no-install-recommends nodejs npm; npm install -g intelephense",
         ),
         // ── HTML ───────────────────────────────────────────────────────────
         // ── HTML ───────────────────────────────────────────────────────────
@@ -204,8 +204,8 @@ object LspManager {
             "vscode-html-language-server",
             listOf("--stdio"),
             "which vscode-html-language-server",
-            "apt-get update -qq 2>/dev/null; " +
-                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+            "apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g vscode-langservers-extracted",
         ),
         // ── CSS ────────────────────────────────────────────────────────────
@@ -215,8 +215,8 @@ object LspManager {
             "vscode-css-language-server",
             listOf("--stdio"),
             "which vscode-css-language-server",
-            "apt-get update -qq 2>/dev/null; " +
-                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+            "apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g vscode-langservers-extracted",
         ),
         // ── JSON ───────────────────────────────────────────────────────────
@@ -227,8 +227,8 @@ object LspManager {
             "vscode-json-language-server",
             listOf("--stdio"),
             "which vscode-json-language-server",
-            "apt-get update -qq 2>/dev/null; " +
-                "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
+            "apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g vscode-langservers-extracted",
         ),
     )
