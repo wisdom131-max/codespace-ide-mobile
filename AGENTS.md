@@ -5124,3 +5124,26 @@ The previous AI's screenshots showed:
 5. Check /proc for typescript-language-server process alive
 6. Test git blame works (no [Agent] banner text in output)
 7. Open fresh terminal, run echo $LD_PRELOAD — confirm auto-set
+
+### [2026-07-19] P32 COMPLETE SWEEP: All 5 bash -lc locations found and fixed
+
+**User requested full codebase sweep** for every remaining `bash -lc` / `-lc` in ProcessBuilder/proot invocations after finding the bug in 3 places. Sweep found **2 more**:
+
+4. **NodeDAPAdapter.kt:191** — `val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)` — spawns js-debug DAP server for Node.js debugging. Uses JSON-RPC over stdin/stdout, same protocol as LSP. Banner text would corrupt DAP stream.
+5. **PythonDAPAdapter.kt:101** — `"/bin/bash", "-lc", "python3 -m debugpy --listen-on-stdin --wait-for-client ..."` — spawns debugpy DAP server for Python debugging. Same JSON-RPC corruption risk.
+
+Both fixed (commit f80ee329) to use the same `bash -c` with redirected profile sourcing pattern.
+
+**Complete inventory of ALL 5 bash -lc locations in the codebase:**
+| # | File | Function | Status | Fix commit |
+|---|------|----------|--------|------------|
+| 1 | LspManager.kt | startServer | ✅ Fixed | 03a68005 |
+| 2 | ProotInstaller.kt | execOnce | ✅ Fixed | eee95010 |
+| 3 | ProotInstaller.kt | execOnceWithProcess | ✅ Fixed | eee95010 |
+| 4 | NodeDAPAdapter.kt | DAP server spawn | ✅ Fixed | f80ee329 |
+| 5 | PythonDAPAdapter.kt | debugpy spawn | ✅ Fixed | f80ee329 |
+
+**NOT a bug (intentional `--login`):**
+- ProotInstaller.kt:1188 — `launchArgs()` base args include `/bin/bash --login` for the INTERACTIVE TERMINAL. This is correct — interactive terminal users should see the [Agent] banner and have all tools loaded. The fix is only needed for non-interactive ProcessBuilder spawns where stdout is a binary protocol pipe.
+
+**Final grep verification:** `grep -rn '"-lc"' --include="*.kt"` returns ZERO results in code (only in comments/docstrings).
