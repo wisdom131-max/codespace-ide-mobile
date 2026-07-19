@@ -98,7 +98,10 @@ object LspManager {
             // Verify both the binary AND tsserver.js exist — if tsserver.js is missing
             // (e.g. due to a previous unversioned typescript@7.x install), treat as not installed.
             "which typescript-language-server && " +
-                "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
+                // P31-LSP-FIX: Check BOTH /usr/local and /usr prefixes — apt npm uses /usr,
+                // npm install -g may go to either depending on npm config.
+                "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || "
+                "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
             // P31-LSP-FIX: Clear stale dpkg/apt lock files before every install attempt.
             // A previous timed-out install (destroyForcibly) leaves lock files on disk.
             // On the next attempt dpkg hits "Unable to acquire the dpkg frontend lock"
@@ -110,6 +113,7 @@ object LspManager {
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g typescript-language-server typescript@5.6.3",
             300,
         ),
@@ -119,13 +123,17 @@ object LspManager {
             listOf("--stdio"),
             // Same check as TypeScript — both use typescript-language-server + tsserver.js.
             "which typescript-language-server && " +
-                "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
+                // P31-LSP-FIX: Check BOTH /usr/local and /usr prefixes — apt npm uses /usr,
+                // npm install -g may go to either depending on npm config.
+                "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || "
+                "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
             // P31-LSP-FIX: Same lock-clear + node/npm pre-check + 300s timeout as TS.
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g typescript-language-server typescript@5.6.3",
             300,
         ),
@@ -229,6 +237,7 @@ object LspManager {
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g intelephense",
             240,
         ),
@@ -247,6 +256,7 @@ object LspManager {
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
             240,
         ),
@@ -263,6 +273,7 @@ object LspManager {
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
             240,
         ),
@@ -280,6 +291,7 @@ object LspManager {
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
             240,
         ),
