@@ -1264,6 +1264,12 @@ exit 0
             Regex("""^Generating locales\.\.\."""),                // locale-gen header
             Regex("""^\s{2}[a-zA-Z_\-]+\.UTF-8\.\.\.\s*done$"""),// "  en_US.UTF-8... done"
             Regex("""^Generation complete\.$"""),                  // locale-gen footer
+            // P32: [Agent] profile banner text from McpShellProfile.kt — same root cause
+            // as the LSP initialize corruption. These echo statements print to stdout
+            // during profile sourcing. Shouldn't appear now (bash -c with redirected
+            // sourcing), but kept as a safety net in case any path still uses -lc.
+            Regex("""^\[Agent\].*"""),                             // "[Agent] 32 tools ready..."
+            Regex("""^\[setup\].*"""),                             // "[setup] Installing git..."
         )
         val lines = raw.lines()
         val noiseLines = lines.filter { line -> noisePatterns.any { it.containsMatchIn(line) } }
@@ -1293,7 +1299,11 @@ exit 0
         }
         val headArgs = filteredArgs.dropLast(2).toTypedArray()
         val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
-        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
+        // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
+        // Same fix as startServer — prevents [Agent] banner text from polluting stdout.
+        // Source profiles for env vars (PATH, LD_PRELOAD, LANG) but discard their output.
+        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; $cd$command"
+        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
             pb.redirectErrorStream(true)
@@ -1371,7 +1381,10 @@ exit 0
         }
         val headArgs = filteredArgs.dropLast(2).toTypedArray()
         val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
-        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
+        // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
+        // Same fix as execOnce and startServer — prevents [Agent] banner text from polluting stdout.
+        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; $cd$command"
+        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
             pb.redirectErrorStream(true)
