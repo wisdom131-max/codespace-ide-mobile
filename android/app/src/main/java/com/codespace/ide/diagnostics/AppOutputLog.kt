@@ -1,7 +1,7 @@
 package com.codespace.ide.diagnostics
 
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshot.withMutableSnapshot
+import androidx.compose.runtime.snapshots.withMutableSnapshot
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
