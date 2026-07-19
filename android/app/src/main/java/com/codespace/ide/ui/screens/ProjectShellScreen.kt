@@ -1658,7 +1658,7 @@ private fun PssActivityBar(
                     if (java.io.File(repoDir, ".git").exists()) {
                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir.absolutePath)
                         if (guestPath != null) {
-                            val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git -C '$guestPath' status --porcelain 2>/dev/null", timeoutSeconds = 10L)
+                            val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git -C '$guestPath' status --porcelain", timeoutSeconds = 10L)
                             value = out.lines().count { it.isNotBlank() && !it.startsWith("Exit") && !it.startsWith("Error") }
                         }
                     }
