@@ -119,6 +119,47 @@ object ProotInstaller {
         Log.d(TAG, "loader: exists=${loader.exists()}  exec=${loader.canExecute()}  size=${loader.length()}")
     }
 
+    /**
+     * Ensure libdpkg_android_fix.so is present in the guest rootfs's /usr/lib/.
+     *
+     * The shim is copied into the rootfs during initial extraction (install()). But if
+     * the user's rootfs was extracted before this shim was added, or if a package upgrade
+     * clobbered /usr/lib, the file is absent. When absent, the 99-dpkg-fix.sh guard
+     * silently skips setting LD_PRELOAD, and every subsequent apt-get call fails with:
+     *   "unable to make backup link of '...' before installing new version: Permission denied"
+     * because dpkg uses link() for status-file backups and Android blocks hardlinks.
+     *
+     * This function is a self-heal: called from LspManager.startServer() before any
+     * install command so the shim is guaranteed present for the apt-get calls that follow.
+     * It is a pure host-side file copy — no proot invocation needed — and is idempotent
+     * (skipped if dst already exists with the same size as src).
+     */
+    fun ensureShimInstalled(context: Context) {
+        val nativeLibDir = File(context.applicationInfo.nativeLibraryDir)
+        val src = File(nativeLibDir, "libdpkg_android_fix.so")
+        if (!src.exists()) {
+            // aarch64-only shim — not present on other ABIs, that is expected
+            Log.d(TAG, "ensureShimInstalled: libdpkg_android_fix.so not in nativeLibDir — non-arm64 ABI or not yet built, skipping")
+            return
+        }
+        val rootfs = rootfsDir(context)
+        val dst = File(rootfs, "usr/lib/libdpkg_android_fix.so")
+        if (dst.exists() && dst.length() == src.length()) {
+            Log.d(TAG, "ensureShimInstalled: shim already present and same size — skipping copy")
+            return
+        }
+        try {
+            dst.parentFile?.mkdirs()
+            src.copyTo(dst, overwrite = true)
+            dst.setExecutable(true, false)
+            dst.setReadable(true, false)
+            Log.i(TAG, "ensureShimInstalled: copied libdpkg_android_fix.so into rootfs (was missing or stale)")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[proot] Self-healed: libdpkg_android_fix.so installed into rootfs (LD_PRELOAD shim for apt/dpkg)", "lsp")
+        } catch (e: Exception) {
+            Log.w(TAG, "ensureShimInstalled: copy failed: ${e.message}")
+        }
+    }
+
     /** Download + unpack the Ubuntu rootfs tarball. */
     fun install(context: Context, onProgress: (String) -> Unit = {}) {
         val rootfs      = rootfsDir(context)
