@@ -5147,3 +5147,22 @@ Both fixed (commit f80ee329) to use the same `bash -c` with redirected profile s
 - ProotInstaller.kt:1188 — `launchArgs()` base args include `/bin/bash --login` for the INTERACTIVE TERMINAL. This is correct — interactive terminal users should see the [Agent] banner and have all tools loaded. The fix is only needed for non-interactive ProcessBuilder spawns where stdout is a binary protocol pipe.
 
 **Final grep verification:** `grep -rn '"-lc"' --include="*.kt"` returns ZERO results in code (only in comments/docstrings).
+
+### [2026-07-19] P32-CRITICAL: AppOutputLog crash — SnapshotStateList concurrent modification
+
+**CRASH:** `IllegalStateException: Unsupported concurrent change during composition. A state object was modified by composition as well as being modified outside composition.`
+
+**Triggered:** App launch (before any file opened). Two identical stack traces ~13 seconds apart.
+
+**ROOT CAUSE:** `AppOutputLog.lines` is a `mutableStateListOf<String>()` — a Compose `SnapshotStateList`. This session's extensive AppOutputLog usage (added for verification without adb) meant background threads (LSP reader, DAP reader, execOnce output capture, ensureShimInstalled, terminal startup) were calling `log()` → `lines.add()`/`removeAt()` — mutating the SnapshotStateList outside any Compose snapshot. When the UI thread read the list during composition (`ProjectShellScreen.kt:2042`), Compose detected a state object modified both from composition AND outside composition → crash.
+
+The `@Synchronized` annotation only provides Java-level thread mutual exclusion — it does NOT integrate with Compose's snapshot system. `Snapshot.withMutableSnapshot` does both: serializes the mutation AND records it as a snapshot state change.
+
+**FIX (commit 5e496e1b):** Wrapped all mutations to `lines` and `internalLines` in `Snapshot.withMutableSnapshot { }` in `log()`, `logInternal()`, and `clear()`. The `@Synchronized` is kept to serialize concurrent calls from multiple background threads.
+
+**Audit of other Compose state objects:**
+- `LogcatPanel.kt:55` — `mutableStateListOf<LogcatEntry>()` — already uses `withContext(Dispatchers.Main)` for writes. ✅ Safe.
+- All other `mutableStateOf`/`mutableStateListOf` — local to composable functions with `remember{}`, composed on UI thread, no background mutation. ✅ Safe.
+- `AppOutputLog` was the ONLY global Compose state object mutated from background threads.
+
+**Key lesson:** When adding AppOutputLog calls from background threads (which is the intended design — LSP/DAP/terminal readers all log from their own threads), the backing Compose state MUST be mutated inside `Snapshot.withMutableSnapshot`. `@Synchronized` alone is insufficient.
