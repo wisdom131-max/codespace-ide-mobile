@@ -86,13 +86,19 @@ object ProotInstaller {
      */
     fun hostToGuestPath(context: Context, hostPath: String): String? {
         val rootfs = rootfsDir(context).absolutePath
+        // context.filesDir (/data/user/0/.../files) is bind-mounted as /host-files inside proot.
+        // This covers app-private project storage (files/projects/$id) which is the most
+        // common path for SourceControlPane, git blame, and git status badge.
+        val hostFilesDir = context.filesDir.absolutePath
         return when {
             hostPath == rootfs -> "/"
             hostPath.startsWith("$rootfs/") -> "/" + hostPath.removePrefix("$rootfs/")
             hostPath == "/storage/emulated/0" -> "/sdcard"
             hostPath.startsWith("/storage/emulated/0/") -> "/sdcard/" + hostPath.removePrefix("/storage/emulated/0/")
             hostPath == "/sdcard" || hostPath.startsWith("/sdcard/") -> hostPath
-            else -> null // not bind-mounted into the proot guest — e.g. other app-private dirs
+            hostPath == hostFilesDir -> "/host-files"
+            hostPath.startsWith("$hostFilesDir/") -> "/host-files/" + hostPath.removePrefix("$hostFilesDir/")
+            else -> null // not bind-mounted into the proot guest
         }
     }
 
