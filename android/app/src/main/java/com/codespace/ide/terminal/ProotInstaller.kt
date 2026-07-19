@@ -1285,7 +1285,7 @@ exit 0
 
     fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false): String {
         val (proot, baseArgs, envVars) = launchArgs(context)
-        // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -lc <command>.
+        // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -c <command>.
         // Also strip --bind=/proc/self/fd/1 and --bind=/proc/self/fd/2 from baseArgs:
         // these bind the guest /dev/stdout and /dev/stderr to proot's own fd/1 and fd/2,
         // which are pipes that proot cannot sanitize when launched from a JVM subprocess
