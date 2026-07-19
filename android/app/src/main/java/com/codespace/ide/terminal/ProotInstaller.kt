@@ -520,6 +520,21 @@ object ProotInstaller {
                     "stty iutf8 2>/dev/null || true\n"
                 )
                 File(profileDDir, "00-locale.sh").setExecutable(true, false)
+                // 01-essential-tools: auto-install git if missing (self-healing).
+                // The base Ubuntu rootfs tarball does NOT include git. Without it,
+                // SourceControlPane returns "Exit code 128" and git blame/status
+                // badge silently fail. This script checks on every shell start and
+                // installs git (and curl) if absent. Uses --no-install-recommends
+                // to keep the install small (~40MB).
+                File(profileDDir, "01-essential-tools.sh").writeText(
+                    "#!/bin/sh\n" +
+                    "# Auto-install essential dev tools if missing (self-healing)\n" +
+                    "if ! command -v git >/dev/null 2>&1; then\n" +
+                    "    echo \"[setup] Installing git...\">/dev/null\n" +
+                    "    apt-get update -qq && apt-get install -y --no-install-recommends git curl && echo \"[setup] git installed\">/dev/null\n" +
+                    "fi\n"
+                )
+                File(profileDDir, "01-essential-tools.sh").setExecutable(true, false)
                 File(profileDDir, "99-dpkg-fix.sh").writeText(
                     "#!/bin/sh\n" +
                     "# dpkg Android/Samsung-5.15 self-heal fix - persists across every shell.\n" +
