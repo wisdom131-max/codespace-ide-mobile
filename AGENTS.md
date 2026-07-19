@@ -5076,3 +5076,51 @@ The previous AI's screenshots showed:
 - **Evidence:** Franklin's diagnostic log showed `contentLength=0 (invalid)` — the reader got bytes on stdout but couldn't parse a Content-Length header. The 7-second delay was bash sourcing profiles + the LSP server starting, not a hang.
 - **Fix:** commit `03a68005` — Changed `bash -lc` to `bash -c` with profile sourcing redirected: `source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec <server>`. This preserves PATH, LD_PRELOAD, LANG (env vars set by profiles) while preventing ANY banner text from reaching the JSON-RPC pipe.
 - **Lesson:** Login shells and binary protocol streams don't mix. Any profile script that echoes to stdout will corrupt a binary protocol like JSON-RPC LSP. Always use non-login shells (or redirect profile output to /dev/null) when the stdout pipe is used for structured data. The `contentLength=0` was the definitive clue — it meant bytes arrived but weren't a valid Content-Length header.
+
+### [2026-07-19] P32 AUDIT: execOnce/execOnceWithProcess banner text pollution + handoff review
+
+**Audit performed:** Read both handoff documents (HANDOFF-1: LSP investigation, HANDOFF-2: LSP final findings). Verified codebase state against handoff descriptions and audited for remaining issues.
+
+**Issues found and fixed:**
+
+1. **execOnce and execOnceWithProcess still used bash -lc (login shell)**
+   - The LSP startServer fix (commit 03a68005) changed bash -lc → bash -c with redirected profile sourcing
+   - But execOnce and execOnceWithProcess in ProotInstaller.kt STILL used bash -lc
+   - This meant [Agent] 32 tools ready... banner text from McpShellProfile.kt polluted EVERY one-shot command's stdout
+   - Affected: isServerInstalled checks (lastLine check still worked but raw output polluted), git blame (EditorPane), LSP install commands, ToolchainManager version checks
+   - Fix: commit eee95010 — Changed both to `source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; <command>` (same pattern as startServer)
+   - Also added [Agent] and [setup] banner patterns to stripProotNoise() as a safety net
+
+2. **Verified: GitEngine uses JGit (native Java), not proot/execOnce**
+   - Git status/diff operations go through org.eclipse.jgit.api.Git, not shell commands
+   - Not affected by banner text pollution — no fix needed
+
+3. **Verified: isServerInstalled lastLine check is safe against banner text**
+   - Banner text appears at the BEGINNING of output, not the end
+   - lastLine == "OK" check only looks at the final line — unaffected
+   - But raw output diagnostic (output.take(80)) would show banner text — now fixed at source
+
+**Codebase state confirmed (matches handoff):**
+- ✅ bash -c fix in LspManager.startServer (commit 03a68005)
+- ✅ 00-ld-preload-shim.sh profile.d script in ensureShimInstalled (commit f601362d)
+- ✅ ensureShimInstalled called from TerminalService.createSession (commit 13749742)
+- ✅ Diagnostic logging routed to AppOutputLog not just Log.d (commit 6f373409)
+- ✅ Raw first-read diagnostic in JsonRpcClient (commit 03a68005)
+- ✅ fd/0 bind stripped from startServer (commit aeb9a328)
+- ✅ TypeScript pinned to 5.6.3 (from earlier investigation, still in install commands)
+- ✅ NodeSource used instead of broken distro nodejs (from earlier investigation)
+
+**Still pending (from handoff Part 4):**
+- 4.1: Git blame/status badge/toolchain detection re-verification — code fix is in place (execOnce no longer has banner pollution), but needs real in-app testing
+- 4.2: Broader UI/reliability audit — not started this session
+- 4.3: Uninstall/reinstall data persistence mystery — not investigated
+- 4.4: Device storage at 94% — user action, not a code fix
+
+**Critical next step:** User needs to build latest APK (commit eee95010) and test in-app:
+1. Open test.js in editor
+2. Watch Output tab for: [LSP][rpc] RAW first read, writeMessage, Reader received message
+3. Confirm initialize response received (not TIMEOUT/CONNECTION ERROR)
+4. Test real completions (user.name, numbers.map — not snippet-labeled)
+5. Check /proc for typescript-language-server process alive
+6. Test git blame works (no [Agent] banner text in output)
+7. Open fresh terminal, run echo $LD_PRELOAD — confirm auto-set
