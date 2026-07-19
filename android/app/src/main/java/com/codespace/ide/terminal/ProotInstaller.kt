@@ -1261,8 +1261,13 @@ exit 0
         onProcess: (Process) -> Unit = {},
     ): String {
         val (proot, baseArgs, envVars) = launchArgs(context)
-        val headArgs = baseArgs.dropLast(2).toTypedArray()
-        val cd = if (workdir != null) "cd \"$workdir\" 2>/dev/null; " else ""
+        // Strip fd/1 and fd/2 binds — same fix as execOnce (see comment there for rationale).
+        val filteredArgs = baseArgs.filter {
+            it != "--bind=/proc/self/fd/1:/dev/stdout" &&
+            it != "--bind=/proc/self/fd/2:/dev/stderr"
+        }
+        val headArgs = filteredArgs.dropLast(2).toTypedArray()
+        val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
         val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
