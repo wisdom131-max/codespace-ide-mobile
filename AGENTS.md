@@ -4828,3 +4828,63 @@ api.codespace-ide.app → Railway service. Verify /api/v1/health responds.
 
 **Before:** ~25 file types had icons. All others showed generic blue file icon.
 **After:** 80+ file types + special named files all have unique icons + brand colours.
+
+
+## Phase 31 — Systemic `execOnce` / proot fd Audit & Fix
+
+**Status:** ✅ COMPLETE  
+**Builds:** #1610–#1617 (commits `fd1dbce` → `3a6dafc`) — all GREEN
+
+### Root Cause Discovered
+`ProotInstaller.launchArgs()` included two proot bind-mount args:
+```
+--bind=/proc/self/fd/1:/dev/stdout
+--bind=/proc/self/fd/2:/dev/stderr
+```
+When proot is launched as a JVM subprocess via `execOnce()`, `/proc/self/fd/1` and `/proc/self/fd/2` are anonymous JVM pipes that the kernel won't allow proot to bind-mount. This caused:
+1. Harmless but confusing `proot warning: can't sanitize binding "/proc/self/fd/1"` noise in Output panel
+2. **Any shell command using `2>/dev/null` inside execOnce to receive exit code 1** — the redirect itself failed because fd/2 was broken inside proot guest
+3. This silently broke: LSP install checks, git blame, git status badge, ToolchainManager detection
+
+### Bug 1: LSP Install Loop (JS/TS) — FIXED
+- **Symptom:** `typescript-language-server` installed successfully (npm returned "changed 2 packages in 3s") but `isServerInstalled()` always returned `false` → infinite install loop on every file open
+- **Root cause:** Check command used `node -e "require.resolve(...)" 2>/dev/null && echo OK` — the `2>/dev/null` failed due to broken fd/2, making the whole command exit 1
+- **Fix 1** (`fd1dbce`): Replaced `2>/dev/null` in TS/JS check command with inline `try/catch` in node
+- **Fix 2** (`182ab7e`): Tightened `isServerInstalled()` to require `"OK"` in output, reject on `"Exit code"` only
+- **Fix 3** (`362da5e`): ROOT FIX — strip `--bind=/proc/self/fd/1` and `--bind=/proc/self/fd/2` from `execOnce()` baseArgs before building the process. These are only needed for interactive terminal (which uses /dev/pts directly)
+- **Fix 4** (`928ee03`): Applied same fd strip to `execOnceWithProcess()`. Also removed `>/dev/null 2>&1` from Kotlin LSP install (unzip command)
+
+### Bug 2: Git Blame Silent Failure — FIXED
+- **Symptom:** Git blame column never appeared / returned no data
+- **Root cause:** `git blame --line-porcelain '$file' 2>/dev/null` — broken fd/2 caused exit 1
+- **Fix** (`c6ec7d8`): Removed `2>/dev/null` from both git blame execOnce calls in EditorPane
+
+### Bug 3: Git Status Badge Always 0 — FIXED
+- **Symptom:** Source Control badge never showed dirty file count
+- **Root cause:** `git status --porcelain 2>/dev/null` — broken fd/2 caused exit 1, parsed as 0 changes
+- **Fix** (`86e8864`): Removed `2>/dev/null` from git status call in ProjectShellScreen
+
+### Bug 4: ToolchainManager Detection Broken — FIXED
+- **Symptom:** Toolchain panel potentially missed installed tools
+- **Root cause:** 3 calls used `2>/dev/null` (ANDROID_HOME check, SDK platform list, passwd check)
+- **Fix** (`3808e1a`): Removed 3 `2>/dev/null` instances. Kept 11 `2>&1` (redirects fd/1→fd/2 via dup2, which works regardless of bind state)
+
+### Bug 5: Source Control Panel "git branch failed (Exit code 128)" — FIXED
+- **Symptom:** Source Control panel showed red error on every open: "Error: git branch failed (Exit code 128)"
+- **Root cause A:** `2>/dev/null` bind issue (above) — fixed by fd strip
+- **Root cause B (deeper):** `hostToGuestPath()` did NOT have a mapping for `context.filesDir` → `/host-files`. Projects stored at `context.filesDir/projects/$id` were unmapped → `runGit()` returned "Error: not reachable" → `repoDir` fell back to proot `/root` → git ran in `/root` (no `.git`) → exit 128
+- **Fix** (`3a6dafc`): Added `hostFilesDir -> "/host-files"` mapping to `hostToGuestPath()`. The bind already existed (`--bind=$hostFiles:/host-files` in `launchArgs`) but the mapping function didn't know about it.
+
+### Confirmed Working After Fixes
+- ✅ LSP server install check passes on first run (no more loop)
+- ✅ IntelliSense should fire after server starts (~30-60s on first open)
+- ✅ Git blame column populates with author/date
+- ✅ Git status badge shows correct dirty file count  
+- ✅ Source Control panel loads branch name + staged/unstaged changes
+- ✅ Toolchain detection runs without silent failures
+
+### Architecture Notes
+- `execOnce()` and `execOnceWithProcess()` now strip fd/1 and fd/2 bind args
+- `stripProotNoise()` still runs on all execOnce output (now mostly a no-op for these calls since the warnings no longer appear)
+- `hostToGuestPath()` now covers: rootfs paths, /sdcard paths, AND app-private `filesDir` paths via `/host-files` bind
+- Interactive terminal sessions are NOT affected — they use `/dev/pts` and a different launch path
