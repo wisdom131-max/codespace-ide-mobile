@@ -100,7 +100,7 @@ object LspManager {
             "which typescript-language-server && " +
                 // P31-LSP-FIX: Check BOTH /usr/local and /usr prefixes — apt npm uses /usr,
                 // npm install -g may go to either depending on npm config.
-                "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || "
+                "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
             // P31-LSP-FIX: Clear stale dpkg/apt lock files before every install attempt.
             // A previous timed-out install (destroyForcibly) leaves lock files on disk.
@@ -125,7 +125,7 @@ object LspManager {
             "which typescript-language-server && " +
                 // P31-LSP-FIX: Check BOTH /usr/local and /usr prefixes — apt npm uses /usr,
                 // npm install -g may go to either depending on npm config.
-                "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || "
+                "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
             // P31-LSP-FIX: Same lock-clear + node/npm pre-check + 300s timeout as TS.
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
