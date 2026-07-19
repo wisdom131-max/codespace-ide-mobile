@@ -148,14 +148,14 @@ object ToolchainManager {
 
     private suspend fun detectAndroidSdk(ctx: Context): ToolStatus {
         // Check ANDROID_HOME or common paths
-        val home = exec(ctx, "echo \$ANDROID_HOME 2>/dev/null || echo \$ANDROID_SDK_ROOT 2>/dev/null").trim()
+        val home = exec(ctx, "echo \$ANDROID_HOME || echo \$ANDROID_SDK_ROOT").trim()
         val paths = listOf(home, "/opt/android-sdk", "/root/Android/Sdk", "/usr/local/android-sdk")
             .filter { it.isNotBlank() }
 
         for (path in paths) {
             val exists = exec(ctx, "test -d \"$path\" && echo yes || echo no").trim()
             if (exists == "yes") {
-                val platforms = exec(ctx, "ls \"$path/platforms\" 2>/dev/null | head -3").trim()
+                val platforms = exec(ctx, "ls \"$path/platforms\" | head -3").trim()
                 return ToolStatus(
                     id = ToolId.ANDROID_SDK, displayName = "Android SDK",
                     health = ToolHealth.OK,
