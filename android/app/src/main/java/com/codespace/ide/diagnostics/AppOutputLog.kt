@@ -1,7 +1,6 @@
 package com.codespace.ide.diagnostics
 
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.withMutableSnapshot
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -30,14 +29,14 @@ object AppOutputLog {
     @Synchronized
     fun log(message: String, channel: String = "info") {
         val ts = timeFmt.format(Date())
-        // P31-CRASH-FIX: Wrap add+trim in a single snapshot so Compose never sees
-        // an intermediate state (size 501 before removeAt(0) brings it back to 500).
-        // Without this, LazyColumn's prefetcher reads size=501, tries to access
-        // index 500, but by then removeAt(0) already ran — IndexOutOfBoundsException.
-        withMutableSnapshot {
-            lines.add("[$ts] [$channel]  $message")
-            while (lines.size > MAX_LINES) lines.removeAt(0)
-        }
+        // P31-CRASH-FIX: Remove BEFORE add so the list never exceeds MAX_LINES.
+        // The original bug was: add (size 501) then removeAt(0) (size 500) — between
+        // those two ops, Compose's LazyColumn prefetcher could take a snapshot seeing
+        // size=501 and try to access index 500, which doesn't exist after removeAt.
+        // By removing first, the size goes 500→499→500 — never exceeding MAX_LINES.
+        // No withMutableSnapshot needed — the list is never in an invalid state.
+        if (lines.size >= MAX_LINES) lines.removeAt(0)
+        lines.add("[$ts] [$channel]  $message")
     }
 
     fun clear() {
@@ -58,9 +57,8 @@ object AppOutputLog {
     @Synchronized
     fun logInternal(message: String, channel: String = "internal") {
         val ts = timeFmt.format(Date())
-        withMutableSnapshot {
-            internalLines.add("[$ts] [$channel]  $message")
-            while (internalLines.size > MAX_INTERNAL_LINES) internalLines.removeAt(0)
-        }
+        // Same remove-before-add pattern as log() to avoid snapshot race.
+        if (internalLines.size >= MAX_INTERNAL_LINES) internalLines.removeAt(0)
+        internalLines.add("[$ts] [$channel]  $message")
     }
 }
