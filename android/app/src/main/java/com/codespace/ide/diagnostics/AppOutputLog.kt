@@ -1,6 +1,7 @@
 package com.codespace.ide.diagnostics
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshots.Snapshot
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -16,6 +17,18 @@ import java.util.Locale
  *
  * Capped at 500 lines to avoid unbounded memory growth on long sessions —
  * important on the 3GB target device.
+ *
+ * P32-THREAD-SAFETY-FIX: All mutations to [lines] and [internalLines] are
+ * wrapped in Snapshot.withMutableSnapshot { } to properly integrate with
+ * Compose's snapshot system. Without this, background threads (LSP reader,
+ * DAP reader, execOnce output capture, terminal startup) calling log()
+ * would mutate the SnapshotStateList outside a snapshot, causing:
+ *   IllegalStateException: Unsupported concurrent change during composition.
+ * The @Synchronized alone only provides Java-level mutual exclusion — it
+ * does NOT notify Compose's snapshot tracker that a state object is being
+ * modified. withMutableSnapshot does both: serializes the mutation AND
+ * records it as a snapshot state change so recomposition sees a consistent
+ * state.
  */
 object AppOutputLog {
 
@@ -29,19 +42,26 @@ object AppOutputLog {
     @Synchronized
     fun log(message: String, channel: String = "info") {
         val ts = timeFmt.format(Date())
+        // P32-THREAD-SAFETY-FIX: Wrap mutations in withMutableSnapshot so Compose's
+        // snapshot system tracks the change. Without this, background threads
+        // modifying the SnapshotStateList cause "Unsupported concurrent change
+        // during composition" crashes.
         // P31-CRASH-FIX: Remove BEFORE add so the list never exceeds MAX_LINES.
         // The original bug was: add (size 501) then removeAt(0) (size 500) — between
         // those two ops, Compose's LazyColumn prefetcher could take a snapshot seeing
         // size=501 and try to access index 500, which doesn't exist after removeAt.
         // By removing first, the size goes 500→499→500 — never exceeding MAX_LINES.
-        // No withMutableSnapshot needed — the list is never in an invalid state.
-        if (lines.size >= MAX_LINES) lines.removeAt(0)
-        lines.add("[$ts] [$channel]  $message")
+        Snapshot.withMutableSnapshot {
+            if (lines.size >= MAX_LINES) lines.removeAt(0)
+            lines.add("[$ts] [$channel]  $message")
+        }
     }
 
     fun clear() {
-        lines.clear()
-        lines.add("[info]  Output cleared")
+        Snapshot.withMutableSnapshot {
+            lines.clear()
+            lines.add("[info]  Output cleared")
+        }
     }
 
     /**
@@ -58,7 +78,11 @@ object AppOutputLog {
     fun logInternal(message: String, channel: String = "internal") {
         val ts = timeFmt.format(Date())
         // Same remove-before-add pattern as log() to avoid snapshot race.
-        if (internalLines.size >= MAX_INTERNAL_LINES) internalLines.removeAt(0)
-        internalLines.add("[$ts] [$channel]  $message")
+        // Same withMutableSnapshot fix as log() — internalLines is also a
+        // SnapshotStateList read during composition.
+        Snapshot.withMutableSnapshot {
+            if (internalLines.size >= MAX_INTERNAL_LINES) internalLines.removeAt(0)
+            internalLines.add("[$ts] [$channel]  $message")
+        }
     }
 }
