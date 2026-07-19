@@ -2041,7 +2041,13 @@ private fun buildRunCommand(path: String): String? {
 @Composable private fun OutputPanel() {
     val logs = AppOutputLog.lines
     val listState = rememberLazyListState()
-    LaunchedEffect(logs.size) { if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1) }
+    // P31-CRASH-FIX: Read size in a snapshot so it matches the items() count.
+    // Also clamp the scroll target to avoid IndexOutOfBoundsException when the
+    // list is trimmed (add+removeAt) between recomposition and prefetch.
+    val logCount = logs.size
+    LaunchedEffect(logCount) {
+        if (logCount > 0) listState.animateScrollToItem((logCount - 1).coerceAtLeast(0))
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("OUTPUT", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
@@ -2049,7 +2055,13 @@ private fun buildRunCommand(path: String): String? {
         }
         HorizontalDivider(color = Color(0xFFE0E0E0))
         LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = listState) {
-            items(logs) { log -> Text(log, fontSize = 12.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp)) }
+            // P31-CRASH-FIX: Use itemCount + index-based access with bounds check.
+            // If the list shrinks between composition and item access, the lazy
+            // layout handles it gracefully instead of crashing.
+            items(logCount) { index ->
+                val line = if (index < logs.size) logs[index] else return@items
+                Text(line, fontSize = 12.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp))
+            }
         }
     }
 }
