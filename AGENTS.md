@@ -4961,6 +4961,61 @@ The previous AI's screenshots showed:
 | `a547d2e9` | Remove-before-add fix | ✅ GREEN | Final fix — no withMutableSnapshot needed |
 
 
+
+### Phase 32 Update: LSP Initialize Timeout Investigation (2026-07-19)
+
+**Status:** Investigation in progress — diagnostic logging deployed, awaiting test results
+
+**What's confirmed fixed:**
+- ✅ dpkg/apt corruption fully resolved (manual dpkg --configure -a + apt --fix-broken install)
+- ✅ npm install of typescript-language-server succeeds (7s, no errors)
+- ✅ LSP install check passes (which typescript-language-server && test tsserver.js → OK)
+- ✅ Server process spawns successfully (isAlive=true)
+
+**New issue: LSP initialize handshake times out**
+- Server spawns but initialize request times out (reported as 30s, actual ~9s based on timestamps)
+- Only stderr output before timeout: `proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory`
+- Server process remains alive (isAlive=true) — not crashing
+
+**Investigation findings (Steps 1-4):**
+
+1. **Is the fd/0 warning cosmetic or does it break stdin?**
+   - The warning is about the `--bind=/proc/self/fd/0:/dev/stdin` bind mount failing
+   - Proot can't resolve pipe paths (`pipe:[12345]` is not a real file path)
+   - fd 0 is inherited through fork/exec: JVM → proot → bash → LSP server
+   - The bind mount only creates the named path `/dev/stdin` inside the guest — fd 0 works independently
+   - `typescript-language-server --stdio` reads from fd 0 (process.stdin), NOT from `/dev/stdin`
+   - **Conclusion: The warning SHOULD be cosmetic** — the stdin pipe should work through fd inheritance
+
+2. **How does JsonRpcClient write to stdin?**
+   - `process.outputStream.write(...)` → JVM pipe → proot fd 0 → bash fd 0 → LSP server fd 0
+   - This is a JVM-level pipe that goes directly to proot, independent of guest bind mounts
+   - The write path does NOT depend on the `--bind=/proc/self/fd/0:/dev/stdin` bind mount
+
+3. **Fix applied:** Strip fd/0 bind from startServer (same as fd/1 and fd/2 already had)
+   - Commit `aeb9a328` — eliminates the warning and any potential side effects
+
+4. **Does LD_PRELOAD need to be set for the LSP server process?**
+   - The shim intercepts `link()` (file copy) and `chown()` (no-op) — dpkg-specific operations
+   - An LSP server (Node.js) doesn't need these intercepted
+   - Having them set is unlikely to cause harm, but it's being investigated
+   - The `99-dpkg-fix.sh` profile.d script sets LD_PRELOAD when bash -lc starts the server
+
+**Key suspicion: The 9-second timing doesn't match a 30s timeout**
+- The `request()` method caught ALL exceptions and logged "TIMED OUT" regardless
+- `future.get(30, SECONDS)` can throw: TimeoutException (30s), ExecutionException (immediate), InterruptedException
+- 9 seconds suggests ExecutionException — the reader thread detected EOF/IOException and completed pending requests exceptionally
+- This means the stdout pipe might be closing, not the stdin pipe being broken
+- **Diagnostic logging added** to distinguish TIMEOUT vs CONNECTION ERROR vs INTERRUPTED
+- Also added reader thread logging to see if ANY data arrives from the server
+
+**What to check in the next test:**
+- Does the `writeMessage` log show the initialize was written successfully?
+- Does the reader thread log show EOF immediately, or after some delay?
+- Does the `request()` log show TIMEOUT or CONNECTION ERROR?
+- If CONNECTION ERROR: the server's stdout is closing — investigate proot's stdout pipe handling
+- If TIMEOUT: the server is running but not responding — investigate if it received the message
+
 ## Error Trace Log
 
 ### [2026-07-19] Error: LSP JS/TS install never completes — dpkg lock cycle + timeout
