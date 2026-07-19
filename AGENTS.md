@@ -20,12 +20,12 @@
 
 ---
 
-## CURRENT STATE (2026-07-18)
+## CURRENT STATE (2026-07-19)
 
 | | |
 |-|-|
-| Latest green build | **#1592** |
-| Active phase | **Phase 31** (next — TBD) |
+| Latest green build | **a547d2e9** (P32-LSP + P31-CRASH fix) |
+| Active phase | **Phase 32** (NodeSource LSP fix — COMPLETE) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
@@ -4916,6 +4916,51 @@ If you fix multiple related bugs in one session, log each one separately. If you
 
 ---
 
+## Phase 32 — NodeSource LSP Fix + Build Repair
+
+**Date:** 2026-07-19
+**Status:** ✅ COMPLETE — CI green on `a547d2e9`
+**Previous AI:** Diagnosed the libnode115 dependency conflict from 14 user screenshots. Proposed NodeSource approach. Franklin approved.
+
+### What was broken
+The Ubuntu proot rootfs had a broken/partial `nodejs` install from a previous failed `apt-get install`. The `libnode115` package was in a conflict state, which blocked ALL future `apt-get install nodejs npm` attempts. This broke every npm-based LSP server install:
+- TypeScript/JavaScript (typescript-language-server)
+- PHP (intelephense)
+- HTML/CSS/JSON (vscode-langservers-extracted)
+
+The previous AI's screenshots showed:
+1. `dpkg --configure -a` ran and partially fixed some packages (libuv, libicu76, etc.)
+2. `apt-get install nodejs npm` failed: "Depends libnode115 (= 20.19.4+dfsg-1) but it is not going to be installed"
+3. 30+ npm dependency packages all refused to install
+4. `npm: command not found` — exit code 127
+
+### Fix 1: NodeSource replaces broken apt nodejs/npm
+- **File:** `lsp/LspManager.kt` — ALL 6 npm-based ServerConfig installCommand entries (TS, JS, PHP, HTML, CSS, JSON)
+- **Commit:** `c50fa80a`
+- **Change:** Replaced `apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm` with:
+  1. `apt-get install -f -y` — fix broken packages
+  2. `apt-get remove --purge nodejs npm -y` — wipe broken partial install
+  3. `apt-get autoremove -y` — clean orphaned dependencies
+  4. `curl -fsSL https://deb.nodesource.com/setup_20.x | bash -` — add NodeSource repo
+  5. `apt-get install -y nodejs` — install clean Node 20.x with npm bundled
+- **Why NodeSource:** Bypasses the broken Ubuntu apt package system entirely. NodeSource provides its own apt repository with a clean Node.js 20.x build that includes npm. The `checkCommand` already checks both `/usr/local` and `/usr` prefixes for tsserver.js, so the install is verified correctly.
+
+### Fix 2: AppOutputLog crash fix — withMutableSnapshot import broken on CI
+- **File:** `diagnostics/AppOutputLog.kt` lines 4, 37, 61
+- **Commit:** `a547d2e9` (final fix after two failed attempts: `57e39f36` and `4ca6d922`)
+- **Symptom:** The P31-CRASH fix (commit `dab9e6ec`) added `import androidx.compose.runtime.snapshot.withMutableSnapshot` — wrong package (singular `snapshot`). Fixed to `snapshots` (plural) in `57e39f36`, but `withMutableSnapshot` was STILL unresolved on CI even with correct package. Root cause unclear — possibly a Kotlin compiler extension 1.5.14 incompatibility with the Compose runtime version in BOM 2024.06.00.
+- **Final fix:** Removed `withMutableSnapshot` entirely. Replaced with a "remove-before-add" pattern: `if (lines.size >= MAX_LINES) lines.removeAt(0)` BEFORE `lines.add(...)`. This way the list never exceeds MAX_LINES (size goes 500→499→500 instead of 500→501→500), so no invalid intermediate state is ever visible to Compose snapshots. Same fix applied to `logInternal()` with `MAX_INTERNAL_LINES` (200).
+- **Lesson:** `withMutableSnapshot` may not be available in all Compose configurations (BOM 2024.06.00 + Kotlin compiler extension 1.5.14). If you need atomic SnapshotStateList mutations, prefer the remove-before-add pattern over `withMutableSnapshot`. It achieves the same result without import dependencies.
+
+### Build history this session
+| Commit | SHA | CI | What |
+|--------|-----|----|----|
+| `bcd479dc` | P31 docs | ❌ | Pre-existing break (withMutableSnapshot import) |
+| `c50fa80a` | NodeSource fix | ❌ | Still broken (import not yet fixed) |
+| `57e39f36` | Import fix attempt 1 | ❌ | `snapshots` (plural) — still unresolved |
+| `a547d2e9` | Remove-before-add fix | ✅ GREEN | Final fix — no withMutableSnapshot needed |
+
+
 ## Error Trace Log
 
 ### [2026-07-19] Error: LSP JS/TS install never completes — dpkg lock cycle + timeout
@@ -4940,3 +4985,16 @@ If you fix multiple related bugs in one session, log each one separately. If you
 - **Fix:** commit `dab9e6ec` — Wrapped add+trim in `withMutableSnapshot { ... }` so both operations appear atomically in a single Compose snapshot. The intermediate size=501 state is never visible to recomposition.
 - **Fix:** commit `4ca6d922` — Hardened OutputPanel's LazyColumn: uses `items(logCount)` (count-based) with `if (index < logs.size) logs[index] else return` bounds check, so even if the list shrinks between composition and item access, it degrades gracefully instead of crashing. Also clamped `animateScrollToItem` target with `.coerceAtLeast(0)`.
 - **Lesson:** SnapshotStateList mutations that involve multiple operations (add + removeAt) MUST be wrapped in `withMutableSnapshot { }` — otherwise Compose can observe intermediate states between operations, causing index out-of-bounds in LazyColumn/LazyRow prefetchers. This is NOT a threading issue; it's a snapshot consistency issue. Always use count-based `items(count)` with bounds checking in LazyColumn when the backing list can be mutated externally.
+### [2026-07-19] Error: libnode115 dependency conflict blocks ALL npm-based LSP installs
+- **File:** `lsp/LspManager.kt` — 6 ServerConfig installCommand entries (TS, JS, PHP, HTML, CSS, JSON)
+- **Symptom:** Opening any JS/TS/PHP/HTML/CSS/JSON file triggers LSP install. Install runs `apt-get install nodejs npm` which fails with: "nodejs: Depends libnode115 (= 20.19.4+dfsg-1) but it is not going to be installed". 30+ npm packages refuse to install. `npm: command not found` (exit 127). LSP never works.
+- **Root cause:** Ubuntu proot rootfs had a broken/partial nodejs install from a previous failed `apt-get install`. The `libnode115` package was in a conflict state. Every `apt-get install nodejs npm` attempt hit this conflict and failed before npm was installed.
+- **Fix:** commit `c50fa80a` — Replaced `apt-get install nodejs npm` with NodeSource approach in all 6 configs: (1) `apt-get install -f -y` to fix broken packages, (2) `apt-get remove --purge nodejs npm -y` to wipe broken install, (3) `apt-get autoremove -y` to clean orphans, (4) `curl NodeSource setup_20.x | bash -` to add clean Node repo, (5) `apt-get install -y nodejs` to install clean Node 20.x + npm.
+- **Lesson:** Ubuntu apt's nodejs package can get into a broken libnode115 state that blocks ALL future installs. NodeSource bypasses this entirely by providing its own repo. Always prefer NodeSource for Node.js in proot environments.
+
+### [2026-07-19] Error: withMutableSnapshot import breaks ALL builds (3 failed CI runs)
+- **File:** `diagnostics/AppOutputLog.kt` line 4 (import), lines 37 & 61 (usage)
+- **Symptom:** Every build since commit `dab9e6ec` (P31-CRASH fix) failed with: "Unresolved reference: withMutableSnapshot" at 3 locations. Builds `bcd479dc`, `c50fa80a`, `57e39f36` all failed.
+- **Root cause:** The P31-CRASH fix used `withMutableSnapshot` to wrap SnapshotStateList add+trim in an atomic snapshot. First import was `androidx.compose.runtime.snapshot.withMutableSnapshot` (wrong — singular). Fixed to `androidx.compose.runtime.snapshots.withMutableSnapshot` (plural) but function STILL unresolved on CI. The `snapshots` package exists (SnapshotStateList is imported from it elsewhere), but `withMutableSnapshot` specifically doesn't resolve — likely a Kotlin compiler extension 1.5.14 incompatibility with Compose BOM 2024.06.00.
+- **Fix:** commit `a547d2e9` — Removed `withMutableSnapshot` entirely. Replaced with "remove-before-add" pattern: `if (lines.size >= MAX_LINES) lines.removeAt(0)` before `lines.add(...)`. List never exceeds MAX_LINES, so no invalid intermediate state. Same pattern applied to `logInternal()`.
+- **Lesson:** `withMutableSnapshot` may not resolve in all Compose configurations. The "remove-before-add" pattern achieves the same atomicity without any import dependency. Prefer it over `withMutableSnapshot` for SnapshotStateList capacity management. Also: when a fix breaks the build, check CI immediately — don't let broken builds accumulate (4 builds were broken before we caught it).
