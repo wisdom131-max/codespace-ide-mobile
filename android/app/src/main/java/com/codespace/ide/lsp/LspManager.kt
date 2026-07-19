@@ -278,17 +278,15 @@ object LspManager {
         // Previous substring check (output.contains("OK")) was a false positive bug:
         // when execOnce times out it returns "Timed out after Ns running: <command>", and
         // since all our check commands end with "echo OK", the timed-out string itself
-        // contains "OK" as a substring → isServerInstalled() returned true even though the
-        // check never completed → skipped install → binary not found at spawn time.
+        // contains "OK" as a substring, so isServerInstalled() returned true even though
+        // the check never completed, which skipped install and caused binary-not-found crash.
         //
-        // Correct logic: the check command exits 0 and prints "OK" (or "found" for test-based
-        // checks like jdtls) as its FINAL LINE. On failure, execOnce returns "Exit code N
-..."
-        // or "Timed out ...". Neither has "OK" or "found" as the last line.
-        val lastLine = output.trimEnd().substringAfterLast('
-').trim()
+        // Correct logic: the check command exits 0 and prints "OK" (or "found" for
+        // test-based checks like jdtls) as its FINAL LINE. On failure, execOnce returns
+        // "Exit code N" or "Timed out ...". Neither ends with "OK" or "found".
+        val lastLine = output.trimEnd().lines().lastOrNull().orEmpty().trim()
         val installed = lastLine == "OK" || lastLine == "found"
-        Log.d(TAG, "isServerInstalled(${language.displayName}): lastLine='$lastLine' → $installed (raw: ${output.take(80)})")
+        Log.d(TAG, "isServerInstalled(${language.displayName}): lastLine='$lastLine' installed=$installed (raw: ${output.take(80)})")
         AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (lastLine='$lastLine')", "lsp")
         return installed
     }
