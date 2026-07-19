@@ -102,7 +102,8 @@ object LspManager {
             // Direct file test is simpler and works regardless of NODE_PATH.
             "which typescript-language-server && " +
                 "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
-            "apt-get update -qq; " +
+            "dpkg --configure -a 2>/dev/null; " +
+                "apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
                 "npm install -g typescript-language-server typescript@5.6.3",
@@ -116,7 +117,8 @@ object LspManager {
             // Direct file test is simpler and works regardless of NODE_PATH.
             "which typescript-language-server && " +
                 "test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js && echo OK",
-            "apt-get update -qq; " +
+            "dpkg --configure -a 2>/dev/null; " +
+                "apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends nodejs npm; " +
                 "npm install -g typescript-language-server typescript@5.6.3 --prefer-offline || " +
                 "npm install -g typescript-language-server typescript@5.6.3",
@@ -127,7 +129,7 @@ object LspManager {
             "pylsp",
             emptyList(),
             "which pylsp",
-            "apt-get update -qq; apt-get install -y --no-install-recommends python3-pip; pip3 install 'python-lsp-server[all]' || pip3 install python-lsp-server",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends python3-pip; pip3 install 'python-lsp-server[all]' || pip3 install python-lsp-server",
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
         Language.KOTLIN to ServerConfig(
@@ -135,7 +137,7 @@ object LspManager {
             "kotlin-language-server",
             emptyList(),
             "which kotlin-language-server",
-            "apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless unzip curl; " +
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless unzip curl; " +
                 "curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && " +
                 "unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && " +
                 "ln -sf /opt/kotlin-language-server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && " +
@@ -148,7 +150,7 @@ object LspManager {
             "gopls",
             emptyList(),
             "which gopls",
-            "apt-get update -qq; apt-get install -y --no-install-recommends golang-go; go install golang.org/x/tools/gopls@latest",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends golang-go; go install golang.org/x/tools/gopls@latest",
         ),
         // ── Java ───────────────────────────────────────────────────────────
         // Uses eclipse.jdt.ls (jdtls). Lighter than IntelliJ, runs on JRE 17+.
@@ -157,7 +159,7 @@ object LspManager {
             "/opt/jdtls/bin/jdtls",
             listOf("-data", "/tmp/jdtls-workspace"),
             "test -f /opt/jdtls/bin/jdtls && echo found",
-            "apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless curl unzip; " +
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless curl unzip; " +
                 "mkdir -p /opt/jdtls && " +
                 "curl -fsSL https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz | tar -xz -C /opt/jdtls && " +
                 "chmod +x /opt/jdtls/bin/jdtls && echo jdtls-installed",
@@ -269,17 +271,25 @@ object LspManager {
     fun isServerInstalled(context: Context, language: Language): Boolean {
         val config = configs[language] ?: return false
         AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${config.checkCommand}", "lsp")
-        val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 10)
-        // Check passes if output is non-blank and does not contain our wrapper's
-        // "Exit code N" marker (set by execOnce on non-zero exit) or "command not found".
-        // We no longer filter on "error"/"Error" — those words appear in proot fd-binding
-        // warnings that are harmless and now flow to stdout since we removed 2>/dev/null.
-        val installed = output.isNotBlank() &&
-               !output.contains("not found") &&
-               !output.contains("Exit code") &&
-               (output.contains("OK") || output.contains("found"))
-        Log.d(TAG, "isServerInstalled(${language.displayName}): output=${output.take(120)} → $installed")
-        AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (raw: ${output.take(80).trim()})", "lsp")
+        // FIX: increased timeout from 10→20s — proot bash login can take >10s on cold start.
+        val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 20)
+        // FIX: check LAST LINE of output only, not substring of the whole string.
+        //
+        // Previous substring check (output.contains("OK")) was a false positive bug:
+        // when execOnce times out it returns "Timed out after Ns running: <command>", and
+        // since all our check commands end with "echo OK", the timed-out string itself
+        // contains "OK" as a substring → isServerInstalled() returned true even though the
+        // check never completed → skipped install → binary not found at spawn time.
+        //
+        // Correct logic: the check command exits 0 and prints "OK" (or "found" for test-based
+        // checks like jdtls) as its FINAL LINE. On failure, execOnce returns "Exit code N
+..."
+        // or "Timed out ...". Neither has "OK" or "found" as the last line.
+        val lastLine = output.trimEnd().substringAfterLast('
+').trim()
+        val installed = lastLine == "OK" || lastLine == "found"
+        Log.d(TAG, "isServerInstalled(${language.displayName}): lastLine='$lastLine' → $installed (raw: ${output.take(80)})")
+        AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (lastLine='$lastLine')", "lsp")
         return installed
     }
 
@@ -383,7 +393,17 @@ object LspManager {
         // Build proot command — wrap server in bash -lc to source PATH/profile,
         // matching execOnce() which is proven to work in the terminal.
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
-        val headArgs = baseArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
+        // Strip fd/1 and fd/2 bind mounts from the LSP spawn args — same fix as execOnce.
+        // These bind guest /dev/stdout and /dev/stderr to proot's own fd/1 and fd/2,
+        // which are pipes the JVM process doesn't explicitly redirect. proot can't sanitize
+        // them and emits "can't sanitize binding /proc/self/fd/1" warnings that flood
+        // the LSP stderr channel and the Output tab. fd/0 is intentionally kept:
+        // the LSP server's stdin IS the JSON-RPC pipe, so it must inherit the JVM's stdout/stdin.
+        val filteredArgs = baseArgs.filter {
+            it != "--bind=/proc/self/fd/1:/dev/stdout" &&
+            it != "--bind=/proc/self/fd/2:/dev/stderr"
+        }
+        val headArgs = filteredArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
         val serverCmd = config.command + if (config.args.isEmpty()) "" else " " + config.args.joinToString(" ")
         val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)
         val cmdLine = listOf(proot) + fullArgs.drop(1).toList()
