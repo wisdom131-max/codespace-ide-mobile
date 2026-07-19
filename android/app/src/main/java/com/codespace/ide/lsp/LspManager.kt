@@ -334,6 +334,12 @@ object LspManager {
         Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
         AppOutputLog.log("[LSP] startServer BEGIN: ${language.displayName} workspace=$workspacePath", "lsp")
 
+        // Self-heal: ensure libdpkg_android_fix.so is present in the guest rootfs before
+        // any apt-get/npm/pip install runs. Without this shim, dpkg's link() calls for
+        // status-file backups fail with EACCES on Android, breaking every apt-get install.
+        // This is a no-op if the .so is already present and matches the source size.
+        ProotInstaller.ensureShimInstalled(context)
+
         // BUG-FIX: Don't kill a healthy server just because a 2nd file of the same
         // language was opened. Only stop if the process has already died.
         val existing = servers[language]
