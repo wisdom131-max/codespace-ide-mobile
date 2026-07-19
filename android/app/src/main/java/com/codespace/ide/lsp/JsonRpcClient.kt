@@ -165,18 +165,35 @@ class JsonRpcClient(private val process: Process) {
         // Server-initiated requests (hasId && hasMethod) are ignored for now
     }
 
+    private var firstRead = true  // P32-DIAG: capture raw first bytes for corruption detection
+
     private fun readMessage(): JSONObject? {
         try {
             var contentLength = 0
+            var rawHeaderLines = mutableListOf<String>()  // P32-DIAG: capture raw header lines
             while (true) {
                 val line = readLine()
                 if (line == null) {
                     log("[LSP][rpc] readMessage: readLine returned null (EOF) during header read")
                     return null
                 }
+                if (firstRead) rawHeaderLines.add(line)  // P32-DIAG: capture first read
                 if (line.isEmpty()) break
                 if (line.startsWith("Content-Length:")) {
                     contentLength = line.removePrefix("Content-Length:").trim().toIntOrNull() ?: 0
+                }
+            }
+            // P32-DIAG: On the first read, log the raw header lines to detect profile
+            // banner text corruption (e.g., "[Agent] 32 tools ready..." instead of
+            // "Content-Length: N"). This is the definitive evidence for the theory.
+            if (firstRead) {
+                firstRead = false
+                if (rawHeaderLines.isNotEmpty()) {
+                    val rawPreview = rawHeaderLines.take(5).joinToString(" | ")
+                    log("[LSP][rpc] RAW first read (header lines): $rawPreview")
+                }
+                if (contentLength <= 0) {
+                    log("[LSP][rpc] WARNING: first read has no valid Content-Length — likely profile banner text corruption")
                 }
             }
             if (contentLength <= 0) {

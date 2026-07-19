@@ -493,17 +493,28 @@ object LspManager {
             AppOutputLog.log("[LSP] ${language.displayName} server already installed — skipping install", "lsp")
         }
 
-        // Build proot command — wrap server in bash -lc to source PATH/profile,
-        // matching execOnce() which is proven to work in the terminal.
+        // Build proot command — wrap server in bash -c (NON-login shell).
+        //
+        // CRITICAL FIX (P32): Previously used bash -lc (login shell), which sources
+        // /etc/profile → /etc/profile.d/*.sh → ~/.bashrc → ~/.agent-profile.sh.
+        // The agent profile (McpShellProfile.kt) prints banner text to stdout:
+        //   echo '[Agent] 32 tools ready. Type agent_tools to list...'
+        //   echo "[Agent] Project files: $WORKSPACE_PATH"
+        //   echo '[Agent] Shorthands: agent_read, agent_write...'
+        // This banner text corrupts the JSON-RPC pipe BEFORE the LSP server starts.
+        // The JsonRpcClient reader sees "[Agent] 32 tools ready..." instead of
+        // "Content-Length: N
+
+", fails to parse Content-Length (defaults to 0),
+        // and the initialize handshake fails with "contentLength=0 (invalid)".
+        //
+        // FIX: Use bash -c (non-login) but source /etc/profile and ~/.bashrc with
+        // stdout/stderr redirected to /dev/null. This preserves PATH, LD_PRELOAD,
+        // and other environment variables set by profile scripts, while preventing
+        // ANY banner text from reaching the JSON-RPC pipe. Then exec replaces
+        // bash with the LSP server, giving it a clean stdout.
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
-        // Strip fd/0, fd/1, and fd/2 bind mounts from the LSP spawn args.
-        // All three fail with "can't sanitize binding" when the source is a ProcessBuilder
-        // pipe (not a real file like /dev/null or /dev/pts/X). The warning is cosmetic —
-        // fd 0/1/2 are inherited through fork/exec regardless of the /dev/stdin/stdout/stderr
-        // named-path binds. But stripping all three eliminates the warnings and any
-        // potential side effects from proot's failed bind-mount error handling.
-        // The LSP server reads JSON-RPC from fd 0 (process.stdin in Node.js) and writes
-        // responses to fd 1 (process.stdout) — neither uses /dev/stdin or /dev/stdout.
+        // Strip fd/0, fd/1, and fd/2 bind mounts (see previous comment — cosmetic warnings).
         val filteredArgs = baseArgs.filter {
             it != "--bind=/proc/self/fd/0:/dev/stdin" &&
             it != "--bind=/proc/self/fd/1:/dev/stdout" &&
@@ -511,7 +522,13 @@ object LspManager {
         }
         val headArgs = filteredArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
         val serverCmd = config.command + if (config.args.isEmpty()) "" else " " + config.args.joinToString(" ")
-        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-lc", serverCmd)
+        // Source profiles with output redirected to /dev/null, then exec the LSP server.
+        // >/dev/null 2>&1 redirects ALL stdout/stderr from the sourcing to /dev/null,
+        // so no echo/banner/cat output can reach the JSON-RPC pipe. Environment
+        // variables set by the sourced scripts (PATH, LD_PRELOAD, LANG, etc.) persist
+        // in the shell and are inherited by the exec'd LSP server.
+        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec $serverCmd"
+        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
         val cmdLine = listOf(proot) + fullArgs.drop(1).toList()
         Log.d(TAG, "startServer: spawning command: ${cmdLine.joinToString(" ")}")
         AppOutputLog.log("[LSP] Spawning ${language.displayName} server: $serverCmd", "lsp")
