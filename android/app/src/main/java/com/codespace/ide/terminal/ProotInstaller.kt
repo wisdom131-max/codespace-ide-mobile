@@ -1177,8 +1177,19 @@ exit 0
     fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false): String {
         val (proot, baseArgs, envVars) = launchArgs(context)
         // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -lc <command>.
-        val headArgs = baseArgs.dropLast(2).toTypedArray()
-        val cd = if (workdir != null) "cd \"$workdir\" 2>/dev/null; " else ""
+        // Also strip --bind=/proc/self/fd/1 and --bind=/proc/self/fd/2 from baseArgs:
+        // these bind the guest /dev/stdout and /dev/stderr to proot's own fd/1 and fd/2,
+        // which are pipes that proot cannot sanitize when launched from a JVM subprocess
+        // that has not explicitly redirected its stdio. This causes the harmless but
+        // confusing "can't sanitize binding /proc/self/fd/1" warnings AND causes any
+        // check command that uses "2>/dev/null" to fail (fd/2 is broken in proot context).
+        // The interactive terminal binds /dev/pts directly so it does not use these.
+        val filteredArgs = baseArgs.filter {
+            it != "--bind=/proc/self/fd/1:/dev/stdout" &&
+            it != "--bind=/proc/self/fd/2:/dev/stderr"
+        }
+        val headArgs = filteredArgs.dropLast(2).toTypedArray()
+        val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
         val fullCommand = arrayOf(*headArgs, "/bin/bash", "-lc", cd + command)
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
