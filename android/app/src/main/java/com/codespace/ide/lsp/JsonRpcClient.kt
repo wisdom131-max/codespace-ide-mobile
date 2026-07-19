@@ -41,16 +41,25 @@ class JsonRpcClient(private val process: Process) {
     fun start() {
         running = true
         readerThread = Thread {
+            android.util.Log.d("JsonRpcClient", "Reader thread started")
             while (running) {
                 try {
-                    val message = readMessage() ?: break
+                    val message = readMessage()
+                    if (message == null) {
+                        android.util.Log.w("JsonRpcClient", "Reader: readMessage returned null (EOF or error) — breaking loop")
+                        break
+                    }
+                    android.util.Log.d("JsonRpcClient", "Reader: received message (method=${message.optString("method", "response")})")
                     handleMessage(message)
                 } catch (_: InterruptedException) {
+                    android.util.Log.d("JsonRpcClient", "Reader: interrupted — breaking loop")
                     break
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    android.util.Log.e("JsonRpcClient", "Reader: exception: ${e.javaClass.simpleName}: ${e.message}")
                     if (!running) break
                 }
             }
+            android.util.Log.w("JsonRpcClient", "Reader thread exiting — completing ${pendingRequests.size} pending requests exceptionally")
             pendingRequests.values.forEach {
                 it.completeExceptionally(IOException("LSP connection closed"))
             }
@@ -94,7 +103,14 @@ class JsonRpcClient(private val process: Process) {
 
         return try {
             future.get(timeoutSeconds, TimeUnit.SECONDS)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            val reason = when (e) {
+                is java.util.concurrent.TimeoutException -> "TIMEOUT after ${timeoutSeconds}s"
+                is java.util.concurrent.ExecutionException -> "CONNECTION ERROR: ${e.cause?.message ?: e.message}"
+                is InterruptedException -> "INTERRUPTED"
+                else -> "ERROR: ${e.javaClass.simpleName}: ${e.message}"
+            }
+            android.util.Log.e("JsonRpcClient", "request('$method') FAILED: $reason")
             pendingRequests.remove(id)
             null
         }
@@ -152,19 +168,28 @@ class JsonRpcClient(private val process: Process) {
         try {
             var contentLength = 0
             while (true) {
-                val line = readLine() ?: return null
+                val line = readLine()
+                if (line == null) {
+                    android.util.Log.d("JsonRpcClient", "readMessage: readLine returned null (EOF) during header read")
+                    return null
+                }
                 if (line.isEmpty()) break
                 if (line.startsWith("Content-Length:")) {
                     contentLength = line.removePrefix("Content-Length:").trim().toIntOrNull() ?: 0
                 }
             }
-            if (contentLength <= 0) return null
+            if (contentLength <= 0) {
+                android.util.Log.w("JsonRpcClient", "readMessage: contentLength=$contentLength (invalid)")
+                return null
+            }
             val bytes = ByteArray(contentLength)
             dataInput.readFully(bytes)
             return JSONObject(String(bytes, Charsets.UTF_8))
-        } catch (_: EOFException) {
+        } catch (e: EOFException) {
+            android.util.Log.d("JsonRpcClient", "readMessage: EOFException (stream closed)")
             return null
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            android.util.Log.d("JsonRpcClient", "readMessage: IOException: ${e.message}")
             return null
         }
     }
@@ -189,9 +214,15 @@ class JsonRpcClient(private val process: Process) {
         val bodyBytes = json.toString().toByteArray(Charsets.UTF_8)
         val header = "Content-Length: ${bodyBytes.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
         synchronized(writeLock) {
-            process.outputStream.write(header)
-            process.outputStream.write(bodyBytes)
-            process.outputStream.flush()
+            try {
+                process.outputStream.write(header)
+                process.outputStream.write(bodyBytes)
+                process.outputStream.flush()
+                android.util.Log.d("JsonRpcClient", "writeMessage: wrote ${header.size + bodyBytes.size} bytes (method=${json.optString("method", "?")})")
+            } catch (e: Exception) {
+                android.util.Log.e("JsonRpcClient", "writeMessage FAILED: ${e.message}")
+                throw e
+            }
         }
     }
 }

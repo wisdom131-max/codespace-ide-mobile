@@ -496,13 +496,16 @@ object LspManager {
         // Build proot command — wrap server in bash -lc to source PATH/profile,
         // matching execOnce() which is proven to work in the terminal.
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
-        // Strip fd/1 and fd/2 bind mounts from the LSP spawn args — same fix as execOnce.
-        // These bind guest /dev/stdout and /dev/stderr to proot's own fd/1 and fd/2,
-        // which are pipes the JVM process doesn't explicitly redirect. proot can't sanitize
-        // them and emits "can't sanitize binding /proc/self/fd/1" warnings that flood
-        // the LSP stderr channel and the Output tab. fd/0 is intentionally kept:
-        // the LSP server's stdin IS the JSON-RPC pipe, so it must inherit the JVM's stdout/stdin.
+        // Strip fd/0, fd/1, and fd/2 bind mounts from the LSP spawn args.
+        // All three fail with "can't sanitize binding" when the source is a ProcessBuilder
+        // pipe (not a real file like /dev/null or /dev/pts/X). The warning is cosmetic —
+        // fd 0/1/2 are inherited through fork/exec regardless of the /dev/stdin/stdout/stderr
+        // named-path binds. But stripping all three eliminates the warnings and any
+        // potential side effects from proot's failed bind-mount error handling.
+        // The LSP server reads JSON-RPC from fd 0 (process.stdin in Node.js) and writes
+        // responses to fd 1 (process.stdout) — neither uses /dev/stdin or /dev/stdout.
         val filteredArgs = baseArgs.filter {
+            it != "--bind=/proc/self/fd/0:/dev/stdin" &&
             it != "--bind=/proc/self/fd/1:/dev/stdout" &&
             it != "--bind=/proc/self/fd/2:/dev/stderr"
         }
