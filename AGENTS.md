@@ -4888,3 +4888,49 @@ When proot is launched as a JVM subprocess via `execOnce()`, `/proc/self/fd/1` a
 - `stripProotNoise()` still runs on all execOnce output (now mostly a no-op for these calls since the warnings no longer appear)
 - `hostToGuestPath()` now covers: rootfs paths, /sdcard paths, AND app-private `filesDir` paths via `/host-files` bind
 - Interactive terminal sessions are NOT affected — they use `/dev/pts` and a different launch path
+
+## 🔒 MANDATORY ERROR LOGGING RULE (ALL AI AGENTS MUST FOLLOW)
+
+**Rule:** Every time an error, bug, or failure is found and fixed, it MUST be logged in the **"Error Trace Log"** section at the bottom of this file. No exceptions.
+
+**Why:** So that any AI (or human) touching this project can see what's been tried, what failed, what worked, and avoid repeating the same mistakes. This is our institutional memory.
+
+**What to log for each error:**
+1. **Where we found it** — file name, line number(s), function/class name
+2. **What the symptom was** — what the user saw or what broke
+3. **Root cause** — the actual underlying reason (not just the surface symptom)
+4. **How we fixed it** — commit hash, what was changed, and WHY that fix works
+5. **Date** — when it was found/fixed
+
+**Format:**
+```
+### [Date] Error: <short title>
+- **File:** `path/to/file.kt` line XXX
+- **Symptom:** <what was observed>
+- **Root cause:** <the actual reason>
+- **Fix:** commit `XXXXXXXX` — <what was changed>
+- **Lesson:** <what to remember / avoid next time>
+```
+
+If you fix multiple related bugs in one session, log each one separately. If you investigate something and it turns out NOT to be a bug, log that too (with "No bug found — reason: ...") so the next AI doesn't waste time re-investigating.
+
+---
+
+## Error Trace Log
+
+### [2026-07-19] Error: LSP JS/TS install never completes — dpkg lock cycle + timeout
+- **File:** `android/app/src/main/java/com/codespace/ide/lsp/LspManager.kt` lines 88-130 (ServerConfig for TS/JS)
+- **Symptom:** User opens a .js or .ts file. LSP install starts but always fails. Output shows "Timed out after 120s" on first run, then "Unable to acquire the dpkg frontend lock" on every subsequent run. LSP never works for JS/TS.
+- **Root cause (1 of 2):** The `installTimeout` was 120s. The full install chain (`dpkg --configure -a` + `apt-get update` + `apt-get install nodejs npm` + `npm install -g typescript-language-server typescript@5.6.3`) takes ~200s on Android proot with slow I/O. The 120s timeout killed the process mid-dpkg-configure via `destroyForcibly()`, which leaves `/var/lib/dpkg/lock` and `/var/lib/dpkg/lock-frontend` on disk. Every subsequent install attempt hit the stale lock immediately and failed before reaching npm.
+- **Root cause (2 of 2):** `npm install -g` on Ubuntu apt-installed npm uses `/usr/lib/node_modules/` as the global prefix, but the `checkCommand` only looked at `/usr/local/lib/node_modules/typescript/lib/tsserver.js`. So even when the install succeeded, the post-install check still failed — causing an infinite install→check→fail→reinstall loop.
+- **Fix:** commit `a614c3d7` — Added `rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock` as the first step in every apt-based install command. Added `command -v node && command -v npm || apt-get install` to skip redundant apt installs. Bumped timeouts: JS/TS→300s, Python→240s, C/C++→180s, PHP/HTML/CSS/JSON→240s. Removed useless `--prefer-offline` npm flag.
+- **Fix:** commit `da82c13d` — Updated TS/JS `checkCommand` to test BOTH `/usr/local/lib/node_modules/` and `/usr/lib/node_modules/` paths for tsserver.js. Added `npm config set prefix /usr/local` before every `npm install -g` to force global installs to the path we check against. Applied to all npm-based server installs (TS, JS, PHP, HTML, CSS, JSON).
+- **Lesson:** (1) On Android proot, any `apt-get install` chain needs 200-300s timeout, not 120s. (2) Always clear dpkg lock files before running dpkg/apt commands — `destroyForcibly()` on a timed-out proot process leaves stale locks. (3) npm's global prefix depends on how npm was installed (apt→`/usr`, manual→`/usr/local`) — always set `npm config set prefix` explicitly OR check both paths.
+
+### [2026-07-19] Error: npm --prefer-offline flag causes failure on first install
+- **File:** `android/app/src/main/java/com/codespace/ide/lsp/LspManager.kt` lines 112-115 (old TS installCommand)
+- **Symptom:** `npm install -g typescript-language-server typescript@5.6.3 --prefer-offline` fails on first run because there's no npm cache yet. Falls back to the `|| npm install` without the flag, but this doubles the install time and wastes the 120s timeout budget.
+- **Root cause:** `--prefer-offline` tells npm to use cached packages, but on first install the cache is empty. The flag makes the primary install fail, then the `||` fallback runs a second full install — effectively doubling the time and making the 120s timeout even harder to hit.
+- **Fix:** commit `a614c3d7` — Removed `--prefer-offline` entirely. Just run `npm install -g typescript-language-server typescript@5.6.3` directly.
+- **Lesson:** Don't use `--prefer-offline` as a "speed optimization" on first-run install paths. The npm cache is empty on first run, so the flag causes a failure that triggers a fallback, wasting time. Let npm resolve packages normally.
+
