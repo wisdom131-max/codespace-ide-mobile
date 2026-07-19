@@ -264,11 +264,14 @@ object LspManager {
         val config = configs[language] ?: return false
         AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${config.checkCommand}", "lsp")
         val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 10)
+        // Check passes if output is non-blank and does not contain our wrapper's
+        // "Exit code N" marker (set by execOnce on non-zero exit) or "command not found".
+        // We no longer filter on "error"/"Error" — those words appear in proot fd-binding
+        // warnings that are harmless and now flow to stdout since we removed 2>/dev/null.
         val installed = output.isNotBlank() &&
                !output.contains("not found") &&
-               !output.contains("Error") &&
                !output.contains("Exit code") &&
-               !output.contains("error")
+               (output.contains("OK") || output.contains("found"))
         Log.d(TAG, "isServerInstalled(${language.displayName}): output=${output.take(120)} → $installed")
         AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (raw: ${output.take(80).trim()})", "lsp")
         return installed
