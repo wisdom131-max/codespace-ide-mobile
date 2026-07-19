@@ -102,17 +102,26 @@ object LspManager {
                 // npm install -g may go to either depending on npm config.
                 "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
-            // P31-LSP-FIX: Clear stale dpkg/apt lock files before every install attempt.
-            // A previous timed-out install (destroyForcibly) leaves lock files on disk.
-            // On the next attempt dpkg hits "Unable to acquire the dpkg frontend lock"
-            // immediately and the whole install fails without even reaching npm install.
-            // Also: skip apt-get install if nodejs/npm are already present to cut time.
-            // installTimeout bumped 120->300s: full chain (apt-update+install+npm) needs ~200s.
+            // P32-LSP-FIX: Replace broken Ubuntu apt nodejs/npm with NodeSource.
+            // Root cause: Ubuntu apt's nodejs has libnode115 dependency conflict —
+            // a previous failed apt install leaves broken packages that block ALL
+            // future npm installs. NodeSource provides clean Node 20.x with npm
+            // bundled, bypassing the broken apt package state entirely.
+            // Steps: (1) clear dpkg locks, (2) dpkg --configure -a,
+            // (3) apt-get install -f (fix broken), (4) purge broken nodejs,
+            // (5) autoremove orphans, (6) NodeSource setup_20.x + apt install nodejs,
+            // (7) npm install language server.
+            // installTimeout 300s: full chain needs ~200-250s on Android proot.
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
-                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
                 "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g typescript-language-server typescript@5.6.3",
             300,
@@ -127,12 +136,17 @@ object LspManager {
                 // npm install -g may go to either depending on npm config.
                 "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
-            // P31-LSP-FIX: Same lock-clear + node/npm pre-check + 300s timeout as TS.
+            // P32-LSP-FIX: Same NodeSource install + 300s timeout as TS.
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
-                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
                 "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g typescript-language-server typescript@5.6.3",
             300,
@@ -231,12 +245,17 @@ object LspManager {
             "intelephense",
             listOf("--stdio"),
             "which intelephense",
-            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
-                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
                 "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g intelephense",
             240,
@@ -250,12 +269,17 @@ object LspManager {
             "vscode-html-language-server",
             listOf("--stdio"),
             "which vscode-html-language-server",
-            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
-                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
                 "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
             240,
@@ -267,12 +291,17 @@ object LspManager {
             "vscode-css-language-server",
             listOf("--stdio"),
             "which vscode-css-language-server",
-            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
-                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
                 "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
             240,
@@ -285,12 +314,17 @@ object LspManager {
             "vscode-json-language-server",
             listOf("--stdio"),
             "which vscode-json-language-server",
-            // P31-LSP-FIX: Lock-clear + skip apt-get if node/npm present.
+            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
                 "dpkg --configure -a 2>/dev/null; " +
                 "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
-                "( apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm ); " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
                 "npm config set prefix /usr/local 2>/dev/null; " +
                 "npm install -g vscode-langservers-extracted",
             240,
