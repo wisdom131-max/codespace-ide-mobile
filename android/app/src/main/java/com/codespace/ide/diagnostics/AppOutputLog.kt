@@ -1,6 +1,7 @@
 package com.codespace.ide.diagnostics
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshot.withMutableSnapshot
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,8 +30,14 @@ object AppOutputLog {
     @Synchronized
     fun log(message: String, channel: String = "info") {
         val ts = timeFmt.format(Date())
-        lines.add("[$ts] [$channel]  $message")
-        while (lines.size > MAX_LINES) lines.removeAt(0)
+        // P31-CRASH-FIX: Wrap add+trim in a single snapshot so Compose never sees
+        // an intermediate state (size 501 before removeAt(0) brings it back to 500).
+        // Without this, LazyColumn's prefetcher reads size=501, tries to access
+        // index 500, but by then removeAt(0) already ran — IndexOutOfBoundsException.
+        withMutableSnapshot {
+            lines.add("[$ts] [$channel]  $message")
+            while (lines.size > MAX_LINES) lines.removeAt(0)
+        }
     }
 
     fun clear() {
@@ -51,7 +58,9 @@ object AppOutputLog {
     @Synchronized
     fun logInternal(message: String, channel: String = "internal") {
         val ts = timeFmt.format(Date())
-        internalLines.add("[$ts] [$channel]  $message")
-        while (internalLines.size > MAX_INTERNAL_LINES) internalLines.removeAt(0)
+        withMutableSnapshot {
+            internalLines.add("[$ts] [$channel]  $message")
+            while (internalLines.size > MAX_INTERNAL_LINES) internalLines.removeAt(0)
+        }
     }
 }
