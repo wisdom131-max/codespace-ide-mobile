@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.panes
 
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.annotation.SuppressLint
 import android.webkit.WebView
@@ -68,6 +69,8 @@ class PreviewState(initialMode: PreviewMode) {
     var browserInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
     var remotionUrl by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
     var remotionInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
+    // P32-BROWSER: track back/forward nav state so the back button can be enabled/disabled
+    var canGoBack by androidx.compose.runtime.mutableStateOf(false)
 }
 
 @Composable
@@ -251,10 +254,7 @@ fun PreviewPane(
         // pill (matches the STT/Root/Zsh quick-actions row styling elsewhere in the app) that fills
         // the space it actually needs instead of leaving a gap.
         if (sharedState.activeMode == PreviewMode.BROWSER || sharedState.activeMode == PreviewMode.REMOTION) {
-            // Browser and Remotion each read/write their OWN url+input pair on sharedState —
-            // this is the actual fix for the "typing a port in one shows up in the other"
-            // mirroring bug, which happened because both modes used to share one pair of
-            // variables for what are really two independent connections.
+            // Browser and Remotion each read/write their OWN url+input pair on sharedState.
             val isRemotion = sharedState.activeMode == PreviewMode.REMOTION
             val currentInput = if (isRemotion) sharedState.remotionInput else sharedState.browserInput
             fun applyInput(v: String) {
@@ -265,53 +265,67 @@ fun PreviewPane(
                 else sharedState.browserUrl = sharedState.browserInput
                 webViewRef?.loadUrl(currentInput)
             }
+            // P32-BROWSER: Compact address bar — reduced height, back button, desktop-mode lock icon.
+            // heightIn removed (was causing the oversized bar seen in the screenshot); fixed
+            // vertical padding of 3.dp gives a tight pill row that doesn't eat panel space.
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 26.dp)
                     .background(Surface)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                // Back button — enabled only when WebView has history to go back to
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = if (sharedState.canGoBack) TextPrimary else TextMuted.copy(alpha = 0.35f),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable(enabled = sharedState.canGoBack) { webViewRef?.goBack() }
+                )
+                // Lock / movie icon
                 Icon(
                     if (isRemotion) Icons.Default.Movie else Icons.Default.Lock,
-                    null, tint = TextMuted, modifier = Modifier.size(13.dp)
+                    null, tint = TextMuted, modifier = Modifier.size(11.dp)
                 )
+                // URL input pill
                 Box(
                     Modifier
                         .weight(1f)
-                        .fillMaxHeight()
+                        .height(24.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(BgDark)
                         .border(1.dp, Border, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 7.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     if (currentInput.isEmpty()) {
-                        Text("http://localhost:3000", fontSize = 12.sp, color = TextMuted)
+                        Text("http://localhost:3000", fontSize = 11.sp, color = TextMuted)
                     }
                     androidx.compose.foundation.text.BasicTextField(
                         value = currentInput,
                         onValueChange = { applyInput(it) },
                         singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextPrimary),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = TextPrimary),
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
                         keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = { connect() }),
                     )
                 }
+                // Go button
                 Box(
                     Modifier
-                        .fillMaxHeight()
+                        .height(24.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(Accent)
                         .clickable { connect() }
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 9.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Go", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                    Text("Go", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -387,6 +401,7 @@ fun PreviewPane(
                 onWebView = { webViewRef = it },
                 onTitle = { pageTitle = it },
                 onLoading = { isLoading = it },
+                onCanGoBack = { sharedState.canGoBack = it },
             )
         }
     }
@@ -450,6 +465,7 @@ fun PreviewPane(
                         onWebView = { webViewRef = it },
                         onTitle = { pageTitle = it },
                         onLoading = { isLoading = it },
+                        onCanGoBack = { sharedState.canGoBack = it },
                     )
                 }
             }
@@ -474,6 +490,7 @@ private fun PreviewBody(
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
+    onCanGoBack: (Boolean) -> Unit = {},
 ) {
     when (activeMode) {
         PreviewMode.HTML      -> {
@@ -495,11 +512,11 @@ private fun PreviewBody(
             }
         PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
-        PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack)
         PreviewMode.DASHBOARD -> DashboardPreview(activeFilePath, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
         // Independent from Browser's URL now — each mode has its own connection (this is the
         // fix for the "Browser and Remotion port mirroring" bug).
-        PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
+        PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack)
     }
 }
 
@@ -797,6 +814,7 @@ private fun BrowserPreview(
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
+    onCanGoBack: (Boolean) -> Unit = {},
 ) {
     val fileChooserHandler = rememberOnShowFileChooser()
     // codespace-ide fix (2026-07-08): raw video/audio URLs (e.g. http://localhost:3000/test.mp4)
@@ -815,17 +833,26 @@ private fun BrowserPreview(
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
-                // Without this, autoplay on the generated <video>/<audio> wrapper silently no-ops
-                // until the user taps once — looks exactly like "the video doesn't show".
                 settings.mediaPlaybackRequiresUserGesture = false
+                // P32-BROWSER: Desktop user-agent — makes sites render in laptop/desktop
+                // layout instead of mobile layout. Identical to Chrome on a laptop.
+                settings.userAgentString =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                // P32-BROWSER: setInitialScale(0) lets the WebView pick a natural 1:1 scale
+                // after useWideViewPort maps the page to its declared viewport width.
+                // Without this, Android can force a 75% scale that clips content.
+                setInitialScale(0)
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { onLoading(true) }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)
                         onTitle(view?.title ?: "")
+                        onCanGoBack(view?.canGoBack() == true)
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                         onLoading(false)
+                        onCanGoBack(view?.canGoBack() == true)
                         val errHtml = """<html><body style="background:#1e1e1e;color:#f48771;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
                             <div><h2>Cannot connect</h2><p>$description</p><p style="color:#717171;font-size:13px;">Is your server running on ${url}?</p></div></body></html>"""
                         view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
@@ -882,7 +909,9 @@ private fun BrowserPreview(
             }
             onWebView(wv)
         },
-        modifier = Modifier.fillMaxSize(),
+        // P32-BROWSER: clipToBounds ensures pinch-zoom never visually bleeds outside
+        // the panel while still allowing unlimited zoom in/out within the pane.
+        modifier = Modifier.fillMaxSize().clipToBounds(),
     )
 }
 
@@ -898,6 +927,7 @@ private fun RemotionPreview(
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
+    onCanGoBack: (Boolean) -> Unit = {},
 ) {
     val fileChooserHandler = rememberOnShowFileChooser()
     // Default Remotion Studio runs on port 3000
@@ -916,6 +946,11 @@ private fun RemotionPreview(
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
+                // P32-BROWSER: Desktop UA — Remotion Studio renders its full desktop layout
+                settings.userAgentString =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                setInitialScale(0)
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
@@ -923,9 +958,11 @@ private fun RemotionPreview(
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)
                         onTitle(view?.title ?: "Remotion Studio")
+                        onCanGoBack(view?.canGoBack() == true)
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                         onLoading(false)
+                        onCanGoBack(view?.canGoBack() == true)
                         val errHtml = """<html><body style="background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
                             <div>
                             <div style="font-size:48px;margin-bottom:16px;">🎬</div>
@@ -951,9 +988,11 @@ private fun RemotionPreview(
             // P25-4: guard against loading localhost:0 (no port connected)
             val isRealUrl = remotionUrl.isNotBlank() && remotionUrl != "http://localhost:0"
             if (wv.url != remotionUrl && isRealUrl) wv.loadUrl(remotionUrl)
+            onCanGoBack(wv.canGoBack())
             onWebView(wv)
         },
-        modifier = Modifier.fillMaxSize(),
+        // P32-BROWSER: clipToBounds so zoom never bleeds outside the panel
+        modifier = Modifier.fillMaxSize().clipToBounds(),
     )
 }
 
