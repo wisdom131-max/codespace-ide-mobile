@@ -5294,3 +5294,39 @@ a SEPARATE issue, unrelated to anything fixed this session. Needs investigation:
 - Does the app wait for successful attach/launch before allowing breakpoints, or
   could it be sending setBreakpoints too early (same "Server is not available" ordering
   problem, but happening for real in the app's actual flow)?
+
+### [2026-07-20] P32-DAP-BREAKPOINT-FIX: 3 bugs in breakpoint sequencing
+
+**INVESTIGATION:** How does the app sequence launch/attach → setBreakpoints → configurationDone?
+
+**BUG 1 — NodeDAPAdapter: configurationDone sent BEFORE launch/attach**
+- DAP spec: initialize → setBreakpoints → launch/attach → configurationDone
+- NodeDAPAdapter was: initialize → setBreakpoints → configurationDone → launch/attach
+- `configurationDone` tells the adapter "configuration complete, start the program."
+  Sending it before `launch` means the adapter has no launch config when it starts.
+- FIX: Moved configurationDone to AFTER launch/attach (line 395-397).
+
+**BUG 2 — No live breakpoint updates during a running session**
+- `UDM.toggleBreakpoint()` only updated internal `breakpoints` map and called
+  `notifyBreakpointsChanged()` — never sent `setBreakpoints` to the active DAP adapter.
+- Breakpoints set during a running debug session appeared in the UI but never reached
+  the debug adapter. The program would not stop at them.
+- FIX: Added `sendBreakpointsToActiveSession()` in UDM. Called by addBreakpoint,
+  removeBreakpoint, toggleBreakpoint. Sends updated breakpoints to the active DAP
+  adapter via the new `DebugAdapter.sendBreakpoints()` interface method.
+
+**BUG 3 — setBreakpoints result silently ignored**
+- Both adapters called `dapClient.request("setBreakpoints", ...)` and discarded the result.
+- If it failed (e.g. "Server is not available"), breakpoints were silently lost with no
+  indication to the user.
+- FIX: All setBreakpoints calls now check the result and log to AppOutputLog:
+  - Initial setBreakpoints (at launch): logs "OK" or "FAILED"
+  - Live setBreakpoints (during session): logs "OK" or "FAILED" per file
+
+**PythonDAPAdapter sequence (was already correct):**
+  initialize → setBreakpoints → launch → configurationDone ✓
+
+**NodeDAPAdapter sequence (fixed):**
+  initialize → setBreakpoints → launch/attach → configurationDone ✓ (was: ...→ configurationDone → launch)
+
+**Commit:** 228506d7
