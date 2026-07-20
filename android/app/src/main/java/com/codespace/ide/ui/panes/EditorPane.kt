@@ -145,7 +145,7 @@ fun EditorPane(
     }
     var lspCursorLine by remember { mutableStateOf(0) }
     var lspCursorCol by remember { mutableStateOf(0) }
-    var showLspHover by remember { mutableStateOf(false) }
+    var showLspHover by remember { mutableStateOf(true) }  // P33: auto-hover enabled by default
     var lspHoverContent by remember { mutableStateOf<String?>(null) }
     // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
     var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
@@ -758,7 +758,11 @@ fun EditorPane(
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
             LspManager.setDiagnosticsHandler(snap.language) { diagUri, diags ->
-                if (diagUri == uri) {
+                // P33-INTELLISENSE: Normalize both URIs before comparing — server may
+                // return %20 for spaces while our URI has raw spaces (or vice versa).
+                val normDiag = LspManager.normalizeFileUri(diagUri)
+                val normUri  = LspManager.normalizeFileUri(uri)
+                if (normDiag == normUri) {
                     lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
                 }
             }
