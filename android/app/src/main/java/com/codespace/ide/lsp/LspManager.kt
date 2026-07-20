@@ -564,7 +564,11 @@ object LspManager {
 
         // Convert workspace path to guest path for rootUri
         val guestPath = workspaceGuestPath(context, workspacePath) ?: "/root"
-        val rootUri = "file://$guestPath"
+        val guestPathEncoded = guestPath.split("/").joinToString("/") { segment ->
+            java.net.URLEncoder.encode(segment, "UTF-8")
+                .replace("+", "%20").replace("%2F", "/")
+        }
+        val rootUri = "file://$guestPathEncoded"
 
         val client = JsonRpcClient(process)
         val server = LspServer(language, process, client, rootUri)
@@ -1267,8 +1271,21 @@ object LspManager {
      */
     fun fileUriFromHostPath(context: Context, hostPath: String): String? {
         val guestPath = workspaceGuestPath(context, hostPath) ?: return null
-        return "file://$guestPath"
+        // P33-INTELLISENSE: Percent-encode path segments so spaces and special chars
+        // round-trip correctly. The LSP server canonicalizes URIs with %20 for spaces;
+        // if we send raw spaces, the server's publishDiagnostics response comes back
+        // with %20 and diagUri == uri fails → squiggles never render.
+        val encoded = guestPath.split("/").joinToString("/") { segment ->
+            java.net.URLEncoder.encode(segment, "UTF-8")
+                .replace("+", "%20")  // URLEncoder uses + for spaces; URI needs %20
+                .replace("%2F", "/")  // don't encode slashes (already split)
+        }
+        return "file://$encoded"
     }
+
+    /** Normalize a file:// URI for comparison — decode %XX so both sides match. */
+    fun normalizeFileUri(uri: String): String =
+        try { java.net.URLDecoder.decode(uri, "UTF-8") } catch (_: Exception) { uri }
 
     /**
      * Map a host path to the corresponding guest path inside proot.
