@@ -5642,3 +5642,33 @@ and intermediate findings, for future reference when debugging DAP issues.
     `event_list.append()` or `collected.append()` instead of `events.append()`
   - This is a phone terminal/clipboard behavior, not a bug in the app or
     the script itself
+
+## Phase 33 — IntelliSense UI Fix (Hover + Completions + Diagnostics Squiggles)
+
+**Date:** 2026-07-20
+**Status:** ✅ COMPLETE — 3 commits (ad755907, 7ecee7f8, 11ebc554)
+
+### What was broken
+LSP was fully working at the protocol level (screenshots confirmed: install check ✓, process spawned ✓, initialize ✓, didOpen ✓, publishDiagnostics firing ✓, signatureHelp/documentHighlight responses ✓) but NO IntelliSense was visible in the editor UI.
+
+### Root Cause 1: Diagnostic squiggles never rendered — URI mismatch with spaces
+- **File:** `lsp/LspManager.kt` (fileUriFromHostPath) + `ui/panes/EditorPane.kt` (diagUri == uri check)
+- **Symptom:** publishDiagnostics logged 36-40 diagnostics in test.js but no squiggles appeared in editor
+- **Root cause:** `fileUriFromHostPath` built URIs with raw spaces: `file:///sdcard/My codespace app/...`. The typescript-language-server canonicalizes URIs with %20 for spaces in its publishDiagnostics response: `file:///sdcard/My%20codespace%20app/...`. The `diagUri == uri` check failed → `lspSquiggles` never updated → no squiggles.
+- **Fix:** commit `ad755907` — `fileUriFromHostPath` now percent-encodes path segments using `URLEncoder.encode()` + replaces `+` with `%20`. Added `normalizeFileUri()` helper that URL-decodes both sides before comparison.
+- **Fix:** commit `7ecee7f8` — `EditorPane.kt` diagUri comparison now normalizes both sides: `LspManager.normalizeFileUri(diagUri) == LspManager.normalizeFileUri(uri)`.
+- **Lesson:** Always percent-encode file:// URIs before sending to LSP servers. LSP servers canonicalize URIs; if you send raw spaces, their responses come back with %20 and string equality checks fail silently.
+
+### Root Cause 2: Hover hidden behind ? button — not automatic
+- **File:** `ui/panes/EditorPane.kt` line 148
+- **Symptom:** No hover popup appeared on cursor movement even though LSP was returning hover data
+- **Root cause:** `showLspHover` defaulted to `false`. User had to tap the `?` button in the editor toolbar to enable hover. There was no hint this button existed.
+- **Fix:** commit `7ecee7f8` — Changed `mutableStateOf(false)` to `mutableStateOf(true)`. Hover is now always enabled by default.
+- **Lesson:** UI features that are "off by default" are effectively invisible. Hover should be on by default like VS Code.
+
+### Root Cause 3: Dot-triggered completions didn't work
+- **File:** `editor/CodeEditor.kt` — prefix/completion logic
+- **Symptom:** Typing `lines.` or `user.` showed no completions. Only worked after typing 2+ word characters.
+- **Root cause:** `prefix = currentWord(text, cursor)` extracts only alphanumeric/underscore chars. After `lines.` the cursor is right after `.`, so `prefix = ""` (less than 2 chars). The `if (prefix.length >= 2)` guard blocked all LSP calls.
+- **Fix:** commit `11ebc554` — Added `isDotTriggered` flag: detects when char immediately before cursor is `.`. All completion LaunchedEffects now check `prefix.length >= 2 || isDotTriggered`. Reduced dot-trigger delay to 150ms (vs 300ms for word trigger).
+- **Lesson:** LSP completion triggers should check for both word-prefix AND trigger characters (`.`, `(`, `:` etc.). The LSP protocol has a `triggerCharacters` capability for this reason.
