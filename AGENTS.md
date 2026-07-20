@@ -5166,3 +5166,27 @@ The `@Synchronized` annotation only provides Java-level thread mutual exclusion 
 - `AppOutputLog` was the ONLY global Compose state object mutated from background threads.
 
 **Key lesson:** When adding AppOutputLog calls from background threads (which is the intended design — LSP/DAP/terminal readers all log from their own threads), the backing Compose state MUST be mutated inside `Snapshot.withMutableSnapshot`. `@Synchronized` alone is insufficient.
+
+### [2026-07-20] P32-BUILD-FIX: CI builds 1644-1647 failing — LspManager.kt comment syntax error
+
+**SYMPTOM:** All CI builds since commit 03a68005 (build 1638) failed with:
+```
+e: LspManager.kt:508:50 Expecting '"'
+> Task :app:kspProdDebugKotlin FAILED
+```
+
+**ROOT CAUSE:** In commit 03a68005 (the LSP root cause fix), the comment block describing the stdout corruption bug had an embedded literal carriage return (\r) that broke the `//` comment continuation. The text was:
+
+```kotlin
+// "Content-Length: N    ← comment ends here ( terminates the line)
+                            ← empty line — NOT a comment
+", fails to parse...         ← starts with " → parsed as Kotlin string literal
+```
+
+The `//` prefix only covered the first line. The empty line and the line starting with `"` were parsed as actual Kotlin code. The bare `"` opened an unterminated string literal, causing the compilation error.
+
+**FIX (commit e41f16ef):** Collapsed the multi-line text into properly `//`-prefixed comment lines with escaped `\r\n` sequences. Removed duplicate broken lines left by an earlier pattern-based fix attempt.
+
+**VERIFICATION:** Build e41f16ef passed CI — first successful build since ebd5ce0b (build 1639).
+
+**LESSON:** When using Python string replacement to write multi-line Kotlin comments, never embed literal carriage returns. Use `\r\n` as text, not actual `\r` characters. The `//` comment prefix only applies to a single line — any line break (including \r) ends the comment.
