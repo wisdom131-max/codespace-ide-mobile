@@ -5234,3 +5234,63 @@ Why it works:
 - build.gradle.kts — added GIT_HASH buildConfigField from git rev-parse --short HEAD
 
 **LESSON:** `Snapshot.withMutableSnapshot` from background threads is NOT a reliable way to mutate Compose state. `Handler.post` to the main thread is. The LogcatPanel pattern (withContext(Dispatchers.Main)) was the correct reference implementation all along.
+
+### [2026-07-20] P32-MANUAL-TEST-RESULTS: git blame, DAP adapter, and 2>/dev/null lesson
+
+#### 1. Git blame/status corruption — THEORETICAL, not independently confirmed
+
+Manual testing: ran git status --porcelain and git blame using three different methods
+(blocking subprocess.run, streaming readline, both with/without login shell, both
+with/without 2>/dev/null) on a real git repo with a dirty file. ALL combinations produced
+clean, correct output — no banner corruption reproduced.
+
+The [Agent] banner text IS present in this terminal environment (confirmed visible:
+"[Agent] 32 tools ready..."), so the hazard is real. But it did not corrupt git
+blame/status specifically across any tested method.
+
+**Conclusion:** The git blame/status issue was a theoretical risk inferred from "these
+commands share the 2>/dev/null pattern with the confirmed LSP bug," not a confirmed,
+independently-reproduced bug like the LSP corruption (which was proven with raw byte
+capture). The fix (bash -c with redirected profile sourcing) is still correct and safe
+to keep — it costs nothing and is strictly safer regardless. But it should not be
+described as a confirmed bug fix.
+
+#### 2. LESSON LEARNED: 2>/dev/null silent failures in manual testing
+
+Ran `pip3 install debugpy --break-system-packages 2>/dev/null` during manual testing.
+Produced ZERO output, looked like success — but pip3 doesn't exist in this environment
+(only `python3 -m pip` works, and even that needed python3-pip installed via apt first).
+The 2>/dev/null hid the "command not found" error completely.
+
+**Lesson:** Redirecting stderr to /dev/null during manual testing can make a silent
+failure look identical to a silent success. Run suspiciously-quiet commands without
+the redirect first to confirm they actually execute.
+
+#### 3. DAP adapter manual test — CONFIRMED WORKING + separate breakpoint issue found
+
+**DAP shell-wrapper fix: CONFIRMED WORKING via independent manual test.**
+
+Installed debugpy via `python3 -m pip install debugpy --break-system-packages`, confirmed
+via `python3 -c "import debugpy; print(debugpy.__file__)"` (real path returned). Spawned
+via the exact same bash -c wrapper:
+  source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec python3 -m debugpy.adapter
+
+RESULT 1 — initialize handshake: CONFIRMED CLEAN. Real capabilities returned
+(supportsConditionalBreakpoints, supportsFunctionBreakpoints, supportsLogPoints,
+supportsHitConditionalBreakpoints), correctly matched by request_seq, zero corruption,
+zero banner text. Independently proves the shell-wrapper fix works for DAP same as LSP.
+
+RESULT 2 — setBreakpoints: failed with "Server is not available" /
+ComponentNotAvailable. This is EXPECTED — debugpy requires an actual launch/attach
+to a running process before breakpoints can be set. The manual test only started
+the adapter and sent setBreakpoints without launching/attaching first, so debugpy
+correctly rejected the out-of-order request. NOT a bug in the shell-wrapper fix.
+
+**SEPARATE ISSUE FOUND — breakpoint sequencing in the app:**
+The real-world symptom ("breakpoints don't show, some other stuff doesn't work") is
+a SEPARATE issue, unrelated to anything fixed this session. Needs investigation:
+- How does the app sequence launch/attach → setBreakpoints → configurationDone?
+- Is breakpoint state correctly relayed between editor UI (gutter tap) and DAP client?
+- Does the app wait for successful attach/launch before allowing breakpoints, or
+  could it be sending setBreakpoints too early (same "Server is not available" ordering
+  problem, but happening for real in the app's actual flow)?
