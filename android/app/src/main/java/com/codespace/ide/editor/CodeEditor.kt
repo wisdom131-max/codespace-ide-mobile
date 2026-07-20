@@ -479,13 +479,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
 
     val prefix = remember(value) { currentWord(value.text, value.selection.end) }
+    // P33-INTELLISENSE: Detect dot-triggered completions (e.g. "lines." "user.")
+    val isDotTriggered = remember(value) {
+        val cursor = value.selection.end.coerceAtMost(value.text.length)
+        cursor > 0 && value.text.getOrElse(cursor - 1) { ' ' } == '.'
+    }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     // P22-H: LSP-backed completion
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
-    LaunchedEffect(prefix, value.selection.end) {
-        if (prefix.length >= 2 && lspCompletionProvider != null) {
-            kotlinx.coroutines.delay(300)
+    LaunchedEffect(prefix, isDotTriggered, value.selection.end) {
+        if ((prefix.length >= 2 || isDotTriggered) && lspCompletionProvider != null) {
+            kotlinx.coroutines.delay(150)  // shorter delay for dot trigger
             val cOff = value.selection.end
             val cLine = value.text.take(cOff).count { it == '\n' }
             val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
@@ -508,14 +513,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         (lspMapped + completions).distinctBy { it.label }.take(15)
     }
-    LaunchedEffect(prefix, allCompletions) { showCompletions = prefix.length >= 2 && allCompletions.isNotEmpty() }
+    LaunchedEffect(prefix, isDotTriggered, allCompletions) { showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty() }
 
     // P15-D: Ghost text — shows the top IntelliSense completion as grey inline text
     // after 800ms idle with a non-empty prefix. Tab/→ accepts; any edit dismisses.
     var ghostText by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(prefix, allCompletions) {
+    LaunchedEffect(prefix, isDotTriggered, allCompletions) {
         ghostText = null
-        if (prefix.length >= 2 && allCompletions.isNotEmpty()) {
+        if ((prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
             val top = allCompletions.firstOrNull()
             if (top != null && top.insertText.startsWith(prefix)) {
