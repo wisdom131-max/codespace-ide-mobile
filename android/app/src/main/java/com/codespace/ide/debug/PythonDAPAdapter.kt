@@ -18,7 +18,7 @@ import org.json.JSONObject
  * Launch sequence:
  *   1. Check debugpy installed: python3 -m debugpy --version
  *   2. If not: pip3 install debugpy
- *   3. Spawn: python3 -m debugpy --listen-on-stdin --wait-for-client <script>
+ *   3. Spawn: python3 -m debugpy.adapter  (DAP over stdin/stdout, launches debuggee via 'launch' request)
  *   4. DAPClient.start() — reads stdout, writes stdin
  *   5. Send initialize + launch + setBreakpoints + configurationDone
  *   6. Wire stopped/output/terminated events → UI callbacks
@@ -140,13 +140,13 @@ class PythonDAPAdapter : DebugAdapter {
                 }
             }
 
-        // 3. Spawn: python3 -m debugpy --listen-on-stdin --wait-for-client <script>
+        // 3. Spawn: python3 -m debugpy.adapter (DAP adapter over stdin/stdout)
         val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
         val headArgs = baseArgs.dropLast(2).toTypedArray()
         // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
         // Same fix as LSP startServer — prevents [Agent] banner text from corrupting
         // the DAP JSON-RPC stream on stdout.
-        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec python3 -m debugpy --listen-on-stdin --wait-for-client \"$guestPath\""
+        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec python3 -m debugpy.adapter"
         val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
@@ -156,7 +156,7 @@ class PythonDAPAdapter : DebugAdapter {
             val idx = kv.indexOf('=')
             if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
         }
-        Log.d(TAG, "Spawning debugpy: python3 -m debugpy --listen-on-stdin --wait-for-client $guestPath")
+        Log.d(TAG, "Spawning debugpy.adapter (DAP over stdin/stdout), will launch $guestPath via DAP launch request")
 
         val process = try {
             pb.start()
@@ -273,6 +273,7 @@ class PythonDAPAdapter : DebugAdapter {
             put("type", "python")
             put("name", "Debug Python")
             put("program", guestPath)
+            put("python", "python3")  // tell adapter which interpreter to use in proot
             put("stopOnEntry", false)
             put("justMyCode", false)
             put("noDebug", false)
