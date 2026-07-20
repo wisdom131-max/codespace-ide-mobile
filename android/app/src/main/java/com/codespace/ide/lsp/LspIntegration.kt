@@ -43,29 +43,37 @@ fun lspDiagnosticsToProblems(diagnostics: JSONArray): List<Problem> {
  * Hover contents can be:
  *   - A string (plain text)
  *   - A MarkupContent object: { kind: "markdown"|"plaintext", value: "..." }
- *   - An array of strings and MarkupContent objects
- * Returns null if no usable content is found.
+ *   - A MarkedString object: { language: "...", value: "..." }
+ *   - An array of any of the above
+ *
+ * BUG FIX (P35): The old code used optString("value") which calls toString() on the
+ * value field. If the LSP server returns a nested JSONObject as "value" (non-standard
+ * but observed from typescript-language-server for some hover responses), optString
+ * returns the JSON representation with escaped slashes — producing raw JSON in the
+ * tooltip. Fix: use opt("value") and recurse, so nested objects are properly unwrapped.
  */
 fun parseHoverContent(hover: JSONObject): String? {
     val contents = hover.opt("contents") ?: return null
-    return when (contents) {
-        is String -> contents.ifBlank { null }
-        is JSONObject -> contents.optString("value", "").ifBlank { null }
-        is JSONArray -> {
-            val sb = StringBuilder()
-            for (i in 0 until contents.length()) {
-                val item = contents.opt(i)
-                when (item) {
-                    is String -> sb.append(item).append('\n')
-                    is JSONObject -> sb.append(item.optString("value", "")).append('\n')
-                    else -> {}
-                }
+
+    fun extractText(obj: Any?): String? {
+        return when (obj) {
+            is String -> obj.takeIf { it.isNotBlank() }
+            is JSONObject -> {
+                // Try "value" first (MarkupContent + MarkedString), then "label" (some servers)
+                extractText(obj.opt("value")) ?: extractText(obj.opt("label"))
             }
-            val result = sb.toString().trim()
-            result.ifBlank { null }
+            is JSONArray -> {
+                val sb = StringBuilder()
+                for (i in 0 until obj.length()) {
+                    extractText(obj.opt(i))?.let { sb.append(it).append('\n') }
+                }
+                sb.toString().trim().ifBlank { null }
+            }
+            else -> null
         }
-        else -> null
     }
+
+    return extractText(contents)
 }
 
 /**
