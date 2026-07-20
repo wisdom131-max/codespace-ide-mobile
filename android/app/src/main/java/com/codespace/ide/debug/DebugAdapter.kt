@@ -42,6 +42,14 @@ interface DebugAdapter {
 
     /** Returns DAP capabilities negotiated during initialize. Null if not a real DAP adapter. */
     fun capabilities(): DAPCapabilities? = null
+
+    /**
+     * P32-BREAKPOINT-FIX: Send updated breakpoints to the adapter during a running session.
+     * Called by UDM when breakpoints change (add/remove/toggle) while a debug session is active.
+     * Legacy adapters (pdb, terminal) ignore this — they don't support live breakpoint updates.
+     * Returns true if breakpoints were successfully sent.
+     */
+    fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean = false
 }
 
 // ── LegacyDebugAdapter ───────────────────────────────────────────────────────
@@ -78,4 +86,7 @@ class LegacyDebugAdapter(private val provider: DebugProvider) : DebugAdapter {
         provider.evaluate(session, expression)
 
     override fun capabilities(): DAPCapabilities? = null
+
+    // P32-BREAKPOINT-FIX: Legacy providers don't support live breakpoint updates.
+    override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean = false
 }

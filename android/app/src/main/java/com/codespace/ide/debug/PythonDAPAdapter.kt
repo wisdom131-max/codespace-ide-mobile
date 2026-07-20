@@ -5,6 +5,7 @@ import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
+import com.codespace.ide.diagnostics.AppOutputLog
 import org.json.JSONObject
 
 /**
@@ -40,6 +41,51 @@ class PythonDAPAdapter : DebugAdapter {
         language == Language.PYTHON && filePath.endsWith(".py")
 
     override fun capabilities() = caps
+
+    /**
+     * P32-BREAKPOINT-FIX: Send updated breakpoints to the debugpy adapter during a running session.
+     * Called by UDM when breakpoints change while debugging is active.
+     */
+    override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean {
+        val c = client ?: return false
+        if (breakpoints.isEmpty()) {
+            // Send empty setBreakpoints to clear all breakpoints for this file
+            val bpArgs = JSONObject().apply {
+                put("source", JSONObject().put("path", session.filePath))
+                put("breakpoints", JSONArray())
+            }
+            val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+            if (resp == null) {
+                AppOutputLog.log("[DAP] setBreakpoints (clear) failed for ${session.filePath.substringAfterLast("/")}", "lsp")
+            }
+            return resp != null
+        }
+
+        val bpsByFile = breakpoints.groupBy { it.filePath }
+        var allOk = true
+        for ((filePath, bps) in bpsByFile) {
+            val bpArgs = JSONObject().apply {
+                put("source", JSONObject().put("path", filePath))
+                put("breakpoints", JSONArray().also { arr ->
+                    bps.forEach { bp ->
+                        arr.put(JSONObject().apply {
+                            put("line", bp.line + 1)
+                            if (bp.condition != null) put("condition", bp.condition)
+                            if (bp.logMessage != null) put("logMessage", bp.logMessage)
+                        })
+                    }
+                })
+            }
+            val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+            if (resp == null) {
+                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) not sent", "lsp")
+                allOk = false
+            } else {
+                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) set", "lsp")
+            }
+        }
+        return allOk
+    }
 
     // ── Installation check ─────────────────────────────────────────────────
 
@@ -213,7 +259,12 @@ class PythonDAPAdapter : DebugAdapter {
                     }
                 })
             }
-            dapClient.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+            val bpResp = dapClient.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+            if (bpResp == null) {
+                AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+            } else {
+                AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+            }
         }
 
         // 7. Launch

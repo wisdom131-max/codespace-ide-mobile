@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.FileIndexer
+import com.codespace.ide.diagnostics.AppOutputLog
 import java.io.File
 
 /**
@@ -172,6 +173,28 @@ object UniversalDebugManager {
         set(value) { value?.let { pausedListeners.add(it) } }
     
     private fun notifyBreakpointsChanged() = breakpointListeners.forEach { it() }
+
+    /**
+     * P32-BREAKPOINT-FIX: Send updated breakpoints to the active DAP adapter.
+     * Called by addBreakpoint/removeBreakpoint/toggleBreakpoint when a debug
+     * session is running. If no session is active, this is a no-op (breakpoints
+     * will be passed to launch() when a session starts).
+     */
+    private fun sendBreakpointsToActiveSession(filePath: String) {
+        // Find any active session that matches this file
+        val activeSession = sessions.values.firstOrNull {
+            it.state == DebugState.RUNNING || it.state == DebugState.PAUSED
+        } ?: return
+
+        val adapter = sessionAdapters[activeSession.id] ?: return
+        val fileBps = breakpoints[filePath] ?: emptyList()
+
+        AppOutputLog.log("[DAP] Sending ${fileBps.size} breakpoint(s) for ${filePath.substringAfterLast("/")} to active session", "lsp")
+        val sent = adapter.sendBreakpoints(activeSession, fileBps)
+        if (!sent) {
+            AppOutputLog.log("[DAP] WARNING: sendBreakpoints returned false — adapter may not support live updates", "lsp")
+        }
+    }
     private fun notifySessionStateChanged(s: DebugSession) = sessionStateListeners.forEach { it(s) }
     private fun notifyOutput(msg: String) = outputListeners.forEach { it(msg) }
     private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
@@ -435,6 +458,7 @@ object UniversalDebugManager {
         if (list.none { it.filePath == filePath && it.line == line }) {
             list.add(DebugBreakpoint(filePath, line, condition, logMessage))
             notifyBreakpointsChanged()
+            sendBreakpointsToActiveSession(filePath)
         }
     }
 
@@ -442,6 +466,7 @@ object UniversalDebugManager {
         breakpoints[filePath]?.removeAll { it.line == line }
         if (breakpoints[filePath]?.isEmpty() == true) breakpoints.remove(filePath)
         notifyBreakpointsChanged()
+        sendBreakpointsToActiveSession(filePath)
     }
 
     fun toggleBreakpoint(filePath: String, line: Int) {
@@ -453,6 +478,9 @@ object UniversalDebugManager {
             list.add(DebugBreakpoint(filePath, line))
         }
         notifyBreakpointsChanged()
+        // P32-BREAKPOINT-FIX: If a debug session is active, send updated breakpoints
+        // to the DAP adapter so it stops at the new breakpoint location.
+        sendBreakpointsToActiveSession(filePath)
     }
 
     fun getBreakpoints(filePath: String): List<DebugBreakpoint> = breakpoints[filePath]?.toList() ?: emptyList()

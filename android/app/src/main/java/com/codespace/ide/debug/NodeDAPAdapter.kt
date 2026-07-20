@@ -5,6 +5,7 @@ import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
+import com.codespace.ide.diagnostics.AppOutputLog
 import org.json.JSONObject
 
 /**
@@ -33,7 +34,7 @@ import org.json.JSONObject
  *   3. Locate dapDebugServer.js in global npm prefix
  *   4. Spawn via proot: node <path>/src/dapDebugServer.js --stdio
  *   5. DAPClient.start()
- *   6. initialize → setBreakpoints → configurationDone → launch/attach
+ *   6. initialize → setBreakpoints → launch/attach → configurationDone
  *   7. Wire stopped/output/terminated events → callbacks
  */
 class NodeDAPAdapter : DebugAdapter {
@@ -56,6 +57,45 @@ class NodeDAPAdapter : DebugAdapter {
         filePath.endsWith(".cjs") || filePath.endsWith(".ts")
 
     override fun capabilities() = caps
+
+    /**
+     * P32-BREAKPOINT-FIX: Send updated breakpoints to js-debug during a running session.
+     * Called by UDM when breakpoints change while debugging is active.
+     */
+    override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean {
+        val c = client ?: return false
+        val bpsByFile = if (breakpoints.isEmpty()) {
+            mapOf(session.filePath to emptyList<DebugBreakpoint>())
+        } else {
+            breakpoints.groupBy { it.filePath }
+        }
+
+        var allOk = true
+        bpsByFile.forEach { (filePath, bps) ->
+            // For live updates, the filePath is already a guest path (mapped at launch time)
+            val guestPath = filePath
+            val bpArgs = JSONObject().apply {
+                put("source", JSONObject().put("path", guestPath))
+                put("breakpoints", JSONArray().apply {
+                    bps.forEach { bp ->
+                        put(JSONObject().apply {
+                            put("line", bp.line + 1)
+                            if (bp.condition != null) put("condition", bp.condition)
+                            if (bp.logMessage != null) put("logMessage", bp.logMessage)
+                        })
+                    }
+                })
+            }
+            val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+            if (resp == null) {
+                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+                allOk = false
+            } else {
+                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+            }
+        }
+        return allOk
+    }
 
     // ── Installation ──────────────────────────────────────────────────
 
@@ -299,7 +339,7 @@ class NodeDAPAdapter : DebugAdapter {
         onOutput("[js-debug] Capabilities negotiated. configDone=${caps?.supportsConfigurationDoneRequest}\n")
 
         // Notify adapter is initialized (DAP 'initialized' event fires from server)
-        // But some adapters (including js-debug) expect setBreakpoints BEFORE configurationDone
+        // DAP spec: setBreakpoints BEFORE launch, configurationDone AFTER launch
 
         // 7. setBreakpoints (only on script files, not for attach-by-port)
         if (breakpoints.isNotEmpty()) {
@@ -320,16 +360,16 @@ class NodeDAPAdapter : DebugAdapter {
                         }
                     })
                 }
-                dapClient.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+                val bpResp = dapClient.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
+                if (bpResp == null) {
+                    AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+                } else {
+                    AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+                }
             }
         }
 
-        // 8. configurationDone (if supported)
-        if (caps?.supportsConfigurationDoneRequest == true) {
-            dapClient.sendRequest("configurationDone")
-        }
-
-        // 9. launch or attach
+        // 8. launch or attach (MUST come BEFORE configurationDone per DAP spec)
         if (attachParams != null) {
             // Attach mode
             val args = JSONObject().apply {
@@ -350,6 +390,11 @@ class NodeDAPAdapter : DebugAdapter {
             Log.d(TAG, "Sending DAP launch: $launchArgs")
             dapClient.sendRequest("launch", launchArgs)
             onOutput("[js-debug] Launched ${session.filePath.substringAfterLast("/")}.\n")
+        }
+
+        // 9. configurationDone (AFTER launch/attach — tells adapter to start the debuggee)
+        if (caps?.supportsConfigurationDoneRequest == true) {
+            dapClient.sendRequest("configurationDone")
         }
 
         return true
