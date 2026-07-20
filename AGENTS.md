@@ -5755,3 +5755,34 @@ LSP was fully working at the protocol level (process spawned ✓, initialize ✓
 | P34-2 | PSS.kt | 575–656 | In-app toast banner never shows | `notificationMsg` set by `showNotification()` but never rendered in the Compose tree | P34 fix | Don't set state you don't render |
 | P34-3 | NotificationDrawerOverlay.kt | 30 | `notifList` param dead weight | Overlay ignores the passed list and reads from global store directly | P34 cleanup | Remove unused parameters |
 | P34-4 | NotificationStore.kt | 47 | `markAllRead()` never called | No caller anywhere in codebase | P34 fix | Wire "Mark all read" button in drawer |
+
+
+## Phase 35 — LSP Hover JSON Leak + Idle Request Spam Fix
+
+**Date:** 2026-07-20
+**Status:** ✅ COMPLETE — 3 commits (b9187bd, 5351fe6, 65f3388)
+
+### BUG 1: Hover tooltip shows raw JSON instead of clean text
+- **File:** `lsp/LspIntegration.kt` — `parseHoverContent()`
+- **Symptom:** Hover for `Clipboard.write` displayed:
+  ```
+  Clipboard.write(data: ClipboardItems): {"kind":"markdown","value":"[MDN Reference](https:\/\/...)"}
+  ```
+  The trailing `{"kind":"markdown","value":"..."}` is raw JSON from the LSP server's hover response — it should be parsed to extract just the `value` field.
+- **Root cause:** `optString("value")` in Android's `org.json` calls `toString()` on the value field. If the LSP server (typescript-language-server) returns a nested JSONObject as the `value` field (non-standard but observed for some hover responses), `optString` returns the JSON representation with escaped forward slashes (`\/`) instead of the string content.
+- **Fix (b9187bd):** Replaced `optString("value")` with a recursive `extractText()` helper that uses `opt("value")` and handles String, JSONObject (recurse), and JSONArray (iterate). Also falls back to `opt("label")` for servers that use that key. This handles MarkupContent `{kind, value}`, MarkedString `{language, value}`, arrays of mixed types, and nested edge cases.
+
+### BUG 2: Rapid documentHighlight/signatureHelp requests on idle
+- **Files:** `ui/panes/EditorPane.kt`, `editor/CodeEditor.kt`
+- **Symptom:** Output tab showed `textDocument/documentHighlight` and `textDocument/signatureHelp` request/response pairs firing every few seconds without obvious typing or cursor movement.
+- **Root cause (documentHighlight):** `LaunchedEffect(lspCursorLine, lspCursorCol)` re-fires on any `TextFieldValue` change — IME composition events, scroll-induced offset changes, auto-save reloads — even when the actual cursor line/col haven't changed. After the 400ms debounce delay, each re-fire sends a real LSP request to the server.
+- **Root cause (signatureHelp):** `remember(value.text, value.selection.end, ...)` in CodeEditor called `lspSignatureHelpProvider.invoke()` on every text change — even when the cursor wasn't inside a function call. Each call made a synchronous JSON-RPC request.
+- **Fix part 1 (5351fe6):** Added `lastHoverLine/Col` and `lastHighlightLine/Col` guard variables in EditorPane. The LaunchedEffects check if the current position matches the last queried position and return early if so. This prevents redundant hover and documentHighlight requests when the user is idle.
+- **Fix part 2 (65f3388):** Added a quick backwards scan for unmatched `(` before the cursor in CodeEditor. Only invokes the LSP signatureHelp provider (or the local analyzer) when `insideCall` is true — i.e., the cursor is actually inside a function call context. When not inside a call, returns null immediately with no LSP request.
+
+### Confirmed After Fix
+- ✅ Hover tooltip renders clean text — no raw JSON, no escaped slashes
+- ✅ documentHighlight only fires on genuine cursor position changes
+- ✅ hover only fires on genuine cursor position changes
+- ✅ signatureHelp only fires when cursor is inside parentheses
+- ✅ No LSP request spam while user is idle
