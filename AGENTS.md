@@ -5178,7 +5178,9 @@ e: LspManager.kt:508:50 Expecting '"'
 **ROOT CAUSE:** In commit 03a68005 (the LSP root cause fix), the comment block describing the stdout corruption bug had an embedded literal carriage return (\r) that broke the `//` comment continuation. The text was:
 
 ```kotlin
-// "Content-Length: N    ← comment ends here ( terminates the line)
+// "Content-Length: N
+    ← comment ends here (
+ terminates the line)
                             ← empty line — NOT a comment
 ", fails to parse...         ← starts with " → parsed as Kotlin string literal
 ```
@@ -5190,3 +5192,45 @@ The `//` prefix only covered the first line. The empty line and the line startin
 **VERIFICATION:** Build e41f16ef passed CI — first successful build since ebd5ce0b (build 1639).
 
 **LESSON:** When using Python string replacement to write multi-line Kotlin comments, never embed literal carriage returns. Use `\r\n` as text, not actual `\r` characters. The `//` comment prefix only applies to a single line — any line break (including \r) ends the comment.
+
+### [2026-07-20] P32-CRASH-RECURRENCE: Compose concurrent change — real root cause + definitive fix
+
+**CRASH RECURRED** after withMutableSnapshot fix (commit 5e496e1b, build 430ed377).
+Identical stack trace. LSP fix confirmed working in same session (clean "✓ JavaScript server RUNNING", "didOpen sent", "didOpen complete" before crash).
+
+**INVESTIGATION (5-step audit per user request):**
+
+Step 1 — Direct mutation check: No call site mutates AppOutputLog.lines directly. All calls go through log()/clear()/logInternal(). ✅
+
+Step 2 — withMutableSnapshot coverage: Confirmed applied to ALL three mutation methods in AppOutputLog.kt. ✅ (But the approach itself was wrong — see below.)
+
+Step 3 — Rapid-fire writes: Not the issue. Handler.post serializes all mutations on the main thread queue.
+
+Step 4 — SECOND global Compose state object found: **NotificationStore** — `object NotificationStore { val items = mutableStateListOf<Item>() }` mutated from background threads (ProotInstaller.kt:700, BackupManager.kt:110/163) with ZERO synchronization. NotificationDrawerOverlay reads items during composition via `derivedStateOf { NotificationStore.items.toList() }`. This was the EXACT same bug, in a different state object, missed by the previous audit.
+
+Step 5 — Added version code + git hash to Settings/About screen and crash reports.
+
+**TWO ROOT CAUSES:**
+
+1. **withMutableSnapshot was insufficient for AppOutputLog**: `Snapshot.withMutableSnapshot` creates a mutable snapshot and calls `snapshot.apply()` to merge into global state. When `apply()` runs from a background thread while the UI thread is mid-composition reading the same SnapshotStateList, the recomposer detects a concurrent change and crashes. The snapshot system's CAS merge ensures the merge is atomic — but does NOT prevent the composition's read from seeing an inconsistent state during the apply() call. Theory said it should work; practice proved it doesn't.
+
+2. **NotificationStore had the same bug, never fixed**: A completely unprotected `mutableStateListOf` mutated from background threads, read during composition. The previous audit checked LogcatPanel (safe) but missed NotificationStore.
+
+**DEFINITIVE FIX — Handler.post to main thread:**
+
+Replaced `withMutableSnapshot` with `Handler(Looper.getMainLooper()).post { }` for all mutations in both AppOutputLog and NotificationStore. This is the pattern LogcatPanel uses and has never crashed.
+
+Why it works:
+- All mutations execute on the main thread (serialized, can't overlap composition)
+- If composition is in progress, the posted Runnable waits in the message queue until composition finishes
+- No cross-thread snapshot merge needed — the mutation happens in the same thread that runs composition
+- If already on main thread (e.g. from LaunchedEffect), mutations execute directly without posting
+
+**Files changed (commit c574b683):**
+- AppOutputLog.kt — replaced withMutableSnapshot with Handler.post, removed @Synchronized
+- NotificationStore.kt — added Handler.post to all mutation methods (was completely unprotected)
+- SettingsScreen.kt — added version code + git hash display
+- CodeSpaceApplication.kt — added version_code, git_hash, crash_type to crash reports
+- build.gradle.kts — added GIT_HASH buildConfigField from git rev-parse --short HEAD
+
+**LESSON:** `Snapshot.withMutableSnapshot` from background threads is NOT a reliable way to mutate Compose state. `Handler.post` to the main thread is. The LogcatPanel pattern (withContext(Dispatchers.Main)) was the correct reference implementation all along.
