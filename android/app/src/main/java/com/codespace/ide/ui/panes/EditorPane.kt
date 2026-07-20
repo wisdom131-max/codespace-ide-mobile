@@ -145,6 +145,14 @@ fun EditorPane(
     }
     var lspCursorLine by remember { mutableStateOf(0) }
     var lspCursorCol by remember { mutableStateOf(0) }
+    // P35: Guards to prevent redundant LSP requests when cursor position hasn't changed.
+    // TextFieldValue changes (IME events, scroll, auto-save) can re-fire LaunchedEffects
+    // even when the actual cursor line/col are the same. These track the last position
+    // that was actually queried so we can skip duplicate requests.
+    var lastHoverLine by remember { mutableStateOf(-1) }
+    var lastHoverCol by remember { mutableStateOf(-1) }
+    var lastHighlightLine by remember { mutableStateOf(-1) }
+    var lastHighlightCol by remember { mutableStateOf(-1) }
     var showLspHover by remember { mutableStateOf(true) }  // P33: auto-hover enabled by default
     var lspHoverContent by remember { mutableStateOf<String?>(null) }
     // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
@@ -769,9 +777,17 @@ fun EditorPane(
         }
 
         // P22-G: LSP hover on cursor position change (debounced)
+        // P35 FIX: Guard against re-firing when cursor hasn't actually moved.
+        // The LaunchedEffect re-fires on any TextFieldValue change (IME events, scroll,
+        // auto-save reload) even when the cursor line/col haven't changed. The guard
+        // tracks the last position queried and skips the LSP request if unchanged.
         LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
             if (showLspHover && active != null && LspManager.isServerRunning(active.language)) {
+                // Skip if this position was already queried — prevents idle spam
+                if (lspCursorLine == lastHoverLine && lspCursorCol == lastHoverCol) return@LaunchedEffect
                 delay(300)
+                lastHoverLine = lspCursorLine
+                lastHoverCol = lspCursorCol
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
                     val hover = withContext(Dispatchers.IO) {
@@ -783,9 +799,13 @@ fun EditorPane(
         }
 
         // P26-1: LSP Document Highlight — highlight all occurrences on cursor move (debounced)
+        // P35 FIX: Same guard as hover — skip if position unchanged from last query.
         LaunchedEffect(lspCursorLine, lspCursorCol) {
             if (active != null && LspManager.isServerRunning(active.language)) {
+                if (lspCursorLine == lastHighlightLine && lspCursorCol == lastHighlightCol) return@LaunchedEffect
                 delay(400)
+                lastHighlightLine = lspCursorLine
+                lastHighlightCol = lspCursorCol
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
                     val highlights = withContext(Dispatchers.IO) {
