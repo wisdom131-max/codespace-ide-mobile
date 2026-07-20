@@ -5330,3 +5330,59 @@ a SEPARATE issue, unrelated to anything fixed this session. Needs investigation:
   initialize → setBreakpoints → launch/attach → configurationDone ✓ (was: ...→ configurationDone → launch)
 
 **Commit:** 228506d7
+
+### [2026-07-20] P32-ARCHITECTURE: Agent banner system vs LSP/DAP — design decision
+
+**CONTEXT:** The [Agent] banner / agent_* shorthand system (McpShellProfile.kt) was
+built so any AI session (Ollama, Claude Code, etc.) launched via a terminal shell can
+discover available tools and workspace context by reading the stdout banner on login
+shell startup. The banner is printed by ~/.agent-profile.sh (sourced via ~/.bashrc):
+
+    echo '[Agent] 32 tools ready. Type agent_tools to list, agent <tool> "<json>" to call.'
+    echo '[Agent] Project files: $WORKSPACE_PATH'
+    echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search...'
+
+This same banner, when printed to stdout during LSP/DAP process startup, corrupted the
+JSON-RPC stream (the root cause of the LSP initialize timeout fixed this session).
+
+**THE FIX AND WHAT IT ACTUALLY SUPPRESSES:**
+
+The bash -c wrapper used by LSP/DAP spawn paths:
+    source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec <binary>
+
+What happens when this runs:
+1. `source ~/.bashrc` runs `.agent-profile.sh`
+2. `export AGENT_API_URL='http://localhost:8765'` — env var is SET (export runs)
+3. `agent()`, `agent_tools()`, etc. — shell functions are DEFINED in the shell
+4. `echo '[Agent] 32 tools ready...'` — banner text goes to /dev/null (suppressed)
+5. `exec <binary>` — replaces the shell process with the LSP/DAP binary
+
+**WHAT SURVIVES exec AND WHAT DOESN'T:**
+- AGENT_API_URL env var: SURVIVES (exported env vars are inherited by exec'd process)
+- agent_* shell functions: DESTROYED by exec (shell functions don't survive process
+  image replacement — they were NEVER available to LSP/DAP binaries, even with the
+  old bash -lc approach)
+- Banner echo text: SUPPRESSED (redirected to /dev/null — this is the fix)
+
+**DESIGN DECISION: This is a non-issue, not a tradeoff.**
+
+The agent_* functions were never available to LSP/DAP-spawned processes regardless
+of login shell vs non-login shell. exec always replaces the shell with the binary,
+destroying shell functions. The only thing the fix suppresses is the banner echo
+text — which is exactly the goal. AGENT_API_URL (the only thing that could matter to
+a binary process) is still set and inherited.
+
+The agent_* functions are ONLY relevant to interactive terminal sessions, where a
+human or AI tool uses the shell directly. Terminal sessions still use login shells
+(argv[0]="-bash" in TerminalService) and are completely unaffected by this fix.
+
+**If a future need arises for LSP/DAP processes to discover agent tools:**
+They would need a mechanism that doesn't share stdout with the JSON-RPC stream:
+- Read ~/.agent.json (already written by McpShellProfile.install) for tool list
+- Query the AgentApiServer directly via HTTP (AGENT_API_URL is still set)
+- Read ~/.agent-system-prompt.md (already written for CLI AI tools)
+None of these require login-shell banner output on stdout.
+
+**NO REGRESSION:** The fix is safe. It only suppresses stdout from profile sourcing
+for LSP/DAP spawn paths. Terminal sessions, interactive AI tools, and the agent_*
+shorthand system are completely unaffected.
