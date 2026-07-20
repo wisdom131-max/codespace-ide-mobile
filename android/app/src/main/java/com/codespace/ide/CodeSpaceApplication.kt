@@ -176,7 +176,14 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             put("thread_name", threadName)
             put("stack_trace", stackTrace)
             put("app_version", BuildConfig.VERSION_NAME)
+            put("version_code", BuildConfig.VERSION_CODE)
+            put("git_hash", BuildConfig.GIT_HASH)
             put("device_timestamp", stamp)
+            // P32: If this is the Compose concurrent change crash, flag it
+            if (stackTrace.contains("Unsupported concurrent change during composition")) {
+                put("crash_type", "COMPOSE_CONCURRENT_CHANGE")
+                put("active_threads", Thread.getAllStackTraces().keys.joinToString(", ") { it.name })
+            }
         }
 
         OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }

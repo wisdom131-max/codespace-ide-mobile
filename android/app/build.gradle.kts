@@ -30,6 +30,11 @@ android {
             commandLine("git", "rev-list", "--count", "HEAD")
         }.standardOutput.asText.get().trim().toInt()
         versionName = "1.0.0"
+        // P32: Expose git commit hash for Settings/About display — identifies exact build
+        val gitHash = providers.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+        }.standardOutput.asText.get().trim()
+        buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         ndk {

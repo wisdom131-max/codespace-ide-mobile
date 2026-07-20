@@ -1,5 +1,7 @@
 package com.codespace.ide.ui.screens
 
+import com.codespace.ide.BuildConfig
+
 import android.content.Context
 import java.io.File
 import java.text.SimpleDateFormat
@@ -618,6 +620,23 @@ fun SettingsScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             ) { Text("Clear All Data") }
+
+            // ── Version ─────────────────────────────────────────────────────────
+            // P32: Show version code + git hash so crash reports can be verified
+            // against the exact build. versionCode auto-increments from git rev-list count.
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider()
+            Text(
+                "CodeSpace IDE Mobile",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp),
+            )
+            Text(
+                "Build ${BuildConfig.VERSION_CODE} (${BuildConfig.GIT_HASH}) — v${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF717171),
+                modifier = Modifier.padding(start = 16.dp, bottom = 16.dp),
+            )
         }
     }
 }
