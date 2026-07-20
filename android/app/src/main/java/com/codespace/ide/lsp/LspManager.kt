@@ -503,10 +503,9 @@ object LspManager {
         //   echo '[Agent] Shorthands: agent_read, agent_write...'
         // This banner text corrupts the JSON-RPC pipe BEFORE the LSP server starts.
         // The JsonRpcClient reader sees "[Agent] 32 tools ready..." instead of
-        // "Content-Length: N
-
-", fails to parse Content-Length (defaults to 0),
-        // and the initialize handshake fails with "contentLength=0 (invalid)".
+        // "Content-Length: N\r\n\r\n", fails to parse Content-Length
+        // (defaults to 0), and the initialize handshake fails with
+        // "contentLength=0 (invalid)".
         //
         // FIX: Use bash -c (non-login) but source /etc/profile and ~/.bashrc with
         // stdout/stderr redirected to /dev/null. This preserves PATH, LD_PRELOAD,
