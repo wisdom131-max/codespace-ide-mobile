@@ -5608,3 +5608,37 @@ and intermediate findings, for future reference when debugging DAP issues.
   8. FIRST REAL IN-APP DEBUGGING TEST — set breakpoint in editor UI, start debug
      session, confirm it behaves the same way this manual test proved works at
      the protocol level. This is the real payoff test.
+
+### [2026-07-20] P32-NOTE: Phone terminal paste corruption — ".app" linkification
+
+**PROBLEM:**
+  When pasting scripts into the phone's terminal, the keyboard/clipboard can
+  auto-linkify text containing ".app" as a domain fragment, mangling code.
+
+  Observed twice during DAP testing:
+    `all_events.append(resp)`  →  `all_[events.app](https://events.app)end(resp)`
+
+  The phone detects "events.app" as a domain and converts it to a fake
+  markdown-style link, breaking the pasted Python code.
+
+**DETECTION:**
+  Caught both times via Python SyntaxError pointing directly at the corrupted
+  line. Easy to spot because the mangled line has brackets and parentheses
+  where there should be a simple dot-access.
+
+**FIX (when it happens):**
+  sed -i 's|all_\[events\.app\](https://events\.app)end(resp)|all_events.append(resp)|g' /root/test_dap_full_sequence.py
+
+  Verify with:
+  grep -n "all_events.append" /root/test_dap_full_sequence.py
+  grep -n "events.app" /root/test_dap_full_sequence.py
+
+**PREVENTION (for future scripts given to Franklin for manual pasting):**
+  - Avoid variable/method names that create a ".app" boundary when split
+    across a dot — e.g. `events.append()`, `myapp.append()`, `this.append()`
+  - If unavoidable, warn Franklin to check for this specific corruption pattern
+    (search for "events.app" or similar) before running the script
+  - Alternatively, rename variables to avoid the pattern — e.g. use
+    `event_list.append()` or `collected.append()` instead of `events.append()`
+  - This is a phone terminal/clipboard behavior, not a bug in the app or
+    the script itself
