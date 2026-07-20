@@ -5386,3 +5386,68 @@ None of these require login-shell banner output on stdout.
 **NO REGRESSION:** The fix is safe. It only suppresses stdout from profile sourcing
 for LSP/DAP spawn paths. Terminal sessions, interactive AI tools, and the agent_*
 shorthand system are completely unaffected.
+
+### [2026-07-20] P32-DAP: Invalid --listen-on-stdin flag + setBreakpoints ordering fix
+
+**BUG 4 — PythonDAPAdapter used invalid debugpy flag: --listen-on-stdin**
+- The spawn command was: `python3 -m debugpy --listen-on-stdin --wait-for-client <script>`
+- `--listen-on-stdin` is NOT a real debugpy flag. debugpy prints its usage text to
+  stderr and exits/hangs, so the DAP initialize always times out.
+- Confirmed via manual test: STDERR showed debugpy's usage text:
+  `Usage: debugpy --listen | --connect [<host>:]<port> [--wait-for-client]`
+- FIX: Changed spawn command to `python3 -m debugpy.adapter` — the real DAP adapter
+  that speaks DAP over stdin/stdout. The adapter launches the debuggee internally
+  when it receives the DAP `launch` request (which already includes `program` path).
+  No script path needed on the command line.
+- Also added `"python": "python3"` to the launch request args so the adapter knows
+  which Python interpreter to use inside the proot environment.
+- Commit: 66ba02fd
+
+**BUG 5 — setBreakpoints sent BEFORE launch, before 'initialized' event**
+- Same class of bug as Bug 1 (NodeDAPAdapter configurationDone ordering).
+- Both adapters sent `setBreakpoints` before `launch`, but debugpy requires the
+  debuggee to be running before it can accept breakpoint configuration.
+- debugpy returns "Server is not available" for setBreakpoints sent before launch.
+- The program then runs to completion with ZERO breakpoints set.
+- Manual test confirmed: debuggee exited normally (EVENT: exited, EVENT: terminated)
+  with no breakpoint hit, because setBreakpoints failed silently before launch.
+
+**DAP spec says:**
+> The sequence of events/requests is as follows:
+> - adapter sends `initialized` event (after the initialize request has returned)
+> - client sends zero or more setBreakpoints requests
+> - client sends one configurationDone request
+
+  The spec's `initialized` event fires when the adapter is "ready to accept
+  configuration requests". For debugpy, that's AFTER launch starts the debuggee
+  (not after initialize). For js-debug, it may fire after initialize.
+
+**FIX: Both adapters now use this sequence (commit 01cfd897):**
+  1. initialize → response (capabilities)
+  2. launch (or attach) — fire-and-forget, starts the debuggee
+  3. Wait for `initialized` event (CountDownLatch, 15s timeout)
+  4. setBreakpoints — sent only after initialized confirms debuggee is ready
+  5. configurationDone — tells adapter to start executing
+
+**Implementation:**
+- Register `initialized` event handler with CountDownLatch BEFORE `dapClient.start()`
+  (no race — handler is in place before any messages are processed)
+- Send `launch` as fire-and-forget (`sendRequest` not `request`)
+- Await the latch (15s timeout with warning if not received)
+- Then send `setBreakpoints` and `configurationDone`
+
+**Previous (incorrect) sequence was:**
+  PythonDAPAdapter: initialize → setBreakpoints → launch → configurationDone  ✗
+  NodeDAPAdapter:  initialize → setBreakpoints → configurationDone → launch   ✗ (Bug 1)
+
+**Corrected sequence (both adapters):**
+  initialize → launch/attach → wait 'initialized' → setBreakpoints → configurationDone  ✓
+
+**Commits:**
+- 66ba02fd: Fixed invalid --listen-on-stdin flag → debugpy.adapter
+- 01cfd897: Reordered setBreakpoints to after initialized event (both adapters)
+
+**Manual test script:** /root/test_dap_full_sequence.py
+  Tests the full sequence: initialize → launch → wait initialized → setBreakpoints →
+  configurationDone → wait for stopped event → stackTrace → continue → terminated.
+  Confirms breakpoint is actually hit at line 5 of a test debuggee script.
