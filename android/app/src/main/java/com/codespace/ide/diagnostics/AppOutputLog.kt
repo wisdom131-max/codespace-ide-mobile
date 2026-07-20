@@ -57,6 +57,7 @@ object AppOutputLog {
         }
     }
 
+    @Synchronized
     fun clear() {
         Snapshot.withMutableSnapshot {
             lines.clear()
