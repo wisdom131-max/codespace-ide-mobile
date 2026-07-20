@@ -5672,3 +5672,86 @@ LSP was fully working at the protocol level (screenshots confirmed: install chec
 - **Root cause:** `prefix = currentWord(text, cursor)` extracts only alphanumeric/underscore chars. After `lines.` the cursor is right after `.`, so `prefix = ""` (less than 2 chars). The `if (prefix.length >= 2)` guard blocked all LSP calls.
 - **Fix:** commit `11ebc554` — Added `isDotTriggered` flag: detects when char immediately before cursor is `.`. All completion LaunchedEffects now check `prefix.length >= 2 || isDotTriggered`. Reduced dot-trigger delay to 150ms (vs 300ms for word trigger).
 - **Lesson:** LSP completion triggers should check for both word-prefix AND trigger characters (`.`, `(`, `:` etc.). The LSP protocol has a `triggerCharacters` capability for this reason.
+
+---
+
+## Phase 33 — IntelliSense UI Fix (Hover + Completions + Diagnostic Squiggles)
+
+**Date:** 2026-07-20
+**Builds:** #1668–#1671 (all green)
+**Status:** ✅ COMPLETE
+
+### What was broken
+LSP was fully working at the protocol level (process spawned ✓, initialize ✓, didOpen ✓, publishDiagnostics firing ✓) but NO IntelliSense was visible in the editor UI.
+
+### Root Cause 1 — Diagnostic squiggles never rendered (URI mismatch)
+- **Files:** `lsp/LspManager.kt`, `ui/panes/EditorPane.kt`
+- **Symptom:** publishDiagnostics logged 36–40 diagnostics but no squiggles appeared
+- **Root cause:** `fileUriFromHostPath` built URIs with raw spaces (`My codespace app`). TSServer returns `My%20codespace%20app`. `diagUri == uri` was always false → squiggles never set.
+- **Fix (ad755907):** `fileUriFromHostPath` now percent-encodes path segments via `URLEncoder`. Added `normalizeFileUri()` helper.
+- **Fix (7ecee7f8):** EditorPane diagnUri comparison normalizes both sides via `LspManager.normalizeFileUri()`.
+- **Lesson:** Always percent-encode file:// URIs. LSP servers canonicalize with %20; raw spaces cause silent comparison failures.
+
+### Root Cause 2 — Hover hidden behind ? button
+- **File:** `ui/panes/EditorPane.kt`
+- **Symptom:** No hover popup even though LSP returning hover data
+- **Root cause:** `showLspHover` defaulted to `false`. User had to discover and tap `?` button.
+- **Fix (7ecee7f8):** Default changed to `true`. Button still toggles it off/on.
+- **Lesson:** IntelliSense hover should be on by default like VS Code.
+
+### Root Cause 3 — Dot-triggered completions missing
+- **File:** `editor/CodeEditor.kt`
+- **Symptom:** Typing `lines.` or `user.` showed no completions
+- **Root cause:** `prefix = currentWord()` returns `""` after a dot (dot not alphanumeric). `prefix.length >= 2` guard blocked all LSP calls.
+- **Fix (11ebc554):** Added `isDotTriggered` flag — detects `.` as last char before cursor. All completion LaunchedEffects check `prefix.length >= 2 || isDotTriggered`. 150ms delay for dot trigger.
+- **Lesson:** LSP completion must handle trigger characters (`.`, `(`) separately from word-prefix matching.
+
+---
+
+## Phase 34 — Notification Center Upgrade (In Progress)
+
+**Date:** 2026-07-20
+
+### Audit Results
+
+#### EXISTS AND WORKING
+- `NotificationStore.kt` — singleton, thread-safe, `items: SnapshotStateList`, `add()`, `dismiss()`, `clearAll()`, `markAllRead()`, `unreadCount`. Max 50 items.
+- `NotificationDrawerOverlay.kt` — drawer UI, reads directly from `NotificationStore.items`. Shows unread badge in header, dismiss-on-click, relative timestamps, type icons, "Clear all" button.
+- Bell icon in `PssTopBar` with unread badge count (shows 1–9, "9+" for more). Color `0xFFF44336` (full red) when unread > 0.
+
+#### PARTIALLY IMPLEMENTED
+- `NotificationStore.Type` — only 6 types: `TERMINAL_ERROR, BUILD_STATUS, BACKUP, CONNECTOR, UBUNTU_STATUS, INFO`. Missing: LSP, DAP, GIT, AUTH, WORKSPACE, AI, SYSTEM, EXTENSION types.
+- Bell badge: count exists but bell color is full red `F44336` — needs dimming.
+- `markAllRead()` — exists in store but never called anywhere (drawer only dismisses, never reads).
+- In-app toast: `notificationMsg`/`notificationType` vars exist in PSS, 3s auto-clear, but **never rendered** — the toast banner is dead code.
+
+#### EXISTS BUT NOT WIRED
+- `markAllRead()` in NotificationStore — no caller
+- `notificationMsg` / `notificationType` in PSS — set by `showNotification()` but never displayed in UI
+- Bell position: top-bar only — no option for status-bar (VS Code style bottom-right)
+
+#### MISSING ENTIRELY
+- Notification settings (enable/disable, severity filter, source filter, behavior)
+- Per-source notification types: LSP started/stopped/crashed, DAP started/hit breakpoint, Git events, Auth events, AI events, System events
+- History persistence (currently only in-memory, cleared on restart)
+- Sound/vibration on notification
+- "Mark all read" button in drawer UI
+- Position preference (top-bar vs status-bar)
+- Notification settings screen in Settings
+- The `showNotification()` local function in PSS does NOT push to `NotificationStore` — these are TWO parallel systems (local `notifList` dead, store ignored)
+
+#### DUPLICATE IMPLEMENTATIONS
+- PSS has local `notifList: SnapshotStateList<NotifItem>` — maintains its own list
+- PSS has `notifUnread: Int` — its own unread counter
+- `NotificationStore` has global `items` and `unreadCount`
+- `NotificationDrawerOverlay` reads `NotificationStore.items` only — PSS `notifList` is passed but unused (marked `// Legacy param ignored`)
+- Bell badge reads PSS `notifUnread` (from local list) while drawer shows `NotificationStore.items` — **badge count and drawer content are from different sources = mismatch bug**
+
+### Error Trace Log
+
+| # | File | Line | Symptom | Root Cause | Fix Commit | Lesson |
+|---|------|------|---------|------------|------------|--------|
+| P34-1 | PSS.kt | 577–580 | Bell badge and drawer show different notification counts | Badge uses local `notifUnread` counter, drawer reads `NotificationStore.items` — two parallel systems | P34 fix | Always use a single source of truth for notification count |
+| P34-2 | PSS.kt | 575–656 | In-app toast banner never shows | `notificationMsg` set by `showNotification()` but never rendered in the Compose tree | P34 fix | Don't set state you don't render |
+| P34-3 | NotificationDrawerOverlay.kt | 30 | `notifList` param dead weight | Overlay ignores the passed list and reads from global store directly | P34 cleanup | Remove unused parameters |
+| P34-4 | NotificationStore.kt | 47 | `markAllRead()` never called | No caller anywhere in codebase | P34 fix | Wire "Mark all read" button in drawer |
