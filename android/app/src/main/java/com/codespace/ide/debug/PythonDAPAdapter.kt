@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.terminal.ProotInstaller
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import com.codespace.ide.diagnostics.AppOutputLog
 import org.json.JSONObject
@@ -20,7 +22,7 @@ import org.json.JSONObject
  *   2. If not: pip3 install debugpy
  *   3. Spawn: python3 -m debugpy.adapter  (DAP over stdin/stdout, launches debuggee via 'launch' request)
  *   4. DAPClient.start() — reads stdout, writes stdin
- *   5. Send initialize + launch + setBreakpoints + configurationDone
+ *   5. Send initialize → launch → wait for 'initialized' event → setBreakpoints → configurationDone
  *   6. Wire stopped/output/terminated events → UI callbacks
  */
 class PythonDAPAdapter : DebugAdapter {
@@ -219,6 +221,16 @@ class PythonDAPAdapter : DebugAdapter {
             onStopped()
         }
 
+        // P32-DAP-ORDER: Register initialized event handler BEFORE start().
+        // debugpy sends 'initialized' AFTER launch (when the debuggee is ready),
+        // NOT after initialize. setBreakpoints MUST be sent after 'initialized'
+        // or debugpy returns "Server is not available".
+        val initializedLatch = CountDownLatch(1)
+        dapClient.onEvent("initialized") { _ ->
+            Log.d(TAG, "DAP initialized event received — debuggee ready for configuration")
+            initializedLatch.countDown()
+        }
+
         dapClient.start()
 
         // 5. Initialize handshake
@@ -242,7 +254,33 @@ class PythonDAPAdapter : DebugAdapter {
         caps = initResp.toDAPCapabilities()
         Log.d(TAG, "DAP initialized, caps: $caps")
 
-        // 6. Set breakpoints before launch
+        // 6. Launch (BEFORE setBreakpoints — debugpy needs the debuggee running
+        // before it can accept breakpoint configuration)
+        val launchArgs = JSONObject().apply {
+            put("request", "launch")
+            put("type", "python")
+            put("name", "Debug Python")
+            put("program", guestPath)
+            put("python", "python3")  // tell adapter which interpreter to use in proot
+            put("stopOnEntry", false)
+            put("justMyCode", false)
+            put("noDebug", false)
+            put("console", "internalConsole")
+        }
+        Log.d(TAG, "Sending DAP launch...")
+        dapClient.sendRequest("launch", launchArgs)
+
+        // 7. Wait for 'initialized' event — debugpy sends this after the debuggee
+        // has started and is ready to accept configuration (setBreakpoints).
+        // Without this, setBreakpoints fails with "Server is not available".
+        if (!initializedLatch.await(15, TimeUnit.SECONDS)) {
+            onOutput("[debugpy] WARNING: 'initialized' event not received within 15s\n")
+            AppOutputLog.log("[DAP] WARNING: initialized event timeout — setBreakpoints may fail", "lsp")
+        } else {
+            Log.d(TAG, "Got initialized event, sending setBreakpoints")
+        }
+
+        // 8. Set breakpoints (AFTER initialized event — this is the fix)
         val bpsByFile = breakpoints.groupBy { it.filePath }
         for ((filePath, bps) in bpsByFile) {
             val bpGuestPath = ProotInstaller.hostToGuestPath(context, filePath)
@@ -267,25 +305,7 @@ class PythonDAPAdapter : DebugAdapter {
             }
         }
 
-        // 7. Launch
-        val launchArgs = JSONObject().apply {
-            put("request", "launch")
-            put("type", "python")
-            put("name", "Debug Python")
-            put("program", guestPath)
-            put("python", "python3")  // tell adapter which interpreter to use in proot
-            put("stopOnEntry", false)
-            put("justMyCode", false)
-            put("noDebug", false)
-            put("console", "internalConsole")
-        }
-        val launchResp = dapClient.request("launch", launchArgs, timeoutSeconds = 15)
-        if (launchResp == null) {
-            onOutput("[debugpy] launch failed or timed out\n")
-            // Don't abort — sometimes launch doesn't return a body but still works
-        }
-
-        // 8. configurationDone
+        // 9. configurationDone (AFTER setBreakpoints — tells adapter to start running)
         dapClient.sendRequest("configurationDone")
         onOutput("[debugpy] Session started — running ${session.filePath.substringAfterLast("/")}\n")
         return true

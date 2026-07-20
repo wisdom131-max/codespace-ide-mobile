@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.terminal.ProotInstaller
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import com.codespace.ide.diagnostics.AppOutputLog
 import org.json.JSONObject
@@ -34,7 +36,7 @@ import org.json.JSONObject
  *   3. Locate dapDebugServer.js in global npm prefix
  *   4. Spawn via proot: node <path>/src/dapDebugServer.js --stdio
  *   5. DAPClient.start()
- *   6. initialize → setBreakpoints → launch/attach → configurationDone
+ *   6. initialize → launch/attach → wait 'initialized' → setBreakpoints → configurationDone
  *   7. Wire stopped/output/terminated events → callbacks
  */
 class NodeDAPAdapter : DebugAdapter {
@@ -308,6 +310,20 @@ class NodeDAPAdapter : DebugAdapter {
             Log.d(TAG, "DAP thread: reason=$reason tid=$tid")
         }
 
+        // P32-DAP-ORDER: Register initialized event handler BEFORE start().
+        // DAP spec: setBreakpoints should be sent after the 'initialized' event,
+        // not before launch. Some adapters (debugpy) require launch first; others
+        // (js-debug) send initialized after initialize. To handle both, we:
+        //   1. Send launch/attach
+        //   2. Wait for initialized event
+        //   3. Send setBreakpoints
+        //   4. Send configurationDone
+        val initializedLatch = CountDownLatch(1)
+        dapClient.onEvent("initialized") { _ ->
+            Log.d(TAG, "DAP initialized event received — ready for configuration")
+            initializedLatch.countDown()
+        }
+
         dapClient.start()
 
         // 6. initialize
@@ -333,15 +349,44 @@ class NodeDAPAdapter : DebugAdapter {
             return false
         }
 
-        // P26-3c: Capability negotiation — read what js-debug supports
+        // P26-3c: Capability negotiation
         caps = initResp.toDAPCapabilities()
         Log.d(TAG, "js-debug capabilities: $caps")
         onOutput("[js-debug] Capabilities negotiated. configDone=${caps?.supportsConfigurationDoneRequest}\n")
 
-        // Notify adapter is initialized (DAP 'initialized' event fires from server)
-        // DAP spec: setBreakpoints BEFORE launch, configurationDone AFTER launch
+        // 7. launch or attach (BEFORE setBreakpoints — the adapter needs to start
+        // the debuggee before it can accept breakpoint configuration)
+        if (attachParams != null) {
+            // Attach mode
+            val args = JSONObject().apply {
+                put("type", "node")
+                put("request", "attach")
+                put("name", "Attach to Node.js")
+                attachParams.keys().forEach { k -> put(k, attachParams[k]) }
+                put("localRoot", guestScriptPath.substringBeforeLast("/"))
+                put("remoteRoot", guestScriptPath.substringBeforeLast("/"))
+            }
+            Log.d(TAG, "Sending DAP attach: $args")
+            dapClient.sendRequest("attach", args)
+            onOutput("[js-debug] Attached to Node.js process.\n")
+        } else {
+            // Launch mode
+            val launchArgs = buildLaunchArgs(guestScriptPath, session)
+            Log.d(TAG, "Sending DAP launch: $launchArgs")
+            dapClient.sendRequest("launch", launchArgs)
+            onOutput("[js-debug] Launched ${session.filePath.substringAfterLast("/")}.\n")
+        }
 
-        // 7. setBreakpoints (only on script files, not for attach-by-port)
+        // 8. Wait for 'initialized' event — adapter confirms debuggee is ready
+        // for configuration. Without this, setBreakpoints may fail.
+        if (!initializedLatch.await(15, TimeUnit.SECONDS)) {
+            onOutput("[js-debug] WARNING: 'initialized' event not received within 15s\n")
+            AppOutputLog.log("[DAP] WARNING: initialized event timeout — setBreakpoints may fail", "lsp")
+        } else {
+            Log.d(TAG, "Got initialized event, sending setBreakpoints")
+        }
+
+        // 9. setBreakpoints (AFTER initialized event — per DAP spec)
         if (breakpoints.isNotEmpty()) {
             val bpsByFile = breakpoints.groupBy { it.filePath }
             bpsByFile.forEach { (filePath, bps) ->
@@ -369,30 +414,7 @@ class NodeDAPAdapter : DebugAdapter {
             }
         }
 
-        // 8. launch or attach (MUST come BEFORE configurationDone per DAP spec)
-        if (attachParams != null) {
-            // Attach mode
-            val args = JSONObject().apply {
-                put("type", "node")
-                put("request", "attach")
-                put("name", "Attach to Node.js")
-                // merge in attach params (port/processId)
-                attachParams.keys().forEach { k -> put(k, attachParams[k]) }
-                put("localRoot", guestScriptPath.substringBeforeLast("/"))
-                put("remoteRoot", guestScriptPath.substringBeforeLast("/"))
-            }
-            Log.d(TAG, "Sending DAP attach: $args")
-            dapClient.sendRequest("attach", args)
-            onOutput("[js-debug] Attached to Node.js process.\n")
-        } else {
-            // Launch mode
-            val launchArgs = buildLaunchArgs(guestScriptPath, session)
-            Log.d(TAG, "Sending DAP launch: $launchArgs")
-            dapClient.sendRequest("launch", launchArgs)
-            onOutput("[js-debug] Launched ${session.filePath.substringAfterLast("/")}.\n")
-        }
-
-        // 9. configurationDone (AFTER launch/attach — tells adapter to start the debuggee)
+        // 10. configurationDone (AFTER setBreakpoints — tells adapter to start running)
         if (caps?.supportsConfigurationDoneRequest == true) {
             dapClient.sendRequest("configurationDone")
         }
