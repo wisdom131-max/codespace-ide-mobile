@@ -830,6 +830,16 @@ fun EditorPane(
             }
         }
 
+        // P35: Reset LSP query guards when switching files — ensures first cursor
+        // position in a new file always gets queried even if it matches the last
+        // position from the previous file (e.g. both open at line 0, col 0).
+        LaunchedEffect(active?.path) {
+            lastHoverLine = -1
+            lastHoverCol = -1
+            lastHighlightLine = -1
+            lastHighlightCol = -1
+        }
+
         // P26-1: LSP Document Symbol — fetch outline structure on file open (debounced)
         LaunchedEffect(active?.path) {
             if (active != null && LspManager.isServerRunning(active.language)) {
