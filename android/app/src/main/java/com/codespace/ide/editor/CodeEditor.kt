@@ -532,14 +532,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // ── P2-12 / P25-LSP Parameter hints / signature help ────────────────────
     // Prefer LSP signature help when available (knows ALL functions in the codebase),
     // fall back to the local curated signature DB (SignatureHelpAnalyzer) otherwise.
+    // P35 FIX: Pre-check if cursor is inside parentheses before calling LSP.
+    // The old code called the LSP provider on every text change — even when the cursor
+    // wasn't inside a function call — wasting CPU and spamming the LSP server.
+    // Quick local check: scan backwards for unmatched '(' before the cursor.
     val activeSignature = remember(value.text, value.selection.end, language, lspSignatureHelpProvider) {
-        if (lspSignatureHelpProvider != null) {
+        // Quick guard: check if cursor is inside a function call before invoking LSP
+        val textBeforeCursor = value.text.substring(0, value.selection.end.coerceAtMost(value.text.length))
+        var depth = 0
+        var insideCall = false
+        for (ch in textBeforeCursor.reversed()) {
+            when (ch) {
+                ')' -> depth++
+                '(' -> { if (depth == 0) { insideCall = true }; break }
+            }
+        }
+        if (lspSignatureHelpProvider != null && insideCall) {
             val cLine = value.text.take(value.selection.end).count { it == '\n' }
             val cCol = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
             try { lspSignatureHelpProvider.invoke(cLine, cCol) } catch (_: Exception) { null }
                 ?: SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
-        } else {
+        } else if (insideCall) {
             SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
+        } else {
+            null
         }
     }
 
