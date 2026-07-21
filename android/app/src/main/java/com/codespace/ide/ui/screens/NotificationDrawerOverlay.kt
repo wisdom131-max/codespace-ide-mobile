@@ -3,7 +3,7 @@ package com.codespace.ide.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.*\nimport androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +27,57 @@ import java.util.concurrent.TimeUnit
 
 // Legacy compat — kept so existing callers don't break
 internal data class NotifItem(val id: Long, val msg: String, val type: String)
+
+// ── VS Code-style Notification Bell ────────────────────────────────────────────
+
+/**
+ * P35-NOTIF: VS Code-style notification bell with color states + badge count.
+ * Bell color: gray (idle), red (errors), amber (warnings), blue (info)
+ * Badge: unread count (hidden when 0)
+ *
+ * @param onClick Called when bell is tapped (opens notification center)
+ * @param modifier Layout modifier
+ */
+@Composable
+internal fun NotificationBell(
+    iconSize: Int = 20,
+    onClick: () -> Unit,
+) {
+    val unread = remember { derivedStateOf { NotificationStore.unreadCount } }.value
+    val bellState = remember { derivedStateOf { NotificationStore.bellState } }.value
+    val dnd = remember { derivedStateOf { NotificationStore.settings.doNotDisturb } }.value
+
+    // P35-NOTIF: VS Code bell colors:
+    // DND = dimmed gray, error = soft red, warning = amber, info = blue, idle = gray
+    val bellColor = when {
+        dnd -> Color(0xFF7F849C).copy(alpha = 0.5f)  // dimmed when DND on
+        bellState == "error" -> Color(0xFFF38BA8)    // soft red
+        bellState == "warning" -> Color(0xFFFAB387)   // amber
+        bellState == "info" -> Color(0xFF89B4FA)      // blue
+        else -> Color(0xFF7F849C)                      // gray (idle)
+    }
+
+    Box(
+        Modifier.size((iconSize + 8).dp).clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Default.Notifications, null, tint = bellColor, modifier = Modifier.size(iconSize.dp))
+        if (unread > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .background(if (bellState == "error") Color(0xFFF38BA8) else Color(0xFF89B4FA), CircleShape)
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (unread > 99) "99+" else if (unread > 9) "9+" else unread.toString(),
+                    color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
 
 // ── In-app Toast Banner ───────────────────────────────────────────────────────
 
@@ -134,8 +185,15 @@ internal fun NotificationDrawerOverlay(
                 DrawerHeader(
                     unread = unread,
                     hasItems = allItems.isNotEmpty(),
+                    doNotDisturb = NotificationStore.settings.doNotDisturb,
+                    bellPosition = NotificationStore.settings.bellPosition,
                     onMarkAllRead = { NotificationStore.markAllRead() },
                     onClearAll = { NotificationStore.clearAll(); onClear() },
+                    onToggleDnd = { NotificationStore.toggleDoNotDisturb() },
+                    onToggleBellPosition = {
+                        val newPos = if (NotificationStore.settings.bellPosition == "top") "bottom" else "top"
+                        NotificationStore.setBellPosition(newPos)
+                    },
                 )
                 HorizontalDivider(color = Color(0xFF313244))
 
@@ -170,8 +228,12 @@ internal fun NotificationDrawerOverlay(
 private fun DrawerHeader(
     unread: Int,
     hasItems: Boolean,
+    doNotDisturb: Boolean,
     onMarkAllRead: () -> Unit,
     onClearAll: () -> Unit,
+    onToggleDnd: () -> Unit,
+    onToggleBellPosition: () -> Unit,
+    bellPosition: String,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -190,11 +252,23 @@ private fun DrawerHeader(
                 }
             }
         }
-        if (hasItems) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Mark read", color = Color(0xFF89B4FA), fontSize = 11.sp,
-                    modifier = Modifier.clickable { onMarkAllRead() })
-                Text("Clear all", color = Color(0xFF89B4FA), fontSize = 11.sp,
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // P35-NOTIF: DND toggle (bell with slash icon)
+            Icon(
+                if (doNotDisturb) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
+                contentDescription = if (doNotDisturb) "Turn off Do Not Disturb" else "Turn on Do Not Disturb",
+                tint = if (doNotDisturb) Color(0xFFF38BA8) else Color(0xFF89B4FA),
+                modifier = Modifier.size(15.dp).clickable { onToggleDnd() },
+            )
+            // P35-NOTIF: Bell position toggle (top/bottom)
+            Icon(
+                if (bellPosition == "bottom") Icons.Default.VerticalAlignTop else Icons.Default.VerticalAlignBottom,
+                contentDescription = "Move bell to ${if (bellPosition == "bottom") "top bar" else "status bar"}",
+                tint = Color(0xFF7F849C),
+                modifier = Modifier.size(15.dp).clickable { onToggleBellPosition() },
+            )
+            if (hasItems) {
+                Text("Clear", color = Color(0xFF89B4FA), fontSize = 11.sp,
                     modifier = Modifier.clickable { onClearAll() })
             }
         }
