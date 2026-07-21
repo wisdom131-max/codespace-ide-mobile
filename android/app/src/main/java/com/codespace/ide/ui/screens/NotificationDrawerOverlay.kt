@@ -451,8 +451,7 @@ private fun NotificationRow(item: NotificationStore.Item) {
  * Shows unread count badge. Bell color softened from full red to amber/orange for errors.
  */
 @Composable
-internal fun NotificationBell(
-    iconSize: Int = 20,
+
     onClick: () -> Unit,
 ) {
     val unread = remember { derivedStateOf { NotificationStore.unreadCount } }.value
