@@ -678,7 +678,7 @@ fun EditorPane(
                             Text("◆", color = Color(0xFF61AFEF), fontSize = 12.sp)
                             Spacer(Modifier.width(8.dp))
                             Column {
-                                Text("${'$'}fileName : ${'$'}{lineIdx + 1}", fontSize = 11.sp, color = Color(0xFF61AFEF), fontWeight = FontWeight.Bold)
+                                Text("$fileName : ${lineIdx + 1}", fontSize = 11.sp, color = Color(0xFF61AFEF), fontWeight = FontWeight.Bold)
                                 if (lineContent.isNotBlank()) {
                                     Text(lineContent, fontSize = 11.sp, color = TabTextInactive, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
