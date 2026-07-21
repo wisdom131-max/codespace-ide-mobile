@@ -4,8 +4,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.annotation.SuppressLint
+import android.webkit.SslErrorHandler
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -432,9 +434,20 @@ fun PreviewPane(
                         .fillMaxWidth()
                         .heightIn(min = 44.dp)
                         .background(Surface)
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // P34-BROWSER: Back button — visible in fullscreen so user can
+                    // navigate back without exiting fullscreen first
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (sharedState.canGoBack) TextPrimary else TextMuted.copy(alpha = 0.35f),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable(enabled = sharedState.canGoBack) { webViewRef?.goBack() },
+                    )
+                    Spacer(Modifier.width(4.dp))
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         Text(
                             sharedState.activeMode.label,
@@ -448,7 +461,6 @@ fun PreviewPane(
                         contentDescription = "Exit fullscreen",
                         tint = TextMuted,
                         modifier = Modifier
-                            .align(Alignment.CenterVertically)
                             .size(22.dp)
                             .clickable { isFullscreen = false },
                     )
@@ -834,6 +846,10 @@ private fun BrowserPreview(
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 settings.mediaPlaybackRequiresUserGesture = false
+                // P34-BROWSER: Enable cookies (including third-party) for login flows
+                // (YouTube/Google login requires third-party cookies)
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 // P32-BROWSER: Desktop user-agent — makes sites render in laptop/desktop
                 // layout instead of mobile layout. Identical to Chrome on a laptop.
                 settings.userAgentString =
@@ -849,6 +865,8 @@ private fun BrowserPreview(
                         onLoading(false)
                         onTitle(view?.title ?: "")
                         onCanGoBack(view?.canGoBack() == true)
+                        // P34-BROWSER: Flush cookies after page load for login persistence
+                        CookieManager.getInstance().flush()
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                         onLoading(false)
@@ -856,6 +874,12 @@ private fun BrowserPreview(
                         val errHtml = """<html><body style="background:#1e1e1e;color:#f48771;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
                             <div><h2>Cannot connect</h2><p>$description</p><p style="color:#717171;font-size:13px;">Is your server running on ${url}?</p></div></body></html>"""
                         view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
+                    }
+                    // P34-BROWSER: Trust SSL certificates — YouTube/Google login uses
+                    // certificate chains that WebView may not trust by default.
+                    // Proceeding fixes the "site not trusted" error.
+                    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
+                        handler?.proceed()
                     }
                 }
                 webChromeClient = object : WebChromeClient() {
@@ -959,6 +983,7 @@ private fun RemotionPreview(
                         onLoading(false)
                         onTitle(view?.title ?: "Remotion Studio")
                         onCanGoBack(view?.canGoBack() == true)
+                        CookieManager.getInstance().flush()
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                         onLoading(false)
@@ -972,6 +997,10 @@ private fun RemotionPreview(
                             <p style="color:#717171;font-size:13px;margin-top:12px;">Then tap Go to connect.</p>
                             </div></body></html>"""
                         view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
+                    }
+                    // P34-BROWSER: Trust SSL for Remotion HTTPS connections
+                    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
+                        handler?.proceed()
                     }
                 }
                 webChromeClient = object : WebChromeClient() {
