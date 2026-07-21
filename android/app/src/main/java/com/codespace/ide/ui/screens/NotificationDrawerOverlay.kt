@@ -444,54 +444,6 @@ private fun NotificationRow(item: NotificationStore.Item) {
     }
 }
 
-// ── Bell icon composable — usable in both top-bar and status-bar ──────────────
-
-/**
- * P34-NOTIF: Reusable bell icon that works in top-bar or status-bar.
- * Shows unread count badge. Bell color softened from full red to amber/orange for errors.
- */
-@Composable
-
-    onClick: () -> Unit,
-) {
-    val unread = remember { derivedStateOf { NotificationStore.unreadCount } }.value
-    val hasError = remember { derivedStateOf {
-        NotificationStore.items.any { it.severity == NotificationStore.Severity.ERROR && !it.read }
-    }}.value
-    val hasWarning = remember { derivedStateOf {
-        NotificationStore.items.any { it.severity == NotificationStore.Severity.WARNING && !it.read }
-    }}.value
-
-    // Color: error → soft red (E57373 not F44336), warning → amber, unread → blue, idle → grey
-    val bellColor = when {
-        hasError   -> Color(0xFFE57373) // softer red
-        hasWarning -> Color(0xFFFFB74D) // amber
-        unread > 0 -> Color(0xFF89B4FA) // blue
-        else       -> Color(0xFF6C7086) // idle grey
-    }
-
-    Box(
-        Modifier.size((iconSize + 8).dp).clickable { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Default.Notifications, null, tint = bellColor, modifier = Modifier.size(iconSize.dp))
-        if (unread > 0) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(14.dp)
-                    .background(if (hasError) Color(0xFFE57373) else Color(0xFF89B4FA), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    if (unread > 99) "99+" else if (unread > 9) "9+" else unread.toString(),
-                    color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold,
-                )
-            }
-        }
-    }
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 private fun severityIcon(severity: NotificationStore.Severity): Pair<ImageVector, Color> = when (severity) {
