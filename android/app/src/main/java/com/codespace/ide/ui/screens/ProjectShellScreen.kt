@@ -804,6 +804,30 @@ fun ProjectShellScreen(
                 showNotification("Shell profile restored", "success")
             }
             "Save" -> showNotification("File saved ✓", "success")
+            // P35-NOTIF: Notification commands — wired to NotificationStore
+            "Notifications: Toggle Do Not Disturb" -> {
+                NotificationStore.toggleDoNotDisturb()
+                val dnd = NotificationStore.settings.doNotDisturb
+                showNotification(
+                    if (dnd) "Do Not Disturb ON — errors only" else "Do Not Disturb OFF",
+                    if (dnd) "warning" else "success"
+                )
+            }
+            "Notifications: Bell to Title Bar" -> {
+                NotificationStore.setBellPosition("top")
+                showNotification("Bell moved to title bar", "info")
+            }
+            "Notifications: Bell to Status Bar" -> {
+                NotificationStore.setBellPosition("bottom")
+                showNotification("Bell moved to status bar", "info")
+            }
+            "Notifications: Clear All" -> {
+                NotificationStore.clearAll()
+                showNotification("All notifications cleared", "success")
+            }
+            "Notifications: Show Center" -> {
+                showNotifDrawer = true
+            }
             else   -> {}
         }
     }
@@ -1312,6 +1336,11 @@ private fun PssOverlays(
                             "Explorer", "Search", "Source Control", "Run & Debug", "Extensions",
                             "Git: Commit", "Git: Push", "Git: Pull", "Git: Stage All",
                             "Format Document", "Command Palette",
+                            "Notifications: Toggle Do Not Disturb",
+                            "Notifications: Bell to Title Bar",
+                            "Notifications: Bell to Status Bar",
+                            "Notifications: Clear All",
+                            "Notifications: Show Center",
                             "Close All Editors", "Close Editor",
                             "Open Folder", "Refresh Explorer", "Collapse All in Explorer",
                             "Toggle Word Wrap", "Go to Line",
