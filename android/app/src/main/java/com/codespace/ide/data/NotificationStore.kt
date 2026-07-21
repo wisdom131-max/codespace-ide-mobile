@@ -63,6 +63,8 @@ object NotificationStore {
         val showToast: Boolean = true,
         val toastDurationMs: Long = 3000L,
         val maxHistory: Int = 100,
+        // P35-NOTIF: Do Not Disturb — suppresses INFO + WARNING toasts (ERROR still shows)
+        val doNotDisturb: Boolean = false,
         // Severity filters — true = show
         val showInfo: Boolean = true,
         val showSuccess: Boolean = true,
@@ -82,7 +84,8 @@ object NotificationStore {
         val srcSystem: Boolean = true,
         val srcBackup: Boolean = true,
         val srcConnector: Boolean = true,
-        // Bell position: "top" = top-bar (default), "bottom" = status-bar
+        // P35-NOTIF: Bell position — matches VS Code's workbench.notifications.position
+        // "top" = title bar (top-right), "bottom" = status bar (bottom-right)
         val bellPosition: String = "top",
     )
 
@@ -94,6 +97,30 @@ object NotificationStore {
     @Volatile var settings = Settings()
 
     val unreadCount: Int get() = items.count { !it.read }
+
+    // P35-NOTIF: Bell color state — matches VS Code behavior
+    // idle = gray, error = red, warning = amber, info/success = blue
+    val hasError: Boolean get() = items.any { !it.read && it.severity == Severity.ERROR }
+    val hasWarning: Boolean get() = items.any { !it.read && it.severity == Severity.WARNING }
+    val hasInfo: Boolean get() = items.any { !it.read && (it.severity == Severity.INFO || it.severity == Severity.SUCCESS) }
+
+    /** Bell color: gray (idle), red (errors), amber (warnings), blue (info) */
+    val bellState: String get() = when {
+        hasError   -> "error"
+        hasWarning -> "warning"
+        hasInfo    -> "info"
+        else       -> "idle"
+    }
+
+    /** Toggle DND mode */
+    fun toggleDoNotDisturb() {
+        settings = settings.copy(doNotDisturb = !settings.doNotDisturb)
+    }
+
+    /** Set bell position: "top" or "bottom" */
+    fun setBellPosition(pos: String) {
+        settings = settings.copy(bellPosition = if (pos == "bottom") "bottom" else "top")
+    }
 
     // ── Active toast for the in-app banner ────────────────────────────────────
     @Volatile var activeToast: Item? = null
@@ -120,8 +147,10 @@ object NotificationStore {
         post {
             items.add(0, item)
             if (items.size > settings.maxHistory) items.removeAt(items.lastIndex)
-            // Fire toast if enabled
-            if (settings.showToast) {
+            // Fire toast if enabled (respect DND: errors always show, info/warning suppressed)
+            val dndSuppress = settings.doNotDisturb &&
+                severity != Severity.ERROR
+            if (settings.showToast && !dndSuppress) {
                 activeToast = item
                 _toastListeners.forEach { it() }
                 toastHandler.removeCallbacks(clearToastRunnable)
