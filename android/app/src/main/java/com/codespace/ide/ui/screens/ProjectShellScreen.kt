@@ -1277,6 +1277,12 @@ private fun PssOverlays(
             NotificationDrawerOverlay(
                 onDismiss = { onShowNotifDrawerChange(false) },
                 onClear = { /* handled by store */ },
+                onShowCommands = {
+                    // P35-NOTIF: Chevron in drawer opens command palette with notification commands
+                    onShowNotifDrawerChange(false)
+                    onCommandQueryChange("Notifications")
+                    onShowCommandPaletteChange(true)
+                },
             )
         }
 
