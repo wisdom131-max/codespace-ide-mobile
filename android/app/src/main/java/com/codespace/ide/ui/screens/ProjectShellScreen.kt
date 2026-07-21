@@ -1,6 +1,10 @@
 package com.codespace.ide.ui.screens
 
 import com.codespace.ide.ui.panels.ToolchainPanel
+import com.codespace.ide.data.NotificationStore
+import com.codespace.ide.ui.screens.NotificationDrawerOverlay
+import com.codespace.ide.ui.screens.NotificationBell
+import com.codespace.ide.ui.screens.NotificationToastBanner
 import com.codespace.ide.ui.panels.TaskRunnerPanel
 import com.codespace.ide.ui.panels.BuildHistoryPanel
 import com.codespace.ide.ui.panels.ArtifactPanel
@@ -357,8 +361,7 @@ private data class NavEntry(val path: String, val line: Int = 0)
 private fun PssTopBar(
     projectName: String,
     currentTheme: String,
-    notifUnread: Int,
-    openMenuBar: String?,
+    openMenuBar: String?,  // P34-NOTIF: notifUnread removed — bell reads from store
     bgColor: Color,
     tabTextInactive: Color,
     dividerColor: Color,
@@ -408,14 +411,8 @@ private fun PssTopBar(
         Spacer(Modifier.width(8.dp))
         AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleChat() })
         Spacer(Modifier.width(8.dp))
-        Box(Modifier.size(28.dp).clickable { onToggleNotif() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Notifications, null, tint = if (notifUnread > 0) Color(0xFFF44336) else tabTextInactive, modifier = Modifier.size(20.dp))
-            if (notifUnread > 0) {
-                Box(Modifier.align(Alignment.TopEnd).size(14.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
-                    Text(if (notifUnread > 9) "9+" else notifUnread.toString(), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        // P34-NOTIF: Unified NotificationBell — reads from NotificationStore directly
+        NotificationBell(iconSize = 20, onClick = onToggleNotif)
         Spacer(Modifier.width(8.dp))
     }
     // ── Menu bar
@@ -572,11 +569,8 @@ fun ProjectShellScreen(
     var showExplorerMore   by remember { mutableStateOf(false) }
     var commandQuery       by remember { mutableStateOf("") }
     var _commandTab         by remember { mutableStateOf("Commands") }
-    var notificationMsg    by remember { mutableStateOf<String?>(null) }
-    var notificationType   by remember { mutableStateOf("info") }
-    // Persistent notification list (bell drawer)
-    val notifList = remember { mutableStateListOf<NotifItem>() }
-    var notifUnread by remember { mutableStateOf(0) }
+    // P34-NOTIF: notificationMsg/notificationType removed — toast handled by NotificationToastBanner
+    // P34-NOTIF: notifList/notifUnread removed — NotificationStore is single source of truth
     var showNotifDrawer    by remember { mutableStateOf(false) }
     var snapshotMessage    by remember { mutableStateOf<String?>(null) }
     // Connectors hub (replaces Person menu)
@@ -647,17 +641,23 @@ fun ProjectShellScreen(
         sessionStateStore.saveShellState(projectId, state)
     }
 
-    LaunchedEffect(notificationMsg) {
-        if (notificationMsg != null) { kotlinx.coroutines.delay(3000); notificationMsg = null }
-    }
+
 
     fun showNotification(msg: String, type: String = "info") {
-        notificationMsg = msg
-        notificationType = type
-        // Also push to persistent notification list
-        notifList.add(0, NotifItem(System.currentTimeMillis(), msg, type))
-        if (notifList.size > 50) notifList.removeAt(notifList.size - 1)
-        if (!showNotifDrawer) notifUnread++
+        // P34-NOTIF: Single source of truth — push to NotificationStore only
+        val severity = when (type) {
+            "error"   -> NotificationStore.Severity.ERROR
+            "warning" -> NotificationStore.Severity.WARNING
+            "success" -> NotificationStore.Severity.SUCCESS
+            "progress"-> NotificationStore.Severity.PROGRESS
+            else      -> NotificationStore.Severity.INFO
+        }
+        NotificationStore.add(
+            title = msg,
+            body  = "",
+            severity = severity,
+            source = NotificationStore.Source.SYSTEM,
+        )
     }
 
         // ── P2-10: Navigation history helpers ──────────────────────────────────
@@ -848,8 +848,8 @@ fun ProjectShellScreen(
             PssTopBar(
                 projectName = projectName,
                 currentTheme = currentTheme,
-                notifUnread = notifUnread,
-                openMenuBar = openMenuBar,
+                openMenuBar = openMenuBar,  // P34-NOTIF: notifUnread removed
+
                 bgColor = BgColor,
                 tabTextInactive = TabTextInactive,
                 dividerColor = DividerColor,
@@ -863,7 +863,7 @@ fun ProjectShellScreen(
                 onShowBuild = { showBottomPanel = true; activeBottomTab = BottomTab.BUILD },
                 onShowSplit = { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT },
                 onToggleChat = { showChatPanel = !showChatPanel },
-                onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) notifUnread = 0 },
+                onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
             )
 
@@ -1122,6 +1122,7 @@ fun ProjectShellScreen(
                 activeEditorTab = activeEditorTab,
                 cursorLine = cursorLine,
                 cursorCol = cursorCol,
+                onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
             )
     } // end Editor Column
 
@@ -1157,8 +1158,7 @@ fun ProjectShellScreen(
             onSnapshotMessageChange = { snapshotMessage = it },
             editorFontSize = editorFontSize,
             onEditorFontSizeChange = { editorFontSize = it },
-            notifList = notifList,
-            BgColor = BgColor,
+            BgColor = BgColor,  // P34-NOTIF: notifList removed
             ActivityBarIconActive = ActivityBarIconActive,
             TabActiveIndicator = TabActiveIndicator,
             TabTextInactive = TabTextInactive,
@@ -1223,7 +1223,7 @@ private fun PssOverlays(
     onSnapshotMessageChange: (String?) -> Unit,
     editorFontSize: Int,
     onEditorFontSizeChange: (Int) -> Unit,
-    notifList: androidx.compose.runtime.snapshots.SnapshotStateList<NotifItem>,
+    // P34-NOTIF: notifList param removed
     // Colors
     BgColor: Color,
     ActivityBarIconActive: Color,
@@ -1245,12 +1245,14 @@ private fun PssOverlays(
     handleMenuAction: (String) -> Unit,
     showNotification: (String, String) -> Unit,
 ) {
+        // P34-NOTIF: VS Code-style in-app toast banner (auto-dismiss)
+        NotificationToastBanner()
+
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
             NotificationDrawerOverlay(
-                notifList = notifList,
                 onDismiss = { onShowNotifDrawerChange(false) },
-                onClear = { notifList.clear() },
+                onClear = { /* handled by store */ },
             )
         }
 
@@ -2475,6 +2477,7 @@ private fun StatusBarContent(
     activeEditorTab: String?,
     cursorLine: Int,
     cursorCol: Int,
+    onToggleNotif: () -> Unit = {},  // P34-NOTIF: bell in status bar
 ) {
     Row(
         Modifier.fillMaxWidth().height(22.dp).background(statusBarBg).padding(horizontal = 8.dp),
@@ -2553,6 +2556,9 @@ private fun StatusBarContent(
             }
             is SyncState.Idle -> { /* nothing */ }
         }
+        // P34-NOTIF: VS Code-style bell in status bar (bottom-right)
+        Spacer(Modifier.width(6.dp))
+        NotificationBell(iconSize = 14, onClick = onToggleNotif)
     }
 }
 
