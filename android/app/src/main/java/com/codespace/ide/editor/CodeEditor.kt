@@ -62,6 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
 import com.codespace.ide.editor.SignatureInfo
@@ -1988,7 +1992,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         )
                         val fileName = peek.filePath.substringAfterLast('/')
                         Text(
-                            "$fileName:$" + "{peek.line + 1}",
+                            "$fileName:${peek.line + 1}",
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
@@ -2627,19 +2631,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
-        // IntelliSense dropdown
+        // IntelliSense dropdown — rendered in a Popup window so it's never clipped
+        // by parent bounds, scroll offset, or the soft keyboard.
         if (showCompletions && allCompletions.isNotEmpty()) {
-            LazyColumn(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 74.dp, top = ((value.text.take(value.selection.end).count { it == '\n' } + 1) * fontSize * 1.25f).dp)
-                    .widthIn(min = 160.dp, max = 260.dp)
-                    .heightIn(max = 200.dp)
-                    .zIndex(10f)
-                    .background(Color(0xFF252526), RoundedCornerShape(4.dp))
-                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp)),
+            val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
+            val lineHeightPx = fontSize * 1.25f
+            val popupOffsetY = ((cursorLine + 1) * lineHeightPx).roundToInt()
+            val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { 74.dp.toPx() }.roundToInt()
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(popupOffsetX, popupOffsetY),
+                properties = PopupProperties(focusable = false),
             ) {
-                items(allCompletions) { comp ->
+                LazyColumn(
+                    modifier = Modifier
+                        .widthIn(min = 160.dp, max = 260.dp)
+                        .heightIn(max = 200.dp)
+                        .background(Color(0xFF252526), RoundedCornerShape(4.dp))
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp)),
+                ) {
+                    items(allCompletions) { comp ->
                     // Doc always visible below label — no per-item state (Compose rules)
                     Row(
                         Modifier
@@ -2704,6 +2715,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         }
                         Text(comp.kind.name.lowercase(), color = Color(0xFF808080), fontSize = 9.sp)
                     }
+                }
                 }
             }
         }
