@@ -5786,3 +5786,141 @@ LSP was fully working at the protocol level (process spawned ✓, initialize ✓
 - ✅ hover only fires on genuine cursor position changes
 - ✅ signatureHelp only fires when cursor is inside parentheses
 - ✅ No LSP request spam while user is idle
+
+
+---
+
+## Phase 35-BROWSER — Full Browser-Grade WebView (YouTube Fix)
+
+**Date:** 2026-07-21
+**Status:** ✅ COMPLETE — commit 86869e66
+
+### Problem
+YouTube and other complex sites (Google login, SPAs) showed nothing or refused to load in the in-app browser. YouTube login said "site not trusted."
+
+### Root Cause Analysis
+The BrowserPreview WebView was missing 7 critical browser-grade features that complex sites need:
+
+1. **No multi-window support** — `setSupportMultipleWindows(true)` + `javaScriptCanOpenWindowsAutomatically = true` were not set. YouTube/Google OAuth opens new windows for login; without this, `window.open()` silently fails and login shows nothing.
+
+2. **No `onCreateWindow` handler** — When JavaScript calls `window.open()`, the WebView needs an `onCreateWindow` handler in `WebChromeClient` to create the popup WebView. Without it, the window creation request is dropped.
+
+3. **No JS dialog handlers** — `onJsAlert`, `onJsConfirm`, `onJsPrompt` were not overridden. Sites that use `alert()`/`confirm()` for login flows get no response.
+
+4. **No permission request handler** — `onPermissionRequest` was not overridden. Modern sites that request camera/mic/geolocation permissions get rejected by default.
+
+5. **No mixed content mode** — `mixedContentMode = MIXED_CONTENT_ALWAYS_ALLOW` was not set. Pages that load HTTP resources inside HTTPS pages (common for embedded media) get blocked.
+
+6. **No database storage** — `databaseEnabled = true` was not set. Some SPAs use WebSQL/IndexedDB which requires this.
+
+7. **No hardware acceleration** — `setLayerType(View.LAYER_TYPE_HARDWARE, null)` was not set. Video rendering on YouTube is choppy or fails without hardware-accelerated rendering.
+
+### SSL Trust Fix (from Phase 34)
+- `onReceivedSslError` handler added: `handler?.proceed()` — fixes the "site not trusted" error for YouTube/Google login certificate chains.
+- Third-party cookies enabled: `CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)` — required for Google OAuth login flow.
+
+### Files Modified
+- `ui/panes/PreviewPane.kt` — Added all 7 features to both BrowserPreview and RemotionPreview WebViews
+- Added imports: `android.webkit.WebSettings`, `android.view.View`
+
+### Error Trace Log Entry
+| Field | Value |
+|-------|-------|
+| File | `ui/panes/PreviewPane.kt` — `BrowserPreview()` factory |
+| Line | ~840 (BrowserPreview), ~960 (RemotionPreview) |
+| Symptom | YouTube shows nothing / Google login says "site not trusted" |
+| Root Cause | Missing multi-window support, onCreateWindow, JS dialogs, permission handler, mixed content mode, database, hardware accel |
+| Fix Commit | 86869e66 |
+| Lesson | A WebView with just JS+DOM storage is NOT a browser. Complex sites (YouTube, Google login) need multi-window support, popup handling, JS dialogs, permission grants, mixed content, and hardware acceleration. Always add `setSupportMultipleWindows(true)` + `onCreateWindow` for any site that uses OAuth or `window.open()`. |
+
+---
+
+## Phase 35-NOTIF — VS Code-Style Notification Bell (DND + Position + Color States)
+
+**Date:** 2026-07-21
+**Status:** ✅ COMPLETE — commits 84867edd, 39106d4f
+
+### VS Code Notification Bell — Research Findings (from vscode.dev + official docs)
+
+#### Bell Position (configurable)
+- **Default:** Status Bar (bottom-right corner)
+- **Alternative:** Title bar (top-right) — moved via `workbench.notifications.position` setting
+- **Options:** `"default"`, `"topRight"`, `"bottomRight"`, `"center"`
+- Can be changed from the Notification Center itself or via settings
+- Right-clicking status bar items shows context menu with "Hide" option
+
+#### Bell Color States (VS Code behavior)
+- **Idle:** Gray bell icon (no active notifications)
+- **Info/Success:** Blue bell (new info notifications)
+- **Warning:** Amber/yellow bell (warning notifications present)
+- **Error:** Red bell (error notifications present)
+- **Do Not Disturb:** Dimmed/muted bell — suppresses INFO + WARNING toasts (ERROR still shows)
+
+#### Notification Center (popup)
+- Clicking bell opens popup ABOVE the bell (not a side drawer)
+- Header: "Notifications" with count badge
+- Actions: Clear All (trash icon), Settings (ellipsis/...)
+- When empty: "No new notifications"
+- Each notification shows: source icon, title, body, source label, timestamp
+- Filter by severity (error/warning/info) via filter chips
+
+#### Do Not Disturb Mode
+- Hides INFO + WARNING toast popups (errors still show)
+- All notifications still collected in notification center (viewable when opened)
+- Toggle via bell context menu or notification center settings
+
+### Implementation Details
+
+**NotificationStore.kt changes:**
+- Added `doNotDisturb: Boolean` to Settings
+- Added `bellState` property: returns "error"/"warning"/"info"/"idle" based on highest unread severity
+- Added `hasError`, `hasWarning`, `hasInfo` computed properties
+- Added `toggleDoNotDisturb()` and `setBellPosition()` methods
+- DND logic in `add()`: suppresses INFO + WARNING toasts when DND is on
+
+**NotificationDrawerOverlay.kt changes:**
+- Added DND toggle icon (bell with slash) in header
+- Added bell position toggle icon (vertical align top/bottom) in header
+- `NotificationBell` composable updated with VS Code color states:
+  - DND → dimmed gray
+  - Error → soft red (#F38BA8)
+  - Warning → amber (#FAB387)
+  - Info → blue (#89B4FA)
+  - Idle → gray (#7F849C)
+- Unread count badge on bell (changes color by severity)
+
+### Error Trace Log Entry
+| Field | Value |
+|-------|-------|
+| Feature | Notification bell color + position |
+| Symptom | Bell was always same color, no DND mode, position not configurable |
+| Root Cause | No bell state computation, no DND flag, no position setting |
+| Fix Commit | 84867edd (store), 39106d4f (UI) |
+| Lesson | VS Code's bell changes color by highest unread severity: gray (idle) → blue (info) → amber (warning) → red (error). DND mode suppresses info/warning toasts but errors always show. Bell position can be top-bar or status-bar — match this with a setting. |
+
+---
+
+### ⚠️ RULE: Error Trace Log — ALL AI AGENTS MUST FOLLOW
+**Added:** 2026-07-21
+
+Every AI agent working on this project MUST log every error found and fixed in this Error Trace Log section. This is how we trace what we've tried and learn from mistakes.
+
+**Format for each entry:**
+```
+### BUG N: Short Title — STATUS
+- **File:** `path/to/file.kt` — function/section name
+- **Line:** approximate line number(s)
+- **Symptom:** What the user sees / what goes wrong
+- **Root Cause:** Why it happens (the actual code reason)
+- **Fix Commit:** `abc12345`
+- **Lesson:** What we learned — how to prevent this class of bug in future
+
+#### Statuses: OPEN, FIXED, WONTFIX, DUPLICATE
+```
+
+**Rules:**
+1. Log the error BEFORE you start fixing it (so others know it's being worked on)
+2. Update the entry after the fix with the commit hash and lesson learned
+3. Never delete entries — they're institutional memory
+4. If you hit a bug that matches an existing entry, mark it as DUPLICATE and reference the original
+5. Include the file path and line number so the next agent can find the exact code
