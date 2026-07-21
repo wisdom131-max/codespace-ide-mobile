@@ -64,7 +64,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
