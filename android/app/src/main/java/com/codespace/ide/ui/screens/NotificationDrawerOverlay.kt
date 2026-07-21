@@ -145,6 +145,7 @@ internal fun NotificationDrawerOverlay(
     @Suppress("UNUSED_PARAMETER") notifList: List<NotifItem> = emptyList(), // legacy param — ignored
     onDismiss: () -> Unit,
     onClear: () -> Unit,
+    onShowCommands: () -> Unit = {},
 ) {
     val allItems by remember { derivedStateOf { NotificationStore.items.toList() } }
     val unread = NotificationStore.unreadCount
@@ -195,6 +196,8 @@ internal fun NotificationDrawerOverlay(
                         NotificationStore.setBellPosition(newPos)
                     },
                 )
+                // P35-NOTIF: Quick command bar — DND toggle, bell position, and expand chevron
+                NotificationCommandBar(onShowCommands = onShowCommands)
                 HorizontalDivider(color = Color(0xFF313244))
 
                 // ── Severity filter chips ────────────────────────────────────
@@ -221,6 +224,87 @@ internal fun NotificationDrawerOverlay(
                 }
             }
         }
+    }
+}
+
+/**
+ * P35-NOTIF: Quick command bar inside the notification drawer.
+ * Shows: DND toggle pill, bell position pill, and a downward chevron (^)
+ * that opens the full Command Palette filtered to notification commands.
+ */
+@Composable
+private fun NotificationCommandBar(onShowCommands: () -> Unit) {
+    val dnd = NotificationStore.settings.doNotDisturb
+    val bellPos = NotificationStore.settings.bellPosition
+
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // DND toggle pill
+        Row(
+            Modifier
+                .background(
+                    if (dnd) Color(0xFFF38BA8).copy(alpha = 0.2f) else Color(0xFF313244),
+                    RoundedCornerShape(12.dp),
+                )
+                .clickable { NotificationStore.toggleDoNotDisturb() }
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (dnd) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
+                null,
+                tint = if (dnd) Color(0xFFF38BA8) else Color(0xFF89B4FA),
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (dnd) "DND ON" else "DND OFF",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (dnd) Color(0xFFF38BA8) else Color(0xFF9CA0B0),
+            )
+        }
+
+        // Bell position pill
+        Row(
+            Modifier
+                .background(Color(0xFF313244), RoundedCornerShape(12.dp))
+                .clickable {
+                    val newPos = if (bellPos == "top") "bottom" else "top"
+                    NotificationStore.setBellPosition(newPos)
+                }
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (bellPos == "bottom") Icons.Default.VerticalAlignTop else Icons.Default.VerticalAlignBottom,
+                null,
+                tint = Color(0xFF7F849C),
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (bellPos == "top") "Title Bar" else "Status Bar",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF9CA0B0),
+            )
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Downward chevron — opens Command Palette with notification commands
+        Icon(
+            Icons.Default.KeyboardArrowDown,
+            contentDescription = "More notification commands",
+            tint = Color(0xFF7F849C),
+            modifier = Modifier
+                .size(20.dp)
+                .clickable { onShowCommands() },
+        )
     }
 }
 
