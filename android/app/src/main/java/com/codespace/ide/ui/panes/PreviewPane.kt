@@ -5,6 +5,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.annotation.SuppressLint
 import android.webkit.SslErrorHandler
+import android.webkit.WebSettings
+import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.CookieManager
@@ -850,6 +852,17 @@ private fun BrowserPreview(
                 // (YouTube/Google login requires third-party cookies)
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                // P35-BROWSER: Full browser-grade WebView — YouTube, Google login, etc.
+                // Multiple windows: YouTube/Google OAuth opens new windows for login
+                settings.setSupportMultipleWindows(true)
+                settings.javaScriptCanOpenWindowsAutomatically = true
+                // Mixed content: allow HTTP resources in HTTPS pages (some embeds need this)
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                // Database + cache: some SPAs need WebSQL/IndexedDB
+                settings.databaseEnabled = true
+                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                // Hardware acceleration for smooth video rendering
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 // P32-BROWSER: Desktop user-agent — makes sites render in laptop/desktop
                 // layout instead of mobile layout. Identical to Chrome on a laptop.
                 settings.userAgentString =
@@ -888,6 +901,55 @@ private fun BrowserPreview(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
                     ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
+
+                    // P35-BROWSER: Handle window creation (YouTube/Google login popups)
+                    // Without this, JS window.open() silently fails and login shows nothing
+                    override fun onCreateWindow(
+                        view: WebView?, isDialog: Boolean, isUserGesture: Boolean,
+                        resultMsg: android.os.Message?,
+                    ): Boolean {
+                        if (view == null || resultMsg == null) return false
+                        // Create a new WebView for the popup window
+                        val newWebView = WebView(view.context)
+                        newWebView.settings.javaScriptEnabled = true
+                        newWebView.settings.domStorageEnabled = true
+                        newWebView.webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(popupView: WebView?, url: String?) {
+                                // Redirect popup content back to the main WebView
+                                if (url != null) { view.loadUrl(url) }
+                            }
+                        }
+                        val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
+                        transport?.webView = newWebView
+                        resultMsg.sendToTarget()
+                        return true
+                    }
+
+                    // P35-BROWSER: JavaScript dialogs — many sites use alert/confirm
+                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
+                        result?.confirm()
+                        return true
+                    }
+                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
+                        result?.confirm()
+                        return true
+                    }
+                    override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: android.webkit.JsPromptResult?): Boolean {
+                        result?.confirm(defaultValue ?: "")
+                        return true
+                    }
+
+                    // P35-BROWSER: Fullscreen video playback (YouTube fullscreen button)
+                    override fun onShowCustomView(view: View?, callback: WebChromeClient.CustomViewCallback?) {
+                        // Forward to the host activity if available — for now, keep inline
+                        callback?.onCustomViewHidden()
+                    }
+                    override fun onHideCustomView() {}
+
+                    // P35-BROWSER: Permission requests (camera, mic, geolocation)
+                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
+                        request?.grant(request.resources)
+                    }
                 }
                 onWebView(this)
             }
@@ -970,6 +1032,15 @@ private fun RemotionPreview(
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
+                // P35-BROWSER: Full browser-grade settings (same as BrowserPreview)
+                settings.setSupportMultipleWindows(true)
+                settings.javaScriptCanOpenWindowsAutomatically = true
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                settings.databaseEnabled = true
+                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 // P32-BROWSER: Desktop UA — Remotion Studio renders its full desktop layout
                 settings.userAgentString =
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -1009,6 +1080,23 @@ private fun RemotionPreview(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
                     ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
+                    // P35-BROWSER: Window creation + JS dialogs + permissions
+                    override fun onCreateWindow(
+                        view: WebView?, isDialog: Boolean, isUserGesture: Boolean,
+                        resultMsg: android.os.Message?,
+                    ): Boolean {
+                        if (view == null || resultMsg == null) return false
+                        val newWebView = WebView(view.context)
+                        newWebView.settings.javaScriptEnabled = true
+                        newWebView.settings.domStorageEnabled = true
+                        val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
+                        transport?.webView = newWebView
+                        resultMsg.sendToTarget()
+                        return true
+                    }
+                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
+                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
+                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) { request?.grant(request.resources) }
                 }
                 onWebView(this)
             }
