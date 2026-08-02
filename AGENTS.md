@@ -6012,6 +6012,33 @@ The app is now fully local-first. No Railway, no PostgreSQL, no Redis needed. If
 - **Fix:** Track actual result source per feature. Show a small badge ("LSP" teal / "Fallback" orange) in: Go to Definition results, Peek Definition preview, Find References list, Rename confirmation, Format Document result.
 - **Based on:** Actual runtime behavior (did the LSP request succeed and return data), not static "is server running".
 
+### Part 3 Audit: LSP/Fallback Badge Accuracy (commit 66e6d215)
+- **Status:** ✅ COMPLETE
+
+**Question 1: Do badges track actual request outcome or just server status?**
+
+| Feature | Before fix | After fix |
+|---------|-----------|-----------|
+| Peek Definition | ✅ Already correct — `peekUsedLsp` only true after LSP returns valid result | ✅ No change needed |
+| Go to Definition | ✅ Always "Fallback" (never tries LSP) | ✅ No change needed |
+| Find References | ❌ Set `true` BEFORE async call — showed "LSP" even on error | ✅ Now set AFTER callback — `true` only if LSP returned non-empty results |
+| Rename Symbol (dialog badge) | ❌ Used `isServerRunning()` — static server check | ✅ Clarified to "Will try LSP rename (may fall back)" — explicitly predictive |
+| Rename Symbol (result) | ⚠️ `renameUsedLsp` tracked but never displayed | ✅ Now shows [LSP] or [regex] in result notification |
+| Go to Type Definition | ⚠️ Badge never applied (patch silently failed) | ✅ "LSP" badge now shown |
+| Find Implementations | ⚠️ Badge never applied (patch silently failed) | ✅ "LSP" badge now shown |
+| Outline panel | ✅ Already correct — `usedLsp` only true after non-empty LSP result | ✅ No change needed |
+| Format LSP button | ⚠️ Static "LSP" label when server running | ⚠️ Remains static (low priority — formatting either works or silently no-ops) |
+
+**Question 2: Does OutlinePanel share data with EditorPane?**
+
+Before: ❌ Independent `textDocument/documentSymbol` request — two competing calls for same file.
+After: ✅ Shared via `DocumentSymbolCache` singleton (5s TTL, mutex-protected).
+- EditorPane writes to cache after fetching from LSP
+- OutlinePanel reads from cache first, only fetches on cache miss
+- Eliminates duplicate LSP requests
+- Both panels show same data for same file
+
+
 ### Part 4: Full audit of every long-press menu item and toolbar button
 - **Status:** PENDING
 - **Problem:** Need definitive confirmation of what actually works right now, with real evidence.
