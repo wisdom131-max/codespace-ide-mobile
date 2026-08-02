@@ -46,9 +46,23 @@ jobs:
         working-directory: android
         run: ./gradlew assembleProdDebug --stacktrace --no-build-cache
 
-      - name: Upload APK artifact
+      - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4
         with:
-          name: codespace-ide-apk
-          path: android/app/build/outputs/apk/**/*.apk
+          name: codespace-ide-arm64-v8a
+          path: android/app/build/outputs/apk/**/app-prod-arm64-v8a-debug.apk
           if-no-files-found: error
+
+      - name: Upload armeabi-v7a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: codespace-ide-armeabi-v7a
+          path: android/app/build/outputs/apk/**/app-prod-armeabi-v7a-debug.apk
+          if-no-files-found: warn
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: codespace-ide-x86_64
+          path: android/app/build/outputs/apk/**/app-prod-x86_64-debug.apk
+          if-no-files-found: warn
