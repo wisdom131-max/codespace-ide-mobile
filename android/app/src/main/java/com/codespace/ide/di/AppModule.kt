@@ -84,9 +84,9 @@ object AppModule {
                         refreshResp.close()
                     }
                 } catch (_: Exception) {
-                    // Refresh failed — clear tokens and let the 401 stand
-                    tokenStore.lastAccessToken = null
-                    tokenStore.refreshToken = null
+                    // Refresh failed — backend is offline. Do NOT clear tokens
+                    // (would log user out). Just let the 401 stand so the
+                    // specific API call fails gracefully without losing auth.
                 }
                 // If we get here, refresh failed — return a fresh 401
                 return@Interceptor chain.proceed(authedRequest)

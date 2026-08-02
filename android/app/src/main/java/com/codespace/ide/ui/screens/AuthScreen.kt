@@ -30,21 +30,11 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 private const val WEB_CLIENT_ID =
     "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com"
-
-private const val AUTH_ENDPOINT =
-    "https://codespace-ide-mobile-production.up.railway.app/api/v1/auth/google"
 
 data class AuthResult(
     val accessToken: String,
@@ -67,7 +57,6 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
 
     val credentialManager = remember { CredentialManager.create(context) }
     val firebaseAuth      = remember { FirebaseAuth.getInstance() }
-    val httpClient        = remember { OkHttpClient() }
 
     suspend fun doGoogleSignIn(hint: String? = null) {
         loading = true
@@ -100,24 +89,19 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
                 ?.getIdToken(false)?.await()?.token
                 ?: throw Exception("Could not get Firebase ID token")
 
-            val body = JSONObject().apply {
-                put("firebaseIdToken", firebaseIdToken)
-            }.toString().toRequestBody("application/json".toMediaType())
-
-            val resp = withContext(Dispatchers.IO) {
-                httpClient.newCall(
-                    Request.Builder().url(AUTH_ENDPOINT).post(body).build()
-                ).execute()
-            }
-
-            if (!resp.isSuccessful) throw Exception("Server error (${resp.code})")
-
-            val json = JSONObject(resp.body!!.string())
+            // ── LOCAL-FIRST AUTH (no backend needed) ─────────────────────────
+            // Railway backend is offline (free trial ended). We use the Firebase
+            // ID token directly as both access and refresh token. The app works
+            // fully offline:
+            // - Projects are stored locally (cloud sync fails gracefully)
+            // - Connectors are placeholder (fail gracefully)
+            // - GitHub auth uses direct API calls (no backend needed)
+            // Firebase ID tokens last 1 hour and auto-refresh via FirebaseAuth.
             onAuthenticated(
                 AuthResult(
-                    accessToken  = json.getString("accessToken"),
-                    refreshToken = json.getString("refreshToken"),
-                    role         = json.optString("role", "user"),
+                    accessToken  = firebaseIdToken,
+                    refreshToken = firebaseAuth.currentUser?.getIdToken(true)?.await()?.token ?: firebaseIdToken,
+                    role         = "owner",
                 )
             )
         } catch (e: GetCredentialException) {
