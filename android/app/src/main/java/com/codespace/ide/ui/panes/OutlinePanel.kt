@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspManager
+import com.codespace.ide.lsp.DocumentSymbolCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -55,6 +56,15 @@ fun OutlinePanel(
         loading = true
         val lang = Language.fromPath(filePath)
         if (LspManager.isServerRunning(lang) && filePath.startsWith("/")) {
+            // P37-3fix: Check shared cache first (EditorPane may have already fetched)
+            val cached = DocumentSymbolCache.get(filePath)
+            if (cached != null && cached.length() > 0) {
+                symbols = parseDocumentSymbols(cached)
+                usedLsp = true
+                loading = false
+                return@LaunchedEffect
+            }
+            // Cache miss — fetch independently
             val uri = LspManager.fileUriFromHostPath(context, filePath)
             if (uri != null) {
                 val result = withContext(Dispatchers.IO) {
@@ -66,6 +76,8 @@ fun OutlinePanel(
                 if (result != null && result.length() > 0) {
                     symbols = parseDocumentSymbols(result)
                     usedLsp = true
+                    // Write to cache for any future OutlinePanel opens
+                    DocumentSymbolCache.put(filePath, result)
                     loading = false
                     return@LaunchedEffect
                 }

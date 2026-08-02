@@ -40,6 +40,7 @@ import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.lsp.LspManager
+import com.codespace.ide.lsp.DocumentSymbolCache
 import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
@@ -864,6 +865,8 @@ fun EditorPane(
                         LspManager.getDocumentSymbol(active.language, uri)
                     }
                     lspDocumentSymbols = symbols
+                    // P37-3fix: Share with OutlinePanel via cache to avoid duplicate request
+                    DocumentSymbolCache.put(active.path, symbols)
                 }
             } else {
                 lspDocumentSymbols = null

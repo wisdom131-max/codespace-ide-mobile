@@ -1655,6 +1655,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 ) {
                                     Text("T", color = Color(0xFFC586C0), fontSize = 14.sp)
                                     Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    Spacer(Modifier.width(4.dp))
+                                    Box(
+                                        Modifier.background(Color(0xFF4EC9B0))
+                                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                                    ) {
+                                        Text("LSP", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1674,6 +1681,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 ) {
                                     Text("I", color = Color(0xFF4EC9B0), fontSize = 14.sp)
                                     Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    Spacer(Modifier.width(4.dp))
+                                    Box(
+                                        Modifier.background(Color(0xFF4EC9B0))
+                                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                                    ) {
+                                        Text("LSP", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1789,12 +1803,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     findRefWord = word
                                     findRefLoading = true
                                     findRefResults = emptyList()
-                                    findRefUsedLsp = true  // onFindReferences is only non-null when LSP is running
+                                    findRefUsedLsp = false  // will be set to true only if LSP actually returns results
                                     contextWord = null
                                     coroutineScope.launch(Dispatchers.IO) {
                                         val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList() }
                                         findRefResults = refs
                                         findRefLoading = false
+                                        // P37-3fix: badge reflects ACTUAL outcome — LSP is "used" if it returned results
+                                        // (onFindReferences is only non-null when LSP is running, so non-empty = LSP succeeded)
+                                        findRefUsedLsp = onFindReferences != null && refs.isNotEmpty()
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -2116,6 +2133,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         Text(
                             "$renameCount occurrence${if (renameCount != 1) "s" else ""} of '$wordToRename'" +
                             if (renameProjectWide && renameCrossFileCount > 0) " + $renameCrossFileCount in other files" else "",
+                            if (renameUsedLsp) " [LSP]" else " [regex]",
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                         )
@@ -2135,7 +2153,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 )
                             }
                             Text(
-                                if (lspActive) "Server will rename across workspace" else "Regex replace in current file only",
+                                if (lspActive) "Will try LSP rename (may fall back)" else "Regex replace in current file only",
                                 color = Color(0xFF888888),
                                 fontSize = 10.sp,
                             )
