@@ -5974,3 +5974,38 @@ Every AI agent working on this project MUST log every error found and fixed in t
 
 ### Zero Hosting Cost
 The app is now fully local-first. No Railway, no PostgreSQL, no Redis needed. If cloud sync is ever wanted again, easiest free options are Render.com (drop-in Railway replacement) or Firebase Firestore.
+
+---
+
+## Phase 37 — LSP Behavioral Audit & Fix Pass (2026-08-02)
+
+**Trigger:** User cannot tell from the UI whether features used real LSP or a fallback. Full code-level audit revealed Rename Symbol uses regex instead of LSP, Document Symbols has no visible panel, and no runtime "LSP vs Fallback" indicator exists anywhere.
+
+**Rule:** Implement one part at a time, stop for user confirmation between each. Do NOT batch all parts into one build. Update AGENTS.md after each part.
+
+### Part 1: Fix Rename Symbol to use LSP (with regex fallback only)
+- **Status:** IN PROGRESS
+- **Problem:** `CodeEditor.kt` rename button onClick does `Regex("\\b" + word + "\\b")` find-replace in `value.text`. `LspManager.rename()` and `prepareRename()` exist but are never called.
+- **Fix:** Wire rename button to call `LspManager.prepareRename()` → `LspManager.rename()` when server is running. Regex replace only when no LSP server active.
+- **Files:** `CodeEditor.kt`, `EditorPane.kt` (callback wiring), `LspManager.kt` (verify rename/prepareRename signatures)
+
+### Part 2: Build visible Outline/Document Symbols panel
+- **Status:** PENDING
+- **Problem:** `lspDocumentSymbols` (JSONArray) is fetched via `LspManager.getDocumentSymbol()` and passed to CodeEditor, but nowhere rendered.
+- **Fix:** Add an Outline tab (in Explorer sidebar or bottom panel) that renders the document symbols tree with tap-to-navigate.
+- **Files:** `ProjectShellScreen.kt` or `ExplorerPane.kt` (new tab), new `OutlinePanel.kt`
+
+### Part 3: Add visible "LSP vs Fallback" indicator everywhere
+- **Status:** PENDING
+- **Problem:** No runtime indication of whether a result came from LSP or a fallback path. User can't tell if features actually work.
+- **Fix:** Track actual result source per feature. Show a small badge ("LSP" teal / "Fallback" orange) in: Go to Definition results, Peek Definition preview, Find References list, Rename confirmation, Format Document result.
+- **Based on:** Actual runtime behavior (did the LSP request succeed and return data), not static "is server running".
+
+### Part 4: Full audit of every long-press menu item and toolbar button
+- **Status:** PENDING
+- **Problem:** Need definitive confirmation of what actually works right now, with real evidence.
+- **Fix:** Code-trace every LSP-related button to confirm wiring. Fix anything broken. Produce table: WORKING (LSP) / WORKING (FALLBACK ONLY) / BROKEN / NOW FIXED.
+
+### Part 5: Log to AGENTS.md phase by phase
+- **Status:** ONGOING
+- Each part committed separately. User tests and confirms between parts.
