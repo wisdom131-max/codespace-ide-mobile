@@ -5924,3 +5924,53 @@ Every AI agent working on this project MUST log every error found and fixed in t
 3. Never delete entries — they're institutional memory
 4. If you hit a bug that matches an existing entry, mark it as DUPLICATE and reference the original
 5. Include the file path and line number so the next agent can find the exact code
+
+---
+
+## Phase 36 — Local-First Auth + Proot SIGSEGV Fix (2026-08-02)
+
+### Phase 36-1: Build Failure — abiFilters Conflict — FIXED
+
+| Field | Value |
+|-------|-------|
+| Feature | Android build |
+| Symptom | Builds P2-8 through P2-10 fail with `abiFilters conflict` between `splits.abiFilters` and `ndk.abiFilters` in app/build.gradle |
+| Root Cause | Both `splits { abiFilters }` and `ndk { abiFilters }` were set — Gradle 8.x rejects this duplicate configuration |
+| Fix Commit | `8897a153` — removed ndk.abiFilters, splits.abiFilters controls ABI packaging |
+| Lesson | Never set both `splits.abiFilters` and `ndk.abiFilters` in the same build.gradle — they conflict. Use splits only. |
+
+### Phase 36-2: Login Broken — Railway Backend Offline — FIXED
+
+| Field | Value |
+|-------|-------|
+| Feature | Google Sign-In authentication |
+| Symptom | App shows "Server error" on login — Railway free trial ended, backend is dead |
+| Root Cause | AuthScreen.kt POSTed Firebase ID token to `https://codespace-ide-mobile-production.up.railway.app/api/v1/auth/google` — backend was a middleman exchanging Firebase tokens for JWT tokens. With Railway down, login is impossible. |
+| Fix Commit | `8897a153` — bypassed backend entirely, use Firebase ID token directly as accessToken/refreshToken, role="owner". Also disabled token-clearing in AppModule.kt's 401 refresh interceptor (was logging users out when dead backend couldn't refresh tokens). |
+| Lesson | Firebase ID tokens are valid for 1hr and auto-refresh via FirebaseAuth. The Railway backend was an unnecessary middleman — removing it makes auth work with zero hosting cost. App is now fully local-first: login (Firebase), projects (local storage), GitHub (direct API), terminal (local proot). Cloud sync and connectors fail gracefully (already handled). |
+
+### Phase 36-3: Terminal SIGSEGV (signal 11) — Broken proot binary — FIXED
+
+| Field | Value |
+|-------|-------|
+| Feature | Ubuntu proot terminal |
+| Symptom | Terminal shows `[Process completed (signal 11) - press Enter]` — proot crashes with SIGSEGV immediately on launch |
+| Root Cause | The scheduled `build-proot.yml` CI workflow (cron `0 0 1 * *`) ran on Aug 1 and rebuilt libproot.so from Termux git HEAD (382KB), replacing the proven-stable binary (239KB, synced from ubuntu-proot-bash-test in commit a455ba1f on Jul 3). The newly built proot SIGSEGVs on Samsung 5.15 kernel — the exact same crash class that was fixed on Jul 3 by removing PROOT_NO_SECCOMP=1 and using the test app's proven-stable binaries. |
+| Fix Commit | `b059db46` — reverted libproot.so and libtalloc.so to the a455ba1f versions (proven-stable, confirmed working on-device). Disabled the monthly cron schedule in build-proot.yml — manual dispatch only. |
+| Lesson | NEVER auto-rebuild proven-stable native binaries on a schedule. The monthly build-proot.yml workflow kept overwriting the working libproot.so with a freshly-compiled one that crashes. The CI-built proot uses a stub talloc and custom TLS patches that are incompatible with Samsung 5.15 kernel's seccomp/ptrace behavior. Only rebuild proot manually after on-device testing confirms the new binary works. |
+
+### What Still Works Without a Backend
+- ✅ Login (Firebase — free, no server needed)
+- ✅ Local projects (already worked)
+- ✅ GitHub (direct API calls via OAuth Device Flow — no backend)
+- ✅ Terminal (falls back to local proot — already handled)
+- ✅ Editor, LSP, everything else (all local)
+
+### What Doesn't Work (Degrades Gracefully)
+- Cloud project sync (shows "Offline — showing local projects")
+- Connectors hub (placeholder anyway)
+- Cloud backup (shows "backend offline" message)
+- Token refresh via backend (401s fail silently without clearing tokens)
+
+### Zero Hosting Cost
+The app is now fully local-first. No Railway, no PostgreSQL, no Redis needed. If cloud sync is ever wanted again, easiest free options are Render.com (drop-in Railway replacement) or Firebase Firestore.
