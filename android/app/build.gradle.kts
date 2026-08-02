@@ -37,9 +37,9 @@ android {
         buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
+        // abiFilters removed — splits abi block controls which ABIs are built
+        // Having both ndk abiFilters AND splits abi causes Gradle conflict:
+        // "Conflicting configuration: abiFilters cannot be present when splits abi filters are set"
         externalNativeBuild {
             cmake {
                 cppFlags += ""
@@ -239,3 +239,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
