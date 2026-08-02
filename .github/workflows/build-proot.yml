@@ -2,8 +2,10 @@ name: Build Static Proot
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 1 * *"
+  # schedule DISABLED — the monthly auto-rebuild kept replacing the proven-stable
+  # libproot.so (239KB, synced from ubuntu-proot-bash-test) with a freshly built
+  # one (382KB) that SIGSEGVs on Samsung 5.15 kernel. Only rebuild manually after
+  # device testing confirms the new binary works.
 
 concurrency:
   group: proot-build
