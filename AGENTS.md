@@ -5984,7 +5984,18 @@ The app is now fully local-first. No Railway, no PostgreSQL, no Redis needed. If
 **Rule:** Implement one part at a time, stop for user confirmation between each. Do NOT batch all parts into one build. Update AGENTS.md after each part.
 
 ### Part 1: Fix Rename Symbol to use LSP (with regex fallback only)
-- **Status:** IN PROGRESS
+- **Status:** ✅ COMPLETE — commit `0e0eee32`, pushed, CI triggered
+- **Problem:** `CodeEditor.kt` rename button onClick did `Regex("\b" + word + "\b")` find-replace in `value.text`. `LspManager.rename()` and `prepareRename()` existed but `onRenameSymbol` callback was declared as a parameter but **never called anywhere** — dead code.
+- **Fix:**
+  - Rename confirm button now checks `LspManager.isServerRunning(language)` first
+  - If LSP active: calls `prepareRename()` to validate position, then `rename()` to get workspace edit
+  - Parses both `documentChanges` (modern) and `changes` (legacy) formats
+  - Applies edits to current file inline (same reverse-order edit-applying logic as code actions)
+  - Writes cross-file edits to disk
+  - Calls `onRenameSymbol?.invoke()` after successful LSP rename
+  - Regex find-replace is now the explicit FALLBACK path — only runs when LSP not running, prepareRename returns null, or rename returns null
+  - Added "LSP" (teal) / "Fallback" (orange) badge in rename dialog subtitle showing which mode will be used
+  - Added `renameUsedLsp` state variable for runtime tracking
 - **Problem:** `CodeEditor.kt` rename button onClick does `Regex("\\b" + word + "\\b")` find-replace in `value.text`. `LspManager.rename()` and `prepareRename()` exist but are never called.
 - **Fix:** Wire rename button to call `LspManager.prepareRename()` → `LspManager.rename()` when server is running. Regex replace only when no LSP server active.
 - **Files:** `CodeEditor.kt`, `EditorPane.kt` (callback wiring), `LspManager.kt` (verify rename/prepareRename signatures)
