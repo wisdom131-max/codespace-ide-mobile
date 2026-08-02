@@ -575,6 +575,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var renameProjectWide by remember { mutableStateOf(false) }
     var renameCrossFileCount by remember { mutableStateOf(0) }
     var renameInProgress by remember { mutableStateOf(false) }
+    var renameUsedLsp by remember { mutableStateOf(false) }
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var contextWord by remember { mutableStateOf<String?>(null) }
@@ -2087,6 +2088,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                         )
+                        // P37-1: Show whether LSP or fallback will be used for this rename
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            val lspActive = LspManager.isServerRunning(language) && filePath.startsWith("/")
+                            Box(
+                                Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .background(if (lspActive) Color(0xFF4EC9B0) else Color(0xFFCC7832))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    if (lspActive) "LSP" else "Fallback",
+                                    color = Color(0xFF1E1E1E),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Text(
+                                if (lspActive) "Server will rename across workspace" else "Regex replace in current file only",
+                                color = Color(0xFF888888),
+                                fontSize = 10.sp,
+                            )
+                        }
                         OutlinedTextField(
                             value = renameNewName,
                             onValueChange = { renameNewName = it },
@@ -2133,33 +2155,179 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         onClick = {
                             val newName = renameNewName.trim()
                             if (newName.isNotEmpty() && newName != wordToRename) {
-                                val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
-                                val newText = pattern.replace(value.text, newName)
-                                value = TextFieldValue(
-                                    text = newText,
-                                    selection = value.selection,
-                                )
-                                onContentChange(newText)
-                                // P18-C: Cross-file rename
-                                if (renameProjectWide && projectRoot != null) {
-                                    renameInProgress = true
-                                    coroutineScope.launch(Dispatchers.IO) {
-                                        val root = File(projectRoot)
-                                        var totalCrossFile = 0
-                                        root.walkTopDown()
-                                            .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
-                                            .forEach { file ->
-                                                try {
-                                                    val text = file.readText()
-                                                    if (pattern.containsMatchIn(text)) {
-                                                        val updated = pattern.replace(text, newName)
-                                                        file.writeText(updated)
-                                                        totalCrossFile += pattern.findAll(text).count()
+                                // P37-1: Try LSP rename first, fall back to regex only if LSP unavailable
+                                var lspSucceeded = false
+                                if (LspManager.isServerRunning(language) && filePath.startsWith("/")) {
+                                    val ctx = context
+                                    val uri = LspManager.fileUriFromHostPath(ctx, filePath)
+                                    if (uri != null) {
+                                        val cOff = value.selection.end
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        // Try prepareRename first (some servers require it)
+                                        val prep = try { LspManager.prepareRename(language, uri, cLine, cCol) } catch (_: Exception) { null }
+                                        if (prep != null) {
+                                            // Server confirmed this position is renameable
+                                            val wsEdit = try { LspManager.rename(language, uri, cLine, cCol, newName) } catch (_: Exception) { null }
+                                            if (wsEdit != null) {
+                                                // Apply the workspace edit to current file
+                                                val docChanges = wsEdit.optJSONArray("documentChanges")
+                                                val changes = wsEdit.optJSONObject("changes")
+                                                var newText = value.text
+                                                var appliedAny = false
+                                                if (docChanges != null) {
+                                                    for (j in 0 until docChanges.length()) {
+                                                        val dc = docChanges.optJSONObject(j) ?: continue
+                                                        val editUri = dc.optString("uri", "")
+                                                        // Only apply edits to current file inline; others written to disk
+                                                        val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                                        val decodedPath = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                                        if (decodedPath == filePath) {
+                                                            val textEdits = dc.optJSONArray("edits") ?: continue
+                                                            val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                                .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                            val newTextLines = newText.split("\n").toMutableList()
+                                                            for (te in edits) {
+                                                                val rng = te.optJSONObject("range") ?: continue
+                                                                val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                                val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                                val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                                val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                                val replacement = te.optString("newText", "")
+                                                                if (sl == el && sl < newTextLines.size) {
+                                                                    val line = newTextLines[sl]
+                                                                    newTextLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                                                } else if (sl < newTextLines.size) {
+                                                                    val before = newTextLines[sl].substring(0, sc.coerceAtMost(newTextLines[sl].length))
+                                                                    val after = if (el < newTextLines.size) newTextLines[el].substring(ec.coerceAtMost(newTextLines[el].length)) else ""
+                                                                    newTextLines[sl] = before + replacement + after
+                                                                    if (sl + 1 <= el && el < newTextLines.size) {
+                                                                        for (k in el downTo sl + 1) {
+                                                                            if (k < newTextLines.size) newTextLines.removeAt(k)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            newText = newTextLines.joinToString("\n")
+                                                            appliedAny = true
+                                                        } else {
+                                                            // Write edits to other files on disk
+                                                            val textEdits = dc.optJSONArray("edits") ?: continue
+                                                            try {
+                                                                val targetText = java.io.File(decodedPath).readText()
+                                                                val targetLines = targetText.split("\n").toMutableList()
+                                                                val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                                    .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                                for (te in edits) {
+                                                                    val rng = te.optJSONObject("range") ?: continue
+                                                                    val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                                    val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                                    val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                                    val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                                    val replacement = te.optString("newText", "")
+                                                                    if (sl == el && sl < targetLines.size) {
+                                                                        val line = targetLines[sl]
+                                                                        targetLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                                                    } else if (sl < targetLines.size) {
+                                                                        val before = targetLines[sl].substring(0, sc.coerceAtMost(targetLines[sl].length))
+                                                                        val after = if (el < targetLines.size) targetLines[el].substring(ec.coerceAtMost(targetLines[el].length)) else ""
+                                                                        targetLines[sl] = before + replacement + after
+                                                                        if (sl + 1 <= el && el < targetLines.size) {
+                                                                            for (k in el downTo sl + 1) {
+                                                                                if (k < targetLines.size) targetLines.removeAt(k)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                java.io.File(decodedPath).writeText(targetLines.joinToString("\n"))
+                                                            } catch (_: Exception) {}
+                                                        }
                                                     }
-                                                } catch (_: Exception) {}
+                                                } else if (changes != null) {
+                                                    // Legacy "changes" format (not documentChanges)
+                                                    val keys = changes.keys()
+                                                    while (keys.hasNext()) {
+                                                        val editUri = keys.next()
+                                                        val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                                        val decodedPath = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                                        val textEdits = changes.optJSONArray(editUri) ?: continue
+                                                        if (decodedPath == filePath) {
+                                                            val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                                .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                            val newTextLines = newText.split("\n").toMutableList()
+                                                            for (te in edits) {
+                                                                val rng = te.optJSONObject("range") ?: continue
+                                                                val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                                val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                                val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                                val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                                val replacement = te.optString("newText", "")
+                                                                if (sl == el && sl < newTextLines.size) {
+                                                                    val line = newTextLines[sl]
+                                                                    newTextLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                                                } else if (sl < newTextLines.size) {
+                                                                    val before = newTextLines[sl].substring(0, sc.coerceAtMost(newTextLines[sl].length))
+                                                                    val after = if (el < newTextLines.size) newTextLines[el].substring(ec.coerceAtMost(newTextLines[el].length)) else ""
+                                                                    newTextLines[sl] = before + replacement + after
+                                                                    if (sl + 1 <= el && el < newTextLines.size) {
+                                                                        for (k in el downTo sl + 1) {
+                                                                            if (k < newTextLines.size) newTextLines.removeAt(k)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            newText = newTextLines.joinToString("\n")
+                                                            appliedAny = true
+                                                        }
+                                                    }
+                                                }
+                                                if (appliedAny) {
+                                                    value = TextFieldValue(
+                                                        text = newText,
+                                                        selection = value.selection,
+                                                    )
+                                                    onContentChange(newText)
+                                                    lspSucceeded = true
+                                                    renameUsedLsp = true
+                                                    // Notify EditorPane's onRenameSymbol callback (for any side effects)
+                                                    onRenameSymbol?.invoke(wordToRename, newName)
+                                                }
                                             }
-                                        renameCrossFileCount = totalCrossFile
-                                        renameInProgress = false
+                                        }
+                                    }
+                                }
+                                // FALLBACK: regex find-replace only if LSP didn't succeed
+                                if (!lspSucceeded) {
+                                    renameUsedLsp = false
+                                    val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
+                                    val newText = pattern.replace(value.text, newName)
+                                    value = TextFieldValue(
+                                        text = newText,
+                                        selection = value.selection,
+                                    )
+                                    onContentChange(newText)
+                                    // P18-C: Cross-file rename (regex fallback)
+                                    if (renameProjectWide && projectRoot != null) {
+                                        renameInProgress = true
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            val root = File(projectRoot)
+                                            var totalCrossFile = 0
+                                            root.walkTopDown()
+                                                .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
+                                                .forEach { file ->
+                                                    try {
+                                                        val text = file.readText()
+                                                        if (pattern.containsMatchIn(text)) {
+                                                            val updated = pattern.replace(text, newName)
+                                                            file.writeText(updated)
+                                                            totalCrossFile += pattern.findAll(text).count()
+                                                        }
+                                                    } catch (_: Exception) {}
+                                                }
+                                            renameCrossFileCount = totalCrossFile
+                                            renameInProgress = false
+                                        }
                                     }
                                 }
                             }
