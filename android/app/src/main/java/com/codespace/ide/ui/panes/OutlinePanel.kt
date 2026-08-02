@@ -2,17 +2,15 @@ package com.codespace.ide.ui.panes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,471 +20,304 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.Language
-import androidx.compose.material.icons.automirrored.filled.*
-
-/** A parsed symbol from the current file */
-data class CodeSymbol(
-    val name: String,
-    val kind: SymbolKind,
-    val line: Int,          // 1-based line number
-    val indent: Int = 0,   // nesting depth for tree indentation
-)
-
-enum class SymbolKind { CLASS, FUNCTION, VARIABLE, INTERFACE, PROPERTY, ENUM, MODULE, CONSTANT }
+import com.codespace.ide.lsp.LspManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
- * Parse symbols from source text. Lightweight regex-based — no AST, runs on device.
- * Covers Kotlin, Java, Python, JS/TS, C/C++, Go, Rust, PHP.
- */
-object SymbolParser {
-    fun parse(text: String, language: Language): List<CodeSymbol> {
-        val lines = text.lines()
-        val symbols = mutableListOf<CodeSymbol>()
-
-        // Precompiled patterns
-        val pyClass = Regex("""^\s*class\s+([a-zA-Z0-9_]+)""")
-        val pyDef = Regex("""^\s*def\s+([a-zA-Z0-9_]+)\s*\(""")
-
-        val ktJavaClass = Regex("""\b(?:class|object)\s+([a-zA-Z0-9_]+)""")
-        val ktJavaInterface = Regex("""\binterface\s+([a-zA-Z0-9_]+)""")
-        val ktJavaEnum = Regex("""\benum\s+class\s+([a-zA-Z0-9_]+)""")
-        val ktFun = Regex("""\bfun\s+([a-zA-Z0-9_]+)\s*\(""")
-        val javaMethod = Regex("""\b(?:public|protected|private|static|\s)+\s+[\w<>]+\s+([a-zA-Z0-9_]+)\s*\([^)]*\)\s*(?:throws\s+[\w.,\s]+)?\s*\{""")
-        val ktValVar = Regex("""\b(?:val|var|const\s+val)\s+([a-zA-Z0-9_]+)""")
-
-        val jsTsClass = Regex("""\bclass\s+([a-zA-Z0-9_]+)""")
-        val jsTsInterface = Regex("""\b(?:interface|type)\s+([a-zA-Z0-9_]+)""")
-        val jsTsEnum = Regex("""\benum\s+([a-zA-Z0-9_]+)""")
-        val jsTsFunc = Regex("""\bfunction\s+([a-zA-Z0-9_]+)\s*\(""")
-        val jsTsVar = Regex("""\b(?:const|let|var)\s+([a-zA-Z0-9_]+)\b""")
-
-        val goFunc = Regex("""\bfunc\s+([a-zA-Z0-9_]+)\s*\(""")
-        val goFuncMethod = Regex("""\bfunc\s*\([^)]+\)\s*([a-zA-Z0-9_]+)\s*\(""")
-        val goStruct = Regex("""\btype\s+([a-zA-Z0-9_]+)\s+struct\b""")
-        val goInterface = Regex("""\btype\s+([a-zA-Z0-9_]+)\s+interface\b""")
-
-        val rustFn = Regex("""\bfn\s+([a-zA-Z0-9_]+)\s*\(""")
-        val rustStruct = Regex("""\bstruct\s+([a-zA-Z0-9_]+)""")
-        val rustImpl = Regex("""\bimpl(?:\s+<[^>]+>)?\s+([a-zA-Z0-9_]+)""")
-        val rustTrait = Regex("""\btrait\s+([a-zA-Z0-9_]+)""")
-        val rustEnum = Regex("""\benum\s+([a-zA-Z0-9_]+)""")
-
-        val cppMethod = Regex("""^\s*(?:[a-zA-Z0-9_<>]+\s+)+([a-zA-Z0-9_]+)\s*\([^)]*\)\s*(?:const)?\s*\{?""")
-
-        val phpFunc = Regex("""\bfunction\s+([a-zA-Z0-9_]+)\s*\(""")
-        val phpClass = Regex("""\bclass\s+([a-zA-Z0-9_]+)""")
-
-        lines.forEachIndexed { index, line ->
-            val lineNumber = index + 1
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*") || trimmed.startsWith("#")) {
-                return@forEachIndexed
-            }
-
-            // Estimate nesting indent by counting leading spaces / 4
-            val leadingSpaces = line.takeWhile { it == ' ' }.length
-            val indent = leadingSpaces / 4
-
-            when (language) {
-                Language.PYTHON -> {
-                    val classMatch = pyClass.find(line)
-                    if (classMatch != null) {
-                        symbols.add(CodeSymbol(classMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                    } else {
-                        val defMatch = pyDef.find(line)
-                        if (defMatch != null) {
-                            symbols.add(CodeSymbol(defMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                        }
-                    }
-                }
-                Language.KOTLIN, Language.JAVA -> {
-                    val enumMatch = ktJavaEnum.find(line)
-                    if (enumMatch != null) {
-                        symbols.add(CodeSymbol(enumMatch.groupValues[1], SymbolKind.ENUM, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val interfaceMatch = ktJavaInterface.find(line)
-                    if (interfaceMatch != null) {
-                        symbols.add(CodeSymbol(interfaceMatch.groupValues[1], SymbolKind.INTERFACE, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val classMatch = ktJavaClass.find(line)
-                    if (classMatch != null) {
-                        symbols.add(CodeSymbol(classMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val funMatch = ktFun.find(line)
-                    if (funMatch != null) {
-                        symbols.add(CodeSymbol(funMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    if (language == Language.JAVA) {
-                        val javaMatch = javaMethod.find(line)
-                        if (javaMatch != null) {
-                            symbols.add(CodeSymbol(javaMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                            return@forEachIndexed
-                        }
-                    }
-                    val valVarMatch = ktValVar.find(line)
-                    if (valVarMatch != null) {
-                        symbols.add(CodeSymbol(valVarMatch.groupValues[1], SymbolKind.VARIABLE, lineNumber, indent))
-                    }
-                }
-                Language.TYPESCRIPT, Language.JAVASCRIPT -> {
-                    val classMatch = jsTsClass.find(line)
-                    if (classMatch != null) {
-                        symbols.add(CodeSymbol(classMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val interfaceMatch = jsTsInterface.find(line)
-                    if (interfaceMatch != null) {
-                        symbols.add(CodeSymbol(interfaceMatch.groupValues[1], SymbolKind.INTERFACE, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val enumMatch = jsTsEnum.find(line)
-                    if (enumMatch != null) {
-                        symbols.add(CodeSymbol(enumMatch.groupValues[1], SymbolKind.ENUM, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val funcMatch = jsTsFunc.find(line)
-                    if (funcMatch != null) {
-                        symbols.add(CodeSymbol(funcMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val varMatch = jsTsVar.find(line)
-                    if (varMatch != null) {
-                        symbols.add(CodeSymbol(varMatch.groupValues[1], SymbolKind.VARIABLE, lineNumber, indent))
-                    }
-                }
-                Language.GO -> {
-                    val structMatch = goStruct.find(line)
-                    if (structMatch != null) {
-                        symbols.add(CodeSymbol(structMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val interfaceMatch = goInterface.find(line)
-                    if (interfaceMatch != null) {
-                        symbols.add(CodeSymbol(interfaceMatch.groupValues[1], SymbolKind.INTERFACE, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val funcMatch = goFunc.find(line)
-                    if (funcMatch != null) {
-                        symbols.add(CodeSymbol(funcMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val methodMatch = goFuncMethod.find(line)
-                    if (methodMatch != null) {
-                        symbols.add(CodeSymbol(methodMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                    }
-                }
-                Language.RUST -> {
-                    val structMatch = rustStruct.find(line)
-                    if (structMatch != null) {
-                        symbols.add(CodeSymbol(structMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val traitMatch = rustTrait.find(line)
-                    if (traitMatch != null) {
-                        symbols.add(CodeSymbol(traitMatch.groupValues[1], SymbolKind.INTERFACE, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val implMatch = rustImpl.find(line)
-                    if (implMatch != null) {
-                        symbols.add(CodeSymbol(implMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val enumMatch = rustEnum.find(line)
-                    if (enumMatch != null) {
-                        symbols.add(CodeSymbol(enumMatch.groupValues[1], SymbolKind.ENUM, lineNumber, indent))
-                        return@forEachIndexed
-                    }
-                    val fnMatch = rustFn.find(line)
-                    if (fnMatch != null) {
-                        symbols.add(CodeSymbol(fnMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                    }
-                }
-                Language.C, Language.CPP -> {
-                    val match = cppMethod.find(line)
-                    if (match != null) {
-                        val name = match.groupValues[1]
-                        if (name !in listOf("if", "for", "while", "switch", "return")) {
-                            symbols.add(CodeSymbol(name, SymbolKind.FUNCTION, lineNumber, indent))
-                        }
-                    }
-                }
-                Language.PHP -> {
-                    val classMatch = phpClass.find(line)
-                    if (classMatch != null) {
-                        symbols.add(CodeSymbol(classMatch.groupValues[1], SymbolKind.CLASS, lineNumber, indent))
-                    } else {
-                        val funcMatch = phpFunc.find(line)
-                        if (funcMatch != null) {
-                            symbols.add(CodeSymbol(funcMatch.groupValues[1], SymbolKind.FUNCTION, lineNumber, indent))
-                        }
-                    }
-                }
-                else -> { /* No-op for HTML, CSS, JSON, Markdown, XML, Plaintext */ }
-            }
-        }
-        return symbols
-    }
-}
-
-
-/**
- * Parse LSP DocumentSymbol JSONArray into CodeSymbol list.
- * LSP symbols have hierarchical children — we flatten them with indent.
- * More accurate than regex-based SymbolParser when LSP server is running.
- */
-object LspSymbolParser {
-    fun parse(symbols: org.json.JSONArray, indent: Int = 0): List<CodeSymbol> {
-        val result = mutableListOf<CodeSymbol>()
-        for (i in 0 until symbols.length()) {
-            val sym = symbols.optJSONObject(i) ?: continue
-            val name = sym.optString("name", "")
-            if (name.isBlank()) continue
-            val kind = sym.optInt("kind", 13)
-            val selectionRange = sym.optJSONObject("selectionRange") ?: sym.optJSONObject("range")
-            val line = (selectionRange?.optJSONObject("start")?.optInt("line", 0) ?: 0) + 1 // LSP is 0-based, CodeSymbol is 1-based
-            val symbolKind = when (kind) {
-                5 -> SymbolKind.CLASS
-                6, 9 -> SymbolKind.FUNCTION  // Method, Constructor
-                7, 8 -> SymbolKind.PROPERTY   // Property, Field
-                10 -> SymbolKind.ENUM
-                11 -> SymbolKind.INTERFACE
-                12 -> SymbolKind.FUNCTION
-                13 -> SymbolKind.VARIABLE
-                14 -> SymbolKind.CONSTANT
-                2, 3, 4 -> SymbolKind.MODULE
-                23 -> SymbolKind.CLASS  // Struct -> Class
-                22 -> SymbolKind.PROPERTY  // EnumMember -> Property
-                else -> SymbolKind.VARIABLE
-            }
-            result.add(CodeSymbol(name, symbolKind, line, indent))
-            // Recursively parse children
-            val children = sym.optJSONArray("children")
-            if (children != null && children.length() > 0) {
-                result.addAll(parse(children, indent + 1))
-            }
-        }
-        return result
-    }
-}
-
-/**
- * Outline panel composable — shows symbol tree, tapping a symbol calls onJumpToLine.
- * Also exports a BreadcrumbBar composable for the top of the editor.
+ * P37-2: Outline panel — renders LSP document symbols as a tree.
+ * Shows classes, functions, methods, etc. from the active file's LSP server.
+ * Tap-to-navigate jumps the editor to that symbol's line.
+ * Falls back to a basic regex-based symbol scan when no LSP server is running.
  */
 @Composable
 fun OutlinePanel(
-    text: String,
-    language: Language,
-    currentLine: Int = 1,
-    onJumpToLine: (Int) -> Unit,
+    filePath: String,
+    onNavigate: (line: Int) -> Unit,
     modifier: Modifier = Modifier,
-    lspSymbols: org.json.JSONArray? = null,
 ) {
-    // P26-1: Use LSP document symbols when available (more accurate), fall back to regex parser
-    val symbols = remember(text, language, lspSymbols) {
-        if (lspSymbols != null && lspSymbols.length() > 0) {
-            LspSymbolParser.parse(lspSymbols)
-        } else {
-            SymbolParser.parse(text, language)
+    var symbols by remember { mutableStateOf<List<OutlineSymbol>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var usedLsp by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(setOf<String>()) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Fetch document symbols whenever the file path changes
+    LaunchedEffect(filePath) {
+        if (filePath.isBlank()) {
+            symbols = emptyList()
+            return@LaunchedEffect
         }
+        loading = true
+        val lang = Language.fromPath(filePath)
+        if (LspManager.isServerRunning(lang) && filePath.startsWith("/")) {
+            val uri = LspManager.fileUriFromHostPath(context, filePath)
+            if (uri != null) {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        delay(300) // small debounce
+                        LspManager.getDocumentSymbol(lang, uri)
+                    } catch (_: Exception) { null }
+                }
+                if (result != null && result.length() > 0) {
+                    symbols = parseDocumentSymbols(result)
+                    usedLsp = true
+                    loading = false
+                    return@LaunchedEffect
+                }
+            }
+        }
+        // Fallback: regex-based symbol extraction
+        val fallback = withContext(Dispatchers.IO) {
+            try {
+                extractSymbolsFromText(java.io.File(filePath).readText(), lang)
+            } catch (_: Exception) { emptyList() }
+        }
+        symbols = fallback
+        usedLsp = false
+        loading = false
     }
 
-    // Find the active symbol closest to currentLine (the last symbol starting at or before currentLine)
-    val activeSymbol = remember(symbols, currentLine) {
-        symbols.filter { it.line <= currentLine }.maxByOrNull { it.line }
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFF1E1E1E))
-    ) {
+    Column(modifier = modifier.fillMaxSize()) {
         // Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+        Row(
+            Modifier.fillMaxWidth()
+                .background(Color(0xFFF3F3F3))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "OUTLINE",
-                color = Color(0xFFCCCCCC),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-
-        if (symbols.isEmpty()) {
+            Text("OUTLINE", fontSize = 11.sp, color = Color(0xFF6B6B6B), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            // LSP/Fallback badge
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
+                Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    .background(if (usedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832), RoundedCornerShape(2.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
             ) {
                 Text(
-                    text = "No symbols found",
-                    color = Color(0xFF858585),
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace
+                    if (usedLsp) "LSP" else "Fallback",
+                    color = Color(0xFF1E1E1E),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
+        }
+        HorizontalDivider(color = Color(0xFFE0E0E0), thickness = 0.5.dp)
+
+        if (loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF007ACC))
+            }
+        } else if (filePath.isBlank()) {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                Text("Open a file to see its outline.", fontSize = 12.sp, color = Color(0xFF9E9E9E))
+            }
+        } else if (symbols.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                Text("No symbols found in ${filePath.substringAfterLast('/')}.", fontSize = 12.sp, color = Color(0xFF9E9E9E))
+            }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(symbols) { symbol ->
-                    val isSelected = symbol == activeSymbol
-                    val backgroundColor = if (isSelected) Color(0xFF2A2D2E) else Color.Transparent
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(backgroundColor)
-                            .clickable { onJumpToLine(symbol.line) }
-                            .padding(vertical = 6.dp, horizontal = 16.dp)
-                            .padding(start = (symbol.indent * 12).dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val icon = when (symbol.kind) {
-                            SymbolKind.CLASS -> Icons.Default.AccountTree
-                            SymbolKind.FUNCTION -> Icons.Default.Functions
-                            SymbolKind.VARIABLE -> Icons.Default.Code
-                            SymbolKind.INTERFACE -> Icons.Default.Hub
-                            SymbolKind.PROPERTY -> Icons.Default.Build
-                            SymbolKind.ENUM -> Icons.AutoMirrored.Filled.List
-                            SymbolKind.MODULE -> Icons.Default.ViewModule
-                            SymbolKind.CONSTANT -> Icons.Default.Lock
-                        }
-
-                        val iconColor = when (symbol.kind) {
-                            SymbolKind.CLASS -> Color(0xFF3584E4)       // Blue
-                            SymbolKind.FUNCTION -> Color(0xFFE5A50A)    // Yellow
-                            SymbolKind.VARIABLE -> Color(0xFF26A269)    // Green
-                            SymbolKind.INTERFACE -> Color(0xFF12A5C9)   // Cyan-blue
-                            else -> Color(0xFF858585)
-                        }
-
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = symbol.kind.name,
-                            tint = iconColor,
-                            modifier = Modifier.size(16.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Text(
-                            text = symbol.name,
-                            color = if (isSelected) Color.White else Color(0xFFCCCCCC),
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(symbols) { sym ->
+                    SymbolRow(sym, expanded, onExpand = { key ->
+                        expanded = if (key in expanded) expanded - key else expanded + key
+                    }, onNavigate = { onNavigate(sym.line) })
                 }
             }
         }
     }
 }
 
-@Composable  
-fun BreadcrumbBar(
-    text: String,
-    language: Language,
-    currentLine: Int,
-    filePath: String,
-    onJumpToLine: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-    lspSymbols: org.json.JSONArray? = null,
-) {
-    // P26-1: Use LSP symbols when available for breadcrumbs too
-    val symbols = remember(text, language, lspSymbols) {
-        if (lspSymbols != null && lspSymbols.length() > 0) {
-            LspSymbolParser.parse(lspSymbols)
-        } else {
-            SymbolParser.parse(text, language)
-        }
-    }
+data class OutlineSymbol(
+    val name: String,
+    val kind: String,
+    val line: Int,        // 0-based
+    val children: List<OutlineSymbol>,
+)
 
-    // Parse filename from path
-    val fileName = remember(filePath) {
-        filePath.substringAfterLast('/')
-    }
+// LSP SymbolKind constants -> human-readable labels
+private fun symbolKindName(kind: Int): String = when (kind) {
+    1 -> "Module"; 2 -> "Class"; 3 -> "Interface"; 4 -> "Enum"
+    5 -> "Function"; 6 -> "Variable"; 7 -> "Field"; 8 -> "Property"
+    9 -> "Method"; 10 -> "Constructor"; 11 -> "EnumMember"
+    12 -> "Struct"; 13 -> "Event"; 14 -> "Operator"; 15 -> "TypeParameter"
+    16 -> "Constant"; 17 -> "String"; 18 -> "Number"; 19 -> "Boolean"
+    20 -> "Array"; 21 -> "Object"; 22 -> "Key"; 23 -> "Null"
+    24 -> "Namespace"; 25 -> "Package"; 26 -> "TypeAlias"
+    else -> "Symbol"
+}
 
-    // Last CLASS/INTERFACE symbol at or before currentLine
-    val currentClassSymbol = remember(symbols, currentLine) {
-        symbols.filter { 
-            it.line <= currentLine && (it.kind == SymbolKind.CLASS || it.kind == SymbolKind.INTERFACE || it.kind == SymbolKind.ENUM) 
-        }.maxByOrNull { it.line }
+private fun parseDocumentSymbols(arr: JSONArray): List<OutlineSymbol> {
+    val result = mutableListOf<OutlineSymbol>()
+    for (i in 0 until arr.length()) {
+        val entry = arr.optJSONObject(i) ?: continue
+        val sym = parseSymbolEntry(entry)
+        if (sym != null) result.add(sym)
     }
+    return result
+}
 
-    // Last FUNCTION symbol at or before currentLine
-    val currentFunctionSymbol = remember(symbols, currentLine) {
-        symbols.filter { 
-            it.line <= currentLine && it.kind == SymbolKind.FUNCTION 
-        }.maxByOrNull { it.line }
-    }
+private fun parseSymbolEntry(entry: JSONObject): OutlineSymbol? {
+    return try {
+        val name = entry.optString("name", "")
+        val kind = symbolKindName(entry.optInt("kind", 0))
+        val range = entry.optJSONObject("range") ?: return null
+        val start = range.optJSONObject("start") ?: return null
+        val line = start.optInt("line", 0)
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(max = 24.dp)
-            .background(Color(0xFF1E1E1E))
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Filename
-        Text(
-            text = fileName,
-            color = Color(0xFF858585),
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.clickable {
-                // Clicking filename jumps to line 1 or start of file
-                onJumpToLine(1)
+        val childrenArr = entry.optJSONArray("children")
+        val children = if (childrenArr != null && childrenArr.length() > 0) {
+            (0 until childrenArr.length()).mapNotNull { j ->
+                childrenArr.optJSONObject(j)?.let { parseSymbolEntry(it) }
             }
-        )
+        } else emptyList()
 
-        if (currentClassSymbol != null) {
+        OutlineSymbol(name = name, kind = kind, line = line, children = children)
+    } catch (_: Exception) { null }
+}
+
+// Fallback: regex-based symbol extraction for common languages
+private fun extractSymbolsFromText(text: String, lang: Language): List<OutlineSymbol> {
+    val symbols = mutableListOf<OutlineSymbol>()
+    val patterns = when (lang) {
+        Language.KOTLIN, Language.JAVA -> listOf(
+            Triple("""^\s*(?:public|private|protected|internal|static|final|open|abstract|override|companion|data|sealed|enum)\s+.*?\s+class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Triple("""^\s*(?:public|private|protected|internal|static|final|open|abstract|override|suspend|inline)\s+.*?\s+fun\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Triple("""^\s*(?:public|private|protected|internal|static|final)\s+.*?\s+object\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Object"),
+            Triple("""^\s*interface\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Interface"),
+        )
+        Language.PYTHON -> listOf(
+            Triple("""^\s*class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Triple("""^\s*def\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+        )
+        Language.JAVASCRIPT, Language.TYPESCRIPT -> listOf(
+            Triple("""^\s*(?:export\s+)?(?:default\s+)?class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Triple("""^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Triple("""^\s*(?:export\s+)?interface\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Interface"),
+        )
+        Language.C, Language.CPP -> listOf(
+            Triple("""^\s*(?:class|struct)\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Triple("""^\s*(?:[\w:*&]+\s+)+(\w+)\s*\(""".toRegex(RegexOption.MULTILINE), "Function"),
+        )
+        else -> listOf(
+            Triple("""^\s*function\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Triple("""^\s*class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+        )
+    }
+    for ((pattern, kind) in patterns) {
+        pattern.findAll(text).forEach { match ->
+            val name = match.groupValues.getOrNull(1) ?: return@forEach
+            val line = text.take(match.range.first).count { it == '\n' }
+            symbols.add(OutlineSymbol(name = name, kind = kind, line = line, children = emptyList()))
+        }
+    }
+    return symbols.sortedBy { it.line }
+}
+
+@Composable
+private fun SymbolRow(
+    sym: OutlineSymbol,
+    expanded: Set<String>,
+    onExpand: (String) -> Unit,
+    onNavigate: () -> Unit,
+) {
+    val key = "${sym.kind}:${sym.name}:${sym.line}"
+    val hasChildren = sym.children.isNotEmpty()
+    val isExpanded = key in expanded
+
+    Column {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable { if (hasChildren) onExpand(key); onNavigate() }
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (hasChildren) {
+                Icon(
+                    if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                    null,
+                    tint = Color(0xFF9E9E9E),
+                    modifier = Modifier.size(14.dp),
+                )
+            } else {
+                Spacer(Modifier.width(14.dp))
+            }
+            // Kind icon — a small colored letter
+            val kindColor = when (sym.kind) {
+                "Class", "Object", "Interface", "Struct" -> Color(0xFF4EC9B0)
+                "Function", "Method", "Constructor" -> Color(0xFFDCDCAA)
+                "Variable", "Field", "Property" -> Color(0xFF9CDCFE)
+                "Constant" -> Color(0xFF4FC1FF)
+                "Enum", "EnumMember" -> Color(0xFFC586C0)
+                "Namespace", "Module", "Package" -> Color(0xFFD4D4D4)
+                else -> Color(0xFF808080)
+            }
+            Box(
+                Modifier.size(16.dp)
+                    .background(kindColor.copy(alpha = 0.15f), RoundedCornerShape(2.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(sym.kind.first().toString(), fontSize = 8.sp, color = kindColor, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(6.dp))
             Text(
-                text = " > ",
-                color = Color(0xFF858585),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace
+                sym.name,
+                fontSize = 12.sp,
+                color = Color(0xFF424242),
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
             Text(
-                text = currentClassSymbol.name,
-                color = if (currentFunctionSymbol == null) Color(0xFFCCCCCC) else Color(0xFF858585),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clickable {
-                    onJumpToLine(currentClassSymbol.line)
-                }
+                "${sym.line + 1}",
+                fontSize = 10.sp,
+                color = Color(0xFF9E9E9E),
             )
         }
 
-        if (currentFunctionSymbol != null) {
-            Text(
-                text = " > ",
-                color = Color(0xFF858585),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = currentFunctionSymbol.name,
-                color = Color(0xFFCCCCCC),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clickable {
-                    onJumpToLine(currentFunctionSymbol.line)
+        if (hasChildren && isExpanded) {
+            sym.children.forEach { child ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable { onNavigate() }
+                        .padding(start = 28.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val childColor = when (child.kind) {
+                        "Class", "Object", "Interface", "Struct" -> Color(0xFF4EC9B0)
+                        "Function", "Method", "Constructor" -> Color(0xFFDCDCAA)
+                        "Variable", "Field", "Property" -> Color(0xFF9CDCFE)
+                        "Constant" -> Color(0xFF4FC1FF)
+                        else -> Color(0xFF808080)
+                    }
+                    Box(
+                        Modifier.size(14.dp)
+                            .background(childColor.copy(alpha = 0.15f), RoundedCornerShape(2.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(child.kind.first().toString(), fontSize = 7.sp, color = childColor, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        child.name,
+                        fontSize = 11.sp,
+                        color = Color(0xFF6B6B6B),
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "${child.line + 1}",
+                        fontSize = 9.sp,
+                        color = Color(0xFF9E9E9E),
+                    )
                 }
-            )
+            }
         }
     }
 }

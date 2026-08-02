@@ -84,6 +84,7 @@ import com.codespace.ide.diagnostics.ForwardedPort
 import com.codespace.ide.ui.panes.LogcatPanel
 import com.codespace.ide.ui.panes.VariableInspectorPanel
 import com.codespace.ide.ui.panes.SymbolSearchPanel
+import com.codespace.ide.ui.panes.OutlinePanel
 import com.codespace.ide.ui.panes.ProjectFileSearchPanel
 import com.codespace.ide.ui.panes.BuildPanel
 import com.codespace.ide.editor.FileIndexer
@@ -985,6 +986,12 @@ fun ProjectShellScreen(
                                     androidx.compose.material3.HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 1.dp)
                                     McpPanel()
                                 }
+                            SidePanel.OUTLINE    -> OutlinePanel(
+                                filePath = activeEditorTab ?: "",
+                                onNavigate = { line ->
+                                    scrollTargetLine = line
+                                },
+                            )
                             else                 -> {}
                         }
                     }
