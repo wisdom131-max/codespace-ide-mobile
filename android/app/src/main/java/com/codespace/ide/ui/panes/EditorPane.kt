@@ -548,7 +548,7 @@ fun EditorPane(
                         modifier = Modifier.size(18.dp),
                     )
                 }
-                // P22-E: Format Document button
+                // P22-E: Format Document button (built-in regex formatter)
                 IconButton(
                     onClick = {
                         val activeTab = tabs.firstOrNull { it.id == activeId }
@@ -571,15 +571,19 @@ fun EditorPane(
                     },
                     modifier = Modifier.size(35.dp)
                 ) {
-                    if (formatting) {
-                        CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFF007ACC), modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            Icons.Default.Functions,
-                            contentDescription = "Format Document",
-                            tint = androidx.compose.ui.graphics.Color(0xFF858585),
-                            modifier = Modifier.size(18.dp),
-                        )
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        if (formatting) {
+                            CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFF007ACC), modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                Icons.Default.Functions,
+                                contentDescription = "Format Document",
+                                tint = androidx.compose.ui.graphics.Color(0xFF858585),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        // P37-3: tiny "regex" label under the icon
+                        Text("regex", fontSize = 6.sp, color = Color(0xFF858585))
                     }
                 }
                 // P22-G: LSP Hover toggle
@@ -614,15 +618,25 @@ fun EditorPane(
                     },
                     modifier = Modifier.size(35.dp)
                 ) {
-                    Text(
-                        text = "{}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = run {
-                            val t = tabs.firstOrNull { it.id == activeId }
-                            if (t != null && LspManager.isServerRunning(t.language)) Color(0xFF4EC9B0) else TabTextInactive
-                        },
-                    )
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        Text(
+                            text = "{}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = run {
+                                val t = tabs.firstOrNull { it.id == activeId }
+                                if (t != null && LspManager.isServerRunning(t.language)) Color(0xFF4EC9B0) else TabTextInactive
+                            },
+                        )
+                        // P37-3: tiny LSP/regex label under the icon
+                        val t = tabs.firstOrNull { it.id == activeId }
+                        Text(
+                            if (t != null && LspManager.isServerRunning(t.language)) "LSP" else "",
+                            fontSize = 7.sp,
+                            color = Color(0xFF4EC9B0),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))

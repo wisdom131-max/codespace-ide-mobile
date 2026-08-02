@@ -585,6 +585,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
     // P22-L: Peek Definition result — inline code preview (class moved to top-level)
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
+    var peekUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for peek
+    var findRefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find references
 
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
@@ -1583,6 +1585,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     if (p.startsWith("/")) "file://$p" else p
                                 }
                                 var peekResult: PeekDefResult? = null
+                                var usedLspForPeek = false
                                 // Try LSP if available
                                 if (LspManager.isSupported(language) && projectRoot != null) {
                                     try {
@@ -1602,6 +1605,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     val endLine = (defLine + 8).coerceAtMost(allLines.size - 1)
                                                     val snippet = allLines.subList(startLine, endLine + 1)
                                                     peekResult = PeekDefResult(defPath, defLine, snippet, defLine - startLine)
+                                                    usedLspForPeek = true
                                                 }
                                             }
                                         }
@@ -1621,6 +1625,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 }
                                 peekDefResult = peekResult
+                                peekUsedLsp = usedLspForPeek
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1784,6 +1789,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     findRefWord = word
                                     findRefLoading = true
                                     findRefResults = emptyList()
+                                    findRefUsedLsp = true  // onFindReferences is only non-null when LSP is running
                                     contextWord = null
                                     coroutineScope.launch(Dispatchers.IO) {
                                         val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList() }
@@ -1885,12 +1891,24 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onDismissRequest = { gotoResults = null },
                 containerColor = Color(0xFF252526),
                 title = {
-                    Text(
-                        if (results.isEmpty() && (crossFileResults == null || crossFileResults!!.isEmpty())) "Not found" else "Go to Definition",
-                        color = Color(0xFFD4D4D4),
-                        fontSize = 14.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (results.isEmpty() && (crossFileResults == null || crossFileResults!!.isEmpty())) "Not found" else "Go to Definition",
+                            color = Color(0xFFD4D4D4),
+                            fontSize = 14.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        if (!(results.isEmpty() && (crossFileResults == null || crossFileResults!!.isEmpty()))) {
+                            Spacer(Modifier.width(6.dp))
+                            Box(
+                                Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .background(Color(0xFFCC7832))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text("Fallback", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 },
                 text = {
                     if (results.isEmpty()) {
@@ -1988,8 +2006,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             color = Color(0xFF4EC9B0),
                             fontSize = 13.sp,
                             fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.weight(1f),
                         )
+                        // P37-3: LSP/Fallback badge
+                        Box(
+                            Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                .background(if (peekUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                if (peekUsedLsp) "LSP" else "Fallback",
+                                color = Color(0xFF1E1E1E),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
                         val fileName = peek.filePath.substringAfterLast('/')
                         Text(
                             "$fileName:${peek.line + 1}",
@@ -2367,8 +2398,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         Text(
                             "References: ${findRefWord}",
                             color = Color(0xFF9CDCFE), fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f),
+                            fontFamily = FontFamily.Monospace,
                         )
+                        // P37-3: LSP/Fallback badge
+                        Box(
+                            Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                .background(if (findRefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                if (findRefUsedLsp) "LSP" else "Fallback",
+                                color = Color(0xFF1E1E1E),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
                         if (findRefLoading) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Color(0xFF007ACC))
                             Spacer(Modifier.width(8.dp))
