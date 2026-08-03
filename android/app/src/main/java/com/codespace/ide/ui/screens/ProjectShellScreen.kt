@@ -79,6 +79,7 @@ import com.codespace.ide.diagnostics.SyncStatusMonitor
 import com.codespace.ide.diagnostics.CodeMetrics
 import com.codespace.ide.diagnostics.LintChecker
 import com.codespace.ide.diagnostics.Problem
+import com.codespace.ide.build.GradleErrorParser
 import com.codespace.ide.diagnostics.PortsScanner
 import com.codespace.ide.diagnostics.ForwardedPort
 import com.codespace.ide.ui.panes.LogcatPanel
@@ -556,6 +557,7 @@ fun ProjectShellScreen(
     val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
     var goToLineInput      by remember { mutableStateOf("") }
     val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
+    val buildProblemsMs = remember { mutableStateOf<List<Problem>>(emptyList()) }; var buildProblems by buildProblemsMs
     val findQueryMs = remember { mutableStateOf("") }; var _findQuery by findQueryMs
     val replaceQueryMs = remember { mutableStateOf("") }; var _replaceQuery by replaceQueryMs
     val showReplaceRowMs = remember { mutableStateOf(false) }; var showReplaceRow by showReplaceRowMs
@@ -1885,7 +1887,8 @@ private fun PssBottomPanelContent(
             BottomTab.PROBLEMS -> ProblemsPanel(
                 context = context,
                 activeFilePath = activeEditorTab,
-                onJumpToSource = { onHideBottomPanel() },
+                buildProblems = buildProblems,
+                onJumpToSource = { line -> scrollTargetLine = line; onHideBottomPanel() },
             )
             BottomTab.OUTPUT   -> OutputPanel()
             BottomTab.DEBUG    -> DebugConsolePanel(
@@ -2000,6 +2003,19 @@ private fun PssBottomPanelContent(
                 projectPath = if (activeEditorTab != null) {
                     java.io.File(activeEditorTab!!).parent ?: ""
                 } else "",
+                onProblemsUpdate = { problems ->
+                    buildProblemsMs.value = problems.map { bp ->
+                        Problem(
+                            line = bp.line,
+                            severity = when (bp.severity) {
+                                GradleErrorParser.Severity.ERROR -> Problem.Severity.ERROR
+                                GradleErrorParser.Severity.WARNING -> Problem.Severity.WARNING
+                                GradleErrorParser.Severity.INFO -> Problem.Severity.INFO
+                            },
+                            message = (if (bp.file.isNotEmpty()) "${'$'}{bp.file.substringAfterLast("/")}: " else "") + bp.message
+                        )
+                    }
+                },
             )
         }
     }
@@ -2022,7 +2038,7 @@ private fun buildRunCommand(path: String): String? {
     }
 }
 
-@Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, onJumpToSource: () -> Unit) {
+@Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, buildProblems: List<Problem> = emptyList(), onJumpToSource: (Int) -> Unit) {
     // P22-A: live-update — re-run lint every 2 s so edits are reflected without switching tabs
     // P22-G: Also fetch LSP diagnostics if server is running for this language
     val problems by produceState<List<Problem>>(emptyList(), activeFilePath) {
@@ -2040,7 +2056,7 @@ private fun buildRunCommand(path: String): String? {
                             } else emptyList()
                         } catch (_: Exception) { emptyList() }
                         val seen = mutableSetOf<Pair<Int, String>>()
-                        (lintProblems + lspProblems).filter { seen.add(it.line to it.message) }.sortedBy { it.line }
+                        (lintProblems + lspProblems + buildProblems).filter { seen.add(it.line to it.message) }.sortedBy { it.line }
                     }
             kotlinx.coroutines.delay(2_000)
         }
@@ -2068,7 +2084,7 @@ private fun buildRunCommand(path: String): String? {
                         Problem.Severity.INFO    -> Icons.Default.Info to Color(0xFF007ACC)
                     }
                     Row(
-                        Modifier.fillMaxWidth().clickable { onJumpToSource() }.padding(horizontal = 12.dp, vertical = 6.dp),
+                        Modifier.fillMaxWidth().clickable { onJumpToSource(p.line) }.padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -347,6 +348,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     onFormat: (() -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
+    val context = LocalContext.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes

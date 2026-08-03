@@ -196,27 +196,27 @@ private fun extractSymbolsFromText(text: String, lang: Language): List<OutlineSy
     val symbols = mutableListOf<OutlineSymbol>()
     val patterns = when (lang) {
         Language.KOTLIN, Language.JAVA -> listOf(
-            Triple("""^\s*(?:public|private|protected|internal|static|final|open|abstract|override|companion|data|sealed|enum)\s+.*?\s+class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
-            Triple("""^\s*(?:public|private|protected|internal|static|final|open|abstract|override|suspend|inline)\s+.*?\s+fun\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
-            Triple("""^\s*(?:public|private|protected|internal|static|final)\s+.*?\s+object\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Object"),
-            Triple("""^\s*interface\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Interface"),
+            Pair("""^\s*(?:public|private|protected|internal|static|final|open|abstract|override|companion|data|sealed|enum)\s+.*?\s+class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Pair("""^\s*(?:public|private|protected|internal|static|final|open|abstract|override|suspend|inline)\s+.*?\s+fun\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Pair("""^\s*(?:public|private|protected|internal|static|final)\s+.*?\s+object\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Object"),
+            Pair("""^\s*interface\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Interface"),
         )
         Language.PYTHON -> listOf(
-            Triple("""^\s*class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
-            Triple("""^\s*def\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Pair("""^\s*class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Pair("""^\s*def\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
         )
         Language.JAVASCRIPT, Language.TYPESCRIPT -> listOf(
-            Triple("""^\s*(?:export\s+)?(?:default\s+)?class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
-            Triple("""^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
-            Triple("""^\s*(?:export\s+)?interface\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Interface"),
+            Pair("""^\s*(?:export\s+)?(?:default\s+)?class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Pair("""^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Pair("""^\s*(?:export\s+)?interface\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Interface"),
         )
         Language.C, Language.CPP -> listOf(
-            Triple("""^\s*(?:class|struct)\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
-            Triple("""^\s*(?:[\w:*&]+\s+)+(\w+)\s*\(""".toRegex(RegexOption.MULTILINE), "Function"),
+            Pair("""^\s*(?:class|struct)\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Pair("""^\s*(?:[\w:*&]+\s+)+(\w+)\s*\(""".toRegex(RegexOption.MULTILINE), "Function"),
         )
         else -> listOf(
-            Triple("""^\s*function\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
-            Triple("""^\s*class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
+            Pair("""^\s*function\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Function"),
+            Pair("""^\s*class\s+(\w+)""".toRegex(RegexOption.MULTILINE), "Class"),
         )
     }
     for ((pattern, kind) in patterns) {
