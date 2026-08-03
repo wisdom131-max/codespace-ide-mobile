@@ -197,6 +197,12 @@ fun ExplorerSidePanel(
     tokenStore: com.codespace.ide.data.SecureTokenStore? = null,
     /** Breadcrumb navigation: when set, auto-expand and scroll to this directory path. */
     navigateToDir: String? = null,
+    /** Notification callback for file operations (errors, success). */
+    onShowNotification: ((String, String) -> Unit)? = null,
+    /** External trigger: when set to a non-null value, opens the New File dialog. */
+    triggerNewFile: Any? = null,
+    /** External trigger: when set to a non-null value, opens the New Folder dialog. */
+    triggerNewFolder: Any? = null,
 ) {
     val context = LocalContext.current
     // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
@@ -328,6 +334,22 @@ fun ExplorerSidePanel(
     var importingImages by remember { mutableStateOf(false) }
     // "Generate Image with AI Here" (2026-07-08) — see ImageGenDialog.kt / ImageGenService.kt
     var pendingAiImageTargetDir by remember { mutableStateOf<File?>(null) }
+    // External trigger: open New File dialog (from 3-dot overflow menu / command palette)
+    LaunchedEffect(triggerNewFile) {
+        if (triggerNewFile != null) {
+            contextFile = workspaceRoot
+            nameInput = ""
+            showNewFile = true
+        }
+    }
+    // External trigger: open New Folder dialog (from 3-dot overflow menu / command palette)
+    LaunchedEffect(triggerNewFolder) {
+        if (triggerNewFolder != null) {
+            contextFile = workspaceRoot
+            nameInput = ""
+            showNewFolder = true
+        }
+    }
     var showAiImageGen by remember { mutableStateOf(false) }
     var binaryDiffFileA   by remember { mutableStateOf<java.io.File?>(null) }
     var binaryDiffFileB   by remember { mutableStateOf<java.io.File?>(null) }
@@ -1630,10 +1652,14 @@ fun ExplorerSidePanel(
                         if (targetDir != null) {
                             val newFile = java.io.File(targetDir, nameInput)
                             try {
+                                newFile.parentFile?.mkdirs()
                                 newFile.createNewFile()
                                 refresh++
+                                onShowNotification?.invoke("Created: ${newFile.name}", "success")
                                 onOpenFile(newFile.absolutePath)
-                            } catch (_: Exception) {}
+                            } catch (e: Exception) {
+                                onShowNotification?.invoke("Failed to create file: ${e.message}", "error")
+                            }
                         }
                         showNewFile = false
                         nameInput = ""
@@ -1666,8 +1692,13 @@ fun ExplorerSidePanel(
                         val dir = contextFile?.let {
                             if (it.isDirectory) it else it.parentFile
                         } ?: workspaceRoot ?: return@Button
-                        File(dir, nameInput).mkdirs()
-                        refresh++
+                        try {
+                            File(dir, nameInput).mkdirs()
+                            refresh++
+                            onShowNotification?.invoke("Created folder: ${nameInput}/", "success")
+                        } catch (e: Exception) {
+                            onShowNotification?.invoke("Failed to create folder: ${e.message}", "error")
+                        }
                     }
                     showNewFolder = false; nameInput = ""
                 }) { Text("Create") }

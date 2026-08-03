@@ -570,6 +570,8 @@ fun ProjectShellScreen(
     var showRunMenu        by remember { mutableStateOf(false) }
     var showPanelMenu      by remember { mutableStateOf(false) }
     var showExplorerMore   by remember { mutableStateOf(false) }
+    var triggerNewFileCounter by remember { mutableStateOf(0) }
+    var triggerNewFolderCounter by remember { mutableStateOf(0) }
     var commandQuery       by remember { mutableStateOf("") }
     var _commandTab         by remember { mutableStateOf("Commands") }
     // P34-NOTIF: notificationMsg/notificationType removed — toast handled by NotificationToastBanner
@@ -734,6 +736,8 @@ fun ProjectShellScreen(
             "Kill Terminal"      -> { showSplitTerminal = false }
             "Clear"              -> { sharedTerminalState.active?.session?.write("clear\n") }
             "Auto Save"          -> { showNotification("Auto Save toggled", "info") }
+            "New File"           -> { activePanel = SidePanel.EXPLORER; triggerNewFileCounter++ }
+            "New Folder"         -> { activePanel = SidePanel.EXPLORER; triggerNewFolderCounter++ }
             "Save"               -> { showNotification("File saved", "success") }
             "About Visual Node Code" -> { showNotification("CodeSpace IDE v1.0.0 — VS Code for Android", "info") }
             "Documentation"      -> { showNotification("Opening docs...", "info") }
@@ -959,6 +963,9 @@ fun ProjectShellScreen(
                                 tokenStore = tokenStore,
                             
                                 navigateToDir = breadcrumbNavDir,
+                                onShowNotification = { msg, type -> showNotification(msg, type) },
+                                triggerNewFile = triggerNewFileCounter,
+                                triggerNewFolder = triggerNewFolderCounter,
                             )
                             SidePanel.SEARCH     -> SearchPanel(
                                 projectId = projectId,
@@ -1107,11 +1114,11 @@ fun ProjectShellScreen(
         // P27-1: Explorer overflow menu — extracted to composable, all 5 items wired
         if (showExplorerMore) {
             ExplorerOverflowMenu(
-                context = context,
-                projectRootPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
                 menuBg = MenuBg,
                 menuText = MenuText,
                 onShowNotification = { msg, type -> showNotification(msg, type) },
+                onNewFile = { triggerNewFileCounter++ },
+                onNewFolder = { triggerNewFolderCounter++ },
                 onOpenInTerminal = {
                     showBottomPanel = true
                     activeBottomTab = BottomTab.TERMINAL
@@ -3475,19 +3482,15 @@ private fun handlePanelMenuAction(
 // ═════════════════════════════════════════════════════════════════════════
 @Composable
 private fun ExplorerOverflowMenu(
-    context: android.content.Context,
-    projectRootPath: String,
     menuBg: Color,
     menuText: Color,
     onShowNotification: (String, String) -> Unit,
+    onNewFile: () -> Unit,
+    onNewFolder: () -> Unit,
     onOpenInTerminal: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val items = listOf("New File", "New Folder", "Refresh", "Collapse All", "Open in Terminal")
-    var newFileDialog by remember { mutableStateOf(false) }
-    var newFolderDialog by remember { mutableStateOf(false) }
-    var fileName by remember { mutableStateOf("") }
-    var folderName by remember { mutableStateOf("") }
 
     Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
         Card(
@@ -3499,13 +3502,13 @@ private fun ExplorerOverflowMenu(
                 Row(
                     Modifier.fillMaxWidth().clickable {
                         when (item) {
-                            "New File" -> { newFileDialog = true }
-                            "New Folder" -> { newFolderDialog = true }
+                            "New File" -> { onNewFile() }
+                            "New Folder" -> { onNewFolder() }
                             "Refresh" -> { onShowNotification("Explorer refreshed", "info") }
                             "Collapse All" -> { onShowNotification("All folders collapsed", "info") }
                             "Open in Terminal" -> { onOpenInTerminal() }
                         }
-                        if (item != "New File" && item != "New Folder") onDismiss()
+                        onDismiss()
                     }.padding(16.dp)
                 ) {
                     Text(item, fontSize = 13.sp, color = menuText)
@@ -3514,74 +3517,4 @@ private fun ExplorerOverflowMenu(
         }
     }
 
-    // New File dialog
-    if (newFileDialog) {
-        AlertDialog(
-            onDismissRequest = { newFileDialog = false; fileName = "" },
-            title = { Text("New File") },
-            text = {
-                OutlinedTextField(
-                    value = fileName,
-                    onValueChange = { fileName = it },
-                    label = { Text("File name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (fileName.isNotBlank()) {
-                        val file = java.io.File(projectRootPath, fileName)
-                        try {
-                            file.parentFile?.mkdirs()
-                            file.createNewFile()
-                            onShowNotification("Created: ${fileName}", "success")
-                        } catch (e: Exception) {
-                            onShowNotification("Failed: ${e.message}", "error")
-                        }
-                    }
-                    newFileDialog = false; fileName = ""
-                    onDismiss()
-                }) { Text("Create") }
-            },
-            dismissButton = {
-                TextButton(onClick = { newFileDialog = false; fileName = "" }) { Text("Cancel") }
-            },
-        )
-    }
-
-    // New Folder dialog
-    if (newFolderDialog) {
-        AlertDialog(
-            onDismissRequest = { newFolderDialog = false; folderName = "" },
-            title = { Text("New Folder") },
-            text = {
-                OutlinedTextField(
-                    value = folderName,
-                    onValueChange = { folderName = it },
-                    label = { Text("Folder name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (folderName.isNotBlank()) {
-                        val dir = java.io.File(projectRootPath, folderName)
-                        try {
-                            dir.mkdirs()
-                            onShowNotification("Created: ${folderName}/", "success")
-                        } catch (e: Exception) {
-                            onShowNotification("Failed: ${e.message}", "error")
-                        }
-                    }
-                    newFolderDialog = false; folderName = ""
-                    onDismiss()
-                }) { Text("Create") }
-            },
-            dismissButton = {
-                TextButton(onClick = { newFolderDialog = false; folderName = "" }) { Text("Cancel") }
-            },
-        )
-    }
 }
