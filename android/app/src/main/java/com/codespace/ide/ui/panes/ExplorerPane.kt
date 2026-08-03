@@ -1638,7 +1638,7 @@ fun ExplorerSidePanel(
             title = { Text("New File") },
             text = {
                 OutlinedTextField(
-                    value = nameInput, onValueChange = { nameInput = it.replace("`", "").replace("\x00", "") },
+                    value = nameInput, onValueChange = { nameInput = it.replace("`", "").replace("\u0000", "") },
                     label = { Text("File name (e.g. main.py)") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -1681,7 +1681,7 @@ fun ExplorerSidePanel(
             title = { Text("New Folder") },
             text = {
                 OutlinedTextField(
-                    value = nameInput, onValueChange = { nameInput = it.replace("`", "").replace("\x00", "") },
+                    value = nameInput, onValueChange = { nameInput = it.replace("`", "").replace("\u0000", "") },
                     label = { Text("Folder name") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -1718,7 +1718,7 @@ fun ExplorerSidePanel(
             title = { Text("Rename") },
             text = {
                 OutlinedTextField(
-                    value = nameInput, onValueChange = { nameInput = it.replace("`", "").replace("\x00", "") },
+                    value = nameInput, onValueChange = { nameInput = it.replace("`", "").replace("\u0000", "") },
                     label = { Text("New name") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
