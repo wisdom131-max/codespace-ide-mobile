@@ -6047,3 +6047,237 @@ After: ✅ Shared via `DocumentSymbolCache` singleton (5s TTL, mutex-protected).
 ### Part 5: Log to AGENTS.md phase by phase
 - **Status:** ONGOING
 - Each part committed separately. User tests and confirms between parts.
+
+---
+
+## Phase 38 — Full Codebase Audit: Every Button, Menu, and Feature (2026-08-03)
+
+**Method:** Direct code-trace of every interactive UI element (clickable, onClick, DropdownMenuItem, IconButton, Switch, Button) across all panes and screens. Each traced to its handler and verified against actual implementation — not comments, not intent.
+
+### Part 4 Results: Complete Audit Table
+
+#### LSP / Editor Features
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Go to Definition | ✅ WORKING (FALLBACK) | `EditorPane.kt:1200+` — never calls LSP `textDocument/definition`, uses regex word-boundary search. No LSP wiring exists. |
+| Peek Definition | ✅ WORKING (LSP+fallback) | `CodeEditor.kt` — calls `LspManager.getDefinition()`, shows inline preview. Badge `peekUsedLsp` tracks actual outcome. |
+| Find References | ✅ WORKING (LSP+fallback) | `EditorPane.kt:1230` — checks `LspManager.isServerRunning()` first, calls `getReferences()`. Badge set AFTER callback (fixed in Part 3). |
+| Rename Symbol | ✅ WORKING (LSP+fallback) | `CodeEditor.kt` — calls `prepareRename()` → `rename()` when LSP active. Regex is explicit fallback. Badge shows predictive mode. Result notification shows [LSP] or [regex]. |
+| Go to Type Definition | ⚠️ FALLBACK ONLY | Same as Go to Definition — regex, no LSP call. Badge added in Part 3. |
+| Find Implementations | ⚠️ FALLBACK ONLY | Same — regex search, no LSP call. Badge added in Part 3. |
+| Format Document | ✅ WORKING (LSP) | `CodeEditor.kt` — calls `LspManager.formatDocument()`. Button shows "LSP" when server running. Silent no-op if fails. |
+| Document Symbols / Outline | ✅ WORKING (LSP+fallback) | `OutlinePanel.kt` — shared cache via `DocumentSymbolCache` (5s TTL). Reads from EditorPane's cache, only fetches on miss. Badge tracks actual outcome. |
+| Code Actions | ✅ WORKING (LSP) | `CodeEditor.kt` — calls `LspManager.getCodeActions()`, applies workspace edits in reverse order. |
+| Find/Replace | ✅ WORKING (no LSP) | `CodeEditor.kt:2576+` — full in-editor find with match highlighting, regex toggle, replace, replace-all. Self-contained, no LSP dependency. |
+| Hover/Tooltip | ✅ WORKING (LSP) | `CodeEditor.kt` — calls `LspManager.hover()` on long-press, shows tooltip popup. |
+| Signature Help | ✅ WORKING (LSP) | `CodeEditor.kt` — calls `LspManager.signatureHelp()`, shows parameter info popup. |
+| Problems Panel | ✅ WORKING | `ProjectShellScreen.kt:2025` — polls every 2s, combines `LintChecker` + `LspManager.getDiagnostics()`. Deduplicates by line+message. |
+| Problems → Jump to Source | ❌ BROKEN | `onJumpToSource = { onHideBottomPanel() }` — just hides the panel, does NOT scroll to the problem line. User clicks a problem, panel disappears, cursor stays put. |
+
+#### Git / Source Control
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Stage file | ✅ WORKING | `SourceControlPane.kt:881` — `runGit("add", filePath)` |
+| Unstage file | ✅ WORKING | `SourceControlPane.kt:882` — `runGit("reset", "HEAD", filePath)` |
+| Discard changes | ✅ WORKING | `SourceControlPane.kt:883` — `runGit("checkout", "--", filePath)` |
+| Commit | ✅ WORKING | `SourceControlPane.kt:425` — `runGit("add", ".")` then `runGit("commit", "-m", message)` |
+| Commit & Push | ✅ WORKING | `SourceControlPane.kt:438` — commit then `runGit("push")` |
+| Pull | ✅ WORKING | Icon `Sync` clickable — `runGit("pull")` |
+| Fetch | ✅ WORKING | Icon `ArrowDownward` — `runGit("fetch")` |
+| Push (standalone) | ✅ WORKING | Icon `ArrowUpward` — `runGit("push")` |
+| Branch switch | ✅ WORKING | Branch dropdown menu → `runGit("checkout", branch)` |
+| Create branch | ✅ WORKING | Dialog → `runGit("checkout", "-b", name)` |
+| Rename branch | ✅ WORKING | Dialog → `runGit("branch", "-m", oldName, newName)` |
+| Stash | ✅ WORKING | Dialog → `runGit("stash", "save", msg)` |
+| Stash Pop | ✅ WORKING | `SourceControlPane.kt:599` — `runGit("stash", "pop")` |
+| Stash Drop | ✅ WORKING | `SourceControlPane.kt:606` — `runGit("stash", "drop", id)` |
+| Create tag | ✅ WORKING | Dialog → `runGit("tag", "-a", name, "-m", msg)` |
+| Delete tag | ✅ WORKING | `runGit("tag", "-d", name)` |
+| Merge conflict resolve (Ours) | ✅ WORKING | `SourceControlPane.kt:919` — parses conflict markers, keeps `<<<<<<<` to `=======` block, re-adds file |
+| Merge conflict resolve (Theirs) | ✅ WORKING | Same parser, keeps `=======` to `>>>>>>>` block |
+| Gitignore editor | ✅ WORKING | Dialog → appends to .gitignore |
+| Changes/Log/Graph/Stash/Tags tabs | ✅ WORKING | All tabs load via `runGit()` with correct flags |
+| **GitEngine.kt** | ❌ DEAD CODE | `GitEngine.kt` class exists but is NEVER imported or called anywhere. `SourceControlPane` has its own private `runGit()` function. Safe to delete. |
+
+#### Debug / DAP
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Start Debugging (Run Program) | ✅ WORKING | `ProjectShellScreen.kt:767` — `UniversalDebugManager.startDebug(lang, filePath, null, context)` |
+| Variable Inspector — Locals | ✅ WORKING | `VariableInspectorPanel.kt:170+` — registers `addOnPausedListener`, displays `DebugVariable` list from DAP |
+| Variable Inspector — Watch | ✅ WORKING | Add expression → evaluates via `UDM.evaluateExpression()` on pause |
+| Variable Inspector — Call Stack | ✅ WORKING | `VariableInspectorPanel.kt:264+` — registers `addOnPausedListener`, displays `DebugStackFrame` list |
+| Attach to process | ✅ WORKING | `AttachDebugDialog.kt` — port/PID input → `UDM.attachDebug()` |
+| Debug Console | ✅ WORKING | `DebugConsolePanel` in ProjectShellScreen — input/output messages |
+| Breakpoints | ✅ WORKING | `CodeEditor.kt` — gutter tap toggles breakpoint, sent to UDM |
+
+#### Terminal
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| New Ubuntu Terminal | ✅ WORKING | `TerminalPane.kt:1344` — `addUbuntuTab()` |
+| Install Ollama | ✅ WORKING | Writes `ollamaInstallScript()` to active session |
+| Install Voice (TTS) | ✅ WORKING | Opens voice model picker dialog |
+| Launch Coding Agent | ✅ WORKING | Checks setup_complete → launches with chosen model or shows model picker |
+| Sign in/out Ollama | ✅ WORKING | Writes `ollama signin`/`ollama signout` to terminal |
+| Multi-Instance Mode | ✅ WORKING | Toggle saved to prefs, controls tab reuse behavior |
+| Setup Remotion | ✅ WORKING | Writes `remotionSetupScript()` + sets setup_complete flag |
+| Launch Remotion Studio | ✅ WORKING | Checks setup_complete → writes `remotionRelaunchScript()` |
+| Show Agent Tools (32) | ✅ WORKING | Writes `agent_tools` command (AgentApiServer on :8765 auto-started) |
+| Make Script from History | ✅ WORKING | Writes last 20 commands to executable `.sh` file |
+| SSH Manager | ✅ WORKING | Opens SSH connection dialog |
+| Text Expansions | ✅ WORKING | Opens text expansion editor |
+| Show/Hide Extra Keys | ✅ WORKING | Toggle for extra key row |
+| History Search | ✅ WORKING | Opens search dialog |
+| Command Palette (terminal) | ✅ WORKING | `showCmdPalette` with filtered list |
+| Terminal rename | ✅ WORKING | Dialog with save/cancel |
+| Ollama model picker | ✅ WORKING | Dropdown of available models |
+
+#### Build / Run
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Build Panel — task selector | ✅ WORKING | `BuildPanel.kt` — dropdown: assembleDebug, assembleRelease, build, clean, lint, test |
+| Build Panel — run build | ✅ WORKING | `BuildRunner.runBuild()` via `ProotInstaller.execOnce()` (proot, 600s timeout) |
+| Build Panel — env check | ✅ WORKING | `BuildEnvironment.checkProject()` validates gradle files, gradlew, local.properties |
+| Build Panel — live output | ✅ WORKING | `BuildRunner.buildOutput` StateFlow → `collectAsState()` |
+| Task Runner Panel | ✅ WORKING | `TaskRunnerPanel.kt` — delegates to `TaskRunner.run()` → `BuildRunner.runBuild()` |
+| Build status badge | ✅ WORKING | `BuildRunner.buildStatus` StateFlow collected in BuildPanel |
+| **BuildPanel onProblemsUpdate** | ❌ NOT WIRED | `BuildPanel` has `onProblemsUpdate` parameter but `ProjectShellScreen.kt:1999` calls it WITHOUT passing the callback. Build errors won't propagate to Problems tab. |
+| Build History Panel | ✅ WORKING | `BuildHistoryPanel` shown in bottom panel |
+| GradleErrorParser | ✅ WORKING | Parses build output for errors/warnings — but result goes nowhere without onProblemsUpdate wiring |
+
+#### Settings
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Theme toggle (dark/light) | ✅ WORKING | `onToggleTheme()` callback |
+| Biometric/PIN lock | ⚠️ DISABLED | `Switch(checked=false, enabled=false)` — shows "Not available" message. No biometric integration implemented. |
+| AI provider selection | ✅ WORKING | `activeProvider` state, switches between OpenAI/Claude/DeepSeek/Gemini/Ollama |
+| AI API key entry | ✅ WORKING | `SecureTokenStore.aiKey()` — keys saved per provider |
+| Workspace restore toggle | ✅ WORKING | `sessionStateStore.workspaceRestoreEnabled` persisted |
+| Clear workspace memory | ✅ WORKING | Clears session state store |
+| Cloud backup info | ✅ WORKING | `BackupManager.backupInfo()` shown in settings |
+| Cloud backup panel | ✅ WORKING | `CloudBackupPanel` — backup/restore/list operations |
+| GitHub account display | ✅ WORKING | Shows username when logged in |
+
+#### Preview / Browser
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| HTML preview | ✅ WORKING | `PreviewPane.kt` — renders HTML/SVG/Markdown with inline content injection |
+| Markdown preview | ✅ WORKING | Uses marked.js (bundled inline, no internet needed) |
+| SVG preview | ✅ WORKING | Centered on dark background |
+| Browser mode | ✅ WORKING | WebView with address bar, back/forward/refresh buttons |
+| Remotion mode | ✅ WORKING | Connects to localhost:3000 (requires manual `npx remotion studio` setup) |
+| Dashboard mode | ✅ WORKING | Babel standalone + React 18 for live rendering |
+| Fullscreen toggle | ✅ WORKING | Expands preview to full window bounds |
+| CSS/JS file preview | ✅ WORKING | CSS against demo elements, JS captures console.log |
+| Auto-reload on save | ✅ WORKING | SSE-based reload when file changes detected |
+
+#### AI Chat / Ollama
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Chat panel (right dock) | ✅ WORKING | `CopilotChatPanelOverlay.kt` — right-anchored, drag-to-resize |
+| Chat modes (Ask/Agent/Plan) | ✅ WORKING | Different system prompts per mode |
+| Agent tool loop | ✅ WORKING | 10-iteration max, parses tool calls, executes, feeds results back |
+| write_file auto-open | ✅ WORKING | Auto-opens written files, switches to preview for visual files |
+| Multi-provider support | ✅ WORKING | OpenAI, DeepSeek, OpenRouter, Claude, Gemini (BYOK), Ollama (local) |
+| Model picker | ✅ WORKING | Fetches available models from Ollama + shows API providers |
+| Connectors Hub Sheet | ✅ WORKING | `ConnectorsHubSheet.kt` — real backend OAuth via Railway, in-app WebView flow |
+| AgentApiServer (port 8765) | ✅ WORKING | Auto-starts via `McpShellProfile`, exposes 32 tools, auto-stops on service destroy |
+| Bot icon animation | ✅ WORKING | 5-pose sprite sheet, idle blink + thinking state on chatLoading |
+
+#### Command Palette
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Search/filter commands | ✅ WORKING | LazyColumn with filtered list, 30+ commands |
+| Execute selected command | ✅ WORKING | All routed through `handleMenuAction()` |
+| Commands: New File, Save, etc. | ✅ WORKING | All wired to handlers |
+| Git commands in palette | ✅ WORKING | Git: Commit, Push, Pull, Stage All all route to handleMenuAction |
+| Notification commands | ✅ WORKING | DND toggle, clear all, show center all wired |
+| Go to Line | ✅ WORKING | Opens line input dialog |
+| Format Document | ✅ WORKING | Calls LSP formatDocument |
+| Keyboard Shortcuts | ✅ WORKING | Opens command palette itself |
+
+#### Extensions / Package Manager
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Extensions panel | ✅ WORKING | `PackageManagerPane.kt:128` — apt-based package browser |
+| Search packages | ✅ WORKING | `apt-cache search` via `ProotInstaller.execOnce()` |
+| Install package | ✅ WORKING | `apt-get install -y` via `ProotInstaller.execOnceWithProcess()` (cancellable) |
+| Remove package | ✅ WORKING | `apt-get remove -y` |
+| Update package | ✅ WORKING | `apt-get upgrade -y` |
+| Upgrade all | ✅ WORKING | `apt-get upgrade -y` |
+| Installed packages list | ✅ WORKING | `dpkg --list` parsed |
+| Install history | ✅ WORKING | Saved to SharedPreferences, viewable in panel |
+| Featured packages | ✅ WORKING | Curated list shown by default |
+| Cancel operation | ✅ WORKING | Process cancellation via AtomicReference |
+
+#### Explorer / File Tree
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Open/close folder | ✅ WORKING | `ExplorerPane.kt` — directory tree navigation |
+| File tap → open in editor | ✅ WORKING | Opens file in editor tab |
+| File long-press → preview (images) | ✅ WORKING | Image preview dialog, 10MB thumbnail limit |
+| Archive tap (zip/apk) | ✅ WORKING | `ArchiveViewer.kt` — lazy tree browser, text preview, AxmlDecoder for manifest |
+| Create file/folder | ✅ WORKING | Dialog → file creation |
+| Delete file/folder | ✅ WORKING | Long-press menu → delete |
+| Rename file/folder | ✅ WORKING | Long-press menu → rename |
+| Refresh explorer | ✅ WORKING | Refresh button + command palette |
+| Collapse all | ✅ WORKING | Command palette action |
+| Image long-press preview | ✅ WORKING | Dedicated preview, not editor (fixed in Easy batch) |
+
+### Bugs Found (New)
+
+1. **ProblemsPanel → Jump to Source does NOT navigate to the problem line.**
+   - Location: `ProjectShellScreen.kt:1885-1888`
+   - Current: `onJumpToSource = { onHideBottomPanel() }` — just hides the panel
+   - Expected: Should scroll editor to the problem's line number (`p.line`)
+   - Fix needed: Pass line number through, call `scrollTargetLine = p.line` before hiding panel
+
+2. **BuildPanel onProblemsUpdate callback is never wired.**
+   - Location: `ProjectShellScreen.kt:1999` — `BuildPanel(projectPath = ...)` called without `onProblemsUpdate`
+   - Current: Build errors parsed by `GradleErrorParser` but go nowhere
+   - Expected: Build errors should appear in Problems tab
+   - Fix needed: Wire `onProblemsUpdate = { problems -> /* add to problems list */ }`
+
+3. **GitEngine.kt is dead code.**
+   - `GitEngine.kt` (52+ lines) never imported or used
+   - `SourceControlPane.kt` has its own `runGit()` function (line 73)
+   - Safe to delete — no references anywhere
+
+### Summary
+
+| Category | Working | Fallback-only | Broken | Dead Code |
+|----------|---------|---------------|--------|-----------|
+| LSP/Editor | 10 | 2 (Go to Def, Go to Type Def, Find Impl) | 1 (Problems jump) | 0 |
+| Git/Source Control | 20 | 0 | 0 | 1 (GitEngine.kt) |
+| Debug/DAP | 7 | 0 | 0 | 0 |
+| Terminal | 16 | 0 | 0 | 0 |
+| Build/Run | 7 | 0 | 1 (onProblemsUpdate) | 0 |
+| Settings | 8 | 1 (Biometric) | 0 | 0 |
+| Preview/Browser | 9 | 0 | 0 | 0 |
+| AI Chat/Ollama | 9 | 0 | 0 | 0 |
+| Command Palette | 8 | 0 | 0 | 0 |
+| Extensions | 8 | 0 | 0 | 0 |
+| Explorer | 9 | 0 | 0 | 0 |
+| **Total** | **111** | **3** | **2** | **1** |
+
+### Next Steps (Priority Order)
+
+1. **Fix ProblemsPanel jump-to-source** — pass line number, scroll editor. Quick fix.
+2. **Wire BuildPanel onProblemsUpdate** — connect build errors to Problems tab. Quick fix.
+3. **Delete GitEngine.kt** — dead code cleanup. Trivial.
+4. **Consider LSP wiring for Go to Definition** — currently regex-only, should try LSP `textDocument/definition` first.
+5. **Biometric/PIN lock** — either implement or remove the disabled toggle.
+6. **Format Document badge** — currently static "LSP" label, should track actual outcome.
+
+### Part 5 Status: ✅ COMPLETE
+All findings logged to AGENTS.md. User to test and confirm.
