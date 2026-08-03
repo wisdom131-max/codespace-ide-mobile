@@ -59,6 +59,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -577,6 +578,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var contextWord by remember { mutableStateOf<String?>(null) }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     data class DefResult(val line: Int, val lineText: String)
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
     var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
@@ -851,27 +853,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // Editor surface
             Box(
                 modifier = (if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll))
-                    .combinedClickable(
-                        onClick = {},
-                        onLongClick = {
-                            // Long-press → context sheet: Go to Definition | Rename Symbol
-                            val cursor = value.selection.end
-                            val word = currentWord(value.text, cursor)
-                            if (word.length >= 2) {
-                                contextWord = word
-                                expandSelectionDepth = -1
-                                expandSelectionRanges = emptyList()
-                            }
-                        },
-                        onDoubleClick = {
-                            // Double-tap → toggle extra cursor at this position
-                            val cursor = value.selection.end
-                            extraCursors = if (cursor in extraCursors)
-                                extraCursors.filter { it != cursor }
-                            else
-                                (extraCursors + cursor).distinct().sorted()
-                        }
-                    )
             ) {
                 BasicTextField(
                     value = value,
@@ -951,7 +932,40 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         )
                     ),
                     visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices),
-                    modifier = Modifier.padding(end = 24.dp),
+                    onTextLayout = { result -> textLayoutResult = result },
+                    modifier = Modifier
+                        .padding(end = 24.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    textLayoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(offset)
+                                        value = value.copy(selection = TextRange(charOffset))
+                                    }
+                                },
+                                onLongPress = { offset ->
+                                    textLayoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(offset)
+                                        value = value.copy(selection = TextRange(charOffset))
+                                        val word = currentWord(value.text, charOffset)
+                                        if (word.length >= 2) {
+                                            contextWord = word
+                                            expandSelectionDepth = -1
+                                            expandSelectionRanges = emptyList()
+                                        }
+                                    }
+                                },
+                                onDoubleTap = { offset ->
+                                    textLayoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(offset)
+                                        extraCursors = if (charOffset in extraCursors)
+                                            extraCursors.filter { it != charOffset }
+                                        else
+                                            (extraCursors + charOffset).distinct().sorted()
+                                    }
+                                }
+                            )
+                        },
                 )
             }
         }
