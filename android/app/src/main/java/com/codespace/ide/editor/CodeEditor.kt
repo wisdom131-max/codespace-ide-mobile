@@ -55,6 +55,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
@@ -1491,7 +1492,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
 
-                        // P24: Quick Fixes from LSP — show code actions for the current line
+                        // P37-4: Code Actions — 3-state indicator (LSP active/no fixes/fixes available)
                         if (lspCodeActionProvider != null) {
                             val quickFixes: List<LspCodeAction> =
                                 remember(value.selection.start) {
@@ -1500,6 +1501,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     catch (_: Exception) { emptyList<LspCodeAction>() }
                                 }
                             if (quickFixes.isNotEmpty()) {
+                                // State 3: LSP running + actions available → show 💡 buttons
                                 quickFixes.forEach { fix ->
                                     TextButton(onClick = {
                                         if (fix.edit != null) {
@@ -1548,8 +1550,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         Text("💡 ${fix.title}", color = Color(0xFFE5C07B), fontSize = 12.sp)
                                     }
                                 }
+                            } else {
+                                // State 2: LSP running, but zero code actions for this line
+                                Text("No quick fixes available", color = Color(0xFF666666), fontSize = 11.sp, fontStyle = FontStyle.Italic)
                             }
+                        } else {
+                            // State 1: LSP not running for this file's language
+                            Text("LSP not active", color = Color(0xFF555555), fontSize = 11.sp, fontStyle = FontStyle.Italic)
                         }
+
 
                         TextButton(
                             onClick = {

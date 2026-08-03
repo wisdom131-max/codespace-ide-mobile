@@ -45,6 +45,8 @@ import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
 import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
+import com.codespace.ide.lsp.parseCodeActions
+import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.editor.SignatureInfo
 import androidx.compose.ui.zIndex
 import java.io.File
@@ -1221,6 +1223,16 @@ fun EditorPane(
                                 if (uri != null) {
                                     val actions = LspManager.getCodeActions(active.language, uri, line, col)
                                     actions?.let { parseImportEdits(it, uri) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P37-4: LSP Code Actions (quick fixes in context menu)
+                        lspCodeActionProvider = if (LspManager.isServerRunning(active.language)) {
+                            { line ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val actions = try { LspManager.getCodeActions(active.language, uri, line, 0) } catch (_: Exception) { null }
+                                    actions?.let { parseCodeActions(it) } ?: emptyList<LspCodeAction>()
                                 } else emptyList()
                             }
                         } else null,

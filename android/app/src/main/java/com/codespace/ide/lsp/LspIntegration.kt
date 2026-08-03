@@ -206,3 +206,27 @@ fun lspDiagnosticsToLintErrors(diagnostics: JSONArray, fileContent: String): Lis
     }
     return result
 }
+
+/**
+ * P37-4: Parse LSP codeAction response into List<LspCodeAction> for the context menu.
+ * Handles both JSON Object (code action) and JSON String (command title) entries.
+ */
+fun parseCodeActions(actions: JSONArray): List<LspCodeAction> {
+    val result = mutableListOf<LspCodeAction>()
+    for (i in 0 until actions.length()) {
+        val item = actions.opt(i) ?: continue
+        when (item) {
+            is JSONObject -> {
+                val title = item.optString("title", "Unknown action")
+                val kind = if (item.has("kind")) item.getString("kind") else null
+                val edit = item.optJSONObject("edit")?.toString()
+                val command = item.optJSONObject("command")?.toString()
+                result.add(LspCodeAction(title, kind, edit, command))
+            }
+            is String -> {
+                result.add(LspCodeAction(title = item))
+            }
+        }
+    }
+    return result
+}
