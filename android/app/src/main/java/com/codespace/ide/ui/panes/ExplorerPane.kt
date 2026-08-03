@@ -336,7 +336,7 @@ fun ExplorerSidePanel(
     var pendingAiImageTargetDir by remember { mutableStateOf<File?>(null) }
     // External trigger: open New File dialog (from 3-dot overflow menu / command palette)
     LaunchedEffect(triggerNewFile) {
-        if (triggerNewFile != null) {
+        if (triggerNewFile is Int && triggerNewFile > 0) {
             contextFile = workspaceRoot
             nameInput = ""
             showNewFile = true
@@ -344,7 +344,7 @@ fun ExplorerSidePanel(
     }
     // External trigger: open New Folder dialog (from 3-dot overflow menu / command palette)
     LaunchedEffect(triggerNewFolder) {
-        if (triggerNewFolder != null) {
+        if (triggerNewFolder is Int && triggerNewFolder > 0) {
             contextFile = workspaceRoot
             nameInput = ""
             showNewFolder = true
