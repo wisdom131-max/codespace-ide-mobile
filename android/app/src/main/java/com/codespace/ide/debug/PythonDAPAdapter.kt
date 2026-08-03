@@ -348,7 +348,7 @@ class PythonDAPAdapter : DebugAdapter {
             put("context", "repl")
         }
         val resp = c.request("evaluate", args, timeoutSeconds = 5) ?: return null
-        return resp.optString("result", null)
+        return if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
     }
 
     // ── Stack frame / variable helpers ─────────────────────────────────────

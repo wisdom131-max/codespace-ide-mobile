@@ -218,7 +218,7 @@ fun parseCodeActions(actions: JSONArray): List<LspCodeAction> {
         when (item) {
             is JSONObject -> {
                 val title = item.optString("title", "Unknown action")
-                val kind = if (item.has("kind")) item.getString("kind") else null
+                val kind = if (item.has("kind") && !item.isNull("kind")) item.getString("kind") else null
                 val edit = item.optJSONObject("edit")?.toString()
                 val command = item.optJSONObject("command")?.toString()
                 result.add(LspCodeAction(title, kind, edit, command))

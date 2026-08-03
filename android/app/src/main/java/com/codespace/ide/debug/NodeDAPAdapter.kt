@@ -478,7 +478,7 @@ class NodeDAPAdapter : DebugAdapter {
             put("frameId", if (frameId > 0) frameId else currentFrameId)
         }
         val resp = client?.request("evaluate", evalArgs, timeoutSeconds = 5) ?: return null
-        return resp.optString("result", null)
+        return if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
     }
 
     // ── Stack / Variables ─────────────────────────────────────────────
