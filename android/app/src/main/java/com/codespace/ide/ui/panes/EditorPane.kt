@@ -566,6 +566,15 @@ fun EditorPane(
                                             try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
                                         }
                                     }
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, "Formatted ✓ (${activeTab.language.displayName} formatter)", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    // P37-TEST4-FIX: surface the failure/no-op reason instead of silently doing nothing
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, "Format: ${result.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                    AppOutputLog.log("[Format] regex-button result: ${result.message}", "format")
                                 }
                                 formatting = false
                             }
