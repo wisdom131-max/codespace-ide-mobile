@@ -1691,7 +1691,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 val defUri = loc.optString("uri", "")
                                                 val defLine = loc.optJSONObject("range")
                                                     ?.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                                val defPath = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
+                                                val defPathRaw = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
+                                                val defPath = try { java.net.URLDecoder.decode(defPathRaw, "UTF-8") } catch (_: Exception) { defPathRaw }
                                                 val targetText = if (defPath == filePath) value.text
                                                     else try { java.io.File(defPath).readText() } catch (_: Exception) { null }
                                                 if (targetText != null) {
