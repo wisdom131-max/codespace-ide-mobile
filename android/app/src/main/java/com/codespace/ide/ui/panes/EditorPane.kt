@@ -366,13 +366,19 @@ fun EditorPane(
             withContext(Dispatchers.IO) {
                 dirty.forEach { tab ->
                     try {
-                        val name = File(tab.path).name
-                        File(dir, "$name.autosave").writeText(tab.content)
+                        // P37-CORRUPTION-FIX: Use URL-encoded full path as autosave filename
+                        // instead of just the file basename. Two files named "test.js" in
+                        // different directories were overwriting each other's autosave,
+                        // causing content from one file to be restored into the other on
+                        // next launch — manifesting as "merged/tangled" file content.
+                        val safeName = java.net.URLEncoder.encode(tab.path, "UTF-8")
+                        File(dir, "$safeName.autosave").writeText(tab.content)
                     } catch (_: Exception) {}
                 }
                 // Remove autosave files for tabs that are now clean (saved or closed)
-                val activeNames = tabs.map { File(it.path).name + ".autosave" }.toSet()
-                dir.listFiles()?.forEach { f -> if (f.name !in activeNames) f.delete() }
+                val activePaths = tabs.filter { it.path.startsWith("/") }
+                    .map { java.net.URLEncoder.encode(it.path, "UTF-8") + ".autosave" }.toSet()
+                dir.listFiles()?.forEach { f -> if (f.name !in activePaths) f.delete() }
             }
         }
     }
@@ -412,7 +418,7 @@ fun EditorPane(
                         Spacer(Modifier.height(6.dp))
                         autosaveFiles.forEach { f ->
                             androidx.compose.material3.Text(
-                                "• ${f.name.removeSuffix(".autosave")}",
+                                "• ${try { java.net.URLDecoder.decode(f.name.removeSuffix(".autosave"), "UTF-8") } catch (_: Exception) { f.name.removeSuffix(".autosave") }}",
                                 fontSize = 12.sp,
                                 color = Color(0xFF89B4FA)
                             )
