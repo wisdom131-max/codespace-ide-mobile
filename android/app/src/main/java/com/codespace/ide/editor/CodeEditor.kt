@@ -301,9 +301,9 @@ fun CodeEditor(
     /** P26-1: LSP document links — clickable links in comments (JSONArray of DocumentLink). */
     lspDocumentLinks: org.json.JSONArray? = null,
     /** P26-1: LSP Type Definition — called from context menu to peek type definition. */
-    onLspTypeDefinition: (() -> Unit)? = null,
+    onLspTypeDefinition: (() -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
     /** P26-1: LSP Implementation — called from context menu to find implementations. */
-    onLspImplementation: (() -> Unit)? = null,
+    onLspImplementation: (() -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
     /** P26-1: LSP Range Formatting — format a selected range (startLine, endLine). */
     onLspRangeFormat: ((Int, Int) -> org.json.JSONArray?)? = null,
     /** P26-1: LSP Selection Range — expand selection to semantic boundary (line, col). */
@@ -589,6 +589,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
     var peekUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for peek
     var findRefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find references
+    var typeDefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for type definition
+    var implUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find implementations
 
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
@@ -1646,7 +1648,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             TextButton(
                                 onClick = {
                                     contextWord = null
-                                    onLspTypeDefinition.invoke()
+                                    typeDefUsedLsp = onLspTypeDefinition.invoke()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -1659,10 +1661,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                                     Spacer(Modifier.width(4.dp))
                                     Box(
-                                        Modifier.background(Color(0xFF4EC9B0))
+                                        Modifier.background(if (typeDefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
                                             .padding(horizontal = 3.dp, vertical = 1.dp)
                                     ) {
-                                        Text("LSP", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (typeDefUsedLsp) "LSP" else "Fallback", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -1672,7 +1674,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             TextButton(
                                 onClick = {
                                     contextWord = null
-                                    onLspImplementation.invoke()
+                                    implUsedLsp = onLspImplementation.invoke()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -1685,10 +1687,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                                     Spacer(Modifier.width(4.dp))
                                     Box(
-                                        Modifier.background(Color(0xFF4EC9B0))
+                                        Modifier.background(if (implUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
                                             .padding(horizontal = 3.dp, vertical = 1.dp)
                                     ) {
-                                        Text("LSP", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (implUsedLsp) "LSP" else "Fallback", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -2134,28 +2136,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             "$renameCount occurrence${if (renameCount != 1) "s" else ""} of '$wordToRename'" +
-                            if (renameProjectWide && renameCrossFileCount > 0) " + $renameCrossFileCount in other files" else "",
-                            if (renameUsedLsp) " [LSP]" else " [regex]",
+                            (if (renameProjectWide && renameCrossFileCount > 0) " + $renameCrossFileCount in other files" else "") +
+                            (if (renameUsedLsp) " [LSP]" else " [regex]"),
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                         )
-                        // P37-1: Show whether LSP or fallback will be used for this rename
+                        // P37-3fix: Badge reflects ACTUAL outcome (renameUsedLsp), not pre-flight check
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val lspActive = LspManager.isServerRunning(language) && filePath.startsWith("/")
                             Box(
                                 Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                    .background(if (lspActive) Color(0xFF4EC9B0) else Color(0xFFCC7832))
+                                    .background(if (renameUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
                                     .padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
                                 Text(
-                                    if (lspActive) "LSP" else "Fallback",
+                                    if (renameUsedLsp) "LSP" else "Fallback",
                                     color = Color(0xFF1E1E1E),
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                             }
                             Text(
-                                if (lspActive) "Will try LSP rename (may fall back)" else "Regex replace in current file only",
+                                if (renameUsedLsp) "Renamed via LSP (workspace-aware)" else "Regex replace in current file only",
                                 color = Color(0xFF888888),
                                 fontSize = 10.sp,
                             )

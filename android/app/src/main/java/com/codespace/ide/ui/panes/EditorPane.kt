@@ -1339,6 +1339,7 @@ fun EditorPane(
                         onLspTypeDefinition = if (LspManager.isServerRunning(active.language)) {
                             {
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                var succeeded = false
                                 if (uri != null) {
                                     val typeDefs = try { LspManager.getTypeDefinition(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
                                     if (typeDefs != null && typeDefs.length() > 0) {
@@ -1354,20 +1355,23 @@ fun EditorPane(
                                                 val endLine = (defLine + 8).coerceAtMost(allLines.size - 1)
                                                 val snippet = allLines.subList(startLine, endLine + 1)
                                                 lspTypeDefResult = PeekDefResult(defPath, defLine, snippet, defLine - startLine)
+                                                succeeded = true
                                             }
                                         }
                                     }
                                 }
+                                succeeded
                             }
                         } else null,
                         // P26-1: LSP Implementation (context menu)
                         onLspImplementation = if (LspManager.isServerRunning(active.language)) {
                             {
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                var succeeded = false
                                 if (uri != null) {
                                     val impls = try { LspManager.getImplementation(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
                                     val results = mutableListOf<Triple<String, Int, String>>()
-                                    if (impls != null) {
+                                    if (impls != null && impls.length() > 0) {
                                         for (i in 0 until impls.length()) {
                                             val loc = impls.optJSONObject(i) ?: continue
                                             val implUri = loc.optString("uri", "")
@@ -1376,9 +1380,11 @@ fun EditorPane(
                                             val snippet = try { java.io.File(implPath).readLines().getOrElse(implLine) { "" } } catch (_: Exception) { "" }
                                             results.add(Triple(implPath, implLine, snippet))
                                         }
+                                        succeeded = results.isNotEmpty()
                                     }
                                     lspImplResults = results
                                 }
+                                succeeded
                             }
                         } else null,
                         // P26-1: LSP Range Formatting

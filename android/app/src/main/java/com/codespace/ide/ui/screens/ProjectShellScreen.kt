@@ -1798,6 +1798,9 @@ private fun PssBottomPanelContent(
     tabTextInactive: Color,
     onRunInTerminal: (String) -> Unit = {},
     heavyPanesReady: Boolean = false,
+    buildProblems: List<Problem> = emptyList(),
+    onBuildProblemsChange: (List<Problem>) -> Unit = {},
+    onJumpToSource: (Int) -> Unit = {},
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -1888,7 +1891,7 @@ private fun PssBottomPanelContent(
                 context = context,
                 activeFilePath = activeEditorTab,
                 buildProblems = buildProblems,
-                onJumpToSource = { line -> scrollTargetLine = line; onHideBottomPanel() },
+                onJumpToSource = { line -> onJumpToSource(line); onHideBottomPanel() },
             )
             BottomTab.OUTPUT   -> OutputPanel()
             BottomTab.DEBUG    -> DebugConsolePanel(
@@ -2004,7 +2007,7 @@ private fun PssBottomPanelContent(
                     java.io.File(activeEditorTab!!).parent ?: ""
                 } else "",
                 onProblemsUpdate = { problems ->
-                    buildProblemsMs.value = problems.map { bp ->
+                    onBuildProblemsChange(problems.map { bp ->
                         Problem(
                             line = bp.line,
                             severity = when (bp.severity) {
@@ -2014,7 +2017,7 @@ private fun PssBottomPanelContent(
                             },
                             message = (if (bp.file.isNotEmpty()) "${'$'}{bp.file.substringAfterLast("/")}: " else "") + bp.message
                         )
-                    }
+                    })
                 },
             )
         }
@@ -3081,6 +3084,9 @@ private fun PssEditorColumn(
             tabTextInactive = TabTextInactive,
             onRunInTerminal = { cmd -> terminalCommandToRun = cmd + "\r" },
             heavyPanesReady = heavyPanesReady,
+            buildProblems = buildProblems,
+            onBuildProblemsChange = { problems -> buildProblems = problems },
+            onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
         )
 
     } // end editor Column
