@@ -1069,6 +1069,7 @@ fun ProjectShellScreen(
                     showSymbolSearchMs = showSymbolSearchMs,
                     splitTerminalWidthMs = splitTerminalWidthMs,
                     terminalCommandToRunMs = terminalCommandToRunMs,
+                    buildProblemsMs = buildProblemsMs,
                 )
             } // end main Row (editor + optional chat panel)
 
@@ -2015,7 +2016,7 @@ private fun PssBottomPanelContent(
                                 GradleErrorParser.Severity.WARNING -> Problem.Severity.WARNING
                                 GradleErrorParser.Severity.INFO -> Problem.Severity.INFO
                             },
-                            message = (if (bp.file.isNotEmpty()) "${'$'}{bp.file.substringAfterLast("/")}: " else "") + bp.message
+                            message = (if (bp.file.isNotEmpty()) "${bp.file.substringAfterLast("/")}: " else "") + bp.message
                         )
                     })
                 },
@@ -2694,6 +2695,7 @@ private fun PssEditorColumn(
     showSymbolSearchMs: MutableState<Boolean>,
     splitTerminalWidthMs: MutableState<Float>,
     terminalCommandToRunMs: MutableState<String?>,
+    buildProblemsMs: MutableState<List<Problem>>,
 ) {
     val density = LocalDensity.current
     // Color param aliases — body code uses PascalCase originals, params are camelCase
@@ -2737,6 +2739,7 @@ private fun PssEditorColumn(
     var _showSymbolSearch by showSymbolSearchMs
     var splitTerminalWidth by splitTerminalWidthMs
     var terminalCommandToRun by terminalCommandToRunMs
+    var buildProblems by buildProblemsMs
 
     // Editor Column
     Column(modifier.fillMaxHeight()) {
