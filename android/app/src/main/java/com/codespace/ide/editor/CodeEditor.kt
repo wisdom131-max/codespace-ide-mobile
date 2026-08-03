@@ -1627,6 +1627,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
 
+                        // Go to Definition (regex-based fallback)
+                        TextButton(
                             onClick = {
                                 val lines = value.text.split("\n")
                                 val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"

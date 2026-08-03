@@ -6345,3 +6345,59 @@ Auditing every LSP feature end-to-end through 6 links:
 1. Request sent → 2. Response received → 3. Parsed → 4. Passed to UI state → 5. UI renders → 6. Badge accurate
 
 (Findings will be appended below as each feature is traced.)
+
+### Part 4: Full 12-Feature LSP UI-Visibility Audit — COMPLETE
+
+**Method:** Traced each feature through 6 links: request sent → response received → parsed → passed to UI state → actually rendered → badge accurate.
+
+| # | Feature | LSP Wired | Fallback | Badge | Status |
+|---|---------|-----------|----------|-------|--------|
+| 1 | Go to Definition | ✅ regex-only (no LSP path) | ✅ regex | ✅ "Fallback" always | Working (regex-only by design) |
+| 2 | Peek Definition | ✅ | ✅ regex | ✅ dynamic `peekUsedLsp` | Working |
+| 3 | Type Definition | ✅ | ✅ regex | ✅ dynamic `typeDefUsedLsp` | Working (fixed this session) |
+| 4 | Implementations | ✅ | ✅ regex | ✅ dynamic `implUsedLsp` | Working (fixed this session) |
+| 5 | Find References | ✅ | ✅ regex | ✅ dynamic `findRefUsedLsp` | Working |
+| 6 | Rename Symbol | ✅ | ✅ regex | ✅ dynamic `renameUsedLsp` | Working (fixed this session) |
+| 7 | Code Actions | ✅ | ❌ none | ✅ 3-state (LSP/no fixes/fixes available) | **Fixed this session** |
+| 8 | Document Formatting | ✅ | ✅ regex | ✅ LSP/Fallback on toolbar buttons | Working |
+| 9 | Completion | ✅ | ❌ none | ❌ (dropdown presence is signal) | Working |
+| 10 | Selection Range | ✅ | ❌ none | ✅ LSP teal icon + depth indicator | **Fixed this session** |
+| 11 | Workspace Symbols | ✅ | ✅ regex (FileIndexer) | ✅ LSP/Fallback badge | **Fixed this session** |
+| 12 | Outline Panel | ✅ | ✅ regex | ✅ LSP/Fallback badge | Working |
+
+#### Fixes Applied This Session
+
+**Fix 1: Code Actions wiring + 3-state indicator (Feature 7)**
+- Problem: `onLspCodeActions` was wired from EditorPane → CodeEditor but CodeEditor never called it. Context menu "Code Actions" button was completely missing.
+- Fix: Added Code Actions button to context menu. On tap, calls `onLspCodeActions(cursorLine, cursorCol)`. If LSP returns actions, shows them as clickable items. 3-state indicator: "LSP" (teal, fixes available), "LSP" (gray, no fixes found), "Fallback" (orange, LSP not running).
+- Files: `CodeEditor.kt`, `EditorPane.kt`
+
+**Fix 2: optString/isNull null-safety bug (LSP response parsing)**
+- Problem: `sym.getString("name")` crashed when LSP returned `null` for the `name` field. Java's `getString()` throws `JSONException` on null values.
+- Fix: Changed to `sym.has("name") && !sym.isNull("name")` guard pattern. Found and fixed in 3 locations: `CodeEditor.kt` (workspace symbols), `DebugAdapterClient.kt` (stack trace variable name), `DebugAdapterClient.kt` (scope variables).
+- Files: `CodeEditor.kt`, `DebugAdapterClient.kt`
+
+**Fix 3: Selection Range / Expand Selection (Feature 10) — was dead code**
+- Problem: `onLspSelectionRange` parameter declared in CodeEditor, wired from EditorPane, but never consumed in any UI element. Top menu "Expand Selection" was a dead no-op (no handler).
+- Fix: Added "Expand Selection" button to editor context menu. On tap, calls `onLspSelectionRange(cursorLine, cursorCol)`, parses nested SelectionRange chain (range + parent), expands TextFieldValue selection to the semantic boundary. Repeated taps go deeper (L1, L2, ...). State resets on context menu open/dismiss. Top menu "Expand Selection" now shows informative notification.
+- Decision: Wired rather than removed because the LSP method (`getSelectionRange`) was fully implemented and working, the menu item already existed, and expand-selection is a genuinely useful IDE feature.
+- Files: `CodeEditor.kt`, `ProjectShellScreen.kt`
+
+**Fix 4: Workspace Symbols LSP integration (Feature 11) — was partially broken**
+- Problem: EditorPane computed LSP workspace symbol results into `lspSymbolResults` state variable, but that state was never read by any UI. SymbolSearchPanel used only FileIndexer (regex) with no LSP path. The `onLspWorkspaceSymbol` callback was wired through CodeEditor but never triggered.
+- Fix: Rewrote SymbolSearchPanel to query `LspManager.getWorkspaceSymbol()` directly (same pattern as OutlinePanel). Merges LSP results with FileIndexer regex results, deduplicated by (filePath, line). LSP results shown first. 300ms debounce on typing. Shows LSP/Fallback badge. Removed dead `lspSymbolResults` state and `onLspWorkspaceSymbol` callback from EditorPane and CodeEditor.
+- Files: `SymbolSearchPanel.kt`, `EditorPane.kt`, `CodeEditor.kt`, `ProjectShellScreen.kt`
+
+**Fix 5: Dead parameter cleanup**
+- Removed `onFormat` from CodeEditor — redundant with the two formatting toolbar buttons in EditorPane (regex format + LSP format), which already fully handle document formatting.
+- Removed `onLspRangeFormat` from CodeEditor — declared and wired but never consumed in any UI element. Range formatting ("Format Selection") doesn't exist as a UI feature. `LspManager.getRangeFormatting()` still available if needed later.
+- Removed `onLspWorkspaceSymbol` from CodeEditor — replaced by SymbolSearchPanel's direct LspManager queries.
+- Removed corresponding wiring from EditorPane for all three.
+- Added menu handlers for "Shrink Selection", "Add Cursor Above", "Add Cursor Below" (previously dead no-ops, now show informative notifications).
+- Files: `CodeEditor.kt`, `EditorPane.kt`, `ProjectShellScreen.kt`
+
+#### Batch 1 Status: CLOSED
+
+All 12 long-press menu / toolbar LSP features audited end-to-end. 5 features fixed (Code Actions, Selection Range, Workspace Symbols, Type Definition badge, Implementations badge). 3 dead parameters removed. 1 null-safety bug fixed (3 instances). CI green on all fixes.
+
+Next: Batch 2 — extending same 6-link audit to Hover, Diagnostics/Problems tab, Signature Help, Document Highlight, Semantic Tokens, Inlay Hints, Code Lens, Folding Range, and Document Links.
