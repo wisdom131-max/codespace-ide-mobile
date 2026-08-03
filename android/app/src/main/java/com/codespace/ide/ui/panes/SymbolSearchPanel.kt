@@ -163,7 +163,8 @@ fun SymbolSearchPanel(
             )
         }
 
-        // LSP/Fallback badge + indexing status
+        // LSP/Fallback badge + indexing status — only show after a search has run
+        if (query.isNotBlank()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -197,6 +198,7 @@ fun SymbolSearchPanel(
                     fontFamily = FontFamily.Monospace,
                 )
             }
+        }
         }
 
         // Results
