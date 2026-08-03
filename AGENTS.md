@@ -6401,3 +6401,43 @@ Auditing every LSP feature end-to-end through 6 links:
 All 12 long-press menu / toolbar LSP features audited end-to-end. 5 features fixed (Code Actions, Selection Range, Workspace Symbols, Type Definition badge, Implementations badge). 3 dead parameters removed. 1 null-safety bug fixed (3 instances). CI green on all fixes.
 
 Next: Batch 2 — extending same 6-link audit to Hover, Diagnostics/Problems tab, Signature Help, Document Highlight, Semantic Tokens, Inlay Hints, Code Lens, Folding Range, and Document Links.
+
+---
+
+### Batch 2 Pre-work: New File / New Folder Dual-Implementation Bug (2026-08-03)
+
+**Finding:** Two independent implementations of "New File" and "New Folder" existed in the codebase — one in `ExplorerPane.kt` (the real file tree) and one in `ProjectShellScreen.kt`'s `ExplorerOverflowMenu` (the 3-dot overflow menu). These created files at different paths:
+
+- **Implementation A (ExplorerPane):** Used `contextFile` (the long-pressed tree node) as the target directory. Files created at the correct contextual location (e.g. long-press `src/` → file goes in `src/`).
+- **Implementation B (ExplorerOverflowMenu):** Used `projectRootPath` (hardcoded to `context.filesDir/projects/$projectId`). Files always created at project root, ignoring the user's current location in the tree.
+
+This meant:
+1. A file created via the 3-dot menu could silently land at the project root while the user expected it in their current folder.
+2. Two separate dialogs with identical names but different behavior — confusing UX.
+3. Implementation B's dialogs had error handling (try/catch + `onShowNotification`), while Implementation A's New File had `catch (_: Exception) {}` (silent swallow) and New Folder had no try/catch at all.
+4. Implementation B already had `parentFile?.mkdirs()` for nested paths; Implementation A did not.
+
+Additionally, the command palette entries for "New File" and "New Folder" were dead — they appeared in the palette list but had no handler in `handleMenuAction()`, so tapping them did nothing.
+
+**Fix (5 changes, commit 9f8905e0):**
+
+1. **Deleted Implementation B** — removed `ExplorerOverflowMenu`'s `newFileDialog`, `newFolderDialog`, `fileName`, `folderName` state, and both `AlertDialog` composables (~70 lines). Removed `context` and `projectRootPath` params. Replaced with `onNewFile` / `onNewFolder` callback params that increment `triggerNewFileCounter` / `triggerNewFolderCounter` state in ProjectShellScreen.
+
+2. **Added `parentFile?.mkdirs()` to ExplorerPane's New File** — nested paths like `src/utils/helper.js` now work in one shot (intermediate directories auto-created).
+
+3. **Replaced silent `catch (_: Exception) {}` with real error notifications** — ExplorerPane's New File now catches and reports via `onShowNotification`. New Folder dialog got matching try/catch (previously had zero error handling). Both also show success notifications.
+
+4. **Wired dead command palette entries** — `handleMenuAction("New File")` and `handleMenuAction("New Folder")` now switch to the Explorer panel and trigger ExplorerPane's dialogs via the same counter mechanism.
+
+5. **Rename/Delete/Copy/Cut/Paste/Duplicate left untouched** — confirmed these are single-implementation (only in ExplorerPane's long-press context menu), no dual-path risk.
+
+**Files changed:** `ExplorerPane.kt` (+37 lines), `ProjectShellScreen.kt` (-84 net lines)
+
+**Architecture of the trigger mechanism:**
+- ProjectShellScreen holds `triggerNewFileCounter` and `triggerNewFolderCounter` (Int state, init 0).
+- 3-dot overflow menu and command palette both increment these counters.
+- Counters passed to `ExplorerSidePanel` as `triggerNewFile: Any?` / `triggerNewFolder: Any?`.
+- `LaunchedEffect(triggerNewFile)` / `LaunchedEffect(triggerNewFolder)` in ExplorerPane watches for changes, sets `contextFile = workspaceRoot`, clears `nameInput`, and opens the dialog.
+- Same pattern as existing `navigateToDir` trigger.
+
+**CI:** Pending verification on commit 9f8905e0.
