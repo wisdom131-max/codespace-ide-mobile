@@ -6281,3 +6281,67 @@ After: ✅ Shared via `DocumentSymbolCache` singleton (5s TTL, mutex-protected).
 
 ### Part 5 Status: ✅ COMPLETE
 All findings logged to AGENTS.md. User to test and confirm.
+
+---
+
+## Phase 38 — LSP UI-Visibility Audit & Badge Accuracy Fixes (2026-08-03)
+
+**Trigger:** User requested full audit of every LSP feature to verify the complete 6-link chain works end-to-end: (1) request sent → (2) response received → (3) parsed → (4) passed to UI state → (5) UI renders it → (6) badge reflects actual outcome. Previous phases found Document Symbols fetched with NO UI, Rename Symbol secretly regex-only, and badges showing "LSP" even on fallback paths.
+
+### Badge Accuracy Fixes (commit `8ad7867f`)
+
+**Fix 1: Rename dialog badge — pre-flight → post-result**
+- **Before:** Badge used `lspActive = LspManager.isServerRunning(language) && filePath.startsWith("/")` — showed "LSP" if a server was running, even if the rename then failed and fell back to regex.
+- **After:** Badge uses `renameUsedLsp` — set `true` only when LSP `rename()` succeeds and edits are applied, `false` when regex fallback runs.
+- **Description text:** Changed from "Will try LSP rename (may fall back)" to "Renamed via LSP (workspace-aware)" / "Regex replace in current file only" — reflects actual outcome.
+- **Files:** `CodeEditor.kt`
+
+**Fix 2: Go to Type Definition badge — static → dynamic**
+- **Before:** Hardcoded `Color(0xFF4EC9B0)` with `"LSP"` text — always showed green "LSP" badge unconditionally, even when the request returned empty/errored.
+- **After:** Uses `typeDefUsedLsp` state variable — `true` only when `LspManager.getTypeDefinition()` returns non-empty results AND the peek result is successfully created, `false` on error/empty/timeout. Badge shows "LSP" (teal) or "Fallback" (orange) based on actual outcome.
+- **Callback change:** `onLspTypeDefinition` signature changed from `(() -> Unit)?` to `(() -> Boolean)?` — EditorPane callback now returns `true` when LSP succeeded, `false` otherwise. CodeEditor stores result in `typeDefUsedLsp`.
+- **Files:** `CodeEditor.kt`, `EditorPane.kt`
+
+**Fix 3: Find Implementations badge — static → dynamic**
+- **Before:** Hardcoded `Color(0xFF4EC9B0)` with `"LSP"` text — same static problem as Type Definition.
+- **After:** Uses `implUsedLsp` state variable — `true` only when `LspManager.getImplementation()` returns non-empty results AND `results.isNotEmpty()`, `false` on error/empty/timeout.
+- **Callback change:** `onLspImplementation` signature changed from `(() -> Unit)?` to `(() -> Boolean)?` — same pattern as Type Definition.
+- **Files:** `CodeEditor.kt`, `EditorPane.kt`
+
+**CI compile fixes included in same commit:**
+- `CodeEditor.kt:2135` — `Text()` call had `if/else` expressions parsed as separate positional arguments instead of string concatenation. Wrapped each `if` in parentheses with `+` operator.
+- `ProjectShellScreen.kt:1890` — `buildProblems` and `scrollTargetLine` referenced from outer scope but `PssBottomPanelContent` is a separate function. Added `buildProblems`, `onBuildProblemsChange`, and `onJumpToSource` as parameters, wired at call site.
+
+### DocumentSymbolCache Confirmation
+
+**Question:** Does OutlinePanel share the same LSP document-symbol data as EditorPane?
+**Answer:** YES — via `DocumentSymbolCache` singleton (mutex-protected, 5-second TTL).
+- EditorPane writes to cache after fetching `textDocument/documentSymbol` on file open (500ms debounce).
+- OutlinePanel reads from cache first. Only on cache miss (different file or stale > 5s) does it make its own request.
+- Eliminates duplicate LSP requests for the same file.
+- Note: `lspDocumentSymbols` parameter in CodeEditor is declared but never read — dead data. Symbols are only visible through OutlinePanel.
+
+### Known Future Improvement (flagged, not fixed this phase)
+
+**Go to Definition (context menu) is regex-only** — correctly labeled "Fallback" because it genuinely has no LSP path. The onClick handler does regex pattern matching (`Regex("(?:fun|class|object|interface|val|var|def|function|...)")`) and `FileIndexer.search()` for cross-file. No `LspManager.getDefinition()` is ever called from the context menu. This is accurate labeling, but adding a real LSP-backed path (like Peek Definition already has) would be a genuine improvement. Flagged for future work.
+
+### Badge Accuracy Audit Summary Table
+
+| Feature | Before fix | After fix | Status |
+|---------|-----------|-----------|--------|
+| Peek Definition | ✅ `peekUsedLsp` — set true only after LSP returns valid result | ✅ No change needed | WORKING |
+| Go to Definition | ✅ Always "Fallback" (never tries LSP) | ✅ No change needed (accurate) | WORKING (regex-only by design) |
+| Go to Type Definition | ❌ Hardcoded "LSP" badge unconditionally | ✅ Dynamic `typeDefUsedLsp` | FIXED |
+| Find Implementations | ❌ Hardcoded "LSP" badge unconditionally | ✅ Dynamic `implUsedLsp` | FIXED |
+| Find References | ✅ `findRefUsedLsp` — set true only if LSP returned non-empty | ✅ No change needed | WORKING |
+| Rename Symbol (dialog badge) | ❌ Pre-flight `isServerRunning` check | ✅ Post-result `renameUsedLsp` | FIXED |
+| Rename Symbol (result text) | ✅ Shows [LSP] / [regex] in result notification | ✅ No change needed | WORKING |
+| Outline panel | ✅ `usedLsp` — set true only after non-empty LSP result | ✅ No change needed | WORKING |
+| Format LSP button | ⚠️ Static "LSP" label when server running | ⚠️ Low priority — formatting either works or silently no-ops | DEFERRED |
+
+### Part 4: Full 12-Feature LSP UI-Visibility Audit — IN PROGRESS
+
+Auditing every LSP feature end-to-end through 6 links:
+1. Request sent → 2. Response received → 3. Parsed → 4. Passed to UI state → 5. UI renders → 6. Badge accurate
+
+(Findings will be appended below as each feature is traced.)
