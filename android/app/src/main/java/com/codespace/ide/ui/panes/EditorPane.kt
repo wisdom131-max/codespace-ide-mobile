@@ -1249,7 +1249,8 @@ fun EditorPane(
                                         (0 until arr.length()).mapNotNull { i ->
                                             val loc = arr.optJSONObject(i) ?: return@mapNotNull null
                                             val refUri = loc.optString("uri", "")
-                                            val refPath = if (refUri.startsWith("file://")) refUri.removePrefix("file://") else refUri
+                                            val refPathRaw = if (refUri.startsWith("file://")) refUri.removePrefix("file://") else refUri
+                                            val refPath = try { java.net.URLDecoder.decode(refPathRaw, "UTF-8") } catch (_: Exception) { refPathRaw }
                                             val line = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
                                             val snippet = try { java.io.File(refPath).readLines().getOrElse(line) { "" } } catch (_: Exception) { "" }
                                             Triple(refPath, line, snippet)
@@ -1334,7 +1335,8 @@ fun EditorPane(
                                         if (loc != null) {
                                             val defUri = loc.optString("uri", "")
                                             val defLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                            val defPath = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
+                                            val defPathRaw = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
+                                            val defPath = try { java.net.URLDecoder.decode(defPathRaw, "UTF-8") } catch (_: Exception) { defPathRaw }
                                             val targetText = if (defPath == active.path) active.content else try { java.io.File(defPath).readText() } catch (_: Exception) { null }
                                             if (targetText != null) {
                                                 val allLines = targetText.split("\n")
@@ -1363,7 +1365,8 @@ fun EditorPane(
                                             val loc = impls.optJSONObject(i) ?: continue
                                             val implUri = loc.optString("uri", "")
                                             val implLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                            val implPath = if (implUri.startsWith("file://")) implUri.removePrefix("file://") else implUri
+                                            val implPathRaw = if (implUri.startsWith("file://")) implUri.removePrefix("file://") else implUri
+                                            val implPath = try { java.net.URLDecoder.decode(implPathRaw, "UTF-8") } catch (_: Exception) { implPathRaw }
                                             val snippet = try { java.io.File(implPath).readLines().getOrElse(implLine) { "" } } catch (_: Exception) { "" }
                                             results.add(Triple(implPath, implLine, snippet))
                                         }
