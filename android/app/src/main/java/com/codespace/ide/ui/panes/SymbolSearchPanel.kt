@@ -99,7 +99,8 @@ fun SymbolSearchPanel(
                     val symUri = if (loc.has("uri") && !loc.isNull("uri")) loc.getString("uri") else ""
                     val symLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
                     val symKind = sym.optInt("kind", 0)
-                    val symPath = if (symUri.startsWith("file://")) symUri.removePrefix("file://") else symUri
+                    val symPathRaw = if (symUri.startsWith("file://")) symUri.removePrefix("file://") else symUri
+                    val symPath = try { java.net.URLDecoder.decode(symPathRaw, "UTF-8") } catch (_: Exception) { symPathRaw }
                     val symFile = symPath.substringAfterLast("/")
                     parsed.add(LspSym(name, symPath, symFile, symLine, symKind))
                 }
