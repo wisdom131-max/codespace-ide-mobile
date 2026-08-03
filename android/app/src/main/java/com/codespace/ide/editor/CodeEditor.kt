@@ -305,14 +305,11 @@ fun CodeEditor(
     onLspTypeDefinition: (() -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
     /** P26-1: LSP Implementation — called from context menu to find implementations. */
     onLspImplementation: (() -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
-    /** P26-1: LSP Range Formatting — format a selected range (startLine, endLine). */
-    onLspRangeFormat: ((Int, Int) -> org.json.JSONArray?)? = null,
     /** P26-1: LSP Selection Range — expand selection to semantic boundary (line, col). */
     onLspSelectionRange: ((Int, Int) -> org.json.JSONArray?)? = null,
     /** P26-1: LSP Prepare Rename — check if symbol at position can be renamed (line, col). */
     onLspPrepareRename: ((Int, Int) -> JSONObject?)? = null,
     /** P26-1: LSP Workspace Symbol — search symbols across workspace (query string). */
-    onLspWorkspaceSymbol: ((String) -> Unit)? = null,
     /** P15-A: Fix with AI — called with a pre-formatted prompt when user taps "Fix with AI". */
     onAiFixRequest: ((String) -> Unit)? = null,
     /** P18-C: Project root path for cross-file rename. Null = single-file only. */
@@ -345,8 +342,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     filePath: String = "",
     /** P25-LSP: LSP-backed signature help — returns signature info from the language server */
     lspSignatureHelpProvider: ((line: Int, col: Int) -> SignatureInfo?)? = null,
-    /** P25-LSP: LSP-backed document formatting — called when user taps Format */
-    onFormat: (() -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
@@ -592,6 +587,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var findRefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find references
     var typeDefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for type definition
     var implUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find implementations
+
+    // ── Selection Range (Expand Selection) state ──────────────────────────
+    var expandSelectionRanges by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var expandSelectionDepth by remember { mutableStateOf(-1) }
+    var expandSelectionUsedLsp by remember { mutableStateOf(false) }
 
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
@@ -859,6 +859,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             val word = currentWord(value.text, cursor)
                             if (word.length >= 2) {
                                 contextWord = word
+                                expandSelectionDepth = -1
+                                expandSelectionRanges = emptyList()
                             }
                         },
                         onDoubleClick = {
@@ -1458,7 +1460,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             androidx.compose.runtime.key(contextWord) {
             val word = contextWord!!
             AlertDialog(
-                onDismissRequest = { contextWord = null },
+                onDismissRequest = { contextWord = null; expandSelectionDepth = -1; expandSelectionRanges = emptyList() },
                 containerColor = Color(0xFF252526),
                 title = {
                     Text(
@@ -1559,8 +1561,72 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("LSP not active", color = Color(0xFF555555), fontSize = 11.sp, fontStyle = FontStyle.Italic)
                         }
 
-
+                        // P37-4: Expand Selection (LSP Selection Range)
                         TextButton(
+                            onClick = {
+                                val cOff = value.selection.end
+                                val cLine = value.text.take(cOff).count { it == '\n' }
+                                val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                val cCol = cOff - cLineStart
+                                if (onLspSelectionRange != null) {
+                                    try {
+                                        val resp = onLspSelectionRange.invoke(cLine, cCol)
+                                        if (resp != null && resp.length() > 0) {
+                                            // Parse nested SelectionRange chain into a flat list
+                                            val ranges = mutableListOf<org.json.JSONObject>()
+                                            var current: org.json.JSONObject? = resp.optJSONObject(0)
+                                            while (current != null) {
+                                                val r = current.optJSONObject("range")
+                                                if (r != null) ranges.add(r)
+                                                current = current.optJSONObject("parent")
+                                            }
+                                            if (ranges.isNotEmpty()) {
+                                                expandSelectionRanges = ranges
+                                                // First tap: go to depth 0 (innermost)
+                                                // Subsequent taps: go deeper
+                                                val nextDepth = if (expandSelectionDepth < 0) 0 else expandSelectionDepth + 1
+                                                val targetDepth = nextDepth.coerceAtMost(ranges.size - 1)
+                                                expandSelectionDepth = targetDepth
+                                                expandSelectionUsedLsp = true
+                                                val rng = ranges[targetDepth]
+                                                val sLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                val sChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                val eLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                val eChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                // Convert 0-indexed (line, char) to absolute offset in text
+                                                val lines = value.text.split("\n")
+                                                var startOff = 0
+                                                for (i in 0 until sLine.coerceAtMost(lines.size)) {
+                                                    startOff += lines[i].length + 1
+                                                }
+                                                startOff += sChar.coerceAtMost(if (sLine < lines.size) lines[sLine].length else 0)
+                                                var endOff = 0
+                                                for (i in 0 until eLine.coerceAtMost(lines.size)) {
+                                                    endOff += lines[i].length + 1
+                                                }
+                                                endOff += eChar.coerceAtMost(if (eLine < lines.size) lines[eLine].length else 0)
+                                                value = TextFieldValue(value.text, TextRange(startOff.coerceAtMost(endOff), endOff.coerceAtMost(value.text.length)))
+                                            }
+                                        } else {
+                                            expandSelectionUsedLsp = false
+                                        }
+                                    } catch (_: Exception) { expandSelectionUsedLsp = false }
+                                }
+                            },
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (expandSelectionUsedLsp) "⤢" else "⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 14.sp)
+                                Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                if (onLspSelectionRange != null && expandSelectionDepth >= 0) {
+                                    Text("L${expandSelectionDepth + 1}", color = Color(0xFF4EC9B0), fontSize = 10.sp)
+                                }
+                            }
+                        }
+
                             onClick = {
                                 val lines = value.text.split("\n")
                                 val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"

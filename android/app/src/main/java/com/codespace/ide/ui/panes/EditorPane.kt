@@ -188,7 +188,6 @@ fun EditorPane(
     // P26-1: LSP Implementation — Find Implementations result
     var lspImplResults by remember { mutableStateOf<List<Triple<String, Int, String>>>(emptyList()) }
     // P26-1: LSP Workspace Symbol search results
-    var lspSymbolResults by remember { mutableStateOf<List<Triple<String, Int, String>>>(emptyList()) }
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
     var goToLineOpen by remember { mutableStateOf(false) }
@@ -1311,30 +1310,6 @@ fun EditorPane(
                             }
                         } else null,
                         // P25-LSP: Format document via LSP
-                        onFormat = if (LspManager.isServerRunning(active.language)) {
-                            {
-                                val uri = LspManager.fileUriFromHostPath(context, active.path)
-                                if (uri != null) {
-                                    val edits = try {
-                                        LspManager.getFormatting(active.language, uri)
-                                    } catch (_: Exception) { null }
-                                    if (edits != null && edits.length() > 0) {
-                                        // Apply TextEdits to the content
-                                        val content = active.content
-                                        val newContent = applyTextEdits(content, edits)
-                                        if (newContent != content) {
-                                            val idx = tabs.indexOfFirst { it.id == active.id }
-                                            if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
-                                            if (active.path.startsWith("/")) {
-                                                try { java.io.File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
-                                            }
-                                        }
-                                    }
-                                    // P26-1: Notify server of save
-                                    try { LspManager.didSave(active.language, uri, active.content) } catch (_: Exception) {}
-                                }
-                            }
-                        } else null,
                         // P26-1: LSP Document Highlight lines
                         lspHighlightLines = lspHighlightLines,
                         // P26-1: LSP Document Symbols (outline)
@@ -1399,15 +1374,6 @@ fun EditorPane(
                                 succeeded
                             }
                         } else null,
-                        // P26-1: LSP Range Formatting
-                        onLspRangeFormat = if (LspManager.isServerRunning(active.language)) {
-                            { startLine, endLine ->
-                                val uri = LspManager.fileUriFromHostPath(context, active.path)
-                                if (uri != null) {
-                                    try { LspManager.getRangeFormatting(active.language, uri, startLine, 0, endLine, Int.MAX_VALUE) } catch (_: Exception) { null }
-                                } else null
-                            }
-                        } else null,
                         // P26-1: LSP Selection Range
                         onLspSelectionRange = if (LspManager.isServerRunning(active.language)) {
                             { line, col ->
@@ -1424,25 +1390,6 @@ fun EditorPane(
                                 if (uri != null) {
                                     try { LspManager.prepareRename(active.language, uri, line, col) } catch (_: Exception) { null }
                                 } else null
-                            }
-                        } else null,
-                        // P26-1: LSP Workspace Symbol search
-                        onLspWorkspaceSymbol = if (LspManager.isServerRunning(active.language)) {
-                            { query ->
-                                val symbols = try { LspManager.getWorkspaceSymbol(active.language, query) } catch (_: Exception) { null }
-                                val results = mutableListOf<Triple<String, Int, String>>()
-                                if (symbols != null) {
-                                    for (i in 0 until symbols.length()) {
-                                        val sym = symbols.optJSONObject(i) ?: continue
-                                        val name = sym.optString("name", "")
-                                        val loc = sym.optJSONObject("location")
-                                        val symUri = loc?.optString("uri", "") ?: ""
-                                        val symLine = loc?.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                        val symPath = if (symUri.startsWith("file://")) symUri.removePrefix("file://") else symUri
-                                        results.add(Triple(symPath, symLine, name))
-                                    }
-                                }
-                                lspSymbolResults = results
                             }
                         } else null,
                     )

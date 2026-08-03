@@ -708,6 +708,10 @@ fun ProjectShellScreen(
             "Preview"            -> { showBottomPanel = true; activeBottomTab = BottomTab.PREVIEW }
             "Split Terminal"     -> { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT }
             "Go to Symbol"        -> { showSymbolSearch = true }
+            "Expand Selection"     -> showNotification("Long-press a word in the editor, then tap Expand Selection", "info")
+            "Shrink Selection"     -> showNotification("Long-press a word in the editor to use selection commands", "info")
+            "Add Cursor Above"     -> showNotification("Multi-cursor not yet supported on mobile", "info")
+            "Add Cursor Below"     -> showNotification("Multi-cursor not yet supported on mobile", "info")
                         "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
             "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
@@ -2528,6 +2532,7 @@ private fun SymbolSearchOverlay(
                     onNavigate(filePath)
                 },
                 onDismiss = onDismiss,
+                activeFilePath = activeEditorTab,
             )
         }
     }
