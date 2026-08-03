@@ -74,9 +74,12 @@ fun SymbolSearchPanel(
     val lspRunning = remember(activeLang) {
         activeLang != null && LspManager.isServerRunning(activeLang)
     }
+    val lspInitialized = remember(activeLang) {
+        activeLang != null && LspManager.isServerInitialized(activeLang)
+    }
 
-    LaunchedEffect(query, lspRunning) {
-        if (query.isBlank() || !lspRunning || activeLang == null) {
+    LaunchedEffect(query, lspInitialized) {
+        if (query.isBlank() || !lspInitialized || activeLang == null) {
             lspResults = emptyList()
             usedLsp = false
             return@LaunchedEffect
@@ -169,6 +172,10 @@ fun SymbolSearchPanel(
                 Box(
                     Modifier.background(Color(0xFF4EC9B0), RoundedCornerShape(2.dp)).padding(horizontal = 4.dp, vertical = 1.dp)
                 ) { Text("LSP", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+            } else if (lspRunning && !lspInitialized) {
+                Box(
+                    Modifier.background(Color(0xFFFAB387), RoundedCornerShape(2.dp)).padding(horizontal = 4.dp, vertical = 1.dp)
+                ) { Text("Starting", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold) }
             } else {
                 Box(
                     Modifier.background(Color(0xFFCC7832), RoundedCornerShape(2.dp)).padding(horizontal = 4.dp, vertical = 1.dp)
