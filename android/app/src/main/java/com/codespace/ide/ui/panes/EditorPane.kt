@@ -390,6 +390,16 @@ fun EditorPane(
     LaunchedEffect(projectId) {
         val dir = autosaveDir ?: return@LaunchedEffect
         delay(1_500L) // let normal session restore settle first
+        // P37-CORRUPTION-FIX: Delete old basename-based autosave files that
+        // can't be matched to the correct file by full path. New format
+        // starts with %2F (URL-encoded /). Old format was just the basename.
+        withContext(Dispatchers.IO) {
+            dir.listFiles()?.forEach { f ->
+                if (f.name.endsWith(".autosave") && !f.name.startsWith("%2F")) {
+                    f.delete()
+                }
+            }
+        }
         val stale = withContext(Dispatchers.IO) {
             dir.listFiles()?.filter { it.name.endsWith(".autosave") } ?: emptyList()
         }
