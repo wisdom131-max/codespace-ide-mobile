@@ -365,6 +365,14 @@ object LspManager {
         servers[language]?.let { it.process.isAlive } ?: false
 
     /**
+     * Check if the LSP server has completed the initialize handshake.
+     * isServerRunning=true but isServerInitialized=false means the server
+     * is starting up but not ready for requests yet.
+     */
+    fun isServerInitialized(language: Language): Boolean =
+        servers[language]?.let { it.process.isAlive && it.initialized } ?: false
+
+    /**
      * Check if the LSP server binary is installed in the proot rootfs.
      */
     fun isServerInstalled(context: Context, language: Language): Boolean {
