@@ -1491,7 +1491,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Popup(
                     alignment = androidx.compose.ui.Alignment.TopEnd,
                     offset = androidx.compose.ui.unit.IntOffset(0, 0),
-                    properties = PopupProperties(focusable = false, dismissOnOutsideClick = false)
+                    properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
                     androidx.compose.material3.Surface(
