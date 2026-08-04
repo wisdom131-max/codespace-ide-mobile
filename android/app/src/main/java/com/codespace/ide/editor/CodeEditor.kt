@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
