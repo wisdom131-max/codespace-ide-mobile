@@ -199,7 +199,16 @@ fun lspDiagnosticsToLintErrors(diagnostics: JSONArray, fileContent: String): Lis
         val startChar = start.optInt("character", 0).coerceIn(0, lines.getOrElse(startLine) { "" }.length)
         val endLine = end.optInt("line", startLine).coerceIn(0, lines.size - 1)
         val endChar = end.optInt("character", startChar + 1).coerceIn(0, lines.getOrElse(endLine) { "" }.length + 1)
-        val startOffset = (lineOffsets[startLine] + startChar).coerceIn(0, fileContent.length)
+        // FIX: LSP can send a diagnostic at the end-of-file position (line = last line,
+        // character = 0, meaning "position after the last newline"). This makes
+        // startOffset == fileContent.length, and then startOffset+1 > fileContent.length
+        // causes coerceIn() to throw IllegalArgumentException ("maximum N is less than
+        // minimum N+1"). Clamp startOffset to the last valid character position so the
+        // squiggle covers the final character instead of crashing.
+        var startOffset = (lineOffsets[startLine] + startChar).coerceIn(0, fileContent.length)
+        if (fileContent.isNotEmpty() && startOffset >= fileContent.length) {
+            startOffset = fileContent.length - 1
+        }
         val endOffset = (lineOffsets[endLine] + endChar).coerceIn(startOffset + 1, fileContent.length)
         val message = diag.optString("message", "LSP diagnostic")
         result.add(LintError(start = startOffset, end = endOffset, message = message))
