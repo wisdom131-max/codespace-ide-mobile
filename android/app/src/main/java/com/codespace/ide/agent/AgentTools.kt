@@ -446,7 +446,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     private fun installPackage(manager: String, pkg: String, projectDir: String?, context: Context): String {
         val command = when (manager) {
             "npm" -> "npm install $pkg"
-            "pip" -> "pip3 install $pkg"
+            "pip" -> "pip3 install --break-system-packages $pkg"
             "apt" -> "apt-get install -y $pkg"
             else -> return "Unknown manager: $manager. Use: npm, pip, apt"
         }
