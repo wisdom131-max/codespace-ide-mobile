@@ -315,7 +315,7 @@ object ToolchainManager {
             ToolStatus(
                 id = ToolId.PIP, displayName = "pip",
                 health = ToolHealth.MISSING, version = null, path = null,
-                installCmd = "pip3 install --upgrade pip",
+                installCmd = "pip3 install --break-system-packages --upgrade pip",
             )
         }
     }
