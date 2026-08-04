@@ -6464,3 +6464,75 @@ Additionally, the command palette entries for "New File" and "New Folder" were d
 - Same pattern as existing `navigateToDir` trigger.
 
 **CI:** Pending verification on commit 9f8905e0.
+
+---
+
+### LSP Capability Gating Fix (2026-08-04, commit 028b6e2b)
+
+**Problem (two bugs found):**
+
+1. **Critical: hasCapability() was broken since creation.** The LSP `initialize` response result is `{ "capabilities": {...}, "serverInfo": {...} }`. The code stored the *entire result* as `server.capabilities`, but `hasCapability("hoverProvider")` traversed it looking for `"hoverProvider"` at the top level — it's not there, it's under the `"capabilities"` key. This meant `hasCapability()` returned `false` for **every** capability check, silently disabling every gated feature (including `supportsWorkspaceSymbols()` which was the original use case).
+
+2. **Optional LSP methods had no capability gates.** Methods like `getHover()`, `getSemanticTokens()`, `getInlayHints()`, `getCodeLens()`, `getDocumentLinks()`, etc. would send requests to servers that don't support them, causing hangs or timeouts. This is especially problematic for pylsp which doesn't support inlayHint, codeLens, or documentLink.
+
+**Fix 1: Extract inner capabilities object**
+```kotlin
+// Before (broken):
+val caps = response as? JSONObject
+server.capabilities = caps  // stores { capabilities: {...}, serverInfo: {...} }
+
+// After (fixed):
+val result = response as? JSONObject
+val caps = result?.optJSONObject("capabilities") ?: result  // extracts just the caps
+server.capabilities = caps
+```
+Also added a log line to print server capabilities (truncated to 300 chars) for debugging future false negatives.
+
+**Fix 2: Gate 11 optional LSP methods behind hasCapability()**
+
+| Method | Gate | Rationale |
+|--------|------|-----------|
+| `getHover()` | `hoverProvider` | Not all servers support hover |
+| `getSignatureHelp()` | `signatureHelpProvider` | Rare in lightweight servers |
+| `getCodeActions()` | `codeActionProvider` | Pylsp supports this but lightweight servers may not |
+| `getSemanticTokens()` | `semanticTokensProvider` | Pylsp has partial support; not guaranteed |
+| `getDocumentHighlight()` | `documentHighlightProvider` | Optional in LSP spec |
+| `getFormatting()` | `documentFormattingProvider` | Some servers delegate to external formatters |
+| `getFoldingRange()` | `foldingRangeProvider` | Not all servers support folding |
+| `getSelectionRange()` | `selectionRangeProvider` | LSP 3.17 feature, newer |
+| `getCodeLens()` | `codeLensProvider` | No pylsp plugin exists for this |
+| `getInlayHints()` | `inlayHintProvider` + `experimental.inlayHintProvider` | pylsp-inlay-hints plugin advertises under experimental |
+| `getDocumentLinks()` | `documentLinkProvider` | No pylsp plugin exists for this |
+
+**Ungated methods** (virtually all servers support): completion, definition, references, rename, documentSymbol, workspaceSymbol.
+
+**Fix 3: Experimental capability path for inlay hints**
+
+The `pylsp-inlay-hints` plugin (PyPI, archived/unmaintained but functional) advertises its capability under `capabilities.experimental.inlayHintProvider`, not the standard `capabilities.inlayHintProvider` path. The inlay hint gate checks both:
+
+```kotlin
+if (!hasCapability(language, "inlayHintProvider") &&
+    !hasCapability(language, "experimental.inlayHintProvider")) return null
+```
+
+This means:
+- Standard servers (pyright, basedpyright, typescript-language-server) → found via `inlayHintProvider`
+- pylsp + pylsp-inlay-hints plugin → found via `experimental.inlayHintProvider`
+- pylsp without the plugin → both checks fail → graceful no-op (correct behavior)
+
+**Research findings on Python LSP ecosystem (for future reference):**
+
+| Feature | pylsp | pyright | basedpyright | pylsp + plugin |
+|---------|------|---------|-------------|-----------------|
+| inlayHint | ❌ | ❌ (won't implement) | ✅ | ✅ (via pylsp-inlay-hints, archived) |
+| codeLens | ❌ | ❌ | ❌ | ❌ (no plugin exists) |
+| documentLink | ❌ | ❌ | ❌ | ❌ (no plugin exists) |
+| semanticTokens | partial | ✅ | ✅ | partial |
+
+**Decision: Keep graceful skipping for codeLens and documentLink** — no solution exists anywhere in the Python LSP ecosystem. These features are not commonly used in Python editors anyway.
+
+**Decision: Do NOT swap pylsp for basedpyright** — the memory cost (Node.js runtime ~40MB on a 3GB device) + regression risk to hard-won pylsp stability doesn't justify inlay hints. The existing gate handles the case gracefully whether the plugin is installed or not.
+
+**Files changed:** `LspManager.kt` (+19 lines, -2 lines)
+
+**CI:** Pending verification on commit 028b6e2b.
