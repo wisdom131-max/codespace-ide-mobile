@@ -33,6 +33,11 @@ class JsonRpcClient(private val process: Process) {
     private val writeLock = Any()
 
     @Volatile private var running = false
+
+    /**
+     * P38-FIX: Called when the reader thread exits (server crashed, EOF, etc.).
+     */
+    var onDisconnect: (() -> Unit)? = null
     private var readerThread: Thread? = null
 
     /**
@@ -64,6 +69,8 @@ class JsonRpcClient(private val process: Process) {
                 it.completeExceptionally(IOException("LSP connection closed"))
             }
             pendingRequests.clear()
+            // P38-FIX: Notify LspManager that the connection dropped.
+            try { onDisconnect?.invoke() } catch (_: Exception) {}
         }.apply {
             isDaemon = true
             name = "LSP-JsonRpc-Reader"
