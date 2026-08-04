@@ -16,16 +16,16 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-07-18. Read this FIRST before touching any code.
+> Last updated: 2026-08-04. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-07-19)
+## CURRENT STATE (2026-08-04)
 
 | | |
 |-|-|
-| Latest green build | **a547d2e9** (P32-LSP + P31-CRASH fix) |
-| Active phase | **Phase 32** (NodeSource LSP fix — COMPLETE) |
+| Latest green build | **69ee141c** (pylsp-inlay-hints auto-install) — pending verification of 7cb1c141 (keyboard+dialog fixes) |
+| Active phase | **Phase 38** (P38 — Long-press dialog, keyboard fix, LSP capability gating, PEP 668 pip fixes) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
@@ -6550,3 +6550,141 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 - Non-fatal: `2>/dev/null` suppresses output. If the package is unavailable or network fails, the `hasCapability()` gate handles the missing capability gracefully (returns null → no inlay hints shown, no crash).
 - Uses `;` (not `||`) so it runs after the main pylsp install regardless of whether pylsp installed via `[all]` or bare package.
 - The `python-lsp-server[all]` extra includes black, rope, pyflakes, pycodestyle, isort, mccabe — but NOT community plugins like pylsp-inlay-hints, so it must be installed separately.
+
+---
+
+## Phase 38 (P38) — Long-Press Dialog, Keyboard Fix, LSP Gating, PEP 668 (2026-08-04)
+
+### PEP 668 `--break-system-packages` Fixes (commits 9114afd3 → b42af2dc)
+
+**Problem:** Python 3.11+ on Ubuntu enforces PEP 668 (externally-managed-environment), blocking `pip install` without `--break-system-packages` or a venv. Every pip install in the app was failing.
+
+**Fix:** Added `--break-system-packages` to all pip install commands across 5 files:
+
+| Commit | File | What was fixed |
+|--------|------|----------------|
+| 9114afd3 | `LspManager.kt` | pylsp install (the original blocker) |
+| 2e96555f | `LspManager.kt` | debugpy install (same PEP 668 bug) |
+| 10c15bcb | `LspManager.kt` | black formatter install (Test 4 formatter blocker) |
+| 57590b21 | `AgentTools.kt` | Generic pip installer for AI agent tools |
+| b42af2dc | `ToolchainManager.kt` | pip self-upgrade |
+
+**Architecture note:** Using `--break-system-packages` instead of venv because the proot environment runs as root with no virtualenv, and creating a venv inside proot triggers the Samsung kernel's subprocess-spawning block. The system Python is the only viable option.
+
+---
+
+### LSP Install-Check False Negative (commit f8b1ca41)
+
+**Problem:** The LSP install-check used `which X` as a bare command, but the output matching logic looked for "OK" or "found" in the output — `which` never outputs those strings. It just prints the path or exits non-zero. This caused the install check to always report "not installed" even when the server was already present.
+
+**Fix:** Changed the install-check to parse the exit code of `which` rather than matching output strings. If `which pylsp` exits 0, the server is installed.
+
+---
+
+### LSP Diagnostic Range Off-By-One Crash (commit 8bb992b0)
+
+**Problem:** When a diagnostic range ended at the very end of a file (position == text.length), the code tried to access `text.substring(start, end)` where `end` was one past the last valid index, causing an `IndexOutOfBoundsException` crash.
+
+**Fix:** Added `.coerceIn(0, text.length)` bounds clamping on both start and end of the diagnostic range before substring access.
+
+---
+
+### P38 Issues 1+2: Long-Press Dialog Unreachable + Format Result Not Applied (commit 4cd751a6)
+
+**Problem 1 (Long-press dialog unreachable):** The `pointerInput` modifier with `detectTapGestures` was on the `BasicTextField` itself, but the long-press gesture conflicted with the text field's built-in selection handling. Long-pressing a word either selected it without showing the context dialog, or did nothing.
+
+**Fix 1:** Moved `pointerInput` from `BasicTextField`'s modifier to a transparent `Box` overlay (`Modifier.matchParentSize()`) that sits on top of the text field. The overlay intercepts all gestures (tap, long-press, double-tap) before `BasicTextField` sees them, giving full control over gesture handling.
+
+**Problem 2 (Format result not applied):** The format button called `onContentChange(newText)` to update the parent, but the internal `TextFieldValue` was never updated. The parameter `content` was updated, but `value` (the internal state) was stale. This caused the editor to show old content after formatting.
+
+**Fix 2:** Added a `LaunchedEffect(content)` that syncs external `content` parameter changes to the internal `value` state. This handles format button, file reload, and any other external content update.
+
+---
+
+### P38 Issue 3: LSP Capability Gating (commit e910a295, 48e18fc8)
+
+**Issue 3a (Gate unsupported methods):** Optional LSP methods (hover, semanticTokens, codeLens, inlayHints, documentLinks, etc.) were being sent to servers that don't support them, causing hangs/timeouts. Fixed by gating 11 methods behind `hasCapability()` checks. (Full details in the "LSP Capability Gating Fix" section above.)
+
+**Issue 3b (onDisconnect callback):** `JsonRpcClient` had no `onDisconnect` callback. When the LSP server process died, the client would keep trying to send requests to a dead socket. Added an `onDisconnect` callback that `LspManager` uses to clean up server state and notify the UI.
+
+---
+
+### Copy/Cut/Paste/Select All in Long-Press Dialog (commit 894d54a7)
+
+**Problem:** After moving gesture handling to the overlay (commit 4cd751a6), the system popup for Copy/Cut/Paste was no longer accessible — the overlay consumed the long-press before the system could show its text selection menu.
+
+**Fix:** Added Copy, Cut, Paste, and Select All buttons to the top of the long-press context dialog, above the LSP features. These use `LocalClipboardManager` for clipboard operations and update the internal `TextFieldValue` directly.
+
+---
+
+### Duplicate AnnotatedString Import (commit 7588134b)
+
+**Problem:** After adding Copy/Cut/Paste (which uses `AnnotatedString`), there were two imports of `AnnotatedString` — one explicit and one from a wildcard import — causing an "ambiguous reference" compile error.
+
+**Fix:** Removed the duplicate explicit import; the wildcard import covers it.
+
+---
+
+### Keyboard Never Appears After Overlay Intercepts Tap (commit f30100bd, fixed in 7cb1c141)
+
+**Problem:** The transparent overlay (added in commit 4cd751a6 to fix the long-press dialog) consumed ALL tap gestures before `BasicTextField` saw them. This meant `BasicTextField` never gained focus naturally → the keyboard never appeared after tapping. It worked intermittently (if the text field already had focus from a previous interaction, the keyboard stayed visible), but after focus loss (AlertDialog dismissal, tab switch, app background), the next tap went through the overlay, updated the selection, but never re-established focus → dead keyboard.
+
+**Fix (3 layers of defense):**
+1. `FocusRequester` + `LocalSoftwareKeyboardController` on `BasicTextField`. The overlay's `onTap` now calls `focusRequester.requestFocus()` + `keyboardController?.show()` after positioning the cursor.
+2. `onLongPress` also requests focus, so the keyboard is ready when the dialog opens and after it closes.
+3. `LaunchedEffect(contextWord)` watches the dialog state — when it dismisses (by ANY path: button click, tap-outside, back button), it automatically restores focus + shows keyboard. Uses a `hasShownContextDialog` flag to skip initial composition.
+
+**Compile fix (7cb1c141):** The `LaunchedEffect(contextWord)` was initially placed before `contextWord` was declared, causing "Unresolved reference" — moved it to after the declaration.
+
+---
+
+### Long-Press Context Menu Scrollable + Compact (commit 5bd0e6bf)
+
+**Problem:** The long-press dialog had 19+ buttons that filled the entire screen on mobile, making it unusable.
+
+**Fix:**
+- `Column` is now scrollable (`verticalScroll`) with max height 320dp
+- `AlertDialog` capped at 450dp max height
+- All buttons use compact `contentPadding` (2dp vertical vs default ~8dp)
+- Button text reduced from 13sp to 12sp, icons from 14sp to 12sp
+- Inter-button spacing reduced from 4dp to 1dp
+
+---
+
+### Auto-Install pylsp-inlay-hints Plugin (commit 69ee141c)
+
+The `pylsp-inlay-hints` plugin is now appended to the Python LSP server install command in `LspManager.kt`:
+```
+pip3 install --break-system-packages 'python-lsp-server[all]' || 
+pip3 install --break-system-packages python-lsp-server; 
+pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
+```
+
+- Runs automatically on first Python LSP server install.
+- Non-fatal: `2>/dev/null` suppresses output. If unavailable or network fails, the `hasCapability()` gate handles the missing capability gracefully.
+- Uses `;` (not `||`) so it runs after the main pylsp install regardless of which variant succeeded.
+- `python-lsp-server[all]` includes black, rope, pyflakes, pycodestyle, isort, mccabe — but NOT community plugins like pylsp-inlay-hints.
+
+---
+
+### P38 Summary Table
+
+| Commit | Description | Status |
+|--------|-------------|--------|
+| 9114afd3 | `--break-system-packages` on pylsp install | ✅ Green |
+| 2e96555f | `--break-system-packages` on debugpy install | ✅ Green |
+| 10c15bcb | `--break-system-packages` on black install | ✅ Green |
+| 57590b21 | `--break-system-packages` on AgentTools pip | ✅ Green |
+| b42af2dc | `--break-system-packages` on ToolchainManager pip | ✅ Green |
+| f8b1ca41 | LSP install-check false negative fix | ✅ Green |
+| 8bb992b0 | LSP diagnostic range off-by-one crash | ✅ Green |
+| 4cd751a6 | Long-press dialog unreachable + format not applied | ✅ Green |
+| e910a295 | Gate unsupported LSP methods by capabilities | ✅ Green |
+| 48e18fc8 | Add onDisconnect callback to JsonRpcClient | ✅ Green |
+| 894d54a7 | Copy/Cut/Paste/Select All in long-press dialog | ✅ Green |
+| 7588134b | Remove duplicate AnnotatedString import | ✅ Green |
+| 028b6e2b | Gate optional LSP methods + fix caps extraction | ✅ Green |
+| 69ee141c | Auto-install pylsp-inlay-hints plugin | ✅ Green |
+| f30100bd | Keyboard never appears after overlay intercepts tap | ❌ Failed (compile error) |
+| 7cb1c141 | Fix: move LaunchedEffect after contextWord declaration | ⏳ Pending CI |
+| 5bd0e6bf | Long-press context menu scrollable + compact | ⏳ Pending CI (same push) |
