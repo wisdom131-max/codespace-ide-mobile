@@ -30,6 +30,9 @@ import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -349,6 +352,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
+    // FIX: Focus + keyboard management — the transparent overlay intercepts taps
+    // before BasicTextField sees them, so we must explicitly request focus + show
+    // keyboard on every tap. Without this, the keyboard never appears after the
+    // overlay consumes the gesture (the #1 bug blocking all editing).
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    // FIX: Restore keyboard when the long-press dialog (contextWord) dismisses,
+    // regardless of HOW it dismisses (button click, tap-outside, back button).
+    // The AlertDialog steals focus from BasicTextField; without this, the keyboard
+    // never reappears after using any dialog action.
+    var hasShownContextDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(contextWord) {
+        if (contextWord != null) {
+            hasShownContextDialog = true
+        } else if (hasShownContextDialog) {
+            hasShownContextDialog = false
+            try { focusRequester.requestFocus() } catch (_: Exception) {}
+            keyboardController?.show()
+        }
+    }
     // FIX(P38): Sync external content changes (e.g. format button, file reload)
     // to the internal TextFieldValue. Without this, updating the 'content'
     // parameter from outside (like the format button updating tabs[idx].content)
@@ -946,7 +969,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices),
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
-                        .padding(end = 24.dp),
+                        .padding(end = 24.dp)
+                        .focusRequester(focusRequester),
                 )
                 // FIX(P38): Transparent gesture overlay — sits on top of the BasicTextField
                 // to intercept long-press BEFORE the BasicTextField's built-in selection
@@ -962,6 +986,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val charOffset = layout.getOffsetForPosition(offset)
                                         value = value.copy(selection = TextRange(charOffset))
                                     }
+                                    // CRITICAL: The overlay consumed the tap, so BasicTextField
+                                    // never gains focus naturally. We must explicitly request
+                                    // focus + show keyboard — otherwise the keyboard never appears.
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
                                 },
                                 onLongPress = { offset ->
                                     textLayoutResult?.let { layout ->
@@ -974,6 +1003,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             expandSelectionRanges = emptyList()
                                         }
                                     }
+                                    // Request focus so keyboard is available after dialog dismisses
+                                    focusRequester.requestFocus()
                                 },
                                 onDoubleTap = { offset ->
                                     textLayoutResult?.let { layout ->
@@ -1494,7 +1525,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             androidx.compose.runtime.key(contextWord) {
             val word = contextWord!!
             AlertDialog(
-                onDismissRequest = { contextWord = null; expandSelectionDepth = -1; expandSelectionRanges = emptyList() },
+                onDismissRequest = { 
+                                    contextWord = null; expandSelectionDepth = -1; expandSelectionRanges = emptyList()
+                                    // Restore keyboard after dialog closes — the AlertDialog steals
+                                    // focus from BasicTextField, so we must explicitly reclaim it.
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                },
                 containerColor = Color(0xFF252526),
                 title = {
                     Text(
