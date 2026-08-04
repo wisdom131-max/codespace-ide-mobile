@@ -29,6 +29,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -346,6 +348,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
     // FIX(P38): Sync external content changes (e.g. format button, file reload)
     // to the internal TextFieldValue. Without this, updating the 'content'
@@ -1504,6 +1507,76 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // P38-FIX: Copy/Cut/Paste/Select All — replaces the system popup
+                        // that the overlay now intercepts. These appear first so the
+                        // user always has clipboard access alongside LSP features.
+                        val selectedText = value.text.substring(
+                            value.selection.start.coerceIn(0, value.text.length),
+                            value.selection.end.coerceIn(0, value.text.length)
+                        )
+                        TextButton(onClick = {
+                            if (selectedText.isNotEmpty()) {
+                                clipboardManager.setText(AnnotatedString(selectedText))
+                            }
+                            contextWord = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("📋", fontSize = 14.sp)
+                                Text("Copy", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        TextButton(onClick = {
+                            if (selectedText.isNotEmpty()) {
+                                clipboardManager.setText(AnnotatedString(selectedText))
+                                val newText = value.text.removeRange(
+                                    value.selection.start.coerceIn(0, value.text.length),
+                                    value.selection.end.coerceIn(0, value.text.length)
+                                )
+                                value = TextFieldValue(newText, TextRange(value.selection.start))
+                                onContentChange(newText)
+                            }
+                            contextWord = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("✂", fontSize = 14.sp)
+                                Text("Cut", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        TextButton(onClick = {
+                            val clip = clipboardManager.getText()
+                            if (clip != null && clip.text.isNotEmpty()) {
+                                val s = value.selection.start.coerceIn(0, value.text.length)
+                                val e = value.selection.end.coerceIn(0, value.text.length)
+                                val newText = value.text.substring(0, s) + clip.text + value.text.substring(e)
+                                val newCursor = s + clip.text.length
+                                value = TextFieldValue(newText, TextRange(newCursor))
+                                onContentChange(newText)
+                            }
+                            contextWord = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("📎", fontSize = 14.sp)
+                                Text("Paste", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        TextButton(onClick = {
+                            value = value.copy(selection = TextRange(0, value.text.length))
+                            contextWord = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("☑", fontSize = 14.sp)
+                                Text("Select All", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                        }
+                        HorizontalDivider(color = Color(0xFF3C3C3C), modifier = Modifier.padding(vertical = 2.dp))
                         // P15-A: Fix with AI — surfaces the nearest lint error to the AI chat
                         val cursorOffset = value.selection.end
                         val nearbyError = lintErrors.minByOrNull { kotlin.math.abs(it.start - cursorOffset) }
