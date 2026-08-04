@@ -166,7 +166,8 @@ object LspManager {
                 "dpkg --configure -a 2>/dev/null; " +
                 "command -v pip3 >/dev/null 2>&1 || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends python3-pip ); " +
-                "pip3 install 'python-lsp-server[all]' || pip3 install python-lsp-server",
+                "pip3 install --break-system-packages 'python-lsp-server[all]' || " +
+                "pip3 install --break-system-packages python-lsp-server",
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
