@@ -374,6 +374,32 @@ object LspManager {
         servers[language]?.let { it.process.isAlive && it.initialized } ?: false
 
     /**
+     * P38-FIX: Check if the server advertises a specific capability.
+     * Used to gate optional LSP requests (workspace/symbol, inlayHint, etc.)
+     * so we don't send unsupported methods that crash servers like pylsp.
+     */
+    fun hasCapability(language: Language, capabilityPath: String): Boolean {
+        val server = servers[language] ?: return false
+        val caps = server.capabilities ?: return false
+        var current: Any? = caps
+        for (part in capabilityPath.split(".")) {
+            current = when (current) {
+                is org.json.JSONObject -> current.opt(part)
+                else -> null
+            }
+            if (current == null) return false
+        }
+        return when (current) {
+            is Boolean -> current
+            is org.json.JSONObject -> true
+            else -> false
+        }
+    }
+
+    fun supportsWorkspaceSymbols(language: Language): Boolean =
+        hasCapability(language, "workspaceSymbolProvider")
+
+    /**
      * Check if the LSP server binary is installed in the proot rootfs.
      */
     fun isServerInstalled(context: Context, language: Language): Boolean {
@@ -609,6 +635,14 @@ object LspManager {
         }
 
         client.start()
+
+        // P38-FIX: When the reader thread exits (server crashed, EOF, etc.),
+        // mark the server as not initialized so the next startServer call
+        // can restart it.
+        client.onDisconnect = {
+            AppOutputLog.log("[LSP] Reader thread disconnected for ${'$'}{language.displayName} — marking server for restart", "lsp")
+            server.initialized = false
+        }
 
         // ── LSP initialize request ────────────────────────────────────────
         // BUG-FIX: Send full client capabilities so servers know what we support.
@@ -1268,6 +1302,13 @@ object LspManager {
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        // P38-FIX: Don't send workspace/symbol if the server doesn't advertise it.
+        // pylsp crashes with KeyError when it receives an unsupported method,
+        // killing the entire LSP process and breaking all other features.
+        if (!supportsWorkspaceSymbols(language)) {
+            AppOutputLog.log("[LSP] ${'$'}{language.displayName} does not support workspace/symbol — skipping (capability not advertised)", "lsp")
+            return null
+        }
         val params = JSONObject().apply {
             put("query", query)
         }
