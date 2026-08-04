@@ -24,13 +24,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Code
@@ -357,12 +359,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // keyboard on every tap. Without this, the keyboard never appears after the
     // overlay consumes the gesture (the #1 bug blocking all editing).
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    // FIX: Restore keyboard when the long-press dialog (contextWord) dismisses,
-    // regardless of HOW it dismisses (button click, tap-outside, back button).
-    // The AlertDialog steals focus from BasicTextField; without this, the keyboard
-    // never reappears after using any dialog action.
-    var hasShownContextDialog by remember { mutableStateOf(false) }
+    // focusRequester is used by the floating LSP button to maintain focus on the editor
     // FIX(P38): Sync external content changes (e.g. format button, file reload)
     // to the internal TextFieldValue. Without this, updating the 'content'
     // parameter from outside (like the format button updating tabs[idx].content)
@@ -603,20 +600,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var renameUsedLsp by remember { mutableStateOf(false) }
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
-    var contextWord by remember { mutableStateOf<String?>(null) }
-    // FIX: Restore keyboard when the long-press dialog (contextWord) dismisses,
-    // regardless of HOW it dismisses (button click, tap-outside, back button).
-    // The AlertDialog steals focus from BasicTextField; without this, the keyboard
-    // never reappears after using any dialog action.
-    LaunchedEffect(contextWord) {
-        if (contextWord != null) {
-            hasShownContextDialog = true
-        } else if (hasShownContextDialog) {
-            hasShownContextDialog = false
-            try { focusRequester.requestFocus() } catch (_: Exception) {}
-            keyboardController?.show()
-        }
-    }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     data class DefResult(val line: Int, val lineText: String)
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
@@ -974,42 +957,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
                         .padding(end = 24.dp)
-                        .focusRequester(focusRequester),
-                )
-                // FIX(P38): Transparent gesture overlay — sits on top of the BasicTextField
-                // to intercept long-press BEFORE the BasicTextField's built-in selection
-                // popup (Copy/Paste/Cut/Select all) can consume it. Without this overlay,
-                // the custom context menu (Code Actions, Expand Selection, etc.) never fires.
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
+                        .focusRequester(focusRequester)
                         .pointerInput(Unit) {
                             detectTapGestures(
-                                onTap = { offset ->
-                                    textLayoutResult?.let { layout ->
-                                        val charOffset = layout.getOffsetForPosition(offset)
-                                        value = value.copy(selection = TextRange(charOffset))
-                                    }
-                                    // CRITICAL: The overlay consumed the tap, so BasicTextField
-                                    // never gains focus naturally. We must explicitly request
-                                    // focus + show keyboard — otherwise the keyboard never appears.
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                },
-                                onLongPress = { offset ->
-                                    textLayoutResult?.let { layout ->
-                                        val charOffset = layout.getOffsetForPosition(offset)
-                                        value = value.copy(selection = TextRange(charOffset))
-                                        val word = currentWord(value.text, charOffset)
-                                        if (word.length >= 2) {
-                                            contextWord = word
-                                            expandSelectionDepth = -1
-                                            expandSelectionRanges = emptyList()
-                                        }
-                                    }
-                                    // Request focus so keyboard is available after dialog dismisses
-                                    focusRequester.requestFocus()
-                                },
                                 onDoubleTap = { offset ->
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
@@ -1021,7 +971,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
                         },
-                ) { }
+                )
+
             }
         }
 
@@ -1525,613 +1476,394 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // ── Rename Symbol Dialog ──────────────────────────────────────────────
         // ── P2-4 Context Action Sheet ──────────────────────────────────────────────────────
-        if (contextWord != null) {
-            androidx.compose.runtime.key(contextWord) {
-            val word = contextWord!!
-            AlertDialog(
-                onDismissRequest = { 
-                                    contextWord = null; expandSelectionDepth = -1; expandSelectionRanges = emptyList()
-                                    // Restore keyboard after dialog closes — the AlertDialog steals
-                                    // focus from BasicTextField, so we must explicitly reclaim it.
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                },
-                containerColor = Color(0xFF252526),
-                modifier = Modifier.heightIn(max = 450.dp),
-                title = {
-                    Text(
-                        "\"$word\"",
-                        color = Color(0xFF4EC9B0),
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                },
-                text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(1.dp),
-                        modifier = Modifier
-                            .verticalScroll(rememberScrollState())
-                            .heightIn(max = 320.dp)
+
+
+
+        // ── Floating LSP action button ──────────────────────────────────────────────────────
+        // Shows a small "..." button when text is selected, opening a compact popup
+        // with LSP-powered actions (Go to Definition, Rename, etc.) — NOT a full-screen dialog.
+        // Native Copy/Cut/Paste/Select All come from BasicTextField's built-in selection toolbar.
+        if (value.selection.start != value.selection.end && !findReplaceOpen && !goToLineOpen) {
+            val selWord = remember(value.selection.start, value.selection.end) {
+                currentWord(value.text, value.selection.start)
+            }
+            if (selWord != null && selWord.length >= 2) {
+                Popup(
+                    alignment = androidx.compose.ui.Alignment.TopEnd,
+                    offset = androidx.compose.ui.unit.IntOffset(0, 0),
+                    properties = PopupProperties(focusable = false, dismissOnOutsideClick = false)
+                ) {
+                    var showLspMenu by remember { mutableStateOf(false) }
+                    androidx.compose.material3.Surface(
+                        color = Color(0xFF2D2D30),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        // P38-FIX: Copy/Cut/Paste/Select All — replaces the system popup
-                        // that the overlay now intercepts. These appear first so the
-                        // user always has clipboard access alongside LSP features.
-                        val selectedText = value.text.substring(
-                            value.selection.start.coerceIn(0, value.text.length),
-                            value.selection.end.coerceIn(0, value.text.length)
-                        )
-                        TextButton(onClick = {
-                            if (selectedText.isNotEmpty()) {
-                                clipboardManager.setText(AnnotatedString(selectedText))
-                            }
-                            contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text("📋", fontSize = 12.sp)
-                                Text("Copy", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        TextButton(onClick = {
-                            if (selectedText.isNotEmpty()) {
-                                clipboardManager.setText(AnnotatedString(selectedText))
-                                val newText = value.text.removeRange(
-                                    value.selection.start.coerceIn(0, value.text.length),
-                                    value.selection.end.coerceIn(0, value.text.length)
-                                )
-                                value = TextFieldValue(newText, TextRange(value.selection.start))
-                                onContentChange(newText)
-                            }
-                            contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text("✂", fontSize = 12.sp)
-                                Text("Cut", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        TextButton(onClick = {
-                            val clip = clipboardManager.getText()
-                            if (clip != null && clip.text.isNotEmpty()) {
-                                val s = value.selection.start.coerceIn(0, value.text.length)
-                                val e = value.selection.end.coerceIn(0, value.text.length)
-                                val newText = value.text.substring(0, s) + clip.text + value.text.substring(e)
-                                val newCursor = s + clip.text.length
-                                value = TextFieldValue(newText, TextRange(newCursor))
-                                onContentChange(newText)
-                            }
-                            contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text("📎", fontSize = 12.sp)
-                                Text("Paste", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        TextButton(onClick = {
-                            value = value.copy(selection = TextRange(0, value.text.length))
-                            contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text("☑", fontSize = 12.sp)
-                                Text("Select All", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        HorizontalDivider(color = Color(0xFF3C3C3C), modifier = Modifier.padding(vertical = 2.dp))
-                        // P15-A: Fix with AI — surfaces the nearest lint error to the AI chat
-                        val cursorOffset = value.selection.end
-                        val nearbyError = lintErrors.minByOrNull { kotlin.math.abs(it.start - cursorOffset) }
-                        if (nearbyError != null) {
-                            val errLine = value.text.take(nearbyError.start).count { it == '\n' } + 1
-                            val errText = value.text.substring(
-                                nearbyError.start.coerceIn(0, value.text.length),
-                                nearbyError.end.coerceIn(0, value.text.length)
-                            )
-                            TextButton(onClick = {
-                                onAiFixRequest?.invoke(
-                                    "Fix this ${language.name} error on line $errLine:\n" +
-                                    "Code: `$errText`\n" +
-                                    "Error: ${nearbyError.message}\n" +
-                                    "Full context:\n${value.text.lines().drop((errLine - 3).coerceAtLeast(0)).take(10).joinToString("\n")}"
-                                )
-                                contextWord = null
-                            }) {
-                                Text("⚡ Fix with AI", color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                            }
-                        }
-
-                        // P37-4: Code Actions — 3-state indicator (LSP active/no fixes/fixes available)
-                        if (lspCodeActionProvider != null) {
-                            val quickFixes: List<LspCodeAction> =
-                                remember(value.selection.start) {
-                                    val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
-                                    try { lspCodeActionProvider.invoke(cursorLine) }
-                                    catch (_: Exception) { emptyList<LspCodeAction>() }
-                                }
-                            if (quickFixes.isNotEmpty()) {
-                                // State 3: LSP running + actions available → show 💡 buttons
-                                quickFixes.forEach { fix ->
-                                    TextButton(onClick = {
-                                        if (fix.edit != null) {
-                                            // Apply the workspace edit — parse and apply text edits
-                                            try {
-                                                val wsEdit = org.json.JSONObject(fix.edit)
-                                                val docChanges = wsEdit.optJSONArray("documentChanges")
-                                                if (docChanges != null) {
-                                                    for (j in 0 until docChanges.length()) {
-                                                        val dc = docChanges.optJSONObject(j) ?: continue
-                                                        val textEdits = dc.optJSONArray("edits") ?: continue
-                                                        var newText = value.text
-                                                        // Apply edits in reverse order so offsets don't shift
-                                                        val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
-                                                            .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
-                                                        for (te in edits) {
-                                                            val rng = te.optJSONObject("range") ?: continue
-                                                            val startLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                                            val startChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
-                                                            val endLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
-                                                            val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
-                                                            val replacement = te.optString("newText", "")
-                                                            val newTextLines = newText.split("\n").toMutableList()
-                                                            if (startLine == endLine && startLine < newTextLines.size) {
-                                                                val line = newTextLines[startLine]
-                                                                newTextLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
-                                                            } else if (startLine < newTextLines.size) {
-                                                                val before = newTextLines[startLine].substring(0, startChar.coerceAtMost(newTextLines[startLine].length))
-                                                                val after = if (endLine < newTextLines.size) newTextLines[endLine].substring(endChar.coerceAtMost(newTextLines[endLine].length)) else ""
-                                                                newTextLines[startLine] = before + replacement + after
-                                                                if (startLine + 1 <= endLine && endLine < newTextLines.size) {
-                                                                    for (k in endLine downTo startLine + 1) {
-                                                                        if (k < newTextLines.size) newTextLines.removeAt(k)
-                                                                    }
-                                                                }
-                                                            }
-                                                            newText = newTextLines.joinToString("\n")
-                                                        }
-                                                        value = TextFieldValue(newText, TextRange(value.selection.start))
-                                                    }
-                                                }
-                                            } catch (_: Exception) {}
-                                        }
-                                        contextWord = null
-                                    }) {
-                                        Text("💡 ${fix.title}", color = Color(0xFFE5C07B), fontSize = 12.sp)
-                                    }
-                                }
-                            } else {
-                                // State 2: LSP running, but zero code actions for this line
-                                Text("No quick fixes available", color = Color(0xFF666666), fontSize = 11.sp, fontStyle = FontStyle.Italic)
-                            }
-                        } else {
-                            // State 1: LSP not running for this file's language
-                            Text("LSP not active", color = Color(0xFF555555), fontSize = 11.sp, fontStyle = FontStyle.Italic)
-                        }
-
-                        // P37-4: Expand Selection (LSP Selection Range)
-                        TextButton(
-                            onClick = {
-                                val cOff = value.selection.end
-                                val cLine = value.text.take(cOff).count { it == '\n' }
-                                val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
-                                val cCol = cOff - cLineStart
-                                if (onLspSelectionRange != null) {
-                                    try {
-                                        val resp = onLspSelectionRange.invoke(cLine, cCol)
-                                        if (resp != null && resp.length() > 0) {
-                                            // Parse nested SelectionRange chain into a flat list
-                                            val ranges = mutableListOf<org.json.JSONObject>()
-                                            var current: org.json.JSONObject? = resp.optJSONObject(0)
-                                            while (current != null) {
-                                                val r = current.optJSONObject("range")
-                                                if (r != null) ranges.add(r)
-                                                current = current.optJSONObject("parent")
-                                            }
-                                            if (ranges.isNotEmpty()) {
-                                                expandSelectionRanges = ranges
-                                                // First tap: go to depth 0 (innermost)
-                                                // Subsequent taps: go deeper
-                                                val nextDepth = if (expandSelectionDepth < 0) 0 else expandSelectionDepth + 1
-                                                val targetDepth = nextDepth.coerceAtMost(ranges.size - 1)
-                                                expandSelectionDepth = targetDepth
-                                                expandSelectionUsedLsp = true
-                                                val rng = ranges[targetDepth]
-                                                val sLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                                val sChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
-                                                val eLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
-                                                val eChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
-                                                // Convert 0-indexed (line, char) to absolute offset in text
-                                                val lines = value.text.split("\n")
-                                                var startOff = 0
-                                                for (i in 0 until sLine.coerceAtMost(lines.size)) {
-                                                    startOff += lines[i].length + 1
-                                                }
-                                                startOff += sChar.coerceAtMost(if (sLine < lines.size) lines[sLine].length else 0)
-                                                var endOff = 0
-                                                for (i in 0 until eLine.coerceAtMost(lines.size)) {
-                                                    endOff += lines[i].length + 1
-                                                }
-                                                endOff += eChar.coerceAtMost(if (eLine < lines.size) lines[eLine].length else 0)
-                                                value = TextFieldValue(value.text, TextRange(startOff.coerceAtMost(endOff), endOff.coerceAtMost(value.text.length)))
-                                            }
-                                        } else {
-                                            expandSelectionUsedLsp = false
-                                        }
-                                    } catch (_: Exception) { expandSelectionUsedLsp = false }
-                                }
-                            },
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clickable { showLspMenu = true },
+                            contentAlignment = androidx.compose.ui.Alignment.Center
                         ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(if (expandSelectionUsedLsp) "⤢" else "⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 12.sp)
-                                Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                                if (onLspSelectionRange != null && expandSelectionDepth >= 0) {
-                                    Text("L${expandSelectionDepth + 1}", color = Color(0xFF4EC9B0), fontSize = 10.sp)
-                                }
-                            }
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Code actions",
+                                tint = Color(0xFF4EC9B0),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = showLspMenu,
+                            onDismissRequest = { showLspMenu = false },
+                            modifier = Modifier.background(Color(0xFF252526))
+                        ) {
+                            // ── LSP Actions (compact dropdown) ──
+                            val selectedText = value.text.substring(
+                                value.selection.start.coerceIn(0, value.text.length),
+                                value.selection.end.coerceIn(0, value.text.length)
+                            )
+                            val word = selWord
 
-                        // Go to Definition (regex-based fallback)
-                        TextButton(
-                            onClick = {
-                                val lines = value.text.split("\n")
-                                val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
-                                val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
-                                val found = lines.mapIndexedNotNull { idx, ln ->
-                                    if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
-                                }
-                                gotoResults = found
-                                // P19-A: Search FileIndexer for cross-file definitions
-                                crossFileResults = if (projectRoot != null) {
-                                    FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
-                                        .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
-                                } else null
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("⇒", color = Color(0xFF007ACC), fontSize = 12.sp)
-                                Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
+                            // Fix with AI (if there's a nearby error)
+                            val nearbyError = lintErrors.firstOrNull { err ->
+                                val errLine = value.text.take(err.start).count { it == '\n' }
+                                val selLine = value.text.take(value.selection.start).count { it == '\n' }
+                                kotlin.math.abs(errLine - selLine) <= 2
                             }
-                        }
-                        // P22-L: Peek Definition — inline code preview without navigating away
-                        TextButton(
-                            onClick = {
-                                val cOff = value.selection.end
-                                val cLine = value.text.take(cOff).count { it == '\n' }
-                                val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
-                                val cCol = cOff - cLineStart
-                                val uri = filePath.let { p ->
-                                    if (p.startsWith("/")) "file://$p" else p
+                            if (nearbyError != null) {
+                                val errLine = value.text.take(nearbyError.start).count { it == '\n' } + 1
+                                DropdownMenuItem(
+                                    text = { Text("⚡ Fix with AI", color = Color(0xFF4EC9B0), fontSize = 13.sp) },
+                                    onClick = {
+                                        onAiFixRequest?.invoke(
+                                            "Fix this ${language.name} error on line $errLine:\n" +
+                                            "Code: `$selectedText`\n" +
+                                            "Error: ${nearbyError.message}\n" +
+                                            "Full context:\n${value.text.lines().drop((errLine - 3).coerceAtLeast(0)).take(10).joinToString("\n")}"
+                                        )
+                                        showLspMenu = false
+                                    }
+                                )
+                            }
+
+                            // Code Actions from LSP
+                            if (lspCodeActionProvider != null) {
+                                val quickFixes: List<LspCodeAction> =
+                                    remember(value.selection.start) {
+                                        val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                                        try { lspCodeActionProvider.invoke(cursorLine) }
+                                        catch (_: Exception) { emptyList<LspCodeAction>() }
+                                    }
+                                if (quickFixes.isNotEmpty()) {
+                                    quickFixes.forEach { fix ->
+                                        DropdownMenuItem(
+                                            text = { Text("💡 ${fix.title}", color = Color(0xFFD4D4D4), fontSize = 13.sp) },
+                                            onClick = {
+                                                if (fix.edit != null) {
+                                                    try {
+                                                        val wsEdit = org.json.JSONObject(fix.edit)
+                                                        val docChanges = wsEdit.optJSONArray("documentChanges")
+                                                        if (docChanges != null) {
+                                                            for (j in 0 until docChanges.length()) {
+                                                                val dc = docChanges.optJSONObject(j) ?: continue
+                                                                val textEdits = dc.optJSONArray("edits") ?: continue
+                                                                var newText = value.text
+                                                                val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                                    .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                                for (te in edits) {
+                                                                    val rng = te.optJSONObject("range") ?: continue
+                                                                    val startLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                                    val startChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                                    val endLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                                    val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                                    val replacement = te.optString("newText", "")
+                                                                    val newTextLines = newText.split("\n").toMutableList()
+                                                                    if (startLine == endLine && startLine < newTextLines.size) {
+                                                                        val line = newTextLines[startLine]
+                                                                        newTextLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
+                                                                    } else if (startLine < newTextLines.size) {
+                                                                        val before = newTextLines[startLine].substring(0, startChar.coerceAtMost(newTextLines[startLine].length))
+                                                                        val after = if (endLine < newTextLines.size) newTextLines[endLine].substring(endChar.coerceAtMost(newTextLines[endLine].length)) else ""
+                                                                        newTextLines[startLine] = before + replacement + after
+                                                                        if (startLine + 1 <= endLine && endLine < newTextLines.size) {
+                                                                            for (k in endLine downTo startLine + 1) {
+                                                                                if (k < newTextLines.size) newTextLines.removeAt(k)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    newText = newTextLines.joinToString("\n")
+                                                                }
+                                                                value = TextFieldValue(newText, TextRange(value.selection.start))
+                                                                onContentChange(newText)
+                                                            }
+                                                        }
+                                                    } catch (_: Exception) {}
+                                                }
+                                                showLspMenu = false
+                                            }
+                                        )
+                                    }
                                 }
-                                var peekResult: PeekDefResult? = null
-                                var usedLspForPeek = false
-                                // Try LSP if available
-                                if (LspManager.isSupported(language) && projectRoot != null) {
-                                    try {
-                                        val defs = LspManager.getDefinition(language, uri, cLine, cCol)
-                                        if (defs != null && defs.length() > 0) {
-                                            val loc = defs.optJSONObject(0)
-                                            if (loc != null) {
-                                                val defUri = loc.optString("uri", "")
-                                                val defLine = loc.optJSONObject("range")
-                                                    ?.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                                val defPathRaw = if (defUri.startsWith("file://")) defUri.removePrefix("file://") else defUri
-                                                val defPath = try { java.net.URLDecoder.decode(defPathRaw, "UTF-8") } catch (_: Exception) { defPathRaw }
-                                                val targetText = if (defPath == filePath) value.text
-                                                    else try { java.io.File(defPath).readText() } catch (_: Exception) { null }
-                                                if (targetText != null) {
-                                                    val allLines = targetText.split("\n")
-                                                    val startLine = (defLine - 3).coerceAtLeast(0)
-                                                    val endLine = (defLine + 8).coerceAtMost(allLines.size - 1)
-                                                    val snippet = allLines.subList(startLine, endLine + 1)
-                                                    peekResult = PeekDefResult(defPath, defLine, snippet, defLine - startLine)
-                                                    usedLspForPeek = true
+                            }
+
+                            // Expand Selection
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 14.sp)
+                                        Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        if (onLspSelectionRange != null && expandSelectionDepth >= 0) {
+                                            Text("L${expandSelectionDepth + 1}", color = Color(0xFF4EC9B0), fontSize = 10.sp)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    if (onLspSelectionRange != null) {
+                                        try {
+                                            val cLine = value.text.take(value.selection.start).count { it == '\n' }
+                                            val cCol = value.selection.start - value.text.lastIndexOf('\n', (value.selection.start - 1).coerceAtLeast(0)) - 1
+                                            val resp = onLspSelectionRange.invoke(cLine, cCol)
+                                            if (resp != null && resp.length() > 0) {
+                                                val ranges = (0 until resp.length()).map { resp.optJSONObject(it)!! }
+                                                expandSelectionRanges = ranges
+                                                val targetDepth = if (expandSelectionDepth < 0) 0 else expandSelectionDepth + 1
+                                                expandSelectionDepth = targetDepth.coerceAtMost(ranges.size - 1)
+                                                expandSelectionUsedLsp = true
+                                                if (targetDepth < ranges.size) {
+                                                    val r = ranges[targetDepth]
+                                                    val sLine = r.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                    val sChar = r.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                    val eLine = r.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                    val eChar = r.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                    val textLines = value.text.split("\n")
+                                                    var startOff = (0 until sLine).sumOf { textLines[it].length + 1 } + sChar
+                                                    var endOff = (0 until eLine).sumOf { textLines[it].length + 1 } + eChar
+                                                    startOff = startOff.coerceIn(0, value.text.length)
+                                                    endOff = endOff.coerceIn(0, value.text.length)
+                                                    value = value.copy(selection = TextRange(startOff, endOff))
                                                 }
                                             }
+                                        } catch (_: Exception) { expandSelectionUsedLsp = false }
+                                    } else {
+                                        val pat = Regex("\\b" + Regex.escape(word) + "\\b")
+                                        val match = pat.find(value.text, value.selection.start - 1) ?: pat.find(value.text)
+                                        if (match != null) {
+                                            value = value.copy(selection = TextRange(match.range.first, match.range.last + 1))
                                         }
-                                    } catch (_: Exception) {}
-                                }
-                                // Fallback: regex search in current file
-                                if (peekResult == null) {
-                                    val declKw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
-                                    val declPat = Regex(declKw + "\\s+" + Regex.escape(word) + "\\b")
-                                    val localTextLines = value.text.split("\n")
-                                    val found = localTextLines.indexOfFirst { declPat.containsMatchIn(it) }
-                                    if (found >= 0) {
-                                        val startLine = (found - 3).coerceAtLeast(0)
-                                        val endLine = (found + 8).coerceAtMost(localTextLines.size - 1)
-                                        val snippet = localTextLines.subList(startLine, endLine + 1)
-                                        peekResult = PeekDefResult(filePath, found, snippet, found - startLine)
+                                        expandSelectionUsedLsp = false
                                     }
+                                    showLspMenu = false
                                 }
-                                peekDefResult = peekResult
-                                peekUsedLsp = usedLspForPeek
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("👁", color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                                Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        // P26-1: Go to Type Definition — uses LSP to peek the type definition of the symbol
-                        if (onLspTypeDefinition != null) {
-                            TextButton(
-                                onClick = {
-                                    contextWord = null
-                                    typeDefUsedLsp = onLspTypeDefinition.invoke()
+                            )
+
+                            // Go to Definition
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⇒", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("T", color = Color(0xFFC586C0), fontSize = 12.sp)
-                                    Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                                    Spacer(Modifier.width(4.dp))
-                                    Box(
-                                        Modifier.background(if (typeDefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
-                                            .padding(horizontal = 3.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(if (typeDefUsedLsp) "LSP" else "Fallback", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                        // P26-1: Find Implementations — uses LSP to find all implementations of an interface/abstract
-                        if (onLspImplementation != null) {
-                            TextButton(
                                 onClick = {
-                                    contextWord = null
-                                    implUsedLsp = onLspImplementation.invoke()
+                                    val lines = value.text.split("\n")
+                                    val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
+                                    val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+                                    val found = lines.mapIndexedNotNull { idx, ln ->
+                                        if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
+                                    }
+                                    gotoResults = found
+                                    crossFileResults = if (projectRoot != null) {
+                                        FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
+                                            .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
+                                    } else null
+                                    showLspMenu = false
+                                }
+                            )
+
+                            // Peek Definition
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("👁", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("I", color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                                    Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                                    Spacer(Modifier.width(4.dp))
-                                    Box(
-                                        Modifier.background(if (implUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
-                                            .padding(horizontal = 3.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(if (implUsedLsp) "LSP" else "Fallback", color = Color(0xFF1E1E1E), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                onClick = {
+                                    val lines = value.text.split("\n")
+                                    val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
+                                    val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+                                    val found = lines.mapIndexedNotNull { idx, ln ->
+                                        if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
                                     }
-                                }
-                            }
-                        }
-                        TextButton(
-                            onClick = {
-                                renameNewName = word
-                                val pattern = Regex("\\b" + Regex.escape(word) + "\\b")
-                                renameCount = pattern.findAll(value.text).count()
-                                renameDialogWord = word
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("✎", color = Color(0xFFE5C07B), fontSize = 12.sp)
-                                Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        // P18-B: Select All Occurrences — seed extraCursors at every word-boundary match
-                        TextButton(
-                            onClick = {
-                                val pattern = try {
-                                    Regex("\\b" + Regex.escape(word) + "\\b")
-                                } catch (_: Exception) { null }
-                                if (pattern != null) {
-                                    val positions = pattern.findAll(value.text)
-                                        .map { it.range.last + 1 }.toList()
-                                    if (positions.isNotEmpty()) {
-                                        value = value.copy(
-                                            selection = androidx.compose.ui.text.TextRange(positions.first())
-                                        )
-                                        extraCursors = positions.drop(1)
+                                    if (found.isNotEmpty()) {
+                                        val f = found.first()
+                                        peekDefResult = PeekDefResult(f.lineNumber, f.lineText)
                                     }
+                                    showLspMenu = false
                                 }
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("■", color = Color(0xFF569CD6), fontSize = 12.sp)
-                                Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-;                            }
-                            // P19-A: Cross-file results
-                            if (crossFileResults != null && crossFileResults!!.isNotEmpty()) {
-                                Spacer(Modifier.height(4.dp))
-                                Text("In project", color = Color(0xFF888888), fontSize = 10.sp)
-                                crossFileResults!!.forEach { cf ->
-                                    TextButton(
-                                        onClick = {
-                                            onOpenFileAtLine?.invoke(cf.filePath, cf.line)
-                                            gotoResults = null
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(cf.kind, color = Color(0xFF569CD6), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(60.dp))
-                                                Text(cf.name, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                                            }
-                                            Text("${cf.fileName}:${cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            )
+
+                            // Go to Type Definition
+                            if (onLspTypeDefinition != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("T", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                                         }
+                                    },
+                                    onClick = {
+                                        typeDefUsedLsp = onLspTypeDefinition.invoke()
+                                        showLspMenu = false
                                     }
-                                }
+                                )
                             }
-                        }
-                        // P22-K: Select Next Occurrence (Ctrl+D equivalent) — add cursor at next word match
-                        TextButton(
-                            onClick = {
-                                val curPos = value.selection.end
-                                val pattern = try {
-                                    Regex("\\b" + Regex.escape(word) + "\\b")
-                                } catch (_: Exception) { null }
-                                if (pattern != null) {
-                                    // Find next occurrence after current cursor
-                                    val nextMatch = pattern.findAll(value.text)
-                                        .firstOrNull { it.range.last + 1 > curPos }
-                                        ?: pattern.findAll(value.text).firstOrNull()
+
+                            // Find Implementations
+                            if (onLspImplementation != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("I", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        implUsedLsp = onLspImplementation.invoke()
+                                        showLspMenu = false
+                                    }
+                                )
+                            }
+
+                            // Rename Symbol
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("✎", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    if (onLspPrepareRename != null) {
+                                        val pos = value.selection.start
+                                        val cLine = value.text.take(pos).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)) + 1
+                                        val cCol = pos - cLineStart
+                                        val renameInfo = try { onLspPrepareRename.invoke(cLine, cCol) } catch (_: Exception) { null }
+                                        val placeholder = renameInfo?.optString("placeholder", "") ?: word
+                                        renameDialogWord = word
+                                        renameNewName = placeholder
+                                        renameUsedLsp = true
+                                    } else {
+                                        renameDialogWord = word
+                                        renameNewName = word
+                                        renameUsedLsp = false
+                                    }
+                                    showLspMenu = false
+                                }
+                            )
+
+                            // Select All Occurrences
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("■", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    val pat = Regex("\\b" + Regex.escape(word) + "\\b")
+                                    val matches = pat.findAll(value.text).toList()
+                                    if (matches.isNotEmpty()) {
+                                        val first = matches.first().range.first
+                                        val last = matches.last().range.last + 1
+                                        value = value.copy(selection = TextRange(first, last))
+                                    }
+                                    showLspMenu = false
+                                }
+                            )
+
+                            // Select Next Occurrence
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("▸", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    val pat = Regex("\\b" + Regex.escape(word) + "\\b")
+                                    val currentPos = value.selection.end
+                                    val nextMatch = pat.find(value.text, currentPos) ?: pat.find(value.text)
                                     if (nextMatch != null) {
-                                        val matchPos = nextMatch.range.last + 1
-                                        if (matchPos != curPos) {
-                                            extraCursors = (extraCursors + curPos).distinct().sorted()
-                                            value = value.copy(
-                                                selection = androidx.compose.ui.text.TextRange(matchPos)
-                                            )
-                                        }
+                                        value = value.copy(selection = TextRange(nextMatch.range.first, nextMatch.range.last + 1))
                                     }
+                                    showLspMenu = false
                                 }
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("▸", color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                                Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        // P24-3: Find References
-                        if (onFindReferences != null) {
-                            TextButton(
+                            )
+
+                            // Find References
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⊛", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Find References", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
                                 onClick = {
-                                    findRefWord = word
-                                    findRefLoading = true
-                                    findRefResults = emptyList()
-                                    findRefUsedLsp = false  // will be set to true only if LSP actually returns results
-                                    contextWord = null
-                                    coroutineScope.launch(Dispatchers.IO) {
-                                        val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList() }
+                                    if (onFindReferences != null) {
+                                        findRefWord = word
+                                        findRefLoading = true
+                                        findRefResults = emptyList()
+                                        findRefUsedLsp = false
+                                        val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
                                         findRefResults = refs
                                         findRefLoading = false
-                                        // P37-3fix: badge reflects ACTUAL outcome — LSP is "used" if it returned results
-                                        // (onFindReferences is only non-null when LSP is running, so non-empty = LSP succeeded)
                                         findRefUsedLsp = onFindReferences != null && refs.isNotEmpty()
                                     }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("⊛", color = Color(0xFF9CDCFE), fontSize = 12.sp)
-                                    Text("Find References", color = Color(0xFFD4D4D4), fontSize = 12.sp)
+                                    showLspMenu = false
                                 }
-                            }
-                        }
+                            )
 
-                        // P22-K: Add Cursor Above
-                        TextButton(
-                            onClick = {
-                                val curPos = value.selection.end
-                                val lineStart = value.text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0)) + 1
-                                val col = curPos - lineStart
-                                val prevLineStart = if (lineStart > 0) {
-                                    value.text.lastIndexOf('\n', lineStart - 2) + 1
-                                } else 0
-                                val prevLineEnd = (lineStart - 1).coerceAtLeast(0)
-                                if (prevLineStart <= prevLineEnd) {
-                                    val newCol = col.coerceAtMost(prevLineEnd - prevLineStart)
-                                    val newPos = prevLineStart + newCol
-                                    extraCursors = (extraCursors + curPos).distinct().sorted()
-                                    value = value.copy(
-                                        selection = androidx.compose.ui.text.TextRange(newPos)
-                                    )
+                            // Add Cursor Above
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("↑", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    val currentLine = value.text.take(value.selection.start).count { it == '\n' }
+                                    if (currentLine > 0) {
+                                        val prevLineStart = value.text.lastIndexOf('\n', value.text.lastIndexOf('\n', value.selection.start - 1) - 1) + 1
+                                        extraCursors = (extraCursors + prevLineStart).distinct().sorted()
+                                    }
+                                    showLspMenu = false
                                 }
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("↑", color = Color(0xFFE5C07B), fontSize = 12.sp)
-                                Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
-                        }
-                        // P22-K: Add Cursor Below
-                        TextButton(
-                            onClick = {
-                                val curPos = value.selection.end
-                                val lineStart = value.text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0)) + 1
-                                val col = curPos - lineStart
-                                val lineEnd = value.text.indexOf('\n', curPos)
-                                val nextLineStart = if (lineEnd >= 0) lineEnd + 1 else value.text.length
-                                val nextLineEnd = value.text.indexOf('\n', nextLineStart)
-                                val nextLineLen = if (nextLineEnd >= 0) nextLineEnd - nextLineStart else value.text.length - nextLineStart
-                                if (nextLineStart < value.text.length) {
-                                    val newCol = col.coerceAtMost(nextLineLen)
-                                    val newPos = nextLineStart + newCol
-                                    extraCursors = (extraCursors + curPos).distinct().sorted()
-                                    value = value.copy(
-                                        selection = androidx.compose.ui.text.TextRange(newPos)
-                                    )
+                            )
+
+                            // Add Cursor Below
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("↓", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    val nextNewline = value.text.indexOf('\n', value.selection.end)
+                                    if (nextNewline >= 0) {
+                                        extraCursors = (extraCursors + nextNewline + 1).distinct().sorted()
+                                    }
+                                    showLspMenu = false
                                 }
-                                contextWord = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                                                    ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("↓", color = Color(0xFFE5C07B), fontSize = 12.sp)
-                                Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 12.sp)
-                            }
+                            )
                         }
                     }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { contextWord = null }) {
-                        Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
-                    }
-                },
-            )
-            } // end key(contextWord)
+                }
+            }
         }
 
         // ── P2-4 Go to Definition Results ──────────────────────────────────────────────────────
