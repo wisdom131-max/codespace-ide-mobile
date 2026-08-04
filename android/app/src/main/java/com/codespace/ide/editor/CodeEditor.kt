@@ -347,6 +347,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val colors = LocalEditorColors.current
     val context = LocalContext.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
+    // FIX(P38): Sync external content changes (e.g. format button, file reload)
+    // to the internal TextFieldValue. Without this, updating the 'content'
+    // parameter from outside (like the format button updating tabs[idx].content)
+    // has no effect — the editor keeps showing the old text because 'remember'
+    // only initializes once.
+    LaunchedEffect(content) {
+        if (value.text != content) {
+            value = TextFieldValue(content, TextRange(content.length))
+        }
+    }
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes
     val scrollDensity = androidx.compose.ui.platform.LocalDensity.current
@@ -934,7 +944,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices),
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
-                        .padding(end = 24.dp)
+                        .padding(end = 24.dp),
+                )
+                // FIX(P38): Transparent gesture overlay — sits on top of the BasicTextField
+                // to intercept long-press BEFORE the BasicTextField's built-in selection
+                // popup (Copy/Paste/Cut/Select all) can consume it. Without this overlay,
+                // the custom context menu (Code Actions, Expand Selection, etc.) never fires.
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { offset ->
@@ -966,7 +984,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
                         },
-                )
+                ) { }
             }
         }
 
