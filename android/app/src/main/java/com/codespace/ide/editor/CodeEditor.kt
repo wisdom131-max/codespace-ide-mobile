@@ -363,15 +363,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // The AlertDialog steals focus from BasicTextField; without this, the keyboard
     // never reappears after using any dialog action.
     var hasShownContextDialog by remember { mutableStateOf(false) }
-    LaunchedEffect(contextWord) {
-        if (contextWord != null) {
-            hasShownContextDialog = true
-        } else if (hasShownContextDialog) {
-            hasShownContextDialog = false
-            try { focusRequester.requestFocus() } catch (_: Exception) {}
-            keyboardController?.show()
-        }
-    }
     // FIX(P38): Sync external content changes (e.g. format button, file reload)
     // to the internal TextFieldValue. Without this, updating the 'content'
     // parameter from outside (like the format button updating tabs[idx].content)
@@ -613,6 +604,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var contextWord by remember { mutableStateOf<String?>(null) }
+    // FIX: Restore keyboard when the long-press dialog (contextWord) dismisses,
+    // regardless of HOW it dismisses (button click, tap-outside, back button).
+    // The AlertDialog steals focus from BasicTextField; without this, the keyboard
+    // never reappears after using any dialog action.
+    LaunchedEffect(contextWord) {
+        if (contextWord != null) {
+            hasShownContextDialog = true
+        } else if (hasShownContextDialog) {
+            hasShownContextDialog = false
+            try { focusRequester.requestFocus() } catch (_: Exception) {}
+            keyboardController?.show()
+        }
+    }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     data class DefResult(val line: Int, val lineText: String)
     data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
