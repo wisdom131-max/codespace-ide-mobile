@@ -1533,6 +1533,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     keyboardController?.show()
                                 },
                 containerColor = Color(0xFF252526),
+                modifier = Modifier.heightIn(max = 450.dp),
                 title = {
                     Text(
                         "\"$word\"",
@@ -1542,7 +1543,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     )
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .heightIn(max = 320.dp)
+                    ) {
                         // P38-FIX: Copy/Cut/Paste/Select All — replaces the system popup
                         // that the overlay now intercepts. These appear first so the
                         // user always has clipboard access alongside LSP features.
@@ -1555,12 +1561,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 clipboardManager.setText(AnnotatedString(selectedText))
                             }
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
+                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
-                                Text("📋", fontSize = 14.sp)
-                                Text("Copy", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("📋", fontSize = 12.sp)
+                                Text("Copy", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         TextButton(onClick = {
@@ -1574,12 +1580,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onContentChange(newText)
                             }
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
+                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
-                                Text("✂", fontSize = 14.sp)
-                                Text("Cut", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("✂", fontSize = 12.sp)
+                                Text("Cut", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         TextButton(onClick = {
@@ -1593,23 +1599,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onContentChange(newText)
                             }
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
+                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
-                                Text("📎", fontSize = 14.sp)
-                                Text("Paste", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("📎", fontSize = 12.sp)
+                                Text("Paste", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         TextButton(onClick = {
                             value = value.copy(selection = TextRange(0, value.text.length))
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth()) {
+                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
-                                Text("☑", fontSize = 14.sp)
-                                Text("Select All", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("☑", fontSize = 12.sp)
+                                Text("Select All", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         HorizontalDivider(color = Color(0xFF3C3C3C), modifier = Modifier.padding(vertical = 2.dp))
@@ -1759,9 +1765,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text(if (expandSelectionUsedLsp) "⤢" else "⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 14.sp)
-                                Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text(if (expandSelectionUsedLsp) "⤢" else "⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 12.sp)
+                                Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                 if (onLspSelectionRange != null && expandSelectionDepth >= 0) {
                                     Text("L${expandSelectionDepth + 1}", color = Color(0xFF4EC9B0), fontSize = 10.sp)
                                 }
@@ -1786,14 +1793,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("⇒", color = Color(0xFF007ACC), fontSize = 14.sp)
-                                Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("⇒", color = Color(0xFF007ACC), fontSize = 12.sp)
+                                Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         // P22-L: Peek Definition — inline code preview without navigating away
@@ -1852,14 +1861,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("👁", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                                Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("👁", color = Color(0xFF4EC9B0), fontSize = 12.sp)
+                                Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         // P26-1: Go to Type Definition — uses LSP to peek the type definition of the symbol
@@ -1870,14 +1881,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     typeDefUsedLsp = onLspTypeDefinition.invoke()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text("T", color = Color(0xFFC586C0), fontSize = 14.sp)
-                                    Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    Text("T", color = Color(0xFFC586C0), fontSize = 12.sp)
+                                    Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     Spacer(Modifier.width(4.dp))
                                     Box(
                                         Modifier.background(if (typeDefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
@@ -1896,14 +1908,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     implUsedLsp = onLspImplementation.invoke()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text("I", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                                    Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    Text("I", color = Color(0xFF4EC9B0), fontSize = 12.sp)
+                                    Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     Spacer(Modifier.width(4.dp))
                                     Box(
                                         Modifier.background(if (implUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
@@ -1923,14 +1936,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("✎", color = Color(0xFFE5C07B), fontSize = 14.sp)
-                                Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("✎", color = Color(0xFFE5C07B), fontSize = 12.sp)
+                                Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         // P18-B: Select All Occurrences — seed extraCursors at every word-boundary match
@@ -1952,14 +1967,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("■", color = Color(0xFF569CD6), fontSize = 14.sp)
-                                Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("■", color = Color(0xFF569CD6), fontSize = 12.sp)
+                                Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 12.sp)
 ;                            }
                             // P19-A: Cross-file results
                             if (crossFileResults != null && crossFileResults!!.isNotEmpty()) {
@@ -2009,14 +2026,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("▸", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                                Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("▸", color = Color(0xFF4EC9B0), fontSize = 12.sp)
+                                Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         // P24-3: Find References
@@ -2038,14 +2057,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text("⊛", color = Color(0xFF9CDCFE), fontSize = 14.sp)
-                                    Text("Find References", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    Text("⊛", color = Color(0xFF9CDCFE), fontSize = 12.sp)
+                                    Text("Find References", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                 }
                             }
                         }
@@ -2071,14 +2091,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("↑", color = Color(0xFFE5C07B), fontSize = 14.sp)
-                                Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("↑", color = Color(0xFFE5C07B), fontSize = 12.sp)
+                                Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                         // P22-K: Add Cursor Below
@@ -2102,14 +2124,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
-                                Text("↓", color = Color(0xFFE5C07B), fontSize = 14.sp)
-                                Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                Text("↓", color = Color(0xFFE5C07B), fontSize = 12.sp)
+                                Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                         }
                     }
