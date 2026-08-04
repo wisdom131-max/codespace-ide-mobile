@@ -1518,7 +1518,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onDismissRequest = { showLspMenu = false },
                             modifier = Modifier.background(Color(0xFF252526))
                         ) {
-                            // ── LSP Actions (compact dropdown) ──
+                            // ── LSP Actions (compact scrollable dropdown) ──
+                            androidx.compose.foundation.layout.Column(
+                                modifier = Modifier
+                                    .heightIn(max = 360.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
                             val selectedText = value.text.substring(
                                 value.selection.start.coerceIn(0, value.text.length),
                                 value.selection.end.coerceIn(0, value.text.length)
@@ -1698,7 +1703,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                     if (found.isNotEmpty()) {
                                         val f = found.first()
-                                        peekDefResult = PeekDefResult(f.lineNumber, f.lineText)
+                                        peekDefResult = PeekDefResult(
+                                            filePath = "(current)",
+                                            line = f.line,
+                                            lines = lines,
+                                            defLine = f.line
+                                        )
                                     }
                                     showLspMenu = false
                                 }
@@ -1860,6 +1870,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     showLspMenu = false
                                 }
                             )
+                            } // end scrollable Column
                         }
                     }
                 }
