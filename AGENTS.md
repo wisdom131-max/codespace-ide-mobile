@@ -24,7 +24,7 @@
 
 | | |
 |-|-|
-| Latest green build | **c8c7c805** (overlay removal + floating LSP button + scrollable dropdown) — pending CI verification |
+| Latest green build | **33011f29** (overlay removal + floating LSP button + scrollable dropdown + PopupProperties fix) |
 | Active phase | **Phase 38** (P38 — Overlay removal, floating LSP button, keyboard fix, LSP capability gating, PEP 668 pip fixes) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
@@ -6689,5 +6689,6 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 | 7cb1c141 | Fix: move LaunchedEffect after contextWord declaration | ❌ Superseded by b2d8c7b0 |
 | 5bd0e6bf | Long-press context menu scrollable + compact | ❌ Superseded by b2d8c7b0 |
 | f813456c | Remove contentPadding from Row composable (not a Row param) | ✅ Green |
-| b2d8c7b0 | Remove overlay, replace context dialog with floating LSP button | ⏳ Pending CI |
-| c8c7c805 | Fix PeekDefResult constructor + scrollable compact dropdown | ⏳ Pending CI (same push) |
+| 33011f29 | Fix PopupProperties dismissOnClickOutside param name | ✅ GREEN |
+| b2d8c7b0 | Remove overlay, replace context dialog with floating LSP button | ❌ Failed (dismissOnOutsideClick param) |
+| c8c7c805 | Fix PeekDefResult constructor + scrollable compact dropdown | ❌ Failed (dismissOnOutsideClick, same push) |
