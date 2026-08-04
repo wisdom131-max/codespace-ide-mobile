@@ -24,8 +24,8 @@
 
 | | |
 |-|-|
-| Latest green build | **69ee141c** (pylsp-inlay-hints auto-install) — pending verification of 7cb1c141 (keyboard+dialog fixes) |
-| Active phase | **Phase 38** (P38 — Long-press dialog, keyboard fix, LSP capability gating, PEP 668 pip fixes) |
+| Latest green build | **c8c7c805** (overlay removal + floating LSP button + scrollable dropdown) — pending CI verification |
+| Active phase | **Phase 38** (P38 — Overlay removal, floating LSP button, keyboard fix, LSP capability gating, PEP 668 pip fixes) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
@@ -6593,7 +6593,7 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 
 **Problem 1 (Long-press dialog unreachable):** The `pointerInput` modifier with `detectTapGestures` was on the `BasicTextField` itself, but the long-press gesture conflicted with the text field's built-in selection handling. Long-pressing a word either selected it without showing the context dialog, or did nothing.
 
-**Fix 1:** Moved `pointerInput` from `BasicTextField`'s modifier to a transparent `Box` overlay (`Modifier.matchParentSize()`) that sits on top of the text field. The overlay intercepts all gestures (tap, long-press, double-tap) before `BasicTextField` sees them, giving full control over gesture handling.
+**Fix 1 (LATER REVERSED in b2d8c7b0):** Moved `pointerInput` from `BasicTextField`'s modifier to a transparent `Box` overlay (`Modifier.matchParentSize()`) that sits on top of the text field. The overlay intercepted all gestures before `BasicTextField` saw them. **⚠️ This fix caused the keyboard-never-appears bug (see "Overlay Removed" section below). The overlay approach was fully reverted in commit b2d8c7b0 — `BasicTextField` now handles gestures natively.**
 
 **Problem 2 (Format result not applied):** The format button called `onContentChange(newText)` to update the parent, but the internal `TextFieldValue` was never updated. The parameter `content` was updated, but `value` (the internal state) was stale. This caused the editor to show old content after formatting.
 
@@ -6615,6 +6615,8 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 
 **Fix:** Added Copy, Cut, Paste, and Select All buttons to the top of the long-press context dialog, above the LSP features. These use `LocalClipboardManager` for clipboard operations and update the internal `TextFieldValue` directly.
 
+**⚠️ Note:** This fix is now **moot** — the overlay was removed in commit b2d8c7b0, so the native Compose text selection toolbar (Copy/Cut/Paste/Select All with drag handles) is automatically available on long-press again. The manual Copy/Cut/Paste buttons were part of the old AlertDialog which was removed.
+
 ---
 
 ### Duplicate AnnotatedString Import (commit 7588134b)
@@ -6625,29 +6627,27 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 
 ---
 
-### Keyboard Never Appears After Overlay Intercepts Tap (commit f30100bd, fixed in 7cb1c141)
+### Overlay Removed — Keyboard Now Works + Floating LSP Button (commits b2d8c7b0, c8c7c805)
 
-**Problem:** The transparent overlay (added in commit 4cd751a6 to fix the long-press dialog) consumed ALL tap gestures before `BasicTextField` saw them. This meant `BasicTextField` never gained focus naturally → the keyboard never appeared after tapping. It worked intermittently (if the text field already had focus from a previous interaction, the keyboard stayed visible), but after focus loss (AlertDialog dismissal, tab switch, app background), the next tap went through the overlay, updated the selection, but never re-established focus → dead keyboard.
+**Root Cause (definitive):** The transparent gesture overlay (`Box(Modifier.matchParentSize())` with `detectTapGestures`) added in commit 4cd751a6 intercepted ALL tap/long-press/double-tap events before `BasicTextField` could see them. This meant:
+- `BasicTextField` never gained focus from a tap → keyboard never appeared
+- The 3-layer defense (FocusRequester + keyboardController + LaunchedEffect) from commits f30100bd/7cb1c141 was a workaround that only partially worked — the overlay was the real problem
+- The full-screen AlertDialog context menu (600+ lines) filled the entire screen on mobile
 
-**Fix (3 layers of defense):**
-1. `FocusRequester` + `LocalSoftwareKeyboardController` on `BasicTextField`. The overlay's `onTap` now calls `focusRequester.requestFocus()` + `keyboardController?.show()` after positioning the cursor.
-2. `onLongPress` also requests focus, so the keyboard is ready when the dialog opens and after it closes.
-3. `LaunchedEffect(contextWord)` watches the dialog state — when it dismisses (by ANY path: button click, tap-outside, back button), it automatically restores focus + shows keyboard. Uses a `hasShownContextDialog` flag to skip initial composition.
+**Fix (complete reversal of the overlay approach):**
+1. **Removed the transparent overlay entirely** — `BasicTextField` now handles tap (cursor placement), long-press (native word selection with drag handles + system Copy/Cut/Paste toolbar), and double-tap natively
+2. **Removed all manual focus/keyboard workarounds** — `FocusRequester` is kept only for the floating button to maintain focus; `LocalSoftwareKeyboardController` and `hasShownContextDialog` state removed
+3. **Removed `LaunchedEffect(contextWord)` keyboard restoration hack**
+4. **Removed the full-screen AlertDialog** (600+ lines) — replaced with a compact floating "⋮" button (36dp, top-right) that appears when text is selected
+5. **Floating button opens a DropdownMenu** with LSP actions (Fix with AI, Expand Selection, Go to/Peek Definition, Type Definition, Implementations, Rename, Select All/Next Occurrence, Find References, Add Cursor Above/Below)
+6. **Double-tap multi-cursor** moved to `BasicTextField`'s own `pointerInput` modifier — only consumes `onDoubleTap`, does NOT block tap or long-press
+7. **DropdownMenu is scrollable** — wrapped in `Column(Modifier.heightIn(max=360.dp).verticalScroll(rememberScrollState()))` so 13 items don't fill the screen
 
-**Compile fix (7cb1c141):** The `LaunchedEffect(contextWord)` was initially placed before `contextWord` was declared, causing "Unresolved reference" — moved it to after the declaration.
+**Net code change:** -268 lines (346 insertions, 614 deletions). The overlay + AlertDialog approach was 600+ lines of fighting Compose's native text handling. The floating button approach is ~350 lines and works WITH the framework instead of against it.
 
----
+**Native long-press behavior restored:** Long-pressing a word now triggers the native Compose text selection — the word is highlighted with drag handles, and the system floating toolbar (Copy/Cut/Paste/Select All) appears. The LSP actions are accessible via the floating "⋮" button that appears alongside the selection.
 
-### Long-Press Context Menu Scrollable + Compact (commit 5bd0e6bf)
-
-**Problem:** The long-press dialog had 19+ buttons that filled the entire screen on mobile, making it unusable.
-
-**Fix:**
-- `Column` is now scrollable (`verticalScroll`) with max height 320dp
-- `AlertDialog` capped at 450dp max height
-- All buttons use compact `contentPadding` (2dp vertical vs default ~8dp)
-- Button text reduced from 13sp to 12sp, icons from 14sp to 12sp
-- Inter-button spacing reduced from 4dp to 1dp
+**PeekDefResult constructor fix (c8c7c805):** Fixed `PeekDefResult(f.lineNumber, f.lineText)` → `PeekDefResult(filePath="(current)", line=f.line, lines=lines, defLine=f.line)` — the old call had wrong field names (`lineNumber` vs `line`) and wrong arg count for the data class.
 
 ---
 
@@ -6685,6 +6685,9 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 | 7588134b | Remove duplicate AnnotatedString import | ✅ Green |
 | 028b6e2b | Gate optional LSP methods + fix caps extraction | ✅ Green |
 | 69ee141c | Auto-install pylsp-inlay-hints plugin | ✅ Green |
-| f30100bd | Keyboard never appears after overlay intercepts tap | ❌ Failed (compile error) |
-| 7cb1c141 | Fix: move LaunchedEffect after contextWord declaration | ⏳ Pending CI |
-| 5bd0e6bf | Long-press context menu scrollable + compact | ⏳ Pending CI (same push) |
+| f30100bd | Keyboard never appears after overlay intercepts tap | ❌ Superseded by b2d8c7b0 |
+| 7cb1c141 | Fix: move LaunchedEffect after contextWord declaration | ❌ Superseded by b2d8c7b0 |
+| 5bd0e6bf | Long-press context menu scrollable + compact | ❌ Superseded by b2d8c7b0 |
+| f813456c | Remove contentPadding from Row composable (not a Row param) | ✅ Green |
+| b2d8c7b0 | Remove overlay, replace context dialog with floating LSP button | ⏳ Pending CI |
+| c8c7c805 | Fix PeekDefResult constructor + scrollable compact dropdown | ⏳ Pending CI (same push) |
