@@ -167,7 +167,10 @@ object LspManager {
                 "command -v pip3 >/dev/null 2>&1 || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends python3-pip ); " +
                 "pip3 install --break-system-packages 'python-lsp-server[all]' || " +
-                "pip3 install --break-system-packages python-lsp-server",
+                "pip3 install --break-system-packages python-lsp-server; " +
+                // Auto-install pylsp-inlay-hints (archived but functional). Non-fatal:
+                // if pip/network fails, hasCapability() gate handles it gracefully.
+                "pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null",
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────

@@ -6536,3 +6536,17 @@ This means:
 **Files changed:** `LspManager.kt` (+19 lines, -2 lines)
 
 **CI:** Pending verification on commit 028b6e2b.
+
+**Auto-install wiring for pylsp-inlay-hints:**
+
+The plugin is now appended to the Python LSP server install command in `LspManager.kt`:
+```
+pip3 install --break-system-packages 'python-lsp-server[all]' || 
+pip3 install --break-system-packages python-lsp-server; 
+pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
+```
+
+- Runs automatically on first Python LSP server install (same flow as pylsp itself).
+- Non-fatal: `2>/dev/null` suppresses output. If the package is unavailable or network fails, the `hasCapability()` gate handles the missing capability gracefully (returns null → no inlay hints shown, no crash).
+- Uses `;` (not `||`) so it runs after the main pylsp install regardless of whether pylsp installed via `[all]` or bare package.
+- The `python-lsp-server[all]` extra includes black, rope, pyflakes, pycodestyle, isort, mccabe — but NOT community plugins like pylsp-inlay-hints, so it must be installed separately.
