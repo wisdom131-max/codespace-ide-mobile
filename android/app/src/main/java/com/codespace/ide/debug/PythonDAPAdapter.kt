@@ -102,7 +102,7 @@ class PythonDAPAdapter : DebugAdapter {
     fun installDebugpy(context: Context): Boolean {
         Log.d(TAG, "Installing debugpy...")
         val result = ProotInstaller.execOnce(context,
-            "pip3 install debugpy", timeoutSeconds = 120)
+            "pip3 install --break-system-packages debugpy", timeoutSeconds = 120)
         Log.d(TAG, "debugpy install result: $result")
         return isDebugpyInstalled(context)
     }
