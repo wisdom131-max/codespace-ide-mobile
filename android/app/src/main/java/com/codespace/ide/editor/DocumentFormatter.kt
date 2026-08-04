@@ -83,7 +83,7 @@ object DocumentFormatter {
                 // black via pip3 — pip3 is available after Python LSP server setup
                 dpkgFix + "( command -v pip3 >/dev/null 2>&1 || " +
                     "( apt-get update -qq && apt-get install -y --no-install-recommends python3-pip ) ) && " +
-                    "pip3 install black"
+                    "pip3 install --break-system-packages black"
             }
             Language.KOTLIN -> {
                 // ktlint needs JRE — available after Kotlin LSP server setup
