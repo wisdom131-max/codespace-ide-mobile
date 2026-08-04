@@ -158,7 +158,7 @@ object LspManager {
             Language.PYTHON,
             "pylsp",
             emptyList(),
-            "which pylsp",
+            "which pylsp && echo OK",
             // P31-LSP-FIX: Clear stale dpkg locks + skip apt-get if pip3 already present.
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -175,7 +175,7 @@ object LspManager {
             Language.KOTLIN,
             "kotlin-language-server",
             emptyList(),
-            "which kotlin-language-server",
+            "which kotlin-language-server && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless unzip curl; " +
                 "curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && " +
                 "unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && " +
@@ -188,7 +188,7 @@ object LspManager {
             Language.GO,
             "gopls",
             emptyList(),
-            "which gopls",
+            "which gopls && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends golang-go; go install golang.org/x/tools/gopls@latest",
         ),
         // ── Java ───────────────────────────────────────────────────────────
@@ -210,7 +210,7 @@ object LspManager {
             Language.C,
             "clangd",
             listOf("--background-index", "--clang-tidy"),
-            "which clangd",
+            "which clangd && echo OK",
             // P31-LSP-FIX: Clear stale dpkg locks before apt-get.
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -223,7 +223,7 @@ object LspManager {
             Language.CPP,
             "clangd",
             listOf("--background-index", "--clang-tidy"),
-            "which clangd",
+            "which clangd && echo OK",
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -236,7 +236,7 @@ object LspManager {
             Language.RUST,
             "rust-analyzer",
             emptyList(),
-            "which rust-analyzer",
+            "which rust-analyzer && echo OK",
             "apt-get update -qq; apt-get install -y --no-install-recommends curl; " +
                 "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable; " +
                 "source \$HOME/.cargo/env; " +
@@ -250,7 +250,7 @@ object LspManager {
             Language.PHP,
             "intelephense",
             listOf("--stdio"),
-            "which intelephense",
+            "which intelephense && echo OK",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -275,7 +275,7 @@ object LspManager {
             Language.HTML,
             "vscode-html-language-server",
             listOf("--stdio"),
-            "which vscode-html-language-server",
+            "which vscode-html-language-server && echo OK",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -298,7 +298,7 @@ object LspManager {
             Language.CSS,
             "vscode-css-language-server",
             listOf("--stdio"),
-            "which vscode-css-language-server",
+            "which vscode-css-language-server && echo OK",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -322,7 +322,7 @@ object LspManager {
             Language.JSON,
             "vscode-json-language-server",
             listOf("--stdio"),
-            "which vscode-json-language-server",
+            "which vscode-json-language-server && echo OK",
             // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -393,7 +393,10 @@ object LspManager {
         // test-based checks like jdtls) as its FINAL LINE. On failure, execOnce returns
         // "Exit code N" or "Timed out ...". Neither ends with "OK" or "found".
         val lastLine = output.trimEnd().lines().lastOrNull().orEmpty().trim()
-        val installed = lastLine == "OK" || lastLine == "found"
+        val installed = lastLine == "OK" || lastLine == "found" ||
+            // Defensive: a bare `which X` that succeeds outputs a path like /usr/local/bin/pylsp.
+            // Accept any absolute path as proof the binary is installed.
+            (lastLine.startsWith("/") && !lastLine.contains("not found") && !lastLine.contains("no "))
         Log.d(TAG, "isServerInstalled(${language.displayName}): lastLine='$lastLine' installed=$installed (raw: ${output.take(80)})")
         AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (lastLine='$lastLine')", "lsp")
         return installed
@@ -491,9 +494,22 @@ object LspManager {
             val installResult = installServer(context, language)
             Log.d(TAG, "Install result: $installResult")
             if (!isServerInstalled(context, language)) {
-                Log.e(TAG, "startServer: FAILED — still not installed after install attempt for ${language.displayName}")
-                AppOutputLog.log("[LSP] ERROR: ${language.displayName} server still not installed after install attempt. Output: ${installResult.take(200)}", "lsp")
-                return false
+                // P38-CHECK-FIX: The install may have succeeded but the check command
+                // itself may be broken (false negative). As a last resort, check if the
+                // binary exists at common locations before giving up.
+                val binaryName = config.command
+                val fallbackCheck = ProotInstaller.execOnce(context,
+                    "command -v $binaryName && echo OK || echo NOT_FOUND", timeoutSeconds = 10)
+                val fallbackLast = fallbackCheck.trimEnd().lines().lastOrNull().orEmpty().trim()
+                if (fallbackLast == "OK") {
+                    AppOutputLog.log("[LSP] ${language.displayName} install SUCCEEDED (fallback check confirmed binary exists)", "lsp")
+                    Log.d(TAG, "startServer: install confirmed via fallback check for ${language.displayName}")
+                } else {
+                    Log.e(TAG, "startServer: FAILED — still not installed after install attempt for ${language.displayName}")
+                    AppOutputLog.log("[LSP] ERROR: ${language.displayName} server still not installed after install attempt. Output: ${installResult.take(200)}", "lsp")
+                    AppOutputLog.log("[LSP] ${language.displayName} fallback check also failed: $fallbackCheck", "lsp")
+                    return false
+                }
             }
             Log.d(TAG, "startServer: install SUCCEEDED for ${language.displayName}")
             AppOutputLog.log("[LSP] ${language.displayName} server install SUCCEEDED", "lsp")
