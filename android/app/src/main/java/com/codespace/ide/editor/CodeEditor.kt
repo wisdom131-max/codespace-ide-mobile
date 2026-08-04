@@ -1565,7 +1565,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 clipboardManager.setText(AnnotatedString(selectedText))
                             }
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
@@ -1584,7 +1584,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onContentChange(newText)
                             }
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
@@ -1603,7 +1603,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onContentChange(newText)
                             }
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
@@ -1614,7 +1614,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         TextButton(onClick = {
                             value = value.copy(selection = TextRange(0, value.text.length))
                             contextWord = null
-                        }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)) {
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()) {
@@ -1769,7 +1769,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text(if (expandSelectionUsedLsp) "⤢" else "⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 12.sp)
                                 Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -1797,13 +1796,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("⇒", color = Color(0xFF007ACC), fontSize = 12.sp)
                                 Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -1865,13 +1862,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("👁", color = Color(0xFF4EC9B0), fontSize = 12.sp)
                                 Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -1885,8 +1880,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     typeDefUsedLsp = onLspTypeDefinition.invoke()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                            ) {
+                                                            ) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1912,8 +1906,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     implUsedLsp = onLspImplementation.invoke()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                            ) {
+                                                            ) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1940,13 +1933,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("✎", color = Color(0xFFE5C07B), fontSize = 12.sp)
                                 Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -1971,13 +1962,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("■", color = Color(0xFF569CD6), fontSize = 12.sp)
                                 Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -2030,13 +2019,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("▸", color = Color(0xFF4EC9B0), fontSize = 12.sp)
                                 Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -2061,8 +2048,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                            ) {
+                                                            ) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -2095,13 +2081,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("↑", color = Color(0xFFE5C07B), fontSize = 12.sp)
                                 Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 12.sp)
@@ -2128,13 +2112,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 contextWord = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                        ) {
+                                                    ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                             ) {
                                 Text("↓", color = Color(0xFFE5C07B), fontSize = 12.sp)
                                 Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 12.sp)
