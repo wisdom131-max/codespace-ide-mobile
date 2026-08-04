@@ -680,9 +680,13 @@ object LspManager {
         Log.d(TAG, "startServer: initialize response for ${language.displayName}: ${response.toString().take(200)}")
         AppOutputLog.log("[LSP] initialize response received from ${language.displayName} server ✓", "lsp")
 
-        val caps = response as? JSONObject
+        val result = response as? JSONObject
+        // P38-FIX: The initialize result is { "capabilities": {...}, "serverInfo": {...} }.
+        // Extract the inner capabilities object so hasCapability("hoverProvider") etc. work.
+        val caps = result?.optJSONObject("capabilities") ?: result
         server.capabilities = caps
         server.initialized = true
+        AppOutputLog.log("[LSP] Server capabilities: ${caps.toString().take(300)}", "lsp")
 
         client.notify("initialized")
 
@@ -917,6 +921,7 @@ object LspManager {
         character: Int,
     ): JSONObject? {
         val server = servers[language] ?: return null
+        if (!hasCapability(language, "hoverProvider")) return null
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
@@ -937,6 +942,7 @@ object LspManager {
     ): JSONObject? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "signatureHelpProvider")) return null
 
         val params = positionParams(uri, line, character)
         val response = server.client.request("textDocument/signatureHelp", params, timeoutSeconds = 5)
@@ -993,6 +999,7 @@ object LspManager {
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "codeActionProvider")) return null
 
         val td = JSONObject().put("uri", uri)
         val pos = JSONObject().put("line", line).put("character", character)
@@ -1016,6 +1023,7 @@ object LspManager {
         uri: String,
     ): JSONArray? {
         val server = servers[language] ?: return null
+        if (!hasCapability(language, "semanticTokensProvider")) return null
         if (!server.initialized) return null
 
         val td = JSONObject().apply { put("uri", uri) }
@@ -1078,6 +1086,7 @@ object LspManager {
         line: Int,
         character: Int,
     ): JSONArray? {
+        if (!hasCapability(language, "documentHighlightProvider")) return null
         val server = servers[language] ?: return null
         if (!server.initialized) return null
         val params = positionParams(uri, line, character)
@@ -1099,6 +1108,7 @@ object LspManager {
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "documentFormattingProvider")) return null
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
             put("options", JSONObject().apply {
@@ -1224,6 +1234,7 @@ object LspManager {
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "foldingRangeProvider")) return null
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
         }
@@ -1245,6 +1256,7 @@ object LspManager {
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "selectionRangeProvider")) return null
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
             put("positions", JSONArray().apply {
@@ -1423,17 +1435,21 @@ object LspManager {
     fun getCodeLens(language: Language, uri: String): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "codeLensProvider")) return null
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
         }
         val response = server.client.request("textDocument/codeLens", params, timeoutSeconds = 5)
         return response as? JSONArray
     }
-
     // P26-1: LSP Inlay Hints — inline type/parameter hints
     fun getInlayHints(language: Language, uri: String): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        // pylsp-inlay-hints plugin advertises under "experimental.inlayHintProvider",
+        // not the standard "inlayHintProvider" path. Check both.
+        if (!hasCapability(language, "inlayHintProvider") &&
+            !hasCapability(language, "experimental.inlayHintProvider")) return null
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
             put("range", JSONObject().apply {
@@ -1449,6 +1465,7 @@ object LspManager {
     fun getDocumentLinks(language: Language, uri: String): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        if (!hasCapability(language, "documentLinkProvider")) return null
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
         }
