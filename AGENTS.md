@@ -4570,6 +4570,29 @@ User Experience
 
 ### Build History
 - #1553 (e4d3fd2): Initial document highlight + completion resolve → GREEN
+### Build #1738 ✅ (2026-08-04) — Phase 37: Autosave Corruption + UX Fixes
+**Commits:** #1727–#1738 (12 commits, 11 green, 1 intermediate failure fixed)
+
+**Root Cause Discovery — Autosave Filename Collision (P37-CORRUPTION-FIX):**
+- Autosave files were stored by basename only (`test.js.autosave`), not full path
+- Two files named `test.js` in different directories overwrote each other's autosave
+- On restart, restore matched by filename (`File(it.path).name == originalName`), putting content from file A into file B
+- Manifested as "tangled/merged" content from different test files — explains recurring corruption reports throughout session
+- **Fix:** Both storage AND restore now use `URLEncoder.encode(tab.path)` / `URLDecoder.decode()` for full-path matching
+- **Migration:** Old basename-based `.autosave` files (not starting with `%2F`) are deleted on launch
+
+**Other Fixes:**
+- **#2 SymbolSearchPanel badge:** "Fallback" badge now hidden when search box is empty — only shows after a search runs
+- **#3 Input sanitization:** New File/Folder dialog strips backticks (`) and null chars from input to prevent autocorrect corruption
+- **#1727 RunDebugPanel:** Jump-to-source now scrolls editor to target line instead of no-op
+- **#1728 SymbolSearchPanel:** Added "Starting" badge when LSP running but not initialized
+- **#1729–#1731 LSP URL decoding:** Fixed 5 navigation call sites where percent-encoded file:// URIs weren't decoded, causing FileNotFoundException for paths with spaces
+- **#1732 Format button:** Surfaces result via Toast instead of silent no-op
+- **#1733 Auto-install formatters:** Prettier/black/ktlint auto-installed on first use via npx/pip
+
+**Blast radius:** Autosave corruption only triggered when: (a) two same-named files open in different dirs, (b) both dirty, (c) 30s autosave timer fired, (d) app crashed, (e) user clicked Restore. Past test results meeting all conditions are suspect.
+
+
 - #1554 (5ca73d4): CodeEditor overlay rendering → FAIL (missing parameter)
 - #1555 (0b3c58c): Fix parameter → GREEN
 - #1556 (bcc702b): LspManager new methods → GREEN
