@@ -123,6 +123,7 @@ fun EditorPane(
     sessionStateStore: SessionStateStore? = null,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
+    onAiFixRequest: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -1114,6 +1115,7 @@ fun EditorPane(
                             udm?.toggleBreakpoint(active.path, line)
                         },
                         projectRoot = projectRootPath,
+                        onAiFixRequest = onAiFixRequest,
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -1279,8 +1281,26 @@ fun EditorPane(
                             { line ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
-                                    val actions = try { LspManager.getCodeActions(active.language, uri, line, 0) } catch (_: Exception) { null }
-                                    actions?.let { parseCodeActions(it) } ?: emptyList<LspCodeAction>()
+                                    // P39: Pass current diagnostics as context for targeted quick fixes
+                                    val diagnostics = try {
+                                        com.codespace.ide.lsp.buildDiagnosticsContext(lspSquiggles, line + 1)
+                                    } catch (_: Exception) { org.json.JSONArray() }
+                                    val actions = try {
+                                        LspManager.getCodeActions(active.language, uri, line, 0, diagnostics = diagnostics)
+                                    } catch (_: Exception) { null }
+                                    val parsed = actions?.let { parseCodeActions(it) } ?: emptyList<LspCodeAction>()
+                                    // P39: Add AI code actions if AI chat is available
+                                    val aiActions = if (onAiFixRequest != null) {
+                                        listOf(
+                                            LspCodeAction("Explain Code", com.codespace.ide.lsp.CodeActionKind.AIExplain),
+                                            LspCodeAction("Generate Documentation", com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc),
+                                            LspCodeAction("Generate Unit Tests", com.codespace.ide.lsp.CodeActionKind.AIGenerateTests),
+                                            LspCodeAction("Optimize Code", com.codespace.ide.lsp.CodeActionKind.AIOptimize),
+                                            LspCodeAction("Rewrite Code", com.codespace.ide.lsp.CodeActionKind.AIRewrite),
+                                            LspCodeAction("Simplify Code", com.codespace.ide.lsp.CodeActionKind.AISimplify),
+                                        )
+                                    } else emptyList()
+                                    parsed + aiActions
                                 } else emptyList()
                             }
                         } else null,
