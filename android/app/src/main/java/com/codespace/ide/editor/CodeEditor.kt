@@ -377,10 +377,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes
     val scrollDensity = androidx.compose.ui.platform.LocalDensity.current
+    // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
+    // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
+    var highlightTargetLine by remember { mutableStateOf(0) }
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
             val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
             vScroll.animateScrollTo((scrollToLine * lineHeightPx).toInt())
+            highlightTargetLine = scrollToLine
+            kotlinx.coroutines.delay(2500)
+            highlightTargetLine = 0
         }
     }
     val hScroll = rememberScrollState()
@@ -1205,6 +1211,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .zIndex(5f),
                 )
             }
+        }
+
+        // PROBLEMS-TAB FIX: Gold highlight on the problem target line (fades after 2.5s)
+        if (highlightTargetLine > 0) {
+            val lineHeightPxHl = fontSize * 1.25f
+            val gutterDpHl = 74f
+            val scrollOffsetPxHl = vScroll.value
+            val topDpHl = (highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .padding(start = gutterDpHl.dp, top = topDpHl.dp)
+                    .height(lineHeightPxHl.dp)
+                    .background(Color(0xFFFFD700).copy(alpha = 0.15f))
+                    .zIndex(3.5f),
+            )
+            // Thin gold bar on the left edge of the highlighted line
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = gutterDpHl.dp, top = topDpHl.dp)
+                    .width(3.dp)
+                    .height(lineHeightPxHl.dp)
+                    .background(Color(0xFFFFD700))
+                    .zIndex(4.5f),
+            )
         }
 
         // P26-1: LSP Document Highlight — subtle background tint on all occurrences

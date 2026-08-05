@@ -1930,7 +1930,7 @@ private fun PssBottomPanelContent(
                 context = context,
                 activeFilePath = activeEditorTab,
                 buildProblems = buildProblems,
-                onJumpToSource = { line -> onJumpToSource(line); onHideBottomPanel() },
+                onJumpToSource = { line -> onJumpToSource(line) },
             )
             BottomTab.OUTPUT   -> OutputPanel()
             BottomTab.DEBUG    -> DebugConsolePanel(
