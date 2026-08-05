@@ -6871,3 +6871,48 @@ These serve as clean reference copies — users can copy them to reset on-device
 - **Fix plan:** Fix run button to execute python directly (e.g., "python main.py" in terminal subprocess with output to Output tab), or add separate plain Run button distinct from Debug button.
 
 **FILE CORRUPTION:** main.py has corrupted content at line 38 — Output shows "invalid syntax (<unknown>, line 38)" and Problems tab confirms 3 errors. Causing false failures in Tests 1, 3, 4, 8. Will provide clean main.py content for user to paste.
+
+### P38 Bug Fix Batch (2026-08-05, commit cbea29bb)
+
+**All 6 bugs fixed + Problems tab tap-to-navigate + compact hover popup redesign:**
+
+#### BUG 1: Autocomplete wrong suggestions for class instance members
+- **Root cause:** Completion request could race with didChange — server might respond against stale content when typing fast. Also missing triggerCharacter context.
+- **Fix:** Force-sync `didChange` synchronously before every completion request. Pass `triggerCharacter` (e.g. ".") to `getCompletion()` so server uses `triggerKind=2` (TriggerCharacter) for member completion instead of generic `triggerKind=1` (Invoked).
+- **Files:** `editor/CodeEditor.kt` (completion provider), `lsp/LspManager.kt` (getCompletion signature)
+
+#### BUG 2: Signature help popup not appearing
+- **Root cause:** Signature popup positioned at `popupLineIdx * fontSize * 1.25f` without subtracting scroll offset — when scrolled, popup rendered off-screen.
+- **Fix:** Subtract `vScroll.value` from popup top position.
+- **File:** `editor/CodeEditor.kt`
+
+#### BUG 3: Document highlight slides on scroll
+- **Root cause:** All overlay decorations (highlight, code lens, extra cursors) used `lineIdx * lineHeightPx` without scroll offset — stayed at fixed screen positions when scrolling.
+- **Fix:** Subtract `vScroll.value` from all overlay positions (document highlight, code lens, extra cursor indicators, signature popup, completion dropdown).
+- **File:** `editor/CodeEditor.kt`
+
+#### BUG 4: Go to Definition / Peek Definition not navigating
+- **Root cause:** Handler used regex pattern matching only — no LSP `textDocument/definition` call.
+- **Fix:** Added `onLspDefinition` callback. Go to Definition and Peek Definition now try LSP first (`LspManager.getDefinition`), falling back to regex only if LSP fails. Handles same-file (scroll to line) and cross-file (open at line).
+- **Files:** `editor/CodeEditor.kt`, `ui/panes/EditorPane.kt`
+
+#### BUG 5: Find References crashes pylsp
+- **Fix:** Added `includeDeclaration: true` to `textDocument/references` params (already fixed prior commit).
+
+#### BUG 6: Run button opens debugger instead of running file
+- **Root cause:** Single green ▶ button called `UniversalDebugManager.startDebug()` — launched `python3 -m pdb`.
+- **Fix:** Added separate "Run File" button (green, PlayArrow icon) that sends run command (`python3 main.py`, `node main.js`, etc.) to terminal. Debug button (blue, BugReport icon) stays for debugging with breakpoints.
+- **Files:** `ui/panes/ExplorerPane.kt`, `ui/screens/ProjectShellScreen.kt`
+
+#### Hover popup redesign + landscape fix
+- **Root cause:** Old hover popup used `Popup(Alignment.BottomStart)` — separate window clipped/z-ordered in landscape. Too tall (200dp) on small screens.
+- **Fix:** Moved hover popup into CodeEditor as positioned overlay (NOT Popup window). Compact 2-line preview with `maxLines=2` + ellipsis. Expand button (▸/▾) toggles full content. Copy-to-clipboard button (⧉). Scroll-offset-aware positioning.
+- **Files:** `editor/CodeEditor.kt`, `ui/panes/EditorPane.kt`
+
+#### Problems tab tap-to-navigate bug (NEW)
+- **Root cause:** `EditorPane` parameter `scrollToLine: Int = 0` was shadowed by internal `var scrollToLine by remember { mutableStateOf(0) }` with same name. External value from Problems tab tap was never read.
+- **Fix:** Renamed parameter to `scrollToLineParam`. Added `LaunchedEffect(scrollToLineParam)` to sync external param to internal state.
+- **File:** `ui/panes/EditorPane.kt`
+
+#### Test files removed from repo
+- `test-samples/` directory deleted (commit de105749). User creates their own test files in the editor.
