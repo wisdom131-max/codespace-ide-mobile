@@ -7602,3 +7602,137 @@ P43 (GitHub integration) — this is many sessions of work, not one. Priority or
    already complete above.
 5. **P41** IntelliSense/Autocomplete — largest scope, phased A→L per its own master plan, do last.
 
+
+---
+
+### Session Update 2026-08-05 17:10 — Build fixes + Problems tab fix + AGENTS.md update
+
+**Context:** CI was red (49 compile errors from P39/P40 work). Three P38 bug fixes had been
+accidentally reverted. Problems tab tap-to-navigate was broken. This session fixed all three.
+
+#### What was done (3 commits, 2 green CI builds)
+
+**Commit 1 — `8e2d22ee` — Build fixes + P38 bug restore + CodeActionKind definition**
+
+Files changed: `LspIntegration.kt`, `LspManager.kt`, `EditorPane.kt`,
+`CopilotChatPanelOverlay.kt`, `ProjectShellScreen.kt`
+
+1. **BUG-1 (restored):** `getCompletion()` — re-added `triggerCharacter` parameter that was
+   lost during P40 refactor. Without it, member completion after `.` returned nothing —
+   the LSP `textDocument/completion` request needs the trigger char to disambiguate
+   `.` (member access) vs other contexts. The server uses it to decide whether to return
+   property/method completions or contextual keyword completions.
+
+2. **BUG-4 (restored):** `hostPathFromFileUri()` — re-added this function to `LspManager`.
+   It converts `file:///data/user/0/com.codespace.ide.debug/files/workspace/foo.py` back to
+   the host filesystem path. Without it, Go to Definition across files failed because the
+   URI→path conversion roundtrip was broken — the editor couldn't resolve which local file
+   the LSP server's Location.uri pointed to.
+
+3. **BUG-5 (restored):** `getReferences()` — re-added `includeDeclaration: true` parameter.
+   Without it, pylsp crashed with an `unexpected keyword argument` error because the Python
+   server's `textDocument/references` handler expects the `includeDeclaration` boolean and
+   rejects requests missing it. Other servers (tsserver, gopls) tolerate its absence but pylsp
+   does not — it was a hard crash on Find References for Python files.
+
+4. **CodeActionKind object** — defined in `LspIntegration.kt` with all standard LSP kinds
+   (QuickFix, Refactor, RefactorExtract, RefactorInline, RefactorRewrite, Source,
+   SourceFixAll, SourceOrganizeImports) plus all AI kinds (AIExplain, AIOptimize,
+   AIGenerateDoc, AIGenerateTests, AIRewrite, AISimplify, AIAddComments, AIExplainError,
+   AIImprovePerf) and helper functions `icon()` and `groupLabel()` for the lightbulb menu.
+
+5. **LspCodeAction data class** — expanded with 4 new fields: `isPreferred: Boolean = false`,
+   `disabled: String? = null`, `data: JsonElement? = null`, `diagnostics: List<JsonElement> = emptyList()`.
+   The `diagnostics` field is needed by `getCodeActions()` to pass the LSP server the diagnostic
+   context for targeted quick fixes (e.g., "Add missing import" when the cursor is on an unresolved
+   symbol — the server needs to know WHICH diagnostic triggered the request).
+
+6. **`getCodeActions()`** — added `diagnostics` parameter to the function signature so the
+   caller can pass the current line's diagnostics for context-aware code actions.
+
+7. **AI code actions wiring** — added `pendingPrompt` and `onPendingPromptConsumed` parameters
+   to `CopilotChatPanelInline`. Added `pendingChatPromptMs` state to `ProjectShellScreen`.
+   Wired `onAiFixRequest` from `EditorPane` → `ProjectShellScreen` → `CopilotChatPanelInline`
+   so that AI code actions (Explain/Optimize/Doc/Tests/Comments/Rewrite/Simplify/ExplainError/
+   ImprovePerf) from the editor's lightbulb menu auto-open the chat panel and send the prompt.
+
+8. **3 missing AI actions** — added `AIAddComments`, `AIExplainError`, `AIImprovePerf` to the
+   `aiActions` list in `EditorPane.kt` so all 9 AI code action kinds are available in the menu.
+
+**Why:** The P39/P40 work introduced these compile errors by referencing types, params, and
+functions that didn't exist yet (CodeActionKind), or that had been removed during refactoring
+(triggerCharacter, hostPathFromFileUri, includeDeclaration). The fix was to define the missing
+types and restore the removed functions, then wire the new AI code action pipeline end-to-end.
+
+---
+
+**Commit 2 — `f7bda260` — Problems tab tap-to-navigate fix**
+
+Files changed: `CodeEditor.kt`, `ProjectShellScreen.kt`
+
+**Bug reported by Wisdom:** "I found this problem when the problems tab finds a problem and
+I tap on it it's supposed to take me to the line of the problem with indicator but it doesn't
+instead it closes so audit and fix"
+
+**Root cause analysis:**
+
+Two separate bugs caused the behavior:
+
+1. **Double-close:** When tapping a problem item, `onJumpToSource(p.line)` was called in
+   `ProblemsPanel` (line 1933 of ProjectShellScreen.kt). This callback was defined as:
+   ```kotlin
+   onJumpToSource = { line -> onJumpToSource(line); onHideBottomPanel() }
+   ```
+   But the `onJumpToSource` it called was itself defined as:
+   ```kotlin
+   onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false }
+   ```
+   So the panel was closed TWICE — once by `showBottomPanel = false` inside the callback,
+   and again by `onHideBottomPanel()` in the wrapper. The double-close was redundant but not
+   itself the visible bug — the visible bug was that the panel closed with NO visual feedback
+   in the editor.
+
+2. **No visual indicator:** `scrollTargetLine` was set to the problem's line number, which
+   triggered `CodeEditor`'s `LaunchedEffect(scrollToLine)` to animate-scroll the editor to
+   that line. But after scrolling, there was NO highlight, underline, or any visual marker
+   on the target line. So from the user's perspective: the Problems panel closed, the editor
+   scrolled somewhere, but there was nothing indicating WHERE the problem was. It looked like
+   the panel "just closed" with no effect.
+
+**Fix:**
+
+1. Removed the redundant `onHideBottomPanel()` call (the callback at line 3136 already sets
+   `showBottomPanel = false`, so the wrapper's `onHideBottomPanel()` was a no-op duplicate).
+
+2. Added a temporary gold highlight indicator in `CodeEditor.kt`:
+   - New `highlightTargetLine` state variable, set to `scrollToLine` when the scroll triggers
+   - Renders a 15% alpha gold (`#FFD700`) background across the full width of the target line
+   - Plus a 3px solid gold bar on the left edge (like VS Code's peek highlight)
+   - Auto-clears after 2.5 seconds via `kotlinx.coroutines.delay(2500)`
+   - Uses the same `zIndex` and positioning pattern as existing LSP document highlights
+
+**Why:** VS Code closes the Problems panel when you click a problem and jumps to the line —
+but it also shows a temporary highlight on the target line so you can see where you landed.
+CodeSpace IDE was missing the highlight, making it feel like the tap "just closed" the panel.
+
+---
+
+**CI status:** Both commits produced green CI builds (run 31022666962 and 31022927027).
+APK artifacts are available for download.
+
+**What's NOT done yet (for next session):**
+- P39-FULL phases 2-5 (only filtering, categorization, rename preview, willRenameFiles) —
+  the compile errors are fixed and the AI action pipeline is wired, but the `only` filter
+  logic and title-based menu categorization for groups 1/2/3/4/7 haven't been implemented yet
+- P42 Explorer restructure
+- P43 GitHub integration
+- P41 IntelliSense/Autocomplete (largest scope, phased A→L)
+- On-device verification of the Problems tab fix and the restored BUG-1/4/5 fixes
+
+**Test checklist for next on-device session:**
+1. Open a Python file with a syntax error → Problems tab should show it → tap it → editor
+   scrolls to the line with a gold highlight that fades after 2.5s
+2. Type `foo.` in a Python file → should see member completions (BUG-1 fix)
+3. Right-click a function name → Find References → should work without crash (BUG-5 fix)
+4. Open the lightbulb menu on a line → should see all 9 AI code actions → tap one → chat panel
+   opens and auto-sends the prompt
