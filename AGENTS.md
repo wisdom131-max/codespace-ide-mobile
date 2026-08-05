@@ -7736,3 +7736,104 @@ APK artifacts are available for download.
 3. Right-click a function name → Find References → should work without crash (BUG-5 fix)
 4. Open the lightbulb menu on a line → should see all 9 AI code actions → tap one → chat panel
    opens and auto-sends the prompt
+
+---
+
+## PLAN — P42: Explorer Restructure (VS Code parity) + P43: Fix Source Control "not a git repository" (2026-08-05, by Superagent)
+
+**Context:** Wisdom shared 6 screenshots comparing real VS Code (desktop) to this app.
+
+### P42 — Explorer Restructure
+
+**What VS Code does (screenshots 1-2):** Explorer is ONE panel containing FOUR collapsible
+sections stacked vertically, in this exact order:
+1. **Open Editors** (collapsed by default, shows currently-open tabs when expanded)
+2. **[Workspace Name]** or **No Folder Opened** (the actual file tree; when no folder, shows
+   "You have not yet opened a folder." + "Open Folder" button + "Open Recent" button + a
+   Remote Tunnel hint line)
+3. **Outline** (collapsed by default — symbol tree of the currently active file)
+4. **Timeline** (collapsed by default — file history/git log for the active file)
+
+Each section header has its own chevron (›/⌄) and is independently expand/collapse-able.
+Only ONE set of Explorer-related icons exists in the whole app — no separate top-level
+Outline icon in the activity bar.
+
+**What this app currently does WRONG (screenshot 4):** `Outline` is its own top-level
+`SidePanel` enum entry (`ProjectShellScreen.kt` line 296, `SidePanel.OUTLINE`) with its own
+activity-bar icon (`AccountTree`, line 1774) and its own full-panel `OutlinePanel.kt`
+composable — a completely separate tab from Explorer, not nested inside it. There's also no
+"Open Editors" or "Timeline" section anywhere.
+
+**Fix plan:**
+1. `ExplorerPane.kt` (2848 lines — already near the 64KB bytecode ceiling, so new sections
+   go in NEW files, not appended here):
+   - Restructure the top of the composable into 4 stacked, independently-collapsible
+     sections using a shared `ExplorerSection(title, defaultExpanded, content)` wrapper
+     composable (chevron + title row, click toggles `expanded` state per section).
+   - Section 1 "Open Editors": new small composable, reads the existing open-tabs list
+     already tracked in `EditorPane.kt`/`ProjectShellScreen.kt` (tab state), renders as a
+     flat list of filenames with close (x) buttons — reuse tab-close callback already wired.
+   - Section 2 "[Workspace Name]" / "No Folder Opened": the EXISTING file tree code in
+     ExplorerPane.kt is already 90% of this — just becomes one section instead of the
+     whole panel. When no project is open, render the VS Code-style empty state ("Open
+     Folder" / "Open Recent" buttons) instead of the current bare state.
+   - Section 3 "Outline": move `OutlinePanel.kt`'s existing tree-rendering logic here
+     unchanged (it already has real LSP `documentSymbol` data) — just re-host it as a
+     nested section instead of a full separate panel. Keep `OutlinePanel.kt` as the
+     composable, just call it from inside Explorer's Section 3 instead of from
+     `SidePanel.OUTLINE`.
+   - Section 4 "Timeline": NEW — simple git log for the active file
+     (`git log --follow -- <file>` via `ProotInstaller.execOnce`, parsed into
+     hash/author/date/message rows). New file `TimelinePanel.kt` to avoid bloating
+     ExplorerPane.kt further.
+2. `ProjectShellScreen.kt`: remove `SidePanel.OUTLINE` from the enum and its activity-bar
+   icon entry (line ~1774) — Outline is no longer a top-level tab.
+3. Keep `OutlinePanel.kt` file as-is (just called differently) — no dead code.
+
+### P43 — Fix Source Control "not a git repository" Error
+
+**Bug (screenshot 5):** Opening Source Control on a real project folder shows
+`Error: git branch failed (Exit code 128) — fatal: not a git repository (or any of the
+parent directories): .git` with no recovery path — just a permanent red error and empty
+disabled Commit/Commit & Push buttons.
+
+**Root cause:** `SourceControlPane.kt` assumes every opened project folder is already a
+git repo and immediately runs `git branch`/`git status` against it. Projects created via
+"New Project" (screenshot 6's "MyPythonApp", "Nolan invests v1") are plain folders with no
+`.git` — this is not a bug in git itself, just a missing "not yet a repo" UI state.
+
+**What VS Code does (screenshot 3, real repo but not yet cloned locally):** shows a clean
+info panel — "You can open a remote repository or pull request without cloning." +
+"Open Remote Repository" button — no red error, no broken buttons.
+
+**Fix plan for THIS app** (adapted — projects here are usually local-first, not
+remote-first, so the primary path is "Initialize Repository" not "Open Remote"):
+1. `SourceControlPane.kt`: before running any git command, check `.git` existence
+   (`File(projectDir, ".git").exists()`). If missing, skip the git calls entirely and
+   render an empty-state card instead of the red error:
+   - "This folder isn't a Git repository yet." + **"Initialize Repository"** button
+     (runs `git init` via `ProotInstaller.execOnce`, then re-triggers the normal
+     git-status flow — no restart needed).
+   - Secondary option: **"Clone from GitHub"** button (only shown if GitHub OAuth is
+     connected) — opens `RepoBrowserSheet.kt` (already exists from prior GitHub OAuth
+     work) to pick a repo and clone it into a new project folder.
+2. Verify `RepoBrowserSheet.kt` + `GitHubAuth.kt` end-to-end: sign in with GitHub → list
+   repos → clone selected repo → project appears in Explorer, Source Control shows real
+   git status/branch immediately (no manual `git init` needed for cloned repos, only for
+   brand-new local folders).
+3. Wire "Initialize Repository" → after `git init` succeeds, also offer "Publish to
+   GitHub" (creates a new repo via GitHub API using the existing OAuth token, sets it as
+   `origin`, does initial commit+push) — matches VS Code's own "Publish to GitHub" flow
+   for local-only folders. Reuse `GitHubAuth.kt`'s existing token.
+
+### File ownership (avoid conflicts — two sub-agents working simultaneously)
+- **P42 owns:** `ExplorerPane.kt`, `ProjectShellScreen.kt` (SidePanel enum + activity bar
+  only), `OutlinePanel.kt` (call-site only, not logic), new `TimelinePanel.kt`,
+  new `ExplorerSectionHeader.kt` (or similar shared wrapper).
+- **P43 owns:** `SourceControlPane.kt`, `RepoBrowserSheet.kt`, `GitHubAuth.kt`,
+  `ConnectorsHubSheet.kt` (verification only, not restructuring).
+- No shared files between the two — safe to build in parallel.
+
+**Status:** Plan written 2026-08-05, execution starting now (two sub-agents, per file
+ownership split above). Will update this section with commit hashes + before/after
+behavior once both land.
