@@ -515,6 +515,35 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
+
+    // P39: Lightbulb state — tracks code actions per line for gutter display
+    var lightbulbLine by remember { mutableStateOf(-1) }
+    var lightbulbActions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCodeAction>>(emptyList()) }
+    var showLightbulbMenu by remember { mutableStateOf(false) }
+    // P39: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
+    LaunchedEffect(value.selection.start) {
+        if (lspCodeActionProvider != null) {
+            kotlinx.coroutines.delay(500L)
+            val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+            try {
+                val actions = lspCodeActionProvider.invoke(cursorLine)
+                if (actions.isNotEmpty()) {
+                    lightbulbLine = cursorLine
+                    lightbulbActions = actions
+                } else {
+                    lightbulbLine = -1
+                    lightbulbActions = emptyList()
+                }
+            } catch (_: Exception) {
+                lightbulbLine = -1
+                lightbulbActions = emptyList()
+            }
+        } else {
+            lightbulbLine = -1
+            lightbulbActions = emptyList()
+        }
+    }
+
     // P22-H: LSP-backed completion
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
     LaunchedEffect(prefix, isDotTriggered, value.selection.end) {
@@ -1522,33 +1551,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
-                    // P39: Lightbulb state 💡 tracks code actions per line for gutter display
-                    var lightbulbLine by remember { mutableStateOf(-1) }
-                    var lightbulbActions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCodeAction>>(emptyList()) }
-                    var showLightbulbMenu by remember { mutableStateOf(false) }
-                    // P39: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
-                    LaunchedEffect(value.selection.start) {
-                        if (lspCodeActionProvider != null) {
-                            kotlinx.coroutines.delay(500L)
-                            val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
-                            try {
-                                val actions = lspCodeActionProvider.invoke(cursorLine)
-                                if (actions.isNotEmpty()) {
-                                    lightbulbLine = cursorLine
-                                    lightbulbActions = actions
-                                } else {
-                                    lightbulbLine = -1
-                                    lightbulbActions = emptyList()
-                                }
-                            } catch (_: Exception) {
-                                lightbulbLine = -1
-                                lightbulbActions = emptyList()
-                            }
-                        } else {
-                            lightbulbLine = -1
-                            lightbulbActions = emptyList()
-                        }
-                    }
                     // P38-FIX: Auto-open LSP menu when long-press triggers
                     LaunchedEffect(longPressTrigger) {
                         if (longPressTrigger > 0) showLspMenu = true
