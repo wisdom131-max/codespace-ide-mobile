@@ -1128,18 +1128,10 @@ object LspManager {
     ): JSONObject? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
-        // Check if server supports resolve
-        val resolveProvider = getCapability(language, "codeActionProvider")
-        if (resolveProvider == null) return null
-        // resolveProvider can be bool or object with resolveProvider field
-        val supportsResolve = when (resolveProvider) {
-            is Boolean -> false  // simple boolean means no resolve support
-            is JSONObject -> resolveProvider.optBoolean("resolveProvider", false)
-            else -> false
-        }
-        if (!supportsResolve) return null
-        val params = action  // send the partial action back
-        val response = server.client.request("codeAction/resolve", params, timeoutSeconds = 10)
+        if (!hasCapability(language, "codeActionProvider")) return null
+        // Note: we attempt resolve regardless of resolveProvider capability —
+        // if the server doesn't support it, it will return an error and we return null.
+        val response = server.client.request("codeAction/resolve", action, timeoutSeconds = 10)
         return response as? JSONObject
     }
 
