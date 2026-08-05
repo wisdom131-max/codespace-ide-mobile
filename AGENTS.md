@@ -6833,3 +6833,41 @@ Created `test-samples/` directory with 4 clean Python files for on-device testin
 - `delta_actions.py` — cross-file references to alpha_main (tests Find References, Rename Symbol)
 
 These serve as clean reference copies — users can copy them to reset on-device files that get accidentally edited during testing.
+
+### P38 On-Device Test Results & Bug Fix Plan (2026-08-05, Build latest)
+
+**Tested on-device with 3 files: main.py, utils.py, actions.py**
+
+#### CONFIRMED WORKING (no changes needed)
+- **Test 2 (Hover):** ✅ Works perfectly — clean text, correct content, works in landscape
+- **Test 5 (Code Folding):** ✅ Works perfectly
+- **Test 9 (Rename Symbol):** ✅ Dialog appears with LSP badge, rename applied visibly. pylsp doesn't support textDocument/prepareRename (returns JsonRpcMethodNotFound) — pre-flight check should be skipped, rename goes straight to textDocument/rename and works fine.
+
+#### BUGS TO FIX (6 items)
+
+**BUG 1: Autocomplete shows wrong suggestions for class instance members**
+- **Symptom:** Typing `calc.` inside main() triggers completion request (confirmed in Output) but shows unrelated content instead of Calculator members (compute, reset, value).
+- **Root cause:** Member completion for class instances not resolving — need to investigate completion request params and trigger character handling.
+- **Fix plan:** Check LspIntegration.kt completion request — ensure triggerCharacter "." sends proper context and the response is parsed for member items.
+
+**BUG 2: Signature help UI not showing inline popup**
+- **Symptom:** textDocument/signatureHelp is sent and responses received (confirmed in Output), but UI only updates the sticky context bar at top. No proper inline signature popup appears near cursor with current parameter highlighted.
+- **Fix plan:** Check EditorPane.kt / CodeEditor.kt where signatureHelp response is rendered — fix to show a proper popup at cursor position with active parameter highlighted.
+
+**BUG 3: Document highlight doesn't scroll with editor**
+- **Symptom:** Highlight background renders on correct word initially, but when scrolling, highlight stays at fixed screen position instead of moving with text — appears to "slide off" the word.
+- **Fix plan:** Fix highlight decorations to be anchored to document position (line/col), not screen position — recompute pixel offsets on scroll.
+
+**BUG 4: Go to Definition / Peek Definition not navigating**
+- **Symptom:** ⋮ context menu shows LSP items correctly, but tapping "Go to Definition" applies a background highlight instead of navigating. Handler appears to call documentHighlight instead of navigation action.
+- **Fix plan:** Check menu item action handler — ensure Go to Definition calls textDocument/definition and navigates, Peek Definition calls definition and shows inline preview.
+
+**BUG 5: Find References crashes pylsp with KeyError: 'includeDeclaration'**
+- **Symptom:** pylsp crashes with `KeyError: 'includeDeclaration'` at python_lsp.py line 824. App sends textDocument/references WITHOUT required "includeDeclaration" field.
+- **Fix plan:** Add `"includeDeclaration": true` to params for every textDocument/references request. This is required per LSP spec and pylsp enforces it strictly.
+
+**BUG 6: Green Run button opens Debugger instead of running file**
+- **Symptom:** Tapping green ▶ opens DEBUG console showing "Debugger ready" / "Session started: Python — main.py" instead of running the file directly.
+- **Fix plan:** Fix run button to execute python directly (e.g., "python main.py" in terminal subprocess with output to Output tab), or add separate plain Run button distinct from Debug button.
+
+**FILE CORRUPTION:** main.py has corrupted content at line 38 — Output shows "invalid syntax (<unknown>, line 38)" and Problems tab confirms 3 errors. Causing false failures in Tests 1, 3, 4, 8. Will provide clean main.py content for user to paste.
