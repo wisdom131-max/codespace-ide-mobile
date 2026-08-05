@@ -7504,3 +7504,101 @@ rootfs → then auto-install pylsp → then start server. No manual Terminal ste
 7. **Wire `onAiFixRequest`** in ProjectShellScreen.kt EditorPane call (or leave null for now — AI actions just won't show)
 8. **Verify build compiles** — all 49 errors should resolve
 
+
+### P39-FULL: Complete Code Actions Catalog — Master Plan (2026-08-05, by Superagent)
+
+**Context:** Wisdom's original P39 request listed ~50 specific code actions across 7 groups.
+The other AI only built the lightbulb/menu/categorization *infrastructure* + AI actions — none
+of the concrete transformations (Extract Method, Generate Constructor, etc.) exist yet, and the
+infrastructure itself doesn't compile (see P39/P40 Audit above). This plan catalogs the full
+list, maps each item to its correct implementation layer, and phases the build.
+
+**Golden rule from the audit:** every new action must route through `hasCapability()` checks
+per-language and degrade gracefully — never show an action a server can't actually perform.
+
+**Implementation layer for each group:**
+
+1. **Import Actions** — mostly SERVER-PROVIDED via `source.organizeImports` / `quickfix` kinds
+   (pylsp, tsserver, gopls, rust-analyzer, jdtls all implement these natively). Client work is
+   just: (a) send `only: ["source.organizeImports"]` for "Organize Imports", (b) surface
+   `quickfix` actions whose title matches "Add import"/"Import" for auto-import quick fixes,
+   (c) "Update Imports on Rename" needs `workspace/willRenameFiles` + `workspace/didRenameFiles`
+   notifications wired into the existing file-rename flow in ExplorerPane — NEW client work.
+
+2. **Refactoring** — SPLIT: Extract Method/Variable/Inline Variable/Move Symbol are
+   server-provided (`refactor.extract`, `refactor.inline` kinds) IF the server supports them
+   (pylsp: partial via plugins, tsserver: full, gopls: full, rust-analyzer: full, jdtls: full).
+   Convert Anonymous→Arrow Function, Convert String Quotes, Convert Template String are
+   JS/TS-specific and mostly come from tsserver's own quickfix/refactor actions already —
+   just need correct `only` filter + title-based categorization, no new logic. "Move Function/
+   Class to File" has no LSP standard — would need CLIENT-SIDE implementation (parse selection,
+   create new file, cut/paste + add import) — mark as LOW PRIORITY custom feature, phase last.
+
+3. **Code Generation** — MOSTLY SERVER-PROVIDED as `source` kind actions where supported
+   (jdtls: Generate Constructor/Getters/Setters/equals/hashCode/toString/Override natively;
+   gopls/rust-analyzer: Generate impls). Python/JS servers largely DON'T support these —
+   for those languages this entire group will correctly show nothing (graceful degradation,
+   not a bug). No custom client generation logic planned for v1 — rely on server support only.
+
+4. **Code Fixes** — Fix All (`source.fixAll`), Remove Unused Variables/Imports, Add Missing
+   Semicolon/Return are SERVER-PROVIDED quickfix/source actions. "Suppress Warning/All Warnings"
+   is server-provided where linters support inline-suppress comments (pylint, eslint). Convert
+   var→let/const, let→const are tsserver-native quickfixes. All of this = correct `only` filter
+   + categorization, zero new transformation logic needed client-side.
+
+5. **AI Code Actions** — Already implemented (Explain/Optimize/Doc/Tests/Comments/Rewrite/
+   Simplify/ExplainError/ImprovePerf) per the existing P39 work — just needs the compile fixes
+   from the audit above. This group is DONE once build is green.
+
+6. **Navigation/Refactor UI** — "Show Available Refactorings" = filter codeAction response to
+   `only: ["refactor"]` and show in the same menu. "Show Source Actions" = `only: ["source"]`.
+   "Rename Preview" = NEW: before applying a `textDocument/rename` WorkspaceEdit, show a diff-style
+   preview dialog (file list + line changes) with Confirm/Cancel instead of applying immediately —
+   client-side UI work on top of the existing (already-working) rename flow.
+
+7. **Source Actions** — Organize Imports/Fix All/Remove Unused/Sort Imports/Format Document/
+   Format Selection are ALL server `source.*` kind actions or existing LSP methods
+   (`textDocument/formatting`, `textDocument/rangeFormatting` — Format Document/Selection already
+   work via P25). Just needs a dedicated "Source Action..." menu entry that requests
+   `only: ["source"]` plus wires the already-working format calls in for the two Format items.
+
+**Net new client-side work (everything else is `only` filtering + categorization of actions
+the servers already return):**
+- `workspace/willRenameFiles` + `didRenameFiles` notifications on file rename (Import Actions #5)
+- Rename Preview diff dialog (Navigation/Refactor UI)
+- Move Function/Class to File (LOW PRIORITY, custom, phase last)
+
+**Auto-install requirement (explicit user concern):** none of the above requires any new
+binary/package installs beyond what LSP servers already auto-install per P40's chain (open file
+→ auto rootfs → auto server install → server ready). Code actions ride on the same running
+server connection — no separate download step, ever. Confirmed no gap here.
+
+**Build order (fix build FIRST, then layer features on top):**
+1. Fix P39/P40 compile errors + restore 3 reverted P38 fixes (see Fix Plan in audit above) → green CI
+2. Wire real `only` filters + title-based categorization for groups 1/2/3/4/7 (mostly config, no new UI)
+3. Rename Preview dialog (Navigation/Refactor UI)
+4. `willRenameFiles`/`didRenameFiles` on rename (Import Actions polish)
+5. Move Function/Class to File (custom, last — no LSP standard to lean on)
+
+**Scope note for Wisdom:** groups 1-4 and 7 above are ~90% "the server already knows how to do
+this, we just need to ask for the right `only` filter and show it in the right menu section" —
+NOT ~50 separate hand-written transformations. Real net-new engineering is only the 3 items
+listed under "Net new client-side work." This should ship much faster than the item count implies.
+
+---
+
+### Master Roadmap Status (2026-08-05, consolidated by Superagent)
+
+Given the scale of P39-FULL + P41 (IntelliSense, ~80 items) + P42 (Explorer restructure) +
+P43 (GitHub integration) — this is many sessions of work, not one. Priority order agreed:
+
+1. **Build first** — fix the 49 compile errors + restore 3 reverted P38 bug fixes (BUG-1, BUG-4,
+   BUG-5). Nothing else matters until CI is green again.
+2. **P39-FULL** Code Actions — per phased plan above.
+3. **P42** Explorer restructure (Open Editors/Workspace/Outline/Timeline sections + `⋯` menu) —
+   plan already complete above, straightforward container/chrome work, do this before P41/P43
+   since it's the most self-contained and highest visual-complaint priority (screenshots shown).
+4. **P43** GitHub integration (Initialize/Clone/Sign-in/Browse repos/credential helper) — plan
+   already complete above.
+5. **P41** IntelliSense/Autocomplete — largest scope, phased A→L per its own master plan, do last.
+
