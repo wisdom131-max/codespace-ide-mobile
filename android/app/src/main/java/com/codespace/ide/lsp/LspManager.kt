@@ -17,61 +17,7 @@ data class LspCodeAction(
     val kind: String? = null,
     val edit: String? = null,
     val command: String? = null,
-    val isPreferred: Boolean = false,
-    val disabled: String? = null,
-    val data: String? = null,      // P39: for codeAction/resolve lazy resolution
-    val diagnostics: String? = null,  // P39: JSON array of related diagnostics
 )
-
-/**
- * P39: Standard LSP CodeActionKind constants.
- * Used for grouping in the UI and filtering requests to the server.
- */
-object CodeActionKind {
-    const val QuickFix = "quickfix"
-    const val QuickFixFixAll = "quickfix.fixAll"
-    const val Refactor = "refactor"
-    const val RefactorExtract = "refactor.extract"
-    const val RefactorInline = "refactor.inline"
-    const val RefactorRewrite = "refactor.rewrite"
-    const val RefactorMove = "refactor.move"
-    const val Source = "source"
-    const val SourceOrganizeImports = "source.organizeImports"
-    const val SourceFixAll = "source.fixAll"
-    const val SourceRemoveUnused = "source.removeUnused"
-    const val SourceSortImports = "source.sortImports"
-    // AI-augmented actions (not in LSP spec, client-generated)
-    const val AI = "ai"
-    const val AIExplain = "ai.explain"
-    const val AIGenerateDoc = "ai.generateDoc"
-    const val AIGenerateTests = "ai.generateTests"
-    const val AIOptimize = "ai.optimize"
-    const val AIRewrite = "ai.rewrite"
-    const val AISimplify = "ai.simplify"
-    const val AIAddComments = "ai.addComments"
-    const val AIExplainError = "ai.explainError"
-    const val AIImprovePerf = "ai.improvePerformance"
-
-    /** Group label for display in the action menu. */
-    fun groupLabel(kind: String?): String = when {
-        kind == null -> "Actions"
-        kind.startsWith("quickfix") -> "Quick Fixes"
-        kind.startsWith("refactor") -> "Refactor"
-        kind.startsWith("source") -> "Source Actions"
-        kind.startsWith("ai") -> "AI"
-        else -> "Actions"
-    }
-
-    /** Icon for display in the action menu. */
-    fun icon(kind: String?): String = when {
-        kind == null -> "🔧"
-        kind.startsWith("quickfix") -> "💡"
-        kind.startsWith("refactor") -> "⚡"
-        kind.startsWith("source") -> "📦"
-        kind.startsWith("ai") -> "✨"
-        else -> "🔧"
-    }
-}
 
 /**
  * LspManager - manages LSP server lifecycle and provides LSP operations.
@@ -562,9 +508,26 @@ object LspManager {
                     AppOutputLog.log("[LSP] WARNING: Could not write .ubuntu_version marker: ${e.message}", "lsp")
                 }
             }
-            // Re-check after potential repair
+            // P40-AUTO-INSTALL: The rootfs is genuinely missing. Previously this returned
+            // false and told the user to "open Terminal tab first" — a manual step nobody
+            // asked for. ProotInstaller.install() is concurrency-safe (installLock/installJob)
+            // so calling it here directly is safe even if a Terminal tab is installing it too;
+            // it will just wait on the existing install and return once done. We're already on
+            // Dispatchers.IO (called via withContext(Dispatchers.IO) from EditorPane), so this
+            // blocking download+extract is safe to run right here — no user action required.
             if (!ProotInstaller.isInstalled(context)) {
-                AppOutputLog.log("[LSP] ERROR: Ubuntu rootfs not installed — cannot start LSP server. Open Terminal tab to set up Ubuntu first.", "lsp")
+                AppOutputLog.log("[LSP] Ubuntu rootfs not installed — auto-installing now (no manual Terminal step needed)…", "lsp")
+                try {
+                    ProotInstaller.install(context) { msg ->
+                        AppOutputLog.log("[LSP] [setup] $msg", "lsp")
+                    }
+                } catch (e: Exception) {
+                    AppOutputLog.log("[LSP] ERROR: Auto-install of Ubuntu rootfs failed: ${e.message}", "lsp")
+                }
+            }
+            // Re-check after potential repair/auto-install
+            if (!ProotInstaller.isInstalled(context)) {
+                AppOutputLog.log("[LSP] ERROR: Ubuntu rootfs auto-install did not complete — LSP unavailable for now.", "lsp")
                 return false
             }
         }
@@ -798,18 +761,7 @@ object LspManager {
             put("codeActionLiteralSupport", JSONObject().apply {
                 put("codeActionKind", JSONObject().apply {
                     put("valueSet", JSONArray().apply {
-                        put(""); put("quickfix"); put("quickfix.fixAll")
-                        put("refactor"); put("refactor.extract"); put("refactor.inline")
-                        put("refactor.rewrite"); put("refactor.move")
-                        put("source"); put("source.organizeImports")
-                        put("source.fixAll"); put("source.removeUnused")
-                        put("source.sortImports")
-                    })
-                })
-                // P39: Declare resolve support so servers know we can resolve lazy code actions
-                put("resolveSupport", JSONObject().apply {
-                    put("properties", JSONArray().apply {
-                        put("edit"); put("command")
+                        put(""); put("quickfix"); put("refactor"); put("source")
                     })
                 })
             })
@@ -968,23 +920,11 @@ object LspManager {
         uri: String,
         line: Int,
         character: Int,
-        triggerCharacter: String? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
-        // BUG-1 FIX: pass completion context per LSP spec so servers that branch on
-        // triggerKind (e.g. member completion after ".") behave correctly instead of
-        // falling back to generic/invoked-style completion.
-        val context = JSONObject()
-        if (triggerCharacter != null) {
-            context.put("triggerKind", 2) // TriggerCharacter
-            context.put("triggerCharacter", triggerCharacter)
-        } else {
-            context.put("triggerKind", 1) // Invoked
-        }
-        params.put("context", context)
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -1058,9 +998,7 @@ object LspManager {
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
-        // BUG-5 FIX: pylsp crashes with KeyError: 'includeDeclaration' if this field is
-        // missing — it's required per the LSP spec, not optional as some servers treat it.
-        params.put("context", JSONObject().put("includeDeclaration", true))
+        params.put("context", JSONObject())
         val response = server.client.request("textDocument/references", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -1073,37 +1011,20 @@ object LspManager {
     /**
      * P22-J: Request code actions (including auto-import fixes) for a range.
      */
-    /**
-     * P39: Request code actions for a range, optionally filtered by kind.
-     * Passes diagnostics so servers can offer targeted quick fixes.
-     */
     fun getCodeActions(
         language: Language,
         uri: String,
         line: Int,
         character: Int,
-        endLine: Int? = null,
-        endCharacter: Int? = null,
-        diagnostics: JSONArray? = null,
-        only: List<String>? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
         if (!hasCapability(language, "codeActionProvider")) return null
 
         val td = JSONObject().put("uri", uri)
-        val startPos = JSONObject().put("line", line).put("character", character)
-        val endPos = if (endLine != null && endCharacter != null) {
-            JSONObject().put("line", endLine).put("character", endCharacter)
-        } else {
-            JSONObject().put("line", line).put("character", character)
-        }
-        val range = JSONObject().put("start", startPos).put("end", endPos)
-        val context = JSONObject()
-        context.put("diagnostics", diagnostics ?: JSONArray())
-        if (only != null && only.isNotEmpty()) {
-            context.put("only", JSONArray(only))
-        }
+        val pos = JSONObject().put("line", line).put("character", character)
+        val range = JSONObject().put("start", pos).put("end", pos)
+        val context = JSONObject().put("diagnostics", JSONArray())
         val params = JSONObject()
             .put("textDocument", td)
             .put("range", range)
@@ -1115,24 +1036,6 @@ object LspManager {
             is JSONObject -> JSONArray().put(response)
             else -> null
         }
-    }
-
-    /**
-     * P39: Resolve a code action that was returned with partial data.
-     * Servers that support codeAction/resolve can fill in the `edit` or `command`
-     * lazily when the user selects the action.
-     */
-    fun resolveCodeAction(
-        language: Language,
-        action: JSONObject,
-    ): JSONObject? {
-        val server = servers[language] ?: return null
-        if (!server.initialized) return null
-        if (!hasCapability(language, "codeActionProvider")) return null
-        // Note: we attempt resolve regardless of resolveProvider capability —
-        // if the server doesn't support it, it will return an error and we return null.
-        val response = server.client.request("codeAction/resolve", action, timeoutSeconds = 10)
-        return response as? JSONObject
     }
 
     fun getSemanticTokens(
@@ -1481,26 +1384,6 @@ object LspManager {
     /** Normalize a file:// URI for comparison — decode %XX so both sides match. */
     fun normalizeFileUri(uri: String): String =
         try { java.net.URLDecoder.decode(uri, "UTF-8") } catch (_: Exception) { uri }
-
-    /**
-     * BUG-4 FIX: Reverse of fileUriFromHostPath — converts an LSP location's file:// URI
-     * (a GUEST/proot path, e.g. file:///host-files/main.py) back to the real host
-     * filesystem path so the app can open/read the file. Previously call sites decoded
-     * the URI and used the guest path directly as a host File(...) path, which only
-     * worked by coincidence for the currently-open file and silently failed to resolve
-     * (and thus silently failed to navigate) for any other file.
-     */
-    fun hostPathFromFileUri(context: Context, uri: String): String? {
-        if (!uri.startsWith("file://")) return null
-        val rawPath = uri.removePrefix("file://")
-        val guestPath = try { java.net.URLDecoder.decode(rawPath, "UTF-8") } catch (_: Exception) { rawPath }
-        val filesDir = context.filesDir.absolutePath
-        return when {
-            guestPath == "/host-files" -> filesDir
-            guestPath.startsWith("/host-files/") -> "$filesDir/" + guestPath.removePrefix("/host-files/")
-            else -> try { ProotInstaller.guestToHostPath(context, guestPath).absolutePath } catch (_: Exception) { null }
-        }
-    }
 
     /**
      * Map a host path to the corresponding guest path inside proot.
