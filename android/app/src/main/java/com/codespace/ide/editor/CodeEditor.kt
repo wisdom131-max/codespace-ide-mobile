@@ -972,11 +972,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onLongPress = { offset ->
-                                    // P38-FIX: Long-press shows LSP menu instead of Android system Copy/Paste
+                                    // P38-FIX: Long-press selects the word and opens LSP menu
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
-                                        // Move cursor to the long-pressed position
-                                        value = value.copy(selection = TextRange(charOffset))
+                                        // Find word boundaries at the long-pressed position
+                                        val text = value.text
+                                        var wordStart = charOffset
+                                        var wordEnd = charOffset
+                                        while (wordStart > 0 && (text[wordStart - 1].isLetterOrDigit() || text[wordStart - 1] == '_')) wordStart--
+                                        while (wordEnd < text.length && (text[wordEnd].isLetterOrDigit() || text[wordEnd] == '_')) wordEnd++
+                                        // Select the word (VS Code behavior)
+                                        value = value.copy(selection = TextRange(wordStart, wordEnd))
                                         // Trigger the floating LSP menu to auto-open
                                         longPressTrigger++
                                     }
@@ -1495,7 +1501,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // Shows a small "..." button when text is selected, opening a compact popup
         // with LSP-powered actions (Go to Definition, Rename, etc.) — NOT a full-screen dialog.
         // Native Copy/Cut/Paste/Select All come from BasicTextField's built-in selection toolbar.
-        if (value.selection.start != value.selection.end && !findReplaceOpen && !goToLineOpen) {
+        // P38-FIX: Show ⋮ button on TAP (not just selection) — cursor on a word is enough
+        if (!findReplaceOpen && !goToLineOpen) {
             val selWord = remember(value.selection.start, value.selection.end) {
                 currentWord(value.text, value.selection.start)
             }

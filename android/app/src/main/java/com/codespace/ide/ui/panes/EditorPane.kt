@@ -49,6 +49,8 @@ import com.codespace.ide.lsp.parseCodeActions
 import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.editor.SignatureInfo
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import java.io.File
 import com.codespace.ide.R
 import com.codespace.ide.data.SessionStateStore
@@ -1426,28 +1428,32 @@ fun EditorPane(
                         } else null,
                     )
                 }
-                // P22-G: LSP hover popup
+                // P22-G: LSP hover popup — Popup renders on top (P38-FIX: works in landscape)
                 if (showLspHover && lspHoverContent != null) {
                     val hoverScrollState = rememberScrollState()
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .background(Color(0xFF2D2D2D))
-                            .zIndex(10f)
+                    Popup(
+                        alignment = Alignment.BottomStart,
+                        properties = PopupProperties(focusable = false)
                     ) {
                         Box(
                             modifier = Modifier
-                                .heightIn(max = 200.dp)
-                                .verticalScroll(hoverScrollState)
-                                .padding(12.dp)
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .background(Color(0xFF2D2D2D))
                         ) {
-                            Text(
-                                text = lspHoverContent ?: "",
-                                color = Color(0xFFCCCCCC),
-                                fontSize = 12.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .heightIn(max = 200.dp)
+                                    .verticalScroll(hoverScrollState)
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = lspHoverContent ?: "",
+                                    color = Color(0xFFCCCCCC),
+                                    fontSize = 12.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                )
+                            }
                         }
                     }
                 }
