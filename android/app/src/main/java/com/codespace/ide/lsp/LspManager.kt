@@ -903,11 +903,23 @@ object LspManager {
         uri: String,
         line: Int,
         character: Int,
+        triggerCharacter: String? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
+        // BUG-1 FIX: pass completion context per LSP spec so servers that branch on
+        // triggerKind (e.g. member completion after ".") behave correctly instead of
+        // falling back to generic/invoked-style completion.
+        val context = JSONObject()
+        if (triggerCharacter != null) {
+            context.put("triggerKind", 2) // TriggerCharacter
+            context.put("triggerCharacter", triggerCharacter)
+        } else {
+            context.put("triggerKind", 1) // Invoked
+        }
+        params.put("context", context)
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -981,7 +993,9 @@ object LspManager {
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
-        params.put("context", JSONObject())
+        // BUG-5 FIX: pylsp crashes with KeyError: 'includeDeclaration' if this field is
+        // missing — it's required per the LSP spec, not optional as some servers treat it.
+        params.put("context", JSONObject().put("includeDeclaration", true))
         val response = server.client.request("textDocument/references", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -1367,6 +1381,26 @@ object LspManager {
     /** Normalize a file:// URI for comparison — decode %XX so both sides match. */
     fun normalizeFileUri(uri: String): String =
         try { java.net.URLDecoder.decode(uri, "UTF-8") } catch (_: Exception) { uri }
+
+    /**
+     * BUG-4 FIX: Reverse of fileUriFromHostPath — converts an LSP location's file:// URI
+     * (a GUEST/proot path, e.g. file:///host-files/main.py) back to the real host
+     * filesystem path so the app can open/read the file. Previously call sites decoded
+     * the URI and used the guest path directly as a host File(...) path, which only
+     * worked by coincidence for the currently-open file and silently failed to resolve
+     * (and thus silently failed to navigate) for any other file.
+     */
+    fun hostPathFromFileUri(context: Context, uri: String): String? {
+        if (!uri.startsWith("file://")) return null
+        val rawPath = uri.removePrefix("file://")
+        val guestPath = try { java.net.URLDecoder.decode(rawPath, "UTF-8") } catch (_: Exception) { rawPath }
+        val filesDir = context.filesDir.absolutePath
+        return when {
+            guestPath == "/host-files" -> filesDir
+            guestPath.startsWith("/host-files/") -> "$filesDir/" + guestPath.removePrefix("/host-files/")
+            else -> try { ProotInstaller.guestToHostPath(context, guestPath).absolutePath } catch (_: Exception) { null }
+        }
+    }
 
     /**
      * Map a host path to the corresponding guest path inside proot.

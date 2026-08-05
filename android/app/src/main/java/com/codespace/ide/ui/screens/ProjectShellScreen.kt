@@ -992,6 +992,30 @@ fun ProjectShellScreen(
                         activeEditorTab = path
                         scrollTargetLine = line
                     }
+                },
+                // BUG-6 FIX: Run file without debugger — sends run command to terminal
+                onRunFile = {
+                    val filePath = activeEditorTab ?: ""
+                    if (filePath.isNotBlank()) {
+                        val lang = com.codespace.ide.domain.Language.fromPath(filePath)
+                        val cmd = when (lang) {
+                            com.codespace.ide.domain.Language.PYTHON -> "python3 \"$filePath\""
+                            com.codespace.ide.domain.Language.JAVASCRIPT, com.codespace.ide.domain.Language.TYPESCRIPT -> "node \"$filePath\""
+                            com.codespace.ide.domain.Language.KOTLIN, com.codespace.ide.domain.Language.JAVA -> "java \"$filePath\""
+                            com.codespace.ide.domain.Language.SHELL -> "bash \"$filePath\""
+                            else -> null
+                        }
+                        if (cmd != null) {
+                            // Switch to terminal tab and send the run command
+                            showBottomPanel = true
+                            activeBottomTab = BottomTab.TERMINAL
+                            terminalCommandToRun = cmd
+                        } else {
+                            showNotification("No runner for ${lang.displayName}", "error")
+                        }
+                    } else {
+                        showNotification("Open a file first", "error")
+                    }
                 }
             )
                             SidePanel.EXTENSIONS -> {

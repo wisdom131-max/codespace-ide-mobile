@@ -118,7 +118,7 @@ fun EditorPane(
     onCursorChange: ((Int, Int) -> Unit)? = null,
     wordWrap: Boolean = false,
     showInlayHints: Boolean = true,  // P2-11
-    scrollToLine: Int = 0,
+    scrollToLineParam: Int = 0,
     projectId: String? = null,
     sessionStateStore: SessionStateStore? = null,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
@@ -170,7 +170,13 @@ fun EditorPane(
     // P8-1 Breakpoints: path → set of breakpoint line indices (0-based)
     val fileBreakpoints = remember { mutableStateMapOf<String, Set<Int>>() }
     // P26-1: Scroll to line (from debug call stack click)
+    // BUG-FIX: External scrollToLineParam was being shadowed by this internal var.
+    // Now we sync the external param into the internal state so tap-to-navigate from
+    // the Problems tab, Go-to-Definition, and debug call stack all work.
     var scrollToLine by remember { mutableStateOf(0) }
+    LaunchedEffect(scrollToLineParam) {
+        if (scrollToLineParam > 0) scrollToLine = scrollToLineParam
+    }
     // P26-1: LSP Document Highlight — auto-highlight all occurrences of symbol under cursor
     var lspHighlightLines by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
     // P26-1: LSP Completion Resolve — richer completion info
@@ -1216,7 +1222,22 @@ fun EditorPane(
                             { line, col ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
-                                    val items = LspManager.getCompletion(active.language, uri, line, col)
+                                    // BUG-1 FIX: force-sync the server's document state right before asking
+                                    // for completions. Effect B (didChange) fires on its own debounce/coroutine
+                                    // keyed off content changes and can race with this completion request —
+                                    // on a fast keystroke (e.g. typing ".") the server could still be completing
+                                    // against the PREVIOUS content when completion is requested, producing
+                                    // unrelated/stale suggestions instead of member completions for what was
+                                    // just typed. Sending didChange synchronously here guarantees freshness.
+                                    val syncVersion = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                                    LspManager.didChange(active.language, uri, active.content, syncVersion)
+                                    // Determine trigger character (e.g. "." for member completion) from the
+                                    // actual buffer content so the server gets correct LSP completion context.
+                                    val linesForTrigger = active.content.split("\n")
+                                    val triggerChar = linesForTrigger.getOrNull(line)?.let { ln ->
+                                        if (col > 0 && col <= ln.length) ln[col - 1].toString() else null
+                                    }?.takeIf { it == "." }
+                                    val items = LspManager.getCompletion(active.language, uri, line, col, triggerChar)
                                     // P26-1: Resolve first item for richer docs
                                     items?.let { arr ->
                                         if (arr.length() > 0) {
@@ -1341,6 +1362,38 @@ fun EditorPane(
                                 } else null
                             }
                         } else null,
+                        // P38: Compact LSP hover content (rendered inside CodeEditor as overlay, not Popup)
+                        lspHoverContent = if (showLspHover) lspHoverContent else null,
+                        // P38: LSP Go-to-Definition — real semantic navigation (BUG-4)
+                        onLspDefinition = if (LspManager.isServerRunning(active.language)) {
+                            {
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                var succeeded = false
+                                if (uri != null) {
+                                    val defs = try { LspManager.getDefinition(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    if (defs != null && defs.length() > 0) {
+                                        val loc = defs.optJSONObject(0)
+                                        if (loc != null) {
+                                            val defUri = loc.optString("uri", "")
+                                            val defLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            // BUG-4 FIX: use proper URI-to-host-path conversion
+                                            val defPath = LspManager.hostPathFromFileUri(context, defUri)
+                                            if (defPath != null && java.io.File(defPath).exists()) {
+                                                if (defPath == active.path) {
+                                                    // Same file — scroll to the definition line
+                                                    scrollToLine = defLine + 1
+                                                } else {
+                                                    // Different file — open it at the definition line
+                                                    onOpenFileAtLine?.invoke(defPath, defLine + 1)
+                                                }
+                                                succeeded = true
+                                            }
+                                        }
+                                    }
+                                }
+                                succeeded
+                            }
+                        } else null,
                         // P25-LSP: Format document via LSP
                         // P26-1: LSP Document Highlight lines
                         lspHighlightLines = lspHighlightLines,
@@ -1428,35 +1481,8 @@ fun EditorPane(
                         } else null,
                     )
                 }
-                // P22-G: LSP hover popup — Popup renders on top (P38-FIX: works in landscape)
-                if (showLspHover && lspHoverContent != null) {
-                    val hoverScrollState = rememberScrollState()
-                    Popup(
-                        alignment = Alignment.BottomStart,
-                        properties = PopupProperties(focusable = false)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .background(Color(0xFF2D2D2D))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .heightIn(max = 200.dp)
-                                    .verticalScroll(hoverScrollState)
-                                    .padding(12.dp)
-                            ) {
-                                Text(
-                                    text = lspHoverContent ?: "",
-                                    color = Color(0xFFCCCCCC),
-                                    fontSize = 12.sp,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                )
-                            }
-                        }
-                    }
-                }
+                // P38: Hover popup now rendered inside CodeEditor as a compact overlay
+                // (moved from here to CodeEditor.kt for scroll-offset + landscape fix)
             }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

@@ -349,6 +349,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     filePath: String = "",
     /** P25-LSP: LSP-backed signature help — returns signature info from the language server */
     lspSignatureHelpProvider: ((line: Int, col: Int) -> SignatureInfo?)? = null,
+    /** P38: LSP hover content — raw text from LSP hover, rendered as compact popup */
+    lspHoverContent: String? = null,
+    /** P38: LSP Go-to-Definition — returns true if LSP succeeded (falls back to regex if false/null) */
+    onLspDefinition: (() -> Boolean)? = null,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
@@ -1139,13 +1143,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val lineHeightPx = fontSize * 1.25f
             val charWidthPx  = fontSize * 0.6f
             val gutterDp     = 74f
+            // BUG-3 FIX: subtract scroll offset
+            val scrollOffsetPx = vScroll.value
             extraCursors.forEach { off ->
                 val clamped  = off.coerceIn(0, value.text.length)
                 val lineIdx  = value.text.take(clamped).count { it == '\n' }
                 val lineStart = (value.text.lastIndexOf('\n', (clamped - 1).coerceAtLeast(0)) + 1)
                                     .coerceAtLeast(0)
                 val col      = (clamped - lineStart).coerceAtLeast(0)
-                val topDp    = lineIdx * lineHeightPx
+                val topDp    = lineIdx * lineHeightPx - scrollOffsetPx
                 val startDp  = gutterDp + col * charWidthPx
 
                 // 1. Subtle full-line background tint — gives line context at a glance
@@ -1176,8 +1182,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if (lspHighlightLines.isNotEmpty()) {
             val lineHeightPxHighlight = fontSize * 1.25f
             val gutterDpHighlight = 74f
+            // BUG-3 FIX: subtract scroll offset so highlights track the correct lines on scroll
+            val scrollOffsetPx = vScroll.value
             lspHighlightLines.forEach { (startLine, endLine) ->
-                val topDp = startLine * lineHeightPxHighlight
+                val topDp = startLine * lineHeightPxHighlight - scrollOffsetPx
                 val heightDp = (endLine - startLine + 1) * lineHeightPxHighlight
                 Box(
                     modifier = Modifier
@@ -1203,7 +1211,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val command = lens.optJSONObject("command")
                 val title = command?.optString("title", "") ?: lens.optString("title", "")
                 if (title.isBlank()) continue
-                val topDpCL = startLine * lineHeightPxCL
+                // BUG-3 FIX: subtract scroll offset
+                val topDpCL = startLine * lineHeightPxCL - vScroll.value
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1694,6 +1703,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
+                                    // BUG-4 FIX: Try LSP definition first (real semantic navigation),
+                                    // fall back to regex pattern matching only if LSP fails/unavailable.
+                                    var lspDefSucceeded = false
+                                    if (onLspDefinition != null) {
+                                        lspDefSucceeded = onLspDefinition!!.invoke()
+                                    }
+                                    if (!lspDefSucceeded) {
                                     val lines = value.text.split("\n")
                                     val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
                                     val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
@@ -1705,6 +1721,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
                                             .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
                                     } else null
+                                    } // end if (!lspDefSucceeded)
                                     showLspMenu = false
                                 }
                             )
@@ -1718,6 +1735,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
+                                    // BUG-4 FIX: Try LSP definition first for peek, fall back to regex
+                                    var lspPeekSucceeded = false
+                                    if (onLspDefinition != null) {
+                                        lspPeekSucceeded = onLspDefinition!!.invoke()
+                                    }
+                                    if (!lspPeekSucceeded) {
                                     val lines = value.text.split("\n")
                                     val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
                                     val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
@@ -1733,6 +1756,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             defLine = f.line
                                         )
                                     }
+                                    } // end if (!lspPeekSucceeded)
                                     showLspMenu = false
                                 }
                             )
@@ -2786,6 +2810,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val sig = activeSignature
             val cursorLineIdx = value.text.take(value.selection.end).count { it == '\n' }
             val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
+            // BUG-2 FIX: subtract scroll offset so the popup appears at the visible cursor position
+            val popupTopDp = (popupLineIdx * fontSize * 1.25f) - vScroll.value
             val annotated = remember(sig) {
                 buildAnnotatedString {
                     append(sig.name)
@@ -2809,7 +2835,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 74.dp, top = (popupLineIdx * fontSize * 1.25f).dp)
+                    .padding(start = 74.dp, top = popupTopDp.dp)
                     .widthIn(max = 320.dp)
                     .zIndex(10f)
                     .background(Color(0xFF252526), RoundedCornerShape(4.dp))
@@ -2859,12 +2885,88 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // ── P38: Compact LSP Hover popup — 2-line preview, scrollable, expand + copy ──
+        // Renders as a positioned overlay (NOT a Popup window) so it works in BOTH
+        // portrait and landscape — Popup windows can get clipped/z-ordered in landscape.
+        if (lspHoverContent != null && !showCompletions) {
+            val hoverScrollState = rememberScrollState()
+            var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
+            val cursorLineIdxHover = value.text.take(value.selection.end).count { it == '\n' }
+            val hoverTopDp = ((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScroll.value
+            // Only render if the popup would be within the visible viewport
+            if (hoverTopDp > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 74.dp, top = hoverTopDp.dp)
+                        .widthIn(max = 300.dp)
+                        .zIndex(12f)
+                        .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp)),
+                ) {
+                    Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
+                        // Top row: expand + copy buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+                        ) {
+                            // Expand/collapse button
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable { hoverExpanded = !hoverExpanded },
+                                contentAlignment = androidx.compose.ui.Alignment.Center,
+                            ) {
+                                Text(
+                                    text = if (hoverExpanded) "▾" else "▸",
+                                    color = Color(0xFF888888),
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            Spacer(Modifier.width(2.dp))
+                            // Copy to clipboard button
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable {
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(lspHoverContent ?: ""))
+                                    },
+                                contentAlignment = androidx.compose.ui.Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "⧉",
+                                    color = Color(0xFF888888),
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                        // Content: 2 lines when collapsed, full when expanded
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .then(if (hoverExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(hoverScrollState) else Modifier)
+                        ) {
+                            Text(
+                                text = lspHoverContent ?: "",
+                                color = Color(0xFFCCCCCC),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = if (hoverExpanded) Int.MAX_VALUE else 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // IntelliSense dropdown — rendered in a Popup window so it's never clipped
         // by parent bounds, scroll offset, or the soft keyboard.
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
             val lineHeightPx = fontSize * 1.25f
-            val popupOffsetY = ((cursorLine + 1) * lineHeightPx).roundToInt()
+            // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
+            val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
             val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { 74.dp.toPx() }.roundToInt()
             Popup(
                 alignment = Alignment.TopStart,

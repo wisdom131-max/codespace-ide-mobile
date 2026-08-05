@@ -2498,7 +2498,12 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
 
 @Composable fun GitSidePanel(projectId: String) { SourceControlPane(projectId) }
 
-@Composable fun RunDebugPanel(onMoreMenu: () -> Unit, activeFilePath: String = "", onJumpToSource: (file: String, line: Int) -> Unit = { _, _ -> }) {
+@Composable fun RunDebugPanel(
+    onMoreMenu: () -> Unit,
+    activeFilePath: String = "",
+    onJumpToSource: (file: String, line: Int) -> Unit = { _, _ -> },
+    onRunFile: (() -> Unit)? = null,
+) {
     // P23-2: Wired to UniversalDebugManager — real debug backend
     val udm = UniversalDebugManager
     var selectedConfig by remember { mutableStateOf("Kotlin Application") }
@@ -2586,6 +2591,19 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             }
             Spacer(Modifier.width(8.dp))
             if (!isRunning) {
+                // BUG-6 FIX: "Run File" button — executes the file without debugger (no breakpoints/pdb).
+                // Sends a simple run command to the terminal tab (e.g. python3 main.py).
+                if (onRunFile != null) {
+                    FilledIconButton(
+                        onClick = { onRunFile!!.invoke() },
+                        modifier = Modifier.size(36.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF388A34)),
+                    ) {
+                        Icon(Icons.Default.PlayArrow, "Run File", tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+                // Debug button — starts a debug session with breakpoints (pdb/gdb/lldb)
                 FilledIconButton(
                     onClick = {
                         // P25-DEBUG: Start a REAL debug session via UDM with the active file path.
@@ -2608,8 +2626,9 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         }
                     },
                     modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF007ACC)),
                 ) {
-                    Icon(Icons.Default.PlayArrow, "Run", tint = Color.White)
+                    Icon(Icons.Default.BugReport, "Debug", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             } else {
                 // P26-1: Full debug controls — Continue/Pause, Step Over, Step Into, Step Out, Stop
