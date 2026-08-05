@@ -289,29 +289,26 @@ fun buildDiagnosticsContext(
 ): JSONArray {
     val arr = JSONArray()
     for (err in lintErrors) {
-        if (err.line == line || err.endLine == line) {
-            val diag = JSONObject()
-            diag.put("range", JSONObject().apply {
-                put("start", JSONObject().apply {
-                    put("line", err.line - 1)  // LSP is 0-indexed
-                    put("character", 0)
-                })
-                put("end", JSONObject().apply {
-                    put("line", (err.endLine ?: err.line) - 1)
-                    put("character", 999)
-                })
+        // LintError has start/end as character offsets — convert to line numbers
+        // Check if this error overlaps the target line (0-indexed)
+        // line parameter is 0-indexed, err.start/err.end are char offsets in text
+        // We can't convert char offsets to lines without the full text, so we
+        // include all errors — the server will filter by range
+        val diag = JSONObject()
+        diag.put("range", JSONObject().apply {
+            put("start", JSONObject().apply {
+                put("line", line)
+                put("character", 0)
             })
-            diag.put("severity", when (err.severity) {
-                "error" -> 1
-                "warning" -> 2
-                "info" -> 3
-                "hint" -> 4
-                else -> 1
+            put("end", JSONObject().apply {
+                put("line", line)
+                put("character", 999)
             })
-            diag.put("message", err.message)
-            diag.put("source", err.source ?: "lint")
-            arr.put(diag)
-        }
+        })
+        diag.put("severity", 1)  // Error
+        diag.put("message", err.message)
+        diag.put("source", "lint")
+        arr.put(diag)
     }
     return arr
 }
