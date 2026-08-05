@@ -1298,6 +1298,8 @@ fun EditorPane(
                                             LspCodeAction("Optimize Code", com.codespace.ide.lsp.CodeActionKind.AIOptimize),
                                             LspCodeAction("Rewrite Code", com.codespace.ide.lsp.CodeActionKind.AIRewrite),
                                             LspCodeAction("Simplify Code", com.codespace.ide.lsp.CodeActionKind.AISimplify),
+                                            LspCodeAction("Add Comments", com.codespace.ide.lsp.CodeActionKind.AIAddComments),
+                                            LspCodeAction("Improve Performance", com.codespace.ide.lsp.CodeActionKind.AIImprovePerf),
                                         )
                                     } else emptyList()
                                     parsed + aiActions

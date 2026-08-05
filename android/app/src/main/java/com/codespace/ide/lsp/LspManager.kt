@@ -17,6 +17,11 @@ data class LspCodeAction(
     val kind: String? = null,
     val edit: String? = null,
     val command: String? = null,
+    // P39: extended fields for VS Code-parity code action menu
+    val isPreferred: Boolean = false,
+    val disabled: String? = null,
+    val data: String? = null,
+    val diagnostics: String? = null,
 )
 
 /**
@@ -920,11 +925,23 @@ object LspManager {
         uri: String,
         line: Int,
         character: Int,
+        triggerCharacter: String? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
+        // BUG-1 FIX (restored): pass completion context per LSP spec so servers that branch on
+        // triggerKind (e.g. member completion after ".") behave correctly instead of
+        // falling back to generic/invoked-style completion.
+        val completionContext = JSONObject()
+        if (triggerCharacter != null) {
+            completionContext.put("triggerKind", 2) // TriggerCharacter
+            completionContext.put("triggerCharacter", triggerCharacter)
+        } else {
+            completionContext.put("triggerKind", 1) // Invoked
+        }
+        params.put("context", completionContext)
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -998,7 +1015,9 @@ object LspManager {
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
-        params.put("context", JSONObject())
+        // BUG-5 FIX (restored): pylsp crashes with KeyError: 'includeDeclaration' if this field
+        // is missing — it's required per the LSP spec, not optional as some servers treat it.
+        params.put("context", JSONObject().put("includeDeclaration", true))
         val response = server.client.request("textDocument/references", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -1009,13 +1028,36 @@ object LspManager {
     }
 
     /**
+     * BUG-4 FIX (restored): Reverse of fileUriFromHostPath — converts an LSP location's file://
+     * URI (a GUEST/proot path, e.g. file:///host-files/main.py) back to the real host filesystem
+     * path so the app can open/read the file. Without this, call sites decode the URI and use the
+     * guest path directly as a host File(...) path, which only works by coincidence for the
+     * currently-open file and silently fails to resolve (and thus fails to navigate) for any
+     * other file — this is what broke cross-file Go to Definition.
+     */
+    fun hostPathFromFileUri(context: Context, uri: String): String? {
+        if (!uri.startsWith("file://")) return null
+        val rawPath = uri.removePrefix("file://")
+        val guestPath = try { java.net.URLDecoder.decode(rawPath, "UTF-8") } catch (_: Exception) { rawPath }
+        val filesDir = context.filesDir.absolutePath
+        return when {
+            guestPath == "/host-files" -> filesDir
+            guestPath.startsWith("/host-files/") -> "$filesDir/" + guestPath.removePrefix("/host-files/")
+            else -> try { ProotInstaller.guestToHostPath(context, guestPath).absolutePath } catch (_: Exception) { null }
+        }
+    }
+
+    /**
      * P22-J: Request code actions (including auto-import fixes) for a range.
+     * P39: accepts optional pre-built diagnostics context (e.g. from lint errors) so the
+     * server can offer targeted quick fixes for known problems at this range.
      */
     fun getCodeActions(
         language: Language,
         uri: String,
         line: Int,
         character: Int,
+        diagnostics: JSONArray? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
@@ -1024,7 +1066,7 @@ object LspManager {
         val td = JSONObject().put("uri", uri)
         val pos = JSONObject().put("line", line).put("character", character)
         val range = JSONObject().put("start", pos).put("end", pos)
-        val context = JSONObject().put("diagnostics", JSONArray())
+        val context = JSONObject().put("diagnostics", diagnostics ?: JSONArray())
         val params = JSONObject()
             .put("textDocument", td)
             .put("range", range)

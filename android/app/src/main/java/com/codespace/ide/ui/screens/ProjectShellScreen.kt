@@ -536,6 +536,8 @@ fun ProjectShellScreen(
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
     val showChatPanelMs = remember { mutableStateOf(false) }; var showChatPanel by showChatPanelMs
+    // P39: AI code actions from the editor lightbulb menu deliver their prompt here
+    val pendingChatPromptMs = remember { mutableStateOf<String?>(null) }
     val aiPanelWidthMs = remember { mutableFloatStateOf(300f) }; var _aiPanelWidth by aiPanelWidthMs
     val bottomPanelHeightMs = remember { mutableFloatStateOf(300f) }; var _bottomPanelHeight by bottomPanelHeightMs
     val bottomPanelPrevHeightMs = remember { mutableFloatStateOf(300f) }; var _bottomPanelPrevHeight by bottomPanelPrevHeightMs
@@ -1097,6 +1099,7 @@ fun ProjectShellScreen(
                     scrollTargetLineMs = scrollTargetLineMs,
                     showBottomPanelMs = showBottomPanelMs,
                     showChatPanelMs = showChatPanelMs,
+                    pendingChatPromptMs = pendingChatPromptMs,
                     showFileSearchMs = showFileSearchMs,
                     showFindBarMs = showFindBarMs,
                     showReplaceRowMs = showReplaceRowMs,
@@ -2724,6 +2727,7 @@ private fun PssEditorColumn(
     scrollTargetLineMs: MutableState<Int>,
     showBottomPanelMs: MutableState<Boolean>,
     showChatPanelMs: MutableState<Boolean>,
+    pendingChatPromptMs: MutableState<String?>,
     showFileSearchMs: MutableState<Boolean>,
     showFindBarMs: MutableState<Boolean>,
     showReplaceRowMs: MutableState<Boolean>,
@@ -2768,6 +2772,7 @@ private fun PssEditorColumn(
     var scrollTargetLine by scrollTargetLineMs
     var showBottomPanel by showBottomPanelMs
     var showChatPanel by showChatPanelMs
+    var pendingChatPrompt by pendingChatPromptMs
     var _showFileSearch by showFileSearchMs
     var showFindBar by showFindBarMs
     var showReplaceRow by showReplaceRowMs
@@ -3045,6 +3050,9 @@ private fun PssEditorColumn(
                     scrollToLineParam  = scrollTargetLine,
                     projectId          = projectId,
                     sessionStateStore  = sessionStateStore,
+                    // P39: AI code actions (Explain/Optimize/etc) open the chat panel and
+                    // auto-send the generated prompt.
+                    onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
@@ -3195,6 +3203,8 @@ private fun PssEditorColumn(
         Box(Modifier.width(chatWidth).fillMaxHeight().background(PanelBg)) {
             CopilotChatPanelInline(
                 onClose = { showChatPanel = false },
+                pendingPrompt = pendingChatPrompt,
+                onPendingPromptConsumed = { pendingChatPrompt = null },
                 colors = ChatPanelColors(
                     background = BgColor,
                     surface = PanelBg,

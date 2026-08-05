@@ -854,6 +854,10 @@ internal fun CopilotChatPanelInline(
     tokenStore: SecureTokenStore? = null,
     onOpenFile: ((String) -> Unit)? = null,
     onSwitchToPreview: ((String) -> Unit)? = null,
+    // P39: AI code actions (Explain/Optimize/etc from the editor's lightbulb menu) deliver
+    // their prompt here to be auto-sent as a new chat message.
+    pendingPrompt: String? = null,
+    onPendingPromptConsumed: (() -> Unit)? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -961,6 +965,15 @@ internal fun CopilotChatPanelInline(
             } finally {
                 chatLoading = false
             }
+        }
+    }
+
+    // P39: auto-send AI code actions (Explain/Optimize/etc) delivered from the editor's
+    // lightbulb menu as soon as this panel is composed with a pending prompt.
+    LaunchedEffect(pendingPrompt) {
+        if (!pendingPrompt.isNullOrBlank()) {
+            send(pendingPrompt)
+            onPendingPromptConsumed?.invoke()
         }
     }
 

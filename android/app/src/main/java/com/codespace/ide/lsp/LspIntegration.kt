@@ -235,6 +235,56 @@ fun lspDiagnosticsToLintErrors(diagnostics: JSONArray, fileContent: String): Lis
  * P37-4: Parse LSP codeAction response into List<LspCodeAction> for the context menu.
  * Handles both JSON Object (code action) and JSON String (command title) entries.
  */
+/**
+ * P39: Standard LSP CodeActionKind constants + client-generated AI action kinds.
+ * See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#codeActionKind
+ */
+object CodeActionKind {
+    const val QuickFix = "quickfix"
+    const val QuickFixAll = "quickfix.fixAll"
+    const val Refactor = "refactor"
+    const val RefactorExtract = "refactor.extract"
+    const val RefactorInline = "refactor.inline"
+    const val RefactorRewrite = "refactor.rewrite"
+    const val RefactorMove = "refactor.move"
+    const val Source = "source"
+    const val SourceOrganizeImports = "source.organizeImports"
+    const val SourceFixAll = "source.fixAll"
+    const val SourceRemoveUnused = "source.removeUnused"
+
+    // Client-generated (not part of the LSP spec) — routed through onAiFixRequest instead
+    // of edit/command application.
+    const val AIExplain = "ai.explain"
+    const val AIExplainError = "ai.explainError"
+    const val AIGenerateDoc = "ai.generateDoc"
+    const val AIGenerateTests = "ai.generateTests"
+    const val AIOptimize = "ai.optimize"
+    const val AIImprovePerf = "ai.improvePerf"
+    const val AIRewrite = "ai.rewrite"
+    const val AISimplify = "ai.simplify"
+    const val AIAddComments = "ai.addComments"
+
+    /** Small emoji/glyph shown next to the action title in the dropdown menu. */
+    fun icon(kind: String?): String = when {
+        kind == null -> "\u2022"
+        kind.startsWith("ai.") -> "\u2728"
+        kind.startsWith("quickfix") -> "\ud83d\udca1"
+        kind.startsWith("refactor") -> "\ud83d\udd27"
+        kind.startsWith("source") -> "\ud83d\udce6"
+        else -> "\u2022"
+    }
+
+    /** Group header label used by categorizeCodeActions() to bucket actions in the menu. */
+    fun groupLabel(kind: String?): String = when {
+        kind == null -> "Actions"
+        kind.startsWith("ai.") -> "AI"
+        kind.startsWith("quickfix") -> "Quick Fixes"
+        kind.startsWith("refactor") -> "Refactor"
+        kind.startsWith("source") -> "Source Actions"
+        else -> "Actions"
+    }
+}
+
 fun parseCodeActions(actions: JSONArray): List<LspCodeAction> {
     val result = mutableListOf<LspCodeAction>()
     for (i in 0 until actions.length()) {
