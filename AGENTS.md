@@ -6805,3 +6805,31 @@ If you think alpha_main.py got accidentally modified while tapping around:
 4. If you see `main(calculate_sum)"` with a stray quote, that's the accidental edit
 5. To fix: delete the stray character(s), or re-type the line correctly
 6. The original content should have: `def calculate_sum(a, b):` with a docstring, a `main()` function, and `if __name__ == "__main__": main()`
+
+### P38 Audit Continued: Landscape Hover + ⋮ Button Fix (2026-08-05, commit 32bfc773)
+
+**Three additional fixes after on-device testing feedback:**
+
+#### Fix 1: Hover popup invisible in landscape (and actually portrait too)
+- **Root cause:** Hover popup was a regular `Box` with `zIndex(10f)` placed AFTER `CodeEditor(fillMaxSize)` in a `Column`. Since `fillMaxSize()` consumes all remaining vertical space, the hover popup received **zero height** — invisible in both orientations. It only appeared to work in portrait due to Compose layout timing quirks.
+- **Fix:** Converted hover popup from `Box(zIndex(10f))` to `Popup(alignment = BottomStart, focusable = false)`. `Popup` renders in a separate window on top of everything, unconstrained by parent layout. Works in both portrait AND landscape.
+- **File:** `ui/panes/EditorPane.kt` lines ~1430-1460
+
+#### Fix 2: ⋮ button only showed on text selection (not on tap)
+- **Root cause:** Visibility condition was `value.selection.start != value.selection.end` — required an actual highlighted selection. Tapping a word only places the cursor (`start == end`), so the button never appeared.
+- **Fix:** Changed condition to `!findReplaceOpen && !goToLineOpen` — now shows whenever cursor is on any word ≥ 2 characters. No need to double-tap or long-press to get the LSP action menu.
+- **File:** `editor/CodeEditor.kt` line ~1501
+
+#### Fix 3: Long-press only moved cursor (didn't select word)
+- **Root cause:** Previous fix (commit 1e22ec68) moved cursor to long-press position via `TextRange(charOffset)` (zero-length selection). The ⋮ button still required a selection to appear, so the long-press triggered but nothing showed.
+- **Fix:** Long-press now finds word boundaries and creates `TextRange(wordStart, wordEnd)` — an actual word selection (VS Code behavior). This triggers the ⋮ button AND auto-opens the LSP dropdown via `longPressTrigger++`.
+- **File:** `editor/CodeEditor.kt` lines ~972-986
+
+#### Test files added (commit 4178cb93)
+Created `test-samples/` directory with 4 clean Python files for on-device testing:
+- `alpha_main.py` — Calculator class, calculate_sum/product, main() entry
+- `beta_helper.py` — imports from alpha_main (tests Go to Definition cross-file)
+- `gamma_unformatted.py` — poorly indented code (tests code folding on messy code)
+- `delta_actions.py` — cross-file references to alpha_main (tests Find References, Rename Symbol)
+
+These serve as clean reference copies — users can copy them to reset on-device files that get accidentally edited during testing.
