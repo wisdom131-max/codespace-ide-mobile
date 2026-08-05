@@ -122,6 +122,7 @@ fun EditorPane(
     projectId: String? = null,
     sessionStateStore: SessionStateStore? = null,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
+    onOpenFileAtLine: ((String, Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation

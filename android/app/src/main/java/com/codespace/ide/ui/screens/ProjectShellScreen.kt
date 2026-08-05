@@ -3042,7 +3042,7 @@ private fun PssEditorColumn(
                     onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
                     wordWrap           = wordWrap,
                     showInlayHints     = showInlayHints,
-                    scrollToLine       = scrollTargetLine,
+                    scrollToLineParam  = scrollTargetLine,
                     projectId          = projectId,
                     sessionStateStore  = sessionStateStore,
                 )
