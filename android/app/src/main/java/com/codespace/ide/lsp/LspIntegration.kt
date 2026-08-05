@@ -245,12 +245,152 @@ fun parseCodeActions(actions: JSONArray): List<LspCodeAction> {
                 val kind = if (item.has("kind") && !item.isNull("kind")) item.getString("kind") else null
                 val edit = item.optJSONObject("edit")?.toString()
                 val command = item.optJSONObject("command")?.toString()
-                result.add(LspCodeAction(title, kind, edit, command))
+                // P39: Extract enhanced fields
+                val isPreferred = item.optBoolean("isPreferred", false)
+                val disabled = if (item.has("disabled") && !item.isNull("disabled")) {
+                    item.optJSONObject("disabled")?.optString("reason", null)
+                } else null
+                val data = if (item.has("data") && !item.isNull("data")) item.get("data").toString() else null
+                val diagnostics = item.optJSONArray("diagnostics")?.toString()
+                result.add(LspCodeAction(title, kind, edit, command, isPreferred, disabled, data, diagnostics))
             }
             is String -> {
                 result.add(LspCodeAction(title = item))
             }
         }
+    }
+    return result
+}
+
+/**
+ * P39: Categorize code actions by their kind prefix for grouped display.
+ * Returns an ordered map of group label -> actions.
+ */
+fun categorizeCodeActions(actions: List<LspCodeAction>): Map<String, List<LspCodeAction>> {
+    val groups = LinkedHashMap<String, MutableList<LspCodeAction>>()
+    for (action in actions) {
+        val label = com.codespace.ide.lsp.CodeActionKind.groupLabel(action.kind)
+        groups.getOrPut(label) { mutableListOf() }.add(action)
+    }
+    // Sort: Quick Fixes first, then Refactor, then Source, then AI
+    val order = listOf("Quick Fixes", "Refactor", "Source Actions", "AI", "Actions")
+    return groups.entries.sortedBy { e -> order.indexOf(e.key).let { if (it < 0) order.size else it } }
+        .associate { it.key to it.value }
+}
+
+/**
+ * P39: Build a diagnostics JSONArray from lint errors for the code action context.
+ * This lets the language server know about existing diagnostics at the target range,
+ * enabling targeted quick fixes (e.g. "Fix all" for a specific error type).
+ */
+fun buildDiagnosticsContext(
+    lintErrors: List<com.codespace.ide.editor.LintError>,
+    line: Int,
+): JSONArray {
+    val arr = JSONArray()
+    for (err in lintErrors) {
+        if (err.line == line || err.endLine == line) {
+            val diag = JSONObject()
+            diag.put("range", JSONObject().apply {
+                put("start", JSONObject().apply {
+                    put("line", err.line - 1)  // LSP is 0-indexed
+                    put("character", 0)
+                })
+                put("end", JSONObject().apply {
+                    put("line", (err.endLine ?: err.line) - 1)
+                    put("character", 999)
+                })
+            })
+            diag.put("severity", when (err.severity) {
+                "error" -> 1
+                "warning" -> 2
+                "info" -> 3
+                "hint" -> 4
+                else -> 1
+            })
+            diag.put("message", err.message)
+            diag.put("source", err.source ?: "lint")
+            arr.put(diag)
+        }
+    }
+    return arr
+}
+
+/**
+ * P39: Apply a WorkspaceEdit to the given text content.
+ * Handles both documentChanges (LSP 3.16+) and changes (legacy) formats.
+ * Returns the new text after applying all edits, or null on failure.
+ */
+fun applyWorkspaceEdit(
+    editJson: String,
+    currentText: String,
+    currentUri: String? = null,
+): String? {
+    return try {
+        val wsEdit = JSONObject(editJson)
+        var newText = currentText
+
+        // Try documentChanges first (preferred format)
+        val docChanges = wsEdit.optJSONArray("documentChanges")
+        if (docChanges != null) {
+            for (i in 0 until docChanges.length()) {
+                val dc = docChanges.optJSONObject(i) ?: continue
+                val dcUri = dc.optJSONObject("textDocument")?.optString("uri", "") ?: ""
+                // If currentUri is provided, only apply edits to the current file
+                if (currentUri != null && dcUri != currentUri) continue
+                val textEdits = dc.optJSONArray("edits") ?: continue
+                newText = applyTextEdits(newText, textEdits)
+            }
+        } else {
+            // Legacy changes format (URI -> TextEdit[])
+            val changes = wsEdit.optJSONObject("changes")
+            if (changes != null) {
+                val uri = currentUri ?: changes.keys().next()
+                val textEdits = changes.optJSONArray(uri) ?: return null
+                newText = applyTextEdits(newText, textEdits)
+            }
+        }
+        newText
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * P39: Apply a list of TextEdits to text content.
+ * Edits are applied in reverse order (bottom-to-top) to preserve line/character offsets.
+ */
+private fun applyTextEdits(text: String, textEdits: JSONArray): String {
+    var result = text
+    val edits = (0 until textEdits.length()).mapNotNull { i ->
+        textEdits.optJSONObject(i)
+    }.sortedByDescending { te ->
+        te.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+    }
+    for (te in edits) {
+        val rng = te.optJSONObject("range") ?: continue
+        val startLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+        val startChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+        val endLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+        val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+        val replacement = te.optString("newText", "")
+        val lines = result.split("\n".toRegex()).toMutableList()
+        if (startLine == endLine && startLine < lines.size) {
+            val line = lines[startLine]
+            lines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) +
+                replacement +
+                line.substring(endChar.coerceAtMost(line.length))
+        } else if (startLine < lines.size) {
+            val before = lines[startLine].substring(0, startChar.coerceAtMost(lines[startLine].length))
+            val after = if (endLine < lines.size) lines[endLine].substring(endChar.coerceAtMost(lines[endLine].length)) else ""
+            lines[startLine] = before + replacement + after
+            if (startLine + 1 <= endLine && endLine < lines.size) {
+                for (k in endLine downTo startLine + 1) {
+                    if (k < lines.size) lines.removeAt(k)
+                }
+            }
+        }
+        result = lines.joinToString("\n")
     }
     return result
 }
