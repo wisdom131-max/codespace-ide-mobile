@@ -6916,3 +6916,119 @@ These serve as clean reference copies — users can copy them to reset on-device
 
 #### Test files removed from repo
 - `test-samples/` directory deleted (commit de105749). User creates their own test files in the editor.
+
+### P39: Full VS Code-Style Code Actions (💡 Light Bulb) Implementation (2026-08-05)
+
+**Goal:** Implement complete `textDocument/codeAction` support matching VS Code's lightbulb UX, CodeActionKind categorization, `codeAction/resolve` for lazy resolution, and AI-augmented code actions.
+
+#### Research: VS Code Lightbulb Positioning
+- VS Code places the 💡 lightbulb in the **glyph margin** — the narrow strip to the LEFT of the line numbers
+- It appears on the SAME LINE as the diagnostic/cursor position that has available code actions
+- The bulb is ~16px wide, positioned at the start of the line
+- Clicking the bulb opens a dropdown menu of available actions, grouped by category
+- The bulb only appears when `codeActionProvider` returns non-empty results for that line
+- VS Code distinguishes: 💡 (actions available) vs 💡 with wrench (auto-fix available)
+
+#### Architecture — 6-Phase Implementation
+
+**Phase 1: Enhanced LspCodeAction Data Model** (`LspManager.kt`)
+- Expand `LspCodeAction` data class with: `isPreferred: Boolean`, `disabled: String?`, `data: String?`, `diagnostics: String?`
+- Add `CodeActionKind` constants object with all standard LSP kinds:
+  - `quickfix`, `quickfix.fixAll`
+  - `refactor`, `refactor.extract`, `refactor.inline`, `refactor.rewrite`, `refactor.move`
+  - `source`, `source.organizeImports`, `source.fixAll`, `source.removeUnused`
+- Add `resolveCodeAction()` function for `codeAction/resolve` lazy resolution
+- Expand client capabilities `codeActionKind.valueSet` to include all standard kinds
+- Add `resolveSupport` property to codeAction capabilities
+- Enhance `getCodeActions()` to:
+  - Accept optional `only: List<String>?` parameter for kind filtering
+  - Pass current diagnostics in the context (from lint errors)
+  - Accept range (start line, start char, end line, end char) not just a point
+
+**Phase 2: Enhanced Parsing & WorkspaceEdit Application** (`LspIntegration.kt`)
+- Enhance `parseCodeActions()` to extract `isPreferred`, `disabled`, `data`, `diagnostics`
+- Add `categorizeCodeActions()` function that groups actions by kind prefix:
+  - Quick Fixes → kind starts with `quickfix`
+  - Refactoring → kind starts with `refactor`
+  - Source Actions → kind starts with `source`
+  - AI Actions → custom kind `ai` (not in LSP spec, client-generated)
+- Add robust `applyWorkspaceEdit()` function that handles:
+  - `documentChanges` (TextDocumentEdit array) — preferred LSP 3.16+
+  - `changes` (URI→TextEdit[] map) — legacy fallback
+  - `resourceChanges` (create/rename/delete files)
+  - Multi-file edits with version checking
+- Add `resolveCodeAction()` glue that calls LspManager and re-parses
+
+**Phase 3: Lightbulb UI in Gutter** (`CodeEditor.kt`)
+- Add a left-margin gutter strip (width ~28dp) rendered as a Box overlay
+- On each line, check if code actions are available (async, debounced 500ms)
+- When actions exist, render a 💡 Text icon at that line's y-position in the gutter
+- Tapping the 💡 opens the categorized action menu (not the long-press menu)
+- Lightbulb auto-fetches actions when:
+  - Cursor moves to a new line (debounced 500ms)
+  - Diagnostics change on the current line
+- Lightbulb is hidden when:
+  - No LSP server running
+  - No code actions returned for the line
+  - LSP doesn't support codeActionProvider
+- Visual: 💡 emoji in amber/gold color (#FFD700), 16sp, positioned in gutter
+
+**Phase 4: Categorized Action Menu** (`CodeEditor.kt`)
+- Replace flat DropdownMenuItem list with grouped sections:
+  - **QUICK FIXES** header → quickfix-kind actions
+  - **REFACTOR** header → refactor-kind actions  
+  - **SOURCE ACTIONS** header → source-kind actions
+  - **AI** header → AI-augmented actions
+- Each section has a small gray uppercase header label
+- Actions within sections are DropdownMenuItems with appropriate icons:
+  - Quick fix: 💡
+  - Refactor: ⚡ (or 🔨)
+  - Source: 📦
+  - AI: ✨
+- Preferred actions (isPreferred=true) get bold text
+- Disabled actions (disabled!=null) get grayed-out text and are non-clickable
+- Menu accessible from both:
+  1. Lightbulb tap in gutter
+  2. Long-press context menu (existing, enhanced with categories)
+
+**Phase 5: AI Code Actions** (`CodeEditor.kt` + `EditorPane.kt`)
+- Add AI-augmented actions that route through AgentTools:
+  - Explain Code → sends selected code to AI chat with "explain this code" prompt
+  - Explain Error → sends diagnostic + code to AI with "explain this error" prompt
+  - Optimize Code → AI suggests optimization
+  - Generate Documentation → AI generates docstring/comment
+  - Add Comments → AI adds inline comments
+  - Generate Unit Tests → AI generates test file
+  - Improve Performance → AI suggests perf improvements
+  - Rewrite Code → AI rewrites for clarity
+  - Simplify Code → AI simplifies
+- These appear in the AI section of the action menu
+- They use the existing AI chat infrastructure (AgentTools.kt)
+- Only visible when AI chat is available
+
+**Phase 6: Wiring & Integration** (`EditorPane.kt`)
+- Wire enhanced lspCodeActionProvider:
+  - Pass current diagnostics from lint errors to getCodeActions()
+  - Support kind filtering via `only` parameter
+  - Handle resolveCodeAction for lazy actions
+- Wire AI code action provider:
+  - Callback that invokes AgentTools for each AI action type
+- Wire lightbulb state:
+  - Track which lines have actions available
+  - Update on cursor move and diagnostic change
+
+#### File Impact (to avoid conflicts with concurrent work):
+- `lsp/LspManager.kt` — enhanced data class, new resolve function, expanded capabilities
+- `lsp/LspIntegration.kt` — enhanced parsing, categorization, WorkspaceEdit application
+- `editor/CodeEditor.kt` — lightbulb UI, categorized menu, AI action hooks
+- `ui/panes/EditorPane.kt` — wiring with diagnostics, AI actions
+
+#### Implementation Order:
+1. LspManager.kt (data model + capabilities + resolve)
+2. LspIntegration.kt (parsing + categorization + edit application)
+3. CodeEditor.kt (lightbulb + categorized menu)
+4. EditorPane.kt (wiring + AI actions)
+5. Build + verify
+
+---
+
