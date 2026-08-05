@@ -6692,3 +6692,116 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 | 33011f29 | Fix PopupProperties dismissOnClickOutside param name | ✅ GREEN |
 | b2d8c7b0 | Remove overlay, replace context dialog with floating LSP button | ❌ Failed (dismissOnOutsideClick param) |
 | c8c7c805 | Fix PeekDefResult constructor + scrollable compact dropdown | ❌ Failed (dismissOnOutsideClick, same push) |
+
+---
+
+### P38 Audit: 10 Editor Features — Test Guide & Bug Fixes
+
+**Date:** 2026-08-05
+**Commit:** 0ef53688
+
+#### Bugs Fixed
+
+**BUG A: Hover tooltip shows raw JSON** — `lsp/LspIntegration.kt` `parseHoverContent()`
+- **Symptom:** Hover popup displayed `calculate_sum(a, b): {"kind":"plaintext","value":"Calculate the sum of two numbers."}` instead of clean text.
+- **Root cause:** Pyright (Python LSP) sometimes returns hover contents as a JSONArray where elements are raw JSON strings (not parsed JSONObjects). The `extractText()` function's `is String` branch passed these through unchanged.
+- **Fix:** Added JSON-string detection in the `is String` branch — if the string starts with `{` and ends with `}`, try parsing it as a JSONObject and recurse. Falls back to the original string if parsing fails.
+
+**BUG B: Signature Help documentation JSON leak** — `ui/panes/EditorPane.kt`
+- **Symptom:** Signature help could show raw JSON when `documentation` field is a MarkupContent object.
+- **Root cause:** `sig.optString("documentation", "")` calls `toString()` on the JSONObject, producing JSON text.
+- **Fix:** Replaced with `when (val doc = sig.opt("documentation"))` that handles String, JSONObject (extracts "value"), and null.
+
+#### Feature Audit — All 10 Wired ✅
+
+| # | Feature | LSP-Backed | Regex Fallback | Status |
+|---|---------|-----------|----------------|--------|
+| 1 | Autocomplete | ✅ `getCompletion` | ✅ keyword list | Working |
+| 2 | Hover | ✅ `getHover` | ❌ | Working (fixed) |
+| 3 | Signature Help | ✅ `getSignatureHelp` | ✅ local analyzer | Working (fixed) |
+| 4 | Document Highlight | ✅ `getDocumentHighlight` | ❌ | Working |
+| 5 | Code Folding | ✅ `getFoldingRange` | ✅ regex gutter | Working |
+| 6 | Go to Definition | ❌ (regex only) | ✅ `def\s+word` | Working (regex) |
+| 7 | Peek Definition | ❌ (regex only) | ✅ `def\s+word` | Working (regex) |
+| 8 | Find References | ✅ `getReferences` | ✅ regex search | Working |
+| 9 | Rename Symbol | ✅ `rename` + `prepareRename` | ✅ regex | Working |
+| 10 | Run File | N/A | N/A | Working |
+
+#### Non-Technical Test Instructions
+
+**Test files:** alpha_main.py, beta_helper.py, gamma_unformatted.py, delta_actions.py
+
+**1. Autocomplete**
+- Open alpha_main.py
+- Type `calc` on a new line
+- Look for: a small list appears above your cursor showing `calculate_sum`
+- Tap the suggestion to insert it
+
+**2. Hover**
+- Open alpha_main.py
+- Tap on the word `calculate_sum` (just tap, don't hold)
+- Wait 1-2 seconds
+- Look for: a small popup near the word showing "Calculate the sum of two numbers"
+- It should NOT show raw JSON like `{"kind":"plaintext","value":"..."}`
+
+**3. Signature Help**
+- Open alpha_main.py
+- Type `calculate_sum(` — the opening parenthesis triggers it
+- Look for: a small popup showing `calculate_sum(a, b)` with the parameters listed
+- The current parameter should be highlighted as you type
+
+**4. Document Highlight**
+- Open alpha_main.py
+- Tap on a variable name that appears multiple times (like `result` or `a`)
+- Look for: all other occurrences of that word get a light background tint
+
+**5. Code Folding**
+- Open alpha_main.py (or any file with a function/class)
+- Look at the left side of the editor, next to line numbers
+- Look for: small ▼ or ▶ arrows next to lines that start a function or class
+- Tap ▼ to collapse (hides the function body), tap ▶ to expand
+
+**6. Go to Definition**
+- Open alpha_main.py
+- Long-press on `calculate_sum` where it's CALLED (not where it's defined)
+- Tap the floating ⋮ button that appears
+- Tap "Go to Definition" in the menu
+- Look for: editor jumps to the line where `def calculate_sum` is written
+
+**7. Peek Definition**
+- Open alpha_main.py
+- Long-press on `calculate_sum` where it's called
+- Tap the ⋮ button
+- Tap "Peek Definition"
+- Look for: a small inline preview window showing the function definition without leaving your current position
+
+**8. Find References**
+- Open alpha_main.py
+- Long-press on `calculate_sum`
+- Tap the ⋮ button
+- Tap "Find References"
+- Look for: a list at the bottom showing every file and line where `calculate_sum` appears
+
+**9. Rename Symbol**
+- Open alpha_main.py
+- Long-press on `calculate_sum`
+- Tap the ⋮ button
+- Tap "Rename Symbol"
+- Type a new name (like `add_numbers`)
+- Tap OK/Enter
+- Look for: all occurrences of `calculate_sum` change to the new name across files
+
+**10. Run File**
+- Open alpha_main.py (or any .py file with a `if __name__ == "__main__"` block)
+- Tap the green ▶ Play button at the top
+- Look for: the Output tab opens at the bottom showing the program's output
+
+#### Checking alpha_main.py for Accidental Edits
+
+If you think alpha_main.py got accidentally modified while tapping around:
+1. Open alpha_main.py in the editor
+2. Look for any lines that don't look like valid Python — stray quotes, random characters, incomplete lines
+3. Specifically check the last few lines — stray characters often end up at the end
+4. If you see `main(calculate_sum)"` with a stray quote, that's the accidental edit
+5. To fix: delete the stray character(s), or re-type the line correctly
+6. The original content should have: `def calculate_sum(a, b):` with a docstring, a `main()` function, and `if __name__ == "__main__": main()`
