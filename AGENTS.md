@@ -7032,3 +7032,355 @@ These serve as clean reference copies — users can copy them to reset on-device
 
 ---
 
+
+
+### P40: Verified & Fixed Full Auto-Install Chain (2026-08-05)
+
+**User concern:** "I don't want to download anything needed to run these features manually — I want it automatic, like LSP install was."
+
+**Audit finding — it was NOT fully automatic:**
+- `LspManager.installServer()` DOES auto-install the language server binary itself (npm/pip/apt inside
+  the Ubuntu rootfs) — that part was already automatic and correct.
+- BUT `LspManager.startServer()` required the **Ubuntu proot rootfs itself** to already be installed.
+  If the rootfs wasn't there yet, it just logged an error and returned `false`:
+  `"Ubuntu rootfs not installed — cannot start LSP server. Open Terminal tab to set up Ubuntu first."`
+- The rootfs (`ProotInstaller.install()`) was only ever triggered from `TerminalPane` (opening a
+  Terminal tab) or a manual button in `SettingsScreen`. A user who opens a `.py`/`.ts`/etc file
+  WITHOUT ever opening the Terminal tab first got silent LSP failure — completions, hover, code
+  actions, everything LSP-backed — with no download happening and no clear path forward besides
+  manually finding the Terminal tab.
+
+**Fix applied (LspManager.kt, `startServer()`):**
+- When the rootfs-not-installed guard fires, instead of returning `false` immediately, it now calls
+  `ProotInstaller.install(context) { msg -> AppOutputLog.log(...) }` directly, inline.
+- This is safe because:
+  1. `startServer()` is always invoked via `withContext(Dispatchers.IO)` from `EditorPane`'s
+     `LaunchedEffect` — never on the main thread — so a blocking download+extract is fine here.
+  2. `ProotInstaller.install()` is already concurrency-safe (`installLock`/`installJob`): if a
+     Terminal tab install is already running, this call just waits on it and returns once done
+     instead of racing or duplicating the download.
+- Net effect: opening ANY code file now triggers the full automatic chain with zero manual steps —
+  Ubuntu rootfs download+extract (first time only) → language server binary install (first time
+  only) → LSP server spawn → completions/hover/code actions/etc all "just work" the first time a
+  matching file is opened, exactly like the user expects.
+- Progress is still visible via `AppOutputLog` (the same output log Terminal already reads from),
+  so if a user does have a Terminal tab open they'll see the same real progress text either way.
+
+**Policy going forward (per user's standing 'Verify-Repair-Reuse' instruction):** before adding
+ANY feature that depends on an external binary, package, or model, explicitly trace the full
+call chain back to first app launch and confirm there is no dead-end that requires the user to
+find and click something manually. Document the trace in AGENTS.md when non-obvious.
+
+---
+
+### P41: VS Code/Cursor-Quality IntelliSense & Autocomplete System — MASTER PLAN (2026-08-05)
+
+**Goal:** Take autocomplete from "functional LSP completion" (current state below) to full
+VS Code/Cursor parity across every category the user listed. This is a large, multi-session
+effort — implement in the phases below, in order, verifying a green build after each phase
+before moving to the next.
+
+**Current baseline (already implemented, do not regress):**
+- ✅ Smart Autocomplete (LSP `textDocument/completion`)
+- ✅ Snippet Completion
+- ✅ Completion Documentation
+- ✅ Completion Icons (by `CompletionItemKind`)
+- ✅ Completion Ranking (`sortText`)
+- ✅ Commit Characters
+- ✅ Prefix Matching
+- ✅ Single-line Ghost Text (P15-D)
+
+**Architecture decision:** Introduce a new `CompletionEngine` object (new file:
+`lsp/CompletionEngine.kt`) that sits between the raw LSP response and the UI. It merges
+multiple **completion sources** (LSP, AI, snippet, workspace-symbol, buffer/keyword, path)
+into one ranked, deduplicated list before it ever reaches `CodeEditor.kt`. This keeps
+`CodeEditor.kt`'s dropdown rendering logic source-agnostic — it only ever sees a
+`List<RankedCompletionItem>` with a `source: CompletionSource` tag for the UI label.
+
+#### Phase A — Matching & Ranking Engine (foundation — build this first, everything else depends on it)
+- New `CompletionEngine.kt`:
+  - `RankedCompletionItem` data class: label, kind, detail, documentation, insertText,
+    sortTextFromServer, source (LSP/AI/Snippet/Workspace/Buffer/Path), score (Float),
+    isDeprecated, commitCharacters, textEdit/additionalTextEdits (for auto-import), data
+    (for `completionItem/resolve`).
+  - `fuzzyScore(query: String, candidate: String): Float` — subsequence fuzzy match (like
+    VS Code's own `fuzzyScore`), rewards: contiguous runs, match-at-start, camelCase hump
+    matches (`gCU` matches `getCurrentUser`), consecutive matches. Returns -1 for no match.
+  - `rank(items, query, mruMap, usageMap): List<RankedCompletionItem>` combines:
+    fuzzy score (primary) → server `sortText` (tiebreak) → MRU recency boost → usage
+    frequency boost → context boost (e.g. expected type from LSP `completionItem/detail`
+    or assignment LHS type matches candidate return type).
+  - Re-rank is just re-calling `rank()` on every keystroke against the already-fetched
+    item list (no new LSP round-trip needed) — LSP is only re-queried when the word
+    boundary is crossed (space, `.`, `(`, newline) per existing debounce logic.
+
+#### Phase B — Completion History (MRU / frequency / learning)
+- New entity-like local store: `CompletionHistoryStore.kt` backed by a simple JSON file in
+  `context.filesDir` (NOT a network entity — this is per-device, high-frequency, must be
+  synchronous-fast). Schema: `{ [label:String]: { count: Int, lastUsedEpochMs: Long,
+  contextLanguage: String } }`.
+  - `recordAccepted(item, language)` called whenever the user accepts a completion.
+  - `mruScore(label)` / `frequencyScore(label)` feed into `CompletionEngine.rank()`.
+  - Cap the store at ~2000 entries (LRU-evict) to keep the JSON file small and fast to
+    load on every keystroke — load once per file-open into memory, not per-keystroke disk read.
+
+#### Phase C — Fuzzy/CamelCase/Substring Matching UI feedback
+- `CodeEditor.kt` completion dropdown: highlight matched characters in the label using the
+  match indices returned by `fuzzyScore` (bold or accent-colored spans via
+  `buildAnnotatedString`), matching VS Code's bolded-fuzzy-match look.
+
+#### Phase D — Import Completion
+- Extend `parseImportEdits` (already exists in `LspIntegration.kt` for code actions) to also
+  run against completion items' `additionalTextEdits` field (LSP servers that support
+  auto-import attach the import edit directly to the completion item, not just code actions).
+- On accepting a completion with `additionalTextEdits`, apply those edits BEFORE inserting
+  the completion text itself (insert import line first, then completion — this matches LSP
+  spec ordering and VS Code behavior).
+- Reuse `applyWorkspaceEdit`/`applyTextEdits` from `LspIntegration.kt` (added in P39) for this.
+- Package/namespace suggestions: for Python/Kotlin/JS, add a small local index of common
+  stdlib/package export names when the LSP server doesn't proactively suggest unimported
+  symbols (fallback path, since not every LSP configured — pylsp, ktls — auto-suggests
+  unimported symbols across the whole workspace by default).
+
+#### Phase E — Multi-line Ghost Text + AI Inline Completions
+- Extend existing single-line ghost text (`ghostText` state in `CodeEditor.kt`) to support
+  multi-line: render each additional line as a dimmed overlay row below the cursor line,
+  reusing the same scroll-offset math already established for other overlays (subtract
+  `vScroll.value`).
+- New AI ghost-text source: a debounced (600ms idle) call through the existing
+  `onAiFixRequest`-style callback plumbing but for *inline* prediction — build a
+  `onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) ->
+  String?)?` callback wired in `EditorPane.kt`. The AI call is a lightweight one-shot
+  "complete this code" prompt (NOT full chat), capped to a short max-token continuation,
+  so latency stays acceptable.
+- Acceptance controls: Tab = accept full suggestion (existing), new: Ctrl/long-press-right-arrow
+  = accept next word only, new gesture (two-finger tap or a small inline chevron button) =
+  accept next line only. Partial acceptance advances the ghost text state without discarding
+  the rest of the suggestion (so accepting word-by-word still lets you accept the remainder later).
+- Context/project-awareness: include current file imports + 1-2 nearby sibling function
+  signatures (from `documentSymbol` results, already available) in the AI prompt context so
+  suggestions aren't purely single-file-blind.
+
+#### Phase F — Workspace Intelligence (cross-file completion)
+- Reuse existing `workspace/symbol` LSP call (already implemented for Go-to-Symbol) as a
+  completion source: when the current prefix doesn't strongly match local/LSP-buffer
+  symbols, fire a `workspace/symbol` query and merge results in as `CompletionSource.Workspace`
+  items with a slightly lower base score than direct LSP completions (they're broader-net).
+  Debounce this extra call harder (300ms+) since it's the most expensive source.
+- Recently Opened File Suggestions: surface recently-opened file paths as completions when
+  the user is typing inside a string literal that looks like a path context (import statement,
+  `require(`, `open(`) — reuse the tab-history list `EditorPane.kt` already tracks.
+
+#### Phase G — Path Completion
+- Detect "inside a path-like string" context: cursor is inside a string literal following
+  `import`, `from`, `require(`, `open(`, `readFile(`, `<script src=`, `<link href=`, etc.
+  (regex-based, per-language keyword list).
+- When detected, list directory contents of the appropriate base dir (relative to current
+  file's dir, or project root for absolute-style imports) as completion items, kind = File/Folder.
+  Reuse existing `File(...).listFiles()` — no LSP round-trip needed, this is pure filesystem.
+- Module path suggestions (e.g. `node_modules`, installed pip packages) — for Node/Python,
+  optionally shell out to `ls node_modules` / `pip list` inside the proot rootfs (cached,
+  refreshed only when `package.json`/`requirements.txt` changes) to suggest installed module names.
+
+#### Phase H — Language Intelligence (kind-specific automatic suggestions)
+- This category is *mostly already provided by the LSP server itself* (`CompletionItemKind`
+  values: Property, Method, Field, Variable, Constant, Enum/EnumMember, Keyword, TypeParameter,
+  Class/Interface/Struct, Function, Constructor, Snippet). Action here is verification, not
+  new logic: audit that `CodeEditor.kt`'s completion icon-by-kind switch (already exists per
+  baseline ✅) covers ALL `CompletionItemKind` values 1-25 from the LSP spec, not just a subset.
+- Automatic Override/Interface-Implementation Suggestions: these need a dedicated code
+  action, not a completion-list item, in most LSP servers (e.g. typing `override fun ` in
+  Kotlin should trigger a code-action-driven "implement members" flow) — route through the
+  P39 Code Actions infrastructure (`quickfix`/`source` kind) rather than duplicating in
+  the completion engine.
+
+#### Phase I — Dynamic Snippets + Placeholder/Tab-stop Navigation
+- Parse LSP `insertTextFormat == 2` (Snippet) items' `$1`, `$2`, `${1:default}`,
+  `${1|choice1,choice2|}` syntax (LSP snippet syntax, superset of TextMate snippets).
+- On accept, don't just insert raw text — enter a "snippet edit mode": place cursor at
+  tab-stop 1, show its default text pre-selected (so typing replaces it), and Tab/Shift+Tab
+  cycles to next/previous tab stop. Choice placeholders (`${1|a,b,c|}`) show a small inline
+  dropdown of the choices when that tab stop is active.
+- This needs new `SnippetSession` state in `CodeEditor.kt`: current snippet's tab-stop
+  ranges (recomputed on every edit inside the snippet), active stop index, exits when
+  cursor leaves the snippet's overall span or Escape is pressed.
+
+#### Phase J — Completion UI polish
+- Filter chips row at top of the dropdown: All / Classes / Functions / Variables / Methods /
+  Properties / Files / Snippets / Keywords — clicking filters the already-fetched+ranked list
+  client-side (no new query).
+- Source label badges (small colored text: `LSP` teal, `AI` purple, `Snippet` orange,
+  `Workspace` blue, `Buffer` gray) next to each item, matching source-attribution UX.
+- Detail panel: expand the currently-highlighted item's full `documentation` (already
+  fetched, may need `completionItem/resolve` for lazy servers — see Phase K) in a
+  side/below panel, scrollable, matching VS Code's split completion+docs view.
+- Deprecation indicator: strike-through label text when `item.tags` contains
+  `1` (Deprecated) per LSP spec.
+- Sticky selected item: keep the previously-highlighted item selected across re-ranks
+  when it's still present in the new ranked list (don't reset selection to index 0 on
+  every keystroke — jarring).
+
+#### Phase K — Performance
+- `completionItem/resolve` lazy resolution: many servers return minimal data in the initial
+  list (esp. `documentation`/`detail`/`additionalTextEdits`) and expect a resolve call when
+  the item is highlighted, not for all 200 items upfront. Add `resolveCompletionItem()` to
+  `LspManager.kt` (mirrors P39's `resolveCodeAction`), call it debounced (150ms) on
+  highlight-change in the dropdown, cache resolved results in-memory per session.
+- Debounced requests: verify existing debounce (already present per architecture) is tuned
+  to ~120-150ms — tight enough to feel instant, loose enough to avoid flooding proot's LSP
+  process on fast typers.
+- Cancellation while typing: when a new completion request fires before the previous
+  `JsonRpcClient.request()` call returns, send `$/cancelRequest` for the stale request ID
+  (LSP spec supports this) instead of just discarding the response client-side — reduces
+  server-side wasted work on typing-heavy sessions.
+- Parallel completion sources: Phase A's `CompletionEngine.rank()` should be fed from LSP +
+  buffer/keyword + path sources fetched concurrently (`async {}` per source, `awaitAll()`),
+  not sequentially — worst-case latency = slowest source, not sum of all.
+- Large project optimization: workspace-symbol source (Phase F) must have its own longer
+  debounce and a result cap (e.g. top 50) so it never becomes the latency bottleneck on
+  big codebases.
+
+#### Phase L — AI Features
+- Explain Suggested Completion: small "?" affordance next to a highlighted AI-sourced
+  completion that, on tap, sends "explain why you suggested `<label>` here" through the
+  existing AI chat/`onAiFixRequest`-style plumbing (P39 pattern reuse).
+- Predict Next Statement / Next Block / Next Function: these are the multi-line ghost-text
+  AI source from Phase E at different granularities — same underlying call, different prompt
+  framing depending on cursor context (mid-statement vs. after a closing brace vs. at file scope).
+- Multi-line AI completion & Project-aware AI completion are both delivered by Phase E's
+  ghost-text engine — no separate implementation needed, this list item is the same feature
+  named from a different angle in the user's list.
+
+**Language coverage requirement:** every phase above must degrade gracefully per-language —
+if a server (or no server, e.g. JSON/YAML/Markdown/Shell today) doesn't support a given LSP
+capability (checked via `hasCapability()`), that source/feature is simply omitted from the
+merged list for that file, never shown as broken/empty. Buffer/keyword + path completion
+sources always work regardless of LSP support, so every language always has *something*.
+
+**Build order (do NOT skip ahead — later phases depend on earlier ones):**
+A (engine) → B (history) → C (fuzzy UI) → D (imports) → J (UI polish, can interleave with D-I)
+→ E (ghost text/AI) → F (workspace) → G (paths) → H (verify kinds) → I (snippets) → K (perf)
+→ L (AI features, mostly reuses E).
+
+---
+
+### P42: Explorer Sidebar Restructure — VS Code Parity (2026-08-05)
+
+**User complaint (with screenshots):** the app's Explorer toolbar has too many always-visible
+icon buttons (Add file, Create folder, Add photo, Refresh, Collapse, Outline-toggle, Add,
+Device-folders-toggle, Open-in-new — 8+ icons crammed in one row). Real VS Code keeps the
+Explorer toolbar minimal (just a `...` overflow menu) and instead organizes content into
+named, independently collapsible SECTIONS: **Open Editors**, **[Workspace Name]** (the folder
+tree), **Outline**, **Timeline** — each with its own chevron and header, all inside the one
+Explorer panel. Additionally, in this app "Outline" is currently its own separate icon in the
+activity bar / a separate screen state (`showOutline`), not a section nested inside Explorer
+the way VS Code does it (see `OUTLINE` screenshot — it's rendered as if it were its own
+top-level pane, with a stray "Fallback" badge, not nested under Explorer at all).
+
+**Target structure (`ExplorerPane.kt` rewrite):**
+1. Root header row: "EXPLORER" title + single `⋯` (MoreVert) icon-button on the right that
+   opens a dropdown menu containing everything currently spread across the toolbar:
+   New File, New Folder, Add Photo/Import, Refresh, Collapse All, Toggle Device Folders,
+   Open in New Window/Pane. This removes 7 of the ~8 always-visible icons — only the `⋯`
+   remains, exactly matching the VS Code screenshot.
+2. Below the header, four independently collapsible sections, each a header row with a
+   chevron (▽ expanded / ▷ collapsed) + label, tap-to-toggle, persisted per-section expand
+   state (remember or a small local prefs map):
+   - **Open Editors** — list of currently-open tabs (already tracked via `EditorPane`'s tab
+     list — needs to be surfaced/passed into `ExplorerPane` as a param or read from the same
+     shared tab-state holder), each row: file icon, name, dirty-dot, close-x on hover/press.
+   - **[Workspace/Folder name]** (bold, VS Code shows the actual folder name here, not a
+     generic "Explorer" label, once a folder is open) — the existing file tree logic, moved
+     under this section instead of being the only thing shown.
+   - **Outline** — MOVE the existing `OutlinePanel.kt` content in here as a nested section
+     (collapsed by default when no file is open, auto-expands when a file with symbols is
+     active), instead of it being a separate `showOutline` toggle state / separate icon.
+     Remove the separate Outline activity-bar icon entry once this migration is done — Outline
+     lives ONLY inside Explorer now, matching the screenshots exactly. Keep the existing
+     `OutlinePanel.kt` symbol-list rendering logic itself (don't rewrite the outline logic,
+     just change WHERE it's mounted).
+   - **Timeline** — new section. Minimum viable version: reuse existing git log data
+     (`SourceControlPane`'s `runGit(..., "log", ...)` already parses commit history) to show
+     a simple reverse-chronological list of recent commits/saves for the currently-active
+     file (`git log --follow -- <file>` scoped to that one file, VS Code's Timeline is
+     file-scoped, not repo-wide). Each row: relative time, commit message, author. Clicking
+     a row could later support diff/restore — out of scope for this pass, just render the list.
+3. "No Folder Opened" empty state (when no project is open): keep the existing helpful
+   copy/buttons ("Open Folder", "Open Recent") but nest it correctly as the collapsed/empty
+   state of the workspace-tree section specifically — not the whole panel — so Open Editors/
+   Outline/Timeline headers still show (all collapsed/empty) above it, matching the first
+   screenshot exactly.
+
+**Non-goals for this pass:** don't touch file-tree row rendering, icons, or drag/drop logic —
+this is purely a container/chrome restructure (toolbar consolidation + section nesting), the
+existing tree/outline/git internals are reused as-is, just remounted under the new headers.
+
+---
+
+### P43: GitHub Repository Integration — Fix "Not a Git Repository" + Full Clone/Browse Flow (2026-08-05)
+
+**User complaint (with screenshot):** opening Source Control on a project shows a raw,
+unhelpful error: `Error: git branch failed (Exit code 128) — fatal: not a git repository
+(or any of the parent directories): .git`. User wants: sign in with GitHub, see their repos
+in-app, and do everything VS Code can do (clone, push, pull, etc.) — like the VS Code
+screenshot's "Open Remote Repository" entry point when no folder/repo is active yet.
+
+**Current state (verified):**
+- `GitHubAuth.kt` already implements full GitHub OAuth **Device Flow** sign-in (request
+  device code → poll for token → fetch username) — the auth mechanism itself is DONE and
+  correct, just not surfaced anywhere with a repo-browsing UI on top of it.
+- `SourceControlPane.kt` already implements a full git command layer (`runGit()` via
+  `ProotInstaller.execOnce`) with commit/stage/unstage/push/pull/fetch/branch/stash/tag/
+  merge-conflict-resolution UI — ALL of this is done and should be reused as-is.
+- The gap: `SourceControlPane` always assumes `repoDir` already has a `.git` folder. When it
+  doesn't (fresh project, or a plain folder opened that was never git-initialized/cloned),
+  every `runGit()` call fails and the raw stderr (`fatal: not a git repository...`) is shown
+  verbatim as if it were a normal error, instead of being detected as "no repo yet" and
+  routed to a setup flow.
+
+**Fix plan:**
+1. **Detect "no repo" state properly**: add `fun isGitRepo(context, dir): Boolean` (checks
+   `File(dir, ".git").exists()` — cheap, no shell-out needed) called before any of the
+   existing `runGit()` status/branch/log calls in `SourceControlPane`'s init/refresh logic.
+   When false, skip straight to the new empty-state UI below instead of running git commands
+   that are guaranteed to fail.
+2. **New empty-state UI** (matches the VS Code screenshot's "Open Remote Repository" card):
+   three buttons stacked, in this order:
+   - **Initialize Repository** — runs `git init` in the current folder (for a plain local
+     folder the user wants to start tracking) then `refreshStatus()`.
+   - **Clone Repository (URL)** — text field for a git URL + Clone button, runs
+     `git clone <url> <target-subfolder>` inside the proot rootfs via the existing
+     `runGit`/`execOnce` plumbing, then opens the cloned folder as the active project.
+   - **Sign in with GitHub / Browse My Repos** — if not yet authed (no stored token), shows
+     the existing `GitHubAuth` device-flow dialog (code + "enter at github.com/login/device"
+     + polling spinner — this dialog UI may already partially exist somewhere given
+     `GitHubAuth.kt` is fully implemented; locate and reuse it, or build the thin dialog
+     wrapper if only the backend calls exist). Once authed, calls GitHub's
+     `GET /user/repos?sort=updated&per_page=100` (needs `Authorization: Bearer <token>`)
+     and shows a searchable list of the user's repos (name, private/public badge, updated-at).
+     Tapping one clones it (same clone-and-open flow as the URL option) using an
+     authenticated clone URL (`https://<token>@github.com/<owner>/<repo>.git` or set up a
+     git credential helper inside the proot rootfs backed by the stored token, preferred —
+     avoids leaking the token into `.git/config` remote URLs / shell history).
+3. **Persist the GitHub token** securely: store in Android `EncryptedSharedPreferences` (not
+   plain `SharedPreferences`) keyed by username, reused across app restarts so the user
+   doesn't need to re-auth every session. Wire a "Sign out of GitHub" action somewhere
+   reachable (Settings screen, or the Source Control `⋯` menu) that clears it.
+4. **Git credential helper inside proot** (cleanest way to make push/pull "just work" after
+   cloning without the token touching `.git/config`): write a small credential helper script
+   into the rootfs (`git config --global credential.helper` pointing at a script that echoes
+   `username=x-access-token` / `password=<token>` read from a file we control) once per
+   session after sign-in, so all subsequent `runGit(..., "push")`/`"pull"` calls authenticate
+   transparently — this is the same pattern real Termux/VS Code-remote setups use.
+5. Once `.git` exists (via init OR clone OR it already existed and this was a false-positive
+   check), all EXISTING SourceControlPane functionality (commit, push, pull, branches, stash,
+   tags, merge conflicts) works unmodified — no changes needed there, this fix is entirely
+   about the missing on-ramp before a repo exists.
+
+**Build order:** `isGitRepo()` guard + empty-state UI shell (button layout, no wiring) →
+Initialize Repository (simplest, no network) → Clone via URL (proves the clone+open pipeline)
+→ GitHub sign-in dialog wrapper around existing `GitHubAuth` → repo list fetch+picker →
+clone-from-picker (reuses the URL-clone pipeline) → credential helper for seamless push/pull
+→ token persistence + sign-out action.
+
+---
