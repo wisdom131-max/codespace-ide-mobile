@@ -1522,6 +1522,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
+                    // P39: Lightbulb state 💡 tracks code actions per line for gutter display
+                    var lightbulbLine by remember { mutableStateOf(-1) }
+                    var lightbulbActions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCodeAction>>(emptyList()) }
+                    var showLightbulbMenu by remember { mutableStateOf(false) }
+                    // P39: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
+                    LaunchedEffect(value.selection.start) {
+                        if (lspCodeActionProvider != null) {
+                            kotlinx.coroutines.delay(500L)
+                            val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                            try {
+                                val actions = lspCodeActionProvider.invoke(cursorLine)
+                                if (actions.isNotEmpty()) {
+                                    lightbulbLine = cursorLine
+                                    lightbulbActions = actions
+                                } else {
+                                    lightbulbLine = -1
+                                    lightbulbActions = emptyList()
+                                }
+                            } catch (_: Exception) {
+                                lightbulbLine = -1
+                                lightbulbActions = emptyList()
+                            }
+                        } else {
+                            lightbulbLine = -1
+                            lightbulbActions = emptyList()
+                        }
+                    }
                     // P38-FIX: Auto-open LSP menu when long-press triggers
                     LaunchedEffect(longPressTrigger) {
                         if (longPressTrigger > 0) showLspMenu = true
@@ -1584,62 +1611,64 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 )
                             }
 
-                            // Code Actions from LSP
+                            // P39: Code Actions from LSP (categorized by kind)
                             if (lspCodeActionProvider != null) {
-                                val quickFixes: List<LspCodeAction> =
+                                val allActions: List<com.codespace.ide.lsp.LspCodeAction> =
                                     remember(value.selection.start) {
                                         val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
                                         try { lspCodeActionProvider.invoke(cursorLine) }
-                                        catch (_: Exception) { emptyList<LspCodeAction>() }
+                                        catch (_: Exception) { emptyList() }
                                     }
-                                if (quickFixes.isNotEmpty()) {
-                                    quickFixes.forEach { fix ->
+                                if (allActions.isNotEmpty()) {
+                                    val categorized = com.codespace.ide.lsp.categorizeCodeActions(allActions)
+                                    categorized.forEach { (groupLabel, actions) ->
+                                        // Group header
                                         DropdownMenuItem(
-                                            text = { Text("💡 ${fix.title}", color = Color(0xFFD4D4D4), fontSize = 13.sp) },
-                                            onClick = {
-                                                if (fix.edit != null) {
-                                                    try {
-                                                        val wsEdit = org.json.JSONObject(fix.edit)
-                                                        val docChanges = wsEdit.optJSONArray("documentChanges")
-                                                        if (docChanges != null) {
-                                                            for (j in 0 until docChanges.length()) {
-                                                                val dc = docChanges.optJSONObject(j) ?: continue
-                                                                val textEdits = dc.optJSONArray("edits") ?: continue
-                                                                var newText = value.text
-                                                                val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
-                                                                    .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
-                                                                for (te in edits) {
-                                                                    val rng = te.optJSONObject("range") ?: continue
-                                                                    val startLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                                                    val startChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
-                                                                    val endLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
-                                                                    val endChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
-                                                                    val replacement = te.optString("newText", "")
-                                                                    val newTextLines = newText.split("\n").toMutableList()
-                                                                    if (startLine == endLine && startLine < newTextLines.size) {
-                                                                        val line = newTextLines[startLine]
-                                                                        newTextLines[startLine] = line.substring(0, startChar.coerceAtMost(line.length)) + replacement + line.substring(endChar.coerceAtMost(line.length))
-                                                                    } else if (startLine < newTextLines.size) {
-                                                                        val before = newTextLines[startLine].substring(0, startChar.coerceAtMost(newTextLines[startLine].length))
-                                                                        val after = if (endLine < newTextLines.size) newTextLines[endLine].substring(endChar.coerceAtMost(newTextLines[endLine].length)) else ""
-                                                                        newTextLines[startLine] = before + replacement + after
-                                                                        if (startLine + 1 <= endLine && endLine < newTextLines.size) {
-                                                                            for (k in endLine downTo startLine + 1) {
-                                                                                if (k < newTextLines.size) newTextLines.removeAt(k)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    newText = newTextLines.joinToString("\n")
-                                                                }
+                                            text = {
+                                                Text(
+                                                    groupLabel.uppercase(),
+                                                    color = Color(0xFF858585),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                )
+                                            },
+                                            onClick = {},
+                                            enabled = false,
+                                        )
+                                        actions.forEach { fix ->
+                                            val icon = com.codespace.ide.lsp.CodeActionKind.icon(fix.kind)
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        Text(icon, fontSize = 12.sp)
+                                                        Text(
+                                                            fix.title,
+                                                            color = if (fix.disabled != null) Color(0xFF666666)
+                                                                   else if (fix.isPreferred) Color(0xFFFFD700)
+                                                                   else Color(0xFFD4D4D4),
+                                                            fontSize = 13.sp,
+                                                            fontWeight = if (fix.isPreferred) FontWeight.Bold else FontWeight.Normal,
+                                                        )
+                                                    }
+                                                },
+                                                enabled = fix.disabled == null,
+                                                onClick = {
+                                                    if (fix.edit != null) {
+                                                        try {
+                                                            val newText = com.codespace.ide.lsp.applyWorkspaceEdit(
+                                                                fix.edit, value.text, null
+                                                            )
+                                                            if (newText != null && newText != value.text) {
                                                                 value = TextFieldValue(newText, TextRange(value.selection.start))
                                                                 onContentChange(newText)
                                                             }
-                                                        }
-                                                    } catch (_: Exception) {}
+                                                        } catch (_: Exception) {}
+                                                    }
+                                                    showLspMenu = false
                                                 }
-                                                showLspMenu = false
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2800,6 +2829,92 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         )
                     }
                 }
+            }
+        }
+
+        // P39: Lightbulb indicator 💡 in the gutter shows when code actions are available
+        if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
+            val bulbTopDp = (lightbulbLine * fontSize * 1.25f) - vScroll.value
+            val bulbHeight = fontSize * 1.25f
+            // Only render if visible in viewport
+            if (bulbTopDp >= 0 && bulbTopDp < (displayLines.size + 5) * bulbHeight) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 6.dp, top = bulbTopDp.dp)
+                        .width(20.dp)
+                        .height(bulbHeight.dp)
+                        .clickable { showLightbulbMenu = true }
+                        .zIndex(9f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "💡",
+                        fontSize = (fontSize * 0.65f).sp,
+                    )
+                }
+            }
+        }
+        // P39: Lightbulb menu categorized action menu triggered by tapping the bulb
+        DropdownMenu(
+            expanded = showLightbulbMenu,
+            onDismissRequest = { showLightbulbMenu = false },
+        ) {
+            if (lightbulbActions.isNotEmpty()) {
+                val categorized = com.codespace.ide.lsp.categorizeCodeActions(lightbulbActions)
+                categorized.forEach { (groupLabel, actions) ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                groupLabel.uppercase(),
+                                color = Color(0xFF858585),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        },
+                        onClick = {},
+                        enabled = false,
+                    )
+                    actions.forEach { fix ->
+                        val icon = com.codespace.ide.lsp.CodeActionKind.icon(fix.kind)
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(icon, fontSize = 12.sp)
+                                    Text(
+                                        fix.title,
+                                        color = if (fix.disabled != null) Color(0xFF666666)
+                                               else if (fix.isPreferred) Color(0xFFFFD700)
+                                               else Color(0xFFD4D4D4),
+                                        fontSize = 13.sp,
+                                        fontWeight = if (fix.isPreferred) FontWeight.Bold else FontWeight.Normal,
+                                    )
+                                }
+                            },
+                            enabled = fix.disabled == null,
+                            onClick = {
+                                if (fix.edit != null) {
+                                    try {
+                                        val newText = com.codespace.ide.lsp.applyWorkspaceEdit(
+                                            fix.edit, value.text, null
+                                        )
+                                        if (newText != null && newText != value.text) {
+                                            value = TextFieldValue(newText, TextRange(value.selection.start))
+                                            onContentChange(newText)
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                                showLightbulbMenu = false
+                            }
+                        )
+                    }
+                }
+            } else {
+                DropdownMenuItem(
+                    text = { Text("No actions available", color = Color(0xFF666666), fontSize = 13.sp) },
+                    onClick = { showLightbulbMenu = false },
+                )
             }
         }
 
