@@ -1654,7 +1654,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 },
                                                 enabled = fix.disabled == null,
                                                 onClick = {
-                                                    if (fix.edit != null) {
+                                                    // P39: Handle AI actions via onAiFixRequest
+                                                    if (fix.kind != null && fix.kind.startsWith("ai.") && onAiFixRequest != null) {
+                                                        val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                                                        val lineStart = value.text.lastIndexOf('\n', value.selection.start - 1) + 1
+                                                        val lineEnd = value.text.indexOf('\n', value.selection.start)
+                                                        val lineText = value.text.substring(lineStart, if (lineEnd < 0) value.text.length else lineEnd)
+                                                        val prompt = when (fix.kind) {
+                                                            com.codespace.ide.lsp.CodeActionKind.AIExplain -> "Explain this code:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> "Generate documentation for this code:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> "Generate unit tests for this code:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIOptimize -> "Optimize this code for better performance:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIRewrite -> "Rewrite this code for better clarity:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AISimplify -> "Simplify this code:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIAddComments -> "Add inline comments to this code:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIExplainError -> "Explain the error in this code:\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> "Suggest performance improvements for:\n" + lineText
+                                                            else -> fix.title + ":\n" + lineText
+                                                        }
+                                                        onAiFixRequest!!.invoke(prompt)
+                                                    } else if (fix.edit != null) {
                                                         try {
                                                             val newText = com.codespace.ide.lsp.applyWorkspaceEdit(
                                                                 fix.edit, value.text, null
@@ -2894,7 +2913,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             },
                             enabled = fix.disabled == null,
                             onClick = {
-                                if (fix.edit != null) {
+                                // P39: Handle AI actions via onAiFixRequest
+                                if (fix.kind != null && fix.kind.startsWith("ai.") && onAiFixRequest != null) {
+                                    val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                                    val lineStart = value.text.lastIndexOf('\n', value.selection.start - 1) + 1
+                                    val lineEnd = value.text.indexOf('\n', value.selection.start)
+                                    val lineText = value.text.substring(lineStart, if (lineEnd < 0) value.text.length else lineEnd)
+                                    val prompt = when (fix.kind) {
+                                        com.codespace.ide.lsp.CodeActionKind.AIExplain -> "Explain this code:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> "Generate documentation for this code:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> "Generate unit tests for this code:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIOptimize -> "Optimize this code for better performance:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIRewrite -> "Rewrite this code for better clarity:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AISimplify -> "Simplify this code:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIAddComments -> "Add inline comments to this code:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIExplainError -> "Explain the error in this code:\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> "Suggest performance improvements for:\n" + lineText
+                                        else -> fix.title + ":\n" + lineText
+                                    }
+                                    onAiFixRequest!!.invoke(prompt)
+                                } else if (fix.edit != null) {
                                     try {
                                         val newText = com.codespace.ide.lsp.applyWorkspaceEdit(
                                             fix.edit, value.text, null
