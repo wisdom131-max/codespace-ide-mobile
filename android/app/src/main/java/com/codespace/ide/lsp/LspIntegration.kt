@@ -57,7 +57,22 @@ fun parseHoverContent(hover: JSONObject): String? {
 
     fun extractText(obj: Any?): String? {
         return when (obj) {
-            is String -> obj.takeIf { it.isNotBlank() }
+            is String -> {
+                // P38-FIX: Some LSP servers (notably Pyright) return contents array elements
+                // as raw JSON strings like '{"kind":"plaintext","value":"..."}' instead of
+                // parsed JSONObjects. Detect and parse these to extract clean text.
+                val s = obj.takeIf { it.isNotBlank() } ?: return@extractText null
+                if (s.trimStart().startsWith("{") && s.trimEnd().endsWith("}")) {
+                    try {
+                        val parsed = JSONObject(s)
+                        extractText(parsed) ?: s
+                    } catch (_: Exception) {
+                        s
+                    }
+                } else {
+                    s
+                }
+            }
             is JSONObject -> {
                 // Try "value" first (MarkupContent + MarkedString), then "label" (some servers)
                 extractText(obj.opt("value")) ?: extractText(obj.opt("label"))

@@ -1326,7 +1326,11 @@ fun EditorPane(
                                                 SignatureInfo(
                                                     name = label.substringBefore("(").trim(),
                                                     params = paramList,
-                                                    returnType = sig.optString("documentation", "").takeIf { it.isNotBlank() },
+                                                    returnType = when (val doc = sig.opt("documentation")) {
+                            is String -> doc.takeIf { it.isNotBlank() }
+                            is org.json.JSONObject -> doc.optString("value", "").takeIf { it.isNotBlank() }
+                            else -> null
+                        },
                                                     activeParam = activeParam,
                                                 )
                                             } else null
