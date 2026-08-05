@@ -607,6 +607,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
     // P22-L: Peek Definition result — inline code preview (class moved to top-level)
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
+    // P38-FIX: Long-press trigger for auto-opening LSP menu
+    var longPressTrigger by remember { mutableStateOf(0) }
     var peekUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for peek
     var findRefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find references
     var typeDefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for type definition
@@ -967,6 +969,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             extraCursors.filter { it != charOffset }
                                         else
                                             (extraCursors + charOffset).distinct().sorted()
+                                    }
+                                },
+                                onLongPress = { offset ->
+                                    // P38-FIX: Long-press shows LSP menu instead of Android system Copy/Paste
+                                    textLayoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(offset)
+                                        // Move cursor to the long-pressed position
+                                        value = value.copy(selection = TextRange(charOffset))
+                                        // Trigger the floating LSP menu to auto-open
+                                        longPressTrigger++
                                     }
                                 }
                             )
@@ -1494,6 +1506,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
+                    // P38-FIX: Auto-open LSP menu when long-press triggers
+                    LaunchedEffect(longPressTrigger) {
+                        if (longPressTrigger > 0) showLspMenu = true
+                    }
                     androidx.compose.material3.Surface(
                         color = Color(0xFF2D2D30),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),

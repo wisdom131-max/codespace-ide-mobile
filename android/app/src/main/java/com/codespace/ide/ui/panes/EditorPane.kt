@@ -1428,6 +1428,7 @@ fun EditorPane(
                 }
                 // P22-G: LSP hover popup
                 if (showLspHover && lspHoverContent != null) {
+                    val hoverScrollState = rememberScrollState()
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1435,15 +1436,19 @@ fun EditorPane(
                             .background(Color(0xFF2D2D2D))
                             .zIndex(10f)
                     ) {
-                        Text(
-                            text = lspHoverContent ?: "",
-                            color = Color(0xFFCCCCCC),
-                            fontSize = 12.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            modifier = Modifier.padding(12.dp),
-                            maxLines = 10,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Box(
+                            modifier = Modifier
+                                .heightIn(max = 200.dp)
+                                .verticalScroll(hoverScrollState)
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = lspHoverContent ?: "",
+                                color = Color(0xFFCCCCCC),
+                                fontSize = 12.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            )
+                        }
                     }
                 }
             }
