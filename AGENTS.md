@@ -7384,3 +7384,123 @@ clone-from-picker (reuses the URL-clone pipeline) → credential helper for seam
 → token persistence + sign-out action.
 
 ---
+
+### P39/P40 Audit Report — Other AI's Work (2026-08-05, audit by Superagent)
+
+**Context:** Another AI (Claude Sonnet 4.6) pushed 12 commits (P39 + P40) on top of P38.
+Build is BROKEN — 49 compile errors. This audit documents what was done, what's broken,
+and what conflicts with P38 fixes.
+
+---
+
+#### P40: Auto-install Ubuntu rootfs from LspManager.startServer()
+
+**What it does:** When LSP `startServer()` is called and `ProotInstaller.isInstalled()`
+returns false (after the marker-repair attempt), it calls `ProotInstaller.install(context)`
+directly instead of returning false with "open Terminal tab first" message.
+
+**Is it safe?** YES — audit confirms:
+- `ProotInstaller.install()` has `synchronized(installLock)` + `installJob` thread guard
+  that prevents concurrent installs. If Terminal tab already triggered an install, the
+  LSP call will wait on `installLock.wait(1000)` and then re-check `isInstalled()`.
+- `startServer()` is called inside `withContext(Dispatchers.IO)` from EditorPane (line 776),
+  so the blocking download+extract runs on IO dispatcher, not main thread.
+- The `install()` function streams the download (250MB tar.xz) with resume support and
+  does NOT use `readBytes()` — safe for 3GB RAM devices per standing instruction.
+- After install, it re-checks `isInstalled()` and proceeds to LSP server install if successful.
+
+**Does it break the existing Ubuntu installation pattern?** NO:
+- The existing `ProotInstaller.install()` flow is unchanged — the other AI just added a new
+  CALL SITE for it inside `LspManager.startServer()`. The Terminal tab's call site is untouched.
+- The marker-repair logic (bashExists check, .ubuntu_version write) is preserved.
+- `ensureShimInstalled()` call at the top of `startServer()` is preserved.
+
+**Verdict on P40:** Conceptually correct, does not damage the Ubuntu install pattern.
+The pattern the user asked about (auto-install everything LSP needs when you open a file)
+IS correctly implemented here — open a .py file → startServer → if no rootfs, auto-install
+rootfs → then auto-install pylsp → then start server. No manual Terminal step needed.
+
+---
+
+#### P39: Code Actions Lightbulb Implementation
+
+**What it does (intended):**
+- Lightbulb indicator in gutter (debounced 500ms per cursor move)
+- Categorized code action menu (Quick Fixes / Refactor / Source / AI)
+- AI code actions (Explain, Generate Docs, Generate Tests, etc.) via `onAiFixRequest`
+- `WorkspaceEdit` application from code action results
+- `CodeActionKind` constants for standard LSP kinds
+
+**What's actually in the code vs what's missing:**
+
+| Component | Code Present? | Compiles? |
+|-----------|--------------|-----------|
+| `CodeActionKind` object/class | NO — referenced in ~15 places but NEVER DEFINED anywhere | ❌ |
+| `LspCodeAction` expanded fields (isPreferred, disabled, data, diagnostics) | NO — data class still has 4 fields, but called with 8 args | ❌ |
+| `categorizeCodeActions()` in LspIntegration.kt | YES | ❌ (depends on CodeActionKind) |
+| `buildDiagnosticsContext()` in LspIntegration.kt | YES (fixed 3 times, final version uses start/end/message) | ✅ |
+| `applyWorkspaceEdit()` + `applyTextEdits()` in LspIntegration.kt | YES | ✅ |
+| Lightbulb state in CodeEditor.kt | YES (moved to outer scope) | ✅ |
+| Categorized action menu in CodeEditor.kt | YES | ❌ (references CodeActionKind, isPreferred, disabled) |
+| AI code action wiring in EditorPane.kt | YES | ❌ (getCodeActions called with `diagnostics=` param that doesn't exist) |
+| `onAiFixRequest` param in EditorPane | YES (added to signature + passed to CodeEditor) | ✅ |
+| `onAiFixRequest` wired at call site in ProjectShellScreen | NO — not passed to EditorPane() at line 3038 | ✅ (null default, no crash, but AI actions won't show) |
+| `resolveCodeAction()` in LspManager.kt | NO — referenced in plan but never implemented | N/A |
+
+**49 compile errors breakdown:**
+- ~25 errors: `Unresolved reference: CodeActionKind` (class never defined)
+- ~8 errors: `Unresolved reference: isPreferred` / `disabled` (LspCodeAction fields don't exist)
+- ~2 errors: `Text()` overload resolution ambiguity (caused by type inference failure when CodeActionKind is unresolved)
+- 4 errors: `Too many arguments` for `LspCodeAction` constructor (4 fields, 8 args passed)
+- 1 error: `getCompletion` call passes `triggerChar` but param was REMOVED by other AI
+- 1 error: `getCodeActions` called with `diagnostics=` param that doesn't exist
+- 1 error: `hostPathFromFileUri` referenced but DELETED by other AI
+
+---
+
+#### Conflicts with P38 Fixes (3 of 6 bug fixes REVERTED)
+
+**1. BUG-1 (Autocomplete member completion) — REVERTED**
+- P38 fix: Added `triggerCharacter` param to `getCompletion()` + completion context with
+  `triggerKind=2` (TriggerCharacter) so pylsp returns class members after `calc.` instead
+  of generic suggestions.
+- Other AI: REMOVED the `triggerCharacter` parameter entirely from `getCompletion()`.
+  Deleted the completion context code.
+- Call site: `EditorPane.kt:1243` still passes `triggerChar` → compile error.
+- Impact: Even if it compiled, member completion after `.` would return wrong suggestions.
+
+**2. BUG-5 (Find References pylsp crash) — REVERTED**
+- P38 fix: Added `includeDeclaration: true` to `textDocument/references` params.
+  Without it, pylsp crashes with `KeyError: 'includeDeclaration'`.
+- Other AI: Reverted to `params.put("context", JSONObject())` — empty context.
+- Impact: Find References will crash pylsp again.
+
+**3. BUG-4 (Go to Definition cross-file navigation) — REVERTED**
+- P38 fix: Added `hostPathFromFileUri()` to `LspManager.kt` — converts LSP file:// URIs
+  (guest/proot paths) back to host filesystem paths. Without it, cross-file Go to Def
+  silently fails (opens wrong path or does nothing).
+- Other AI: DELETED the entire `hostPathFromFileUri()` function.
+- Call site: `EditorPane.kt:1401` still calls `LspManager.hostPathFromFileUri(context, defUri)` → compile error.
+- Impact: Even if it compiled, cross-file Go to Definition would be broken.
+
+**P38 fixes NOT touched by other AI (still intact):**
+- BUG-2 (signature popup scroll offset) ✅
+- BUG-3 (document highlight scroll offset) ✅
+- BUG-6 (Run File button) ✅
+- Hover popup redesign (compact 2-line + expand/copy) ✅
+- Problems tab tap-to-navigate fix ✅
+
+---
+
+#### Fix Plan (to be executed next)
+
+1. **Restore P38 BUG-1:** Re-add `triggerCharacter` param to `getCompletion()` + completion context
+2. **Restore P38 BUG-5:** Re-add `includeDeclaration: true` to references params
+3. **Restore P38 BUG-4:** Re-add `hostPathFromFileUri()` to `LspManager.kt`
+4. **Define `CodeActionKind`:** Create the missing object with constants (AIExplain, AIGenerateDoc,
+   etc.) + `icon()` + `groupLabel()` functions. Place in `LspIntegration.kt` next to `LspCodeAction`.
+5. **Expand `LspCodeAction`:** Add `isPreferred`, `disabled`, `data`, `diagnostics` fields to data class
+6. **Add `diagnostics` param to `getCodeActions()`:** Accept optional `diagnostics: JSONArray?` param
+7. **Wire `onAiFixRequest`** in ProjectShellScreen.kt EditorPane call (or leave null for now — AI actions just won't show)
+8. **Verify build compiles** — all 49 errors should resolve
+
