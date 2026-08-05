@@ -58,7 +58,7 @@ fun parseHoverContent(hover: JSONObject): String? {
     fun extractText(obj: Any?): String? {
         return when (obj) {
             is String -> {
-                // P38-FIX: Some LSP servers (notably Pyright) return contents array elements
+                // P38-FIX: Some LSP servers (notably pylsp) return contents array elements
                 // as raw JSON strings like '{"kind":"plaintext","value":"..."}' instead of
                 // parsed JSONObjects. Detect and parse these to extract clean text.
                 val s = obj.takeIf { it.isNotBlank() } ?: return@extractText null

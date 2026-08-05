@@ -4483,7 +4483,7 @@ Wire ALL 26 LSP (Language Server Protocol) capabilities from LspManager through 
 ### Architecture
 ```
 LspManager (31 methods, 23 client capabilities)
-    ↓ JSON-RPC to external language servers (Pyright, etc.)
+    ↓ JSON-RPC to external language servers (pylsp, etc.)
 EditorPane (LaunchedEffects + callback lambdas)
     ↓ Parameters passed to CodeEditor composable
 CodeEditor (20 LSP parameters, context menu items, overlays)
@@ -6704,7 +6704,7 @@ pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null
 
 **BUG A: Hover tooltip shows raw JSON** — `lsp/LspIntegration.kt` `parseHoverContent()`
 - **Symptom:** Hover popup displayed `calculate_sum(a, b): {"kind":"plaintext","value":"Calculate the sum of two numbers."}` instead of clean text.
-- **Root cause:** Pyright (Python LSP) sometimes returns hover contents as a JSONArray where elements are raw JSON strings (not parsed JSONObjects). The `extractText()` function's `is String` branch passed these through unchanged.
+- **Root cause:** pylsp (Python LSP) sometimes returns hover contents as a JSONArray where elements are raw JSON strings (not parsed JSONObjects). The `extractText()` function's `is String` branch passed these through unchanged.
 - **Fix:** Added JSON-string detection in the `is String` branch — if the string starts with `{` and ends with `}`, try parsing it as a JSONObject and recurse. Falls back to the original string if parsing fails.
 
 **BUG B: Signature Help documentation JSON leak** — `ui/panes/EditorPane.kt`
