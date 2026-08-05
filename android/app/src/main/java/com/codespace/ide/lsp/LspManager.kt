@@ -17,7 +17,61 @@ data class LspCodeAction(
     val kind: String? = null,
     val edit: String? = null,
     val command: String? = null,
+    val isPreferred: Boolean = false,
+    val disabled: String? = null,
+    val data: String? = null,      // P39: for codeAction/resolve lazy resolution
+    val diagnostics: String? = null,  // P39: JSON array of related diagnostics
 )
+
+/**
+ * P39: Standard LSP CodeActionKind constants.
+ * Used for grouping in the UI and filtering requests to the server.
+ */
+object CodeActionKind {
+    const val QuickFix = "quickfix"
+    const val QuickFixFixAll = "quickfix.fixAll"
+    const val Refactor = "refactor"
+    const val RefactorExtract = "refactor.extract"
+    const val RefactorInline = "refactor.inline"
+    const val RefactorRewrite = "refactor.rewrite"
+    const val RefactorMove = "refactor.move"
+    const val Source = "source"
+    const val SourceOrganizeImports = "source.organizeImports"
+    const val SourceFixAll = "source.fixAll"
+    const val SourceRemoveUnused = "source.removeUnused"
+    const val SourceSortImports = "source.sortImports"
+    // AI-augmented actions (not in LSP spec, client-generated)
+    const val AI = "ai"
+    const val AIExplain = "ai.explain"
+    const val AIGenerateDoc = "ai.generateDoc"
+    const val AIGenerateTests = "ai.generateTests"
+    const val AIOptimize = "ai.optimize"
+    const val AIRewrite = "ai.rewrite"
+    const val AISimplify = "ai.simplify"
+    const val AIAddComments = "ai.addComments"
+    const val AIExplainError = "ai.explainError"
+    const val AIImprovePerf = "ai.improvePerformance"
+
+    /** Group label for display in the action menu. */
+    fun groupLabel(kind: String?): String = when {
+        kind == null -> "Actions"
+        kind.startsWith("quickfix") -> "Quick Fixes"
+        kind.startsWith("refactor") -> "Refactor"
+        kind.startsWith("source") -> "Source Actions"
+        kind.startsWith("ai") -> "AI"
+        else -> "Actions"
+    }
+
+    /** Icon for display in the action menu. */
+    fun icon(kind: String?): String = when {
+        kind == null -> "🔧"
+        kind.startsWith("quickfix") -> "💡"
+        kind.startsWith("refactor") -> "⚡"
+        kind.startsWith("source") -> "📦"
+        kind.startsWith("ai") -> "✨"
+        else -> "🔧"
+    }
+}
 
 /**
  * LspManager - manages LSP server lifecycle and provides LSP operations.
@@ -744,7 +798,18 @@ object LspManager {
             put("codeActionLiteralSupport", JSONObject().apply {
                 put("codeActionKind", JSONObject().apply {
                     put("valueSet", JSONArray().apply {
-                        put(""); put("quickfix"); put("refactor"); put("source")
+                        put(""); put("quickfix"); put("quickfix.fixAll")
+                        put("refactor"); put("refactor.extract"); put("refactor.inline")
+                        put("refactor.rewrite"); put("refactor.move")
+                        put("source"); put("source.organizeImports")
+                        put("source.fixAll"); put("source.removeUnused")
+                        put("source.sortImports")
+                    })
+                })
+                // P39: Declare resolve support so servers know we can resolve lazy code actions
+                put("resolveSupport", JSONObject().apply {
+                    put("properties", JSONArray().apply {
+                        put("edit"); put("command")
                     })
                 })
             })
@@ -1008,20 +1073,37 @@ object LspManager {
     /**
      * P22-J: Request code actions (including auto-import fixes) for a range.
      */
+    /**
+     * P39: Request code actions for a range, optionally filtered by kind.
+     * Passes diagnostics so servers can offer targeted quick fixes.
+     */
     fun getCodeActions(
         language: Language,
         uri: String,
         line: Int,
         character: Int,
+        endLine: Int? = null,
+        endCharacter: Int? = null,
+        diagnostics: JSONArray? = null,
+        only: List<String>? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
         if (!hasCapability(language, "codeActionProvider")) return null
 
         val td = JSONObject().put("uri", uri)
-        val pos = JSONObject().put("line", line).put("character", character)
-        val range = JSONObject().put("start", pos).put("end", pos)
-        val context = JSONObject().put("diagnostics", JSONArray())
+        val startPos = JSONObject().put("line", line).put("character", character)
+        val endPos = if (endLine != null && endCharacter != null) {
+            JSONObject().put("line", endLine).put("character", endCharacter)
+        } else {
+            JSONObject().put("line", line).put("character", character)
+        }
+        val range = JSONObject().put("start", startPos).put("end", endPos)
+        val context = JSONObject()
+        context.put("diagnostics", diagnostics ?: JSONArray())
+        if (only != null && only.isNotEmpty()) {
+            context.put("only", JSONArray(only))
+        }
         val params = JSONObject()
             .put("textDocument", td)
             .put("range", range)
@@ -1033,6 +1115,32 @@ object LspManager {
             is JSONObject -> JSONArray().put(response)
             else -> null
         }
+    }
+
+    /**
+     * P39: Resolve a code action that was returned with partial data.
+     * Servers that support codeAction/resolve can fill in the `edit` or `command`
+     * lazily when the user selects the action.
+     */
+    fun resolveCodeAction(
+        language: Language,
+        action: JSONObject,
+    ): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        // Check if server supports resolve
+        val resolveProvider = getCapability(language, "codeActionProvider")
+        if (resolveProvider == null) return null
+        // resolveProvider can be bool or object with resolveProvider field
+        val supportsResolve = when (resolveProvider) {
+            is Boolean -> false  // simple boolean means no resolve support
+            is JSONObject -> resolveProvider.optBoolean("resolveProvider", false)
+            else -> false
+        }
+        if (!supportsResolve) return null
+        val params = action  // send the partial action back
+        val response = server.client.request("codeAction/resolve", params, timeoutSeconds = 10)
+        return response as? JSONObject
     }
 
     fun getSemanticTokens(
