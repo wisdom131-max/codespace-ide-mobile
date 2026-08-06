@@ -4817,13 +4817,44 @@ FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, N
 2. DATABASE_URL IPv6 crash → switched to pooler (IPv4)
 3. Wrong password in DATABASE_URL → replaced leaked Base44 secret ref with actual Supabase password
 
-### Remaining (User Action)
-- [ ] Update Google/GitHub OAuth redirect URIs to Render URL
-- [ ] Set GOOGLE_OAUTH / GITHUB_OAUTH env vars on Render
-- [ ] Update Android app API_BASE_URL to https://codespace-ide-backend.onrender.com/api/v1
-- [ ] Rebuild APK and test end-to-end
+### OAuth Configuration (Updated 2026-08-06)
 
-### Full credentials: credentials-and-keys.md on Google Drive (updated 2026-08-06)
+#### GitHub OAuth (Device Flow — in-app sign-in)
+- **OAuth App:** "CodeSpace IDE" (created 2026-08-06 under wisdomijezie90-art)
+- **Client ID:** 0v231iLyu3hf6scskgnR
+- **Client Secret:** Set on Render as GITHUB_OAUTH_CLIENT_SECRET ✅
+- **Callback URL:** https://codespace-ide-backend.onrender.com/api/v1/connectors/callback ✅
+- **Device Flow:** Enabled ✅
+- **Old app:** "Visual Node Code" (Ov23liEA2inOMzi7bYrJ) — SUPERSEDED
+
+#### Google OAuth (Connectors — Gmail/Calendar/Drive)
+- **GCP Project:** codespace-ide-2026 (project number 872673459882)
+- **OAuth Client:** "Web client 2"
+- **Client ID:** 872673459882-51vislp2926tf8lgck3la827amfo0fch.apps.googleusercontent.com
+- **Client Secret:** Set on Render as GOOGLE_OAUTH_CLIENT_SECRET ✅
+- **⚠️ Redirect URI:** Needs updating in GCP Console → add https://codespace-ide-backend.onrender.com/api/v1/connectors/callback
+  (currently still points to old Railway URL — login as ijeziewisdom5@gmail.com)
+- **GCP Console:** https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026
+
+### Migration Status (Updated 2026-08-06)
+| Step | Status |
+|------|--------|
+| GitHub OAuth App created | ✅ Done (new "CodeSpace IDE" app) |
+| GITHUB_OAUTH_CLIENT_ID on Render | ✅ Set |
+| GITHUB_OAUTH_CLIENT_SECRET on Render | ✅ Set |
+| GOOGLE_OAUTH_CLIENT_ID on Render | ✅ Set |
+| GOOGLE_OAUTH_CLIENT_SECRET on Render | ✅ Set |
+| Android app API_BASE_URL → Render | ✅ Done (staging + prod flavors) |
+| Google OAuth redirect URI in GCP | ⏳ Manual update needed (login: ijeziewisdom5@gmail.com) |
+| GitHub OAuth callback URL | ✅ Set (new app created with correct URL) |
+| Keep-alive monitor | ✅ Deployed (Base44 backend function pings /health every 10 min) |
+| Rebuild APK and test end-to-end | ⏳ After redirect URI update |
+
+### Render API Key
+- Saved in credentials-and-keys.md on Google Drive (generated 2026-08-06)
+- Also stored as $RENDER_API_KEY env var in Superagent
+
+### Full credentials: credentials-and-keys.md on Google Drive (updated 2026-08-06 09:08)
 
 ## Phase 28: Phase 26-5 (JS-Debug Verification) + Phase 7 (Recovery) ✅ COMPLETE
 **Goal:** Complete the existing active phase + close issue #1.
