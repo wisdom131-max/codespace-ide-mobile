@@ -8218,12 +8218,63 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | E | Multi-line Ghost Text + AI Inline Completions | ✅ DONE | `920dedb0` (fix) |
 | F | Workspace Intelligence — cross-file completion via workspace/symbol | ✅ DONE | `25f2fc99` |
 | G | Path Completion — filesystem-based inside import/require strings | ✅ DONE | (this commit) |
-| H | Language Intelligence Audit — verify all CompletionItemKind icons | ⬜ TODO | — |
+| H | Language Intelligence Audit — verify all CompletionItemKind icons | ✅ DONE | `this commit` |
 | I | Dynamic Snippets + Tab-stop Navigation | ⬜ TODO | — |
 | J | Completion UI Polish — filter chips, source badges, detail panel | ✅ DONE | `34753eb6` |
 | K | Performance — resolve, cancellation, parallel sources | ⬜ TODO | — |
 | L | AI Features — explain suggested completion | ⬜ TODO | — |
 
+
+
+### P41-H: Language Intelligence Audit — COMPLETE
+
+**Audit findings:**
+- Icon switch in CodeEditor.kt only handled 3 `CompletionKind` values (KEYWORD, TYPE, SNIPPET)
+- All 25 LSP `CompletionItemKind` values (1-25) were collapsed into these 3 categories — losing kind-specific icons
+- LSP completions from `RankedCompletionItem.kind: Int` were mapped through a `when` block that grouped `2..13` → TYPE and everything else → KEYWORD
+
+**Fix:**
+- Added `lspKind: Int = 0` field to `Completion` data class — carries raw LSP kind (1-25)
+- Pass `lspKind = rc.kind` from the `allCompletions` mapping (preserves the original LSP kind)
+- Added `lspCompletionIcon(kind: Int)` helper — maps all 25 LSP CompletionItemKind values to distinct Material Icons + VS Code-inspired colors
+- Updated icon switch: if `comp.lspKind > 0`, use `lspCompletionIcon()` (full 25-value mapping); else fall back to the 3-way `CompletionKind` switch for non-LSP completions
+- Path completions also pass `lspKind = rc.kind` so File (17) and Folder (19) get correct icons
+
+**Icon mapping (VS Code colors):**
+
+| Kind # | Name | Icon | Color |
+|--------|------|------|-------|
+| 1 | Text | TextFields | #CCCCCC gray |
+| 2 | Method | Functions | #DCDCAA yellow |
+| 3 | Function | Functions | #DCDCAA yellow |
+| 4 | Constructor | Build | #B8D7A3 light green |
+| 5 | Field | DataObject | #9CDCFE light blue |
+| 6 | Variable | DataObject | #9CDCFE light blue |
+| 7 | Class | Extension | #4EC9B0 teal |
+| 8 | Interface | Extension | #B8D7A3 light green |
+| 9 | Module | Public | #CE9178 orange |
+| 10 | Property | Tune | #9CDCFE light blue |
+| 11 | Unit | Public | #CE9178 orange |
+| 12 | Value | Star | #569CD6 blue |
+| 13 | Enum | List | #4EC9B0 teal |
+| 14 | Keyword | Code | #569CD6 blue |
+| 15 | Snippet | AutoAwesome | #DCDCAA yellow |
+| 16 | Color | ColorLens | #CE9178 orange |
+| 17 | File | Description | #9CDCFE light blue |
+| 18 | Reference | Link | #CCCCCC gray |
+| 19 | Folder | Folder | #DCB67A gold |
+| 20 | EnumMember | Label | #4EC9B0 teal |
+| 21 | Constant | Star | #4FC1FF bright blue |
+| 22 | Struct | Extension | #4EC9B0 teal |
+| 23 | Event | Event | #B8D7A3 light green |
+| 24 | Operator | Calculate | #569CD6 blue |
+| 25 | TypeParameter | TextFields | #4EC9B0 teal |
+
+**Override/Interface-Implementation:**
+- Already handled by P39 Code Actions infrastructure — LSP servers send code actions (quickfix/source kind) for override/implement flows
+- `parseCodeActions()` in LspIntegration.kt captures ALL code actions from the LSP response, including override/implement
+- `categorizeCodeActions()` groups them by kind for the lightbulb menu
+- No new work needed — confirmed this path is already complete
 
 ### P41-G: Path Completion — COMPLETE
 
