@@ -76,6 +76,12 @@ import androidx.compose.ui.window.PopupProperties
 import kotlin.math.roundToInt
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
+import com.codespace.ide.lsp.CompletionSource
+import com.codespace.ide.lsp.RankedCompletionItem
+import com.codespace.ide.lsp.rank
+import com.codespace.ide.lsp.fuzzyScore
+import com.codespace.ide.lsp.fuzzyMatchIndices
+import com.codespace.ide.lsp.CompletionItemKind
 import com.codespace.ide.editor.SignatureInfo
 import com.codespace.ide.lsp.LspManager
 import androidx.compose.material3.Card
@@ -566,16 +572,39 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             lspCompletions = emptyList()
         }
     }
-    val allCompletions = remember(completions, lspCompletions) {
-        val lspMapped = lspCompletions.map { item ->
-            val kind = when (item.kind) {
-                2, 3, 4, 5, 6, 7, 8, 9, 13, 22, 23 -> CompletionKind.TYPE
-                14, 15 -> CompletionKind.SNIPPET
+    // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
+    val allCompletions = remember(completions, lspCompletions, prefix) {
+        // Convert local completions to RankedCompletionItem
+        val localRanked = completions.map { c ->
+            val kind = when (c.kind) {
+                CompletionKind.SNIPPET -> CompletionItemKind.SNIPPET
+                CompletionKind.TYPE -> CompletionItemKind.CLASS
+                CompletionKind.KEYWORD -> CompletionItemKind.KEYWORD
+            }
+            RankedCompletionItem(
+                label = c.label, kind = kind, detail = c.doc,
+                insertText = c.insertText, source = if (c.kind == CompletionKind.SNIPPET) CompletionSource.SNIPPET else CompletionSource.BUFFER,
+            )
+        }
+        // Convert LSP completions to RankedCompletionItem
+        val lspRanked = lspCompletions.map { item ->
+            RankedCompletionItem(
+                label = item.label, kind = item.kind, detail = item.detail,
+                insertText = item.insertText, source = CompletionSource.LSP,
+            )
+        }
+        // Merge, deduplicate by label, rank with fuzzy matching
+        val merged = (lspRanked + localRanked).distinctBy { it.label }
+        val ranked = rank(merged, prefix)
+        // Map back to Completion for the existing dropdown UI
+        ranked.take(15).map { rc ->
+            val kind = when (rc.kind) {
+                CompletionItemKind.SNIPPET -> CompletionKind.SNIPPET
+                in 2..13, 22, 23 -> CompletionKind.TYPE
                 else -> CompletionKind.KEYWORD
             }
-            Completion(item.label, kind, item.insertText, item.detail)
+            Completion(rc.label, kind, rc.insertText, rc.detail)
         }
-        (lspMapped + completions).distinctBy { it.label }.take(15)
     }
     LaunchedEffect(prefix, isDotTriggered, allCompletions) { showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty() }
 
@@ -587,8 +616,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if ((prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
             val top = allCompletions.firstOrNull()
-            if (top != null && top.insertText.startsWith(prefix)) {
-                ghostText = top.insertText.removePrefix(prefix).lines().first()
+            if (top != null) {
+                // P41: Use fuzzy match for ghost text — show if it's a good match
+                val score = fuzzyScore(prefix, top.label)
+                if (score > 0f && top.insertText.startsWith(prefix, ignoreCase = true)) {
+                    ghostText = top.insertText.removePrefix(prefix).lines().first()
+                }
             }
         }
     }
