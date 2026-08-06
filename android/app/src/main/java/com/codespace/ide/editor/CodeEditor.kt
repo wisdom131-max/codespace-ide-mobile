@@ -3505,7 +3505,28 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         }
                         Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(comp.label, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
+                            // P41 Phase C: Highlight fuzzy-matched characters in the label
+                            val matchIndices = fuzzyMatchIndices(prefix, comp.label)
+                            val labelAnnotated = if (matchIndices.isNotEmpty()) {
+                                buildAnnotatedString {
+                                    for ((idx, ch) in comp.label.withIndex()) {
+                                        if (idx in matchIndices) {
+                                            append(AnnotatedString(
+                                                ch.toString(),
+                                                SpanStyle(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF4DA6FF),
+                                                )
+                                            ))
+                                        } else {
+                                            append(ch)
+                                        }
+                                    }
+                                }
+                            } else {
+                                AnnotatedString(comp.label)
+                            }
+                            Text(labelAnnotated, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
                             if (comp.doc != null) {
                                 Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1,
                                     overflow = TextOverflow.Ellipsis)
