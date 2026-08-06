@@ -3378,97 +3378,39 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
-        // P41-E: Multi-line ghost text overlay — shows dimmed suggestion (IntelliSense or AI)
-        // Renders inline on cursor line + subsequent lines as dimmed monospace text
+        // P41-E: Multi-line ghost text overlay (extracted to separate composable to avoid method-too-large)
         if (ghostText != null && !showCompletions) {
-            val ghostLines = ghostTextLines.ifEmpty { listOf(ghostText!!) }
-            val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
-            val cursorCol  = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
-            val lineHeightDp = fontSize * 1.25f
-
-            // Accept full ghost text (all lines)
-            val acceptFull: () -> Unit = {
-                val cursor = value.selection.end
-                val fullText = ghostLines.joinToString("\n")
-                val newText = value.text.substring(0, cursor) + fullText + value.text.substring(cursor)
-                value = TextFieldValue(
-                    text = newText,
-                    selection = androidx.compose.ui.text.TextRange(cursor + fullText.length),
-                )
-                onContentChange(newText)
-                if (!ghostTextIsAi) {
-                    val ghostLabel = allCompletions.firstOrNull()?.label
-                    if (ghostLabel != null) {
-                        CompletionHistoryStore.recordAccepted(ghostLabel, language.name, context)
-                    }
-                }
-                ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false
-            }
-
-            // Accept only the first word of the ghost text (partial accept)
-            val acceptWord: () -> Unit = {
-                val cursor = value.selection.end
-                val firstLine = ghostLines.firstOrNull() ?: ""
-                val wordEnd = firstLine.indexOfFirst { it == ' ' || it == '\t' || it == '.' }.let {
-                    if (it == -1) firstLine.length else it + 1
-                }
-                val word = firstLine.substring(0, wordEnd)
-                if (word.isNotEmpty()) {
-                    val newText = value.text.substring(0, cursor) + word + value.text.substring(cursor)
-                    val newCursor = cursor + word.length
-                    value = TextFieldValue(
-                        text = newText,
-                        selection = androidx.compose.ui.text.TextRange(newCursor),
-                    )
+            GhostTextOverlay(
+                ghostText = ghostText!!,
+                ghostTextLines = ghostTextLines,
+                ghostTextIsAi = ghostTextIsAi,
+                cursorPos = value.selection.end,
+                text = value.text,
+                fontSize = fontSize,
+                vScrollValue = vScroll.value,
+                languageName = language.name,
+                context = context,
+                onAcceptFull = { fullText ->
+                    val cursor = value.selection.end
+                    val newText = value.text.substring(0, cursor) + fullText + value.text.substring(cursor)
+                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(cursor + fullText.length))
                     onContentChange(newText)
-                    // Update ghost: remove accepted word from first line
-                    val remainingFirst = firstLine.substring(wordEnd)
-                    if (remainingFirst.isBlank() && ghostLines.size > 1) {
-                        ghostTextLines = ghostLines.drop(1)
-                        ghostText = ghostLines.drop(1).firstOrNull() ?: ""
-                    } else {
-                        ghostTextLines = listOf(remainingFirst) + ghostLines.drop(1)
-                        ghostText = remainingFirst
+                    if (!ghostTextIsAi) {
+                        val ghostLabel = allCompletions.firstOrNull()?.label
+                        if (ghostLabel != null) CompletionHistoryStore.recordAccepted(ghostLabel, language.name, context)
                     }
-                }
-            }
-
-            // Render each ghost line as a positioned overlay
-            ghostLines.forEachIndexed { lineIdx ->
-                val line = if (lineIdx == 0) ghostText!! else ghostLines[lineIdx]
-                if (line.isBlank() && lineIdx > 0) return@forEachIndexed
-                val topDp = (cursorLine + lineIdx) * lineHeightDp - vScroll.value
-                val startDp = if (lineIdx == 0) {
-                    64f + cursorCol * fontSize * 0.6f
-                } else {
-                    64f  // subsequent lines start at the text area left margin
-                }
-                // Skip rendering if line is outside viewport
-                if (topDp < -lineHeightDp || topDp > 2000f) return@forEachIndexed
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = startDp.dp, top = topDp.dp)
-                        .zIndex(8f)
-                        .clickable {
-                            if (lineIdx == 0) acceptWord() else acceptFull()
-                        },
-                ) {
-                    Text(
-                        text = line,
-                        color = Color(0xFF6A6A6A),   // dimmed — VS Code ghost text colour
-                        fontSize = fontSize.sp,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                    )
-                }
-            }
-
-            // P41-E: Acceptance: tap first line = accept next word (partial),
-            // tap any subsequent line = accept full multi-line suggestion.
-            // On-screen Tab key (soft keyboard) is handled via the existing
-            // BasicTextField onValueChange flow (ghost text clears on any keystroke).
+                    ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false
+                },
+                onAcceptWord = { word, remainingLines ->
+                    val cursor = value.selection.end
+                    val newText = value.text.substring(0, cursor) + word + value.text.substring(cursor)
+                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(cursor + word.length))
+                    onContentChange(newText)
+                    ghostTextLines = remainingLines
+                    ghostText = remainingLines.firstOrNull() ?: ""
+                },
+                onDismiss = { ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false }
+            )
         }
 
         // ── P38: Compact LSP Hover popup — 2-line preview, scrollable, expand + copy ──
@@ -3771,6 +3713,77 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     }
                 }
             }
+        }
+    }
+}
+
+// P41-E: Ghost text overlay composable — extracted from main CodeEditor to avoid method-too-large
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
+    ghostText: String,
+    ghostTextLines: List<String>,
+    ghostTextIsAi: Boolean,
+    cursorPos: Int,
+    text: String,
+    fontSize: Float,
+    vScrollValue: Int,
+    languageName: String,
+    context: android.content.Context,
+    onAcceptFull: (String) -> Unit,
+    onAcceptWord: (String, List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val ghostLines = ghostTextLines.ifEmpty { listOf(ghostText) }
+    val cursorLine = text.take(cursorPos).count { it == '\n' }
+    val cursorCol = cursorPos - (text.lastIndexOf('\n', (cursorPos - 1).coerceAtLeast(0)) + 1)
+    val lineHeightDp = fontSize * 1.25f
+
+    ghostLines.forEachIndexed { lineIdx ->
+        val line = if (lineIdx == 0) ghostText else ghostLines[lineIdx]
+        if (line.isBlank() && lineIdx > 0) return@forEachIndexed
+        val topDp = (cursorLine + lineIdx) * lineHeightDp - vScrollValue
+        val startDp = if (lineIdx == 0) {
+            64f + cursorCol * fontSize * 0.6f
+        } else {
+            64f
+        }
+        if (topDp < -lineHeightDp || topDp > 2000f) return@forEachIndexed
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = startDp.dp, top = topDp.dp)
+                .zIndex(8f)
+                .clickable {
+                    if (lineIdx == 0) {
+                        // Partial accept: accept next word only
+                        val firstLine = ghostLines.firstOrNull() ?: ""
+                        val wordEnd = firstLine.indexOfFirst { it == ' ' || it == '\t' || it == '.' }.let {
+                            if (it == -1) firstLine.length else it + 1
+                        }
+                        val word = firstLine.substring(0, wordEnd)
+                        if (word.isNotEmpty()) {
+                            val remainingFirst = firstLine.substring(wordEnd)
+                            val remainingLines = if (remainingFirst.isBlank() && ghostLines.size > 1) {
+                                ghostLines.drop(1)
+                            } else {
+                                listOf(remainingFirst) + ghostLines.drop(1)
+                            }
+                            onAcceptWord(word, remainingLines)
+                        }
+                    } else {
+                        // Full accept: accept all lines
+                        onAcceptFull(ghostLines.joinToString("\n"))
+                    }
+                },
+        ) {
+            Text(
+                text = line,
+                color = Color(0xFF6A6A6A),
+                fontSize = fontSize.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+            )
         }
     }
 }
