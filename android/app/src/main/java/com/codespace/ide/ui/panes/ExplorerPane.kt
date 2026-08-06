@@ -321,6 +321,7 @@ fun ExplorerSidePanel(
     var filterQuery   by remember { mutableStateOf("") }
     var sortByType    by remember { mutableStateOf(false) }
     var showOutline   by remember { mutableStateOf(false) }
+    var showTimeline  by remember { mutableStateOf(false) }
     var clipboardFile by remember { mutableStateOf<File?>(null) }
     var clipboardCut  by remember { mutableStateOf(false) }
     var gitStatus     by remember { mutableStateOf<Map<String, Char>>(emptyMap()) }
@@ -538,7 +539,7 @@ fun ExplorerSidePanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (showOutline) "OUTLINE" else if (workspaceRoot != null) workspaceRoot.name.uppercase()
+                if (showOutline) "OUTLINE" else if (showTimeline) "TIMELINE" else if (workspaceRoot != null) workspaceRoot.name.uppercase()
                 else "EXPLORER",
                 fontSize = 11.sp, color = MutedColor,
                 fontWeight = FontWeight.Bold,
@@ -622,6 +623,10 @@ fun ExplorerSidePanel(
                 // Outline toggle
                 Icon(Icons.AutoMirrored.Filled.List, null, tint = if (showOutline) IconColor else MutedColor,
                     modifier = Modifier.size(16.dp).clickable { showOutline = !showOutline })
+                Spacer(Modifier.width(6.dp))
+                // Timeline toggle
+                Icon(Icons.Default.History, null, tint = if (showTimeline) IconColor else MutedColor,
+                    modifier = Modifier.size(16.dp).clickable { showTimeline = !showTimeline })
                 Spacer(Modifier.width(6.dp))
                 // Add folder to workspace (multi-root)
                 Icon(Icons.Default.Add, null, tint = MutedColor,
@@ -998,7 +1003,7 @@ fun ExplorerSidePanel(
                 }
             }
 
-            // ── Outline view ──────────────────────────────────────────────
+            // ── Outline section (real LSP documentSymbol) ─────────────────────
             if (showOutline && activeFilePath != null) {
                 HorizontalDivider(color = DividerColor)
                 Row(
@@ -1013,53 +1018,36 @@ fun ExplorerSidePanel(
                     Spacer(Modifier.weight(1f))
                     Text(activeFilePath.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
                 }
-                val outlineItems = remember(activeFilePath) {
-                    if (activeFilePath != null) {
-                        try {
-                            val content = File(activeFilePath).readText()
-                            val items = mutableListOf<Triple<String, Int, String>>()
-                            val classRegex = Regex("^(class|object|data class|enum class|sealed class|interface)\\s+(\\w+)")
-                            val funRegex = Regex("^\\s*(fun|private fun|public fun|internal fun)\\s+(\\w+)")
-                            val varRegex = Regex("^\\s*(val|var|private val|public val|private var)\\s+(\\w+)")
-                            content.lines().forEachIndexed { idx, line ->
-                                val cMatch = classRegex.find(line.trim())
-                                if (cMatch != null) { items.add(Triple(cMatch.groupValues[2], idx + 1, "class")); return@forEachIndexed }
-                                val fMatch = funRegex.find(line.trim())
-                                if (fMatch != null) { items.add(Triple(fMatch.groupValues[2], idx + 1, "fun")); return@forEachIndexed }
-                                val vMatch = varRegex.find(line.trim())
-                                if (vMatch != null) { items.add(Triple(vMatch.groupValues[2], idx + 1, "var")) }
-                            }
-                            items
-                        } catch (_: Exception) { emptyList() }
-                    } else emptyList()
+                // Use the real LSP-backed OutlinePanel instead of inline regex
+                OutlinePanel(
+                    filePath = activeFilePath,
+                    onNavigate = { line ->
+                        onOpenFileAtLine?.invoke(activeFilePath, line)
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                )
+            }
+
+            // ── Timeline section (git log for active file) ──────────────────
+            if (showTimeline && activeFilePath != null) {
+                HorizontalDivider(color = DividerColor)
+                Row(
+                    Modifier.fillMaxWidth().height(24.dp)
+                        .background(Color(0xFFF0F0F0))
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("TIMELINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text(activeFilePath.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
                 }
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
-                    items(outlineItems) { (name, line, kind) ->
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clickable {
-                                    val fp = activeFilePath
-                                    onOpenFile(fp)
-                                    onOpenFileAtLine?.invoke(fp, line)
-                                }
-                                .padding(16.dp, 3.dp, 8.dp, 3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                when (kind) {
-                                    "class" -> Icons.Default.Code
-                                    "fun" -> Icons.Default.Functions
-                                    else -> Icons.Default.TextFields
-                                },
-                                null, tint = IconColor, modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(name, fontSize = 12.sp, color = TextColor, maxLines = 1)
-                            Spacer(Modifier.weight(1f))
-                            Text(":" + line, fontSize = 10.sp, color = MutedColor)
-                        }
-                    }
-                }
+                TimelinePanel(
+                    filePath = activeFilePath,
+                    projectDir = workspaceRoot,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                )
             }
         }
     }

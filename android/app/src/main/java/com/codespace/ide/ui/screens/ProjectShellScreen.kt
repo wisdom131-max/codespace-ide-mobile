@@ -293,7 +293,7 @@ private fun ideColors(themeName: String): IdeColors {
     }
 }
 
-private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT, OUTLINE }
+private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
 
 // NotifItem moved to NotificationDrawerOverlay.kt
 private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, DOWNLOADS, BACKUP }
@@ -1025,12 +1025,6 @@ fun ProjectShellScreen(
                                     androidx.compose.material3.HorizontalDivider(color = Color(0xFF2D2D2D), thickness = 1.dp)
                                     McpPanel()
                                 }
-                            SidePanel.OUTLINE    -> OutlinePanel(
-                                filePath = activeEditorTab ?: "",
-                                onNavigate = { line ->
-                                    scrollTargetLine = line
-                                },
-                            )
                             else                 -> {}
                         }
                     }
@@ -1771,7 +1765,6 @@ private fun PssActivityBar(
             Triple(SidePanel.GIT, Icons.Default.AccountTree, gitBadgeCount),
             Triple(SidePanel.RUN, Icons.Default.BugReport, runBadgeCount),
             Triple(SidePanel.EXTENSIONS, Icons.Default.Extension, 0),
-                                Triple(SidePanel.OUTLINE, Icons.Default.AccountTree, 0),
         ).forEach { (panel, icon, badge) ->
             val isActive = activePanel == panel
             Box(

@@ -419,7 +419,7 @@ fun SourceControlPane(projectId: String) {
                         colors = ButtonDefaults.buttonColors(containerColor = IconColor),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.GitHub, null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Code, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Initialize Repository", fontSize = 12.sp)
                     }
