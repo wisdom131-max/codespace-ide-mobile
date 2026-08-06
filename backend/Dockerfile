@@ -1,18 +1,14 @@
 # ---- build stage ----
-FROM node:20-bookworm AS build
+FROM node:20-slim AS build
 WORKDIR /app
-# node-pty requires python3 + build tools to compile native binaries
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && apt-get clean
 COPY package*.json ./
-# Install deps — node-pty is optional, so don't fail the build if it can't compile
-RUN npm install --ignore-scripts
-# Try to build native modules. If it fails, continue — they're optional.
-RUN npm rebuild 2>/dev/null || true
-COPY . .
-RUN npm run build
+# Install ALL deps (including dev for @nestjs/cli) — skip native module postinstall scripts
+RUN npm install --ignore-scripts --no-audit --no-fund
+# Build the NestJS app
+RUN npx nest build
 
 # ---- runtime stage ----
-FROM node:20-bookworm-slim AS runtime
+FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
