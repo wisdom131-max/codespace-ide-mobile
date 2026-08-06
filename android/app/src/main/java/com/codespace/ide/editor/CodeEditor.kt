@@ -38,6 +38,21 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.DataObject
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.SpanStyle
@@ -115,6 +131,8 @@ private data class Completion(
     val source: CompletionSource = CompletionSource.BUFFER,
     // P41-J: Deprecation flag from LSP tags
     val isDeprecated: Boolean = false,
+    // P41-H: Raw LSP CompletionItemKind (1-25) for kind-specific icons. 0 = non-LSP (use kind fallback).
+    val lspKind: Int = 0,
 )
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
@@ -674,7 +692,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // Path completions don't need fuzzy ranking — already filtered by prefix
             return@remember pathRanked.take(50).map { rc ->
                 Completion(rc.label, CompletionKind.KEYWORD, rc.insertText, rc.detail,
-                    source = rc.source)
+                    source = rc.source, lspKind = rc.kind)
             }
         }
         // Convert LSP completions to RankedCompletionItem (P41-D: include additionalTextEdits for auto-import)
@@ -3732,10 +3750,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            val (icon, tint) = when (comp.kind) {
-                                CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
-                                CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
-                                CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
+                            // P41-H: Full LSP CompletionItemKind icon mapping (1-25)
+                            val (icon, tint) = if (comp.lspKind > 0) {
+                                lspCompletionIcon(comp.lspKind)
+                            } else {
+                                when (comp.kind) {
+                                    CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
+                                    CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
+                                    CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
+                                }
                             }
                             Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
                             Column(Modifier.weight(1f)) {
@@ -3895,5 +3918,38 @@ private fun FilterChip(
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
         )
+    }
+}
+
+// P41-H: Full LSP CompletionItemKind (1-25) icon + color mapping.
+// Colors follow VS Code's theme: https://code.visualstudio.com/docs/languages/identifiers
+private fun lspCompletionIcon(kind: Int): Pair<androidx.compose.ui.graphics.vector.ImageVector, androidx.compose.ui.graphics.Color> {
+    return when (kind) {
+        1   -> Pair(Icons.Default.TextFields, Color(0xFFCCCCCC))    // Text — gray
+        2   -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))    // Method — yellow
+        3   -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))    // Function — yellow
+        4   -> Pair(Icons.Default.Build, Color(0xFFB8D7A3))         // Constructor — light green
+        5   -> Pair(Icons.Default.DataObject, Color(0xFF9CDCFE))   // Field — light blue
+        6   -> Pair(Icons.Default.DataObject, Color(0xFF9CDCFE))   // Variable — light blue
+        7   -> Pair(Icons.Default.Extension, Color(0xFF4EC9B0))    // Class — teal
+        8   -> Pair(Icons.Default.Extension, Color(0xFFB8D7A3))    // Interface — light green
+        9   -> Pair(Icons.Default.Public, Color(0xFFCE9178))       // Module — orange
+        10  -> Pair(Icons.Default.Tune, Color(0xFF9CDCFE))         // Property — light blue
+        11  -> Pair(Icons.Default.Public, Color(0xFFCE9178))       // Unit — orange
+        12  -> Pair(Icons.Default.Star, Color(0xFF569CD6))        // Value — blue
+        13  -> Pair(Icons.Default.List, Color(0xFF4EC9B0))        // Enum — teal
+        14  -> Pair(Icons.Default.Code, Color(0xFF569CD6))       // Keyword — blue
+        15  -> Pair(Icons.Default.AutoAwesome, Color(0xFFDCDCAA)) // Snippet — yellow
+        16  -> Pair(Icons.Default.ColorLens, Color(0xFFCE9178))   // Color — orange
+        17  -> Pair(Icons.Default.Description, Color(0xFF9CDCFE)) // File — light blue
+        18  -> Pair(Icons.Default.Link, Color(0xFFCCCCCC))        // Reference — gray
+        19  -> Pair(Icons.Default.Folder, Color(0xFFDCB67A))       // Folder — gold
+        20  -> Pair(Icons.Default.Label, Color(0xFF4EC9B0))       // EnumMember — teal
+        21  -> Pair(Icons.Default.Star, Color(0xFF4FC1FF))        // Constant — bright blue
+        22  -> Pair(Icons.Default.Extension, Color(0xFF4EC9B0))  // Struct — teal
+        23  -> Pair(Icons.Default.Event, Color(0xFFB8D7A3))       // Event — light green
+        24  -> Pair(Icons.Default.Calculate, Color(0xFF569CD6))   // Operator — blue
+        25  -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))  // TypeParameter — teal
+        else -> Pair(Icons.Default.Code, Color(0xFFCCCCCC))       // Unknown — gray
     }
 }
