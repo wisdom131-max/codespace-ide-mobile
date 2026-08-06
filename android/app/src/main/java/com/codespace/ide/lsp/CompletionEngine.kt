@@ -49,6 +49,8 @@ data class RankedCompletionItem(
     val textEditJson: String? = null,
     /** Match indices from fuzzyScore — for highlighting matched chars (Phase C). */
     val matchIndices: List<Int> = emptyList(),
+    /** P41-I: LSP insertTextFormat (1=PlainText, 2=Snippet). When 2, insertText has $1/$0 syntax. */
+    val insertTextFormat: Int = 1,
 )
 
 // ── Fuzzy Matching ──────────────────────────────────────────────────────────
