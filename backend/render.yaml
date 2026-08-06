@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: codespace-ide-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install --include=dev && npx nest build
+    startCommand: node dist/main.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
