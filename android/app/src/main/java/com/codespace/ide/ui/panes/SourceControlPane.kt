@@ -176,6 +176,16 @@ fun SourceControlPane(projectId: String) {
     var initializing  by remember { mutableStateOf(false) }
     var initError     by remember { mutableStateOf<String?>(null) }
 
+    // P43-Publish: Publish to GitHub state
+    var showPublishDialog by remember { mutableStateOf(false) }
+    var publishRepoName   by remember { mutableStateOf("") }
+    var publishDesc       by remember { mutableStateOf("") }
+    var publishPrivate    by remember { mutableStateOf(false) }
+    var publishing        by remember { mutableStateOf(false) }
+    var publishError      by remember { mutableStateOf<String?>(null) }
+    var publishSuccess    by remember { mutableStateOf<String?>(null) }
+    var hasRemote       by remember { mutableStateOf(false) }
+
     val repoDir = remember(projectId) {
         val wsPath = loadWorkspacePath(context, projectId)
         wsPath?.let { File(it) } ?: File(com.codespace.ide.terminal.ProotInstaller.rootfsDir(context), "root")
@@ -208,6 +218,10 @@ fun SourceControlPane(projectId: String) {
                     }.trim()
                     else -> ""
                 }
+                // P43-Publish: check if repo has a remote configured
+                val remoteOut = runGit(context, repoDir, "remote")
+                hasRemote = remoteOut.isNotBlank() && !remoteOut.startsWith("Error:")
+
                 val statusOutput = runGit(context, repoDir, "status", "--porcelain=v1")
                 val staged = mutableListOf<GitChange>(); val unstaged = mutableListOf<GitChange>()
                 if (!statusOutput.startsWith("Error:")) {
@@ -290,6 +304,117 @@ fun SourceControlPane(projectId: String) {
     fun stageAll()                { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }; refreshStatus() } }
     fun unstageAll()              { scope.launch { withContext(Dispatchers.IO) { runGit(context, repoDir, "restore", "--staged", ".") }; refreshStatus() } }
 
+    // ── P43-Publish: Publish to GitHub dialog ─────────────────────────────────
+    if (showPublishDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!publishing) showPublishDialog = false },
+            title = { Text("Publish to GitHub", fontSize = 14.sp) },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = publishRepoName,
+                        onValueChange = { publishRepoName = it.trim() },
+                        label = { Text("Repository name", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = publishDesc,
+                        onValueChange = { publishDesc = it },
+                        label = { Text("Description (optional)", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = publishPrivate, onCheckedChange = { publishPrivate = it })
+                        Text("Private repository", fontSize = 12.sp)
+                    }
+                    publishError?.let { err ->
+                        Spacer(Modifier.height(6.dp))
+                        Text(err, fontSize = 10.sp, color = ErrorColor)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            publishing = true; publishError = null; publishSuccess = null
+                            try {
+                                val token = SecureTokenStore(context).githubToken
+                                    ?: throw Exception("Not signed in to GitHub. Connect in Settings first.")
+                                val name = publishRepoName.ifBlank {
+                                    repoDir.name  // default to folder name
+                                }
+                                // 1. Create repo on GitHub
+                                val cloneUrl = com.codespace.ide.data.GitHubAuth.createRepo(
+                                    accessToken = token,
+                                    repoName = name,
+                                    description = publishDesc,
+                                    isPrivate = publishPrivate,
+                                )
+                                // 2. Add remote origin
+                                val addResult = withContext(Dispatchers.IO) {
+                                    runGit(context, repoDir, "remote", "add", "origin", cloneUrl)
+                                }
+                                if (addResult.startsWith("Error:")) {
+                                    // remote might already exist, try set-url
+                                    withContext(Dispatchers.IO) {
+                                        runGit(context, repoDir, "remote", "set-url", "origin", cloneUrl)
+                                    }
+                                }
+                                // 3. Stage all + commit if nothing committed yet
+                                withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }
+                                val hasCommit = withContext(Dispatchers.IO) {
+                                    runGit(context, repoDir, "log", "--oneline", "-n", "1")
+                                }
+                                if (hasCommit.startsWith("Error:")) {
+                                    withContext(Dispatchers.IO) {
+                                        runGit(context, repoDir, "commit", "-m", "Initial commit")
+                                    }
+                                }
+                                // 4. Push to GitHub
+                                val branchName = withContext(Dispatchers.IO) {
+                                    runGit(context, repoDir, "branch", "--show-current").trim().ifBlank { "main" }
+                                }
+                                val pushResult = withContext(Dispatchers.IO) {
+                                    runGit(context, repoDir, "push", "-u", "origin", branchName)
+                                }
+                                publishing = false
+                                if (pushResult.startsWith("Error:")) {
+                                    publishError = "Repo created but push failed: ${pushResult.take(100)}"
+                                } else {
+                                    publishSuccess = cloneUrl
+                                    showPublishDialog = false
+                                    refresh++
+                                }
+                            } catch (e: Exception) {
+                                publishing = false
+                                publishError = e.message ?: "Unknown error"
+                            }
+                        }
+                    },
+                    enabled = !publishing,
+                ) {
+                    if (publishing) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
+                    } else {
+                        Text("Publish", fontSize = 12.sp)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishDialog = false }, enabled = !publishing) {
+                    Text("Cancel", fontSize = 12.sp)
+                }
+            },
+        )
+    }
+
     // ── root layout ──────────────────────────────────────────────────────────
     Column(Modifier.fillMaxSize().background(BgColor)) {
 
@@ -326,6 +451,16 @@ fun SourceControlPane(projectId: String) {
                     actionToast = if (result.startsWith("Error:")) "Push failed: ${result.take(60)}" else "Push complete"
                 }
             })
+            // P43-Publish: Show Publish button for repos without a remote
+            if (isGitRepo && !hasRemote) {
+                Spacer(Modifier.width(6.dp))
+                val ghToken = remember { SecureTokenStore(context).githubToken }
+                if (ghToken != null && !ghToken.isBlank()) {
+                    Icon(Icons.Default.CloudUpload, null, tint = Color(0xFF24292F), modifier = Modifier.size(16.dp).clickable {
+                        showPublishDialog = true
+                    })
+                }
+            }
         }
         HorizontalDivider(color = DividerColor)
 
@@ -427,6 +562,34 @@ fun SourceControlPane(projectId: String) {
                 initError?.let { err ->
                     Spacer(Modifier.height(6.dp))
                     Text(err, fontSize = 10.sp, color = ErrorColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+
+                // P43-Publish: "Publish to GitHub" — appears for repos with no remote
+                Spacer(Modifier.height(8.dp))
+                val githubToken = remember { SecureTokenStore(context).githubToken }
+                if (githubToken != null && !githubToken.isBlank()) {
+                    Button(
+                        onClick = { showPublishDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Publish to GitHub", fontSize = 12.sp, color = Color.White)
+                    }
+                } else {
+                    Text(
+                        "Connect GitHub in Settings to publish",
+                        fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center
+                    )
+                }
+                publishSuccess?.let { url ->
+                    Spacer(Modifier.height(6.dp))
+                    Text("✓ Published: $url", fontSize = 10.sp, color = UntrackedColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                publishError?.let { err ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(err, fontSize = 10.sp, color = ErrorColor, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }
             HorizontalDivider(color = DividerColor)

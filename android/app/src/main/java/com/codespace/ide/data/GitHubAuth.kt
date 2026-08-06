@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -128,5 +130,39 @@ object GitHubAuth {
         ).execute()
         if (!resp.isSuccessful) throw Exception("Signed in, but couldn't fetch your GitHub username (HTTP ${resp.code}).")
         JSONObject(resp.body?.string() ?: "{}").optString("login", "GitHub user")
+    }
+
+    /**
+     * Creates a new GitHub repository under the signed-in user's account.
+     * Returns the repo's clone URL (https://github.com/<owner>/<name>.git).
+     * Called from SourceControlPane's "Publish to GitHub" flow after git init.
+     */
+    suspend fun createRepo(
+        accessToken: String,
+        repoName: String,
+        description: String = "",
+        isPrivate: Boolean = false,
+    ): String = withContext(Dispatchers.IO) {
+        val jsonBody = JSONObject()
+            .put("name", repoName)
+            .put("description", description)
+            .put("private", isPrivate)
+            .put("auto_init", false)  // we already have local commits
+            .toString()
+        val body = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
+        val resp = http.newCall(
+            Request.Builder()
+                .url("https://api.github.com/user/repos")
+                .header("Authorization", "Bearer $accessToken")
+                .header("Accept", "application/vnd.github+json")
+                .post(body)
+                .build()
+        ).execute()
+        val json = JSONObject(resp.body?.string() ?: "{}")
+        if (!resp.isSuccessful) {
+            val msg = json.optString("message", "HTTP ${resp.code}")
+            throw Exception("Failed to create repo: $msg")
+        }
+        json.getString("clone_url")  // e.g. https://github.com/wisdom131-max/my-repo.git
     }
 }
