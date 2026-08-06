@@ -73,8 +73,8 @@ fun fuzzyScore(query: String, candidate: String): Float {
     if (candidate.isEmpty()) return -1f
 
     // Fast path: exact prefix match
-    if (c.lowercase().startsWith(query.lowercase())) {
-        return 100f + (1f / c.length) * 50f  // prefix match + shorter-is-better
+    if (candidate.lowercase().startsWith(query.lowercase())) {
+        return 100f + (1f / candidate.length) * 50f  // prefix match + shorter-is-better
     }
 
     // Subsequence match with scoring
@@ -83,15 +83,15 @@ fun fuzzyScore(query: String, candidate: String): Float {
     var bestScore = -1f
 
     // Try matching starting from each candidate position (greedy first match)
-    for (startCi in c.indices) {
-        if (c[startCi].lowercaseChar() != query[0].lowercaseChar()) continue
+    for (startCi in candidate.indices) {
+        if (candidate[startCi].lowercaseChar() != query[0].lowercaseChar()) continue
         matchIndices.clear()
         matchIndices.add(startCi)
         qi = 1
         var i = startCi + 1
 
-        while (qi < query.length && i < c.length) {
-            if (c[i].lowercaseChar() == query[qi].lowercaseChar()) {
+        while (qi < query.length && i < candidate.length) {
+            if (candidate[i].lowercaseChar() == query[qi].lowercaseChar()) {
                 matchIndices.add(i)
                 qi++
             }
@@ -100,7 +100,7 @@ fun fuzzyScore(query: String, candidate: String): Float {
 
         if (qi == query.length) {
             // Full subsequence match — score it
-            val score = scoreMatch(matchIndices, c)
+            val score = scoreMatch(matchIndices, candidate)
             if (score > bestScore) bestScore = score
         }
     }
