@@ -8602,3 +8602,37 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 **Known risk:** `CodeEditor.kt` at 3842 lines. All new UI MUST be extracted to separate composables.
 **Uncommitted changes:** Phase F workspace symbol completion (CodeEditor.kt, LspIntegration.kt, EditorPane.kt)
 
+
+
+---
+
+## CI Build History Statistics (Full Audit)
+
+**Audit date:** 2026-08-06  
+**Build range:** #12 (first build, 2026-06-20) → #1826 (latest, 2026-08-06)
+
+| Metric | Count |
+|--------|-------|
+| Total builds | 1,611 |
+| ✅ Green (success) | 974 (60.3%) |
+| ❌ Red (failure) | 635 (39.4%) |
+| Cancelled | 1 |
+| In-progress | 1 |
+
+**Build success rate: 60.3%**
+
+### Build #1826 status
+Latest push `25f2fc99` — fix for GhostTextOverlay `forEachIndexed` lambda parameter count + Phase F workspace symbol completion. Awaiting result.
+
+### Notable failure clusters
+- **#432-#437** (2026-06-27): Early Ubuntu extraction / OOM crashes
+- **#967-#974** (2026-07-13): CopilotChatPanelOverlay.kt compilation errors
+- **#1819-#1825** (2026-08-06): GhostTextOverlay extraction — `forEachIndexed` missing 2nd parameter
+
+### Notable green milestones
+- **#12** (2026-06-20): First successful APK build
+- **#977** (2026-07-13): CopilotChat fix verified
+- **#1810** (2026-08-06): Last green build before GhostTextOverlay regression
+
+---
+
