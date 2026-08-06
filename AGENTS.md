@@ -7299,20 +7299,23 @@ into one ranked, deduplicated list before it ever reaches `CodeEditor.kt`. This 
 - LSP variables (`$TM_FILENAME`, etc.) are replaced with empty — future enhancement to resolve from context.
 - Snippet tab-stop offsets are computed at insertion time and don't shift if the user edits text before the snippet. The `containsCursor` check handles the common case (cursor leaves snippet span).
 
-#### Phase J — Completion UI polish
-- Filter chips row at top of the dropdown: All / Classes / Functions / Variables / Methods /
-  Properties / Files / Snippets / Keywords — clicking filters the already-fetched+ranked list
-  client-side (no new query).
-- Source label badges (small colored text: `LSP` teal, `AI` purple, `Snippet` orange,
-  `Workspace` blue, `Buffer` gray) next to each item, matching source-attribution UX.
-- Detail panel: expand the currently-highlighted item's full `documentation` (already
-  fetched, may need `completionItem/resolve` for lazy servers — see Phase K) in a
-  side/below panel, scrollable, matching VS Code's split completion+docs view.
-- Deprecation indicator: strike-through label text when `item.tags` contains
-  `1` (Deprecated) per LSP spec.
-- Sticky selected item: keep the previously-highlighted item selected across re-ranks
-  when it's still present in the new ranked list (don't reset selection to index 0 on
-  every keystroke — jarring).
+#### Phase J — Completion UI Polish — COMPLETE
+**Status:** ✅ Complete
+**Files changed:** CodeEditor.kt
+
+**What was implemented (5 items):**
+
+1. **Filter chips row** — LazyRow at top of completion dropdown with "All" + source-specific chips (LSP, Buf, Snip, Wksp, AI, Path). Clicking a chip filters the already-fetched list client-side (no new query). Only shows when multiple sources are available. Toggle behavior: clicking active chip again clears the filter.
+
+2. **Source label badges** — Small colored text next to each completion item: `LSP` (teal #4EC9B0), `Buf` (gray #888888), `Snip` (yellow #DCDCAA), `Wksp` (blue #4DA6FF), `AI` (purple #C586C0), `Path` (light blue #9CDCFE). Matches VS Code's source-attribution UX.
+
+3. **Detail panel** — Scrollable documentation panel below the completion list. Shows the highlighted item's label (in keyword color) and full `documentation` text (no maxLines truncation). Auto-updates via `LaunchedEffect` when the highlighted index changes. Max height 80dp with vertical scroll. Divider separates it from the completion list.
+
+4. **Deprecation indicator** — Strike-through `TextDecoration.LineThrough` on label text when `isDeprecated` is true (from LSP `tags` containing 1). Grayed-out color (#888888) for deprecated items.
+
+5. **Sticky selected item** — `selectedLabel` state remembers the last highlighted item's label. On re-rank, finds the same label in the new list and keeps it highlighted (instead of resetting to index 0). Cleared on dismiss or filter change.
+
+**FilterChip composable:** Extracted as private composable at bottom of file — colored pill with active/inactive states.
 
 #### Phase K — Performance
 - `completionItem/resolve` lazy resolution: many servers return minimal data in the initial
