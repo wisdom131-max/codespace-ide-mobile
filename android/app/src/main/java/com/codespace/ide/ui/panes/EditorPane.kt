@@ -1118,6 +1118,7 @@ fun EditorPane(
                             udm?.toggleBreakpoint(active.path, line)
                         },
                         projectRoot = projectRootPath,
+                        currentFilePath = active.path,
                         onAiFixRequest = onAiFixRequest,
                         onAiGhostTextRequest = onAiGhostTextRequest,
                     )
@@ -1135,6 +1136,7 @@ fun EditorPane(
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
                         projectRoot = projectRootPath,
+                        currentFilePath = active.path,
                     )
                 }
             } else {
@@ -1189,6 +1191,7 @@ fun EditorPane(
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
+                        currentFilePath = active.path,
                         onOpenFileAtLine = { filePath, line ->
                             val file = java.io.File(filePath)
                             if (tabs.none { it.path == filePath }) {
