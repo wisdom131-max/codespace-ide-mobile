@@ -600,7 +600,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         ranked.take(15).map { rc ->
             val kind = when (rc.kind) {
                 CompletionItemKind.SNIPPET -> CompletionKind.SNIPPET
-                in 2..13, 22, 23 -> CompletionKind.TYPE
+                in 2..13 -> CompletionKind.TYPE
+                22, 23 -> CompletionKind.TYPE
                 else -> CompletionKind.KEYWORD
             }
             Completion(rc.label, kind, rc.insertText, rc.detail)

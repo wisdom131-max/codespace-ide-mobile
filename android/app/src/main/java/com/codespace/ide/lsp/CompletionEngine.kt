@@ -72,10 +72,6 @@ fun fuzzyScore(query: String, candidate: String): Float {
     if (query.isEmpty()) return 0f
     if (candidate.isEmpty()) return -1f
 
-    val q = query.lowercaseChar()
-    val qRest = if (query.length > 1) query.substring(1) else ""
-    val c = candidate
-
     // Fast path: exact prefix match
     if (c.lowercase().startsWith(query.lowercase())) {
         return 100f + (1f / c.length) * 50f  // prefix match + shorter-is-better
