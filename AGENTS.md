@@ -8199,7 +8199,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | A | Matching & Ranking Engine — fuzzy subsequence match, camelCase hump, MRU/usage ranking | ✅ DONE | `7a242145` |
 | B | Completion History Store — JSON-backed MRU + usage frequency, LRU-evict at 2000 entries | ✅ DONE | `476bdff7` |
 | C | Fuzzy Match Highlighting — bold+blue matched chars in dropdown via buildAnnotatedString | ✅ DONE | `f3e34e17` |
-| D | Import Completion — additionalTextEdits on completion accept | ⬜ TODO | — |
+| D | Import Completion — additionalTextEdits on completion accept | ✅ DONE | `36521de0` |
 | E | Multi-line Ghost Text + AI Inline Completions | ⬜ TODO | — |
 | F | Workspace Intelligence — cross-file completion via workspace/symbol | ⬜ TODO | — |
 | G | Path Completion — filesystem-based inside import/require strings | ⬜ TODO | — |
