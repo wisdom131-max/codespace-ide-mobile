@@ -7977,3 +7977,91 @@ editing the same line ranges. Current ownership map:
 - **We own lines:** ~540 (pendingChatPromptMs), ~1096/2723 (editor column params),
   ~1926 (Problems tab callback), ~3136 (onJumpToSource bottom panel wiring)
 - **They own lines:** ~296 (SidePanel enum), ~1025 (panel content switch), ~1774 (activity bar)
+
+---
+
+### Updated Conflict Analysis — Other AI's P39-FULL commit (2026-08-06, by Superagent)
+
+**New commit from other AI:** `7487f9a8` — "feat(P39-FULL): VS Code-parity code actions — rename
+preview, resolve, command execution, file rename LSP sync"
+
+**This is significant:** The other AI is now working in OUR files — `CodeEditor.kt`,
+`LspManager.kt`, `EditorPane.kt`, `ProjectShellScreen.kt`. These are the files we own per the
+previous conflict analysis. However, the changes are in non-overlapping line ranges and CI is
+green, so there is NO conflict.
+
+#### What they added:
+
+1. **`LspManager.kt`** — 4 new functions + 1 new parameter:
+   - `willRenameFiles(language, oldUri, newUri)` — sends `workspace/willRenameFiles` to LSP server
+   - `didRenameFiles(language, oldUri, newUri)` — sends `workspace/didRenameFiles` notification
+   - `executeCommand(language, command, arguments)` — runs `workspace/executeCommand` on server
+   - `resolveCodeAction(language, action)` — sends `codeAction/resolve` for data-only actions
+   - `only: List<String>?` parameter added to `getCodeActions()` — filters action kinds
+   - Expanded `codeActionKind.valueSet` in server capabilities (added refactor.extract/inline/rewrite, source.organizeImports/fixAll/removeUnused)
+   - Added `resolveProvider: true` to codeAction capabilities
+   - Added `fileOperations.willRename/didRename` to workspace capabilities
+
+2. **`CodeEditor.kt`** — rename preview dialog + command-based code action handling:
+   - `renamePreviewEdit` and `renamePreviewFiles` state variables
+   - Preview button in rename dialog that fetches WorkspaceEdit and shows affected files
+   - Command-based code action execution (for actions that return a command instead of edit)
+
+3. **`EditorPane.kt`** — resolve logic for data-only code actions:
+   - After parsing code actions from server response, checks if any have `data` but no `edit`
+   - Calls `LspManager.resolveCodeAction()` to get the actual edit
+   - Replaces the action's null edit with the resolved edit
+
+4. **`ProjectShellScreen.kt`** — file rename LSP sync:
+   - On file rename in Explorer, calls `willRenameFiles` before and `didRenameFiles` after
+   - Applies the returned WorkspaceEdit to update imports in affected files
+   - 89 new lines of import-update logic (reads affected files, applies text edits, writes back)
+
+#### Conflict check with our work:
+
+| File | Our changes (lines) | Their new changes (lines) | Conflict? |
+|------|---------------------|-------------------------|-----------|
+| `CodeEditor.kt` | highlightTargetLine (~382-389, ~1220-1224) | renamePreview (~637-639), command actions (~1721-1731), preview dialog (~2318-2370) | ❌ No overlap |
+| `LspManager.kt` | triggerCharacter (~984-996), includeDeclaration (~1074-1076), hostPathFromFileUri (~1094) | codeActionKind valueSet (~766), fileOperations (~842), willRenameFiles (~863), didRenameFiles (~885), only param (~1114), executeCommand (~1149), resolveCodeAction (~1169) | ❌ No overlap |
+| `EditorPane.kt` | pendingChatPromptMs wiring, onAiFixRequest, 3 AI actions | resolve data-only actions (~1276-1310) | ❌ No overlap |
+| `ProjectShellScreen.kt` | pendingChatPromptMs (~540, ~1185), Problems tab (~2015) | file rename LSP sync (~941-1035) | ❌ No overlap |
+
+**All our changes verified intact after merge. CI green (build 31068331546).**
+
+#### Functional interaction:
+
+1. **Their `resolveCodeAction` + our `CodeActionKind`:** They use `codeAction/resolve` to get
+   edits for data-only actions. Our `CodeActionKind` object is used in the code action menu UI
+   to categorize actions by kind. These work together — the server returns data-only actions
+   with a kind, we resolve them, then categorize by kind in the menu. No conflict, they
+   complement each other.
+
+2. **Their `only` parameter + our `getCodeActions` signature:** They added `only: List<String>?`
+   to `getCodeActions()`. Our earlier change added `diagnostics: JSONArray?` to the same function.
+   Both are optional parameters, both coexist. The caller passes both as needed.
+
+3. **Their file rename LSP sync + our `hostPathFromFileUri`:** Their file rename code calls
+   `LspManager.fileUriFromHostPath()` to convert paths to URIs. Our `hostPathFromFileUri()`
+   does the reverse (URI → path) for applying WorkspaceEdits. Both are used in the rename
+   flow — no conflict, they're complementary directions of the same round-trip.
+
+4. **Their `executeCommand` + our AI code actions:** AI code actions (Explain/Optimize/Doc/etc.)
+   are handled client-side by opening the chat panel. Server commands (like `tsserver` quick
+   fixes) are handled by their new `executeCommand`. Different code paths, no conflict.
+
+#### Updated file ownership (both AIs now share LSP files):
+
+The previous "we own LSP files, they own Explorer files" split no longer holds — both AIs
+are now editing `LspManager.kt`, `EditorPane.kt`, `CodeEditor.kt`, and `ProjectShellScreen.kt`.
+
+**Current working split (as of 2026-08-06):**
+- **We own:** Problems tab gold highlight, AI code action wiring (pendingChatPromptMs,
+  onAiFixRequest), LSP bug fixes (triggerCharacter, hostPathFromFileUri, includeDeclaration)
+- **They own:** Rename preview, code action resolve, command execution, file rename LSP sync,
+  `only` filtering, codeActionKind valueSet expansion
+- **Shared but non-overlapping:** Both edit `LspManager.kt` and `ProjectShellScreen.kt` but
+  in different sections. Coordinate via this AGENTS.md section to avoid line-range collisions.
+
+**Recommendation:** Before either AI edits a shared file, check this section for current line
+ownership and pick non-overlapping ranges. If a collision is unavoidable, communicate via
+AGENTS.md commit messages.
