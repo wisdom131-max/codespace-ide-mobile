@@ -8749,3 +8749,6 @@ Latest pushes: Phase H (icon audit) + Phase I (dynamic snippets). SnippetEngine.
 <!-- CI trigger: verify Phase 41 fix commits compile (builds #1819-#1826 deleted, never verified) -->
 
 <!-- CI trigger: re-queue build after stuck runner -->
+
+
+<!-- CI re-trigger Thu Aug  6 17:21:52 UTC 2026 -->
