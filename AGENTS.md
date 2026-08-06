@@ -8200,7 +8200,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | B | Completion History Store — JSON-backed MRU + usage frequency, LRU-evict at 2000 entries | ✅ DONE | `476bdff7` |
 | C | Fuzzy Match Highlighting — bold+blue matched chars in dropdown via buildAnnotatedString | ✅ DONE | `f3e34e17` |
 | D | Import Completion — additionalTextEdits on completion accept | ✅ DONE | `36521de0` |
-| E | Multi-line Ghost Text + AI Inline Completions | ⬜ TODO | — |
+| E | Multi-line Ghost Text + AI Inline Completions | ✅ DONE | `f7dea707` |
 | F | Workspace Intelligence — cross-file completion via workspace/symbol | ⬜ TODO | — |
 | G | Path Completion — filesystem-based inside import/require strings | ⬜ TODO | — |
 | H | Language Intelligence Audit — verify all CompletionItemKind icons | ⬜ TODO | — |
