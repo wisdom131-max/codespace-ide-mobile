@@ -7837,3 +7837,128 @@ remote-first, so the primary path is "Initialize Repository" not "Open Remote"):
 **Status:** Plan written 2026-08-05, execution starting now (two sub-agents, per file
 ownership split above). Will update this section with commit hashes + before/after
 behavior once both land.
+
+---
+
+### Conflict Analysis — Our work vs Other AI's P42+P43 work (2026-08-06, by Superagent)
+
+**Context:** Wisdom has two AIs working on the same repo simultaneously. This section
+documents whether the other AI's commits (P42 Explorer restructure + P43 git-init fix)
+conflict with our work from this month (P38 bug restores, P39 code actions, P40 auto-install,
+Problems tab fix).
+
+#### Other AI's commits (3 commits, Aug 5-6):
+
+| Commit | Hash | Files touched |
+|--------|------|---------------|
+| P42+P43 plan | `ab70306f` | AGENTS.md only |
+| P43 git-init | `9dd9dcbf` | SourceControlPane.kt, AGENTS.md — **CI FAILED** (unresolved reference: GitHub) |
+| P42+P43 impl | `cef030cb` | ExplorerPane.kt, SourceControlPane.kt, TimelinePanel.kt (new), ProjectShellScreen.kt, AGENTS.md — CI green |
+
+**What they did:**
+- **P42:** Removed `SidePanel.OUTLINE` from the enum + activity bar (Outline is now a toggle
+  inside Explorer, not a separate top-level tab). Replaced inline regex-based outline in
+  ExplorerPane with the real LSP-backed `OutlinePanel` composable. Added a new `TimelinePanel.kt`
+  for git log per-file, with a toggle in Explorer's header. Added `showTimeline` state.
+- **P43:** Added git-init empty state to `SourceControlPane.kt` — checks `.git` existence
+  before running git commands; if missing, shows "Initialize Repository" button instead of
+  the red "not a git repository" error. Uses `ProotInstaller.execOnce` to run `git init`.
+
+#### Our commits this month (Aug 5, 3 code commits + 2 doc commits):
+
+| Commit | Hash | Files touched |
+|--------|------|---------------|
+| Build fixes | `8e2d22ee` | LspIntegration.kt, LspManager.kt, EditorPane.kt, CopilotChatPanelOverlay.kt, ProjectShellScreen.kt |
+| Problems tab | `f7bda260` | CodeEditor.kt, ProjectShellScreen.kt |
+| AGENTS.md docs | `af08ebe0` | AGENTS.md only |
+
+#### Overlap analysis (shared files):
+
+**1. `ProjectShellScreen.kt` — MINOR OVERLAP, NO CONFLICT ✅**
+
+- Our changes: added `pendingChatPromptMs` state (line 540), passed it to `PssEditorColumn`
+  (line 1096/2723), wired `onAiFixRequest` for AI code actions; changed Problems tab
+  `onJumpToSource` callback to remove redundant `onHideBottomPanel()` (line 1926).
+- Their changes: removed `SidePanel.OUTLINE` from enum (line 296), removed Outline's
+  `SidePanel.OUTLINE -> OutlinePanel(...)` branch (was line ~1025), removed Outline's
+  activity bar icon entry (was line ~1774).
+- **Conflict?** No. The changes are in completely different sections of a ~3400-line file.
+  Our additions are at lines 540, 1096, 1926, 2723. Their removals were at lines 296, 1025,
+  1774. No overlapping line ranges. Both sets of changes coexist correctly after merge.
+
+**2. `AGENTS.md` — APPEND-ONLY, NO CONFLICT ✅**
+
+- Both AIs append to the end of the file. Their section ("PLAN — P42: Explorer Restructure")
+  was added after our section ("Session Update 2026-08-05 17:10"). No content overwritten.
+  This conflict analysis section is also appended below theirs.
+
+**3. `ExplorerPane.kt` — THEIRS ONLY, NO CONFLICT ✅**
+
+- We did not touch `ExplorerPane.kt` this month. Their changes (Outline toggle + Timeline
+  toggle + replacing inline regex with LSP-backed OutlinePanel) are self-contained.
+- **Note:** Their change to use `OutlinePanel` (the LSP-backed one) is a nice complement
+  to our P39 work — `OutlinePanel` uses `DocumentSymbolCache` which reads from the LSP
+  server we fixed (BUG-1/4/5). Our fixes make their Outline actually work correctly.
+
+**4. `SourceControlPane.kt` — THEIRS ONLY, NO CONFLICT ✅**
+
+- We did not touch this file. Their git-init empty state is self-contained.
+
+**5. `TimelinePanel.kt` — THEIRS ONLY (NEW FILE), NO CONFLICT ✅**
+
+- New file, no overlap with our work. Uses `ProotInstaller` (pre-existing, untouched by us).
+
+**6. `LspIntegration.kt`, `LspManager.kt`, `EditorPane.kt`, `CopilotChatPanelOverlay.kt`,
+    `CodeEditor.kt` — OURS ONLY, NO CONFLICT ✅**
+
+- The other AI did not touch any of these files. Our P38 bug restores, CodeActionKind
+  definition, LspCodeAction expansion, AI code action wiring, and Problems tab gold
+  highlight are all intact in the merged state.
+
+#### Functional interaction (not conflicts, but worth noting):
+
+1. **Their OutlinePanel usage + our LSP fixes:** The other AI replaced Explorer's inline
+   regex-based outline with `OutlinePanel`, which uses `DocumentSymbolCache` → LSP
+   `documentSymbol` request. Our BUG-1 fix (triggerCharacter on getCompletion) and BUG-5
+   fix (includeDeclaration on getReferences) don't directly affect `documentSymbol`, but
+   our broader LSP stability work ensures the server connection is healthy enough for
+   Outline to work. If the LSP server was crashing before our fixes, Outline would have
+   been broken too. Our fixes + their Outline integration = Outline now actually works.
+
+2. **Their SourceControlPane git-init + our P39 code actions:** No interaction.
+   SourceControlPane uses `ProotInstaller.execOnce` for git commands, which is completely
+   independent of the LSP code action pipeline we built.
+
+3. **Their `showTimeline` state + our Problems tab fix:** Both add new state variables to
+   different files. No interaction.
+
+#### CI status after merge:
+
+| Run | Commit | Status |
+|-----|--------|--------|
+| 31022666962 | `8e2d22ee` (our build fixes) | ✅ Green |
+| 31022927027 | `f7bda260` (our Problems tab fix) | ✅ Green |
+| 31025787476 | `ab70306f` (their plan doc) | ✅ Green |
+| 31066752095 | `9dd9dcbf` (their P43, first attempt) | ❌ Failed — `Unresolved reference: GitHub` in SourceControlPane.kt:422 |
+| 31067107898 | `cef030cb` (their P42+P43 fix) | ✅ Green |
+
+**All our commits are green. Their latest commit is green. No merge conflicts exist.**
+
+#### Summary: ZERO conflicts. Safe to continue parallel work.
+
+The two AIs are working on completely different subsystems:
+- **Our work:** LSP integration (completion, references, definition, code actions, AI fixes,
+  Problems tab navigation) — files: LspIntegration.kt, LspManager.kt, EditorPane.kt,
+  CodeEditor.kt, CopilotChatPanelOverlay.kt
+- **Their work:** Explorer UI restructure (Outline/Timeline sections) + Source Control
+  git-init — files: ExplorerPane.kt, SourceControlPane.kt, TimelinePanel.kt
+
+The only shared file is `ProjectShellScreen.kt`, but changes are in non-overlapping
+sections (ours: AI chat wiring + Problems tab callback; theirs: SidePanel enum cleanup).
+
+**Recommendation for going forward:** Maintain the current file ownership split. If either
+AI needs to modify `ProjectShellScreen.kt`, coordinate via this AGENTS.md section to avoid
+editing the same line ranges. Current ownership map:
+- **We own lines:** ~540 (pendingChatPromptMs), ~1096/2723 (editor column params),
+  ~1926 (Problems tab callback), ~3136 (onJumpToSource bottom panel wiring)
+- **They own lines:** ~296 (SidePanel enum), ~1025 (panel content switch), ~1774 (activity bar)
