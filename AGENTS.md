@@ -7834,9 +7834,24 @@ remote-first, so the primary path is "Initialize Repository" not "Open Remote"):
   `ConnectorsHubSheet.kt` (verification only, not restructuring).
 - No shared files between the two — safe to build in parallel.
 
-**Status:** Plan written 2026-08-05, execution starting now (two sub-agents, per file
-ownership split above). Will update this section with commit hashes + before/after
-behavior once both land.
+**Status:** ✅ DONE (2026-08-06, commit `cef030cb`, CI build 1795 green)
+
+P42: ExplorerPane.kt refactored — inline regex outline replaced with real LSP-backed
+`OutlinePanel` composable. New `TimelinePanel.kt` created for per-file git log.
+`showTimeline` state + History icon toggle added to Explorer header. `SidePanel.OUTLINE`
+removed from `ProjectShellScreen.kt` enum + activity bar (Outline is now a nested section
+inside Explorer, matching VS Code).
+
+P43: `SourceControlPane.kt` now checks `.git` existence before running git commands.
+If missing, shows clean empty-state card with "Initialize Repository" button (runs
+`git init` via `ProotInstaller.execOnce`, then auto-refreshes). `repoDir` no longer
+walks up to parent directories.
+
+Note: Build 1794 failed due to `Icons.Default.GitHub` (not in Material icons set) —
+fixed by swapping to `Icons.Default.Code`. Build 1795 is green.
+
+Full GitHub integration (Clone from GitHub, Publish to GitHub, repo browsing) still
+pending — blocked on user providing GitHub OAuth Client ID + Secret.
 
 ---
 
