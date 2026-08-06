@@ -12,6 +12,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -108,6 +110,10 @@ private data class Completion(
     val additionalTextEditsJson: String? = null,
     // P41-D: Range-based replacement edit from LSP (JSON object)
     val textEditJson: String? = null,
+    // P41-J: Source attribution for badge display
+    val source: CompletionSource = CompletionSource.BUFFER,
+    // P41-J: Deprecation flag from LSP tags
+    val isDeprecated: Boolean = false,
 )
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
@@ -542,6 +548,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
+    // P41-J: Filter chip state — null = show all, non-null = filter by source
+    var completionFilter by remember { mutableStateOf<CompletionSource?>(null) }
+    // P41-J: Sticky selection — remember last highlighted label
+    var selectedLabel by remember { mutableStateOf<String?>(null) }
 
     // P39: Lightbulb state — tracks code actions per line for gutter display
     var lightbulbLine by remember { mutableStateOf(-1) }
@@ -624,13 +634,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // P41-D: Pass through auto-import edits + textEdit for apply-on-accept
             Completion(rc.label, kind, rc.insertText, rc.detail,
                 additionalTextEditsJson = rc.additionalTextEditsJson,
-                textEditJson = rc.textEditJson)
+                textEditJson = rc.textEditJson,
+                source = rc.source,
+                isDeprecated = rc.isDeprecated)
         }
     }
     // P41 Phase B: Load completion history once per file open
     LaunchedEffect(Unit) { CompletionHistoryStore.load(context) }
 
-    LaunchedEffect(prefix, isDotTriggered, allCompletions) { showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty() }
+    LaunchedEffect(prefix, isDotTriggered, allCompletions) {
+        showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()
+        if (!showCompletions) { completionFilter = null; selectedLabel = null }
+    }
 
     // P41-E: Multi-line ghost text — shows top completion OR AI suggestion as dimmed text
     // Source 1: IntelliSense (fuzzy-matched top completion, single line from insertText)
@@ -3539,144 +3554,254 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
             val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
             val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { 74.dp.toPx() }.roundToInt()
+            
+            // P41-J: Apply filter if active
+            val filteredCompletions = if (completionFilter != null) {
+                allCompletions.filter { it.source == completionFilter }
+            } else {
+                allCompletions
+            }
+            // P41-J: Available sources for filter chips
+            val availableSources = allCompletions.map { it.source }.distinct()
+            
             Popup(
                 alignment = Alignment.TopStart,
                 offset = IntOffset(popupOffsetX, popupOffsetY),
                 properties = PopupProperties(focusable = false),
             ) {
-                LazyColumn(
+                Column(
                     modifier = Modifier
-                        .widthIn(min = 160.dp, max = 260.dp)
-                        .heightIn(max = 200.dp)
+                        .widthIn(min = 160.dp, max = 280.dp)
+                        .heightIn(max = 220.dp)
                         .background(Color(0xFF252526), RoundedCornerShape(4.dp))
-                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp)),
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
                 ) {
-                    items(allCompletions) { comp ->
-                    // Doc always visible below label — no per-item state (Compose rules)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val cursor = value.selection.end
-                                val text = value.text
-                                val end = cursor.coerceAtMost(text.length)
-                                var start = end
-                                while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_' || text[start - 1] == ' ')) start--
-                                
-                                // P41-D: Check for LSP additionalTextEdits (auto-import) attached to this completion
-                                val hasAdditionalEdits = !comp.additionalTextEditsJson.isNullOrBlank()
-                                
-                                if (hasAdditionalEdits) {
-                                    // P41-D: Apply additionalTextEdits (imports) FIRST, then insert completion text
-                                    // LSP spec: additionalTextEdits are applied before the main edit
-                                    coroutineScope.launch {
-                                        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            try {
-                                                val editsArray = org.json.JSONArray(comp.additionalTextEditsJson)
-                                                // Apply additional edits to the full text first
-                                                val textWithImports = applyLspTextEdits(text, editsArray)
-                                                // Then insert completion text at cursor position
-                                                // (adjust cursor position if edits were above it)
-                                                val cursorOffset = textWithImports.length - text.length
-                                                val adjustedStart = start + cursorOffset
-                                                val adjustedEnd = end + cursorOffset
-                                                val finalText = textWithImports.substring(0, adjustedStart) + comp.insertText + textWithImports.substring(adjustedEnd.coerceAtMost(textWithImports.length))
-                                                val finalCursor = adjustedStart + comp.insertText.length
-                                                Pair(finalText, finalCursor)
-                                            } catch (_: Exception) {
-                                                // Fallback: plain insert without auto-import
-                                                val newText = text.substring(0, start) + comp.insertText + text.substring(end)
-                                                Pair(newText, start + comp.insertText.length)
-                                            }
-                                        }
-                                        value = TextFieldValue(
-                                            text = result.first,
-                                            selection = androidx.compose.ui.text.TextRange(result.second),
-                                        )
-                                        onContentChange(result.first)
-                                    }
-                                } else {
-                                    var newText = text.substring(0, start) + comp.insertText + text.substring(end)
-                                    val newCursor = start + comp.insertText.length
-                                    // P22-J: Fall back to lspImportProvider for auto-import via code actions
-                                    if (lspImportProvider != null) {
-                                        val cLine = text.take(cursor).count { it == '\n' }
-                                        val cLineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
-                                        val cCol = cursor - cLineStart
+                    // P41-J: Filter chips row
+                    if (availableSources.size > 1) {
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            // "All" chip
+                            item {
+                                FilterChip(
+                                    label = "All",
+                                    isActive = completionFilter == null,
+                                    color = Color(0xFF888888),
+                                    onClick = { completionFilter = null; selectedLabel = null }
+                                )
+                            }
+                            // Source-specific chips
+                            items(availableSources) { src ->
+                                val (chipLabel, chipColor) = when (src) {
+                                    CompletionSource.LSP -> "LSP" to Color(0xFF4EC9B0)
+                                    CompletionSource.BUFFER -> "Buf" to Color(0xFF888888)
+                                    CompletionSource.SNIPPET -> "Snip" to Color(0xFFDCDCAA)
+                                    CompletionSource.WORKSPACE -> "Wksp" to Color(0xFF4DA6FF)
+                                    CompletionSource.AI -> "AI" to Color(0xFFC586C0)
+                                    CompletionSource.PATH -> "Path" to Color(0xFF9CDCFE)
+                                }
+                                FilterChip(
+                                    label = chipLabel,
+                                    isActive = completionFilter == src,
+                                    color = chipColor,
+                                    onClick = { completionFilter = if (completionFilter == src) null else src; selectedLabel = null }
+                                )
+                            }
+                        }
+                    }
+                    
+                    // P41-J: Sticky selection — find index of previously selected label
+                    val initialIndex = if (selectedLabel != null) {
+                        filteredCompletions.indexOfFirst { it.label == selectedLabel }.coerceAtLeast(0)
+                    } else 0
+                    
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        itemsIndexed(filteredCompletions) { idx, comp ->
+                        // Doc always visible below label — no per-item state (Compose rules)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(if (idx == initialIndex) Color(0xFF04395E) else Color.Transparent)
+                                .clickable {
+                                    val cursor = value.selection.end
+                                    val text = value.text
+                                    val end = cursor.coerceAtMost(text.length)
+                                    var start = end
+                                    while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_' || text[start - 1] == ' ')) start--
+                                    
+                                    // P41-D: Check for LSP additionalTextEdits (auto-import) attached to this completion
+                                    val hasAdditionalEdits = !comp.additionalTextEditsJson.isNullOrBlank()
+                                    
+                                    if (hasAdditionalEdits) {
+                                        // P41-D: Apply additionalTextEdits (imports) FIRST, then insert completion text
+                                        // LSP spec: additionalTextEdits are applied before the main edit
                                         coroutineScope.launch {
-                                            val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                                try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+                                            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                try {
+                                                    val editsArray = org.json.JSONArray(comp.additionalTextEditsJson)
+                                                    // Apply additional edits to the full text first
+                                                    val textWithImports = applyLspTextEdits(text, editsArray)
+                                                    // Then insert completion text at cursor position
+                                                    // (adjust cursor position if edits were above it)
+                                                    val cursorOffset = textWithImports.length - text.length
+                                                    val adjustedStart = start + cursorOffset
+                                                    val adjustedEnd = end + cursorOffset
+                                                    val finalText = textWithImports.substring(0, adjustedStart) + comp.insertText + textWithImports.substring(adjustedEnd.coerceAtMost(textWithImports.length))
+                                                    val finalCursor = adjustedStart + comp.insertText.length
+                                                    Pair(finalText, finalCursor)
+                                                } catch (_: Exception) {
+                                                    // Fallback: plain insert without auto-import
+                                                    val newText = text.substring(0, start) + comp.insertText + text.substring(end)
+                                                    Pair(newText, start + comp.insertText.length)
+                                                }
                                             }
-                                            if (imports.isNotEmpty()) {
-                                                val patched = applyImportEdits(newText, imports)
-                                                value = TextFieldValue(
-                                                    text = patched,
-                                                    selection = androidx.compose.ui.text.TextRange(newCursor + (patched.length - newText.length)),
-                                                )
-                                                onContentChange(patched)
-                                            } else {
-                                                value = TextFieldValue(
-                                                    text = newText,
-                                                    selection = androidx.compose.ui.text.TextRange(newCursor),
-                                                )
-                                                onContentChange(newText)
-                                            }
+                                            value = TextFieldValue(
+                                                text = result.first,
+                                                selection = androidx.compose.ui.text.TextRange(result.second),
+                                            )
+                                            onContentChange(result.first)
                                         }
                                     } else {
-                                        value = TextFieldValue(
-                                            text = newText,
-                                            selection = androidx.compose.ui.text.TextRange(newCursor),
-                                        )
-                                        onContentChange(newText)
-                                    }
-                                }
-                                // P41 Phase B: Record accepted completion for MRU/usage ranking
-                                CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
-                                showCompletions = false
-                            }
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        val (icon, tint) = when (comp.kind) {
-                            CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
-                            CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
-                            CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
-                        }
-                        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            // P41 Phase C: Highlight fuzzy-matched characters in the label
-                            val matchIndices = fuzzyMatchIndices(prefix, comp.label)
-                            val labelAnnotated = if (matchIndices.isNotEmpty()) {
-                                buildAnnotatedString {
-                                    for ((idx, ch) in comp.label.withIndex()) {
-                                        if (idx in matchIndices) {
-                                            append(AnnotatedString(
-                                                ch.toString(),
-                                                SpanStyle(
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF4DA6FF),
-                                                )
-                                            ))
+                                        var newText = text.substring(0, start) + comp.insertText + text.substring(end)
+                                        val newCursor = start + comp.insertText.length
+                                        // P22-J: Fall back to lspImportProvider for auto-import via code actions
+                                        if (lspImportProvider != null) {
+                                            val cLine = text.take(cursor).count { it == '\n' }
+                                            val cLineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                            val cCol = cursor - cLineStart
+                                            coroutineScope.launch {
+                                                val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                    try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+                                                }
+                                                if (imports.isNotEmpty()) {
+                                                    val patched = applyImportEdits(newText, imports)
+                                                    value = TextFieldValue(
+                                                        text = patched,
+                                                        selection = androidx.compose.ui.text.TextRange(newCursor + (patched.length - newText.length)),
+                                                    )
+                                                    onContentChange(patched)
+                                                } else {
+                                                    value = TextFieldValue(
+                                                        text = newText,
+                                                        selection = androidx.compose.ui.text.TextRange(newCursor),
+                                                    )
+                                                    onContentChange(newText)
+                                                }
+                                            }
                                         } else {
-                                            append(ch)
+                                            value = TextFieldValue(
+                                                text = newText,
+                                                selection = androidx.compose.ui.text.TextRange(newCursor),
+                                            )
+                                            onContentChange(newText)
                                         }
                                     }
+                                    // P41 Phase B: Record accepted completion for MRU/usage ranking
+                                    CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
+                                    showCompletions = false
+                                    selectedLabel = null
+                                    completionFilter = null
                                 }
-                            } else {
-                                AnnotatedString(comp.label)
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val (icon, tint) = when (comp.kind) {
+                                CompletionKind.KEYWORD -> Pair(Icons.Default.Code, Color(0xFF569CD6))
+                                CompletionKind.TYPE -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))
+                                CompletionKind.SNIPPET -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))
                             }
-                            Text(labelAnnotated, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
-                            if (comp.doc != null) {
-                                Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis)
+                            Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                // P41 Phase C: Highlight fuzzy-matched characters in the label
+                                val matchIndices = fuzzyMatchIndices(prefix, comp.label)
+                                val labelAnnotated = if (matchIndices.isNotEmpty()) {
+                                    buildAnnotatedString {
+                                        for ((idx, ch) in comp.label.withIndex()) {
+                                            if (idx in matchIndices) {
+                                                append(AnnotatedString(
+                                                    ch.toString(),
+                                                    SpanStyle(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF4DA6FF),
+                                                    )
+                                                ))
+                                            } else {
+                                                append(ch)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    AnnotatedString(comp.label)
+                                }
+                                // P41-J: Deprecation indicator — strike-through for deprecated items
+                                if (comp.isDeprecated) {
+                                    Text(
+                                        labelAnnotated,
+                                        color = Color(0xFF888888),
+                                        fontSize = (fontSize - 1).sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                                    )
+                                } else {
+                                    Text(labelAnnotated, color = Color(0xFFD4D4D4), fontSize = (fontSize - 1).sp, fontFamily = FontFamily.Monospace)
+                                }
+                                if (comp.doc != null) {
+                                    Text(comp.doc, color = Color(0xFF888888), fontSize = 9.sp, maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis)
+                                }
                             }
+                            // P41-J: Source badge — small colored label
+                            val (badgeText, badgeColor) = when (comp.source) {
+                                CompletionSource.LSP -> "LSP" to Color(0xFF4EC9B0)
+                                CompletionSource.BUFFER -> "Buf" to Color(0xFF888888)
+                                CompletionSource.SNIPPET -> "Snip" to Color(0xFFDCDCAA)
+                                CompletionSource.WORKSPACE -> "Wksp" to Color(0xFF4DA6FF)
+                                CompletionSource.AI -> "AI" to Color(0xFFC586C0)
+                                CompletionSource.PATH -> "Path" to Color(0xFF9CDCFE)
+                            }
+                            Text(badgeText, color = badgeColor, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                         }
-                        Text(comp.kind.name.lowercase(), color = Color(0xFF808080), fontSize = 9.sp)
+                        }
                     }
-                }
                 }
             }
         }
+    }
+}
+
+// P41-J: Filter chip composable for completion dropdown
+@Composable
+private fun FilterChip(
+    label: String,
+    isActive: Boolean,
+    color: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .background(
+                if (isActive) color.copy(alpha = 0.25f) else Color(0xFF333333),
+                RoundedCornerShape(3.dp)
+            )
+            .border(
+                1.dp,
+                if (isActive) color else Color(0xFF444444),
+                RoundedCornerShape(3.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            label,
+            color = if (isActive) color else Color(0xFF888888),
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace,
+        )
     }
 }
