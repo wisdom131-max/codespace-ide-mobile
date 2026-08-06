@@ -44,6 +44,7 @@ import com.codespace.ide.lsp.DocumentSymbolCache
 import com.codespace.ide.lsp.parseHoverContent
 import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
+import com.codespace.ide.lsp.parseWorkspaceSymbols
 import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
 import com.codespace.ide.lsp.parseCodeActions
 import com.codespace.ide.lsp.LspCodeAction
@@ -1277,6 +1278,13 @@ fun EditorPane(
                                     val actions = LspManager.getCodeActions(active.language, uri, line, col)
                                     actions?.let { parseImportEdits(it, uri) } ?: emptyList()
                                 } else emptyList()
+                            }
+                        } else null,
+                        // P41-F: Workspace symbol completion — cross-file symbol search
+                        lspWorkspaceSymbolProvider = if (LspManager.isServerRunning(active.language) && LspManager.supportsWorkspaceSymbols(active.language)) {
+                            { query ->
+                                val symbols = LspManager.getWorkspaceSymbol(active.language, query)
+                                symbols?.let { parseWorkspaceSymbols(it) } ?: emptyList()
                             }
                         } else null,
                         // P37-4 + P39-FULL: LSP Code Actions (quick fixes in context menu)

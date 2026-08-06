@@ -362,6 +362,8 @@ fun CodeEditor(
     lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)? = null,
     /** P22-J: LSP-backed auto-import provider — returns ImportEdits for current cursor position */
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
+    /** P41-F: Workspace symbol provider — returns workspace/symbol results for cross-file completion */
+    lspWorkspaceSymbolProvider: ((query: String) -> List<LspCompletionItem>)? = null,
     /** P24-1: LSP diagnostics as LintErrors — shown as squiggles on top of syntax highlighting */
     lspDiagnosticErrors: List<LintError> = emptyList(),
     /** P24-3: Find References — called with word at cursor, returns list of (filePath, line, snippet) */
@@ -597,8 +599,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             lspCompletions = emptyList()
         }
     }
+
+    // P41-F: Workspace symbol completions (cross-file) — fetch on prefix change
+    var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+    LaunchedEffect(prefix) {
+        if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
+            workspaceCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                try { lspWorkspaceSymbolProvider.invoke(prefix) } catch (_: Exception) { emptyList() }
+            }
+        } else {
+            workspaceCompletions = emptyList()
+        }
+    }
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
-    val allCompletions = remember(completions, lspCompletions, prefix) {
+    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, prefix) {
         // Convert local completions to RankedCompletionItem
         val localRanked = completions.map { c ->
             val kind = when (c.kind) {
@@ -620,8 +634,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 textEditJson = item.textEditJson,
             )
         }
+        // P41-F: Convert workspace symbol completions to RankedCompletionItem
+        val workspaceRanked = workspaceCompletions.map { item ->
+            RankedCompletionItem(
+                label = item.label, kind = item.kind, detail = item.detail,
+                insertText = item.insertText, source = CompletionSource.WORKSPACE,
+            )
+        }
         // Merge, deduplicate by label, rank with fuzzy matching
-        val merged = (lspRanked + localRanked).distinctBy { it.label }
+        // LSP first (highest priority), then local, then workspace (lower priority, cross-file)
+        val merged = (lspRanked + localRanked + workspaceRanked).distinctBy { it.label }
         val ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(), CompletionHistoryStore.usageMap())
         // Map back to Completion for the existing dropdown UI
         ranked.take(15).map { rc ->
@@ -3738,7 +3760,7 @@ private fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
     val cursorCol = cursorPos - (text.lastIndexOf('\n', (cursorPos - 1).coerceAtLeast(0)) + 1)
     val lineHeightDp = fontSize * 1.25f
 
-    ghostLines.forEachIndexed { lineIdx ->
+    ghostLines.forEachIndexed { lineIdx, _ ->
         val line = if (lineIdx == 0) ghostText else ghostLines[lineIdx]
         if (line.isBlank() && lineIdx > 0) return@forEachIndexed
         val topDp = (cursorLine + lineIdx) * lineHeightDp - vScrollValue

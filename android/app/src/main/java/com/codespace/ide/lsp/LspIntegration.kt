@@ -127,6 +127,53 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
     return result
 }
 
+// ── P41-F: Workspace Symbol Parser ──────────────────────────────────────────
+
+/**
+ * Parse a workspace/symbol LSP response (JSONArray of SymbolInformation) into
+ * LspCompletionItem list for the completion dropdown.
+ */
+fun parseWorkspaceSymbols(symbols: JSONArray): List<LspCompletionItem> {
+    val result = mutableListOf<LspCompletionItem>()
+    for (i in 0 until symbols.length()) {
+        val sym = symbols.optJSONObject(i) ?: continue
+        val name = sym.optString("name", "")
+        if (name.isBlank()) continue
+        val symbolKind = sym.optInt("kind", 1)
+        val containerName = sym.optString("containerName", "")
+        val completionKind = symbolKindToCompletionKind(symbolKind)
+        val location = sym.optJSONObject("location")
+        val detail = if (location != null) {
+            val uri = location.optString("uri", "")
+            val range = location.optJSONObject("range")
+            val line = range?.optJSONObject("start")?.optInt("line", 0) ?: 0
+            val fileName = uri.removePrefix("file://").substringAfterLast("/")
+            val container = if (containerName.isNotBlank()) containerName else ""
+            if (container.isNotBlank()) "$container · $fileName:${line + 1}" else "$fileName:${line + 1}"
+        } else if (containerName.isNotBlank()) {
+            containerName
+        } else null
+        result.add(LspCompletionItem(
+            label = name,
+            kind = completionKind,
+            detail = detail,
+            insertText = name,
+            additionalTextEditsJson = null,
+            textEditJson = null,
+        ))
+    }
+    return result
+}
+
+private fun symbolKindToCompletionKind(symbolKind: Int): Int {
+    return when (symbolKind) {
+        1 -> 17; 2 -> 1; 3 -> 9; 4 -> 7; 5 -> 5; 6 -> 22; 7 -> 10; 8 -> 8
+        9 -> 2; 10 -> 3; 11 -> 7; 12 -> 12; 13 -> 11; 14 -> 13; 22 -> 23
+        23 -> 20; 24 -> 21; 25 -> 24; 26 -> 25
+        else -> 1
+    }
+}
+
 /**
  * P22-J: ImportEdit — represents a single import statement to insert at the top of a file.
  */
