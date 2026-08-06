@@ -13,10 +13,38 @@ package com.codespace.ide.lsp
  * - ${1|a,b,c|}      → tab-stop with choice dropdown
  * - $0               → final cursor position (after last tab-stop)
  * - $$                → literal dollar sign (escaped)
- * - ${TM_FILENAME}   → variable (replaced with empty for now — future: resolve from context)
+ * - ${TM_FILENAME}   → variable resolved from editor context
+ * - ${TM_FILENAME:default} → variable with fallback default
+ *
+ * Supported variables:
+ * - TM_FILENAME       → current file name (e.g. "MainActivity.kt")
+ * - TM_FILENAME_BASE   → file name without extension (e.g. "MainActivity")
+ * - TM_DIRECTORY      → directory path of current file
+ * - TM_FILEPATH       → full path of current file
+ * - TM_LINE_NUMBER    → 1-based line number at insertion point
+ * - TM_LINE_INDEX     → 0-based line number at insertion point
+ * - TM_CURRENT_LINE   → text of current line
+ * - TM_SELECTED_TEXT   → currently selected text (empty if no selection)
+ * - TM_CURRENT_WORD    → word under cursor (empty if none)
+ * - TM_WORD_START     → start of current word
+ * - TM_WORD_END       → end of current word
+ * - CLIPBOARD         → clipboard contents
  *
  * Reference: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#snippet_syntax
  */
+
+/** Context for resolving LSP snippet variables. */
+data class SnippetContext(
+    val fileName: String = "",
+    val filePath: String = "",
+    val directory: String = "",
+    val lineNumber: Int = 0,
+    val lineIndex: Int = 0,
+    val currentLine: String = "",
+    val selectedText: String = "",
+    val currentWord: String = "",
+    val clipboard: String = "",
+)
 
 /** A single tab-stop in a parsed snippet. */
 data class SnippetTabStop(
@@ -44,7 +72,27 @@ data class SnippetSession(
 )
 
 /**
+ * Resolve an LSP snippet variable name to its value from the context.
+ */
+private fun resolveVariable(varName: String, context: SnippetContext): String {
+    return when (varName) {
+        "TM_FILENAME" -> context.fileName
+        "TM_FILENAME_BASE" -> context.fileName.substringBeforeLast('.', context.fileName)
+        "TM_DIRECTORY" -> context.directory
+        "TM_FILEPATH" -> context.filePath
+        "TM_LINE_NUMBER" -> context.lineNumber.toString()
+        "TM_LINE_INDEX" -> context.lineIndex.toString()
+        "TM_CURRENT_LINE" -> context.currentLine
+        "TM_SELECTED_TEXT" -> context.selectedText
+        "TM_CURRENT_WORD" -> context.currentWord
+        "CLIPBOARD" -> context.clipboard
+        else -> "" // Unknown variable — empty
+    }
+}
+
+/**
  * Parse an LSP snippet string into cleaned text + tab-stops.
+ * Variables are resolved from the provided context.
  *
  * Example: "fun ${1:name}(): ${2:Unit} {\n    $0\n}"
  * → cleanedText = "fun name(): Unit {\n    \n}"
@@ -54,7 +102,7 @@ data class SnippetSession(
  *   ]
  *   finalCursorOffset = 22
  */
-fun parseSnippet(snippet: String): SnippetParseResult {
+fun parseSnippet(snippet: String, context: SnippetContext = SnippetContext()): SnippetParseResult {
     val cleaned = StringBuilder()
     val tabStops = mutableListOf<SnippetTabStop>()
     var finalCursorOffset = -1
@@ -81,7 +129,7 @@ fun parseSnippet(snippet: String): SnippetParseResult {
 
             if (next == '{') {
                 // ${...} syntax — could be ${1:default}, ${1|a,b,c|}, ${VAR}, or ${VAR:default}
-                val closeIdx = snippet.indexOf('}', i + 2)
+                val closeIdx = findMatchingBrace(snippet, i + 1)
                 if (closeIdx == -1) {
                     cleaned.append(c)
                     i++
@@ -114,7 +162,6 @@ fun parseSnippet(snippet: String): SnippetParseResult {
                     if (pipeIdx != -1 && (colonIdx == -1 || pipeIdx < colonIdx)) {
                         // ${1|a,b,c|} — choices
                         val choicesStr = content.substring(pipeIdx + 1)
-                        // Remove trailing | if present
                         val cleanedChoices = choicesStr.removeSuffix("|")
                         choices = cleanedChoices.split(",").map { it.trim() }
                         defaultText = choices.firstOrNull() ?: ""
@@ -134,8 +181,12 @@ fun parseSnippet(snippet: String): SnippetParseResult {
                     i = closeIdx + 1
                     continue
                 } else {
-                    // Variable like ${TM_FILENAME} — replace with empty for now
-                    // Future: resolve variables from context
+                    // Variable like ${TM_FILENAME} or ${TM_FILENAME:default}
+                    val varName = if (colonIdx != -1) content.substring(0, colonIdx) else content
+                    val varDefault = if (colonIdx != -1) content.substring(colonIdx + 1) else ""
+                    val resolved = resolveVariable(varName, context)
+                    val replacement = if (resolved.isNotEmpty()) resolved else varDefault
+                    cleaned.append(replacement)
                     i = closeIdx + 1
                     continue
                 }
@@ -169,7 +220,9 @@ fun parseSnippet(snippet: String): SnippetParseResult {
             if (next.isLetter()) {
                 val varEnd = i + 1
                 while (varEnd < snippet.length && (snippet[varEnd].isLetterOrDigit() || snippet[varEnd] == '_')) varEnd++
-                // Replace variable with empty for now
+                val varName = snippet.substring(i + 1, varEnd)
+                val resolved = resolveVariable(varName, context)
+                cleaned.append(resolved)
                 i = varEnd
                 continue
             }
@@ -197,6 +250,26 @@ fun parseSnippet(snippet: String): SnippetParseResult {
         tabStops = tabStops,
         finalCursorOffset = finalCursorOffset,
     )
+}
+
+/**
+ * Find the matching closing brace for an opening brace at position openIdx.
+ * Handles nested braces inside variable defaults (e.g. ${1:${2:default}}).
+ */
+private fun findMatchingBrace(text: String, openIdx: Int): Int {
+    var depth = 0
+    var i = openIdx
+    while (i < text.length) {
+        when (text[i]) {
+            '{' -> depth++
+            '}' -> {
+                depth--
+                if (depth == 0) return i
+            }
+        }
+        i++
+    }
+    return -1
 }
 
 /**
@@ -230,6 +303,14 @@ fun SnippetSession.activeStopRange(): IntRange? {
     if (activeStopIndex >= tabStops.size) return null
     val stop = tabStops[activeStopIndex]
     return stop.startOffset until stop.endOffset
+}
+
+/**
+ * Get the active tab-stop, or null if none.
+ */
+fun SnippetSession.activeStop(): SnippetTabStop? {
+    if (activeStopIndex >= tabStops.size) return null
+    return tabStops[activeStopIndex]
 }
 
 /**
@@ -267,4 +348,45 @@ fun SnippetSession.containsCursor(cursor: Int): Boolean {
  */
 fun SnippetSession.updateSpan(newSnippetEnd: Int): SnippetSession {
     return copy(snippetEnd = newSnippetEnd)
+}
+
+/**
+ * Recompute all tab-stop offsets after the user edited text within the active tab-stop.
+ * When the user types in a tab-stop, the text length changes, so subsequent tab-stops
+ * need their offsets shifted by the delta.
+ *
+ * @param activeStop The tab-stop that was edited
+ * @param oldLen The old length of text at the active stop
+ * @param newLen The new length of text at the active stop
+ */
+fun SnippetSession.shiftAfterEdit(activeStop: SnippetTabStop, oldLen: Int, newLen: Int): SnippetSession {
+    val delta = newLen - oldLen
+    if (delta == 0) return this
+
+    val newTabStops = tabStops.map { stop ->
+        if (stop.index == activeStop.index) {
+            // Update the edited stop's end offset
+            stop.copy(endOffset = stop.startOffset + newLen, defaultText = "")
+        } else if (stop.startOffset > activeStop.endOffset) {
+            // Shift subsequent stops by the delta
+            stop.copy(
+                startOffset = stop.startOffset + delta,
+                endOffset = stop.endOffset + delta,
+            )
+        } else {
+            stop
+        }
+    }
+
+    val newFinalCursor = if (finalCursorOffset > activeStop.endOffset) {
+        finalCursorOffset + delta
+    } else {
+        finalCursorOffset
+    }
+
+    return copy(
+        tabStops = newTabStops,
+        snippetEnd = snippetEnd + delta,
+        finalCursorOffset = newFinalCursor,
+    )
 }
