@@ -941,6 +941,95 @@ fun ProjectShellScreen(
                                         editorTabs[idx] = newPath
                                         if (activeEditorTab == oldPath) activeEditorTab = newPath
                                     }
+                                    // P39-FULL: Notify LSP servers about file rename so they
+                                    // can update imports/references (workspace/willRenameFiles
+                                    // + workspace/didRenameFiles)
+                                    val oldUri = LspManager.fileUriFromHostPath(context, oldPath)
+                                    val newUri = LspManager.fileUriFromHostPath(context, newPath)
+                                    if (oldUri != null && newUri != null) {
+                                        Language.entries.forEach { lang ->
+                                            if (LspManager.isServerRunning(lang)) {
+                                                try {
+                                                    val edit = LspManager.willRenameFiles(lang, oldUri, newUri)
+                                                    if (edit != null) {
+                                                        // Apply import updates from the rename
+                                                        val docChanges = edit.optJSONArray("documentChanges")
+                                                        val changes = edit.optJSONObject("changes")
+                                                        if (docChanges != null) {
+                                                            for (j in 0 until docChanges.length()) {
+                                                                val dc = docChanges.optJSONObject(j) ?: continue
+                                                                val editUri = dc.optString("uri", "")
+                                                                val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                                                val decoded = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                                                val textEdits = dc.optJSONArray("edits") ?: continue
+                                                                try {
+                                                                    val targetText = java.io.File(decoded).readText()
+                                                                    val targetLines = targetText.split("\n").toMutableList()
+                                                                    val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                                        .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                                    for (te in edits) {
+                                                                        val rng = te.optJSONObject("range") ?: continue
+                                                                        val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                                        val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                                        val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                                        val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                                        val replacement = te.optString("newText", "")
+                                                                        if (sl == el && sl < targetLines.size) {
+                                                                            val line = targetLines[sl]
+                                                                            targetLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                                                        } else if (sl < targetLines.size) {
+                                                                            val before = targetLines[sl].substring(0, sc.coerceAtMost(targetLines[sl].length))
+                                                                            val after = if (el < targetLines.size) targetLines[el].substring(ec.coerceAtMost(targetLines[el].length)) else ""
+                                                                            targetLines[sl] = before + replacement + after
+                                                                            if (sl + 1 <= el && el < targetLines.size) {
+                                                                                for (k in el downTo sl + 1) { if (k < targetLines.size) targetLines.removeAt(k) }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    java.io.File(decoded).writeText(targetLines.joinToString("\n"))
+                                                                } catch (_: Exception) {}
+                                                            }
+                                                        } else if (changes != null) {
+                                                            val keys = changes.keys()
+                                                            while (keys.hasNext()) {
+                                                                val editUri = keys.next()
+                                                                val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                                                val decoded = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                                                val textEdits = changes.optJSONArray(editUri) ?: continue
+                                                                try {
+                                                                    val targetText = java.io.File(decoded).readText()
+                                                                    val targetLines = targetText.split("\n").toMutableList()
+                                                                    val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                                                        .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                                                    for (te in edits) {
+                                                                        val rng = te.optJSONObject("range") ?: continue
+                                                                        val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                                        val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                                        val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                                        val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                                        val replacement = te.optString("newText", "")
+                                                                        if (sl == el && sl < targetLines.size) {
+                                                                            val line = targetLines[sl]
+                                                                            targetLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                                                        } else if (sl < targetLines.size) {
+                                                                            val before = targetLines[sl].substring(0, sc.coerceAtMost(targetLines[sl].length))
+                                                                            val after = if (el < targetLines.size) targetLines[el].substring(ec.coerceAtMost(targetLines[el].length)) else ""
+                                                                            targetLines[sl] = before + replacement + after
+                                                                            if (sl + 1 <= el && el < targetLines.size) {
+                                                                                for (k in el downTo sl + 1) { if (k < targetLines.size) targetLines.removeAt(k) }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    java.io.File(decoded).writeText(targetLines.joinToString("\n"))
+                                                                } catch (_: Exception) {}
+                                                            }
+                                                        }
+                                                    }
+                                                    LspManager.didRenameFiles(lang, oldUri, newUri)
+                                                } catch (_: Exception) {}
+                                            }
+                                        }
+                                    }
                                 },
                                 onOpenFileAtLine = { path, line ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)

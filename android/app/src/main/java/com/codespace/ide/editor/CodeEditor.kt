@@ -637,6 +637,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var renameCrossFileCount by remember { mutableStateOf(0) }
     var renameInProgress by remember { mutableStateOf(false) }
     var renameUsedLsp by remember { mutableStateOf(false) }
+    // P39-FULL: Rename preview state
+    var renamePreviewEdit by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var renamePreviewFiles by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -1718,6 +1721,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                                 onContentChange(newText)
                                                             }
                                                         } catch (_: Exception) {}
+                                                    } else if (fix.command != null) {
+                                                        // P39-FULL: Handle command-based code actions
+                                                        try {
+                                                            val cmdJson = org.json.JSONObject(fix.command)
+                                                            val cmdName = cmdJson.optString("command", "")
+                                                            val cmdArgs = cmdJson.optJSONArray("arguments")
+                                                            if (cmdName.isNotEmpty()) {
+                                                                LspManager.executeCommand(language, cmdName, cmdArgs)
+                                                            }
+                                                        } catch (_: Exception) {}
                                                     }
                                                     showLspMenu = false
                                                 }
@@ -2305,7 +2318,55 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     }
                 },
                 confirmButton = {
-                    Button(
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // P39-FULL: Preview button
+                        if (LspManager.isServerRunning(language) && filePath.startsWith("/")) {
+                            TextButton(onClick = {
+                                val newName = renameNewName.trim()
+                                if (newName.isNotEmpty() && newName != wordToRename) {
+                                    val ctx = context
+                                    val uri = LspManager.fileUriFromHostPath(ctx, filePath)
+                                    if (uri != null) {
+                                        val cOff = value.selection.end
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        try {
+                                            val wsEdit = LspManager.rename(language, uri, cLine, cCol, newName)
+                                            if (wsEdit != null) {
+                                                val files = mutableListOf<Pair<String, Int>>()
+                                                val docChanges = wsEdit.optJSONArray("documentChanges")
+                                                val changes = wsEdit.optJSONObject("changes")
+                                                if (docChanges != null) {
+                                                    for (j in 0 until docChanges.length()) {
+                                                        val dc = docChanges.optJSONObject(j) ?: continue
+                                                        val editUri = dc.optString("uri", "")
+                                                        val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                                        val decoded = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                                        val editCount = dc.optJSONArray("edits")?.length() ?: 0
+                                                        files.add(decoded.substringAfterLast("/") to editCount)
+                                                    }
+                                                } else if (changes != null) {
+                                                    val keys = changes.keys()
+                                                    while (keys.hasNext()) {
+                                                        val editUri = keys.next()
+                                                        val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                                        val decoded = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                                        val editCount = changes.optJSONArray(editUri)?.length() ?: 0
+                                                        files.add(decoded.substringAfterLast("/") to editCount)
+                                                    }
+                                                }
+                                                renamePreviewEdit = wsEdit
+                                                renamePreviewFiles = files
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            }) {
+                                Text("Preview", color = Color(0xFF4EC9B0), fontSize = 12.sp)
+                            }
+                        }
+                        Button(
                         onClick = {
                             val newName = renameNewName.trim()
                             if (newName.isNotEmpty() && newName != wordToRename) {
@@ -2492,9 +2553,173 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     ) {
                         Text("Rename", color = Color(0xFFFFFFFF), fontSize = 12.sp)
                     }
+                    }  // close Row
                 },
                 dismissButton = {
                     TextButton(onClick = { renameDialogWord = null }) {
+                        Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
+                    }
+                },
+            )
+        }
+
+        // P39-FULL: Rename Preview dialog — shows affected files before applying
+        if (renamePreviewEdit != null) {
+            AlertDialog(
+                onDismissRequest = { renamePreviewEdit = null; renamePreviewFiles = emptyList() },
+                containerColor = Color(0xFF252526),
+                title = { Text("Rename Preview", color = Color(0xFFD4D4D4), fontSize = 14.sp, fontFamily = FontFamily.Monospace) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${renamePreviewFiles.size} file${if (renamePreviewFiles.size != 1) "s" else ""} affected",
+                            color = Color(0xFF4EC9B0), fontSize = 12.sp)
+                        HorizontalDivider(color = Color(0xFF3C3C3C), modifier = Modifier.padding(vertical = 4.dp))
+                        renamePreviewFiles.forEach { (fileName, editCount) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("📄", fontSize = 10.sp)
+                                Text(fileName, color = Color(0xFFD4D4D4), fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text("$editCount edit${if (editCount != 1) "s" else ""}", color = Color(0xFF888888), fontSize = 10.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        // Apply the previewed rename edit directly
+                        val wsEdit = renamePreviewEdit!!
+                        var newText = value.text
+                        var appliedAny = false
+                        val docChanges = wsEdit.optJSONArray("documentChanges")
+                        val changes = wsEdit.optJSONObject("changes")
+                        if (docChanges != null) {
+                            for (j in 0 until docChanges.length()) {
+                                val dc = docChanges.optJSONObject(j) ?: continue
+                                val editUri = dc.optString("uri", "")
+                                val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                val decodedPath = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                if (decodedPath == filePath) {
+                                    val textEdits = dc.optJSONArray("edits") ?: continue
+                                    val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                        .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                    val newTextLines = newText.split("\n").toMutableList()
+                                    for (te in edits) {
+                                        val rng = te.optJSONObject("range") ?: continue
+                                        val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                        val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                        val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                        val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                        val replacement = te.optString("newText", "")
+                                        if (sl == el && sl < newTextLines.size) {
+                                            val line = newTextLines[sl]
+                                            newTextLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                        } else if (sl < newTextLines.size) {
+                                            val before = newTextLines[sl].substring(0, sc.coerceAtMost(newTextLines[sl].length))
+                                            val after = if (el < newTextLines.size) newTextLines[el].substring(ec.coerceAtMost(newTextLines[el].length)) else ""
+                                            newTextLines[sl] = before + replacement + after
+                                            if (sl + 1 <= el && el < newTextLines.size) { for (k in el downTo sl + 1) { if (k < newTextLines.size) newTextLines.removeAt(k) } }
+                                        }
+                                    }
+                                    newText = newTextLines.joinToString("\n")
+                                    appliedAny = true
+                                } else {
+                                    val textEdits = dc.optJSONArray("edits") ?: continue
+                                    try {
+                                        val targetText = java.io.File(decodedPath).readText()
+                                        val targetLines = targetText.split("\n").toMutableList()
+                                        val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                            .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                        for (te in edits) {
+                                            val rng = te.optJSONObject("range") ?: continue
+                                            val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                            val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                            val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                            val replacement = te.optString("newText", "")
+                                            if (sl == el && sl < targetLines.size) {
+                                                val line = targetLines[sl]
+                                                targetLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                            } else if (sl < targetLines.size) {
+                                                val before = targetLines[sl].substring(0, sc.coerceAtMost(targetLines[sl].length))
+                                                val after = if (el < targetLines.size) targetLines[el].substring(ec.coerceAtMost(targetLines[el].length)) else ""
+                                                targetLines[sl] = before + replacement + after
+                                                if (sl + 1 <= el && el < targetLines.size) { for (k in el downTo sl + 1) { if (k < targetLines.size) targetLines.removeAt(k) } }
+                                            }
+                                        }
+                                        java.io.File(decodedPath).writeText(targetLines.joinToString("\n"))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        } else if (changes != null) {
+                            val keys = changes.keys()
+                            while (keys.hasNext()) {
+                                val editUri = keys.next()
+                                val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+                                val decodedPath = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+                                val textEdits = changes.optJSONArray(editUri) ?: continue
+                                if (decodedPath == filePath) {
+                                    val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                        .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                    val newTextLines = newText.split("\n").toMutableList()
+                                    for (te in edits) {
+                                        val rng = te.optJSONObject("range") ?: continue
+                                        val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                        val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                        val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                        val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                        val replacement = te.optString("newText", "")
+                                        if (sl == el && sl < newTextLines.size) {
+                                            val line = newTextLines[sl]
+                                            newTextLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                        } else if (sl < newTextLines.size) {
+                                            val before = newTextLines[sl].substring(0, sc.coerceAtMost(newTextLines[sl].length))
+                                            val after = if (el < newTextLines.size) newTextLines[el].substring(ec.coerceAtMost(newTextLines[el].length)) else ""
+                                            newTextLines[sl] = before + replacement + after
+                                            if (sl + 1 <= el && el < newTextLines.size) { for (k in el downTo sl + 1) { if (k < newTextLines.size) newTextLines.removeAt(k) } }
+                                        }
+                                    }
+                                    newText = newTextLines.joinToString("\n")
+                                    appliedAny = true
+                                } else {
+                                    try {
+                                        val targetText = java.io.File(decodedPath).readText()
+                                        val targetLines = targetText.split("\n").toMutableList()
+                                        val edits = (0 until textEdits.length()).map { textEdits.optJSONObject(it)!! }
+                                            .sortedByDescending { it.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0 }
+                                        for (te in edits) {
+                                            val rng = te.optJSONObject("range") ?: continue
+                                            val sl = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            val sc = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                            val el = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                            val ec = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                            val replacement = te.optString("newText", "")
+                                            if (sl == el && sl < targetLines.size) {
+                                                val line = targetLines[sl]
+                                                targetLines[sl] = line.substring(0, sc.coerceAtMost(line.length)) + replacement + line.substring(ec.coerceAtMost(line.length))
+                                            } else if (sl < targetLines.size) {
+                                                val before = targetLines[sl].substring(0, sc.coerceAtMost(targetLines[sl].length))
+                                                val after = if (el < targetLines.size) targetLines[el].substring(ec.coerceAtMost(targetLines[el].length)) else ""
+                                                targetLines[sl] = before + replacement + after
+                                                if (sl + 1 <= el && el < targetLines.size) { for (k in el downTo sl + 1) { if (k < targetLines.size) targetLines.removeAt(k) } }
+                                            }
+                                        }
+                                        java.io.File(decodedPath).writeText(targetLines.joinToString("\n"))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
+                        if (appliedAny) {
+                            value = TextFieldValue(newText, TextRange(value.selection.start))
+                            onContentChange(newText)
+                        }
+                        renamePreviewEdit = null; renamePreviewFiles = emptyList(); renameDialogWord = null
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC))) {
+                        Text("Apply", color = Color.White, fontSize = 12.sp)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renamePreviewEdit = null; renamePreviewFiles = emptyList() }) {
                         Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
                     }
                 },
@@ -2975,6 +3200,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         if (newText != null && newText != value.text) {
                                             value = TextFieldValue(newText, TextRange(value.selection.start))
                                             onContentChange(newText)
+                                        }
+                                    } catch (_: Exception) {}
+                                } else if (fix.command != null) {
+                                    // P39-FULL: Handle code actions that return a command (not edit)
+                                    try {
+                                        val cmdJson = org.json.JSONObject(fix.command)
+                                        val cmdName = cmdJson.optString("command", "")
+                                        val cmdArgs = cmdJson.optJSONArray("arguments")
+                                        if (cmdName.isNotEmpty()) {
+                                            LspManager.executeCommand(language, cmdName, cmdArgs)
                                         }
                                     } catch (_: Exception) {}
                                 }

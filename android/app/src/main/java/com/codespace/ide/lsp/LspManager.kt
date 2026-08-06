@@ -766,10 +766,16 @@ object LspManager {
             put("codeActionLiteralSupport", JSONObject().apply {
                 put("codeActionKind", JSONObject().apply {
                     put("valueSet", JSONArray().apply {
-                        put(""); put("quickfix"); put("refactor"); put("source")
+                        put(""); put("quickfix"); put("refactor"); put("refactor.extract")
+                        put("refactor.inline"); put("refactor.rewrite"); put("source")
+                        put("source.organizeImports"); put("source.fixAll")
+                        put("source.removeUnused")
                     })
                 })
             })
+            // P39-FULL: Advertise resolve support so servers return data-only actions
+            // that need resolving to get the actual WorkspaceEdit
+            put("resolveProvider", true)
         }
         // textDocument.semanticTokens (declared as supported but minimal)
         val semanticTokens = JSONObject().apply {
@@ -836,11 +842,61 @@ object LspManager {
             put("applyEdit", false)
             put("workspaceFolders", true)
             put("symbol", JSONObject().apply { put("dynamicRegistration", false) })
+            // P39-FULL: Advertise fileOperations support for willRenameFiles/didRenameFiles
+            put("fileOperations", JSONObject().apply {
+                put("willRename", true)
+                put("didRename", true)
+            })
         }
         return JSONObject().apply {
             put("textDocument", textDocument)
             put("workspace", workspace)
         }
+    }
+
+    /**
+     * P39-FULL: Send workspace/willRenameFiles notification before a file rename.
+     * This lets the LSP server prepare WorkspaceEdits for updating imports/references
+     * that point to the file being renamed. Returns the WorkspaceEdit if the server
+     * provides one, or null.
+     */
+    fun willRenameFiles(
+        language: Language,
+        oldUri: String,
+        newUri: String,
+    ): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        return try {
+            val renameFile = JSONObject()
+                .put("oldUri", oldUri)
+                .put("newUri", newUri)
+            val params = JSONObject()
+                .put("files", JSONArray().put(renameFile))
+            val response = server.client.request("workspace/willRenameFiles", params, timeoutSeconds = 5)
+            response as? JSONObject
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * P39-FULL: Send workspace/didRenameFiles notification after a file rename.
+     * This tells the LSP server the rename is done so it can update its internal state.
+     */
+    fun didRenameFiles(
+        language: Language,
+        oldUri: String,
+        newUri: String,
+    ) {
+        val server = servers[language] ?: return
+        if (!server.initialized) return
+        try {
+            val renameFile = JSONObject()
+                .put("oldUri", oldUri)
+                .put("newUri", newUri)
+            val params = JSONObject()
+                .put("files", JSONArray().put(renameFile))
+            server.client.notify("workspace/didRenameFiles", params)
+        } catch (_: Exception) {}
     }
 
     fun stopServer(language: Language) {
@@ -1058,6 +1114,7 @@ object LspManager {
         line: Int,
         character: Int,
         diagnostics: JSONArray? = null,
+        only: List<String>? = null,
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
@@ -1067,6 +1124,11 @@ object LspManager {
         val pos = JSONObject().put("line", line).put("character", character)
         val range = JSONObject().put("start", pos).put("end", pos)
         val context = JSONObject().put("diagnostics", diagnostics ?: JSONArray())
+        // P39-FULL: Pass `only` filter so the server returns only the requested action kinds
+        // (e.g. ["refactor"] for "Show Available Refactorings", ["source"] for source actions)
+        if (only != null && only.isNotEmpty()) {
+            context.put("only", JSONArray(only))
+        }
         val params = JSONObject()
             .put("textDocument", td)
             .put("range", range)
@@ -1078,6 +1140,42 @@ object LspManager {
             is JSONObject -> JSONArray().put(response)
             else -> null
         }
+    }
+
+    /**
+     * P39-FULL: Execute a workspace command (for code actions that return a command
+     * instead of a WorkspaceEdit). The command is executed on the server side.
+     */
+    fun executeCommand(
+        language: Language,
+        command: String,
+        arguments: JSONArray? = null,
+    ): Any? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        return try {
+            val params = JSONObject()
+                .put("command", command)
+            if (arguments != null) params.put("arguments", arguments)
+            server.client.request("workspace/executeCommand", params, timeoutSeconds = 10)
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * P39-FULL: Resolve a code action that returned `data` instead of `edit`.
+     * Some servers return a code action with a `data` field and no `edit` —
+     * the client must call `codeAction/resolve` to get the actual WorkspaceEdit.
+     */
+    fun resolveCodeAction(
+        language: Language,
+        action: org.json.JSONObject,
+    ): org.json.JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        return try {
+            val response = server.client.request("codeAction/resolve", action, timeoutSeconds = 10)
+            response as? org.json.JSONObject
+        } catch (_: Exception) { null }
     }
 
     fun getSemanticTokens(

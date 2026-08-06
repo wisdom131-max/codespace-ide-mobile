@@ -1276,7 +1276,9 @@ fun EditorPane(
                                 } else emptyList()
                             }
                         } else null,
-                        // P37-4: LSP Code Actions (quick fixes in context menu)
+                        // P37-4 + P39-FULL: LSP Code Actions (quick fixes in context menu)
+                        // Requests ALL action kinds (no `only` filter) so the menu shows
+                        // everything the server can do at this position.
                         lspCodeActionProvider = if (LspManager.isServerRunning(active.language)) {
                             { line ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
@@ -1289,6 +1291,31 @@ fun EditorPane(
                                         LspManager.getCodeActions(active.language, uri, line, 0, diagnostics = diagnostics)
                                     } catch (_: Exception) { null }
                                     val parsed = actions?.let { parseCodeActions(it) } ?: emptyList<LspCodeAction>()
+                                    // P39-FULL: Resolve actions that have `data` but no `edit`
+                                    // (server needs a second round-trip to provide the edit)
+                                    parsed.map { action ->
+                                        if (action.edit == null && action.data != null) {
+                                            try {
+                                                val resolvedJson = org.json.JSONObject()
+                                                    .put("title", action.title)
+                                                if (action.kind != null) resolvedJson.put("kind", action.kind)
+                                                // data can be a JSON object, array, or primitive
+                                                val dataObj = try { org.json.JSONObject(action.data) }
+                                                    catch (_: Exception) { null }
+                                                if (dataObj != null) {
+                                                    resolvedJson.put("data", dataObj)
+                                                } else {
+                                                    resolvedJson.put("data", action.data)
+                                                }
+                                                val resolved = LspManager.resolveCodeAction(active.language, resolvedJson)
+                                                if (resolved?.optJSONObject("edit") != null) {
+                                                    action.copy(edit = resolved.getJSONObject("edit").toString())
+                                                } else if (resolved?.optJSONObject("command") != null) {
+                                                    action.copy(command = resolved.getJSONObject("command").toString())
+                                                } else action
+                                            } catch (_: Exception) { action }
+                                        } else action
+                                    }
                                     // P39: Add AI code actions if AI chat is available
                                     val aiActions = if (onAiFixRequest != null) {
                                         listOf(
