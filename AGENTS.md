@@ -8663,3 +8663,5 @@ Latest push `25f2fc99` — fix for GhostTextOverlay `forEachIndexed` lambda para
 
 
 <!-- CI trigger: verify Phase 41 fix commits compile (builds #1819-#1826 deleted, never verified) -->
+
+<!-- CI trigger: re-queue build after stuck runner -->
