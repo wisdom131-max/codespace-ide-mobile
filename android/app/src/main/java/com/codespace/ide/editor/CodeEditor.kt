@@ -6,6 +6,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventModifier
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -96,6 +103,13 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
 import com.codespace.ide.lsp.CompletionSource
 import com.codespace.ide.lsp.RankedCompletionItem
+import com.codespace.ide.lsp.parseSnippet
+import com.codespace.ide.lsp.createSnippetSession
+import com.codespace.ide.lsp.SnippetSession
+import com.codespace.ide.lsp.activeStopRange
+import com.codespace.ide.lsp.advance
+import com.codespace.ide.lsp.retreat
+import com.codespace.ide.lsp.containsCursor
 import com.codespace.ide.editor.PathCompletionProvider
 import com.codespace.ide.lsp.rank
 import com.codespace.ide.lsp.fuzzyScore
@@ -133,6 +147,8 @@ private data class Completion(
     val isDeprecated: Boolean = false,
     // P41-H: Raw LSP CompletionItemKind (1-25) for kind-specific icons. 0 = non-LSP (use kind fallback).
     val lspKind: Int = 0,
+    // P41-I: LSP insertTextFormat (1=PlainText, 2=Snippet). When 2, insertText has $1/$0 syntax.
+    val insertTextFormat: Int = 1,
 )
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
@@ -571,6 +587,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
+    // P41-I: Active snippet edit session — when non-null, Tab/Shift+Tab cycles tab-stops
+    var snippetSession by remember { mutableStateOf<SnippetSession?>(null) }
     // P41-J: Filter chip state — null = show all, non-null = filter by source
     var completionFilter by remember { mutableStateOf<CompletionSource?>(null) }
     // P41-J: Sticky selection — remember last highlighted label
@@ -702,6 +720,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 insertText = item.insertText, source = CompletionSource.LSP,
                 additionalTextEditsJson = item.additionalTextEditsJson,
                 textEditJson = item.textEditJson,
+                insertTextFormat = item.insertTextFormat,
             )
         }
         // P41-F: Convert workspace symbol completions to RankedCompletionItem
@@ -1181,6 +1200,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
 
+                        // P41-I: If snippet session is active, check if cursor left the snippet span
+                        if (snippetSession != null) {
+                            if (!snippetSession!!.containsCursor(updatedValue.selection.end)) {
+                                // Cursor moved outside snippet — exit snippet mode
+                                snippetSession = null
+                            }
+                        }
                         value = updatedValue
                         onContentChange(updatedValue.text)
                         // P22-G: Report cursor position for LSP hover
@@ -1231,6 +1257,54 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 }
                             )
+                        },
+                        // P41-I: Intercept Tab/Shift+Tab for snippet tab-stop navigation
+                        .onPreviewKeyEvent { event ->
+                            if (snippetSession != null && event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
+                                val session = snippetSession!!
+                                val isShift = event.modifiers.contains(KeyEventModifier.Shift)
+                                if (isShift) {
+                                    // Shift+Tab — go to previous tab-stop
+                                    val prev = session.retreat()
+                                    if (prev != null) {
+                                        snippetSession = prev
+                                        val stopRange = prev.activeStopRange()
+                                        if (stopRange != null) {
+                                            value = value.copy(
+                                                selection = TextRange(stopRange.first, stopRange.last + 1)
+                                            )
+                                        }
+                                    } else {
+                                        // At first stop — exit snippet mode
+                                        snippetSession = null
+                                    }
+                                } else {
+                                    // Tab — go to next tab-stop
+                                    val next = session.advance()
+                                    if (next != null) {
+                                        snippetSession = next
+                                        val stopRange = next.activeStopRange()
+                                        if (stopRange != null) {
+                                            value = value.copy(
+                                                selection = TextRange(stopRange.first, stopRange.last + 1)
+                                            )
+                                        }
+                                    } else {
+                                        // Last stop — move to final cursor ($0) and exit
+                                        value = value.copy(
+                                            selection = TextRange(session.finalCursorOffset)
+                                        )
+                                        snippetSession = null
+                                    }
+                                }
+                                true // consume the Tab key
+                            } else if (snippetSession != null && event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                                // Escape — exit snippet mode without advancing
+                                snippetSession = null
+                                true
+                            } else {
+                                false // let BasicTextField handle normally
+                            }
                         },
                 )
 
@@ -3690,8 +3764,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     val cursorOffset = textWithImports.length - text.length
                                                     val adjustedStart = start + cursorOffset
                                                     val adjustedEnd = end + cursorOffset
-                                                    val finalText = textWithImports.substring(0, adjustedStart) + comp.insertText + textWithImports.substring(adjustedEnd.coerceAtMost(textWithImports.length))
-                                                    val finalCursor = adjustedStart + comp.insertText.length
+                                                    // P41-I: If snippet, parse and replace insertText with cleaned version
+                                                    val (textToInsert, snippetParsed) = if (comp.insertTextFormat == 2) {
+                                                        val parsed = parseSnippet(comp.insertText)
+                                                        Pair(parsed.cleanedText, parsed)
+                                                    } else {
+                                                        Pair(comp.insertText, null)
+                                                    }
+                                                    val finalText = textWithImports.substring(0, adjustedStart) + textToInsert + textWithImports.substring(adjustedEnd.coerceAtMost(textWithImports.length))
+                                                    val finalCursor = if (snippetParsed != null) {
+                                                        val session = createSnippetSession(adjustedStart, snippetParsed)
+                                                        snippetSession = session
+                                                        val firstStop = session.tabStops.firstOrNull()
+                                                        if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                            firstStop.startOffset
+                                                        } else {
+                                                            firstStop?.startOffset ?: session.finalCursorOffset
+                                                        }
+                                                    } else {
+                                                        adjustedStart + textToInsert.length
+                                                    }
+                                                    Pair(finalText, finalCursor)
                                                     Pair(finalText, finalCursor)
                                                 } catch (_: Exception) {
                                                     // Fallback: plain insert without auto-import
@@ -3699,15 +3792,34 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     Pair(newText, start + comp.insertText.length)
                                                 }
                                             }
+                                            // P41-I: If snippet, select first tab-stop default text
+                                            val selRange = if (snippetSession != null) {
+                                                val session = snippetSession!!
+                                                val firstStop = session.tabStops.firstOrNull()
+                                                if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                    androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
+                                                } else {
+                                                    androidx.compose.ui.text.TextRange(result.second)
+                                                }
+                                            } else {
+                                                androidx.compose.ui.text.TextRange(result.second)
+                                            }
                                             value = TextFieldValue(
                                                 text = result.first,
-                                                selection = androidx.compose.ui.text.TextRange(result.second),
+                                                selection = selRange,
                                             )
                                             onContentChange(result.first)
                                         }
                                     } else {
-                                        var newText = text.substring(0, start) + comp.insertText + text.substring(end)
-                                        val newCursor = start + comp.insertText.length
+                                        // P41-I: Handle snippet insertTextFormat == 2
+                                        val (rawInsert, snipParsed) = if (comp.insertTextFormat == 2) {
+                                            val parsed = parseSnippet(comp.insertText)
+                                            Pair(parsed.cleanedText, parsed)
+                                        } else {
+                                            Pair(comp.insertText, null)
+                                        }
+                                        var newText = text.substring(0, start) + rawInsert + text.substring(end)
+                                        var newCursor = start + rawInsert.length
                                         // P22-J: Fall back to lspImportProvider for auto-import via code actions
                                         if (lspImportProvider != null) {
                                             val cLine = text.take(cursor).count { it == '\n' }
@@ -3719,25 +3831,79 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 }
                                                 if (imports.isNotEmpty()) {
                                                     val patched = applyImportEdits(newText, imports)
-                                                    value = TextFieldValue(
-                                                        text = patched,
-                                                        selection = androidx.compose.ui.text.TextRange(newCursor + (patched.length - newText.length)),
-                                                    )
+                                                    val importDelta = patched.length - newText.length
+                                                    if (snipParsed != null) {
+                                                        // P41-I: Snippet mode after import
+                                                        val session = createSnippetSession(start + importDelta, snipParsed)
+                                                        snippetSession = session
+                                                        val firstStop = session.tabStops.firstOrNull()
+                                                        val sel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                            androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
+                                                        } else {
+                                                            androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                                        }
+                                                        value = TextFieldValue(text = patched, selection = sel)
+                                                    } else {
+                                                        value = TextFieldValue(
+                                                            text = patched,
+                                                            selection = androidx.compose.ui.text.TextRange(newCursor + importDelta),
+                                                        )
+                                                    }
                                                     onContentChange(patched)
                                                 } else {
-                                                    value = TextFieldValue(
-                                                        text = newText,
-                                                        selection = androidx.compose.ui.text.TextRange(newCursor),
-                                                    )
+                                                    if (snipParsed != null) {
+                                                        // P41-I: Snippet mode, no imports needed
+                                                        val session = createSnippetSession(start, snipParsed)
+                                                        snippetSession = session
+                                                        val firstStop = session.tabStops.firstOrNull()
+                                                        val sel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                            androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
+                                                        } else {
+                                                            androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                                        }
+                                                        value = TextFieldValue(text = newText, selection = sel)
+                                                    } else {
+                                                        value = TextFieldValue(
+                                                            text = newText,
+                                                            selection = androidx.compose.ui.text.TextRange(newCursor),
+                                                        )
+                                                    }
                                                     onContentChange(newText)
                                                 }
                                             }
                                         } else {
-                                            value = TextFieldValue(
-                                                text = newText,
-                                                selection = androidx.compose.ui.text.TextRange(newCursor),
-                                            )
-                                            onContentChange(newText)
+                                            // P41-I: If this is a snippet (insertTextFormat == 2), parse and enter snippet mode
+                                            if (comp.insertTextFormat == 2) {
+                                                val parsed = parseSnippet(comp.insertText)
+                                                val snippetText = parsed.cleanedText
+                                                newText = text.substring(0, start) + snippetText + text.substring(end)
+                                                val session = createSnippetSession(start, parsed)
+                                                snippetSession = session
+                                                // Place cursor at first tab-stop, or final cursor if no stops
+                                                val firstStop = session.tabStops.firstOrNull()
+                                                val cursorPos = if (firstStop != null) {
+                                                    firstStop.startOffset
+                                                } else {
+                                                    session.finalCursorOffset
+                                                }
+                                                // If first stop has default text, select it
+                                                val selectionRange = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                    androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
+                                                } else {
+                                                    androidx.compose.ui.text.TextRange(cursorPos)
+                                                }
+                                                value = TextFieldValue(
+                                                    text = newText,
+                                                    selection = selectionRange,
+                                                )
+                                                onContentChange(newText)
+                                            } else {
+                                                value = TextFieldValue(
+                                                    text = newText,
+                                                    selection = androidx.compose.ui.text.TextRange(newCursor),
+                                                )
+                                                onContentChange(newText)
+                                            }
                                         }
                                     }
                                     // P41 Phase B: Record accepted completion for MRU/usage ranking
