@@ -8234,3 +8234,371 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | CI build | ✅ Green (#1810) | — |
 
 ---
+
+
+---
+
+# Professional IDE Upgrade — Master Plan (v2)
+
+**Goal:** Upgrade to desktop-class editor comparable to VS Code, Cursor, JetBrains IDEs while remaining mobile-friendly.
+**Updated:** 2026-08-06
+
+**Rules:**
+- Do NOT add new UI inline to CodeEditor.kt composable (>3800 lines, at method-too-large risk). Extract everything.
+- Every LSP feature must check `hasCapability()` and gracefully degrade.
+- All new UI must be touch-optimized but desktop-class in functionality.
+
+---
+
+## Feature Status Matrix
+
+Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
+
+### 1. IntelliSense
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Intelligent autocomplete | ✅ | `CompletionEngine.kt` — fuzzy ranking engine, LSP + local sources merged |
+| Auto imports | ✅ | `LspIntegration.kt` — `additionalTextEdits` on completion accept (Phase D) |
+| Snippet completion | ✅ | `CodeEditor.kt` — `snippetsFor(lang)` with tab-stop placeholders |
+| Completion documentation | ✅ | `LspManager.kt` — `resolveCompletion()` → detail + documentation fields |
+| Fuzzy matching | ✅ | `CompletionEngine.kt` — `fuzzyScore()` subsequence matcher |
+| CamelCase matching | ✅ | `CompletionEngine.kt` — hump-match bonus in `fuzzyScore()` |
+| MRU ranking | ✅ | `CompletionHistoryStore.kt` — JSON-backed MRU + usage frequency |
+| AI-assisted ranking | ❌ | No AI re-ranking of completion results yet |
+| Multi-line ghost text | ✅ | `CodeEditor.kt` — `GhostTextOverlay()` extracted composable (Phase E) |
+| Workspace-aware completion | 🔶 | `LspManager.kt` has `getWorkspaceSymbol()` + `supportsWorkspaceSymbols()`. Phase F code written but uncommitted |
+| Cross-file completion | 🔶 | Same as workspace-aware — depends on Phase F completion |
+| Import path completion | ❌ | No path completion inside import/require strings |
+| File path completion | ❌ | No filesystem path completion in strings |
+| Completion filters | ✅ | `CodeEditor.kt` — filter chips by source (Phase J) |
+| Completion source labels | ✅ | `CodeEditor.kt` — source badges (LSP/SNIPPET/BUFFER) (Phase J) |
+| Completion item resolve | ✅ | `LspManager.kt` — `resolveCompletion()` with detail+docs |
+| Context-aware suggestions | 🔶 | LSP trigger chars (".") handled; no deeper context analysis |
+
+### 2. Navigation
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Go to Definition | ✅ | `LspManager.getDefinition()` → opens target file/line |
+| Go to Declaration | ❌ | `textDocument/declaration` not implemented in LspManager |
+| Go to Type Definition | ✅ | `LspManager.getTypeDefinition()` |
+| Go to Implementation | ✅ | `LspManager.getImplementation()` |
+| Find References | ✅ | `LspManager.getReferences()` → dropdown list in CodeEditor |
+| Peek Definition | ❌ | No inline peek widget — only full navigation |
+| Peek References | ❌ | No inline peek widget — only dropdown list |
+| Peek Declaration | ❌ | No peek or declaration support |
+| Go to Symbol | ✅ | `SymbolSearchPanel.kt` — document symbols via `getDocumentSymbol()` |
+| Go to File | ✅ | `ProjectFileSearchPanel.kt` — fuzzy file name search |
+| Back/Forward navigation | ✅ | `ProjectShellScreen.kt` — `navBackStack`, `navBack()`, `navForward()` |
+| Navigation history | ✅ | `ProjectShellScreen.kt` — 100-entry cap LIFO stack |
+| Breadcrumbs | ✅ | `ProjectShellScreen.kt` — breadcrumb nav with dir auto-expand |
+| Symbol picker | ✅ | `SymbolSearchPanel.kt` — workspace symbol search UI |
+| Workspace symbol search | ✅ | `SymbolSearchPanel.kt` + `LspManager.getWorkspaceSymbol()` |
+
+### 3. Code Actions
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Full Light Bulb support | 🔶 | Context menu has code actions; no lightbulb icon in gutter |
+| Quick Fix | ✅ | `LspManager.getCodeActions()` → context menu |
+| Refactor | 🔶 | Code actions can include refactoring; no dedicated refactor menu |
+| Source Actions | ❌ | No `source.*` action kinds separated out |
+| Organize Imports | ❌ | No dedicated organize imports action |
+| Remove Unused Imports | ❌ | No dedicated action |
+| Auto Import | ✅ | Via `additionalTextEdits` on completion accept (Phase D) |
+| Fix All | ❌ | No `source.fixAll` support |
+| Generate Constructor | ❌ | No code generation actions |
+| Generate Getters/Setters | ❌ | No code generation actions |
+| Implement Interface | ❌ | No code generation actions |
+| Extract Method | ❌ | No extract refactoring |
+| Extract Variable | ❌ | No extract refactoring |
+| Inline Variable | ❌ | No inline refactoring |
+| Rename Preview | ❌ | `LspManager.rename()` exists but no preview UI |
+| AI code actions | ❌ | No AI-powered code actions |
+
+### 4. Diagnostics
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Problems panel | ✅ | `ProblemsPanel.kt` — full diagnostics list with file grouping |
+| Error Lens | ❌ | No inline error text at end of code lines |
+| Inline diagnostics | ✅ | `CodeEditor.kt` — squiggle underlines via `lspDiagnosticErrors` |
+| Error navigation | ✅ | `ProblemsPanel.kt` — tap to navigate to error location |
+| Diagnostic filtering | ❌ | No filter by severity/category in Problems panel |
+| Related diagnostics | ❌ | No related-diagnostics grouping |
+| Workspace diagnostics | ✅ | `LspManager.getDiagnostics()` — all open files |
+| Diagnostic codes | ❌ | Diagnostic codes not displayed in UI |
+| Minimap markers | ❌ | Minimap shows code but not error/diagnostic markers |
+| Overview ruler markers | ❌ | No overview ruler (right-edge markers like VS Code) |
+
+### 5. Formatting
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Format document | ✅ | `LspManager.getFormatting()` + `DocumentFormatter.kt` |
+| Format selection | ✅ | `LspManager.getRangeFormatting()` |
+| Format on Save | ❌ | Not wired — no save-triggered formatting |
+| Format while typing | ✅ | `LspManager.getOnTypeFormatting()` — declared in capabilities |
+| Formatter selection | ❌ | No per-language formatter picker |
+| Language-specific formatting | 🔶 | LSP formatting works when server supports it; no fallback formatters |
+
+### 6. Hover & Signature Help
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Rich Markdown hover | ✅ | `LspManager.getHover()` → tooltip with markdown rendering |
+| Documentation | ✅ | Hover includes documentation from LSP server |
+| Type information | ✅ | Hover includes type info from LSP |
+| Signature help | ✅ | `SignatureHelpAnalyzer.kt` + `LspManager.getSignatureHelp()` |
+| Active parameter highlighting | ✅ | `SignatureHelpAnalyzer.kt` — highlights active param |
+| Overload navigation | ❌ | No UI to cycle through signature overloads |
+
+### 7. Semantic Intelligence
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Semantic highlighting | ✅ | `LspManager.getSemanticTokens()` — declared in capabilities |
+| Inlay hints | ✅ | `InlayHintAnalyzer.kt` (regex-based) + `LspManager.getInlayHints()` (LSP-based) |
+| Parameter hints | ✅ | `InlayHintAnalyzer.kt` — parameter name hints |
+| Return type hints | ✅ | `InlayHintAnalyzer.kt` — type inference for Kotlin val/var |
+| Type hints | ✅ | `InlayHintAnalyzer.kt` — type annotations |
+| Symbol highlighting | ✅ | `LspManager.getDocumentHighlight()` — highlight on cursor |
+| Selection ranges | ✅ | `LspManager.getSelectionRange()` — LSP-based smart selection |
+
+### 8. Refactoring
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Safe rename | ✅ | `LspManager.rename()` + `prepareRename()` — LSP rename |
+| Rename preview | ❌ | Rename executes immediately; no preview diff before apply |
+| Extract method | ❌ | Not implemented |
+| Extract variable | ❌ | Not implemented |
+| Inline variable | ❌ | Not implemented |
+| Move symbol | ❌ | Not implemented |
+| Organize imports | ❌ | Not implemented as dedicated action |
+| Remove unused code | ❌ | Not implemented |
+| Cross-file refactoring | 🔶 | `willRenameFiles()` exists for file-rename import updates |
+| Workspace edits | ✅ | `LspManager` handles `WorkspaceEdit` responses |
+
+### 9. Workspace Intelligence
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Workspace indexing | 🔶 | `FileIndexer.kt` exists but basic — file name index only |
+| Cached symbol database | ❌ | `DocumentSymbolCache.kt` caches per-file; no workspace DB |
+| Background indexing | ❌ | No background symbol indexing pipeline |
+| Cross-file references | ✅ | `LspManager.getReferences()` searches across workspace |
+| File watchers | 🔶 | `LspManager.didChange()` sends on content change; no external file watcher |
+| Multi-root workspaces | ❌ | Single workspace only |
+| Update imports on rename | ✅ | `LspManager.willRenameFiles()` + `didRenameFiles()` |
+
+### 10. CodeLens
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Reference count | ❌ | `getCodeLens()` fetches from LSP but no reference count rendering |
+| Implementation count | ❌ | Not implemented |
+| Run/Test buttons | ❌ | Not implemented |
+| Git blame | ❌ | Not implemented in CodeLens |
+| Last modified | ❌ | Not implemented |
+
+### 11. Call & Type Hierarchy
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Incoming calls | ❌ | Not implemented |
+| Outgoing calls | ❌ | Not implemented |
+| Call hierarchy | ❌ | `textDocument/prepareCallHierarchy` not in LspManager |
+| Type hierarchy | ❌ | `textDocument/prepareTypeHierarchy` not in LspManager |
+| Supertypes | ❌ | Not implemented |
+| Subtypes | ❌ | Not implemented |
+
+### 12. Editing Experience
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Auto-indent | ❌ | No smart auto-indent on Enter (copies previous line indent only) |
+| Auto-closing pairs | ❌ | No bracket/quote auto-closing |
+| Linked editing | ❌ | `linkedEditingRange` not in LspManager |
+| Multiple cursors | ❌ | Single cursor only |
+| Smart selection | ✅ | `LspManager.getSelectionRange()` — LSP-based semantic selection |
+| Sticky scroll | ❌ | Not implemented |
+| Code folding | ✅ | `CodeEditor.kt` — LSP + regex folding, fold toggle UI |
+| Color provider | ❌ | `textDocument/documentColor` not in LspManager |
+| Bracket pair colorization | ✅ | `SyntaxHighlighter.kt` — `bracketColors` depth-based coloring |
+
+### 13. AI Features
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Inline AI completion | ✅ | `CodeEditor.kt` — `onAiGhostTextRequest` callback, multi-line ghost text |
+| Explain code | 🔶 | CopilotChat panel exists; no direct "explain selection" action |
+| Explain errors | ❌ | No AI diagnostic explanation |
+| Generate documentation | ❌ | No AI doc generation action |
+| Generate tests | ❌ | No AI test generation action |
+| Optimize code | ❌ | No AI optimization action |
+| Refactor with AI | ❌ | No AI refactoring action |
+| Project-aware AI context | ❌ | AI completions use local context only, not project-wide |
+| Workspace-aware AI | ❌ | No workspace context in AI prompts |
+
+### 14. Power User Features
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| TODO Explorer | ❌ | Not implemented |
+| Test Explorer | ❌ | Not implemented |
+| Git blame inline | ❌ | Not implemented |
+| Code coverage | ❌ | Not implemented |
+| Dead code detection | ❌ | Not implemented |
+| Duplicate code detection | ❌ | Not implemented |
+| Complexity metrics | ❌ | Not implemented |
+| Performance hints | ❌ | `PerformanceMonitor.kt` exists but for app perf, not code complexity |
+
+### 15. Performance
+
+| Feature | Status | Location / Notes |
+|---------|--------|------------------|
+| Lazy loading | ✅ | Compose `LazyColumn` used throughout file trees, completion lists |
+| Incremental parsing | 🔶 | `didChange()` sends incremental content; no incremental parse cache |
+| Incremental diagnostics | ✅ | `LspManager` receives `publishDiagnostics` notifications |
+| Background indexing | ❌ | No background indexer running |
+| Completion caching | ❌ | No result caching between keystrokes |
+| Symbol caching | 🔶 | `DocumentSymbolCache.kt` — per-file, no persistent cache |
+| Large-project optimization | ❌ | No optimization for >1000 file projects |
+| Low-memory optimization | ✅ | `largeHeap=true`, foreground service, memory-limited XZ decompressor |
+| Fast startup | ✅ | Lazy LSP server start, cached file reads |
+| Efficient LSP communication | ✅ | JSON-RPC over stdio, incremental sync |
+
+---
+
+## Summary Counts
+
+| Category | ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING | Total |
+|----------|-----------|------------|------------|-------|
+| 1. IntelliSense | 12 | 2 | 3 | 17 |
+| 2. Navigation | 10 | 0 | 5 | 15 |
+| 3. Code Actions | 2 | 2 | 12 | 16 |
+| 4. Diagnostics | 3 | 0 | 7 | 10 |
+| 5. Formatting | 3 | 1 | 2 | 6 |
+| 6. Hover & Signature | 5 | 0 | 1 | 6 |
+| 7. Semantic Intelligence | 7 | 0 | 0 | 7 |
+| 8. Refactoring | 2 | 1 | 7 | 10 |
+| 9. Workspace Intelligence | 2 | 2 | 3 | 7 |
+| 10. CodeLens | 0 | 0 | 5 | 5 |
+| 11. Call & Type Hierarchy | 0 | 0 | 6 | 6 |
+| 12. Editing Experience | 3 | 0 | 6 | 9 |
+| 13. AI Features | 1 | 1 | 7 | 9 |
+| 14. Power User Features | 0 | 0 | 8 | 8 |
+| 15. Performance | 5 | 2 | 3 | 10 |
+| **TOTAL** | **55** | **11** | **77** | **143** |
+
+**38% implemented, 8% partial, 54% missing.**
+
+---
+
+## Implementation Priority (Phases)
+
+### Phase F — Workspace Completion (in progress, uncommitted)
+- [ ] Finish + commit workspace symbol completion (code written, needs build audit)
+- [ ] Add `CompletionSource.WORKSPACE` to CompletionEngine enum if missing
+
+### Phase G — Path Completion
+- [ ] File path completion inside import/require/include strings
+- [ ] Detect string context (inside quotes after import/require/include keyword)
+
+### Phase H — Navigation: Peek + Declaration
+- [ ] Add `textDocument/declaration` to LspManager
+- [ ] Build inline Peek widget (overlay in editor, not full navigation)
+- [ ] Peek Definition, Peek References, Peek Declaration
+
+### Phase I — Code Actions: Light Bulb + Source Actions
+- [ ] Light bulb icon in gutter when `getCodeActions()` returns results
+- [ ] Separate Source Actions (`source.organizeImports`, `source.fixAll`)
+- [ ] Organize Imports action
+- [ ] Remove Unused Imports action
+
+### Phase J — Diagnostics: Error Lens + Filtering + Markers
+- [ ] Error Lens — inline error text at end of line
+- [ ] Diagnostic filtering in Problems Panel (by severity, file)
+- [ ] Diagnostic codes display
+- [ ] Minimap error markers (red/yellow/blue squiggle indicators)
+- [ ] Overview ruler markers (right-edge diagnostic indicators)
+
+### Phase K — Editing Experience
+- [ ] Auto-indent on Enter (smart, matching previous line + language rules)
+- [ ] Auto-closing pairs (brackets, quotes, tags)
+- [ ] Multiple cursors (select-next-occurrence, column select)
+- [ ] Sticky scroll (pin current scope header at top while scrolling)
+- [ ] Color provider (`textDocument/documentColor` → color swatches)
+
+### Phase L — Refactoring
+- [ ] Rename preview (show diff before applying rename)
+- [ ] Extract Method (send to LSP or implement locally)
+- [ ] Extract Variable
+- [ ] Inline Variable
+- [ ] Code generation: Generate Constructor, Getters/Setters, Implement Interface
+
+### Phase M — Call & Type Hierarchy
+- [ ] `textDocument/prepareCallHierarchy` in LspManager
+- [ ] Call hierarchy panel (incoming/outgoing calls tree)
+- [ ] `textDocument/prepareTypeHierarchy` in LspManager
+- [ ] Type hierarchy panel (supertypes/subtypes tree)
+
+### Phase N — CodeLens
+- [ ] Render CodeLens from `getCodeLens()` results
+- [ ] Reference count lens
+- [ ] Implementation count lens
+- [ ] Run/Test buttons lens
+- [ ] Git blame lens
+
+### Phase O — AI Features
+- [ ] Explain Code action (send selection to AI, show in chat)
+- [ ] Explain Errors action (send diagnostic + code to AI)
+- [ ] Generate Documentation action
+- [ ] Generate Tests action
+- [ ] Optimize Code action
+- [ ] Refactor with AI action
+- [ ] Project-aware AI context (include open files, imports in prompt)
+- [ ] AI-assisted completion ranking
+
+### Phase P — Power User Features
+- [ ] TODO Explorer (scan workspace for TODO/FIXME/HACK comments)
+- [ ] Test Explorer (discover and run tests)
+- [ ] Git blame inline (show author per line)
+- [ ] Dead code detection (unused functions/variables/imports)
+- [ ] Duplicate code detection
+- [ ] Complexity metrics (cyclomatic complexity per function)
+
+### Phase Q — Workspace Intelligence
+- [ ] Background workspace symbol indexing
+- [ ] Cached symbol database (persistent, cross-session)
+- [ ] File watcher integration (detect external file changes)
+- [ ] Completion result caching between keystrokes
+- [ ] Large-project optimization (>1000 files)
+
+### Phase R — Format on Save + Formatter Selection
+- [ ] Wire format-on-save to EditorPane save action
+- [ ] Per-language formatter picker in Settings
+- [ ] Fallback formatters for languages without LSP server
+
+### Phase S — LSP Spec Compliance Audit
+- [ ] Verify all LSP methods declared in initialize capabilities
+- [ ] Add missing capability declarations
+- [ ] Test graceful degradation when server doesn't support a feature
+- [ ] Add `textDocument/linkedEditingRange`
+- [ ] Add `textDocument/moniker`
+- [ ] Add `textDocument/documentColor` + `colorPresentation`
+
+---
+
+## Build Status (latest)
+
+| Build | Commit | Status | Notes |
+|-------|--------|--------|-------|
+| #1824 | `f8d02a8b` | Unknown | Docs commit after GhostTextOverlay fix |
+| #1823 | `920dedb0` | Unknown | Extracted GhostTextOverlay — fixes method-too-large |
+
+**Known risk:** `CodeEditor.kt` at 3842 lines. All new UI MUST be extracted to separate composables.
+**Uncommitted changes:** Phase F workspace symbol completion (CodeEditor.kt, LspIntegration.kt, EditorPane.kt)
+
