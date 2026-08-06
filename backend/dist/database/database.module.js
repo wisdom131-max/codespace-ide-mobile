@@ -18,16 +18,19 @@ exports.DatabaseModule = DatabaseModule;
 exports.DatabaseModule = DatabaseModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forRoot({
-                type: 'postgres',
-                url: process.env.DATABASE_URL,
-                entities: [user_entity_1.User, refresh_token_entity_1.RefreshToken, project_entity_1.Project],
-                synchronize: process.env.NODE_ENV !== 'production',
-                autoLoadEntities: true,
-                ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-                retryAttempts: 10,
-                retryDelay: 3000,
-                connectTimeoutMS: 10000,
+            typeorm_1.TypeOrmModule.forRootAsync({
+                useFactory: () => ({
+                    type: 'postgres',
+                    url: process.env.DATABASE_URL,
+                    entities: [user_entity_1.User, refresh_token_entity_1.RefreshToken, project_entity_1.Project],
+                    synchronize: process.env.NODE_ENV !== 'production',
+                    autoLoadEntities: true,
+                    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+                    retryAttempts: 3,
+                    retryDelay: 2000,
+                    connectTimeoutMS: 10000,
+                    keepConnectionAlive: true,
+                }),
             }),
         ],
     })
