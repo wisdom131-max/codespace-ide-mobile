@@ -104,12 +104,15 @@ import com.codespace.ide.lsp.LspCompletionItem
 import com.codespace.ide.lsp.CompletionSource
 import com.codespace.ide.lsp.RankedCompletionItem
 import com.codespace.ide.lsp.parseSnippet
+import com.codespace.ide.lsp.SnippetContext
+import com.codespace.ide.lsp.activeStop
 import com.codespace.ide.lsp.createSnippetSession
 import com.codespace.ide.lsp.SnippetSession
 import com.codespace.ide.lsp.activeStopRange
 import com.codespace.ide.lsp.advance
 import com.codespace.ide.lsp.retreat
 import com.codespace.ide.lsp.containsCursor
+import com.codespace.ide.lsp.shiftAfterEdit
 import com.codespace.ide.editor.PathCompletionProvider
 import com.codespace.ide.lsp.rank
 import com.codespace.ide.lsp.fuzzyScore
@@ -589,6 +592,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var showCompletions by remember { mutableStateOf(false) }
     // P41-I: Active snippet edit session — when non-null, Tab/Shift+Tab cycles tab-stops
     var snippetSession by remember { mutableStateOf<SnippetSession?>(null) }
+    var showSnippetChoices by remember { mutableStateOf(false) }  // P41-I: choice dropdown visibility
     // P41-J: Filter chip state — null = show all, non-null = filter by source
     var completionFilter by remember { mutableStateOf<CompletionSource?>(null) }
     // P41-J: Sticky selection — remember last highlighted label
@@ -1200,11 +1204,31 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
 
-                        // P41-I: If snippet session is active, check if cursor left the snippet span
+                        // P41-I: If snippet session is active, handle text edits within tab-stops
                         if (snippetSession != null) {
-                            if (!snippetSession!!.containsCursor(updatedValue.selection.end)) {
-                                // Cursor moved outside snippet — exit snippet mode
+                            val session = snippetSession!!
+                            val activeStop = session.activeStop()
+                            if (activeStop != null) {
+                                val oldStopLen = activeStop.endOffset - activeStop.startOffset
+                                // Find the text at the active stop's range in the new text
+                                val stopStart = (activeStop.startOffset).coerceIn(0, updatedValue.text.length)
+                                val stopEnd = (activeStop.endOffset).coerceIn(0, updatedValue.text.length)
+                                val newStopLen = if (stopStart <= stopEnd) stopEnd - stopStart else 0
+                                // Recompute based on actual text length difference
+                                val textDelta = updatedValue.text.length - value.text.length
+                                if (textDelta != 0) {
+                                    val oldLen = activeStop.endOffset - activeStop.startOffset
+                                    val newLen = oldLen + textDelta
+                                    snippetSession = session.shiftAfterEdit(activeStop, oldLen, newLen)
+                                }
+                            }
+                            // Check if cursor left the snippet span
+                            if (!session.containsCursor(updatedValue.selection.end)) {
                                 snippetSession = null
+                                showSnippetChoices = false
+                            } else {
+                                // Update choice dropdown visibility based on active stop
+                                showSnippetChoices = snippetSession?.activeStop()?.choices?.isNotEmpty() == true
                             }
                         }
                         value = updatedValue
@@ -1268,6 +1292,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val prev = session.retreat()
                                     if (prev != null) {
                                         snippetSession = prev
+                                        showSnippetChoices = prev.activeStop()?.choices?.isNotEmpty() == true
                                         val stopRange = prev.activeStopRange()
                                         if (stopRange != null) {
                                             value = value.copy(
@@ -1283,6 +1308,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val next = session.advance()
                                     if (next != null) {
                                         snippetSession = next
+                                        showSnippetChoices = next.activeStop()?.choices?.isNotEmpty() == true
                                         val stopRange = next.activeStopRange()
                                         if (stopRange != null) {
                                             value = value.copy(
@@ -1301,6 +1327,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             } else if (snippetSession != null && event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
                                 // Escape — exit snippet mode without advancing
                                 snippetSession = null
+                                showSnippetChoices = false
                                 true
                             } else {
                                 false // let BasicTextField handle normally
@@ -3659,6 +3686,72 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // P41-I: Snippet choice dropdown — appears when active tab-stop has choices (${1|a,b,c|})
+        if (snippetSession != null && showSnippetChoices) {
+            val session = snippetSession!!
+            val activeStop = session.activeStop()
+            if (activeStop != null && activeStop.choices.isNotEmpty()) {
+                val cursorLine = value.text.take(activeStop.startOffset).count { it == '\n' }
+                val lineHeightPx = fontSize * 1.25f
+                val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+                val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { 74.dp.toPx() }.roundToInt()
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = androidx.compose.ui.unit.IntOffset(popupOffsetX, popupOffsetY + (fontSize * 1.25f).roundToInt()),
+                ) {
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier.width(180.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        color = colors.background,
+                        shadowElevation = 4.dp,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.function.copy(alpha = 0.6f)),
+                    ) {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()).padding(vertical = 2.dp),
+                        ) {
+                            activeStop.choices.forEachIndexed { idx, choice ->
+                                val isSelected = idx == 0 // First choice is highlighted as default
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            // Replace the active tab-stop text with the chosen value
+                                            val text = value.text
+                                            val stopStart = activeStop.startOffset
+                                            val stopEnd = activeStop.endOffset
+                                            val newText = text.substring(0, stopStart) + choice + text.substring(stopEnd)
+                                            val newLen = choice.length
+                                            val oldLen = stopEnd - stopStart
+                                            // Update session offsets
+                                            snippetSession = session.shiftAfterEdit(activeStop, oldLen, newLen)
+                                            // Update editor value
+                                            value = TextFieldValue(
+                                                text = newText,
+                                                selection = TextRange(stopStart, stopStart + newLen),
+                                            )
+                                            onContentChange(newText)
+                                            showSnippetChoices = false
+                                        }
+                                        .background(if (isSelected) colors.function.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = choice,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = if (isSelected) colors.function else colors.text,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // IntelliSense dropdown — rendered in a Popup window so it's never clipped
         // by parent bounds, scroll offset, or the soft keyboard.
         if (showCompletions && allCompletions.isNotEmpty()) {
@@ -3766,7 +3859,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     val adjustedEnd = end + cursorOffset
                                                     // P41-I: If snippet, parse and replace insertText with cleaned version
                                                     val (textToInsert, snippetParsed) = if (comp.insertTextFormat == 2) {
-                                                        val parsed = parseSnippet(comp.insertText)
+                                                        val parsed = parseSnippet(comp.insertText, SnippetContext(
+                                                            lineNumber = value.text.take(start).count { it == '\n' } + 1,
+                                                            lineIndex = value.text.take(start).count { it == '\n' },
+                                                            currentLine = value.text.split('\n').getOrNull(value.text.take(start).count { it == '\n' }) ?: "",
+                                                            selectedText = if (start != end) value.text.substring(start, end) else "",
+                                                        ))
                                                         Pair(parsed.cleanedText, parsed)
                                                     } else {
                                                         Pair(comp.insertText, null)
@@ -3775,6 +3873,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     val finalCursor = if (snippetParsed != null) {
                                                         val session = createSnippetSession(adjustedStart, snippetParsed)
                                                         snippetSession = session
+                                                        showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
                                                         val firstStop = session.tabStops.firstOrNull()
                                                         if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
                                                             firstStop.startOffset
@@ -3813,7 +3912,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     } else {
                                         // P41-I: Handle snippet insertTextFormat == 2
                                         val (rawInsert, snipParsed) = if (comp.insertTextFormat == 2) {
-                                            val parsed = parseSnippet(comp.insertText)
+                                            val parsed = parseSnippet(comp.insertText, SnippetContext(
+                                                lineNumber = value.text.take(start).count { it == '\n' } + 1,
+                                                lineIndex = value.text.take(start).count { it == '\n' },
+                                                currentLine = value.text.split('\n').getOrNull(value.text.take(start).count { it == '\n' }) ?: "",
+                                                selectedText = if (start != end) value.text.substring(start, end) else "",
+                                            ))
                                             Pair(parsed.cleanedText, parsed)
                                         } else {
                                             Pair(comp.insertText, null)
@@ -3836,6 +3940,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                         // P41-I: Snippet mode after import
                                                         val session = createSnippetSession(start + importDelta, snipParsed)
                                                         snippetSession = session
+                                                        showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
                                                         val firstStop = session.tabStops.firstOrNull()
                                                         val sel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
                                                             androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
@@ -3855,6 +3960,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                         // P41-I: Snippet mode, no imports needed
                                                         val session = createSnippetSession(start, snipParsed)
                                                         snippetSession = session
+                                                        showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
                                                         val firstStop = session.tabStops.firstOrNull()
                                                         val sel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
                                                             androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
@@ -3874,11 +3980,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         } else {
                                             // P41-I: If this is a snippet (insertTextFormat == 2), parse and enter snippet mode
                                             if (comp.insertTextFormat == 2) {
-                                                val parsed = parseSnippet(comp.insertText)
+                                                val parsed = parseSnippet(comp.insertText, SnippetContext(
+                                                fileName = "",
+                                                lineNumber = value.text.take(start).count { it == '\n' } + 1,
+                                                lineIndex = value.text.take(start).count { it == '\n' },
+                                                currentLine = value.text.split('\n').getOrNull(value.text.take(start).count { it == '\n' }) ?: "",
+                                                selectedText = if (start != end) value.text.substring(start, end) else "",
+                                            ))
                                                 val snippetText = parsed.cleanedText
                                                 newText = text.substring(0, start) + snippetText + text.substring(end)
                                                 val session = createSnippetSession(start, parsed)
                                                 snippetSession = session
+                                                showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
                                                 // Place cursor at first tab-stop, or final cursor if no stops
                                                 val firstStop = session.tabStops.firstOrNull()
                                                 val cursorPos = if (firstStop != null) {
