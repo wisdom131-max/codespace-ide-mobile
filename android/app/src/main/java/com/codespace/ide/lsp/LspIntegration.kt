@@ -99,6 +99,10 @@ data class LspCompletionItem(
     val detail: String?,
     val insertText: String,
     val kind: Int,
+    // P41-D: Auto-import support — LSP servers attach import edits here
+    val additionalTextEditsJson: String? = null,
+    // P41-D: Range-based replacement (some servers use this instead of insertText)
+    val textEditJson: String? = null,
 )
 
 /**
@@ -115,7 +119,10 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
         insertText = insertText.replace(Regex("""\$\{\d+:?[^}]*}"""), "").replace(Regex("""\$\d+"""), "")
         val detail = item.optString("detail", "")
         val kind = item.optInt("kind", 1)
-        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind))
+        // P41-D: Capture additionalTextEdits (auto-import) and textEdit (range replace)
+        val additionalTextEditsJson = item.optJSONArray("additionalTextEdits")?.toString()
+        val textEditJson = item.optJSONObject("textEdit")?.toString()
+        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind, additionalTextEditsJson, textEditJson))
     }
     return result
 }
@@ -386,7 +393,7 @@ fun applyWorkspaceEdit(
                 // If currentUri is provided, only apply edits to the current file
                 if (currentUri != null && dcUri != currentUri) continue
                 val textEdits = dc.optJSONArray("edits") ?: continue
-                newText = applyTextEdits(newText, textEdits)
+                newText = applyLspTextEdits(newText, textEdits)
             }
         } else {
             // Legacy changes format (URI -> TextEdit[])
@@ -394,7 +401,7 @@ fun applyWorkspaceEdit(
             if (changes != null) {
                 val uri = currentUri ?: changes.keys().next()
                 val textEdits = changes.optJSONArray(uri) ?: return null
-                newText = applyTextEdits(newText, textEdits)
+                newText = applyLspTextEdits(newText, textEdits)
             }
         }
         newText
@@ -407,7 +414,7 @@ fun applyWorkspaceEdit(
  * P39: Apply a list of TextEdits to text content.
  * Edits are applied in reverse order (bottom-to-top) to preserve line/character offsets.
  */
-private fun applyTextEdits(text: String, textEdits: JSONArray): String {
+public fun applyLspTextEdits(text: String, textEdits: JSONArray): String {
     var result = text
     val edits = (0 until textEdits.length()).mapNotNull { i ->
         textEdits.optJSONObject(i)

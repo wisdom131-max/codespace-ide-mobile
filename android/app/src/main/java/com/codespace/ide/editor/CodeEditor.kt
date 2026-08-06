@@ -91,6 +91,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import com.codespace.ide.lsp.ImportEdit
 import com.codespace.ide.lsp.applyImportEdits
+import com.codespace.ide.lsp.applyLspTextEdits
 import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
@@ -98,7 +99,16 @@ import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.material3.HorizontalDivider
 
-private data class Completion(val label: String, val kind: CompletionKind, val insertText: String = label, val doc: String? = null)
+private data class Completion(
+    val label: String,
+    val kind: CompletionKind,
+    val insertText: String = label,
+    val doc: String? = null,
+    // P41-D: Auto-import edits attached by LSP server (JSON string of TextEdit[] array)
+    val additionalTextEditsJson: String? = null,
+    // P41-D: Range-based replacement edit from LSP (JSON object)
+    val textEditJson: String? = null,
+)
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
 // ── Hover docs for common symbols ──────────────────────────────────────────
@@ -587,11 +597,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 insertText = c.insertText, source = if (c.kind == CompletionKind.SNIPPET) CompletionSource.SNIPPET else CompletionSource.BUFFER,
             )
         }
-        // Convert LSP completions to RankedCompletionItem
+        // Convert LSP completions to RankedCompletionItem (P41-D: include additionalTextEdits for auto-import)
         val lspRanked = lspCompletions.map { item ->
             RankedCompletionItem(
                 label = item.label, kind = item.kind, detail = item.detail,
                 insertText = item.insertText, source = CompletionSource.LSP,
+                additionalTextEditsJson = item.additionalTextEditsJson,
+                textEditJson = item.textEditJson,
             )
         }
         // Merge, deduplicate by label, rank with fuzzy matching
@@ -605,7 +617,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 22, 23 -> CompletionKind.TYPE
                 else -> CompletionKind.KEYWORD
             }
-            Completion(rc.label, kind, rc.insertText, rc.detail)
+            // P41-D: Pass through auto-import edits + textEdit for apply-on-accept
+            Completion(rc.label, kind, rc.insertText, rc.detail,
+                additionalTextEditsJson = rc.additionalTextEditsJson,
+                textEditJson = rc.textEditJson)
         }
     }
     // P41 Phase B: Load completion history once per file open
@@ -3457,38 +3472,73 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val end = cursor.coerceAtMost(text.length)
                                 var start = end
                                 while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_' || text[start - 1] == ' ')) start--
-                                var newText = text.substring(0, start) + comp.insertText + text.substring(end)
-                                val newCursor = start + comp.insertText.length
-                                // P22-J: Auto-import — fetch and apply missing import for the inserted symbol
-                                if (lspImportProvider != null) {
-                                    val cLine = text.take(cursor).count { it == '\n' }
-                                    val cLineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
-                                    val cCol = cursor - cLineStart
+                                
+                                // P41-D: Check for LSP additionalTextEdits (auto-import) attached to this completion
+                                val hasAdditionalEdits = !comp.additionalTextEditsJson.isNullOrBlank()
+                                
+                                if (hasAdditionalEdits) {
+                                    // P41-D: Apply additionalTextEdits (imports) FIRST, then insert completion text
+                                    // LSP spec: additionalTextEdits are applied before the main edit
                                     coroutineScope.launch {
-                                        val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+                                        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            try {
+                                                val editsArray = org.json.JSONArray(comp.additionalTextEditsJson)
+                                                // Apply additional edits to the full text first
+                                                val textWithImports = applyLspTextEdits(text, editsArray)
+                                                // Then insert completion text at cursor position
+                                                // (adjust cursor position if edits were above it)
+                                                val cursorOffset = textWithImports.length - text.length
+                                                val adjustedStart = start + cursorOffset
+                                                val adjustedEnd = end + cursorOffset
+                                                val finalText = textWithImports.substring(0, adjustedStart) + comp.insertText + textWithImports.substring(adjustedEnd.coerceAtMost(textWithImports.length))
+                                                val finalCursor = adjustedStart + comp.insertText.length
+                                                Pair(finalText, finalCursor)
+                                            } catch (_: Exception) {
+                                                // Fallback: plain insert without auto-import
+                                                val newText = text.substring(0, start) + comp.insertText + text.substring(end)
+                                                Pair(newText, start + comp.insertText.length)
+                                            }
                                         }
-                                        if (imports.isNotEmpty()) {
-                                            val patched = applyImportEdits(newText, imports)
-                                            value = TextFieldValue(
-                                                text = patched,
-                                                selection = androidx.compose.ui.text.TextRange(newCursor + (patched.length - newText.length)),
-                                            )
-                                            onContentChange(patched)
-                                        } else {
-                                            value = TextFieldValue(
-                                                text = newText,
-                                                selection = androidx.compose.ui.text.TextRange(newCursor),
-                                            )
-                                            onContentChange(newText)
-                                        }
+                                        value = TextFieldValue(
+                                            text = result.first,
+                                            selection = androidx.compose.ui.text.TextRange(result.second),
+                                        )
+                                        onContentChange(result.first)
                                     }
                                 } else {
-                                    value = TextFieldValue(
-                                        text = newText,
-                                        selection = androidx.compose.ui.text.TextRange(newCursor),
-                                    )
-                                    onContentChange(newText)
+                                    var newText = text.substring(0, start) + comp.insertText + text.substring(end)
+                                    val newCursor = start + comp.insertText.length
+                                    // P22-J: Fall back to lspImportProvider for auto-import via code actions
+                                    if (lspImportProvider != null) {
+                                        val cLine = text.take(cursor).count { it == '\n' }
+                                        val cLineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cursor - cLineStart
+                                        coroutineScope.launch {
+                                            val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+                                            }
+                                            if (imports.isNotEmpty()) {
+                                                val patched = applyImportEdits(newText, imports)
+                                                value = TextFieldValue(
+                                                    text = patched,
+                                                    selection = androidx.compose.ui.text.TextRange(newCursor + (patched.length - newText.length)),
+                                                )
+                                                onContentChange(patched)
+                                            } else {
+                                                value = TextFieldValue(
+                                                    text = newText,
+                                                    selection = androidx.compose.ui.text.TextRange(newCursor),
+                                                )
+                                                onContentChange(newText)
+                                            }
+                                        }
+                                    } else {
+                                        value = TextFieldValue(
+                                            text = newText,
+                                            selection = androidx.compose.ui.text.TextRange(newCursor),
+                                        )
+                                        onContentChange(newText)
+                                    }
                                 }
                                 // P41 Phase B: Record accepted completion for MRU/usage ranking
                                 CompletionHistoryStore.recordAccepted(comp.label, language.name, context)

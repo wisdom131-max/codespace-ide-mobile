@@ -269,6 +269,9 @@ fun lspToRanked(items: List<LspCompletionItem>): List<RankedCompletionItem> {
             detail = item.detail,
             insertText = item.insertText,
             source = CompletionSource.LSP,
+            // P41-D: Pass through auto-import edits and range-based textEdit
+            additionalTextEditsJson = item.additionalTextEditsJson,
+            textEditJson = item.textEditJson,
         )
     }
 }
