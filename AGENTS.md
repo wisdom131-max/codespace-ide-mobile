@@ -16,7 +16,7 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-08-04. Read this FIRST before touching any code.
+> Last updated: 2026-08-06. Read this FIRST before touching any code.
 
 ---
 
@@ -26,6 +26,10 @@
 |-|-|
 | Latest green build | **33011f29** (overlay removal + floating LSP button + scrollable dropdown + PopupProperties fix) |
 | Active phase | **Phase 38** (P38 — Overlay removal, floating LSP button, keyboard fix, LSP capability gating, PEP 668 pip fixes) |
+| **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
+| Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
+| Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
+| Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
 | Last green | #1592 — feat(P26-4b/c/d): DebugConsolePanel capability toolbar, multi-session switcher, attach wiring |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
@@ -4786,11 +4790,40 @@ inject as `Authorization: Bearer <token>`. Handle 401 → trigger refresh.
 These are already done as part of 27-1 if implemented correctly. Verify line count after.
 **Build target:** green
 
-## Phase 27-5: Backend Deployment
+## Phase 27-5: Backend Deployment ✅ COMPLETE (2026-08-06 — Render)
 **Goal:** Deploy NestJS backend so APK features work end-to-end.
-**Approach:** Deploy to Railway (railway.json already configured). Point DNS for
-api.codespace-ide.app → Railway service. Verify /api/v1/health responds.
-**Prerequisite:** Railway account + domain configured.
+**Status:** ✅ LIVE on Render — https://codespace-ide-backend.onrender.com
+
+**History:** Originally deployed to Railway (2026-07-07), Railway free trial ended and backend died.
+Redeployed to Render on 2026-08-06 with all env vars migrated via Render API.
+
+### Render Service Config
+- **Service ID:** srv-d9q34761egvs73d7ejfg
+- **Build command:** `npm install --include=dev && npx nest build` (⚠️ `npm ci` alone skips devDeps in production → `nest: not found`)
+- **Start command:** `node dist/main.js`
+- **Health check:** /api/v1/health
+- **Plan:** Free (sleeps after 15 min idle, wakes on request)
+
+### Database (Supabase Postgres — Pooler / IPv4)
+- **Connection:** postgresql://postgres.cuipfwhkggxngadixius:Termux12%40%23%24@aws-0-eu-central-1.pooler.supabase.com:6543/postgres
+- ⚠️ MUST use pooler host (IPv4). Direct host (db.cuipfwhkggxngadixius.supabase.co) is IPv6-only → ETIMEDOUT on Render free tier.
+
+### Environment Variables (11 total, set via Render API)
+DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN,
+FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, NODE_ENV, PORT
+
+### Build Issues Fixed
+1. `npm ci --production` → `npm install --include=dev && npx nest build` (devDeps needed for nest CLI)
+2. DATABASE_URL IPv6 crash → switched to pooler (IPv4)
+3. Wrong password in DATABASE_URL → replaced leaked Base44 secret ref with actual Supabase password
+
+### Remaining (User Action)
+- [ ] Update Google/GitHub OAuth redirect URIs to Render URL
+- [ ] Set GOOGLE_OAUTH / GITHUB_OAUTH env vars on Render
+- [ ] Update Android app API_BASE_URL to https://codespace-ide-backend.onrender.com/api/v1
+- [ ] Rebuild APK and test end-to-end
+
+### Full credentials: credentials-and-keys.md on Google Drive (updated 2026-08-06)
 
 ## Phase 28: Phase 26-5 (JS-Debug Verification) + Phase 7 (Recovery) ✅ COMPLETE
 **Goal:** Complete the existing active phase + close issue #1.
@@ -5982,21 +6015,21 @@ Every AI agent working on this project MUST log every error found and fixed in t
 | Fix Commit | `b059db46` — reverted libproot.so and libtalloc.so to the a455ba1f versions (proven-stable, confirmed working on-device). Disabled the monthly cron schedule in build-proot.yml — manual dispatch only. |
 | Lesson | NEVER auto-rebuild proven-stable native binaries on a schedule. The monthly build-proot.yml workflow kept overwriting the working libproot.so with a freshly-compiled one that crashes. The CI-built proot uses a stub talloc and custom TLS patches that are incompatible with Samsung 5.15 kernel's seccomp/ptrace behavior. Only rebuild proot manually after on-device testing confirms the new binary works. |
 
-### What Still Works Without a Backend
+### Backend Status: ✅ LIVE on Render (2026-08-06)
+Backend redeployed to Render free tier. Database on Supabase Postgres (pooler, IPv4).
 - ✅ Login (Firebase — free, no server needed)
 - ✅ Local projects (already worked)
 - ✅ GitHub (direct API calls via OAuth Device Flow — no backend)
 - ✅ Terminal (falls back to local proot — already handled)
 - ✅ Editor, LSP, everything else (all local)
+- ✅ Backend health: https://codespace-ide-backend.onrender.com/api/v1/health → 200
+- ⏳ Cloud sync / connectors: backend live but OAuth env vars not yet migrated to Render
+- ⏳ API_BASE_URL in Android app still points to old Railway URL — needs updating
 
-### What Doesn't Work (Degrades Gracefully)
-- Cloud project sync (shows "Offline — showing local projects")
-- Connectors hub (placeholder anyway)
-- Cloud backup (shows "backend offline" message)
-- Token refresh via backend (401s fail silently without clearing tokens)
-
-### Zero Hosting Cost
-The app is now fully local-first. No Railway, no PostgreSQL, no Redis needed. If cloud sync is ever wanted again, easiest free options are Render.com (drop-in Railway replacement) or Firebase Firestore.
+### Migration Notes
+- Railway free trial ended → backend dead. Redeployed to Render on 2026-08-06.
+- 11 env vars migrated via Render API. DATABASE_URL uses Supabase pooler (IPv4).
+- Full credentials in credentials-and-keys.md on Google Drive.
 
 ---
 
@@ -8065,3 +8098,46 @@ are now editing `LspManager.kt`, `EditorPane.kt`, `CodeEditor.kt`, and `ProjectS
 **Recommendation:** Before either AI edits a shared file, check this section for current line
 ownership and pick non-overlapping ranges. If a collision is unavoidable, communicate via
 AGENTS.md commit messages.
+
+---
+
+## Phase 39 — Backend Migration: Railway → Render (2026-08-06)
+
+### Context
+Railway free trial ended, backend went offline. App was made local-first (Phase 36-2) to survive. Backend now redeployed to Render free tier with Supabase Postgres.
+
+### What Was Done
+
+| Step | Detail | Status |
+|------|--------|--------|
+| 1. Render service created | codespace-ide-backend (srv-d9q34761egvs73d7ejfg), free tier, oregon | ✅ |
+| 2. Build command fixed | `npm install --include=dev && npx nest build` (npm ci skips devDeps in prod) | ✅ |
+| 3. DATABASE_URL fixed | Switched from direct (IPv6-only, ETIMEDOUT) to pooler (IPv4) | ✅ |
+| 4. Password fixed | Replaced leaked Base44 secret ref with actual Supabase password | ✅ |
+| 5. All 11 env vars set | Via Render API (DATABASE_URL, JWT, Firebase, OWNER_EMAIL, NODE_ENV, PORT) | ✅ |
+| 6. Deploy confirmed live | dep-d9q46rjm8hqs73duck7g → status: live | ✅ |
+| 7. Health confirmed | GET /api/v1/health → 200 {"status":"ok"} | ✅ |
+| 8. Swagger confirmed | GET /api/docs → 200 (Swagger UI loads) | ✅ |
+| 9. Credentials saved | credentials-and-keys.md updated on Google Drive | ✅ |
+| 10. AGENTS.md updated | This section + Phase 27-5 + CURRENT STATE header | ✅ |
+
+### Gotchas (Prevent Future Breakage)
+
+1. **Build command:** `npm ci` in production mode silently skips devDependencies. `@nestjs/cli` is a devDep → `nest: not found` → 14s build failure. Must use `npm install --include=dev`.
+2. **Supabase direct = IPv6-only:** `db.cuipfwhkggxngadixius.supabase.co:5432` → IPv6. Render free tier has no IPv6 → ETIMEDOUT crash loop. Always use pooler: `aws-0-eu-central-1.pooler.supabase.com:6543` (IPv4).
+3. **Password URL-encoding:** `Termux12@#$` → `Termux12%40%23%24` in connection strings.
+4. **Render API:** Use `PUT /v1/services/{id}/env-vars` (not PATCH — returns 405).
+5. **Free tier cold starts:** Render free sleeps after 15 min idle. First request takes ~30-50s to wake.
+
+### Remaining (User Action Required)
+- [ ] Google Cloud Console: Add Render redirect URI to OAuth client
+- [ ] GitHub OAuth App: Update callback URL to Render
+- [ ] Render: Set GOOGLE_OAUTH_CLIENT_ID/SECRET + GITHUB_OAUTH_CLIENT_ID/SECRET
+- [ ] Android: Update API_BASE_URL to https://codespace-ide-backend.onrender.com/api/v1
+- [ ] Rebuild & test end-to-end
+
+### Files Modified
+- `AGENTS.md` — Phase 39 section + Phase 27-5 + CURRENT STATE + backend status sections
+- `credentials-and-keys.md` (Google Drive) — Full Render credentials documented
+
+---
