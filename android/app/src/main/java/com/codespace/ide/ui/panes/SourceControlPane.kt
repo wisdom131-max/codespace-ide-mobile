@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -171,18 +172,25 @@ fun SourceControlPane(projectId: String) {
     var newTagName     by remember { mutableStateOf("") }
     var newTagMsg      by remember { mutableStateOf("") }
     var newTagAnnotated by remember { mutableStateOf(true) }
+    var isGitRepo     by remember { mutableStateOf(false) }
+    var initializing  by remember { mutableStateOf(false) }
+    var initError     by remember { mutableStateOf<String?>(null) }
 
     val repoDir = remember(projectId) {
         val wsPath = loadWorkspacePath(context, projectId)
-        var dir = wsPath?.let { File(it) }
-        while (dir != null && !File(dir, ".git").exists()) { dir = dir.parentFile }
-        dir ?: File(com.codespace.ide.terminal.ProotInstaller.rootfsDir(context), "root")
+        wsPath?.let { File(it) } ?: File(com.codespace.ide.terminal.ProotInstaller.rootfsDir(context), "root")
+    }
+
+    // Check if the project dir has a .git folder — if not, show init UI instead of error
+    LaunchedEffect(repoDir, refresh) {
+        isGitRepo = withContext(Dispatchers.IO) { File(repoDir, ".git").exists() }
     }
 
     // ── data loaders ─────────────────────────────────────────────────────────
     fun refreshStatus() {
         scope.launch {
             loading = true; statusError = null
+            if (!File(repoDir, ".git").exists()) { isGitRepo = false; loading = false; return@launch }
             withContext(Dispatchers.IO) {
                 val branchOut = runGit(context, repoDir, "branch", "--show-current").trim()
                 if (branchOut.startsWith("Error:")) { statusError = branchOut; loading = false; return@withContext }
@@ -380,8 +388,50 @@ fun SourceControlPane(projectId: String) {
         }
         HorizontalDivider(color = DividerColor)
 
-        // ── Error banner ─────────────────────────────────────────────────────
-        if (statusError != null) {
+        // ── Not-a-repo empty state ────────────────────────────────────────────
+        if (!isGitRepo && !loading) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.FolderOff, null, tint = MutedColor, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("This folder isn't a Git repository yet.", fontSize = 12.sp, color = MutedColor, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(12.dp))
+                if (initializing) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = IconColor)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Initializing...", fontSize = 11.sp, color = MutedColor)
+                } else {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                initializing = true; initError = null
+                                val result = withContext(Dispatchers.IO) {
+                                    ProotInstaller.execOnce(context, "git init", ProotInstaller.hostToGuestPath(context, repoDir.absolutePath) ?: "")
+                                }
+                                initializing = false
+                                if (result.startsWith("Exit code") || result.startsWith("Error")) {
+                                    initError = "git init failed: ${'$'}{result.take(100)}"
+                                } else {
+                                    isGitRepo = true
+                                    refresh++
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.GitHub, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Initialize Repository", fontSize = 12.sp)
+                    }
+                }
+                initError?.let { err ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(err, fontSize = 10.sp, color = ErrorColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            HorizontalDivider(color = DividerColor)
+        } else if (statusError != null) {
+            // ── Error banner (only shown if it IS a git repo but something went wrong) ──
             Row(Modifier.fillMaxWidth().background(ErrorColor.copy(alpha = 0.08f)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, null, tint = ErrorColor, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
