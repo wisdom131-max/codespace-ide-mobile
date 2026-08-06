@@ -103,6 +103,8 @@ data class LspCompletionItem(
     val additionalTextEditsJson: String? = null,
     // P41-D: Range-based replacement (some servers use this instead of insertText)
     val textEditJson: String? = null,
+    // P41-I: LSP insertTextFormat (1=PlainText, 2=Snippet). When 2, insertText contains $1/$0 syntax.
+    val insertTextFormat: Int = 1,
 )
 
 /**
@@ -116,13 +118,18 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
         val label = item.optString("label", "")
         if (label.isBlank()) continue
         var insertText = item.optString("insertText", label)
-        insertText = insertText.replace(Regex("""\$\{\d+:?[^}]*}"""), "").replace(Regex("""\$\d+"""), "")
+        val insertTextFormat = item.optInt("insertTextFormat", 1)
+        // P41-I: Only strip snippet placeholders for plain-text items.
+        // When insertTextFormat == 2 (Snippet), keep $1/$0 syntax for SnippetEngine to parse on accept.
+        if (insertTextFormat != 2) {
+            insertText = insertText.replace(Regex("\\$\\{\\d+:?[^}]*}"), "").replace(Regex("\\$\\d+"), "")
+        }
         val detail = item.optString("detail", "")
         val kind = item.optInt("kind", 1)
         // P41-D: Capture additionalTextEdits (auto-import) and textEdit (range replace)
         val additionalTextEditsJson = item.optJSONArray("additionalTextEdits")?.toString()
         val textEditJson = item.optJSONObject("textEdit")?.toString()
-        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind, additionalTextEditsJson, textEditJson))
+        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind, additionalTextEditsJson, textEditJson, insertTextFormat))
     }
     return result
 }
