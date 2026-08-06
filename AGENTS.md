@@ -8192,6 +8192,21 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 
 **Lesson:** When cleaning up "unused" variables, search for ALL references before deleting. The compiler warning was about `q` and `qRest` (genuinely unused), but `c` was also flagged and mistakenly removed.
 
+### P41 Build Failures #1819–#1822 (Method Too Large)
+
+| Build | Commit | Phase | Result | Root Cause |
+|-------|--------|-------|--------|------------|
+| #1819 | `f7dea707` | P41-E | ❌ Failed | JVM 64KB method-too-large — Phase E added 131 lines inline to CodeEditor composable |
+| #1820 | `7f1dc85e` | docs | ❌ Failed | Same broken tree (docs commit on top of #1819) |
+| #1821 | `34753eb6` | P41-J | ❌ Failed | Same broken tree (Phase J on top of #1819) |
+| #1822 | `45d123b6` | docs | ❌ Failed | Same broken tree (docs on top of #1819) |
+
+**Root cause:** `CodeEditor.kt` main composable function is ~3500 lines. Phase E added 131 lines of ghost text rendering code (multi-line overlay, accept-word/accept-full callbacks, viewport culling) inline, pushing the JVM bytecode past the 64KB method limit.
+
+**Fix:** Extracted the entire ghost text overlay into `BoxScope.GhostTextOverlay()` extension composable (commit `920dedb0`). The main CodeEditor function now calls it with callbacks for state mutations. This mirrors the same pattern used for ProjectShellScreen.kt (SymbolSearchOverlay, StatusBarContent).
+
+**Lesson:** CodeEditor.kt is now at the same risk as ProjectShellScreen.kt. Any new UI added to the main CodeEditor composable MUST be extracted into a separate @Composable function from the start. The main function should delegate to extracted composables.
+
 ### P41 Phase Progress (updated 2026-08-06)
 
 | Phase | Description | Status | Commit |
@@ -8200,7 +8215,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | B | Completion History Store — JSON-backed MRU + usage frequency, LRU-evict at 2000 entries | ✅ DONE | `476bdff7` |
 | C | Fuzzy Match Highlighting — bold+blue matched chars in dropdown via buildAnnotatedString | ✅ DONE | `f3e34e17` |
 | D | Import Completion — additionalTextEdits on completion accept | ✅ DONE | `36521de0` |
-| E | Multi-line Ghost Text + AI Inline Completions | ✅ DONE | `f7dea707` |
+| E | Multi-line Ghost Text + AI Inline Completions | ✅ DONE | `920dedb0` (fix) |
 | F | Workspace Intelligence — cross-file completion via workspace/symbol | ⬜ TODO | — |
 | G | Path Completion — filesystem-based inside import/require strings | ⬜ TODO | — |
 | H | Language Intelligence Audit — verify all CompletionItemKind icons | ⬜ TODO | — |
