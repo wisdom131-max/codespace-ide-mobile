@@ -8216,13 +8216,38 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | C | Fuzzy Match Highlighting — bold+blue matched chars in dropdown via buildAnnotatedString | ✅ DONE | `f3e34e17` |
 | D | Import Completion — additionalTextEdits on completion accept | ✅ DONE | `36521de0` |
 | E | Multi-line Ghost Text + AI Inline Completions | ✅ DONE | `920dedb0` (fix) |
-| F | Workspace Intelligence — cross-file completion via workspace/symbol | ⬜ TODO | — |
-| G | Path Completion — filesystem-based inside import/require strings | ⬜ TODO | — |
+| F | Workspace Intelligence — cross-file completion via workspace/symbol | ✅ DONE | `25f2fc99` |
+| G | Path Completion — filesystem-based inside import/require strings | ✅ DONE | (this commit) |
 | H | Language Intelligence Audit — verify all CompletionItemKind icons | ⬜ TODO | — |
 | I | Dynamic Snippets + Tab-stop Navigation | ⬜ TODO | — |
 | J | Completion UI Polish — filter chips, source badges, detail panel | ✅ DONE | `34753eb6` |
 | K | Performance — resolve, cancellation, parallel sources | ⬜ TODO | — |
 | L | AI Features — explain suggested completion | ⬜ TODO | — |
+
+
+### P41-G: Path Completion — COMPLETE
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Path context detection | ✅ | `PathCompletionProvider.detectPathContext()` — finds import/from/require/include keywords before quoted strings |
+| Filesystem listing | ✅ | `PathCompletionProvider.listPathCompletions()` — lists files/folders, filtered by prefix, sorted (folders first) |
+| Node module listing | ✅ | `PathCompletionProvider.listNodeModules()` — reads node_modules + package.json deps for bare imports |
+| Relative path support | ✅ | `./`, `../`, `~/`, `/` prefixes all resolved relative to current file dir or project root |
+| Integration in CodeEditor | ✅ | Path completions override keyword/LSP completions when path context active — no mixing |
+| `currentFilePath` param | ✅ | Added to CodeEditor composable, passed from EditorPane as `active.path` |
+| Path completion filter chip | ✅ | "Path" chip appears in completion dropdown (CompletionSource.PATH) |
+
+**Files changed:**
+- NEW: `editor/PathCompletionProvider.kt` — path context detector + directory lister (312 lines)
+- MODIFIED: `editor/CodeEditor.kt` — added `currentFilePath` param, path context detection, path completion override
+- MODIFIED: `ui/panes/EditorPane.kt` — passes `active.path` as `currentFilePath` to all 3 CodeEditor calls
+
+**How it works:**
+1. On every keystroke, `PathCompletionProvider.detectPathContext()` checks if cursor is inside a quoted string preceded by an import keyword (import/from/require/include/use/mod etc.)
+2. If path context detected: skip LSP + workspace + keyword completions, only show filesystem entries
+3. For bare imports (no ./ ../ prefix) in JS/TS: check `node_modules/` + `package.json` dependencies
+4. For relative paths: resolve base dir from current file's directory, then list directory contents
+5. Folders are sorted first, then files. Hidden files (dotfiles) only show if prefix starts with `.`
 
 ### P43 Publish to GitHub — Status
 
@@ -8267,10 +8292,10 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | MRU ranking | ✅ | `CompletionHistoryStore.kt` — JSON-backed MRU + usage frequency |
 | AI-assisted ranking | ❌ | No AI re-ranking of completion results yet |
 | Multi-line ghost text | ✅ | `CodeEditor.kt` — `GhostTextOverlay()` extracted composable (Phase E) |
-| Workspace-aware completion | 🔶 | `LspManager.kt` has `getWorkspaceSymbol()` + `supportsWorkspaceSymbols()`. Phase F code written but uncommitted |
-| Cross-file completion | 🔶 | Same as workspace-aware — depends on Phase F completion |
-| Import path completion | ❌ | No path completion inside import/require strings |
-| File path completion | ❌ | No filesystem path completion in strings |
+| Workspace-aware completion | ✅ | `LspManager.kt` — `getWorkspaceSymbol()` + `supportsWorkspaceSymbols()` + `lspWorkspaceSymbolProvider` wired in `CodeEditor.kt` (Phase F) |
+| Cross-file completion | ✅ | Same as workspace-aware — Phase F complete |
+| Import path completion | ✅ | `PathCompletionProvider.kt` — detects import/from/require context, lists filesystem (Phase G) |
+| File path completion | ✅ | `PathCompletionProvider.kt` — lists files/folders as completions, node_modules for bare imports (Phase G) |
 | Completion filters | ✅ | `CodeEditor.kt` — filter chips by source (Phase J) |
 | Completion source labels | ✅ | `CodeEditor.kt` — source badges (LSP/SNIPPET/BUFFER) (Phase J) |
 | Completion item resolve | ✅ | `LspManager.kt` — `resolveCompletion()` with detail+docs |
