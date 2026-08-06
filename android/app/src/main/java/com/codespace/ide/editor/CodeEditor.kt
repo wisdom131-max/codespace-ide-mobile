@@ -586,6 +586,37 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
+    // P41-G: Path Completion — detect if cursor is inside a path-like string (import/from/require)
+    // When path context is active, ONLY show path completions (no keyword mixing)
+    val pathContext = remember(value.text, value.selection.end) {
+        if (prefix.isNotEmpty()) {
+            PathCompletionProvider.detectPathContext(
+                text = value.text,
+                cursor = value.selection.end,
+                language = language,
+                currentFilePath = currentFilePath,
+                projectRoot = projectRoot,
+            )
+        } else null
+    }
+    var pathCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+    LaunchedEffect(pathContext) {
+        if (pathContext != null) {
+            pathCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                try {
+                    if (pathContext.isModule) {
+                        PathCompletionProvider.listNodeModules(projectRoot, pathContext.prefix)
+                    } else {
+                        PathCompletionProvider.listPathCompletions(pathContext)
+                    }
+                } catch (_: Exception) { emptyList() }
+            }
+        } else {
+            pathCompletions = emptyList()
+        }
+    }
+
+
     // P22-H: LSP-backed completion
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
     LaunchedEffect(prefix, isDotTriggered, value.selection.end, pathContext) {
@@ -618,36 +649,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             workspaceCompletions = emptyList()
         }
     }
-    // P41-G: Path Completion — detect if cursor is inside a path-like string (import/from/require)
-    // When path context is active, ONLY show path completions (no keyword mixing)
-    val pathContext = remember(value.text, value.selection.end) {
-        if (prefix.isNotEmpty()) {
-            PathCompletionProvider.detectPathContext(
-                text = value.text,
-                cursor = value.selection.end,
-                language = language,
-                currentFilePath = currentFilePath,
-                projectRoot = projectRoot,
-            )
-        } else null
-    }
-    var pathCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
-    LaunchedEffect(pathContext) {
-        if (pathContext != null) {
-            pathCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                try {
-                    if (pathContext.isModule) {
-                        PathCompletionProvider.listNodeModules(projectRoot, pathContext.prefix)
-                    } else {
-                        PathCompletionProvider.listPathCompletions(pathContext)
-                    }
-                } catch (_: Exception) { emptyList() }
-            }
-        } else {
-            pathCompletions = emptyList()
-        }
-    }
-
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
     val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix) {
         // Convert local completions to RankedCompletionItem
