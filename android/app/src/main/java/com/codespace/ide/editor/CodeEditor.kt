@@ -597,6 +597,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var completionFilter by remember { mutableStateOf<CompletionSource?>(null) }
     // P41-J: Sticky selection — remember last highlighted label
     var selectedLabel by remember { mutableStateOf<String?>(null) }
+    // P41-J: Detail panel — track the highlighted item's full doc
+    var detailDoc by remember { mutableStateOf<String?>(null) }
+    var detailDetail by remember { mutableStateOf<String?>(null) }
+    var detailLabel by remember { mutableStateOf<String?>(null) }
 
     // P39: Lightbulb state — tracks code actions per line for gutter display
     var lightbulbLine by remember { mutableStateOf(-1) }
@@ -764,7 +768,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         } else {
             showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()
         }
-        if (!showCompletions) { completionFilter = null; selectedLabel = null }
+        if (!showCompletions) { completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null }
     }
 
     // P41-E: Multi-line ghost text — shows top completion OR AI suggestion as dimmed text
@@ -3824,6 +3828,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         filteredCompletions.indexOfFirst { it.label == selectedLabel }.coerceAtLeast(0)
                     } else 0
                     
+                    // P41-J: Detail panel — update doc for highlighted item
+                    LaunchedEffect(initialIndex, filteredCompletions) {
+                        if (initialIndex < filteredCompletions.size) {
+                            val highlighted = filteredCompletions[initialIndex]
+                            detailDoc = highlighted.doc
+                            detailLabel = highlighted.label
+                        } else {
+                            detailDoc = null
+                            detailLabel = null
+                        }
+                    }
+                    
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                     ) {
@@ -4090,6 +4106,35 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                             Text(badgeText, color = badgeColor, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                         }
+                        }
+                    }
+                    
+                    // P41-J: Detail panel — full documentation for highlighted item
+                    if (detailDoc != null && detailDoc!!.isNotBlank()) {
+                        HorizontalDivider(color = Color(0xFF3C3C3C), thickness = 1.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 80.dp)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            if (detailLabel != null) {
+                                Text(
+                                    text = detailLabel!!,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFF569CD6),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                text = detailDoc!!,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFFCCCCCC),
+                            )
                         }
                     }
                 }
