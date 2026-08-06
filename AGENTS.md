@@ -8161,10 +8161,12 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 5. **Free tier cold starts:** Render free sleeps after 15 min idle. First request takes ~30-50s to wake.
 
 ### Remaining (User Action Required)
-- [ ] Google Cloud Console: Add Render redirect URI to OAuth client
-- [ ] GitHub OAuth App: Update callback URL to Render
-- [ ] Render: Set GOOGLE_OAUTH_CLIENT_ID/SECRET + GITHUB_OAUTH_CLIENT_ID/SECRET
-- [ ] Android: Update API_BASE_URL to https://codespace-ide-backend.onrender.com/api/v1
+- [x] Google Cloud Console: Add Render redirect URI to OAuth client "Codespace Connectors" (ID: 872673459882-51vislp2926tf8lgck3la827amfo0fch) — DONE 2026-08-06
+- [x] GitHub OAuth App: Update callback URL to Render — DONE
+- [x] Render: Set GOOGLE_OAUTH_CLIENT_ID/SECRET + GITHUB_OAUTH_CLIENT_ID/SECRET — DONE
+- [x] Android: Update API_BASE_URL to https://codespace-ide-backend.onrender.com/api/v1 — DONE (commit ce71352)
+- [x] PUBLIC_BASE_URL set on Render — DONE 2026-08-06 (was missing, would have broken all OAuth)
+- [x] All 16 env vars confirmed on Render — DONE 2026-08-06
 - [ ] Rebuild & test end-to-end
 
 ### Files Modified
