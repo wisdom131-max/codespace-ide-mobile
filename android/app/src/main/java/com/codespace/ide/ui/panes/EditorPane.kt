@@ -124,6 +124,8 @@ fun EditorPane(
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     onAiFixRequest: ((String) -> Unit)? = null,
+    /** P41-E: AI ghost text request — returns multi-line code continuation or null */
+    onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) -> String?)? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -1116,6 +1118,7 @@ fun EditorPane(
                         },
                         projectRoot = projectRootPath,
                         onAiFixRequest = onAiFixRequest,
+                        onAiGhostTextRequest = onAiGhostTextRequest,
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(

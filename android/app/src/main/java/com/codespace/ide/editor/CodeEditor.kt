@@ -336,6 +336,10 @@ fun CodeEditor(
     /** P26-1: LSP Workspace Symbol — search symbols across workspace (query string). */
     /** P15-A: Fix with AI — called with a pre-formatted prompt when user taps "Fix with AI". */
     onAiFixRequest: ((String) -> Unit)? = null,
+    /** P41-E: AI ghost text request — returns multi-line code continuation or null.
+     *  Called with (contextBefore, contextAfter, language) after 600ms idle.
+     *  The result is shown as dimmed ghost text that the user can accept (Tab) or dismiss. */
+    onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) -> String?)? = null,
     /** P18-C: Project root path for cross-file rename. Null = single-file only. */
     projectRoot: String? = null,
     /** P19-A: Cross-file Go-to-Definition — opens file at line. */
@@ -628,19 +632,51 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     LaunchedEffect(prefix, isDotTriggered, allCompletions) { showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty() }
 
-    // P15-D: Ghost text — shows the top IntelliSense completion as grey inline text
-    // after 800ms idle with a non-empty prefix. Tab/→ accepts; any edit dismisses.
+    // P41-E: Multi-line ghost text — shows top completion OR AI suggestion as dimmed text
+    // Source 1: IntelliSense (fuzzy-matched top completion, single line from insertText)
+    // Source 2: AI ghost text (multi-line code continuation, 600ms debounce)
     var ghostText by remember { mutableStateOf<String?>(null) }
+    var ghostTextLines by remember { mutableStateOf<List<String>>(emptyList()) }
+    var ghostTextIsAi by remember { mutableStateOf(false) }
+
+    // IntelliSense ghost text (existing behavior, 800ms debounce)
     LaunchedEffect(prefix, isDotTriggered, allCompletions) {
         ghostText = null
+        ghostTextLines = emptyList()
+        ghostTextIsAi = false
         if ((prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
             val top = allCompletions.firstOrNull()
             if (top != null) {
-                // P41: Use fuzzy match for ghost text — show if it's a good match
                 val score = fuzzyScore(prefix, top.label)
                 if (score > 0f && top.insertText.startsWith(prefix, ignoreCase = true)) {
-                    ghostText = top.insertText.removePrefix(prefix).lines().first()
+                    val remainder = top.insertText.removePrefix(prefix)
+                    ghostText = remainder.lines().firstOrNull() ?: ""
+                    ghostTextLines = remainder.lines()
+                    ghostTextIsAi = false
+                }
+            }
+        }
+    }
+
+    // P41-E: AI ghost text — debounced 600ms idle after typing stops
+    // Only fires when there's NO IntelliSense ghost text already showing
+    LaunchedEffect(value.text, value.selection.end) {
+        if (onAiGhostTextRequest != null && ghostText == null) {
+            kotlinx.coroutines.delay(600L)
+            val cursor = value.selection.end
+            if (cursor == value.selection.start && cursor > 0) {
+                val text = value.text
+                val contextBefore = text.substring(0, cursor)
+                val contextAfter = text.substring(cursor)
+                val aiResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try { onAiGhostTextRequest.invoke(contextBefore, contextAfter, language.name) }
+                    catch (_: Exception) { null }
+                }
+                if (aiResult != null && aiResult.isNotBlank()) {
+                    ghostText = aiResult.lines().firstOrNull() ?: ""
+                    ghostTextLines = aiResult.lines()
+                    ghostTextIsAi = true
                 }
             }
         }
@@ -976,7 +1012,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 BasicTextField(
                     value = value,
                     onValueChange = { newValue ->
-                        ghostText = null  // P15-D: dismiss ghost on any keystroke
+                        ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
                         var updatedValue = newValue
                         // 1. Auto-close brackets & quotes
                         if (newValue.text.length == value.text.length + 1) {
@@ -3327,43 +3363,97 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
-        // P15-D: Ghost text overlay — shown when not showing full dropdown
+        // P41-E: Multi-line ghost text overlay — shows dimmed suggestion (IntelliSense or AI)
+        // Renders inline on cursor line + subsequent lines as dimmed monospace text
         if (ghostText != null && !showCompletions) {
-            val ghost = ghostText!!
+            val ghostLines = ghostTextLines.ifEmpty { listOf(ghostText!!) }
             val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
             val cursorCol  = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
-            val topDp  = cursorLine * fontSize * 1.25f
-            val startDp = 64f + cursorCol * fontSize * 0.6f
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = startDp.dp, top = topDp.dp)
-                    .zIndex(8f)
-                    .clickable {
-                        // Tap ghost text to accept it
-                        val cursor = value.selection.end
-                        val newText = value.text.substring(0, cursor) + ghost + value.text.substring(cursor)
-                        value = TextFieldValue(
-                            text = newText,
-                            selection = androidx.compose.ui.text.TextRange(cursor + ghost.length),
-                        )
-                        onContentChange(newText)
-                        // P41 Phase B: Record ghost text acceptance
-                        val ghostLabel = allCompletions.firstOrNull()?.label
-                        if (ghostLabel != null) {
-                            CompletionHistoryStore.recordAccepted(ghostLabel, language.name, context)
-                        }
-                        ghostText = null
-                    },
-            ) {
-                Text(
-                    text = ghost,
-                    color = Color(0xFF6A6A6A),   // dimmed — VS Code ghost text colour
-                    fontSize = fontSize.sp,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
+            val lineHeightDp = fontSize * 1.25f
+
+            // Accept full ghost text (all lines)
+            val acceptFull: () -> Unit = {
+                val cursor = value.selection.end
+                val fullText = ghostLines.joinToString("\n")
+                val newText = value.text.substring(0, cursor) + fullText + value.text.substring(cursor)
+                value = TextFieldValue(
+                    text = newText,
+                    selection = androidx.compose.ui.text.TextRange(cursor + fullText.length),
                 )
+                onContentChange(newText)
+                if (!ghostTextIsAi) {
+                    val ghostLabel = allCompletions.firstOrNull()?.label
+                    if (ghostLabel != null) {
+                        CompletionHistoryStore.recordAccepted(ghostLabel, language.name, context)
+                    }
+                }
+                ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false
             }
+
+            // Accept only the first word of the ghost text (partial accept)
+            val acceptWord: () -> Unit = {
+                val cursor = value.selection.end
+                val firstLine = ghostLines.firstOrNull() ?: ""
+                val wordEnd = firstLine.indexOfFirst { it == ' ' || it == '\t' || it == '.' }.let {
+                    if (it == -1) firstLine.length else it + 1
+                }
+                val word = firstLine.substring(0, wordEnd)
+                if (word.isNotEmpty()) {
+                    val newText = value.text.substring(0, cursor) + word + value.text.substring(cursor)
+                    val newCursor = cursor + word.length
+                    value = TextFieldValue(
+                        text = newText,
+                        selection = androidx.compose.ui.text.TextRange(newCursor),
+                    )
+                    onContentChange(newText)
+                    // Update ghost: remove accepted word from first line
+                    val remainingFirst = firstLine.substring(wordEnd)
+                    if (remainingFirst.isBlank() && ghostLines.size > 1) {
+                        ghostTextLines = ghostLines.drop(1)
+                        ghostText = ghostLines.drop(1).firstOrNull() ?: ""
+                    } else {
+                        ghostTextLines = listOf(remainingFirst) + ghostLines.drop(1)
+                        ghostText = remainingFirst
+                    }
+                }
+            }
+
+            // Render each ghost line as a positioned overlay
+            ghostLines.forEachIndexed { lineIdx ->
+                val line = if (lineIdx == 0) ghostText!! else ghostLines[lineIdx]
+                if (line.isBlank() && lineIdx > 0) return@forEachIndexed
+                val topDp = (cursorLine + lineIdx) * lineHeightDp - vScroll.value
+                val startDp = if (lineIdx == 0) {
+                    64f + cursorCol * fontSize * 0.6f
+                } else {
+                    64f  // subsequent lines start at the text area left margin
+                }
+                // Skip rendering if line is outside viewport
+                if (topDp < -lineHeightDp || topDp > 2000f) return@forEachIndexed
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = startDp.dp, top = topDp.dp)
+                        .zIndex(8f)
+                        .clickable {
+                            if (lineIdx == 0) acceptWord() else acceptFull()
+                        },
+                ) {
+                    Text(
+                        text = line,
+                        color = Color(0xFF6A6A6A),   // dimmed — VS Code ghost text colour
+                        fontSize = fontSize.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                }
+            }
+
+            // P41-E: Acceptance: tap first line = accept next word (partial),
+            // tap any subsequent line = accept full multi-line suggestion.
+            // On-screen Tab key (soft keyboard) is handled via the existing
+            // BasicTextField onValueChange flow (ghost text clears on any keystroke).
         }
 
         // ── P38: Compact LSP Hover popup — 2-line preview, scrollable, expand + copy ──
