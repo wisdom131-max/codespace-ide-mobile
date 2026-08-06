@@ -2109,7 +2109,7 @@ private fun PssBottomPanelContent(
             BottomTab.BACKUP -> {
                 CloudBackupPanel(
                     projectId  = projectId,
-                    backendUrl = "https://codespace-ide-mobile-production.up.railway.app",
+                    backendUrl = "https://codespace-ide-backend.onrender.com",
                     onDismiss  = { onActiveBottomTabChange(BottomTab.TERMINAL) },
                 )
             }

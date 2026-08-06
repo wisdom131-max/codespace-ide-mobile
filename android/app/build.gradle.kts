@@ -105,11 +105,11 @@ android {
         }
         create("staging") {
             dimension = "env"
-            buildConfigField("String", "API_BASE_URL", "\"https://staging-api.codespace-ide.app/api/v1\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://codespace-ide-backend.onrender.com/api/v1\"")
         }
         create("prod") {
             dimension = "env"
-            buildConfigField("String", "API_BASE_URL", "\"https://api.codespace-ide.app/api/v1\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://codespace-ide-backend.onrender.com/api/v1\"")
         }
     }
 

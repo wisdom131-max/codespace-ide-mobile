@@ -794,7 +794,7 @@ echo '[Remotion] Done. Open the Preview tab -> http://localhost:3000'
 - data/ConnectorsApiClient.kt — Railway connectors backend client
 
 ## Backend (NestJS on Railway)
-- URL: https://codespace-ide-mobile-production.up.railway.app
+- URL: https://codespace-ide-backend.onrender.com
 - /api/v1/auth — JWT login/register
 - /api/v1/projects — Project cloud sync
 - /api/v1/connectors — OAuth token exchange (Google/Slack/GitHub)

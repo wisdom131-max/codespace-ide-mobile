@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
  */
 object ConnectorsApiClient {
 
-    const val API_BASE = "https://codespace-ide-mobile-production.up.railway.app/api/v1"
+    const val API_BASE = "https://codespace-ide-backend.onrender.com/api/v1"
 
     data class ConnectorStatus(
         val id: String,

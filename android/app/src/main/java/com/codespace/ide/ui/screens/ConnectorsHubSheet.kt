@@ -215,7 +215,7 @@ internal fun ConnectorsHubSheet(
     }
 
     // ── In-app OAuth WebView dialog ───────────────────────────────────────────
-    val callbackBase = "https://codespace-ide-mobile-production.up.railway.app/api/v1/connectors/callback"
+    val callbackBase = "https://codespace-ide-backend.onrender.com/api/v1/connectors/callback"
     oauthWebViewUrl?.let { authUrl ->
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { oauthWebViewUrl = null; pendingOAuthId = null },
