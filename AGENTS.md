@@ -8174,3 +8174,48 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - `credentials-and-keys.md` (Google Drive) — Full Render credentials documented
 
 ---
+
+### P41 IntelliSense Build Status (2026-08-06)
+
+| Build # | Commit | Phase | Status | Root Cause |
+|---------|--------|-------|--------|------------|
+| #1810 | `0d52fd47` | P43 Publish | ✅ Green | — |
+| #1811 | `7a242145` | P41-A | ❌ Failed | `in 2..13, 22, 23` invalid Kotlin `when` syntax (can't mix range + comma) |
+| #1812 | `c537ceff` | P41-A fix | ❌ Failed | `Unresolved reference: c` — removed `val c = candidate` but function still referenced `c` in 7 places |
+| #1813 | `476bdff7` | P41-B | ❌ Failed | Same `c` reference error (builds compile current HEAD, same unfixed file) |
+| #1814 | `f3e34e17` | P41-C | ❌ Failed | Same `c` reference error |
+| #1815 | `021c42a7` | P41-A/B/C fix | ✅ (pending) | Fixed all `c` → `candidate` references in fuzzyScore() |
+
+**Root cause analysis:**
+1. **Build #1811:** Kotlin `when` branch `in 2..13, 22, 23` is invalid — can't mix `in` ranges with comma-separated values. Fixed by splitting into `in 2..13 -> TYPE` + `22, 23 -> TYPE`.
+2. **Builds #1812-#1814:** Overzealous cleanup — removed `val c = candidate` thinking it was unused, but `fuzzyScore()` still referenced `c` in 7 places (lines 76, 77, 86, 87, 93, 94, 103). Fixed by replacing all `c.` → `candidate.`.
+
+**Lesson:** When cleaning up "unused" variables, search for ALL references before deleting. The compiler warning was about `q` and `qRest` (genuinely unused), but `c` was also flagged and mistakenly removed.
+
+### P41 Phase Progress (updated 2026-08-06)
+
+| Phase | Description | Status | Commit |
+|-------|-------------|--------|--------|
+| A | Matching & Ranking Engine — fuzzy subsequence match, camelCase hump, MRU/usage ranking | ✅ DONE | `7a242145` |
+| B | Completion History Store — JSON-backed MRU + usage frequency, LRU-evict at 2000 entries | ✅ DONE | `476bdff7` |
+| C | Fuzzy Match Highlighting — bold+blue matched chars in dropdown via buildAnnotatedString | ✅ DONE | `f3e34e17` |
+| D | Import Completion — additionalTextEdits on completion accept | ⬜ TODO | — |
+| E | Multi-line Ghost Text + AI Inline Completions | ⬜ TODO | — |
+| F | Workspace Intelligence — cross-file completion via workspace/symbol | ⬜ TODO | — |
+| G | Path Completion — filesystem-based inside import/require strings | ⬜ TODO | — |
+| H | Language Intelligence Audit — verify all CompletionItemKind icons | ⬜ TODO | — |
+| I | Dynamic Snippets + Tab-stop Navigation | ⬜ TODO | — |
+| J | Completion UI Polish — filter chips, source badges, detail panel | ⬜ TODO | — |
+| K | Performance — resolve, cancellation, parallel sources | ⬜ TODO | — |
+| L | AI Features — explain suggested completion | ⬜ TODO | — |
+
+### P43 Publish to GitHub — Status
+
+| Feature | Status | Commit |
+|----------|--------|--------|
+| createRepo() API call | ✅ DONE | `0d52fd47` |
+| Publish dialog in SourceControlPane | ✅ DONE | `0d52fd47` |
+| Full flow: create repo → add remote → commit → push | ✅ DONE | `0d52fd47` |
+| CI build | ✅ Green (#1810) | — |
+
+---
