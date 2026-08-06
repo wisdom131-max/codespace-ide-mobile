@@ -82,6 +82,7 @@ import com.codespace.ide.lsp.rank
 import com.codespace.ide.lsp.fuzzyScore
 import com.codespace.ide.lsp.fuzzyMatchIndices
 import com.codespace.ide.lsp.CompletionItemKind
+import com.codespace.ide.lsp.CompletionHistoryStore
 import com.codespace.ide.editor.SignatureInfo
 import com.codespace.ide.lsp.LspManager
 import androidx.compose.material3.Card
@@ -595,7 +596,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         // Merge, deduplicate by label, rank with fuzzy matching
         val merged = (lspRanked + localRanked).distinctBy { it.label }
-        val ranked = rank(merged, prefix)
+        val ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(), CompletionHistoryStore.usageMap())
         // Map back to Completion for the existing dropdown UI
         ranked.take(15).map { rc ->
             val kind = when (rc.kind) {
@@ -607,6 +608,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             Completion(rc.label, kind, rc.insertText, rc.detail)
         }
     }
+    // P41 Phase B: Load completion history once per file open
+    LaunchedEffect(Unit) { CompletionHistoryStore.load(context) }
+
     LaunchedEffect(prefix, isDotTriggered, allCompletions) { showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty() }
 
     // P15-D: Ghost text — shows the top IntelliSense completion as grey inline text
@@ -3329,6 +3333,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             selection = androidx.compose.ui.text.TextRange(cursor + ghost.length),
                         )
                         onContentChange(newText)
+                        // P41 Phase B: Record ghost text acceptance
+                        val ghostLabel = allCompletions.firstOrNull()?.label
+                        if (ghostLabel != null) {
+                            CompletionHistoryStore.recordAccepted(ghostLabel, language.name, context)
+                        }
                         ghostText = null
                     },
             ) {
@@ -3481,6 +3490,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     )
                                     onContentChange(newText)
                                 }
+                                // P41 Phase B: Record accepted completion for MRU/usage ranking
+                                CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
                                 showCompletions = false
                             }
                             .padding(horizontal = 8.dp, vertical = 5.dp),
