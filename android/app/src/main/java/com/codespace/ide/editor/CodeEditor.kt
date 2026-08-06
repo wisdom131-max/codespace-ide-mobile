@@ -80,6 +80,7 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
 import com.codespace.ide.lsp.CompletionSource
 import com.codespace.ide.lsp.RankedCompletionItem
+import com.codespace.ide.editor.PathCompletionProvider
 import com.codespace.ide.lsp.rank
 import com.codespace.ide.lsp.fuzzyScore
 import com.codespace.ide.lsp.fuzzyMatchIndices
@@ -348,6 +349,8 @@ fun CodeEditor(
     onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) -> String?)? = null,
     /** P18-C: Project root path for cross-file rename. Null = single-file only. */
     projectRoot: String? = null,
+    /** P41-G: Current file path — for path completion context detection */
+    currentFilePath: String? = null,
     /** P19-A: Cross-file Go-to-Definition — opens file at line. */
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     /** P20-A: Git blame data — when non-null, shows author+date column next to line numbers */
@@ -585,7 +588,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // P22-H: LSP-backed completion
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
-    LaunchedEffect(prefix, isDotTriggered, value.selection.end) {
+    LaunchedEffect(prefix, isDotTriggered, value.selection.end, pathContext) {
+        // P41-G: Skip LSP completions when path context is active
+        if (pathContext != null) { lspCompletions = emptyList(); return@LaunchedEffect }
         if ((prefix.length >= 2 || isDotTriggered) && lspCompletionProvider != null) {
             kotlinx.coroutines.delay(150)  // shorter delay for dot trigger
             val cOff = value.selection.end
@@ -602,7 +607,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // P41-F: Workspace symbol completions (cross-file) — fetch on prefix change
     var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
-    LaunchedEffect(prefix) {
+    LaunchedEffect(prefix, pathContext) {
+        // P41-G: Skip workspace symbols when path context is active
+        if (pathContext != null) { workspaceCompletions = emptyList(); return@LaunchedEffect }
         if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
             workspaceCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 try { lspWorkspaceSymbolProvider.invoke(prefix) } catch (_: Exception) { emptyList() }
@@ -611,8 +618,38 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             workspaceCompletions = emptyList()
         }
     }
+    // P41-G: Path Completion — detect if cursor is inside a path-like string (import/from/require)
+    // When path context is active, ONLY show path completions (no keyword mixing)
+    val pathContext = remember(value.text, value.selection.end) {
+        if (prefix.isNotEmpty()) {
+            PathCompletionProvider.detectPathContext(
+                text = value.text,
+                cursor = value.selection.end,
+                language = language,
+                currentFilePath = currentFilePath,
+                projectRoot = projectRoot,
+            )
+        } else null
+    }
+    var pathCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+    LaunchedEffect(pathContext) {
+        if (pathContext != null) {
+            pathCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                try {
+                    if (pathContext.isModule) {
+                        PathCompletionProvider.listNodeModules(projectRoot, pathContext.prefix)
+                    } else {
+                        PathCompletionProvider.listPathCompletions(pathContext)
+                    }
+                } catch (_: Exception) { emptyList() }
+            }
+        } else {
+            pathCompletions = emptyList()
+        }
+    }
+
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
-    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, prefix) {
+    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix) {
         // Convert local completions to RankedCompletionItem
         val localRanked = completions.map { c ->
             val kind = when (c.kind) {
@@ -624,6 +661,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 label = c.label, kind = kind, detail = c.doc,
                 insertText = c.insertText, source = if (c.kind == CompletionKind.SNIPPET) CompletionSource.SNIPPET else CompletionSource.BUFFER,
             )
+        }
+        // P41-G: If path context is active, ONLY show path completions (skip keywords/LSP)
+        if (pathContext != null && pathCompletions.isNotEmpty()) {
+            val pathRanked = pathCompletions.map { item ->
+                RankedCompletionItem(
+                    label = item.label, kind = item.kind, detail = item.detail,
+                    insertText = item.insertText, source = CompletionSource.PATH,
+                )
+            }
+            // Path completions don't need fuzzy ranking — already filtered by prefix
+            return@remember pathRanked.take(50).map { rc ->
+                Completion(rc.label, CompletionKind.KEYWORD, rc.insertText, rc.detail,
+                    source = rc.source)
+            }
         }
         // Convert LSP completions to RankedCompletionItem (P41-D: include additionalTextEdits for auto-import)
         val lspRanked = lspCompletions.map { item ->
@@ -664,8 +715,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P41 Phase B: Load completion history once per file open
     LaunchedEffect(Unit) { CompletionHistoryStore.load(context) }
 
-    LaunchedEffect(prefix, isDotTriggered, allCompletions) {
-        showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()
+    LaunchedEffect(prefix, isDotTriggered, allCompletions, pathContext) {
+        // P41-G: Path completions show even with 1-char prefix
+        if (pathContext != null) {
+            showCompletions = allCompletions.isNotEmpty()
+        } else {
+            showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()
+        }
         if (!showCompletions) { completionFilter = null; selectedLabel = null }
     }
 
