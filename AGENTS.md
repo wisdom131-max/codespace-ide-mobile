@@ -8205,7 +8205,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | G | Path Completion — filesystem-based inside import/require strings | ⬜ TODO | — |
 | H | Language Intelligence Audit — verify all CompletionItemKind icons | ⬜ TODO | — |
 | I | Dynamic Snippets + Tab-stop Navigation | ⬜ TODO | — |
-| J | Completion UI Polish — filter chips, source badges, detail panel | ⬜ TODO | — |
+| J | Completion UI Polish — filter chips, source badges, detail panel | ✅ DONE | `34753eb6` |
 | K | Performance — resolve, cancellation, parallel sources | ⬜ TODO | — |
 | L | AI Features — explain suggested completion | ⬜ TODO | — |
 
