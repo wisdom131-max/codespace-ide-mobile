@@ -403,6 +403,12 @@ fun CodeEditor(
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
     /** P41-F: Workspace symbol provider — returns workspace/symbol results for cross-file completion */
     lspWorkspaceSymbolProvider: ((query: String) -> List<LspCompletionItem>)? = null,
+    /** P41-K: LSP completion resolver — lazily resolves documentation/detail for a highlighted item */
+    lspCompletionResolver: ((item: LspCompletionItem) -> LspCompletionItem?)? = null,
+    /** P41-K: LSP request cancellation — sends $/cancelRequest for a stale request ID */
+    lspCancellationProvider: ((Long) -> Unit)? = null,
+    /** P41-K: LSP request ID provider — returns current pending request ID for cancellation tracking */
+    lspRequestIdProvider: (() -> Long)? = null,
     /** P24-1: LSP diagnostics as LintErrors — shown as squiggles on top of syntax highlighting */
     lspDiagnosticErrors: List<LintError> = emptyList(),
     /** P24-3: Find References — called with word at cursor, returns list of (filePath, line, snippet) */
@@ -596,6 +602,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var completionFilter by remember { mutableStateOf<CompletionSource?>(null) }
     // P41-J: Sticky selection — remember last highlighted label
     var selectedLabel by remember { mutableStateOf<String?>(null) }
+    // P41-K: In-memory resolve cache — avoids re-resolving already-resolved items
+    var resolveCache by remember { mutableStateOf<Map<String, LspCompletionItem>>(emptyMap()) }
+    var lastResolvedLabel by remember { mutableStateOf<String?>(null) }
+    // P41-K: Track LSP request ID for cancellation
+    var lspRequestId by remember { mutableStateOf<Long>(-1L) }
     // P41-J: Detail panel — track the highlighted item's full doc
     var detailDoc by remember { mutableStateOf<String?>(null) }
     var detailDetail by remember { mutableStateOf<String?>(null) }
@@ -660,35 +671,56 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
 
 
-    // P22-H: LSP-backed completion
+    // P22-H: LSP-backed completion (P41-K: parallel fetch + request cancellation)
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
+    // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
+    var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
     LaunchedEffect(prefix, isDotTriggered, value.selection.end, pathContext) {
         // P41-G: Skip LSP completions when path context is active
-        if (pathContext != null) { lspCompletions = emptyList(); return@LaunchedEffect }
+        if (pathContext != null) { lspCompletions = emptyList(); workspaceCompletions = emptyList(); return@LaunchedEffect }
+
         if ((prefix.length >= 2 || isDotTriggered) && lspCompletionProvider != null) {
-            kotlinx.coroutines.delay(150)  // shorter delay for dot trigger
+            kotlinx.coroutines.delay(150)  // debounce
+
+            // P41-K: Cancel any previous in-flight completion request before sending new one
+            if (lspRequestId >= 0 && lspCancellationProvider != null) {
+                try { lspCancellationProvider.invoke(lspRequestId) } catch (_: Exception) {}
+                lspRequestId = -1L
+            }
+
             val cOff = value.selection.end
             val cLine = value.text.take(cOff).count { it == '\n' }
             val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
             val cCol = cOff - cLineStart
-            lspCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+
+            // P41-K: Track request ID for cancellation
+            if (lspRequestIdProvider != null) {
+                try { lspRequestId = lspRequestIdProvider.invoke() } catch (_: Exception) {}
             }
+
+            // P41-K: Fetch LSP + workspace sources concurrently (worst-case = slowest source)
+            val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                val lspDeferred = kotlinx.coroutines.async {
+                    try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
+                }
+                // P41-K: Workspace symbols have own debounce (prefix >= 3) and result cap (top 50)
+                val wsDeferred = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
+                    kotlinx.coroutines.async {
+                        try {
+                            lspWorkspaceSymbolProvider.invoke(prefix).take(50)
+                        } catch (_: Exception) { emptyList() }
+                    }
+                } else null
+
+                val lsp = lspDeferred.await()
+                val ws = wsDeferred?.await() ?: emptyList()
+                Pair(lsp, ws)
+            }
+
+            lspCompletions = results.first
+            workspaceCompletions = results.second
         } else {
             lspCompletions = emptyList()
-        }
-    }
-
-    // P41-F: Workspace symbol completions (cross-file) — fetch on prefix change
-    var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
-    LaunchedEffect(prefix, pathContext) {
-        // P41-G: Skip workspace symbols when path context is active
-        if (pathContext != null) { workspaceCompletions = emptyList(); return@LaunchedEffect }
-        if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
-            workspaceCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                try { lspWorkspaceSymbolProvider.invoke(prefix) } catch (_: Exception) { emptyList() }
-            }
-        } else {
             workspaceCompletions = emptyList()
         }
     }
@@ -768,6 +800,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()
         }
         if (!showCompletions) { completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null }
+    }
+
+    // P41-K: Lazy resolve — when user highlights an LSP item, resolve its full docs/detail (150ms debounce)
+    LaunchedEffect(selectedLabel, showCompletions) {
+        if (!showCompletions || selectedLabel == null) { lastResolvedLabel = null; return@LaunchedEffect }
+        // Only resolve LSP-sourced items not already in cache
+        if (resolveCache.containsKey(selectedLabel)) { return@LaunchedEffect }
+        if (lspCompletionResolver == null) { return@LaunchedEffect }
+
+        // Find the LSP item matching the selected label
+        val lspItem = lspCompletions.find { it.label == selectedLabel } ?: return@LaunchedEffect
+
+        kotlinx.coroutines.delay(150)  // debounce — only resolve after user pauses on an item
+        val resolved = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            try { lspCompletionResolver.invoke(lspItem) } catch (_: Exception) { null }
+        }
+        if (resolved != null) {
+            resolveCache = resolveCache + (selectedLabel!! to resolved)
+            lastResolvedLabel = selectedLabel
+            // Update detail panel if still showing this item
+            if (selectedLabel == resolved.label && resolved.documentation?.isNotBlank() == true) {
+                detailDoc = resolved.documentation
+            }
+        }
     }
 
     // P41-E: Multi-line ghost text — shows top completion OR AI suggestion as dimmed text
