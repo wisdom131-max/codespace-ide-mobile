@@ -1005,14 +1005,14 @@ SourceControlPane.kt (593 lines) + GitEngine.kt (162 lines) audited.
 | Stage / unstage / stage-all / unstage-all | ✅ exists |
 | Commit + push + pull | ✅ exists |
 | Branch create + switch (checkout) | ✅ exists |
-| Branch delete | ❌ missing |
-| Branch rename | ❌ missing |
-| Commit history / log (list + tap for details) | ❌ missing |
-| Stash save / pop / list | ❌ missing |
-| Merge conflict resolution UI | ❌ missing |
-| .gitignore editor | ❌ missing |
-| Tag management | ❌ missing |
-| Local version history (file snapshots, separate from git) | ❌ missing |
+| Branch delete | ✅ DONE | `git branch -d` via long-press menu in SourceControlPane |
+| Branch rename | ✅ DONE | `git branch -m` via rename dialog in SourceControlPane |
+| Commit history / log | ✅ DONE | ScmTab.LOG + ScmTab.GRAPH in SourceControlPane |
+| Stash save / pop / list | ✅ DONE | ScmTab.STASH in SourceControlPane |
+| Merge conflict resolution UI | ✅ DONE | Conflict banner + conflictedFiles list in SourceControlPane |
+| .gitignore editor | ✅ DONE | Dialog editor in SourceControlPane |
+| Tag management | ✅ DONE | ScmTab.TAGS — create (annotated/lightweight), list, delete |
+| Local version history | ❌ Not implemented | Low priority — separate from git, would need file snapshot store |
 
 ### Build plan
 All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
@@ -1091,9 +1091,9 @@ All 7 missing features go into `SourceControlPane.kt` + `GitEngine.kt`:
 ### Implementation order
 | # | Feature | Complexity | Status | Notes |
 |---|---------|-----------|--------|-------|
-| P8-1 | Breakpoint gutter markers | Low | TODO — START HERE | Tap line number = toggle red dot. No DAP needed. Store Set<Int> of breakpoint lines. |
-| P8-2 | Logcat viewer | Medium | TODO | New tab in bottom panel (after Ports). Runs `adb logcat` in terminal subprocess, streams into scrolling list with filter input. |
-| P8-3 | Variable inspector panel | Medium | TODO | New bottom tab. Stub initially — show local vars from debug session JSON if present. |
+| P8-1 | Breakpoint gutter markers | Low | ✅ DONE | Tap line number = toggle red dot. Red circle rendered in gutter. UDM integration + persistence (P23-8). Wired in EditorPane.kt. |
+| P8-2 | Logcat viewer | Medium | ✅ DONE | LogcatPanel.kt — streams logcat, color-coded by level, filterable. Wired in ProjectShellScreen BottomTab.LOGCAT. |
+| P8-3 | Variable inspector panel | Medium | ✅ DONE | VariableInspectorPanel.kt — shows debug session variables. Wired in ProjectShellScreen BottomTab.VARIABLES. |
 | P8-4 | DAP client | High | SKIP | Requires external per-language debug adapters in terminal. Out of scope for now. |
 
 ### P8-1 implementation plan
@@ -3942,7 +3942,7 @@ Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
 
 ### Remaining Items (Deferred / Needs Device)
 - P25-0B: LSP upgrade-check mechanism — deferred (low priority)
-- Signature Help UI wiring — `getSignatureHelp()` exists but not called from EditorPane
+- ~~Signature Help UI wiring~~ ✅ FIXED — LSP signature help wired in EditorPane.kt:1539 + CodeEditor.kt local fallback (SignatureHelpAnalyzer)
 - Semantic Tokens — implemented but not verified in UI
 - All fixes need on-device verification (cannot test from sandbox)
 - Rust fallback URL should be pinned to a specific version

@@ -25,6 +25,8 @@ class SyntaxTransformation(
     private val colors: EditorColors,
     private val lintErrors: List<LintError> = emptyList(),
     private val foldedLineIndices: Set<Int> = emptySet(),
+    /** P41-W: LSP semantic token ranges overlaid on top of regex highlighting */
+    private val semanticTokens: List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange> = emptyList(),
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -114,11 +116,27 @@ class SyntaxTransformation(
         // ── Step 2: syntax-highlight the *display* string ─────────────────
         val highlighted = SyntaxHighlighter.highlight(displayStr, language, colors)
 
+        // P41-W: Overlay semantic tokens (re-mapped to display offsets)
+        val withSemantic = if (semanticTokens.isNotEmpty()) {
+            buildAnnotatedString {
+                append(highlighted)
+                for (tok in semanticTokens) {
+                    val tStart = origToTransFinal.getOrElse(
+                        tok.startOffset.coerceIn(0, raw.length)) { 0 }
+                    val tEnd   = origToTransFinal.getOrElse(
+                        tok.endOffset.coerceIn(0, raw.length)) { 0 }
+                    if (tStart < tEnd) {
+                        addStyle(SpanStyle(color = tok.color), tStart, tEnd)
+                    }
+                }
+            }
+        } else highlighted
+
         // ── Step 3: overlay lint squiggles (re-mapped to display offsets) ──
-        if (lintErrors.isEmpty()) return TransformedText(highlighted, offsetMapping)
+        if (lintErrors.isEmpty()) return TransformedText(withSemantic, offsetMapping)
 
         val withLint = buildAnnotatedString {
-            append(highlighted)
+            append(withSemantic)
             for (err in lintErrors) {
                 val tStart = origToTransFinal.getOrElse(
                     err.start.coerceIn(0, raw.length)) { 0 }
@@ -146,10 +164,25 @@ class SyntaxTransformation(
         offsetMapping: OffsetMapping,
     ): TransformedText {
         val highlighted = SyntaxHighlighter.highlight(text.text, language, colors)
-        if (lintErrors.isEmpty()) return TransformedText(highlighted, offsetMapping)
+
+        // P41-W: Overlay semantic tokens on top of regex highlighting
+        val withSemantic = if (semanticTokens.isNotEmpty()) {
+            buildAnnotatedString {
+                append(highlighted)
+                for (tok in semanticTokens) {
+                    val s = tok.startOffset.coerceIn(0, text.text.length)
+                    val e = tok.endOffset.coerceIn(s, text.text.length)
+                    if (s < e) {
+                        addStyle(SpanStyle(color = tok.color), s, e)
+                    }
+                }
+            }
+        } else highlighted
+
+        if (lintErrors.isEmpty()) return TransformedText(withSemantic, offsetMapping)
 
         val withLint = buildAnnotatedString {
-            append(highlighted)
+            append(withSemantic)
             for (err in lintErrors) {
                 val start = err.start.coerceIn(0, text.text.length)
                 val end   = err.end.coerceIn(start, text.text.length)

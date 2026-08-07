@@ -46,6 +46,7 @@ import com.codespace.ide.lsp.parseLspCompletions
 import com.codespace.ide.lsp.parseImportEdits
 import com.codespace.ide.lsp.parseWorkspaceSymbols
 import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
+import com.codespace.ide.lsp.SemanticTokensApplier
 import com.codespace.ide.lsp.parseCodeActions
 import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.editor.SignatureInfo
@@ -228,6 +229,8 @@ fun EditorPane(
     var lspInlayHints by remember { mutableStateOf<JSONArray?>(null) }
     // P26-1: LSP Document Links — clickable links in comments
     var lspDocumentLinks by remember { mutableStateOf<JSONArray?>(null) }
+    // P41-W: LSP Semantic Tokens — server-provided syntax highlighting
+    var lspSemanticRanges by remember { mutableStateOf<List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange>>(emptyList()) }
     // P26-1: LSP Type Definition — Go to Type Definition result
     var lspTypeDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
     // P26-1: LSP Implementation — Find Implementations result
@@ -1045,6 +1048,31 @@ fun EditorPane(
             }
         }
 
+        // P41-W: LSP Semantic Tokens — fetch server-provided syntax highlighting
+        LaunchedEffect(active?.path, active?.content) {
+            if (active != null && LspManager.isServerRunning(active.language)) {
+                delay(600)
+                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                if (uri != null) {
+                    val tokenData = withContext(Dispatchers.IO) {
+                        LspManager.getSemanticTokens(active.language, uri)
+                    }
+                    if (tokenData != null) {
+                        // Extract legend from server capabilities
+                        val caps = LspManager.getServerCapabilities(active.language)
+                        val legend = caps?.optJSONObject("semanticTokensProvider")?.optJSONObject("legend")
+                        lspSemanticRanges = SemanticTokensApplier.parse(tokenData, active.content, legend)
+                    } else {
+                        lspSemanticRanges = emptyList()
+                    }
+                } else {
+                    lspSemanticRanges = emptyList()
+                }
+            } else {
+                lspSemanticRanges = emptyList()
+            }
+        }
+
         // Sticky scroll — computed unconditionally (Compose rules of hooks)
         val stickyScope = remember(active?.content, scrollToLine) {
             if (scrollToLine <= 0 || active == null) null
@@ -1183,6 +1211,7 @@ fun EditorPane(
                         currentFilePath = active.path,
                         onAiFixRequest = onAiFixRequest,
                         onAiGhostTextRequest = onAiGhostTextRequest,
+                        semanticTokens = lspSemanticRanges,
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -1842,6 +1871,8 @@ fun EditorPane(
                                 } else null
                             }
                         } else null,
+                        // P41-W: LSP Semantic Tokens
+                        semanticTokens = lspSemanticRanges,
                     )
                 }
                 // P38: Hover popup now rendered inside CodeEditor as a compact overlay

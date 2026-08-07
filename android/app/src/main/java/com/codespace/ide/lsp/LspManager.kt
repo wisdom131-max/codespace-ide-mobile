@@ -381,6 +381,10 @@ object LspManager {
     fun isServerInitialized(language: Language): Boolean =
         servers[language]?.let { it.process.isAlive && it.initialized } ?: false
 
+    /** P41-W: Get the server's capabilities object (for semantic token legend, etc.) */
+    fun getServerCapabilities(language: Language): JSONObject? =
+        servers[language]?.capabilities
+
     /**
      * P38-FIX: Check if the server advertises a specific capability.
      * Used to gate optional LSP requests (workspace/symbol, inlayHint, etc.)

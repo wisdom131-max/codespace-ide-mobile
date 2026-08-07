@@ -369,6 +369,8 @@ fun CodeEditor(
     breakpointLines: Set<Int> = emptySet(),
     /** P8-1 Breakpoints: called when user taps a line number to toggle a breakpoint. */
     onBreakpointToggle: (Int) -> Unit = {},
+    /** P41-W: LSP semantic token ranges — overlaid on regex highlighting */
+    semanticTokens: List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange> = emptyList(),
     /** P26-1: LSP document highlight — lines to highlight (0-based startLine, endLine pairs). */
     lspHighlightLines: List<Pair<Int, Int>> = emptyList(),
     /** P26-1: LSP document symbols — outline structure (JSONArray of DocumentSymbol). */
@@ -1448,7 +1450,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             fontFamily = FontFamily.Monospace,
                         )
                     ),
-                    visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices),
+                    visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices, semanticTokens),
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
                         .padding(end = 24.dp)
