@@ -2611,6 +2611,68 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onClick = { onSourceAction!!.invoke("source.fixAll"); showLspMenu = false }
                             )
                             }
+
+                            // P41-L: Refactor Actions
+                            if (onSourceAction != null) {
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("R", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Extract Method", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("refactor.extract"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("R", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Extract Variable", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("refactor.extract.constant"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("I", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Inline Variable", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("refactor.inline"); showLspMenu = false }
+                            )
+                            }
+
+                            // P41-L: Code Generation
+                            if (onSourceAction != null) {
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("G", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Generate Constructor", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("source.generate.constructor"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("G", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Generate Getters/Setters", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("source.generate.accessors"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("G", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Implement Interface", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("source.generate.implement"); showLspMenu = false }
+                            )
+                            }
                             } // end scrollable Column
                         }
                     }
