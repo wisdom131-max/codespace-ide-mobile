@@ -8280,6 +8280,8 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | J | Completion UI Polish — filter chips, source badges, detail panel | ✅ DONE | `34753eb6` |
 | K | Performance — resolve, cancellation, parallel sources | ✅ DONE | `152bf065` |
 | L | AI Features — explain suggested completion | ✅ DONE | `152bf065` |
+| M | Call & Type Hierarchy — incoming/outgoing calls, type hierarchy tree | ✅ DONE | `9a081360` |
+| N | CodeLens clickable — resolveCodeLens + executeCommand + clickable lens UI | ✅ DONE (green #1881) | `9e416547` |
 
 
 
@@ -8740,10 +8742,11 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Build | Commit | Status | Notes |
 |-------|--------|--------|-------|
-| #1856+ | `9a081360` | Pending | P41-M Call & Type Hierarchy (5 files) |
-| #1856 | `0667e484` | ❌ Failed | Missing Language import in LspIntegration.kt |
+| #1881 | `9e416547` | ✅ Green | P41-N CodeLens fix — duplicate executeCommand removed, coroutineScope→MainScope, optString(null) fixed |
+| #1880 | `08b955eb` | ❌ Failed | P41-N fix attempt — duplicate executeCommand still present |
+| #1879 | `2485e1b0` | ❌ Failed | P41-N docs commit — compilation error in EditorPane.kt |
+| #1878 | `030c3b05` | ❌ Failed | P41-N feature — duplicate executeCommand in LspManager, coroutineScope unresolved, optString(null) |
 | #1855 | `e513da32` | ✅ Green | P41-K LspManager cancelPendingRequest + getPendingRequestId |
-| #1824 | `f8d02a8b` | Unknown | Docs commit after GhostTextOverlay fix |
 
 **Known risk:** `CodeEditor.kt` at 3842 lines. All new UI MUST be extracted to separate composables.
 **Uncommitted changes:** Phase F workspace symbol completion (CodeEditor.kt, LspIntegration.kt, EditorPane.kt)
@@ -8834,4 +8837,18 @@ Latest pushes: Phase H (icon audit) + Phase I (dynamic snippets). SnippetEngine.
 | Lesson | 1. Always verify imports survived to the remote file after pushing — don't assume the fix landed. 2. `kotlinx.coroutines.async` inside `kotlinx.coroutines.coroutineScope` (fully-qualified) may fail on some Kotlin versions — prefer unqualified imports or avoid `async` for simple 2-call parallelism on mobile. 3. `try { nullableExpr } catch { nonNullable }` produces a nullable type — add `?: default` inside the try to force non-nullable. |
 | Lesson | 1. Always check imports when adding functions that reference types from other packages. 2. Don't use fully-qualified extension function names when a local `val` shadows the import — use the import or fully-qualify the call. 3. `${'$'}{expr}` in Kotlin string templates produces literal `${expr}`, NOT the value of `expr`. Use string concatenation or `\$` escaping for literal dollar signs. |
 
+### Error Trace: Builds #1878–#1880 (P41-N CodeLens Compilation)
 
+| Field | Value |
+|-------|-------|
+| Feature | P41-N CodeLens clickable |
+| File | `LspManager.kt`, `EditorPane.kt` |
+| Symptom | Builds #1878-#1880 all failed. 3 compilation errors. |
+| Root Cause 1 | `LspManager.kt`: Duplicate `executeCommand()` function — two definitions with same signature. Kotlin compiler error: "Conflicting overloads". |
+| Root Cause 2 | `EditorPane.kt:1562`: `coroutineScope.launch(Dispatchers.IO)` — `coroutineScope` is not in scope in the `onCodeLensClick` lambda. EditorPane uses `rememberCoroutineScope()` stored in a `val`, but the CodeLens click handler was in a different composable scope where that val wasn't accessible. |
+| Root Cause 3 | `EditorPane.kt:1560`: `cmd?.optString("command", null)` — `JSONObject.optString(String, null)` is ambiguous on some Kotlin compiler versions because `optString(String, String!)` expects non-null fallback. Passing `null` causes a platform declaration clash. |
+| Fix 1 | Removed duplicate `executeCommand()` from `LspManager.kt` — only one definition retained. |
+| Fix 2 | Replaced `coroutineScope.launch(Dispatchers.IO)` with `kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO)` — fully qualified, no dependency on a local val. |
+| Fix 3 | Replaced `cmd?.optString("command", null)` with `cmd?.opt("command") as? String` — uses `opt()` (returns Any?) then safe-casts to String. |
+| Fix Commit | `9e416547` (EditorPane.kt — +4 -4 lines, single file) |
+| Lesson | 1. Never push duplicate function definitions — always check the file for existing functions before adding. 2. `coroutineScope` from `rememberCoroutineScope()` is only available in the composable where it's declared — for lambdas passed to other composables, use `MainScope()` or pass the scope as a parameter. 3. `JSONObject.optString(key, null)` is a platform declaration clash — use `opt(key) as? String` instead. |
