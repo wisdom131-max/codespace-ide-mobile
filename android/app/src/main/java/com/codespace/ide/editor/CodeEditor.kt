@@ -972,6 +972,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
+    // P41-R: Overload navigation — track which signature overload is selected
+    var overloadIndex by remember { mutableStateOf(0) }
+
     // Reset overload index when the active function call context changes
     LaunchedEffect(activeSignature?.name) {
         overloadIndex = 0
@@ -1049,8 +1052,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // ── Multi-cursor state ───────────────────────────────────────────────
     var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
-    // P41-R: Overload navigation — track which signature overload is selected
-    var overloadIndex by remember { mutableStateOf(0) }
     // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
     androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
         extraCursors = emptyList()
