@@ -1730,7 +1730,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 // Only render if visible in viewport
                 if (lineTopDp >= 0 && lineTopDp < (displayLines.size + 5) * lineHeightPxEL) {
                     Text(
-                        text = "  $(err.message.replace("\n", " ").take(80))",
+                        text = "  ${err.message.replace("\n", " ").take(80)}",
                         color = Color(0xFFFF6B6B).copy(alpha = 0.7f),
                         fontSize = (fontSize * 0.8f).sp,
                         fontFamily = FontFamily.Monospace,
