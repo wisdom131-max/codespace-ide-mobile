@@ -544,3 +544,168 @@ fun resolveCompletionItem(language: Language, item: LspCompletionItem): LspCompl
         } else null
     } catch (_: Exception) { null }
 }
+
+
+// ── P41-M: Call Hierarchy Data Classes & Parsers ─────────────────────────────
+
+/**
+ * P41-M: Call Hierarchy item — a function/method in the call hierarchy tree.
+ */
+data class CallHierarchyItem(
+    val name: String,
+    val detail: String?,
+    val kind: Int,          // LSP SymbolKind (12=Function, 6=Method, 2=Module, etc.)
+    val uri: String,
+    val line: Int,          // 0-based selection range start line
+    val character: Int,     // 0-based selection range start character
+    val endLine: Int,
+    val endCharacter: Int,
+    val rawJson: String,    // Original JSON for passing to incoming/outgoing calls
+)
+
+/**
+ * P41-M: Incoming call — who calls this function.
+ */
+data class IncomingCall(
+    val from: CallHierarchyItem,   // The calling function
+    val fromRanges: List<CallRange>, // Where in the caller this is called
+)
+
+/**
+ * P41-M: Outgoing call — what this function calls.
+ */
+data class OutgoingCall(
+    val to: CallHierarchyItem,      // The called function
+    val fromRanges: List<CallRange>, // Where in this function the call happens
+)
+
+/**
+ * P41-M: A range within a call hierarchy item.
+ */
+data class CallRange(
+    val startLine: Int,
+    val startCharacter: Int,
+    val endLine: Int,
+    val endCharacter: Int,
+)
+
+/**
+ * P41-M: Parse an LSP CallHierarchyItem JSON array into Kotlin data classes.
+ */
+fun parseCallHierarchyItems(items: JSONArray): List<CallHierarchyItem> {
+    val result = mutableListOf<CallHierarchyItem>()
+    for (i in 0 until items.length()) {
+        val item = items.optJSONObject(i) ?: continue
+        val sel = item.optJSONObject("selectionRange") ?: item.optJSONObject("range") ?: continue
+        val range = item.optJSONObject("range") ?: sel
+        val start = sel.optJSONObject("start") ?: continue
+        val end = sel.optJSONObject("end") ?: continue
+        result.add(CallHierarchyItem(
+            name = item.optString("name", ""),
+            detail = item.optString("detail", "").ifBlank { null },
+            kind = item.optInt("kind", 12),
+            uri = item.optString("uri", ""),
+            line = start.optInt("line", 0),
+            character = start.optInt("character", 0),
+            endLine = end.optInt("line", 0),
+            endCharacter = end.optInt("character", 0),
+            rawJson = item.toString(),
+        ))
+    }
+    return result
+}
+
+/**
+ * P41-M: Parse incoming calls from LSP response.
+ * Each item: { from: CallHierarchyItem, fromRanges: Range[] }
+ */
+fun parseIncomingCalls(items: JSONArray): List<IncomingCall> {
+    val result = mutableListOf<IncomingCall>()
+    for (i in 0 until items.length()) {
+        val item = items.optJSONObject(i) ?: continue
+        val fromJson = item.optJSONObject("from") ?: continue
+        val fromRangesJson = item.optJSONArray("fromRanges") ?: JSONArray()
+        val fromItem = parseCallHierarchyItems(JSONArray().put(fromJson)).firstOrNull() ?: continue
+        val ranges = mutableListOf<CallRange>()
+        for (j in 0 until fromRangesJson.length()) {
+            val r = fromRangesJson.optJSONObject(j) ?: continue
+            val rs = r.optJSONObject("start")
+            val re = r.optJSONObject("end")
+            if (rs != null && re != null) {
+                ranges.add(CallRange(rs.optInt("line", 0), rs.optInt("character", 0),
+                    re.optInt("line", 0), re.optInt("character", 0)))
+            }
+        }
+        result.add(IncomingCall(fromItem, ranges))
+    }
+    return result
+}
+
+/**
+ * P41-M: Parse outgoing calls from LSP response.
+ * Each item: { to: CallHierarchyItem, fromRanges: Range[] }
+ */
+fun parseOutgoingCalls(items: JSONArray): List<OutgoingCall> {
+    val result = mutableListOf<OutgoingCall>()
+    for (i in 0 until items.length()) {
+        val item = items.optJSONObject(i) ?: continue
+        val toJson = item.optJSONObject("to") ?: continue
+        val fromRangesJson = item.optJSONArray("fromRanges") ?: JSONArray()
+        val toItem = parseCallHierarchyItems(JSONArray().put(toJson)).firstOrNull() ?: continue
+        val ranges = mutableListOf<CallRange>()
+        for (j in 0 until fromRangesJson.length()) {
+            val r = fromRangesJson.optJSONObject(j) ?: continue
+            val rs = r.optJSONObject("start")
+            val re = r.optJSONObject("end")
+            if (rs != null && re != null) {
+                ranges.add(CallRange(rs.optInt("line", 0), rs.optInt("character", 0),
+                    re.optInt("line", 0), re.optInt("character", 0)))
+            }
+        }
+        result.add(OutgoingCall(toItem, ranges))
+    }
+    return result
+}
+
+// ── P41-M: Type Hierarchy Data Classes & Parsers ────────────────────────────
+
+/**
+ * P41-M: Type Hierarchy item — a class/interface in the type hierarchy tree.
+ */
+data class TypeHierarchyItem(
+    val name: String,
+    val detail: String?,
+    val kind: Int,          // LSP SymbolKind (5=Class, 11=Interface, 1=File, etc.)
+    val uri: String,
+    val line: Int,
+    val character: Int,
+    val endLine: Int,
+    val endCharacter: Int,
+    val rawJson: String,    // Original JSON for passing to supertypes/subtypes
+)
+
+/**
+ * P41-M: Parse an LSP TypeHierarchyItem JSON array into Kotlin data classes.
+ */
+fun parseTypeHierarchyItems(items: JSONArray): List<TypeHierarchyItem> {
+    val result = mutableListOf<TypeHierarchyItem>()
+    for (i in 0 until items.length()) {
+        val item = items.optJSONObject(i) ?: continue
+        val sel = item.optJSONObject("selectionRange") ?: item.optJSONObject("range") ?: continue
+        val range = item.optJSONObject("range") ?: sel
+        val start = sel.optJSONObject("start") ?: continue
+        val end = sel.optJSONObject("end") ?: continue
+        result.add(TypeHierarchyItem(
+            name = item.optString("name", ""),
+            detail = item.optString("detail", "").ifBlank { null },
+            kind = item.optInt("kind", 5),
+            uri = item.optString("uri", ""),
+            line = start.optInt("line", 0),
+            character = start.optInt("character", 0),
+            endLine = end.optInt("line", 0),
+            endCharacter = end.optInt("character", 0),
+            rawJson = item.toString(),
+        ))
+    }
+    return result
+}
