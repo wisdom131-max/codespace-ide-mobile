@@ -1193,6 +1193,7 @@ fun ProjectShellScreen(
                     splitTerminalWidthMs = splitTerminalWidthMs,
                     terminalCommandToRunMs = terminalCommandToRunMs,
                     buildProblemsMs = buildProblemsMs,
+                    formatOnSaveTrigger = formatOnSaveTrigger,
                 )
             } // end main Row (editor + optional chat panel)
 
@@ -2820,6 +2821,7 @@ private fun PssEditorColumn(
     splitTerminalWidthMs: MutableState<Float>,
     terminalCommandToRunMs: MutableState<String?>,
     buildProblemsMs: MutableState<List<Problem>>,
+    formatOnSaveTrigger: Int,
 ) {
     val density = LocalDensity.current
     // Color param aliases — body code uses PascalCase originals, params are camelCase
