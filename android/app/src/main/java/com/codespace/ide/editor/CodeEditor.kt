@@ -341,6 +341,10 @@ data class PeekDefResult(val filePath: String, val line: Int, val lines: List<St
 data class BlameLine(val author: String, val date: String, val shortSha: String)
 
 @OptIn(ExperimentalFoundationApi::class)
+// P2-4: Definition result types (moved to file level for composable extraction)
+data class DefResult(val line: Int, val lineText: String)
+data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
+
 @Composable
 fun CodeEditor(
     content: String,
@@ -1004,8 +1008,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    data class DefResult(val line: Int, val lineText: String)
-    data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
     var crossFileResults by remember { mutableStateOf<List<CrossFileDefResult>?>(null) }
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
     // P22-L: Peek Definition result — inline code preview (class moved to top-level)
@@ -2889,97 +2891,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // ── P2-4 Go to Definition Results ──────────────────────────────────────────────────────
         if (gotoResults != null) {
-            val results = gotoResults!!
-            AlertDialog(
-                onDismissRequest = { gotoResults = null },
-                containerColor = Color(0xFF252526),
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (results.isEmpty() && (crossFileResults == null || crossFileResults!!.isEmpty())) "Not found" else "Go to Definition",
-                            color = Color(0xFFD4D4D4),
-                            fontSize = 14.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        if (!(results.isEmpty() && (crossFileResults == null || crossFileResults!!.isEmpty()))) {
-                            Spacer(Modifier.width(6.dp))
-                            Box(
-                                Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                    .background(Color(0xFFCC7832))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text("Fallback", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
+            GotoDefinitionDialog(
+                results = gotoResults!!,
+                crossFileResults = crossFileResults,
+                onDismiss = { gotoResults = null },
+                onScrollToLine = { line ->
+                    coroutineScope.launch {
+                        val localLineHeightPx = fontSize * 1.25f
+                        vScroll.animateScrollTo((line * localLineHeightPx).toInt())
                     }
                 },
-                text = {
-                    if (results.isEmpty()) {
-                        Text(
-                            "No declaration found in current file or project.",
-                            color = Color(0xFF888888),
-                            fontSize = 12.sp,
-                        )
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            results.forEach { def ->
-                                TextButton(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            val localLineHeightPx = fontSize * 1.25f
-                                            vScroll.animateScrollTo((def.line * localLineHeightPx).toInt())
-                                        }
-                                        gotoResults = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text(
-                                            "Line ${def.line + 1}",
-                                            color = Color(0xFF007ACC),
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                        )
-                                        Text(
-                                            def.lineText.take(60),
-                                            color = Color(0xFFD4D4D4),
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                        )
-                                    }
-                                }
-;                            }
-                            // P19-A: Cross-file results
-                            if (crossFileResults != null && crossFileResults!!.isNotEmpty()) {
-                                Spacer(Modifier.height(4.dp))
-                                Text("In project", color = Color(0xFF888888), fontSize = 10.sp)
-                                crossFileResults!!.forEach { cf ->
-                                    TextButton(
-                                        onClick = {
-                                            onOpenFileAtLine?.invoke(cf.filePath, cf.line)
-                                            gotoResults = null
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(cf.kind, color = Color(0xFF569CD6), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(60.dp))
-                                                Text(cf.name, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                                            }
-                                            Text("${cf.fileName}:${cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { gotoResults = null }) {
-                        Text("Close", color = Color(0xFF888888), fontSize = 12.sp)
-                    }
-                },
+                onOpenFileAtLine = { path, line -> onOpenFileAtLine?.invoke(path, line) },
             )
         }
 
@@ -3309,190 +3231,42 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             )
         }
 
-        // ── P24-3: Find References Overlay ───────────────────────────────────────
-        if (findRefWord != null) {
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.45f)
-                    .zIndex(28f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier.fillMaxWidth().background(Color(0xFF252526))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "References: ${findRefWord}",
-                            color = Color(0xFF9CDCFE), fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        // P37-3: LSP/Fallback badge
-                        Box(
-                            Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                .background(if (findRefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                if (findRefUsedLsp) "LSP" else "Fallback",
-                                color = Color(0xFF1E1E1E),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Spacer(Modifier.weight(1f))
-                        if (findRefLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Color(0xFF007ACC))
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        TextButton(onClick = { findRefWord = null; findRefResults = emptyList() },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                            Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
-                        }
-                    }
-                    Divider(color = Color(0xFF333333))
-                    if (!findRefLoading && findRefResults.isEmpty()) {
-                        Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                            Text("No references found for '${findRefWord}'.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                        }
-                    } else {
-                        LazyColumn(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
-                            items(findRefResults) { (refPath, refLine, snippet) ->
-                                val fileName = refPath.substringAfterLast('/')
-                                TextButton(
-                                    onClick = {
-                                        if (refPath == filePath) {
-                                            coroutineScope.launch {
-                                                val lineHeightPx = fontSize * 1.25f
-                                                vScroll.animateScrollTo((refLine * lineHeightPx).toInt())
-                                            }
-                                        } else {
-                                            onOpenFileAtLine?.invoke(refPath, refLine)
-                                        }
-                                        findRefWord = null
-                                        findRefResults = emptyList()
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Column(Modifier.fillMaxWidth()) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(fileName, color = Color(0xFF4EC9B0), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                                            Text(":${refLine + 1}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                        }
-                                        Text(snippet.trim().take(100), color = Color(0xFFAAAAAA), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                                Divider(color = Color(0xFF2A2A2A))
-                            }
-                        }
-                    }
+        // ── P24-3: Bottom Panels (Find References + Call/Type Hierarchy) ────────────────────────────
+        BottomPanels(
+            findRefWord = findRefWord,
+            findRefLoading = findRefLoading,
+            findRefUsedLsp = findRefUsedLsp,
+            findRefResults = findRefResults,
+            onDismissFindRef = { findRefWord = null; findRefResults = emptyList() },
+            onScrollToLine = { line ->
+                coroutineScope.launch {
+                    val lineHeightPx = fontSize * 1.25f
+                    vScroll.animateScrollTo((line * lineHeightPx).toInt())
                 }
-            }
-        }
-
-        // ── P41-M: Call Hierarchy Panel ─────────────────────────────────────
-        if (showCallHierarchy && callHierarchyRoot != null) {
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.45f)
-                    .zIndex(29f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier.fillMaxWidth().background(Color(0xFF252526))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Call Hierarchy", color = Color(0xFF4EC9B0), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = {
-                            showCallHierarchy = false
-                            callHierarchyRoot = null
-                            callHierarchyIncoming = emptyList()
-                            callHierarchyOutgoing = emptyList()
-                        }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                            Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
-                        }
-                    }
-                    Divider(color = Color(0xFF333333))
-                    CallHierarchyPanel(
-                        rootItem = callHierarchyRoot!!,
-                        incomingCalls = callHierarchyIncoming,
-                        outgoingCalls = callHierarchyOutgoing,
-                        onNavigate = { uri, line, _ ->
-                            val path = uri.removePrefix("file://")
-                            if (path == filePath || path.endsWith(filePath ?: "")) {
-                                coroutineScope.launch {
-                                    val lineHeightPx = fontSize * 1.25f
-                                    vScroll.animateScrollTo((line * lineHeightPx).toInt())
-                                }
-                            } else {
-                                onOpenFileAtLine?.invoke(path, line)
-                            }
-                            showCallHierarchy = false
-                        },
-                    )
-                }
-            }
-        }
-
-        // ── P41-M: Type Hierarchy Panel ────────────────────────────────────
-        if (showTypeHierarchy && typeHierarchyRoot != null) {
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.45f)
-                    .zIndex(30f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier.fillMaxWidth().background(Color(0xFF252526))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Type Hierarchy", color = Color(0xFF4EC9B0), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = {
-                            showTypeHierarchy = false
-                            typeHierarchyRoot = null
-                            typeHierarchySupertypes = emptyList()
-                            typeHierarchySubtypes = emptyList()
-                        }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                            Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
-                        }
-                    }
-                    Divider(color = Color(0xFF333333))
-                    TypeHierarchyPanel(
-                        rootItem = typeHierarchyRoot!!,
-                        supertypes = typeHierarchySupertypes,
-                        subtypes = typeHierarchySubtypes,
-                        onNavigate = { uri, line, _ ->
-                            val path = uri.removePrefix("file://")
-                            if (path == filePath || path.endsWith(filePath ?: "")) {
-                                coroutineScope.launch {
-                                    val lineHeightPx = fontSize * 1.25f
-                                    vScroll.animateScrollTo((line * lineHeightPx).toInt())
-                                }
-                            } else {
-                                onOpenFileAtLine?.invoke(path, line)
-                            }
-                            showTypeHierarchy = false
-                        },
-                    )
-                }
-            }
-        }
+            },
+            filePath = filePath,
+            onOpenFileAtLine = { path, line -> onOpenFileAtLine?.invoke(path, line) },
+            showCallHierarchy = showCallHierarchy,
+            callHierarchyRoot = callHierarchyRoot,
+            callHierarchyIncoming = callHierarchyIncoming,
+            callHierarchyOutgoing = callHierarchyOutgoing,
+            onDismissCallHierarchy = {
+                showCallHierarchy = false
+                callHierarchyRoot = null
+                callHierarchyIncoming = emptyList()
+                callHierarchyOutgoing = emptyList()
+            },
+            showTypeHierarchy = showTypeHierarchy,
+            typeHierarchyRoot = typeHierarchyRoot,
+            typeHierarchySupertypes = typeHierarchySupertypes,
+            typeHierarchySubtypes = typeHierarchySubtypes,
+            onDismissTypeHierarchy = {
+                showTypeHierarchy = false
+                typeHierarchyRoot = null
+                typeHierarchySupertypes = emptyList()
+                typeHierarchySubtypes = emptyList()
+            },
+        )
 
         // ── Go to Line Bar ──────────────────────────────────────────────────
         if (goToLineOpen) {
@@ -4710,4 +4484,232 @@ private fun lspCompletionIcon(kind: Int): Pair<androidx.compose.ui.graphics.vect
         25  -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))  // TypeParameter — teal
         else -> Pair(Icons.Default.Code, Color(0xFFCCCCCC))       // Unknown — gray
     }
+
+@Composable
+private fun GotoDefinitionDialog(
+    results: List<DefResult>,
+    crossFileResults: List<CrossFileDefResult>?,
+    onDismiss: () -> Unit,
+    onScrollToLine: (Int) -> Unit,
+    onOpenFileAtLine: (String, Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF252526),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (results.isEmpty() && (crossFileResults == null || crossFileResults.isEmpty())) "Not found" else "Go to Definition",
+                    color = Color(0xFFD4D4D4),
+                    fontSize = 14.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+                if (!(results.isEmpty() && (crossFileResults == null || crossFileResults.isEmpty()))) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            .background(Color(0xFFCC7832))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text("Fallback", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        text = {
+            if (results.isEmpty()) {
+                Text("No declaration found in current file or project.", color = Color(0xFF888888), fontSize = 12.sp)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    results.forEach { def ->
+                        TextButton(
+                            onClick = { onScrollToLine(def.line); onDismiss() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text("Line ${'$'}{def.line + 1}", color = Color(0xFF007ACC), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                Text(def.lineText.take(60), color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                    if (crossFileResults != null && crossFileResults.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("In project", color = Color(0xFF888888), fontSize = 10.sp)
+                        crossFileResults.forEach { cf ->
+                            TextButton(
+                                onClick = { onOpenFileAtLine(cf.filePath, cf.line); onDismiss() },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(cf.kind, color = Color(0xFF569CD6), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(60.dp))
+                                        Text(cf.name, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                    }
+                                    Text("${'$'}{cf.fileName}:${'$'}{cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close", color = Color(0xFF888888), fontSize = 12.sp) } },
+    )
+}
+
+
+@Composable
+private fun BottomPanels(
+    findRefWord: String?,
+    findRefLoading: Boolean,
+    findRefUsedLsp: Boolean,
+    findRefResults: List<Triple<String, Int, String>>,
+    onDismissFindRef: () -> Unit,
+    onScrollToLine: (Int) -> Unit,
+    filePath: String?,
+    onOpenFileAtLine: (String, Int) -> Unit,
+    showCallHierarchy: Boolean,
+    callHierarchyRoot: CallHierarchyItem?,
+    callHierarchyIncoming: List<com.codespace.ide.lsp.CallHierarchyItem>,
+    callHierarchyOutgoing: List<com.codespace.ide.lsp.CallHierarchyItem>,
+    onDismissCallHierarchy: () -> Unit,
+    showTypeHierarchy: Boolean,
+    typeHierarchyRoot: TypeHierarchyItem?,
+    typeHierarchySupertypes: List<com.codespace.ide.lsp.TypeHierarchyItem>,
+    typeHierarchySubtypes: List<com.codespace.ide.lsp.TypeHierarchyItem>,
+    onDismissTypeHierarchy: () -> Unit,
+) {
+    // ── P24-3: Find References Overlay ──
+    if (findRefWord != null) {
+        Card(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.45f)
+                .zIndex(28f),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0xFF252526))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("References: ${'$'}{findRefWord}", color = Color(0xFF9CDCFE), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Box(
+                        Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            .background(if (findRefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(if (findRefUsedLsp) "LSP" else "Fallback", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (findRefLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Color(0xFF007ACC))
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    TextButton(onClick = onDismissFindRef, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                        Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
+                    }
+                }
+                Divider(color = Color(0xFF333333))
+                if (!findRefLoading && findRefResults.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+                        Text("No references found for '${'$'}{findRefWord}'.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
+                        items(findRefResults) { (refPath, refLine, snippet) ->
+                            val fileName = refPath.substringAfterLast('/')
+                            TextButton(
+                                onClick = {
+                                    if (refPath == filePath) { onScrollToLine(refLine) }
+                                    else { onOpenFileAtLine(refPath, refLine) }
+                                    onDismissFindRef()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(fileName, color = Color(0xFF4EC9B0), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                        Text(":${'$'}{refLine + 1}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                    }
+                                    Text(snippet.trim().take(100), color = Color(0xFFAAAAAA), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Divider(color = Color(0xFF2A2A2A))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // ── P41-M: Call Hierarchy Panel ──
+    if (showCallHierarchy && callHierarchyRoot != null) {
+        Card(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.45f).zIndex(29f),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Call Hierarchy", color = Color(0xFF4EC9B0), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDismissCallHierarchy, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                        Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
+                    }
+                }
+                Divider(color = Color(0xFF333333))
+                CallHierarchyPanel(
+                    rootItem = callHierarchyRoot!!,
+                    incomingCalls = callHierarchyIncoming,
+                    outgoingCalls = callHierarchyOutgoing,
+                    onNavigate = { uri, line, _ ->
+                        val path = uri.removePrefix("file://")
+                        if (path == filePath || path.endsWith(filePath ?: "")) { onScrollToLine(line) }
+                        else { onOpenFileAtLine(path, line) }
+                    },
+                )
+            }
+        }
+    }
+    // ── P41-M: Type Hierarchy Panel ──
+    if (showTypeHierarchy && typeHierarchyRoot != null) {
+        Card(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.45f).zIndex(30f),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Type Hierarchy", color = Color(0xFF4EC9B0), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDismissTypeHierarchy, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                        Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
+                    }
+                }
+                Divider(color = Color(0xFF333333))
+                TypeHierarchyPanel(
+                    rootItem = typeHierarchyRoot!!,
+                    supertypes = typeHierarchySupertypes,
+                    subtypes = typeHierarchySubtypes,
+                    onNavigate = { uri, line, _ ->
+                        val path = uri.removePrefix("file://")
+                        if (path == filePath || path.endsWith(filePath ?: "")) { onScrollToLine(line) }
+                        else { onOpenFileAtLine(path, line) }
+                    },
+                )
+            }
+        }
+    }
+}
+
 }
