@@ -8545,10 +8545,10 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Inline diagnostics | ✅ | `CodeEditor.kt` — squiggle underlines via `lspDiagnosticErrors` |
 | Error navigation | ✅ | `ProblemsPanel.kt` — tap to navigate to error location |
 | Diagnostic filtering | ✅ | `ProblemsPanel.kt` — filter by severity (P41-O, build #1885) |
-| Related diagnostics | ❌ | No related-diagnostics grouping |
+| Related diagnostics | ✅ | `Problem.relatedInfo` field + related diagnostics display in Problems panel (P41-R) |
 | Workspace diagnostics | ✅ | `LspManager.getDiagnostics()` — all open files |
-| Diagnostic codes | ❌ | Diagnostic codes not displayed in UI |
-| Minimap markers | ❌ | Minimap shows code but not error/diagnostic markers |
+| Diagnostic codes | ✅ | `Problem.code` + `Problem.source` fields + code/source badges in Problems panel (P41-R) |
+| Minimap markers | ✅ | Colored error/warning bars at right edge of minimap |
 | Overview ruler markers | ✅ | `CodeEditor.kt` — 4dp right-edge strip with colored marks when minimap hidden (P41-JK) |
 
 ### 5. Formatting
@@ -8559,7 +8559,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Format selection | ✅ | `LspManager.getRangeFormatting()` |
 | Format on Save | ✅ | `ProjectShellScreen.kt` → `EditorPane.kt` — save triggers `DocumentFormatter.format()` (P41-O, build #1885) |
 | Format while typing | ✅ | `LspManager.getOnTypeFormatting()` — declared in capabilities |
-| Formatter selection | ❌ | No per-language formatter picker |
+| Formatter selection | ✅ | `FormatterConfig.kt` + Settings dropdown per language (P41-R) |
 | Language-specific formatting | 🔶 | LSP formatting works when server supports it; no fallback formatters |
 
 ### 6. Hover & Signature Help
@@ -8571,7 +8571,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Type information | ✅ | Hover includes type info from LSP |
 | Signature help | ✅ | `SignatureHelpAnalyzer.kt` + `LspManager.getSignatureHelp()` |
 | Active parameter highlighting | ✅ | `SignatureHelpAnalyzer.kt` — highlights active param |
-| Overload navigation | ❌ | No UI to cycle through signature overloads |
+| Overload navigation | ✅ | ↑↓ arrows to cycle LSP overloads, 1/N indicator (P41-R) |
 
 ### 7. Semantic Intelligence
 
@@ -8605,8 +8605,8 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
 | Workspace indexing | 🔶 | `FileIndexer.kt` exists but basic — file name index only |
-| Cached symbol database | ❌ | `DocumentSymbolCache.kt` caches per-file; no workspace DB |
-| Background indexing | ❌ | No background symbol indexing pipeline |
+| Cached symbol database | ✅ | `FileIndexer.saveCache()`/`loadCache()` — persistent cross-session cache (P41-Q) |
+| Background indexing | ✅ | `FileIndexer.startIndexing()` — background workspace symbol scanning (P41-Q) |
 | Cross-file references | ✅ | `LspManager.getReferences()` searches across workspace |
 | File watchers | 🔶 | `LspManager.didChange()` sends on content change; no external file watcher |
 | Multi-root workspaces | ❌ | Single workspace only |
@@ -8637,10 +8637,10 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
-| Auto-indent | ❌ | No smart auto-indent on Enter (copies previous line indent only) |
-| Auto-closing pairs | ❌ | No bracket/quote auto-closing |
+| Auto-indent | ✅ | Smart auto-indent on Enter — copies previous line indent + extra indent after { [ (P41-O4) |
+| Auto-closing pairs | ✅ | Auto-inserts closing bracket/quote when typing opening pair (P41-O) |
 | Linked editing | ✅ | `linkedEditingRange` in LspManager (getLinkedEditingRanges) |
-| Multiple cursors | ❌ | Single cursor only |
+| Multiple cursors | ✅ | `extraCursors` list + double-tap to add cursor, BackHandler to clear (P22-K) |
 | Smart selection | ✅ | `LspManager.getSelectionRange()` — LSP-based semantic selection |
 | Sticky scroll | ❌ | Not implemented |
 | Code folding | ✅ | `CodeEditor.kt` — LSP + regex folding, fold toggle UI |
@@ -8698,21 +8698,21 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | 1. IntelliSense | 12 | 2 | 3 | 17 |
 | 2. Navigation | 10 | 0 | 5 | 15 |
 | 3. Code Actions | 14 | 1 | 1 | 16 |
-| 4. Diagnostics | 3 | 0 | 7 | 10 |
-| 5. Formatting | 3 | 1 | 2 | 6 |
-| 6. Hover & Signature | 5 | 0 | 1 | 6 |
+| 4. Diagnostics | 6 | 0 | 4 | 10 |
+| 5. Formatting | 4 | 1 | 1 | 6 |
+| 6. Hover & Signature | 6 | 0 | 0 | 6 |
 | 7. Semantic Intelligence | 7 | 0 | 0 | 7 |
 | 8. Refactoring | 7 | 1 | 2 | 10 |
-| 9. Workspace Intelligence | 2 | 2 | 3 | 7 |
+| 9. Workspace Intelligence | 4 | 2 | 1 | 7 |
 | 10. CodeLens | 3 | 0 | 2 | 5 |
 | 11. Call & Type Hierarchy | 6 | 0 | 0 | 6 |
-| 12. Editing Experience | 3 | 0 | 6 | 9 |
+| 12. Editing Experience | 6 | 0 | 3 | 9 |
 | 13. AI Features | 7 | 1 | 1 | 9 |
 | 14. Power User Features | 6 | 1 | 1 | 8 |
 | 15. Performance | 7 | 2 | 1 | 10 |
 | **TOTAL** | **55** | **11** | **77** | **143** |
 
-**~69% implemented, 7% partial, 24% missing.**
+**~76% implemented, 7% partial, 17% missing.**
 
 ---
 

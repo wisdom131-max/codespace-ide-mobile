@@ -76,7 +76,9 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.editor.FormatterConfig
 import com.codespace.ide.util.WorkspaceManager
+import androidx.compose.foundation.layout.Box
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
