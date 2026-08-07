@@ -8809,6 +8809,22 @@ Latest pushes: Phase H (icon audit) + Phase I (dynamic snippets). SnippetEngine.
 | Root Cause 3 | `CodeEditor.kt`: String interpolation `"${'$'}{highlighted.label}"` produces literal `${highlighted.label}` instead of the value. Fixed by using string concatenation: `""" + highlighted.label + """`. |
 | Root Cause 4 | `CodeEditor.kt`: `import kotlinx.coroutines.coroutineScope` would be shadowed by existing `val coroutineScope = rememberCoroutineScope()` variable (line 469). Removed the import and used fully-qualified `kotlinx.coroutines.coroutineScope { }` to avoid shadowing. |
 | Fix Commit | `9fee621a` (LspIntegration.kt) + `6d55595f` (CodeEditor.kt) |
+
+### Error Trace: Build #1870 (P41-K/M Async + Nullable + Missing Import)
+
+| Field | Value |
+|-------|-------|
+| Feature | P41-K Performance + P41-M Call/Type Hierarchy |
+| Files | `CodeEditor.kt`, `LspIntegration.kt` |
+| Symptom | 10 compilation errors across builds #1867-#1871 |
+| Root Cause 1 | `LspIntegration.kt:516`: `import com.codespace.ide.domain.Language` STILL missing after previous fix attempt. The import was added to the wrong file or lost during file push. |
+| Root Cause 2 | `CodeEditor.kt:730-746`: `async {}` inside `kotlinx.coroutines.coroutineScope { }` inside `kotlinx.coroutines.withContext(Dispatchers.IO) { }` — Kotlin compiler could not infer type variables T and R. The `Deferred<List<LspCompletionItem>>` was inferred as `Nothing?`, and `await()` was unresolved. Root cause: the fully-qualified `kotlinx.coroutines.coroutineScope` may not provide the CoroutineScope receiver properly in all Kotlin compiler versions, causing `async` (an extension on CoroutineScope) to not resolve. |
+| Root Cause 3 | `CodeEditor.kt:2434-2468`: `try { provider?.invoke() } catch { emptyList() }` — the `?.invoke()` returns nullable `List<T>?`, but the catch branch returns non-nullable `emptyList()`. The union type is `List<T>?`, but state variables expect `List<T>` (non-nullable). |
+| Fix 1 | Added `import com.codespace.ide.domain.Language` to `LspIntegration.kt` (commit `909fe1df`). |
+| Fix 2 | Replaced `async`/`coroutineScope` parallel block with sequential calls — `withContext(Dispatchers.IO) { val lsp = ...; val ws = ...; Pair(lsp, ws) }`. Removed `import kotlinx.coroutines.async`. The performance difference is negligible (2 LSP calls on mobile). |
+| Fix 3 | Added `?: emptyList()` inside each `try` block: `try { provider?.invoke(item) ?: emptyList() } catch { emptyList() }` — ensures the try expression always returns non-nullable. |
+| Fix Commit | `909fe1df` (LspIntegration.kt) + `3a563e21` (CodeEditor.kt) |
+| Lesson | 1. Always verify imports survived to the remote file after pushing — don't assume the fix landed. 2. `kotlinx.coroutines.async` inside `kotlinx.coroutines.coroutineScope` (fully-qualified) may fail on some Kotlin versions — prefer unqualified imports or avoid `async` for simple 2-call parallelism on mobile. 3. `try { nullableExpr } catch { nonNullable }` produces a nullable type — add `?: default` inside the try to force non-nullable. |
 | Lesson | 1. Always check imports when adding functions that reference types from other packages. 2. Don't use fully-qualified extension function names when a local `val` shadows the import — use the import or fully-qualify the call. 3. `${'$'}{expr}` in Kotlin string templates produces literal `${expr}`, NOT the value of `expr`. Use string concatenation or `\$` escaping for literal dollar signs. |
 
 
