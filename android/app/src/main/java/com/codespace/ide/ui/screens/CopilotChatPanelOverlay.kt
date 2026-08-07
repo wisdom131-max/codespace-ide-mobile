@@ -533,7 +533,7 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -966,7 +966,7 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
+                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
                 messages.add(ChatMsg("assistant", reply))
                 persistSessions()
             } catch (e: Exception) {
