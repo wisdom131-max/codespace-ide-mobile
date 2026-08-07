@@ -7346,16 +7346,31 @@ into one ranked, deduplicated list before it ever reaches `CodeEditor.kt`. This 
 - `CodeEditor.kt` (8de0e70c): parallel fetch, cancellation, resolve-on-highlight, new params
 - `EditorPane.kt` (aded036b): wire `lspCompletionResolver`, `lspCancellationProvider`, `lspRequestIdProvider`
 
-#### Phase L — AI Features
-- Explain Suggested Completion: small "?" affordance next to a highlighted AI-sourced
-  completion that, on tap, sends "explain why you suggested `<label>` here" through the
-  existing AI chat/`onAiFixRequest`-style plumbing (P39 pattern reuse).
-- Predict Next Statement / Next Block / Next Function: these are the multi-line ghost-text
-  AI source from Phase E at different granularities — same underlying call, different prompt
-  framing depending on cursor context (mid-statement vs. after a closing brace vs. at file scope).
-- Multi-line AI completion & Project-aware AI completion are both delivered by Phase E's
-  ghost-text engine — no separate implementation needed, this list item is the same feature
-  named from a different angle in the user's list.
+#### Phase L — AI Features ✅ COMPLETE (build pending)
+**Implemented:** All 3 AI feature items for the completion pipeline.
+
+- ✅ **Explain Suggested Completion:** Added "?" explain affordance in the completion dropdown.
+  When the highlighted item has `source == CompletionSource.AI` and `onAiFixRequest != null`,
+  a purple "? Explain" link appears above the detail panel. On tap, sends
+  `"Explain why you suggested \"<label>\" here.\nCurrent line: <line>\nFile type: <lang>"`
+  through the existing `onAiFixRequest` plumbing (P39 pattern reuse). Closes the dropdown after.
+- ✅ **Predict Next Statement / Block / Function:** Enhanced the P41-E AI ghost text `LaunchedEffect`
+  with context-aware prompt framing. Detects 4 cursor contexts:
+  - `FILE_SCOPE` — cursor at top-level, blank line or file start → "predict next top-level declaration"
+  - `AFTER_BLOCK_CLOSE` — cursor after `}` or `)` → "predict next statement/block"
+  - `MID_STATEMENT` — content on current line before cursor → "complete the current statement"
+  - `NEW_LINE_IN_BLOCK` — inside a block, on a new line → "predict next statement inside block"
+  Context hint is embedded as a trailing comment line in `contextBefore` (e.g.
+  `// [AI_CONTEXT: FILE_SCOPE — predict next top-level declaration]`).
+  AI response is cleaned by stripping any `[AI_CONTEXT:]` lines the model might echo back.
+- ✅ **Multi-line AI completion & Project-aware AI completion:** Already delivered by Phase E's
+  ghost-text engine — no separate implementation needed (same feature, different angle).
+
+**Files changed (1 commit):**
+- `CodeEditor.kt` (152bf065): context-aware AI ghost text + "?" explain affordance
+
+**All P41 phases (A through L) are now complete.** The full VS Code/Cursor-quality IntelliSense
+& Autocomplete System is implemented.
 
 **Language coverage requirement:** every phase above must degrade gracefully per-language —
 if a server (or no server, e.g. JSON/YAML/Markdown/Shell today) doesn't support a given LSP
