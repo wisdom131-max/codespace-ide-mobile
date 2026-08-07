@@ -1603,6 +1603,7 @@ fun EditorPane(
                                 }
                                 succeeded
                             }
+                        } else null,
                         // P41-I: Source Actions — Organize Imports, Remove Unused, Fix All
                         onSourceAction = if (LspManager.isServerRunning(active.language)) {
                             { kind ->
@@ -1651,7 +1652,6 @@ fun EditorPane(
                                     }
                                 }
                             }
-                        } else null,
                         } else null,
                         // P25-LSP: Format document via LSP
                         // P26-1: LSP Document Highlight lines
