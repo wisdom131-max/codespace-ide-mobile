@@ -853,8 +853,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
-    // P41-E: AI ghost text — debounced 600ms idle after typing stops
+    // P41-E/P41-L: AI ghost text — debounced 600ms idle after typing stops
     // Only fires when there's NO IntelliSense ghost text already showing
+    // P41-L: Context-aware prompt framing — detects cursor context and appends a hint
     LaunchedEffect(value.text, value.selection.end) {
         if (onAiGhostTextRequest != null && ghostText == null) {
             kotlinx.coroutines.delay(600L)
@@ -863,13 +864,50 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val text = value.text
                 val contextBefore = text.substring(0, cursor)
                 val contextAfter = text.substring(cursor)
+
+                // P41-L: Detect cursor context for prompt framing
+                val currentLine = text.substring(0, cursor).substringAfterLast('\n')
+                val lastNonWhitespaceBefore = contextBefore.trimEnd().lastOrNull()
+                val contextHint = when {
+                    // File scope: cursor is at a top-level position (no indentation, after blank line or at start)
+                    currentLine.isBlank() && (contextBefore.isBlank() || contextBefore.trimEnd().endsWith('\n')) -> {
+                        "FILE_SCOPE"
+                    }
+                    // After a closing brace — likely starting a new block/function
+                    lastNonWhitespaceBefore == '}' || lastNonWhitespaceBefore == ')' -> {
+                        "AFTER_BLOCK_CLOSE"
+                    }
+                    // Mid-statement: there's content on the line before the cursor
+                    currentLine.isNotBlank() -> {
+                        "MID_STATEMENT"
+                    }
+                    // Default: inside a block but on a new line
+                    else -> "NEW_LINE_IN_BLOCK"
+                }
+
                 val aiResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    try { onAiGhostTextRequest.invoke(contextBefore, contextAfter, language.name) }
+                    try {
+                        // P41-L: Pass context hint as 4th parameter via a wrapper
+                        // The existing onAiGhostTextRequest signature takes (contextBefore, contextAfter, language)
+                        // We embed the context hint in contextBefore as a trailing comment line
+                        val hintPrefix = when (contextHint) {
+                            "FILE_SCOPE" -> "// [AI_CONTEXT: FILE_SCOPE — predict next top-level declaration]"
+                            "AFTER_BLOCK_CLOSE" -> "// [AI_CONTEXT: AFTER_BLOCK_CLOSE — predict next statement/block]"
+                            "MID_STATEMENT" -> "// [AI_CONTEXT: MID_STATEMENT — complete the current statement]"
+                            else -> "// [AI_CONTEXT: NEW_LINE_IN_BLOCK — predict next statement inside block]"
+                        }
+                        onAiGhostTextRequest.invoke(contextBefore + "\n" + hintPrefix, contextAfter, language.name)
+                    }
                     catch (_: Exception) { null }
                 }
                 if (aiResult != null && aiResult.isNotBlank()) {
-                    ghostText = aiResult.lines().firstOrNull() ?: ""
-                    ghostTextLines = aiResult.lines()
+                    // P41-L: Strip any context hint comment that the AI might echo back
+                    val cleanedResult = aiResult.lines().filterNot {
+                        it.contains("[AI_CONTEXT:")
+                    }.joinToString("\n")
+                    val finalResult = cleanedResult.ifBlank { aiResult }
+                    ghostText = finalResult.lines().firstOrNull() ?: ""
+                    ghostTextLines = finalResult.lines()
                     ghostTextIsAi = true
                 }
             }
@@ -4164,6 +4202,38 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         }
                     }
                     
+                    // P41-L: "?" Explain affordance for AI-sourced completions
+                    if (initialIndex < filteredCompletions.size) {
+                        val highlighted = filteredCompletions[initialIndex]
+                        if (highlighted.source == CompletionSource.AI && onAiFixRequest != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                Text(
+                                    text = "? Explain",
+                                    color = Color(0xFFC586C0),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .clickable {
+                                            val cursor = value.selection.end
+                                            val text = value.text
+                                            val lineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                            val lineEnd = text.indexOf('\n', cursor)
+                                            val lineText = text.substring(lineStart, if (lineEnd < 0) text.length else lineEnd)
+                                            val prompt = "Explain why you suggested \"${'$'}{highlighted.label}\" here.\n" +
+                                                "Current line: ${'$'}{lineText}\n" +
+                                                "File type: ${'$'}{language.name}"
+                                            onAiFixRequest?.invoke(prompt)
+                                            showCompletions = false
+                                        },
+                                )
+                            }
+                        }
+                    }
                     // P41-J: Detail panel — full documentation for highlighted item
                     if (detailDoc != null && detailDoc!!.isNotBlank()) {
                         HorizontalDivider(color = Color(0xFF3C3C3C), thickness = 1.dp)
