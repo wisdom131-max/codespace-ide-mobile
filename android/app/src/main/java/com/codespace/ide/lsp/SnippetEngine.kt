@@ -218,7 +218,7 @@ fun parseSnippet(snippet: String, context: SnippetContext = SnippetContext()): S
 
             // $<letter> — variable like $TM_FILENAME
             if (next.isLetter()) {
-                val varEnd = i + 1
+                var varEnd = i + 1
                 while (varEnd < snippet.length && (snippet[varEnd].isLetterOrDigit() || snippet[varEnd] == '_')) varEnd++
                 val varName = snippet.substring(i + 1, varEnd)
                 val resolved = resolveVariable(varName, context)
