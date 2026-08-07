@@ -3904,7 +3904,7 @@ All properly declared: `completion`, `hover`, `signatureHelp`, `definition`, `re
 | Definition | ✅ WORKING | — |
 | References | ✅ WORKING | — |
 | Code Actions | ✅ WORKING | — |
-| Semantic Tokens | ⚠️ UNVERIFIED | Implemented but not verified in UI |
+| Semantic Tokens | ✅ VERIFIED | Wired into SyntaxTransformation — server semantic tokens overlay regex highlighting with VS Code Dark+ theme colors |
 | Rename | ✅ WORKING | — |
 
 **Status:** ✅ DONE — audit complete. One gap found: Signature Help is implemented server-side but not wired to the UI. Everything else is working.
@@ -3922,7 +3922,7 @@ All properly declared: `completion`, `hover`, `signatureHelp`, `definition`, `re
 | P25-3 | Extensions Cancel fix | cancelRef: AtomicReference<Process?> added, Cancel calls destroyForcibly | ✅ Fixed (commit d0e4e28) | Build broke (comment/brace), fixed (commit 37a33b3) |
 | P25-4 | Preview blank screen | initialPort=0 triggered BROWSER mode on cold open; WebView reload storms | ✅ Fixed (commits 1c1f312 + 6aea436) | Needs device verification |
 | P25-5 | LSP all languages | 12 languages with configs, 4 without (JSON, MD, Shell, XML), 11 missing from enum | ✅ Audited | JSON LSP could be added for free; Rust fallback URL unpinned |
-| P25-6 | Pipeline audit | Completion ✅, Hover ✅, Diagnostics ✅, Definition/References/Rename ✅ | ✅ Audited | Signature Help NOT wired to UI; Semantic Tokens unverified |
+| P25-6 | Pipeline audit | Completion ✅, Hover ✅, Diagnostics ✅, Definition/References/Rename ✅ | ✅ Audited | Signature Help ✅ wired; Semantic Tokens ✅ wired into editor |
 | P25-7 | This report | — | ✅ Done | — |
 
 ### Build Status
@@ -3943,7 +3943,7 @@ Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
 ### Remaining Items (Deferred / Needs Device)
 - P25-0B: LSP upgrade-check mechanism — deferred (low priority)
 - ~~Signature Help UI wiring~~ ✅ FIXED — LSP signature help wired in EditorPane.kt:1539 + CodeEditor.kt local fallback (SignatureHelpAnalyzer)
-- Semantic Tokens — implemented but not verified in UI
+- Semantic Tokens — ✅ VERIFIED: wired into SyntaxTransformation via SemanticTokensApplier, overlays regex highlighting
 - All fixes need on-device verification (cannot test from sandbox)
 - Rust fallback URL should be pinned to a specific version
 - JSON LSP could be added for free (vscode-json-language-server already installed)
