@@ -8733,32 +8733,32 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [x] AI-assisted completion ranking — AI source boosted from -10 to +5 in CompletionEngine.rank()
 
 ### Phase P — Power User Features
-- [ ] TODO Explorer (scan workspace for TODO/FIXME/HACK comments)
-- [ ] Test Explorer (discover and run tests)
-- [ ] Git blame inline (show author per line)
-- [ ] Dead code detection (unused functions/variables/imports)
-- [ ] Duplicate code detection
-- [ ] Complexity metrics (cyclomatic complexity per function)
+- [x] TODO Explorer (scan workspace for TODO/FIXME/HACK comments) (P41-P, build pending)
+- [x] Test Explorer (discover and run tests) (P41-P, build pending)
+- [x] Git blame inline (show author per line) (P20-A, pre-existing)
+- [x] Dead code detection (unused functions/variables/imports) (P41-P, build pending)
+- [x] Duplicate code detection (P41-P, build pending)
+- [x] Complexity metrics (cyclomatic complexity per function) (P41-P, build pending)
 
 ### Phase Q — Workspace Intelligence
-- [ ] Background workspace symbol indexing
-- [ ] Cached symbol database (persistent, cross-session)
-- [ ] File watcher integration (detect external file changes)
-- [ ] Completion result caching between keystrokes
-- [ ] Large-project optimization (>1000 files)
+- [x] Background workspace symbol indexing (P9-1, pre-existing)
+- [x] Cached symbol database (persistent, cross-session) (P41-Q, build pending)
+- [x] File watcher integration (detect external file changes) (P41-Q, build pending)
+- [x] Completion result caching between keystrokes (P41-K, pre-existing)
+- [x] Large-project optimization (>1000 files) (P9-1, pre-existing)
 
 ### Phase R — Format on Save + Formatter Selection
 - [x] Wire format-on-save to EditorPane save action (P41-O, build #1885)
-- [ ] Per-language formatter picker in Settings
-- [ ] Fallback formatters for languages without LSP server
+- [x] Per-language formatter picker in Settings (P41-R, build pending)
+- [x] Fallback formatters for languages without LSP server (P41-R, build pending)
 
 ### Phase S — LSP Spec Compliance Audit
-- [ ] Verify all LSP methods declared in initialize capabilities
-- [ ] Add missing capability declarations
-- [ ] Test graceful degradation when server doesn't support a feature
-- [ ] Add `textDocument/linkedEditingRange`
-- [ ] Add `textDocument/moniker`
-- [ ] Add `textDocument/documentColor` + `colorPresentation`
+- [x] Verify all LSP methods declared in initialize capabilities (P41-S, build pending)
+- [x] Add missing capability declarations (P41-S, build pending)
+- [x] Test graceful degradation when server doesn't support a feature (P41-S, hasCapability guards verified)
+- [x] Add `textDocument/linkedEditingRange` (P41-S, build pending)
+- [x] Add `textDocument/moniker` (P41-S, build pending)
+- [x] Add `textDocument/documentColor` + `colorPresentation` (P41-S, build pending)
 
 ---
 
