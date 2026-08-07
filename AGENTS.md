@@ -8278,8 +8278,8 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 | H | Language Intelligence Audit — verify all CompletionItemKind icons | ✅ DONE | `this commit` |
 | I | Dynamic Snippets + Tab-stop Navigation | ✅ DONE | `this commit` |
 | J | Completion UI Polish — filter chips, source badges, detail panel | ✅ DONE | `34753eb6` |
-| K | Performance — resolve, cancellation, parallel sources | ⬜ TODO | — |
-| L | AI Features — explain suggested completion | ⬜ TODO | — |
+| K | Performance — resolve, cancellation, parallel sources | ✅ DONE | `152bf065` |
+| L | AI Features — explain suggested completion | ✅ DONE | `152bf065` |
 
 
 
