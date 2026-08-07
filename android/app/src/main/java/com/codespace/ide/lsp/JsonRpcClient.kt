@@ -144,6 +144,27 @@ class JsonRpcClient(private val process: Process) {
         notificationHandlers[method] = handler
     }
 
+
+    /**
+     * P41-K: Cancel a pending request by sending $/cancelRequest notification.
+     * Per LSP spec, the server should stop processing the request and return an error response.
+     */
+    fun cancelRequest(requestId: Long) {
+        val params = JSONObject().apply {
+            put("id", requestId)
+        }
+        notify("$/cancelRequest", params)
+        log("[LSP][rpc] Sent $/cancelRequest for id=$requestId")
+    }
+
+    /**
+     * P41-K: Get the current pending request ID for a given method (for cancellation).
+     * Returns -1 if no pending request matches.
+     */
+    fun getPendingRequestId(): Long {
+        return pendingRequests.keys.maxOrNull() ?: -1L
+    }
+
     // ── Internal ──────────────────────────────────────────────────
 
     private fun handleMessage(message: JSONObject) {
