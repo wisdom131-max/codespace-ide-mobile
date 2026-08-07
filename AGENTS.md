@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **07af657eaf** (#1922) — P41 composable extractions + PIN lock + Move Symbol + all P41 phases verified green |
-| Pending CI | **12a9566** — P41-T: Refactor submenu + Run/Test CodeLens + TestLensDetector |
+
 | Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–T complete. P41-T: Refactor submenu + Run/Test CodeLens. Next: large-project optimization + on-device OAuth test) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -8852,7 +8852,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 ---
 
-### Phase T — Refactor Submenu + Run/Test CodeLens ✅ DONE (commit 12a9566, build pending)
+### Phase T — Refactor Submenu + Run/Test CodeLens ✅ DONE (commit 7123101, #1926 green)
 - [x] Dedicated 'Refactor...' submenu — `RefactorMenu.kt` with nested DropdownMenu
 - [x] Extract Method, Extract Variable, Inline Variable, Move Symbol — grouped in submenu
 - [x] AI-powered 'Refactor with AI' option — sends to CopilotChat via onAiFixRequest
@@ -8884,7 +8884,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Build | Commit | Status | Notes |
 |-------|--------|--------|-------|
-| #— | `12a9566` | ⏳ Pending | feat(P41-T): Refactor submenu + Run/Test CodeLens + TestLensDetector |
+| #1926 | `7123101` | ✅ Green | fix: cast JSONArray before optInt — P41-T Refactor submenu + Run/Test CodeLens |
 | #1922 | `07af657eaf` | ✅ Green | Remove stray closing brace in CodeEditor.kt:4382 — all P41 phases now green |
 | #1921 | `24e997f41d` | ❌ Failed | Missing textLines definition + missing closing brace for lspCompletionIcon |
 | #1920 | `a03e19d065` | ❌ Failed | Fix biometric/PIN lock: FragmentActivity for BiometricPrompt + BottomPanels types |
