@@ -193,4 +193,144 @@ object FileIndexer {
             state = state.copy(isIndexing = false)
         }
     }
+
+    // ── P41-Q: Persistent symbol cache (cross-session) ──────────────────────
+
+    private var cacheFile: File? = null
+
+    /**
+     * Save the current symbol index to a JSON cache file for cross-session persistence.
+     * Call after indexing completes to avoid re-scanning on next app launch.
+     */
+    fun saveCache(cacheDir: File) {
+        try {
+            val dir = File(cacheDir, "lsp-cache").apply { mkdirs() }
+            val file = File(dir, "symbol-index.json")
+            cacheFile = file
+            val sb = StringBuilder()
+            sb.append("[")
+            val snapshot = synchronized(lock) { symbols.toList() }
+            snapshot.forEachIndexed { idx, sym ->
+                if (idx > 0) sb.append(",")
+                sb.append("{\"name\":\"")
+                sb.append(sym.name.replace("\"\\", "\\\\").replace("\"", "\\\""))
+                sb.append("\",\"kind\":\"${'$'}{sym.kind}\",\"filePath\":\"")
+                sb.append(sym.filePath.replace("\"", "\\\""))
+                sb.append("\",\"line\":${'$'}{sym.line},\"fileName\":\"${'$'}{sym.fileName}\"}")
+            }
+            sb.append("]")
+            file.writeText(sb.toString())
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Load a previously saved symbol cache. Call before startIndexing to
+     * provide instant results while a fresh index builds in the background.
+     */
+    fun loadCache(cacheDir: File): Boolean {
+        try {
+            val file = File(File(cacheDir, "lsp-cache"), "symbol-index.json")
+            cacheFile = file
+            if (!file.exists()) return false
+            val text = file.readText()
+            val arr = org.json.JSONArray(text)
+            synchronized(lock) {
+                symbols.clear()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    symbols.add(IndexedSymbol(
+                        name = obj.getString("name"),
+                        kind = obj.getString("kind"),
+                        filePath = obj.getString("filePath"),
+                        line = obj.getInt("line"),
+                        fileName = obj.getString("fileName"),
+                    ))
+                }
+                state = state.copy(
+                    isComplete = true,
+                    totalSymbols = symbols.size,
+                    totalFiles = symbols.map { it.filePath }.distinct().size,
+                    indexedFiles = symbols.map { it.filePath }.distinct().size,
+                )
+            }
+            return true
+        } catch (_: Exception) { return false }
+    }
+
+    // ── P41-Q: File watcher integration ─────────────────────────────────────
+
+    private var watcherJob: Job? = null
+    private val fileTimestamps = mutableMapOf<String, Long>()
+
+    /**
+     * Start watching the workspace for external file changes.
+     * When files are modified, added, or deleted outside the editor,
+     * re-index only the changed files for efficient incremental updates.
+     */
+    fun startFileWatcher(workspacePath: String) {
+        watcherJob?.cancel()
+        val root = File(workspacePath)
+        if (!root.exists()) return
+
+        // Snapshot initial file timestamps
+        root.walkTopDown().forEach { file ->
+            if (file.isFile && file.extension.lowercase() in sourceExtensions) {
+                fileTimestamps[file.absolutePath] = file.lastModified()
+            }
+        }
+
+        watcherJob = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                kotlinx.coroutines.delay(5000) // Check every 5 seconds
+                if (!isActive) break
+
+                val changed = mutableListOf<File>()
+                val seen = mutableSetOf<String>()
+
+                root.walkTopDown().forEach { file ->
+                    if (file.isFile && file.extension.lowercase() in sourceExtensions) {
+                        val path = file.absolutePath
+                        val mtime = file.lastModified()
+                        seen.add(path)
+                        val prev = fileTimestamps[path]
+                        if (prev == null || prev != mtime) {
+                            changed.add(file)
+                            fileTimestamps[path] = mtime
+                        }
+                    }
+                }
+
+                // Remove deleted files from index
+                val deleted = fileTimestamps.keys.filter { it !in seen }
+                if (deleted.isNotEmpty()) {
+                    synchronized(lock) {
+                        symbols.removeAll { it.filePath in deleted }
+                        deleted.forEach { fileTimestamps.remove(it) }
+                    }
+                }
+
+                // Re-index changed files
+                if (changed.isNotEmpty()) {
+                    for (file in changed) {
+                        if (!isActive) break
+                        try {
+                            // Remove old symbols for this file
+                            synchronized(lock) {
+                                symbols.removeAll { it.filePath == file.absolutePath }
+                            }
+                            indexFile(file)
+                        } catch (_: Exception) {}
+                    }
+                    // Save updated cache
+                    cacheFile?.let { /* cache is saved by caller via saveCache() */ }
+                }
+            }
+        }
+    }
+
+    /** Stop the file watcher. */
+    fun stopFileWatcher() {
+        watcherJob?.cancel()
+        watcherJob = null
+    }
 }

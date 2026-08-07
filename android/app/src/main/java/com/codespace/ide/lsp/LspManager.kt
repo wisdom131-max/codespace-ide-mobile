@@ -843,6 +843,12 @@ object LspManager {
             put("callHierarchy", JSONObject().apply { put("dynamicRegistration", false) })
             // P41-M: Type Hierarchy
             put("typeHierarchy", JSONObject().apply { put("dynamicRegistration", false) })
+            // P41-S: Linked Editing Range — allows simultaneous editing of matching tags (HTML/XML)
+            put("linkedEditingRange", JSONObject().apply { put("dynamicRegistration", false) })
+            // P41-S: Moniker — stable identifiers for symbols across workspace
+            put("moniker", JSONObject().apply { put("dynamicRegistration", false) })
+            // P41-S: Document Color + Color Presentation — color picker support for CSS/SCSS/Less
+            put("documentColor", JSONObject().apply { put("dynamicRegistration", false) })
         }
         // workspace capabilities
         val workspace = JSONObject().apply {
@@ -1277,6 +1283,70 @@ object LspManager {
         val td = JSONObject().put("uri", uri)
         val params = JSONObject().put("textDocument", td)
         val response = server.client.request("textDocument/documentColor", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-S: Request color presentations for a color found via documentColor.
+     * Returns a JSONArray of ColorPresentation entries (label + TextEdit).
+     */
+    fun getColorPresentations(
+        language: Language,
+        uri: String,
+        colorInfo: JSONObject,
+        range: JSONObject,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "colorProvider")) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("color", colorInfo)
+            put("range", range)
+        }
+        val response = server.client.request("textDocument/colorPresentation", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-S: Request linked editing ranges for a position (matching HTML/XML tags).
+     * Returns a JSONArray of Location ranges that should be edited together.
+     */
+    fun getLinkedEditingRanges(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "linkedEditingRangeProvider")) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("position", JSONObject().apply { put("line", line); put("character", character) })
+        }
+        val response = server.client.request("textDocument/linkedEditingRange", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-S: Request monikers (stable symbol identifiers) for a position.
+     * Returns a JSONArray of Moniker entries.
+     */
+    fun getMonikers(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "monikerProvider")) return null
+        val params = JSONObject().apply {
+            put("textDocument", JSONObject().apply { put("uri", uri) })
+            put("position", JSONObject().apply { put("line", line); put("character", character) })
+        }
+        val response = server.client.request("textDocument/moniker", params, timeoutSeconds = 10)
         return response as? JSONArray
     }
 
