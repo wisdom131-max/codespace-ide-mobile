@@ -24,7 +24,7 @@
 
 | | |
 |-|-|
-| Latest green build | **07af657eaf** (#1922) — P41 composable extractions + PIN lock + Move Symbol + all P41 phases verified green |
+| Latest green build | **79288397** (#1929) — P41-U Built-in source actions (organize/remove unused imports + remove unused code) |
 
 | Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–U complete. P41-U: Built-in source actions (organize/remove unused) + cross-file refactor verified. Next: on-device OAuth test) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
