@@ -446,6 +446,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     lspHoverContent: String? = null,
     /** P38: LSP Go-to-Definition — returns true if LSP succeeded (falls back to regex if false/null) */
     onLspDefinition: (() -> Boolean)? = null,
+    /** P41-O5: LSP Go to Declaration — semantic navigation to declaration (e.g. header file) */
+    onLspDeclaration: (() -> Boolean)? = null,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
@@ -1289,6 +1291,35 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                         
+                        // P41-O4: Auto-indent on Enter — copy previous line's leading whitespace
+                        if (newValue.text.length > value.text.length &&
+                            newValue.text.length - value.text.length >= 2) {
+                            val inserted = newValue.text.substring(
+                                value.selection.start.coerceIn(0, newValue.text.length),
+                                (value.selection.start + (newValue.text.length - value.text.length)).coerceIn(0, newValue.text.length)
+                            )
+                            if (inserted == "\n" || inserted.contains("\n")) {
+                                val cursor = newValue.selection.end
+                                val lineStart = newValue.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                val currentLine = newValue.text.substring(lineStart, cursor)
+                                // Find previous line's indentation
+                                val prevNewline = newValue.text.lastIndexOf('\n', (lineStart - 2).coerceAtLeast(0))
+                                val prevLineStart = if (prevNewline < 0) 0 else prevNewline + 1
+                                val prevLine = newValue.text.substring(prevLineStart, lineStart - 1)
+                                val indent = prevLine.takeWhile { it == ' ' || it == '\t' }
+                                // Extra indent after { ( [ or : (for Python)
+                                val extraIndent = if (prevLine.trimEnd().endsWith("{") || prevLine.trimEnd().endsWith("[")) "    " else ""
+                                val fullIndent = indent + extraIndent
+                                if (fullIndent.isNotEmpty()) {
+                                    val insertPos = lineStart + currentLine.length
+                                    val newText = newValue.text.substring(0, insertPos) + fullIndent + newValue.text.substring(insertPos)
+                                    updatedValue = TextFieldValue(
+                                        text = newText,
+                                        selection = TextRange(insertPos + fullIndent.length)
+                                    )
+                                }
+                            }
+                        }
                         // Multi-cursor fan-out: replay same edit at each extra cursor
                         if (extraCursors.isNotEmpty()) {
                             val delta = updatedValue.text.length - value.text.length
@@ -1682,6 +1713,36 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // P41-O1: Error Lens — inline error text at end of code lines (VS Code-style)
+        if (lintErrors.isNotEmpty() && !showCompletions) {
+            val lineHeightPxEL = fontSize * 1.25f
+            val charWidthPxEL = fontSize * 0.6f
+            for (err in lintErrors) {
+                // Find which line this error is on
+                val textBefore = value.text.substring(0, err.start.coerceIn(0, value.text.length))
+                val errorLine = textBefore.count { it == '\n' }
+                // Find the end of that line (for x-positioning after the code)
+                val lineStart = value.text.lastIndexOf('\n', (err.start - 1).coerceAtLeast(0)) + 1
+                val lineEnd = value.text.indexOf('\n', err.start)
+                val lineLength = (if (lineEnd < 0) value.text.length else lineEnd) - lineStart
+                val lineTopDp = errorLine * lineHeightPxEL - vScroll.value
+                val lineLeftDp = (lineLength * charWidthPxEL) + 80f // gutter width + code width + small gap
+                // Only render if visible in viewport
+                if (lineTopDp >= 0 && lineTopDp < (displayLines.size + 5) * lineHeightPxEL) {
+                    Text(
+                        text = "  $(err.message.replace("\n", " ").take(80))",
+                        color = Color(0xFFFF6B6B).copy(alpha = 0.7f),
+                        fontSize = (fontSize * 0.8f).sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = lineLeftDp.dp, top = lineTopDp.dp)
+                            .zIndex(3f)
+                    )
+                }
+            }
+        }
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
             val lineHeightPxCL = fontSize * 1.25f
@@ -2245,6 +2306,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
 
+                            // P41-O5: Go to Declaration
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⇒", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                        Text("Go to Declaration", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    if (onLspDeclaration != null) {
+                                        onLspDeclaration!!.invoke()
+                                    }
+                                    showLspMenu = false
+                                }
+                            )
                             // Peek Definition
                             DropdownMenuItem(
                                 text = {

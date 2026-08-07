@@ -127,6 +127,8 @@ fun EditorPane(
     onAiFixRequest: ((String) -> Unit)? = null,
     /** P41-E: AI ghost text request — returns multi-line code continuation or null */
     onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) -> String?)? = null,
+    /** P41-O2: Format on Save trigger — increments when user clicks Save. EditorPane formats then saves. */
+    formatOnSaveTrigger: Int = 0,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -141,6 +143,35 @@ fun EditorPane(
     var conflictHunks by remember { mutableStateOf<List<ConflictHunk>?>(null) }
     // P22-E: Format Document
     var formatting by remember { mutableStateOf(false) }
+    // P41-O2: Format on Save — when trigger fires, format active tab then save
+    LaunchedEffect(formatOnSaveTrigger) {
+        if (formatOnSaveTrigger > 0) {
+            val activeTab = tabs.firstOrNull { it.id == activeId }
+            if (activeTab != null && activeTab.path.startsWith("/")) {
+                formatting = true
+                try {
+                    val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
+                    if (result.success && result.formattedContent != null && result.formattedContent != activeTab.content) {
+                        val idx = tabs.indexOfFirst { it.id == activeId }
+                        if (idx >= 0) {
+                            tabs[idx] = activeTab.copy(content = result.formattedContent, isDirty = false)
+                            try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+                        }
+                    } else {
+                        // Even if no formatting needed, mark as saved
+                        val idx = tabs.indexOfFirst { it.id == activeId }
+                        if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+                    }
+                } catch (_: Exception) {
+                    // On format failure, still save the file
+                    try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+                    val idx = tabs.indexOfFirst { it.id == activeId }
+                    if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+                }
+                formatting = false
+            }
+        }
+    }
     // P22-G: LSP diagnostics + hover
     val lspOpenedFiles = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -1537,6 +1568,33 @@ fun EditorPane(
                                                 } else {
                                                     // Different file — open it at the definition line
                                                     onOpenFileAtLine?.invoke(defPath, defLine + 1)
+                                                }
+                                                succeeded = true
+                                            }
+                                        }
+                                    }
+                                }
+                                succeeded
+                            }
+                        } else null,
+                        // P41-O5: LSP Go-to-Declaration
+                        onLspDeclaration = if (LspManager.isServerRunning(active.language)) {
+                            {
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                var succeeded = false
+                                if (uri != null) {
+                                    val decls = try { LspManager.getDeclaration(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    if (decls != null && decls.length() > 0) {
+                                        val loc = decls.optJSONObject(0)
+                                        if (loc != null) {
+                                            val declUri = loc.optString("uri", "")
+                                            val declLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                            val declPath = LspManager.hostPathFromFileUri(context, declUri)
+                                            if (declPath != null && java.io.File(declPath).exists()) {
+                                                if (declPath == active.path) {
+                                                    scrollToLine = declLine + 1
+                                                } else {
+                                                    onOpenFileAtLine?.invoke(declPath, declLine + 1)
                                                 }
                                                 succeeded = true
                                             }

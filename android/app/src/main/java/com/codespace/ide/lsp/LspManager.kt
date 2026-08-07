@@ -803,6 +803,8 @@ object LspManager {
         val selectionRange = JSONObject().apply { put("dynamicRegistration", false) }
         // textDocument.documentHighlight
         val documentHighlight = JSONObject().apply { put("dynamicRegistration", false) }
+        // textDocument.declaration
+        val declaration = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
         // textDocument.typeDefinition
         val typeDefinition = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
         // textDocument.implementation
@@ -816,6 +818,7 @@ object LspManager {
             put("hover", hover)
             put("signatureHelp", signatureHelp)
             put("definition", basic)
+            put("declaration", declaration)
             put("typeDefinition", typeDefinition)
             put("implementation", implementation)
             put("references", basic)
@@ -1378,6 +1381,31 @@ object LspManager {
         if (!server.initialized) return null
         val params = positionParams(uri, line, character)
         val response = server.client.request("textDocument/implementation", params, timeoutSeconds = 10)
+        return when (response) {
+            null -> null
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> null
+        }
+    }
+
+    /**
+     * Request the declaration of the symbol at position.
+     * Returns a JSONArray of Location entries (like getDefinition).
+     * Some servers return declaration separately from definition
+     * (e.g. header file declaration vs .cpp definition in C/C++).
+     */
+    fun getDeclaration(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "declarationProvider")) return null
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/declaration", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
             is JSONArray -> response

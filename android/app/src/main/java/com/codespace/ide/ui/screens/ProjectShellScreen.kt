@@ -573,6 +573,8 @@ fun ProjectShellScreen(
     var showPanelMenu      by remember { mutableStateOf(false) }
     var showExplorerMore   by remember { mutableStateOf(false) }
     var triggerNewFileCounter by remember { mutableStateOf(0) }
+    // P41-O2: Format on Save trigger
+    var formatOnSaveTrigger by remember { mutableStateOf(0) }
     var triggerNewFolderCounter by remember { mutableStateOf(0) }
     var commandQuery       by remember { mutableStateOf("") }
     var _commandTab         by remember { mutableStateOf("Commands") }
@@ -816,7 +818,7 @@ fun ProjectShellScreen(
                 terminalEnhancements.restoreProfile()
                 showNotification("Shell profile restored", "success")
             }
-            "Save" -> showNotification("File saved ✓", "success")
+            "Save" -> { formatOnSaveTrigger++; showNotification("File saved ✓", "success") }
             // P35-NOTIF: Notification commands — wired to NotificationStore
             "Notifications: Toggle Do Not Disturb" -> {
                 NotificationStore.toggleDoNotDisturb()
@@ -3135,6 +3137,7 @@ private fun PssEditorColumn(
                     // P39: AI code actions (Explain/Optimize/etc) open the chat panel and
                     // auto-send the generated prompt.
                     onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
+                    formatOnSaveTrigger = formatOnSaveTrigger,
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {

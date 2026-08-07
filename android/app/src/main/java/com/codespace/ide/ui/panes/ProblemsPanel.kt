@@ -10,9 +10,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,8 +39,23 @@ fun ProblemsPanel(
     val warnings = problems.filter { it.severity == Problem.Severity.WARNING }
     val infos = problems.filter { it.severity == Problem.Severity.INFO }
 
+    // P41-O3: Diagnostic filtering — toggleable severity filters
+    var showErrors by remember { mutableStateOf(true) }
+    var showWarnings by remember { mutableStateOf(true) }
+    var showInfos by remember { mutableStateOf(true) }
+
+    val filteredProblems = problems.filter { p ->
+        when (p.severity) {
+            Problem.Severity.ERROR -> showErrors
+            Problem.Severity.WARNING -> showWarnings
+            Problem.Severity.INFO -> showInfos
+        }
+    }
+
     // Sorted: Errors first, then Warnings, then Infos
-    val sortedProblems = errors + warnings + infos
+    val sortedProblems = filteredProblems.filter { it.severity == Problem.Severity.ERROR } +
+                         filteredProblems.filter { it.severity == Problem.Severity.WARNING } +
+                         filteredProblems.filter { it.severity == Problem.Severity.INFO }
 
     Column(
         modifier = modifier
@@ -73,6 +94,50 @@ fun ProblemsPanel(
             }
         }
 
+        // P41-O3: Filter chips row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = showErrors,
+                onClick = { showErrors = !showErrors },
+                label = { Text("${errors.size} Errors", fontSize = 10.sp) },
+                leadingIcon = { Icon(Icons.Filled.Error, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFF44747)) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0xFF332222),
+                    containerColor = Color(0xFF2D2D2D),
+                )
+            )
+            if (warnings.isNotEmpty()) {
+                FilterChip(
+                    selected = showWarnings,
+                    onClick = { showWarnings = !showWarnings },
+                    label = { Text("${warnings.size} Warnings", fontSize = 10.sp) },
+                    leadingIcon = { Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFCCA700)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF332B0F),
+                        containerColor = Color(0xFF2D2D2D),
+                    )
+                )
+            }
+            if (infos.isNotEmpty()) {
+                FilterChip(
+                    selected = showInfos,
+                    onClick = { showInfos = !showInfos },
+                    label = { Text("${infos.size} Info", fontSize = 10.sp) },
+                    leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF75BEFF)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF112233),
+                        containerColor = Color(0xFF2D2D2D),
+                    )
+                )
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -89,7 +154,7 @@ fun ProblemsPanel(
             ) {
                 Text(
                     text = "No problems detected ✓",
-                    color = Color(0xFF4EC9B0), // Green tint matching VS Code success / green
+                    color = Color(0xFF4EC9B0),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
