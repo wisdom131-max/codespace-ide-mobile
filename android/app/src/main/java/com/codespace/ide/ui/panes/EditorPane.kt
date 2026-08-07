@@ -201,6 +201,29 @@ fun EditorPane(
     var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
     // P24: visible banner shown when LSP server fails to start (not just logcat)
     var lspStatusMessage by remember { mutableStateOf<String?>(null) }
+    // P44-2: Reactive LSP health check — polls every 5s to detect OOM-killed servers.
+    // Without this, the UI badge stays green after the process dies silently.
+    var lspLastKnownAlive by remember { mutableStateOf<Map<Language, Boolean>>(emptyMap()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(5000)
+            val active = tabs.firstOrNull { it.id == activeId }
+            if (active != null && LspManager.isSupported(active.language)) {
+                val alive = LspManager.isServerRunning(active.language)
+                val wasAlive = lspLastKnownAlive[active.language] ?: false
+                if (wasAlive && !alive) {
+                    // Server died after being alive — likely OOM-kill
+                    lspStatusMessage = "${'$'}{active.language.displayName} language server was terminated (possibly out of memory). Save and reopen the file to restart it."
+                    AppOutputLog.log("[LSP] ${'$'}{active.language.displayName} server died (OOM-kill suspected) — was alive, now dead", "lsp")
+                }
+                if (alive && !wasAlive) {
+                    // Server came back (e.g., after restart)
+                    lspStatusMessage = null
+                }
+                lspLastKnownAlive = lspLastKnownAlive + (active.language to alive)
+            }
+        }
+    }
     var splitId by remember { mutableStateOf<String?>(null) }
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
