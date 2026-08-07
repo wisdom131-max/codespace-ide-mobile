@@ -28,21 +28,31 @@ object DocumentFormatter {
     data class FormatResult(val success: Boolean, val formattedContent: String?, val message: String)
 
     /**
-     * Returns the formatter command for the given language, or null if no formatter is available.
+     * P41-R: Returns the formatter command for the given language using the user's
+     * preferred formatter from FormatterConfig, falling back to the default if not set.
+     * Returns null if no formatter is available (or uses built-in fallback).
      */
     fun formatterCommand(language: Language, fileName: String): String? {
-        return when (language) {
-            Language.KOTLIN -> "ktlint --format '$fileName' 2>&1"
-            Language.JAVASCRIPT, Language.TYPESCRIPT -> "prettier --write '$fileName' 2>&1"
-            Language.PYTHON -> "black --quiet '$fileName' 2>&1"
-            Language.GO -> "gofmt -w '$fileName' 2>&1"
-            Language.JAVA -> "google-java-format --replace '$fileName' 2>&1"
-            Language.JSON -> "python3 -m json.tool '$fileName' --compact 2>/dev/null | python3 -m json.tool > '$fileName.tmp' && mv '$fileName.tmp' '$fileName' 2>&1"
-            Language.HTML, Language.CSS -> "prettier --write '$fileName' 2>&1"
-            Language.XML -> "xmllint --format '$fileName' > '$fileName.tmp' && mv '$fileName.tmp' '$fileName' 2>&1"
-            Language.SHELL -> "shfmt -w '$fileName' 2>&1"
-            else -> null
-        }
+        // P41-R: Use FormatterConfig to get the user's selected formatter
+        // This is called without context (legacy), so use the default (first option)
+        val formatters = FormatterConfig.availableFormatters[language] ?: return null
+        val selected = formatters.firstOrNull() ?: return null
+        return selected.commandTemplate?.replace("\$FILE", fileName)
+    }
+
+    /**
+     * P41-R: Returns the formatter command using the user's selected formatter.
+     * This is the preferred entry point — it respects per-language formatter preferences.
+     */
+    fun formatterCommandForContext(context: Context, language: Language, fileName: String): String? {
+        val selected = FormatterConfig.getSelectedFormatter(context, language)
+        return selected.commandTemplate?.replace("\$FILE", fileName)
+    }
+
+    /** P41-R: Check if the user's selected formatter is the built-in fallback. */
+    fun isUsingFallback(context: Context, language: Language): Boolean {
+        val selected = FormatterConfig.getSelectedFormatter(context, language)
+        return selected.commandTemplate == null
     }
 
     /**
@@ -142,7 +152,21 @@ object DocumentFormatter {
         }
 
         val fileName = file.name
-        val command = formatterCommand(language, fileName) ?: return FormatResult(false, null, "No formatter for ${language.displayName}")
+        // P41-R: Use context-aware formatter selection (respects user preferences)
+        val selectedFormatter = FormatterConfig.getSelectedFormatter(context, language)
+        // If the selected formatter is built-in fallback, use it directly
+        if (selectedFormatter.commandTemplate == null) {
+            val originalContent = file.readText()
+            val formatted = FormatterConfig.fallbackFormat(originalContent)
+            return if (formatted != originalContent) {
+                file.writeText(formatted)
+                FormatResult(true, formatted, "Formatted with built-in formatter")
+            } else {
+                FormatResult(true, formatted, "No formatting changes needed")
+            }
+        }
+        val command = selectedFormatter.commandTemplate.replace("\$FILE", fileName)
+            ?: return FormatResult(false, null, "No formatter for ${language.displayName}")
 
         // Get the directory containing the file for the workdir
         val workdir = file.parent ?: "/"

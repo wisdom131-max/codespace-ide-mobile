@@ -32,6 +32,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -594,6 +596,57 @@ fun SettingsScreen(
                     ) { Text("Clear") }
                 }
             )
+            HorizontalDivider()
+
+            // ── P41-R: Formatter Selection ──────────────────────────────────
+            Text("Formatter Selection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Text(
+                "Choose your preferred code formatter for each language.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, bottom = 8.dp),
+            )
+
+            // Show formatter pickers for languages with multiple options
+            FormatterConfig.availableFormatters.entries
+                .filter { it.value.size > 1 }
+                .sortedBy { it.key.displayName }
+                .forEach { (lang, options) ->
+                    val currentFormatter = remember { FormatterConfig.getSelectedFormatter(context, lang) }
+                    var expanded by remember { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = { Text(lang.displayName) },
+                        supportingContent = { Text("Formatter: ${currentFormatter.name}") },
+                        trailingContent = {
+                            Box {
+                                OutlinedButton(onClick = { expanded = true }) {
+                                    Text(currentFormatter.name, fontSize = 12.sp)
+                                }
+                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                    options.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option.name) },
+                                            onClick = {
+                                                FormatterConfig.setSelectedFormatter(context, lang, option.name)
+                                                expanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+
+            // Languages with built-in fallback only
+            Text(
+                "Built-in fallback (indentation + trailing whitespace) is used for languages without an external formatter.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+
             HorizontalDivider()
 
             // ── Clear Data ───────────────────────────────────────────────────

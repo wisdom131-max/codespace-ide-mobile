@@ -1486,6 +1486,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 snippetSession = null
                                 showSnippetChoices = false
                                 true
+                            } else if (activeSignature != null && activeSignature!!.allSignatures.size > 1 &&
+                                       event.type == KeyEventType.KeyDown) {
+                                // P41-OV: Up/Down arrow to cycle through signature overloads
+                                when (event.key) {
+                                    Key.DirectionUp -> {
+                                        overloadIndex = (overloadIndex - 1).coerceAtLeast(0)
+                                        true
+                                    }
+                                    Key.DirectionDown -> {
+                                        val max = activeSignature!!.allSignatures.size - 1
+                                        overloadIndex = (overloadIndex + 1).coerceAtMost(max)
+                                        true
+                                    }
+                                    else -> false
+                                }
                             } else {
                                 false // let BasicTextField handle normally
                             }

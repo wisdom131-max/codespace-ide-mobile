@@ -21,6 +21,7 @@ data class SignatureInfo(
     val params: List<String>,
     val returnType: String?,
     val activeParam: Int,
+    val allSignatures: List<SignatureInfo> = emptyList(),  // P41-OV: all overloads from LSP
 )
 
 object SignatureHelpAnalyzer {

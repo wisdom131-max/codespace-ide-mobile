@@ -16,6 +16,9 @@ data class Problem(
     val line: Int,
     val severity: Severity,
     val message: String,
+    val code: String? = null,            // P41-DIAG: diagnostic code (e.g. "TS2304", "E0301")
+    val source: String? = null,          // P41-DIAG: source server name (e.g. "ts", "pyright")
+    val relatedInfo: List<Pair<String, String>> = emptyList(),  // P41-DIAG: related diagnostics (message, location)
 ) {
     enum class Severity { ERROR, WARNING, INFO }
 }

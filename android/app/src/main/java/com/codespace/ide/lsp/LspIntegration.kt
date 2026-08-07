@@ -32,9 +32,23 @@ fun lspDiagnosticsToProblems(diagnostics: JSONArray): List<Problem> {
             else -> Problem.Severity.INFO
         }
         val message = diag.optString("message", "LSP diagnostic")
-        val source = diag.optString("source", "")
-        val fullMessage = if (source.isNotEmpty()) "[$source] $message" else message
-        problems.add(Problem(startLine + 1, severity, fullMessage))
+        val source = if (diag.has("source") && !diag.isNull("source")) diag.optString("source") else null
+        // P41-DIAG: Extract diagnostic code (can be string or number in LSP)
+        val code = if (diag.has("code") && !diag.isNull("code")) diag.opt("code")?.toString() else null
+        // P41-DIAG: Extract related diagnostics
+        val relatedInfo = mutableListOf<Pair<String, String>>()
+        val relatedArr = diag.optJSONArray("relatedInformation")
+        if (relatedArr != null) {
+            for (j in 0 until relatedArr.length()) {
+                val related = relatedArr.optJSONObject(j) ?: continue
+                val relMsg = related.optString("message", "")
+                val relLoc = related.optJSONObject("location")
+                val relUri = relLoc?.optString("uri", "")?.substringAfterLast("/") ?: ""
+                val relLine = (relLoc?.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0) + 1
+                if (relMsg.isNotEmpty()) relatedInfo.add(relMsg to "$relUri:$relLine")
+            }
+        }
+        problems.add(Problem(startLine + 1, severity, message, code = code, source = source, relatedInfo = relatedInfo))
     }
     return problems
 }

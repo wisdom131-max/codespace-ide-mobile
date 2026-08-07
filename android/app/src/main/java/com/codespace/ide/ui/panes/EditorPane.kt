@@ -1524,6 +1524,29 @@ fun EditorPane(
                                         val activeSig = sigHelp.optInt("activeSignature", 0)
                                         val activeParam = sigHelp.optInt("activeParameter", 0)
                                         if (sigs != null && sigs.length() > 0) {
+                                            val allOverloads = (0 until sigs.length()).mapNotNull { idx ->
+                                                val s = sigs.optJSONObject(idx) ?: return@mapNotNull null
+                                                val lbl = s.optString("label", "")
+                                                val ps = s.optJSONArray("parameters")
+                                                val pl = if (ps != null) {
+                                                    (0 until ps.length()).mapNotNull { i ->
+                                                        val p = ps.optJSONObject(i)
+                                                        p?.optString("label", "")?.takeIf { it.isNotBlank() }
+                                                    }
+                                                } else {
+                                                    lbl.substringAfter("(", "").substringBefore(")", "").split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                                }
+                                                SignatureInfo(
+                                                    name = lbl.substringBefore("(").trim(),
+                                                    params = pl,
+                                                    returnType = when (val doc = s.opt("documentation")) {
+                                                        is String -> doc.takeIf { it.isNotBlank() }
+                                                        is org.json.JSONObject -> doc.optString("value", "").takeIf { it.isNotBlank() }
+                                                        else -> null
+                                                    },
+                                                    activeParam = if (idx == activeSig) activeParam else 0,
+                                                )
+                                            }
                                             val sig = sigs.optJSONObject(activeSig.coerceAtMost(sigs.length() - 1))
                                             if (sig != null) {
                                                 val label = sig.optString("label", "")
@@ -1546,6 +1569,7 @@ fun EditorPane(
                             else -> null
                         },
                                                     activeParam = activeParam,
+                                                    allSignatures = allOverloads,
                                                 )
                                             } else null
                                         } else null

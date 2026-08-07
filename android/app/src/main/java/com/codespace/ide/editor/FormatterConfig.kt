@@ -1,118 +1,147 @@
 package com.codespace.ide.editor
 
 import android.content.Context
+import com.codespace.ide.domain.Language
 
 /**
- * P41-R: Per-language formatter picker + fallback formatters for languages without LSP.
+ * P41-R: Per-language formatter configuration.
  *
- * Stores user's preferred formatter per language in SharedPreferences.
- * Falls back to a sensible default if no preference is set.
+ * Stores the user's preferred formatter for each language, allowing selection
+ * between multiple available formatters (e.g. Python: black vs autopep8 vs yapf).
+ * Falls back to a built-in indentation formatter for languages without external tools.
+ *
+ * Persisted in SharedPreferences as JSON: { "PYTHON": "autopep8", "KOTLIN": "ktlint", ... }
  */
 object FormatterConfig {
 
-    private const val PREFS_NAME = "formatter_config"
+    private const val PREFS_NAME = "formatter_prefs"
+    private const val KEY_SELECTIONS = "formatter_selections"
 
-    /**
-     * Available formatters per language.
-     * "lsp" = use the LSP server's formatting capability (default for most).
-     * Others are CLI tools run via proot.
-     */
-    val formatterOptions: Map<String, List<String>> = mapOf(
-        "kotlin" to listOf("lsp", "ktlint"),
-        "java" to listOf("lsp", "google-java-format"),
-        "python" to listOf("lsp", "black", "autopep8", "yapf"),
-        "javascript" to listOf("lsp", "prettier", "eslint --fix"),
-        "typescript" to listOf("lsp", "prettier", "eslint --fix"),
-        "go" to listOf("lsp", "gofmt", "goimports"),
-        "rust" to listOf("lsp", "rustfmt"),
-        "c" to listOf("lsp", "clang-format"),
-        "cpp" to listOf("lsp", "clang-format"),
-        "html" to listOf("lsp", "prettier"),
-        "css" to listOf("lsp", "prettier", "stylelint --fix"),
-        "scss" to listOf("lsp", "prettier"),
-        "json" to listOf("lsp", "prettier"),
-        "yaml" to listOf("lsp", "prettier", "yamlfmt"),
-        "markdown" to listOf("lsp", "prettier", "mdformat"),
-        "sh" to listOf("shfmt"),
-        "bash" to listOf("shfmt"),
-        "ruby" to listOf("lsp", "rubocop"),
-        "php" to listOf("lsp", "php-cs-fixer"),
-        "dart" to listOf("lsp", "dart format"),
-        "swift" to listOf("lsp", "swiftformat"),
+    /** Available formatters per language. */
+    val availableFormatters: Map<Language, List<FormatterOption>> = mapOf(
+        Language.KOTLIN to listOf(
+            FormatterOption("ktlint", "ktlint --format '\$FILE' 2>&1", "command -v ktlint"),
+            FormatterOption("ktfmt", "ktfmt '\$FILE' 2>&1", "command -v ktfmt"),
+        ),
+        Language.JAVASCRIPT to listOf(
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+            FormatterOption("eslint", "eslint --fix '\$FILE' 2>&1", "command -v eslint"),
+        ),
+        Language.TYPESCRIPT to listOf(
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+            FormatterOption("eslint", "eslint --fix '\$FILE' 2>&1", "command -v eslint"),
+        ),
+        Language.PYTHON to listOf(
+            FormatterOption("black", "black --quiet '\$FILE' 2>&1", "command -v black"),
+            FormatterOption("autopep8", "autopep8 --in-place '\$FILE' 2>&1", "command -v autopep8"),
+            FormatterOption("yapf", "yapf --in-place '\$FILE' 2>&1", "command -v yapf"),
+            FormatterOption("isort", "isort '\$FILE' 2>&1", "command -v isort"),
+        ),
+        Language.GO to listOf(
+            FormatterOption("gofmt", "gofmt -w '\$FILE' 2>&1", "command -v gofmt"),
+            FormatterOption("goimports", "goimports -w '\$FILE' 2>&1", "command -v goimports"),
+        ),
+        Language.JAVA to listOf(
+            FormatterOption("google-java-format", "google-java-format --replace '\$FILE' 2>&1", "command -v google-java-format"),
+            FormatterOption("clang-format", "clang-format -i '\$FILE' 2>&1", "command -v clang-format"),
+        ),
+        Language.RUST to listOf(
+            FormatterOption("rustfmt", "rustfmt '\$FILE' 2>&1", "command -v rustfmt"),
+        ),
+        Language.HTML to listOf(
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+        ),
+        Language.CSS to listOf(
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+        ),
+        Language.JSON to listOf(
+            FormatterOption("python3", "python3 -m json.tool '\$FILE' --compact 2>/dev/null | python3 -m json.tool > '\$FILE.tmp' && mv '\$FILE.tmp' '\$FILE' 2>&1", "command -v python3"),
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+        ),
+        Language.XML to listOf(
+            FormatterOption("xmllint", "xmllint --format '\$FILE' > '\$FILE.tmp' && mv '\$FILE.tmp' '\$FILE' 2>&1", "command -v xmllint"),
+        ),
+        Language.SHELL to listOf(
+            FormatterOption("shfmt", "shfmt -w '\$FILE' 2>&1", "command -v shfmt"),
+        ),
+        // Languages with no external formatter — use built-in fallback
+        Language.C to listOf(
+            FormatterOption("clang-format", "clang-format -i '\$FILE' 2>&1", "command -v clang-format"),
+            FormatterOption("built-in", null, null),  // fallback
+        ),
+        Language.CPP to listOf(
+            FormatterOption("clang-format", "clang-format -i '\$FILE' 2>&1", "command -v clang-format"),
+            FormatterOption("built-in", null, null),  // fallback
+        ),
+        Language.MARKDOWN to listOf(
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+            FormatterOption("built-in", null, null),  // fallback
+        ),
+        Language.YAML to listOf(
+            FormatterOption("prettier", "prettier --write '\$FILE' 2>&1", "command -v prettier"),
+            FormatterOption("built-in", null, null),  // fallback
+        ),
     )
 
-    /**
-     * Default formatter per language (first option from formatterOptions, or "lsp").
-     */
-    fun getDefaultFormatter(language: String): String {
-        return formatterOptions[language]?.firstOrNull() ?: "lsp"
-    }
+    data class FormatterOption(
+        val name: String,
+        val commandTemplate: String?,  // null = built-in fallback
+        val checkCommand: String?,      // null = no check needed
+    )
 
-    /**
-     * Get the user's preferred formatter for a language, or the default.
-     */
-    fun getFormatter(context: Context, language: String): String {
+    /** Get the user's selected formatter for a language, or the default (first option). */
+    fun getSelectedFormatter(context: Context, language: Language): FormatterOption {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString("formatter_$language", null) ?: getDefaultFormatter(language)
-    }
-
-    /**
-     * Set the user's preferred formatter for a language.
-     */
-    fun setFormatter(context: Context, language: String, formatter: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString("formatter_$language", formatter)
-            .apply()
-    }
-
-    /**
-     * Get the CLI command for a formatter tool.
-     * Returns null for "lsp" (handled by LSP formatting request).
-     * For other tools, returns the shell command to run for formatting a file.
-     */
-    fun getFormatterCommand(formatter: String, filePath: String): String? {
-        return when (formatter) {
-            "lsp" -> null // LSP handles formatting
-            "prettier" -> "npx prettier --write \"$filePath\""
-            "eslint --fix" -> "npx eslint --fix \"$filePath\""
-            "black" -> "python3 -m black \"$filePath\""
-            "autopep8" -> "python3 -m autopep8 --in-place \"$filePath\""
-            "yapf" -> "python3 -m yapf --in-place \"$filePath\""
-            "gofmt" -> "gofmt -w \"$filePath\""
-            "goimports" -> "goimports -w \"$filePath\""
-            "rustfmt" -> "rustfmt \"$filePath\""
-            "clang-format" -> "clang-format -i \"$filePath\""
-            "ktlint" -> "ktlint --format \"$filePath\""
-            "google-java-format" -> "google-java-format --in-place \"$filePath\""
-            "shfmt" -> "shfmt -w \"$filePath\""
-            "rubocop" -> "rubocop --auto-correct \"$filePath\""
-            "php-cs-fixer" -> "php-cs-fixer fix \"$filePath\""
-            "dart format" -> "dart format \"$filePath\""
-            "swiftformat" -> "swiftformat \"$filePath\""
-            "mdformat" -> "mdformat \"$filePath\""
-            "yamlfmt" -> "yamlfmt \"$filePath\""
-            "stylelint --fix" -> "npx stylelint --fix \"$filePath\""
-            else -> null
+        val json = prefs.getString(KEY_SELECTIONS, null)
+        val selections = if (json != null) {
+            try { org.json.JSONObject(json) } catch (_: Exception) { org.json.JSONObject() }
+        } else {
+            org.json.JSONObject()
         }
+        val selectedName = selections.optString(language.name, availableFormatters[language]?.firstOrNull()?.name ?: "")
+        return availableFormatters[language]?.find { it.name == selectedName }
+            ?: availableFormatters[language]?.firstOrNull()
+            ?: FormatterOption("built-in", null, null)
+    }
+
+    /** Set the user's preferred formatter for a language. */
+    fun setSelectedFormatter(context: Context, language: Language, formatterName: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString(KEY_SELECTIONS, null)
+        val selections = if (json != null) {
+            try { org.json.JSONObject(json) } catch (_: Exception) { org.json.JSONObject() }
+        } else {
+            org.json.JSONObject()
+        }
+        selections.put(language.name, formatterName)
+        prefs.edit().putString(KEY_SELECTIONS, selections.toString()).apply()
+    }
+
+    /** Check if a language has a built-in fallback formatter (no external tool needed). */
+    fun hasFallbackFormatter(language: Language): Boolean {
+        return language in listOf(Language.C, Language.CPP, Language.MARKDOWN, Language.YAML,
+            Language.SQL, Language.DART, Language.SWIFT, Language.PHP, Language.RUBY, Language.TOML,
+            Language.PLAINTEXT)
     }
 
     /**
-     * Check if a formatter is a fallback (non-LSP) formatter.
+     * Built-in fallback formatter — normalizes indentation (tabs→spaces or vice versa)
+     * and trims trailing whitespace. No external tool needed.
      */
-    fun isFallbackFormatter(formatter: String): Boolean = formatter != "lsp"
-
-    /**
-     * Get all configured languages (those with saved preferences).
-     */
-    fun getConfiguredLanguages(context: Context): Map<String, String> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val result = mutableMapOf<String, String>()
-        prefs.all.forEach { (key, value) ->
-            if (key.startsWith("formatter_") && value is String) {
-                result[key.removePrefix("formatter_")] = value
+    fun fallbackFormat(content: String, indentSize: Int = 4): String {
+        val lines = content.split("\n")
+        val formatted = lines.map { line ->
+            // Trim trailing whitespace
+            val trimmed = line.trimEnd()
+            // Convert tabs to spaces (or keep tabs if line starts with tabs consistently)
+            if (trimmed.contains("\t")) {
+                trimmed.replace("\t", " ".repeat(indentSize))
+            } else {
+                trimmed
             }
         }
-        return result
+        // Ensure file ends with single newline
+        val joined = formatted.joinToString("\n")
+        return if (joined.isNotEmpty() && !joined.endsWith("\n")) "$joined\n" else joined
     }
 }
