@@ -32,6 +32,7 @@ object FileIndexer {
     private var state = IndexState()
     private val lock = Any()
     private var indexJob: Job? = null
+    private var fileIndexerScope: CoroutineScope? = null
 
     // Source file extensions to index
     private val sourceExtensions = setOf(
@@ -83,6 +84,7 @@ object FileIndexer {
      * Cancels any previous indexing job.
      */
     fun startIndexing(workspacePath: String, scope: CoroutineScope) {
+        fileIndexerScope = scope
         indexJob?.cancel()
         synchronized(lock) {
             symbols.clear()
@@ -267,7 +269,7 @@ object FileIndexer {
      * When files are modified, added, or deleted outside the editor,
      * re-index only the changed files for efficient incremental updates.
      */
-    fun startFileWatcher(workspacePath: String) {
+    fun startFileWatcher(workspacePath: String, scope: CoroutineScope) {
         watcherJob?.cancel()
         val root = File(workspacePath)
         if (!root.exists()) return
@@ -281,7 +283,7 @@ object FileIndexer {
 
         watcherJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
-                kotlinx.coroutines.delay(5000) // Check every 5 seconds
+                delay(5000) // Check every 5 seconds
                 if (!isActive) break
 
                 val changed = mutableListOf<File>()
