@@ -1194,6 +1194,7 @@ fun ProjectShellScreen(
                     terminalCommandToRunMs = terminalCommandToRunMs,
                     buildProblemsMs = buildProblemsMs,
                     formatOnSaveTrigger = formatOnSaveTrigger,
+                    udm = com.codespace.ide.debug.UniversalDebugManager,
                 )
             } // end main Row (editor + optional chat panel)
 
@@ -2311,19 +2312,24 @@ private fun buildRunCommand(path: String): String? {
     LaunchedEffect(logCount) {
         if (logCount > 0) listState.animateScrollToItem((logCount - 1).coerceAtLeast(0))
     }
+    // P44-5: Dark theme colors — was using light theme (0xFFF5F5F5, 0xFF424242)
+    val headerBg = Color(0xFF1E1E1E)
+    val headerText = Color(0xFF858585)
+    val dividerClr = Color(0xFF2D2D30)
+    val logText = Color(0xFFD4D4D4)
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("OUTPUT", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.Delete, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp).clickable { AppOutputLog.clear() })
+        Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
+            Icon(Icons.Default.Delete, null, tint = headerText, modifier = Modifier.size(16.dp).clickable { AppOutputLog.clear() })
         }
-        HorizontalDivider(color = Color(0xFFE0E0E0))
+        HorizontalDivider(color = dividerClr)
         LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = listState) {
             // P31-CRASH-FIX: Use itemCount + index-based access with bounds check.
             // If the list shrinks between composition and item access, the lazy
             // layout handles it gracefully instead of crashing.
             items(logCount) { index ->
                 val line = if (index < logs.size) logs[index] else return@items
-                Text(line, fontSize = 12.sp, color = Color(0xFF424242), fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp))
+                Text(line, fontSize = 12.sp, color = logText, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp))
             }
         }
     }
@@ -2898,6 +2904,7 @@ private fun PssEditorColumn(
     terminalCommandToRunMs: MutableState<String?>,
     buildProblemsMs: MutableState<List<Problem>>,
     formatOnSaveTrigger: Int,
+    udm: com.codespace.ide.debug.UniversalDebugManager? = null,
 ) {
     val density = LocalDensity.current
     // Color param aliases — body code uses PascalCase originals, params are camelCase
@@ -3216,6 +3223,7 @@ private fun PssEditorColumn(
                     // auto-send the generated prompt.
                     onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
                     formatOnSaveTrigger = formatOnSaveTrigger,
+                    udm = udm,
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
