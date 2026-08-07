@@ -1555,6 +1555,40 @@ fun EditorPane(
                         lspFoldingRanges = lspFoldingRanges,
                         // P26-1: LSP Code Lens
                         lspCodeLenses = lspCodeLenses,
+                        // P41-N: CodeLens click — resolve if needed, then execute command
+                        onCodeLensClick = if (LspManager.isServerRunning(active.language)) {
+                            { lensJson ->
+                                val cmd = lensJson.optJSONObject("command")
+                                val cmdStr = cmd?.optString("command", null)
+                                if (cmdStr != null) {
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val args = cmd?.opt("arguments") as? org.json.JSONArray
+                                        try {
+                                            LspManager.executeCommand(active.language, cmdStr, args)
+                                        } catch (e: Exception) {
+                                            AppOutputLog.log("[LSP] CodeLens command '$cmdStr' failed: ${e.message}", "lsp")
+                                        }
+                                    }
+                                } else if (lensJson.has("data")) {
+                                    // Lens has data but no command — resolve it
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        try {
+                                            val resolved = LspManager.resolveCodeLens(active.language, lensJson)
+                                            if (resolved != null) {
+                                                val rCmd = resolved.optJSONObject("command")
+                                                val rCmdStr = rCmd?.optString("command", null)
+                                                if (rCmdStr != null) {
+                                                    val rArgs = rCmd?.opt("arguments") as? org.json.JSONArray
+                                                    LspManager.executeCommand(active.language, rCmdStr, rArgs)
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            AppOutputLog.log("[LSP] CodeLens resolve failed: ${e.message}", "lsp")
+                                        }
+                                    }
+                                }
+                            }
+                        } else null,
                         // P26-1: LSP Inlay Hints
                         lspInlayHints = lspInlayHints,
                         // P26-1: LSP Document Links
