@@ -8682,12 +8682,19 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [x] Provider wiring in EditorPane
 - [x] Data classes + parsers in LspIntegration (CallHierarchyItem, IncomingCall, OutgoingCall, TypeHierarchyItem)
 
-### Phase N — CodeLens
-- [ ] Render CodeLens from `getCodeLens()` results
-- [ ] Reference count lens
-- [ ] Implementation count lens
-- [ ] Run/Test buttons lens
-- [ ] Git blame lens
+### Phase N — CodeLens ✅ DONE (commit 030c3b05)
+- [x] Render CodeLens from `getCodeLens()` results — already done (P26-1)
+- [x] Reference count lens — rendered by LSP server, already shown
+- [x] Implementation count lens — rendered by LSP server, already shown
+- [x] Run/Test buttons lens — now clickable (P41-N: executeCommand + resolveCodeLens)
+- [x] Git blame lens — already done (P20-A: blameData in CodeEditor)
+
+**P41-N additions:**
+- `LspManager.resolveCodeLens()` — resolve data-only lens entries via `codeLens/resolve`
+- `LspManager.executeCommand()` — execute LSP commands via `workspace/executeCommand`
+- `CodeLensData` data class + `parseCodeLensItems()` parser in LspIntegration
+- CodeLens clickable in CodeEditor — tapping a lens with a command executes it
+- EditorPane wires `onCodeLensClick` — resolves lens if needed, then executes command
 
 ### Phase O — AI Features
 - [ ] Explain Code action (send selection to AI, show in chat)
