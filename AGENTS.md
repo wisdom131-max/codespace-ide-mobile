@@ -8737,6 +8737,7 @@ Latest pushes: Phase H (icon audit) + Phase I (dynamic snippets). SnippetEngine.
 - **#432-#437** (2026-06-27): Early Ubuntu extraction / OOM crashes
 - **#967-#974** (2026-07-13): CopilotChatPanelOverlay.kt compilation errors
 - **#1819-#1825** (2026-08-06): GhostTextOverlay extraction — `forEachIndexed` missing 2nd parameter
+- **#1828-#1849** (2026-08-06): GitHub Actions outage (Service Unavailable) → build #1849 real compilation error: stray comma in modifier chain
 
 ### Notable green milestones
 - **#12** (2026-06-20): First successful APK build
@@ -8745,6 +8746,19 @@ Latest pushes: Phase H (icon audit) + Phase I (dynamic snippets). SnippetEngine.
 
 ---
 
+
+### Error Trace Log Entry
+| Field | Value |
+|-------|-------|
+| Feature | P41-I Snippet tab-stop navigation |
+| File | `CodeEditor.kt` — BasicTextField modifier chain |
+| Line | 1288 |
+| Symptom | Build #1849: `e: CodeEditor.kt:1290:25 Expecting an expression`, `Expecting ')'`, `1339:26 Unexpected tokens`, `1340:17 Expecting an element` — 4 compilation errors |
+| Root Cause | After `.pointerInput(Unit) { detectTapGestures(...) }` the closing brace had a trailing comma: `},`. This terminated the `modifier =` parameter prematurely, making `.onPreviewKeyEvent { event -> }` on the next line a standalone expression — invalid Kotlin. |
+| Fix Commit | `9a17918a` |
+| Lesson | In a Compose `modifier = Modifier.xxx().yyy()` chain, NO commas should appear between chained `.method()` calls. A comma after a `}` in the chain terminates the entire parameter assignment. When inserting a new `.onPreviewKeyEvent` or `.onKeyEvent` after an existing `.pointerInput { }` block, remove any trailing comma on the closing `}` line. |
+
+---
 
 <!-- CI trigger: verify Phase 41 fix commits compile (builds #1819-#1826 deleted, never verified) -->
 
