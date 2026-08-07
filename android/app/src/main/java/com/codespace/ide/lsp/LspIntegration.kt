@@ -524,6 +524,62 @@ public fun applyLspTextEdits(text: String, textEdits: JSONArray): String {
 }
 
 
+
+
+/**
+ * P41-Q: Apply a WorkspaceEdit JSON to current file text AND write other-file edits to disk.
+ * Returns Pair(newText, appliedAny) — if appliedAny is false, nothing changed.
+ * Unlike applyWorkspaceEdit (current-file-only), this also writes edits to other files on disk.
+ */
+fun applyWorkspaceEditToFilesystem(
+    wsEdit: JSONObject,
+    currentText: String,
+    currentFilePath: String,
+): Pair<String, Boolean> {
+    var newText = currentText
+    var appliedAny = false
+    val docChanges = wsEdit.optJSONArray("documentChanges")
+    val changes = wsEdit.optJSONObject("changes")
+    if (docChanges != null) {
+        for (i in 0 until docChanges.length()) {
+            val dc = docChanges.optJSONObject(i) ?: continue
+            val editUri = dc.optString("uri", "")
+            val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+            val decodedPath = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+            val textEdits = dc.optJSONArray("edits") ?: continue
+            if (decodedPath == currentFilePath) {
+                newText = applyLspTextEdits(newText, textEdits)
+                appliedAny = true
+            } else {
+                try {
+                    val targetText = java.io.File(decodedPath).readText()
+                    val updated = applyLspTextEdits(targetText, textEdits)
+                    java.io.File(decodedPath).writeText(updated)
+                } catch (_: Exception) {}
+            }
+        }
+    } else if (changes != null) {
+        val keys = changes.keys()
+        while (keys.hasNext()) {
+            val editUri = keys.next()
+            val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
+            val decodedPath = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
+            val textEdits = changes.optJSONArray(editUri) ?: continue
+            if (decodedPath == currentFilePath) {
+                newText = applyLspTextEdits(newText, textEdits)
+                appliedAny = true
+            } else {
+                try {
+                    val targetText = java.io.File(decodedPath).readText()
+                    val updated = applyLspTextEdits(targetText, textEdits)
+                    java.io.File(decodedPath).writeText(updated)
+                } catch (_: Exception) {}
+            }
+        }
+    }
+    return Pair(newText, appliedAny)
+}
+
 // ── P41-K: Completion Item Resolver ─────────────────────────────────────────
 
 /**
