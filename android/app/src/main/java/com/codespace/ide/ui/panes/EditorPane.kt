@@ -1306,6 +1306,78 @@ fun EditorPane(
                         lspRequestIdProvider = if (LspManager.isServerRunning(active.language)) {
                             { -> LspManager.getPendingRequestId(active.language) }
                         } else null,
+                        // P41-M: Call Hierarchy — prepare call hierarchy at cursor
+                        onPrepareCallHierarchy = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val items = try {
+                                        LspManager.prepareCallHierarchy(active.language, uri, line, col)
+                                    } catch (_: Exception) { null }
+                                    items?.let { com.codespace.ide.lsp.parseCallHierarchyItems(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P41-M: Call Hierarchy — incoming calls (who calls this)
+                        onCallHierarchyIncoming = if (LspManager.isServerRunning(active.language)) {
+                            { item ->
+                                val itemJson = try { org.json.JSONObject(item.rawJson) } catch (_: Exception) { null }
+                                if (itemJson != null) {
+                                    val result = try {
+                                        LspManager.callHierarchyIncoming(active.language, itemJson)
+                                    } catch (_: Exception) { null }
+                                    result?.let { com.codespace.ide.lsp.parseIncomingCalls(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P41-M: Call Hierarchy — outgoing calls (what this calls)
+                        onCallHierarchyOutgoing = if (LspManager.isServerRunning(active.language)) {
+                            { item ->
+                                val itemJson = try { org.json.JSONObject(item.rawJson) } catch (_: Exception) { null }
+                                if (itemJson != null) {
+                                    val result = try {
+                                        LspManager.callHierarchyOutgoing(active.language, itemJson)
+                                    } catch (_: Exception) { null }
+                                    result?.let { com.codespace.ide.lsp.parseOutgoingCalls(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P41-M: Type Hierarchy — prepare type hierarchy at cursor
+                        onPrepareTypeHierarchy = if (LspManager.isServerRunning(active.language)) {
+                            { line, col ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val items = try {
+                                        LspManager.prepareTypeHierarchy(active.language, uri, line, col)
+                                    } catch (_: Exception) { null }
+                                    items?.let { com.codespace.ide.lsp.parseTypeHierarchyItems(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P41-M: Type Hierarchy — supertypes (parent classes)
+                        onTypeHierarchySupertypes = if (LspManager.isServerRunning(active.language)) {
+                            { item ->
+                                val itemJson = try { org.json.JSONObject(item.rawJson) } catch (_: Exception) { null }
+                                if (itemJson != null) {
+                                    val result = try {
+                                        LspManager.typeHierarchySupertypes(active.language, itemJson)
+                                    } catch (_: Exception) { null }
+                                    result?.let { com.codespace.ide.lsp.parseTypeHierarchyItems(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
+                        // P41-M: Type Hierarchy — subtypes (child classes)
+                        onTypeHierarchySubtypes = if (LspManager.isServerRunning(active.language)) {
+                            { item ->
+                                val itemJson = try { org.json.JSONObject(item.rawJson) } catch (_: Exception) { null }
+                                if (itemJson != null) {
+                                    val result = try {
+                                        LspManager.typeHierarchySubtypes(active.language, itemJson)
+                                    } catch (_: Exception) { null }
+                                    result?.let { com.codespace.ide.lsp.parseTypeHierarchyItems(it) } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } else null,
                         // P37-4 + P39-FULL: LSP Code Actions (quick fixes in context menu)
                         // Requests ALL action kinds (no `only` filter) so the menu shows
                         // everything the server can do at this position.
