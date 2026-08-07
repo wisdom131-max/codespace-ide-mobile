@@ -176,6 +176,16 @@ fun SourceControlPane(projectId: String) {
     var initializing  by remember { mutableStateOf(false) }
     var initError     by remember { mutableStateOf<String?>(null) }
 
+    // P43: Clone + Sign-in + Browse Repos
+    var cloneUrl        by remember { mutableStateOf("") }
+    var cloning         by remember { mutableStateOf(false) }
+    var cloneError      by remember { mutableStateOf<String?>(null) }
+    var showSignInDialog  by remember { mutableStateOf(false) }
+    var showRepoBrowser   by remember { mutableStateOf(false) }
+    var repos           by remember { mutableStateOf<List<com.codespace.ide.data.GitHubAuth.RepoInfo>>(emptyList()) }
+    var loadingRepos    by remember { mutableStateOf(false) }
+    var repoSearchQuery by remember { mutableStateOf("") }
+
     // P43-Publish: Publish to GitHub state
     var showPublishDialog by remember { mutableStateOf(false) }
     var publishRepoName   by remember { mutableStateOf("") }
@@ -546,7 +556,7 @@ fun SourceControlPane(projectId: String) {
                                 }
                                 initializing = false
                                 if (result.startsWith("Exit code") || result.startsWith("Error")) {
-                                    initError = "git init failed: ${'$'}{result.take(100)}"
+                                    initError = "git init failed: " + result.take(100)
                                 } else {
                                     isGitRepo = true
                                     refresh++
@@ -600,14 +610,13 @@ fun SourceControlPane(projectId: String) {
                                     return@launch
                                 }
                                 val repoName = url.substringAfterLast("/").removeSuffix(".git").ifBlank { "cloned-repo" }
-                                val targetGuest = "/root/${'$'}repoName"
                                 val guestWorkspace = ProotInstaller.hostToGuestPath(context, repoDir.absolutePath) ?: "/root"
                                 val result = withContext(Dispatchers.IO) {
-                                    ProotInstaller.execOnce(context, "git clone '${'$'}url' '${'$'}repoName'", guestWorkspace)
+                                    ProotInstaller.execOnce(context, "git clone '" + url + "' '" + repoName + "'", guestWorkspace)
                                 }
                                 cloning = false
                                 if (result.startsWith("Exit code") || result.startsWith("Error")) {
-                                    cloneError = "Clone failed: ${'$'}{result.take(200)}"
+                                    cloneError = "Clone failed: " + result.take(200)
                                 } else {
                                     cloneUrl = ""
                                     isGitRepo = true
@@ -635,10 +644,9 @@ fun SourceControlPane(projectId: String) {
                 Spacer(Modifier.height(12.dp))
                 val ghToken = remember { SecureTokenStore(context).githubToken }
                 if (ghToken != null && ghToken.isNotBlank()) {
-                    // Already signed in — show Browse My Repos
                     val ghUser = remember { SecureTokenStore(context).githubUsername }
                     val userLabel = ghUser ?: "GitHub user"
-                    Text("Connected as $userLabel", fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center)
+                    Text("Connected as " + userLabel, fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(6.dp))
                     Button(
                         onClick = {
@@ -648,7 +656,7 @@ fun SourceControlPane(projectId: String) {
                                     repos = com.codespace.ide.data.GitHubAuth.listUserRepos(ghToken)
                                     showRepoBrowser = true
                                 } catch (e: Exception) {
-                                    cloneError = "Failed to load repos: ${'$'}{e.message}"
+                                    cloneError = "Failed to load repos: " + (e.message ?: "")
                                 }
                                 loadingRepos = false
                             }
@@ -662,7 +670,6 @@ fun SourceControlPane(projectId: String) {
                         Text("Browse My Repos", fontSize = 12.sp, color = Color.White)
                     }
                 } else {
-                    // Not signed in — show Sign in with GitHub
                     Button(
                         onClick = { showSignInDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F)),
@@ -697,7 +704,7 @@ fun SourceControlPane(projectId: String) {
                 }
                 publishSuccess?.let { url ->
                     Spacer(Modifier.height(6.dp))
-                    Text("✓ Published: ${'$'}url", fontSize = 10.sp, color = UntrackedColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("Published: " + url, fontSize = 10.sp, color = UntrackedColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 publishError?.let { err ->
                     Spacer(Modifier.height(4.dp))
@@ -705,6 +712,7 @@ fun SourceControlPane(projectId: String) {
                 }
             }
             HorizontalDivider(color = DividerColor)
+        } else if (statusError != null) {
         } else if (statusError != null) {
         } else if (statusError != null) {
             // ── Error banner (only shown if it IS a git repo but something went wrong) ──
@@ -1191,6 +1199,55 @@ fun SourceControlPane(projectId: String) {
         )
     }
 
+
+    // ── P43: GitHub Sign-in Dialog (Device Flow) ────────────────────────────
+    if (showSignInDialog) {
+        GitHubSignInDialog(
+            onDismiss = { showSignInDialog = false },
+            onSuccess = {
+                scope.launch {
+                    loadingRepos = true
+                    try {
+                        val token = SecureTokenStore(context).githubToken
+                        if (token != null) {
+                            repos = com.codespace.ide.data.GitHubAuth.listUserRepos(token)
+                            showRepoBrowser = true
+                        }
+                    } catch (_: Exception) {}
+                    loadingRepos = false
+                }
+            }
+        )
+    }
+
+    // ── P43: Repo Browser Dialog ─────────────────────────────────────────────
+    if (showRepoBrowser) {
+        GitHubRepoBrowserDialog(
+            repos = repos,
+            searchQuery = repoSearchQuery,
+            onSearchChange = { repoSearchQuery = it },
+            onDismiss = { showRepoBrowser = false; repoSearchQuery = "" },
+            onClone = { repoUrl ->
+                showRepoBrowser = false; repoSearchQuery = ""
+                scope.launch {
+                    cloning = true; cloneError = null
+                    val repoName = repoUrl.substringAfterLast("/").removeSuffix(".git").ifBlank { "cloned-repo" }
+                    val guestWorkspace = ProotInstaller.hostToGuestPath(context, repoDir.absolutePath) ?: "/root"
+                    val result = withContext(Dispatchers.IO) {
+                        ProotInstaller.execOnce(context, "git clone '" + repoUrl + "' '" + repoName + "'", guestWorkspace)
+                    }
+                    cloning = false
+                    if (result.startsWith("Exit code") || result.startsWith("Error")) {
+                        cloneError = "Clone failed: " + result.take(200)
+                    } else {
+                        isGitRepo = true
+                        refresh++
+                    }
+                }
+            }
+        )
+    }
+
 }
 
 // ══ Shared sub-composables ════════════════════════════════════════════════════
@@ -1495,4 +1552,191 @@ private fun GitHubRepoBrowserDialog(
             }
         }
     }
+}
+
+
+// ── P43: GitHub Sign-in Dialog (OAuth Device Flow UI) ──────────────────────────
+@Composable
+private fun GitHubSignInDialog(
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var phase by remember { mutableStateOf("idle") }
+    var deviceCode by remember { mutableStateOf<com.codespace.ide.data.GitHubAuth.DeviceCode?>(null) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (phase != "polling") onDismiss()
+        },
+        title = { Text("Sign in to GitHub", fontSize = 14.sp) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                when (phase) {
+                    "idle" -> {
+                        Text("Sign in with GitHub to clone your repos, push, and pull.", fontSize = 12.sp, color = Color(0xFF717171))
+                        Spacer(Modifier.height(8.dp))
+                        Text("You will get a short code to enter at github.com/login/device.", fontSize = 11.sp, color = Color(0xFF999999))
+                    }
+                    "code", "polling" -> {
+                        deviceCode?.let { dc ->
+                            Text("Enter this code at:", fontSize = 11.sp, color = Color(0xFF717171))
+                            Spacer(Modifier.height(4.dp))
+                            Text(dc.verificationUri, fontSize = 13.sp, color = Color(0xFF007ACC), fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Your code:", fontSize = 11.sp, color = Color(0xFF717171))
+                            Spacer(Modifier.height(4.dp))
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF0F0F0))
+                                    .padding(12.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    dc.userCode,
+                                    fontSize = 24.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 3.sp,
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            if (phase == "polling") {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Waiting for approval...", fontSize = 11.sp, color = Color(0xFF717171))
+                                }
+                            }
+                        }
+                    }
+                    "done" -> {
+                        Text("Signed in successfully!", fontSize = 12.sp, color = Color(0xFF73C991))
+                    }
+                    "error" -> {
+                        Text(errorMsg ?: "Sign-in failed.", fontSize = 12.sp, color = Color(0xFFF48771))
+                    }
+                    else -> {}
+                }
+            }
+        },
+        confirmButton = {
+            when (phase) {
+                "idle" -> {
+                    TextButton(onClick = {
+                        scope.launch {
+                            phase = "code"
+                            try {
+                                val dc = com.codespace.ide.data.GitHubAuth.requestDeviceCode()
+                                deviceCode = dc
+                                phase = "polling"
+                                val token = com.codespace.ide.data.GitHubAuth.pollForToken(dc)
+                                val username = com.codespace.ide.data.GitHubAuth.fetchUsername(token)
+                                val store = com.codespace.ide.data.SecureTokenStore(context)
+                                store.githubToken = token
+                                store.githubUsername = username
+                                phase = "done"
+                                onSuccess()
+                                onDismiss()
+                            } catch (e: Exception) {
+                                errorMsg = e.message
+                                phase = "error"
+                            }
+                        }
+                    }) { Text("Get Code") }
+                }
+                "error" -> {
+                    TextButton(onClick = { phase = "idle"; errorMsg = null }) { Text("Retry") }
+                }
+                "done" -> {
+                    TextButton(onClick = onDismiss) { Text("Done") }
+                }
+                else -> {}
+            }
+        },
+        dismissButton = {
+            if (phase != "polling") {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+// ── P43: GitHub Repo Browser Dialog ─────────────────────────────────────────────
+@Composable
+private fun GitHubRepoBrowserDialog(
+    repos: List<com.codespace.ide.data.GitHubAuth.RepoInfo>,
+    searchQuery: String,
+    onSearchChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onClone: (String) -> Unit,
+) {
+    val filtered = remember(repos, searchQuery) {
+        if (searchQuery.isBlank()) repos
+        else repos.filter { it.name.contains(searchQuery, ignoreCase = true) || it.fullName.contains(searchQuery, ignoreCase = true) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Cloud, null, tint = Color(0xFF24292F), modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Your Repositories", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text(filtered.size.toString(), fontSize = 11.sp, color = Color(0xFF717171))
+            }
+        },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    placeholder = { Text("Search repos...", fontSize = 12.sp) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(16.dp)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    items(filtered) { repo ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { onClone(repo.cloneUrl) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (repo.isPrivate) Icons.Default.Lock else Icons.Default.Public,
+                                null,
+                                tint = if (repo.isPrivate) Color(0xFFD29922) else Color(0xFF73C991),
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(repo.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                repo.description?.let { desc ->
+                                    Text(desc, fontSize = 10.sp, color = Color(0xFF999999), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            if (repo.stars > 0) {
+                                Text("* " + repo.stars, fontSize = 10.sp, color = Color(0xFF999999))
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Icon(Icons.Default.Download, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp))
+                        }
+                        HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 0.5.dp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+    )
 }
