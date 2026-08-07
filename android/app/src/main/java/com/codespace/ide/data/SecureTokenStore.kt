@@ -48,7 +48,7 @@ class SecureTokenStore @Inject constructor(
     /** SHA-256 hash of the user's PIN (null = no PIN registered) */
     var pinHash: String?
         get() = prefs.getString(KEY_PIN_HASH, null)
-        set(value) = {
+        set(value) {
             if (value != null) prefs.edit().putString(KEY_PIN_HASH, value).apply()
             else prefs.edit().remove(KEY_PIN_HASH).apply()
         }

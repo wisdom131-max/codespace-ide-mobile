@@ -222,6 +222,7 @@ dependencies {
     // Security (Keystore-backed encrypted storage)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    implementation("androidx.fragment:fragment-ktx:1.8.2")
 
     // Git (on-device)
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")

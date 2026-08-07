@@ -4225,7 +4225,7 @@ private fun GotoDefinitionDialog(
 
 
 @Composable
-private fun BottomPanels(
+private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
     findRefWord: String?,
     findRefLoading: Boolean,
     findRefUsedLsp: Boolean,
@@ -4236,8 +4236,8 @@ private fun BottomPanels(
     onOpenFileAtLine: (String, Int) -> Unit,
     showCallHierarchy: Boolean,
     callHierarchyRoot: CallHierarchyItem?,
-    callHierarchyIncoming: List<com.codespace.ide.lsp.CallHierarchyItem>,
-    callHierarchyOutgoing: List<com.codespace.ide.lsp.CallHierarchyItem>,
+    callHierarchyIncoming: List<com.codespace.ide.lsp.IncomingCall>,
+    callHierarchyOutgoing: List<com.codespace.ide.lsp.OutgoingCall>,
     onDismissCallHierarchy: () -> Unit,
     showTypeHierarchy: Boolean,
     typeHierarchyRoot: TypeHierarchyItem?,
