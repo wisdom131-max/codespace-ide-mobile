@@ -1960,7 +1960,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // ── Minimap toggle button + realistic minimap ──────────────────────────
-        val textLines = remember(value.text) { value.text.split("\n") }
         val lineCountTotal = textLines.size
 
         // Scale: each minimap line = 2.dp when file is small, shrinks for large files
@@ -3268,329 +3267,60 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             },
         )
 
-        // ── Go to Line Bar ──────────────────────────────────────────────────
-        if (goToLineOpen) {
-            val lineCount2 = remember(value.text) { value.text.count { it == '\n' } + 1 }
-            Row(
-                modifier = androidx.compose.ui.Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Color(0xFF252526))
-                    .border(1.dp, Color(0xFF3C3C3C))
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                    .zIndex(21f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    "Go to line:",
-                    color = Color(0xFF888888),
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-                androidx.compose.foundation.text.BasicTextField(
-                    value = goToLineInput,
-                    onValueChange = { v ->
-                        if (v.all { it.isDigit() } || v.isEmpty()) goToLineInput = v
-                    },
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        color = Color(0xFFD4D4D4),
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                    ),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Go,
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onGo = {
-                            val target = goToLineInput.toIntOrNull() ?: return@KeyboardActions
-                            val clamped = target.coerceIn(1, lineCount2)
-                            val lines2 = value.text.split("\n")
-                            val offset = lines2.take(clamped - 1).sumOf { it.length + 1 }
-                            val safeOffset = offset.coerceAtMost(value.text.length)
-                            value = value.copy(
-                                selection = androidx.compose.ui.text.TextRange(safeOffset),
-                            )
-                            coroutineScope.launch {
-                                val localLineHeightPx = fontSize * 2.0f
-                                vScroll.animateScrollTo(((clamped - 1) * localLineHeightPx).toInt())
-                            }
-                            goToLineInput = ""
-                            onGoToLineClose()
-                        },
-                    ),
-                    decorationBox = { inner ->
-                        Box(
-                            modifier = androidx.compose.ui.Modifier
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            if (goToLineInput.isEmpty()) Text(
-                                "1 – $lineCount2",
-                                color = Color(0xFF666666),
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                            inner()
-                        }
-                    },
-                    modifier = androidx.compose.ui.Modifier
-                        .width(100.dp)
-                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
-                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
-                )
-                Text(
-                    "of $lineCount2",
-                    color = Color(0xFF888888),
-                    fontSize = 11.sp,
-                )
-                Spacer(modifier = androidx.compose.ui.Modifier.weight(1f))
-                IconButton(
-                    onClick = { goToLineInput = ""; onGoToLineClose() },
-                    modifier = androidx.compose.ui.Modifier.size(28.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Close, null,
-                        tint = Color(0xFF888888),
-                        modifier = androidx.compose.ui.Modifier.size(16.dp),
-                    )
+        GotoLineBar(
+            goToLineOpen = goToLineOpen,
+            goToLineInput = goToLineInput,
+            onGoToLineInputChange = { goToLineInput = it },
+            text = value.text,
+            fontSize = fontSize,
+            vScrollValue = vScroll.value,
+            onJumpToLine = { offset, line ->
+                value = value.copy(selection = TextRange(offset))
+                coroutineScope.launch {
+                    val localLineHeightPx = fontSize * 2.0f
+                    vScroll.animateScrollTo(((line - 1) * localLineHeightPx).toInt())
                 }
-            }
-        }
+                goToLineInput = ""
+                onGoToLineClose()
+            },
+        )
 
-        // ── Find & Replace Bar ───────────────────────────────────────────
-        if (findReplaceOpen) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Color(0xFF252526))
-                    .border(1.dp, Color(0xFF3C3C3C))
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                    .zIndex(20f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                // Row 1 — Search
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    val matchLabel = when {
-                        findQuery.isEmpty() -> ""
-                        matches.isEmpty() -> "No results"
-                        else -> "${matchIndex + 1}/${matches.size}"
-                    }
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = findQuery,
-                        onValueChange = { findQuery = it; matchIndex = 0 },
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = Color(0xFFD4D4D4),
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        decorationBox = { inner ->
-                            Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                if (findQuery.isEmpty()) Text(
-                                    "Find",
-                                    color = Color(0xFF666666),
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                inner()
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
-                            .border(
-                                1.dp,
-                                if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400)
-                                else Color(0xFF3C3C3C),
-                                RoundedCornerShape(3.dp),
-                            ),
-                    )
-                    Text(
-                        matchLabel,
-                        color = Color(0xFF888888),
-                        fontSize = 10.sp,
-                        modifier = Modifier.widthIn(min = 52.dp),
-                    )
-                    // Regex toggle
-                    IconButton(
-                        onClick = { useRegex = !useRegex },
-                        modifier = Modifier.size(28.dp),
-                    ) {
-                        Text(
-                            ".*",
-                            color = if (useRegex) Color(0xFF007ACC) else Color(0xFF888888),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                    // Prev
-                    IconButton(
-                        onClick = {
-                            if (matches.isNotEmpty()) {
-                                matchIndex = (matchIndex - 1 + matches.size) % matches.size
-                                val range = matches[matchIndex]
-                                value = value.copy(
-                                    selection = androidx.compose.ui.text.TextRange(range.first, range.last + 1),
-                                )
-                            }
-                        },
-                        modifier = Modifier.size(28.dp),
-                        enabled = matches.isNotEmpty(),
-                    ) {
-                        Icon(
-                            Icons.Default.KeyboardArrowUp, null,
-                            tint = if (matches.isNotEmpty()) Color(0xFFD4D4D4) else Color(0xFF555555),
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    // Next
-                    IconButton(
-                        onClick = {
-                            if (matches.isNotEmpty()) {
-                                matchIndex = (matchIndex + 1) % matches.size
-                                val range = matches[matchIndex]
-                                value = value.copy(
-                                    selection = androidx.compose.ui.text.TextRange(range.first, range.last + 1),
-                                )
-                            }
-                        },
-                        modifier = Modifier.size(28.dp),
-                        enabled = matches.isNotEmpty(),
-                    ) {
-                        Icon(
-                            Icons.Default.KeyboardArrowDown, null,
-                            tint = if (matches.isNotEmpty()) Color(0xFFD4D4D4) else Color(0xFF555555),
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    // Close
-                    IconButton(
-                        onClick = {
-                            findQuery = ""
-                            replaceQuery = ""
-                            onFindReplaceClose()
-                        },
-                        modifier = Modifier.size(28.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Close, null,
-                            tint = Color(0xFF888888),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-                // Row 2 — Replace
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = replaceQuery,
-                        onValueChange = { replaceQuery = it },
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = Color(0xFFD4D4D4),
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        decorationBox = { inner ->
-                            Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                if (replaceQuery.isEmpty()) Text(
-                                    "Replace",
-                                    color = Color(0xFF666666),
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                inner()
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
-                            .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
-                    )
-                    // Replace current match
-                    TextButton(
-                        onClick = {
-                            if (matches.isNotEmpty()) {
-                                val range = matches[matchIndex]
-                                val newText = value.text.substring(0, range.first) +
-                                    replaceQuery +
-                                    value.text.substring(range.last + 1)
-                                val cursor = range.first + replaceQuery.length
-                                value = TextFieldValue(
-                                    text = newText,
-                                    selection = androidx.compose.ui.text.TextRange(cursor),
-                                )
-                                onContentChange(newText)
-                            }
-                        },
-                        enabled = matches.isNotEmpty(),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            "Replace",
-                            color = if (matches.isNotEmpty()) Color(0xFF007ACC) else Color(0xFF555555),
-                            fontSize = 11.sp,
-                        )
-                    }
-                    // Replace all
-                    TextButton(
-                        onClick = {
-                            if (findQuery.isNotEmpty() && matches.isNotEmpty()) {
-                                val newText = try {
-                                    val pattern = if (useRegex) Regex(findQuery)
-                                                  else Regex(Regex.escape(findQuery))
-                                    pattern.replace(value.text, replaceQuery)
-                                } catch (e: Exception) { value.text }
-                                value = TextFieldValue(text = newText)
-                                onContentChange(newText)
-                            }
-                        },
-                        enabled = matches.isNotEmpty(),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            "All",
-                            color = if (matches.isNotEmpty()) Color(0xFF007ACC) else Color(0xFF555555),
-                            fontSize = 11.sp,
-                        )
-                    }
-                }
-            }
-        }
+        FindReplaceBar(
+            findReplaceOpen = findReplaceOpen,
+            findQuery = findQuery,
+            onFindQueryChange = { findQuery = it; matchIndex = 0 },
+            replaceQuery = replaceQuery,
+            onReplaceQueryChange = { replaceQuery = it },
+            useRegex = useRegex,
+            onToggleRegex = { useRegex = !useRegex },
+            matches = matches,
+            matchIndex = matchIndex,
+            onMatchIndexChange = { matchIndex = it },
+            text = value.text,
+            onTextChange = { newText, cursor ->
+                value = TextFieldValue(text = newText, selection = TextRange(cursor))
+                onContentChange(newText)
+            },
+            onSelectRange = { start, end ->
+                value = value.copy(selection = TextRange(start, end))
+            },
+            onFindReplaceClose = {
+                findQuery = ""
+                replaceQuery = ""
+                onFindReplaceClose()
+            },
+        )
 
-        // P39: Lightbulb indicator 💡 in the gutter shows when code actions are available
-        if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
-            val bulbTopDp = (lightbulbLine * fontSize * 1.25f) - vScroll.value
-            val bulbHeight = fontSize * 1.25f
-            // Only render if visible in viewport
-            if (bulbTopDp >= 0 && bulbTopDp < (displayLines.size + 5) * bulbHeight) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 6.dp, top = bulbTopDp.dp)
-                        .width(20.dp)
-                        .height(bulbHeight.dp)
-                        .clickable { showLightbulbMenu = true }
-                        .zIndex(9f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "💡",
-                        fontSize = (fontSize * 0.65f).sp,
-                    )
-                }
-            }
-        }
+        LightbulbIndicator(
+            lightbulbLine = lightbulbLine,
+            lspCodeActionProvider = lspCodeActionProvider,
+            showCompletions = showCompletions,
+            fontSize = fontSize,
+            vScrollValue = vScroll.value,
+            displayLinesSize = displayLines.size,
+            showLightbulbMenu = showLightbulbMenu,
+            onShowLightbulbMenu = { showLightbulbMenu = it },
+        )
         // P39: Lightbulb menu categorized action menu triggered by tapping the bulb
         DropdownMenu(
             expanded = showLightbulbMenu,
@@ -3791,80 +3521,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             )
         }
 
-        // ── P38: Compact LSP Hover popup — 2-line preview, scrollable, expand + copy ──
-        // Renders as a positioned overlay (NOT a Popup window) so it works in BOTH
-        // portrait and landscape — Popup windows can get clipped/z-ordered in landscape.
-        if (lspHoverContent != null && !showCompletions) {
-            val hoverScrollState = rememberScrollState()
-            var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
-            val cursorLineIdxHover = value.text.take(value.selection.end).count { it == '\n' }
-            val hoverTopDp = ((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScroll.value
-            // Only render if the popup would be within the visible viewport
-            if (hoverTopDp > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 74.dp, top = hoverTopDp.dp)
-                        .widthIn(max = 300.dp)
-                        .zIndex(12f)
-                        .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
-                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp)),
-                ) {
-                    Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
-                        // Top row: expand + copy buttons
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
-                        ) {
-                            // Expand/collapse button
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable { hoverExpanded = !hoverExpanded },
-                                contentAlignment = androidx.compose.ui.Alignment.Center,
-                            ) {
-                                Text(
-                                    text = if (hoverExpanded) "▾" else "▸",
-                                    color = Color(0xFF888888),
-                                    fontSize = 11.sp,
-                                )
-                            }
-                            Spacer(Modifier.width(2.dp))
-                            // Copy to clipboard button
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable {
-                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(lspHoverContent ?: ""))
-                                    },
-                                contentAlignment = androidx.compose.ui.Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "⧉",
-                                    color = Color(0xFF888888),
-                                    fontSize = 11.sp,
-                                )
-                            }
-                        }
-                        // Content: 2 lines when collapsed, full when expanded
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .then(if (hoverExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(hoverScrollState) else Modifier)
-                        ) {
-                            Text(
-                                text = lspHoverContent ?: "",
-                                color = Color(0xFFCCCCCC),
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = if (hoverExpanded) Int.MAX_VALUE else 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        HoverPopup(
+            lspHoverContent = lspHoverContent,
+            showCompletions = showCompletions,
+            fontSize = fontSize,
+            vScrollValue = vScroll.value,
+            cursorOffset = value.selection.end,
+            text = value.text,
+            clipboardManager = clipboardManager,
+        )
 
         // P41-I: Snippet choice dropdown — appears when active tab-stop has choices (${1|a,b,c|})
         if (snippetSession != null && showSnippetChoices) {
@@ -4712,4 +4377,416 @@ private fun BottomPanels(
     }
 }
 
+}
+
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.GotoLineBar(
+    goToLineOpen: Boolean,
+    goToLineInput: String,
+    onGoToLineInputChange: (String) -> Unit,
+    text: String,
+    fontSize: Int,
+    vScrollValue: Int,
+    onJumpToLine: (offset: Int, line: Int) -> Unit,
+) {
+    if (goToLineOpen) {
+        val lineCount2 = remember(text) { text.count { it == '\n' } + 1 }
+        Row(
+            modifier = androidx.compose.ui.Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(Color(0xFF252526))
+                .border(1.dp, Color(0xFF3C3C3C))
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .zIndex(21f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "Go to line:",
+                color = Color(0xFF888888),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+            androidx.compose.foundation.text.BasicTextField(
+                value = goToLineInput,
+                onValueChange = { v ->
+                    if (v.all { it.isDigit() } || v.isEmpty()) onGoToLineInputChange(v)
+                },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = Color(0xFFD4D4D4),
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                ),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Go,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onGo = {
+                        val target = goToLineInput.toIntOrNull() ?: return@KeyboardActions
+                        val clamped = target.coerceIn(1, lineCount2)
+                        val lines2 = text.split("\n")
+                        val offset = lines2.take(clamped - 1).sumOf { it.length + 1 }
+                        val safeOffset = offset.coerceAtMost(text.length)
+                        onJumpToLine(safeOffset, clamped)
+                    },
+                ),
+                decorationBox = { inner ->
+                    Box(
+                        modifier = androidx.compose.ui.Modifier
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        if (goToLineInput.isEmpty()) Text(
+                            "1 – $lineCount2",
+                            color = Color(0xFF666666),
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        inner()
+                    }
+                },
+                modifier = androidx.compose.ui.Modifier
+                    .width(100.dp)
+                    .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
+            )
+            Text(
+                "of $lineCount2",
+                color = Color(0xFF888888),
+                fontSize = 11.sp,
+            )
+            Spacer(modifier = androidx.compose.ui.Modifier.weight(1f))
+            IconButton(
+                onClick = { onGoToLineInputChange(""); },
+                modifier = androidx.compose.ui.Modifier.size(28.dp),
+            ) {
+                Icon(
+                    Icons.Default.Close, null,
+                    tint = Color(0xFF888888),
+                    modifier = androidx.compose.ui.Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
+    findReplaceOpen: Boolean,
+    findQuery: String,
+    onFindQueryChange: (String) -> Unit,
+    replaceQuery: String,
+    onReplaceQueryChange: (String) -> Unit,
+    useRegex: Boolean,
+    onToggleRegex: () -> Unit,
+    matches: List<IntRange>,
+    matchIndex: Int,
+    onMatchIndexChange: (Int) -> Unit,
+    text: String,
+    onTextChange: (newText: String, cursor: Int) -> Unit,
+    onSelectRange: (start: Int, end: Int) -> Unit,
+    onFindReplaceClose: () -> Unit,
+) {
+    if (findReplaceOpen) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(Color(0xFF252526))
+                .border(1.dp, Color(0xFF3C3C3C))
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .zIndex(20f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                val matchLabel = when {
+                    findQuery.isEmpty() -> ""
+                    matches.isEmpty() -> "No results"
+                    else -> "${matchIndex + 1}/${matches.size}"
+                }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = findQuery,
+                    onValueChange = { onFindQueryChange(it) },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color(0xFFD4D4D4),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    decorationBox = { inner ->
+                        Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            if (findQuery.isEmpty()) Text(
+                                "Find",
+                                color = Color(0xFF666666),
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            inner()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                        .border(
+                            1.dp,
+                            if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400)
+                            else Color(0xFF3C3C3C),
+                            RoundedCornerShape(3.dp),
+                        ),
+                )
+                Text(
+                    matchLabel,
+                    color = Color(0xFF888888),
+                    fontSize = 10.sp,
+                    modifier = Modifier.widthIn(min = 52.dp),
+                )
+                IconButton(
+                    onClick = { onToggleRegex() },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Text(
+                        ".*",
+                        color = if (useRegex) Color(0xFF007ACC) else Color(0xFF888888),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        if (matches.isNotEmpty()) {
+                            val newIndex = (matchIndex - 1 + matches.size) % matches.size
+                            onMatchIndexChange(newIndex)
+                            val range = matches[newIndex]
+                            onSelectRange(range.first, range.last + 1)
+                        }
+                    },
+                    modifier = Modifier.size(28.dp),
+                    enabled = matches.isNotEmpty(),
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowUp, null,
+                        tint = if (matches.isNotEmpty()) Color(0xFFD4D4D4) else Color(0xFF555555),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        if (matches.isNotEmpty()) {
+                            val newIndex = (matchIndex + 1) % matches.size
+                            onMatchIndexChange(newIndex)
+                            val range = matches[newIndex]
+                            onSelectRange(range.first, range.last + 1)
+                        }
+                    },
+                    modifier = Modifier.size(28.dp),
+                    enabled = matches.isNotEmpty(),
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown, null,
+                        tint = if (matches.isNotEmpty()) Color(0xFFD4D4D4) else Color(0xFF555555),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = { onFindReplaceClose() },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Close, null,
+                        tint = Color(0xFF888888),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                androidx.compose.foundation.text.BasicTextField(
+                    value = replaceQuery,
+                    onValueChange = { onReplaceQueryChange(it) },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color(0xFFD4D4D4),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    decorationBox = { inner ->
+                        Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            if (replaceQuery.isEmpty()) Text(
+                                "Replace",
+                                color = Color(0xFF666666),
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            inner()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
+                )
+                TextButton(
+                    onClick = {
+                        if (matches.isNotEmpty()) {
+                            val range = matches[matchIndex]
+                            val newText = text.substring(0, range.first) +
+                                replaceQuery + text.substring(range.last + 1)
+                            val cursor = range.first + replaceQuery.length
+                            onTextChange(newText, cursor)
+                        }
+                    },
+                    enabled = matches.isNotEmpty(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        "Replace",
+                        color = if (matches.isNotEmpty()) Color(0xFF007ACC) else Color(0xFF555555),
+                        fontSize = 11.sp,
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        if (findQuery.isNotEmpty() && matches.isNotEmpty()) {
+                            val newText = try {
+                                val pattern = if (useRegex) Regex(findQuery)
+                                              else Regex(Regex.escape(findQuery))
+                                pattern.replace(text, replaceQuery)
+                            } catch (e: Exception) { text }
+                            onTextChange(newText, 0)
+                        }
+                    },
+                    enabled = matches.isNotEmpty(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        "All",
+                        color = if (matches.isNotEmpty()) Color(0xFF007ACC) else Color(0xFF555555),
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
+    lspHoverContent: String?,
+    showCompletions: Boolean,
+    fontSize: Int,
+    vScrollValue: Int,
+    cursorOffset: Int,
+    text: String,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+) {
+    if (lspHoverContent != null && !showCompletions) {
+        val hoverScrollState = rememberScrollState()
+        var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
+        val cursorLineIdxHover = text.take(cursorOffset).count { it == '\n' }
+        val hoverTopDp = ((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScrollValue
+        if (hoverTopDp > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 74.dp, top = hoverTopDp.dp)
+                    .widthIn(max = 300.dp)
+                    .zIndex(12f)
+                    .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
+                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp)),
+            ) {
+                Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { hoverExpanded = !hoverExpanded },
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            Text(
+                                text = if (hoverExpanded) "▾" else "▸",
+                                color = Color(0xFF888888),
+                                fontSize = 11.sp,
+                            )
+                        }
+                        Spacer(Modifier.width(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(lspHoverContent ?: ""))
+                                },
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            Text(
+                                text = "⧉",
+                                color = Color(0xFF888888),
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .then(if (hoverExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(hoverScrollState) else Modifier)
+                    ) {
+                        Text(
+                            text = lspHoverContent ?: "",
+                            color = Color(0xFFCCCCCC),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = if (hoverExpanded) Int.MAX_VALUE else 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
+    lightbulbLine: Int,
+    lspCodeActionProvider: ((line: Int) -> List<com.codespace.ide.lsp.LspCodeAction>)?,
+    showCompletions: Boolean,
+    fontSize: Int,
+    vScrollValue: Int,
+    displayLinesSize: Int,
+    showLightbulbMenu: Boolean,
+    onShowLightbulbMenu: (Boolean) -> Unit,
+) {
+    if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
+        val bulbTopDp = (lightbulbLine * fontSize * 1.25f) - vScrollValue
+        val bulbHeight = fontSize * 1.25f
+        if (bulbTopDp >= 0 && bulbTopDp < (displayLinesSize + 5) * bulbHeight) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 6.dp, top = bulbTopDp.dp)
+                    .width(20.dp)
+                    .height(bulbHeight.dp)
+                    .clickable { onShowLightbulbMenu(true) }
+                    .zIndex(9f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "💡",
+                    fontSize = 10.sp,
+                )
+            }
+        }
+    }
 }
