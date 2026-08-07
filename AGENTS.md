@@ -8672,11 +8672,15 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [ ] Inline Variable
 - [ ] Code generation: Generate Constructor, Getters/Setters, Implement Interface
 
-### Phase M — Call & Type Hierarchy
-- [ ] `textDocument/prepareCallHierarchy` in LspManager
-- [ ] Call hierarchy panel (incoming/outgoing calls tree)
-- [ ] `textDocument/prepareTypeHierarchy` in LspManager
-- [ ] Type hierarchy panel (supertypes/subtypes tree)
+### Phase M — Call & Type Hierarchy ✅ DONE (commit 9a081360)
+- [x] `textDocument/prepareCallHierarchy` in LspManager
+- [x] Call hierarchy panel (incoming/outgoing calls tree) — CallHierarchyPanel.kt
+- [x] `textDocument/prepareTypeHierarchy` in LspManager
+- [x] Type hierarchy panel (supertypes/subtypes tree) — CallHierarchyPanel.kt
+- [x] Client capabilities registration (callHierarchy + typeHierarchy in initialize)
+- [x] Context menu integration in CodeEditor
+- [x] Provider wiring in EditorPane
+- [x] Data classes + parsers in LspIntegration (CallHierarchyItem, IncomingCall, OutgoingCall, TypeHierarchyItem)
 
 ### Phase N — CodeLens
 - [ ] Render CodeLens from `getCodeLens()` results
@@ -8729,8 +8733,10 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Build | Commit | Status | Notes |
 |-------|--------|--------|-------|
+| #1856+ | `9a081360` | Pending | P41-M Call & Type Hierarchy (5 files) |
+| #1856 | `0667e484` | ❌ Failed | Missing Language import in LspIntegration.kt |
+| #1855 | `e513da32` | ✅ Green | P41-K LspManager cancelPendingRequest + getPendingRequestId |
 | #1824 | `f8d02a8b` | Unknown | Docs commit after GhostTextOverlay fix |
-| #1823 | `920dedb0` | Unknown | Extracted GhostTextOverlay — fixes method-too-large |
 
 **Known risk:** `CodeEditor.kt` at 3842 lines. All new UI MUST be extracted to separate composables.
 **Uncommitted changes:** Phase F workspace symbol completion (CodeEditor.kt, LspIntegration.kt, EditorPane.kt)
