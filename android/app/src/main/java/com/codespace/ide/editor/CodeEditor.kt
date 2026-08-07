@@ -10,7 +10,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.KeyEventModifier
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1290,7 +1289,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .onPreviewKeyEvent { event ->
                             if (snippetSession != null && event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
                                 val session = snippetSession!!
-                                val isShift = event.modifiers.contains(KeyEventModifier.Shift)
+                                val isShift = event.nativeKeyEvent.isShiftPressed
                                 if (isShift) {
                                     // Shift+Tab — go to previous tab-stop
                                     val prev = session.retreat()
