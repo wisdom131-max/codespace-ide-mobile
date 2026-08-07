@@ -100,6 +100,10 @@ import androidx.compose.ui.window.PopupProperties
 import kotlin.math.roundToInt
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCompletionItem
+import com.codespace.ide.lsp.CallHierarchyItem
+import com.codespace.ide.lsp.IncomingCall
+import com.codespace.ide.lsp.OutgoingCall
+import com.codespace.ide.lsp.TypeHierarchyItem
 import com.codespace.ide.lsp.CompletionSource
 import com.codespace.ide.lsp.RankedCompletionItem
 import com.codespace.ide.lsp.parseSnippet
@@ -131,6 +135,7 @@ import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.material3.HorizontalDivider
@@ -416,6 +421,18 @@ fun CodeEditor(
     onFindReferences: ((String) -> List<Triple<String, Int, String>>)? = null,
     /** P24-3: Rename Symbol — called with (word, newName) to apply workspace rename */
     onRenameSymbol: ((String, String) -> Unit)? = null,
+    /** P41-M: Call hierarchy — prepares call hierarchy at cursor position (returns raw JSON array) */
+    onPrepareCallHierarchy: ((line: Int, col: Int) -> List<CallHierarchyItem>?)? = null,
+    /** P41-M: Call hierarchy — fetches incoming calls for a call item */
+    onCallHierarchyIncoming: ((CallHierarchyItem) -> List<IncomingCall>)? = null,
+    /** P41-M: Call hierarchy — fetches outgoing calls for a call item */
+    onCallHierarchyOutgoing: ((CallHierarchyItem) -> List<OutgoingCall>)? = null,
+    /** P41-M: Type hierarchy — prepares type hierarchy at cursor position (returns raw JSON array) */
+    onPrepareTypeHierarchy: ((line: Int, col: Int) -> List<TypeHierarchyItem>?)? = null,
+    /** P41-M: Type hierarchy — fetches supertypes for a type item */
+    onTypeHierarchySupertypes: ((TypeHierarchyItem) -> List<TypeHierarchyItem>)? = null,
+    /** P41-M: Type hierarchy — fetches subtypes for a type item */
+    onTypeHierarchySubtypes: ((TypeHierarchyItem) -> List<TypeHierarchyItem>)? = null,
     /** Minimap: initial visibility, can be toggled via dropdown in the editor toolbar */
     showMinimap: Boolean = true,
     /** P24: LSP code actions provider — returns quick fixes for a line */
@@ -608,6 +625,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lastResolvedLabel by remember { mutableStateOf<String?>(null) }
     // P41-K: Track LSP request ID for cancellation
     var lspRequestId by remember { mutableStateOf<Long>(-1L) }
+    // P41-M: Call Hierarchy state
+    var showCallHierarchy by remember { mutableStateOf(false) }
+    var callHierarchyRoot by remember { mutableStateOf<CallHierarchyItem?>(null) }
+    var callHierarchyIncoming by remember { mutableStateOf<List<IncomingCall>>(emptyList()) }
+    var callHierarchyOutgoing by remember { mutableStateOf<List<OutgoingCall>>(emptyList()) }
+    // P41-M: Type Hierarchy state
+    var showTypeHierarchy by remember { mutableStateOf(false) }
+    var typeHierarchyRoot by remember { mutableStateOf<TypeHierarchyItem?>(null) }
+    var typeHierarchySupertypes by remember { mutableStateOf<List<TypeHierarchyItem>>(emptyList()) }
+    var typeHierarchySubtypes by remember { mutableStateOf<List<TypeHierarchyItem>>(emptyList()) }
     // P41-J: Detail panel — track the highlighted item's full doc
     var detailDoc by remember { mutableStateOf<String?>(null) }
     var detailDetail by remember { mutableStateOf<String?>(null) }
@@ -2381,6 +2408,72 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
 
+                            // P41-M: Call Hierarchy
+                            if (onPrepareCallHierarchy != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("→", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Call Hierarchy", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        val cOff = value.selection.end
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        val items = try { onPrepareCallHierarchy.invoke(cLine, cCol) } catch (_: Exception) { null }
+                                        if (items != null && items.isNotEmpty()) {
+                                            callHierarchyRoot = items.first()
+                                            showCallHierarchy = true
+                                            // Fetch incoming + outgoing in parallel
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val incoming = try { onCallHierarchyIncoming?.invoke(items.first()) } catch (_: Exception) { emptyList() }
+                                                val outgoing = try { onCallHierarchyOutgoing?.invoke(items.first()) } catch (_: Exception) { emptyList() }
+                                                withContext(Dispatchers.Main) {
+                                                    callHierarchyIncoming = incoming
+                                                    callHierarchyOutgoing = outgoing
+                                                }
+                                            }
+                                        }
+                                        showLspMenu = false
+                                    }
+                                )
+                            }
+
+                            // P41-M: Type Hierarchy
+                            if (onPrepareTypeHierarchy != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("≡", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Type Hierarchy", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        val cOff = value.selection.end
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        val items = try { onPrepareTypeHierarchy.invoke(cLine, cCol) } catch (_: Exception) { null }
+                                        if (items != null && items.isNotEmpty()) {
+                                            typeHierarchyRoot = items.first()
+                                            showTypeHierarchy = true
+                                            // Fetch supertypes + subtypes in parallel
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val supers = try { onTypeHierarchySupertypes?.invoke(items.first()) } catch (_: Exception) { emptyList() }
+                                                val subs = try { onTypeHierarchySubtypes?.invoke(items.first()) } catch (_: Exception) { emptyList() }
+                                                withContext(Dispatchers.Main) {
+                                                    typeHierarchySupertypes = supers
+                                                    typeHierarchySubtypes = subs
+                                                }
+                                            }
+                                        }
+                                        showLspMenu = false
+                                    }
+                                )
+                            }
+
                             // Add Cursor Above
                             DropdownMenuItem(
                                 text = {
@@ -3209,6 +3302,106 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // ── P41-M: Call Hierarchy Panel ─────────────────────────────────────
+        if (showCallHierarchy && callHierarchyRoot != null) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.45f)
+                    .zIndex(29f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth().background(Color(0xFF252526))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Call Hierarchy", color = Color(0xFF4EC9B0), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            showCallHierarchy = false
+                            callHierarchyRoot = null
+                            callHierarchyIncoming = emptyList()
+                            callHierarchyOutgoing = emptyList()
+                        }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                            Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
+                        }
+                    }
+                    Divider(color = Color(0xFF333333))
+                    CallHierarchyPanel(
+                        rootItem = callHierarchyRoot!!,
+                        incomingCalls = callHierarchyIncoming,
+                        outgoingCalls = callHierarchyOutgoing,
+                        onNavigate = { uri, line, _ ->
+                            val path = uri.removePrefix("file://")
+                            if (path == filePath || path.endsWith(filePath ?: "")) {
+                                coroutineScope.launch {
+                                    val lineHeightPx = fontSize * 1.25f
+                                    vScroll.animateScrollTo((line * lineHeightPx).toInt())
+                                }
+                            } else {
+                                onOpenFileAtLine?.invoke(path, line)
+                            }
+                            showCallHierarchy = false
+                        },
+                    )
+                }
+            }
+        }
+
+        // ── P41-M: Type Hierarchy Panel ────────────────────────────────────
+        if (showTypeHierarchy && typeHierarchyRoot != null) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.45f)
+                    .zIndex(30f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth().background(Color(0xFF252526))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Type Hierarchy", color = Color(0xFF4EC9B0), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            showTypeHierarchy = false
+                            typeHierarchyRoot = null
+                            typeHierarchySupertypes = emptyList()
+                            typeHierarchySubtypes = emptyList()
+                        }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                            Text("✕", color = Color(0xFF888888), fontSize = 14.sp)
+                        }
+                    }
+                    Divider(color = Color(0xFF333333))
+                    TypeHierarchyPanel(
+                        rootItem = typeHierarchyRoot!!,
+                        supertypes = typeHierarchySupertypes,
+                        subtypes = typeHierarchySubtypes,
+                        onNavigate = { uri, line, _ ->
+                            val path = uri.removePrefix("file://")
+                            if (path == filePath || path.endsWith(filePath ?: "")) {
+                                coroutineScope.launch {
+                                    val lineHeightPx = fontSize * 1.25f
+                                    vScroll.animateScrollTo((line * lineHeightPx).toInt())
+                                }
+                            } else {
+                                onOpenFileAtLine?.invoke(path, line)
+                            }
+                            showTypeHierarchy = false
+                        },
+                    )
                 }
             }
         }
