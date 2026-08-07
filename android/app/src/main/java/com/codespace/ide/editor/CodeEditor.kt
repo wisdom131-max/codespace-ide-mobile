@@ -2781,8 +2781,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     showLspMenu = false
                                 }
                             )
-                            // P41-I: Source Actions
-                            if (onSourceAction != null) {
+                            // P41-I/U: Source Actions — with built-in fallback (no LSP needed)
                             DropdownMenuItem(
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2790,7 +2789,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("Organize Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                             },
-                            onClick = { onSourceAction!!.invoke("source.organizeImports"); showLspMenu = false }
+                            onClick = {
+                                // P41-U: Try LSP first, fall back to built-in
+                                if (onSourceAction != null && com.codespace.ide.lsp.LspManager.isServerRunning(language)) {
+                                    onSourceAction!!.invoke("source.organizeImports")
+                                } else {
+                                    val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
+                                    if (result != null) {
+                                        value = androidx.compose.ui.text.TextFieldValue(result, value.selection)
+                                        onContentChange(result)
+                                    }
+                                }
+                                showLspMenu = false
+                            }
                             )
                             DropdownMenuItem(
                             text = {
@@ -2799,8 +2810,38 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("Remove Unused Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
                             }
                             },
-                            onClick = { onSourceAction!!.invoke("source.removeUnused"); showLspMenu = false }
+                            onClick = {
+                                // P41-U: Try LSP first, fall back to built-in
+                                if (onSourceAction != null && com.codespace.ide.lsp.LspManager.isServerRunning(language)) {
+                                    onSourceAction!!.invoke("source.removeUnused")
+                                } else {
+                                    val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedImports(value.text, language)
+                                    if (result != null) {
+                                        value = androidx.compose.ui.text.TextFieldValue(result, value.selection)
+                                        onContentChange(result)
+                                    }
+                                }
+                                showLspMenu = false
+                            }
                             )
+                            // P41-U: Remove Unused Code (built-in, no LSP needed)
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("⊘", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                            Text("Remove Unused Code", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = {
+                                val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedCode(value.text, language)
+                                if (result != null) {
+                                    value = androidx.compose.ui.text.TextFieldValue(result, value.selection)
+                                    onContentChange(result)
+                                }
+                                showLspMenu = false
+                            }
+                            )
+                            if (onSourceAction != null) {
                             DropdownMenuItem(
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

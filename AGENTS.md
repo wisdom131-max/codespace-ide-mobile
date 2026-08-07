@@ -26,7 +26,7 @@
 |-|-|
 | Latest green build | **07af657eaf** (#1922) — P41 composable extractions + PIN lock + Move Symbol + all P41 phases verified green |
 
-| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–T complete. P41-T: Refactor submenu + Run/Test CodeLens. Next: large-project optimization + on-device OAuth test) |
+| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–U complete. P41-U: Built-in source actions (organize/remove unused) + cross-file refactor verified. Next: on-device OAuth test) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -8436,8 +8436,8 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 
 ### ❌ STILL MISSING (not implemented)
 - Move symbol refactoring ✅ IMPLEMENTED — context menu "Move Symbol" calls LSP refactor.move
-- Organize imports as dedicated action (exists as source action but not standalone)
-- Remove unused code as dedicated action
+- ~~Organize imports as dedicated action~~ ✅ (built-in fallback in BuiltinSourceActions.kt, P41-U)
+- ~~Remove unused code as dedicated action~~ ✅ (BuiltinSourceActions.removeUnusedCode, P41-U)
 - Overload navigation ✅ IMPLEMENTED — up/down arrows in signature help, 1/N indicator
 - Diagnostic codes display ✅ IMPLEMENTED — code/source badges in Problems panel
 - Related diagnostics grouping ✅ IMPLEMENTED — related info displayed in Problems panel
@@ -8459,7 +8459,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - Language-specific formatting (LSP works when server supports it, no fallback)
 - Workspace indexing ✅ (FileIndexer — background symbol indexing with persistent cache, P41-Q)
 - File watchers ✅ (FileIndexer.startFileWatcher/stopFileWatcher — P41-Q implemented)
-- Cross-file refactoring (willRenameFiles exists, not fully wired)
+- ~~Cross-file refactoring~~ ✅ (willRenameFiles + applyWorkspaceEditToFilesystem wired in PSS, rename dialog applies cross-file edits)
 - Cached symbol database ✅ (FileIndexer.saveCache/loadCache — persistent cross-session, P41-Q)
 - Background indexing ✅ (FileIndexer.startIndexing — full workspace scanning, P41-Q)
 
@@ -8498,6 +8498,8 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Completion source labels | ✅ | `CodeEditor.kt` — source badges (LSP/SNIPPET/BUFFER) (Phase J) |
 | Completion item resolve | ✅ | `LspManager.kt` — `resolveCompletion()` with detail+docs |
 | Context-aware suggestions | 🔶 | LSP trigger chars (".") handled; no deeper context analysis |
+| Organize Imports (built-in) | ✅ | `BuiltinSourceActions.kt` — works without LSP (P41-U) |
+| Remove Unused Code (built-in) | ✅ | `BuiltinSourceActions.kt` — detects unused fns/vars (P41-U) |
 
 ### 2. Navigation
 
