@@ -2796,7 +2796,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
                                     if (result != null) {
-                                        value = androidx.compose.ui.text.TextFieldValue(result, value.selection)
+                                        value = TextFieldValue(result, value.selection)
                                         onContentChange(result)
                                     }
                                 }
@@ -2817,7 +2817,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedImports(value.text, language)
                                     if (result != null) {
-                                        value = androidx.compose.ui.text.TextFieldValue(result, value.selection)
+                                        value = TextFieldValue(result, value.selection)
                                         onContentChange(result)
                                     }
                                 }
@@ -2835,7 +2835,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onClick = {
                                 val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedCode(value.text, language)
                                 if (result != null) {
-                                    value = androidx.compose.ui.text.TextFieldValue(result, value.selection)
+                                    value = TextFieldValue(result, value.selection)
                                     onContentChange(result)
                                 }
                                 showLspMenu = false
