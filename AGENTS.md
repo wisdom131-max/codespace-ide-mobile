@@ -25,7 +25,8 @@
 | | |
 |-|-|
 | Latest green build | **07af657eaf** (#1922) — P41 composable extractions + PIN lock + Move Symbol + all P41 phases verified green |
-| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–S complete, all green on #1922. Next: on-device OAuth test + remaining ❌ MISSING features) |
+| Pending CI | **12a9566** — P41-T: Refactor submenu + Run/Test CodeLens + TestLensDetector |
+| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–T complete. P41-T: Refactor submenu + Run/Test CodeLens. Next: large-project optimization + on-device OAuth test) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -8454,7 +8455,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 ### 🔶 PARTIAL
 - Context-aware suggestions (LSP trigger chars only, no deeper context analysis)
 - ~~Full light bulb support~~ ✅ (code actions work, 💡 gutter icon rendered with dropdown menu)
-- Refactor (code actions can include refactoring, no dedicated refactor menu)
+- ~~Refactor~~ ✅ (dedicated submenu, P41-T)
 - Language-specific formatting (LSP works when server supports it, no fallback)
 - Workspace indexing ✅ (FileIndexer — background symbol indexing with persistent cache, P41-Q)
 - File watchers ✅ (FileIndexer.startFileWatcher/stopFileWatcher — P41-Q implemented)
@@ -8621,7 +8622,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 |---------|--------|------------------|
 | Reference count | ✅ | `LspManager.getCodeLens()` → inline lens rendering in CodeEditor.kt with click handling (P41-N) |
 | Implementation count | ✅ | Rendered via CodeLens when LSP provides it (e.g. TypeScript implements lens) |
-| Run/Test buttons | ❌ | Not implemented (needs DAP/test runner integration) |
+| Run/Test buttons | ✅ | TestLensDetector.kt — synthetic CodeLens '▶ Run Test' / 'Debug Test' (P41-T) |
 | Git blame | ✅ | Separate from CodeLens — `blameData` column in gutter (P20-A) |
 | Last modified | ❌ | Not implemented (low priority) |
 
@@ -8851,6 +8852,19 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 ---
 
+### Phase T — Refactor Submenu + Run/Test CodeLens ✅ DONE (commit 12a9566, build pending)
+- [x] Dedicated 'Refactor...' submenu — `RefactorMenu.kt` with nested DropdownMenu
+- [x] Extract Method, Extract Variable, Inline Variable, Move Symbol — grouped in submenu
+- [x] AI-powered 'Refactor with AI' option — sends to CopilotChat via onAiFixRequest
+- [x] Run/Test CodeLens — `TestLensDetector.kt` generates synthetic lens entries
+- [x] Test detection: Kotlin/Java (@Test, fun test*), Python (def test_*), JS/TS (it/test/describe), Dart (test/group)
+- [x] '▶ Run Test' and 'Debug Test' lenses on test function lines
+- [x] Works with or without LSP server running
+- [x] CodeLens click handler intercepts codespace.runTest/codespace.debugTest
+- [x] Language-aware test commands (pytest, jest, gradle)
+
+
+
 
 ### Error Trace: Build #1887–#1888 (P41-I Source Actions Compilation)
 
@@ -8870,6 +8884,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Build | Commit | Status | Notes |
 |-------|--------|--------|-------|
+| #— | `12a9566` | ⏳ Pending | feat(P41-T): Refactor submenu + Run/Test CodeLens + TestLensDetector |
 | #1922 | `07af657eaf` | ✅ Green | Remove stray closing brace in CodeEditor.kt:4382 — all P41 phases now green |
 | #1921 | `24e997f41d` | ❌ Failed | Missing textLines definition + missing closing brace for lspCompletionIcon |
 | #1920 | `a03e19d065` | ❌ Failed | Fix biometric/PIN lock: FragmentActivity for BiometricPrompt + BottomPanels types |
