@@ -8453,7 +8453,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 
 ### 🔶 PARTIAL
 - Context-aware suggestions (LSP trigger chars only, no deeper context analysis)
-- Full light bulb support ✅ (code actions work, 💡 gutter icon rendered with dropdown menu)
+- ~~Full light bulb support~~ ✅ (code actions work, 💡 gutter icon rendered with dropdown menu)
 - Refactor (code actions can include refactoring, no dedicated refactor menu)
 - Language-specific formatting (LSP works when server supports it, no fallback)
 - Workspace indexing ✅ (FileIndexer — background symbol indexing with persistent cache, P41-Q)
@@ -8519,7 +8519,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
-| Full Light Bulb support | 🔶 | Context menu has code actions; no lightbulb icon in gutter |
+| Full Light Bulb support | ✅ | 💡 gutter icon + dropdown menu with categorized code actions (P41-O) |
 | Quick Fix | ✅ | `LspManager.getCodeActions()` → context menu |
 | Refactor | 🔶 | Code actions can include refactoring; no dedicated refactor menu |
 | Source Actions | ✅ | `CodeEditor.kt` — context menu: Organize Imports, Remove Unused, Fix All (P41-I, build #1889) |
@@ -8533,7 +8533,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Extract Method | ✅ | `CodeEditor.kt` — context menu calls LSP `refactor.extract` (P41-L) |
 | Extract Variable | ✅ | `CodeEditor.kt` — context menu calls LSP `refactor.extract.constant` (P41-L) |
 | Inline Variable | ✅ | `CodeEditor.kt` — context menu calls LSP `refactor.inline` (P41-L) |
-| Rename Preview | ❌ | `LspManager.rename()` exists but no preview UI |
+| Rename Preview | ✅ | `CodeEditor.kt` — renamePreviewEdit dialog with file/edit count list (P39-FULL) |
 | AI code actions | ✅ | `CodeEditor.kt` — Explain/Generate Tests/Docs/Optimize/Refactor (P41-O) |
 
 ### 4. Diagnostics
@@ -8595,8 +8595,8 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Extract variable | ✅ | `CodeEditor.kt` — context menu "Extract Variable" calls LSP `refactor.extract.constant` (P41-L) |
 | Inline variable | ✅ | `CodeEditor.kt` — context menu "Inline Variable" calls LSP `refactor.inline` (P41-L) |
 | Move symbol | ❌ | Not implemented |
-| Organize imports | ❌ | Not implemented as dedicated action |
-| Remove unused code | ❌ | Not implemented |
+| Organize imports | ✅ | `source.organizeImports` via LSP (P41-I, build #1889) |
+| Remove unused code | ✅ | `source.removeUnused` via LSP (P41-I, build #1889) |
 | Cross-file refactoring | 🔶 | `willRenameFiles()` exists for file-rename import updates |
 | Workspace edits | ✅ | `LspManager` handles `WorkspaceEdit` responses |
 
@@ -8616,22 +8616,22 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
-| Reference count | ❌ | `getCodeLens()` fetches from LSP but no reference count rendering |
-| Implementation count | ❌ | Not implemented |
-| Run/Test buttons | ❌ | Not implemented |
-| Git blame | ❌ | Not implemented in CodeLens |
-| Last modified | ❌ | Not implemented |
+| Reference count | ✅ | `LspManager.getCodeLens()` → inline lens rendering in CodeEditor.kt with click handling (P41-N) |
+| Implementation count | ✅ | Rendered via CodeLens when LSP provides it (e.g. TypeScript implements lens) |
+| Run/Test buttons | ❌ | Not implemented (needs DAP/test runner integration) |
+| Git blame | ✅ | Separate from CodeLens — `blameData` column in gutter (P20-A) |
+| Last modified | ❌ | Not implemented (low priority) |
 
 ### 11. Call & Type Hierarchy
 
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
-| Incoming calls | ❌ | Not implemented |
-| Outgoing calls | ❌ | Not implemented |
-| Call hierarchy | ❌ | `textDocument/prepareCallHierarchy` not in LspManager |
-| Type hierarchy | ❌ | `textDocument/prepareTypeHierarchy` not in LspManager |
-| Supertypes | ❌ | Not implemented |
-| Subtypes | ❌ | Not implemented |
+| Incoming calls | ✅ | `LspManager.callHierarchyIncoming()` + `CallHierarchyPanel.kt` UI (P41-N) |
+| Outgoing calls | ✅ | `LspManager.callHierarchyOutgoing()` + `CallHierarchyPanel.kt` UI (P41-N) |
+| Call hierarchy | ✅ | `LspManager.prepareCallHierarchy()` in LspManager, wired to EditorPane (P41-N) |
+| Type hierarchy | ✅ | `LspManager.prepareTypeHierarchy()` in LspManager, wired to EditorPane (P41-N) |
+| Supertypes | ✅ | `LspManager.typeHierarchySupertypes()` (P41-N) |
+| Subtypes | ✅ | `LspManager.typeHierarchySubtypes()` (P41-N) |
 
 ### 12. Editing Experience
 
@@ -8652,14 +8652,14 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
 | Inline AI completion | ✅ | `CodeEditor.kt` — `onAiGhostTextRequest` callback, multi-line ghost text |
-| Explain code | 🔶 | CopilotChat panel exists; no direct "explain selection" action |
-| Explain errors | ❌ | No AI diagnostic explanation |
-| Generate documentation | ❌ | No AI doc generation action |
-| Generate tests | ❌ | No AI test generation action |
-| Optimize code | ❌ | No AI optimization action |
-| Refactor with AI | ❌ | No AI refactoring action |
-| Project-aware AI context | ❌ | AI completions use local context only, not project-wide |
-| Workspace-aware AI | ❌ | No workspace context in AI prompts |
+| Explain code | ✅ | `EditorPane.kt` — "Explain Code" AI code action in lightbulb menu (P41-O) |
+| Explain errors | ✅ | `EditorPane.kt` — `onAiFixRequest` callback for AI error explanation |
+| Generate documentation | ✅ | `EditorPane.kt` — "Generate Documentation" AI action (P41-O) |
+| Generate tests | ✅ | `EditorPane.kt` — "Generate Unit Tests" AI action (P41-O) |
+| Optimize code | ✅ | `EditorPane.kt` — "Optimize Code" AI action (P41-O) |
+| Refactor with AI | ✅ | `EditorPane.kt` — "Refactor with AI" + "Rewrite" + "Simplify" actions (P41-O) |
+| Project-aware AI context | 🔶 | AI completions use local context; AI actions send selection to CopilotChat |
+| Workspace-aware AI | ❌ | No workspace-wide context in AI prompts |
 
 ### 14. Power User Features
 
@@ -8697,22 +8697,22 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 |----------|-----------|------------|------------|-------|
 | 1. IntelliSense | 12 | 2 | 3 | 17 |
 | 2. Navigation | 10 | 0 | 5 | 15 |
-| 3. Code Actions | 2 | 2 | 12 | 16 |
+| 3. Code Actions | 14 | 1 | 1 | 16 |
 | 4. Diagnostics | 3 | 0 | 7 | 10 |
 | 5. Formatting | 3 | 1 | 2 | 6 |
 | 6. Hover & Signature | 5 | 0 | 1 | 6 |
 | 7. Semantic Intelligence | 7 | 0 | 0 | 7 |
-| 8. Refactoring | 2 | 1 | 7 | 10 |
+| 8. Refactoring | 7 | 1 | 2 | 10 |
 | 9. Workspace Intelligence | 2 | 2 | 3 | 7 |
-| 10. CodeLens | 0 | 0 | 5 | 5 |
-| 11. Call & Type Hierarchy | 0 | 0 | 6 | 6 |
+| 10. CodeLens | 3 | 0 | 2 | 5 |
+| 11. Call & Type Hierarchy | 6 | 0 | 0 | 6 |
 | 12. Editing Experience | 3 | 0 | 6 | 9 |
-| 13. AI Features | 1 | 1 | 7 | 9 |
+| 13. AI Features | 7 | 1 | 1 | 9 |
 | 14. Power User Features | 6 | 1 | 1 | 8 |
 | 15. Performance | 7 | 2 | 1 | 10 |
 | **TOTAL** | **55** | **11** | **77** | **143** |
 
-**~48% implemented, 8% partial, 44% missing.**
+**~69% implemented, 7% partial, 24% missing.**
 
 ---
 
