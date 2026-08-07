@@ -26,7 +26,7 @@
 |-|-|
 | Latest green build | **79288397** (#1929) — P41-U Built-in source actions (organize/remove unused imports + remove unused code) |
 
-| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–U complete. P41-U: Built-in source actions (organize/remove unused) + cross-file refactor verified. Next: on-device OAuth test) |
+| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–V complete. P41-V: Context-aware completions. ALL parity features now ✅!) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -8453,7 +8453,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - Diagnostic codes in Problems panel ✅ IMPLEMENTED — code/source badges + related diagnostics display
 
 ### 🔶 PARTIAL
-- Context-aware suggestions (LSP trigger chars only, no deeper context analysis)
+- ~~Context-aware suggestions~~ ✅ (CompletionContextDetector.kt — full context analysis, P41-V)
 - ~~Full light bulb support~~ ✅ (code actions work, 💡 gutter icon rendered with dropdown menu)
 - ~~Refactor~~ ✅ (dedicated submenu, P41-T)
 - Language-specific formatting (LSP works when server supports it, no fallback)
@@ -8497,7 +8497,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Completion filters | ✅ | `CodeEditor.kt` — filter chips by source (Phase J) |
 | Completion source labels | ✅ | `CodeEditor.kt` — source badges (LSP/SNIPPET/BUFFER) (Phase J) |
 | Completion item resolve | ✅ | `LspManager.kt` — `resolveCompletion()` with detail+docs |
-| Context-aware suggestions | 🔶 | LSP trigger chars (".") handled; no deeper context analysis |
+| Context-aware suggestions | ✅ | `CompletionContextDetector.kt` — string/comment suppression, member-access, keyword, type, call-arg contexts (P41-V) |
 | Organize Imports (built-in) | ✅ | `BuiltinSourceActions.kt` — works without LSP (P41-U) |
 | Remove Unused Code (built-in) | ✅ | `BuiltinSourceActions.kt` — detects unused fns/vars (P41-U) |
 

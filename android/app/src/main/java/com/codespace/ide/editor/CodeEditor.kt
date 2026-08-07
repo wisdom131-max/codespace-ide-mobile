@@ -696,6 +696,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         } else null
     }
     var pathCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+
+    // P41-V: Context-aware completion detection
+    val completionContext = remember(value.text, value.selection.end, language) {
+        com.codespace.ide.lsp.CompletionContextDetector.detect(
+            text = value.text,
+            cursor = value.selection.end,
+            language = language,
+        )
+    }
     LaunchedEffect(pathContext) {
         if (pathContext != null) {
             pathCompletions = kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -761,9 +770,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
-    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix) {
-        // Convert local completions to RankedCompletionItem
-        val localRanked = completions.map { c ->
+    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext) {
+        // P41-V: Context-aware filtering
+        // In member-access or after-keyword context, suppress keyword/buffer completions
+        val suppressKeywords = completionContext.lspOnly
+        // Convert local completions to RankedCompletionItem (filtered by context)
+        val localRanked = (if (suppressKeywords) emptyList() else completions).map { c ->
             val kind = when (c.kind) {
                 CompletionKind.SNIPPET -> CompletionItemKind.SNIPPET
                 CompletionKind.TYPE -> CompletionItemKind.CLASS
@@ -808,7 +820,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // Merge, deduplicate by label, rank with fuzzy matching
         // LSP first (highest priority), then local, then workspace (lower priority, cross-file)
         val merged = (lspRanked + localRanked + workspaceRanked).distinctBy { it.label }
-        val ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(), CompletionHistoryStore.usageMap())
+        var ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(), CompletionHistoryStore.usageMap())
+        // P41-V: Context-aware kind boosting
+        if (completionContext.boostKind > 0 || completionContext.nonMatchKindPenalty > 0f) {
+            ranked = ranked.map { item ->
+                val kindBoost = if (item.kind == completionContext.boostKind) 15f else 0f
+                val kindPenalty = if (item.kind != completionContext.boostKind && completionContext.nonMatchKindPenalty > 0f) -completionContext.nonMatchKindPenalty else 0f
+                item.copy(score = item.score + kindBoost + kindPenalty)
+            }.sortedByDescending { it.score }
+        }
+        // P41-V: In lspOnly context (member access, after keyword), suppress non-LSP items
+        if (completionContext.lspOnly) {
+            ranked = ranked.filter { it.source == com.codespace.ide.lsp.CompletionSource.LSP || it.source == com.codespace.ide.lsp.CompletionSource.AI }
+        }
         // Map back to Completion for the existing dropdown UI
         ranked.take(15).map { rc ->
             val kind = when (rc.kind) {
@@ -828,12 +852,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P41 Phase B: Load completion history once per file open
     LaunchedEffect(Unit) { CompletionHistoryStore.load(context) }
 
-    LaunchedEffect(prefix, isDotTriggered, allCompletions, pathContext) {
-        // P41-G: Path completions show even with 1-char prefix
-        if (pathContext != null) {
+    LaunchedEffect(prefix, isDotTriggered, allCompletions, pathContext, completionContext) {
+        // P41-V: Context-aware suppression
+        if (!completionContext.shouldShowCompletions) {
+            showCompletions = false
+        } else if (pathContext != null) {
+            // P41-G: Path completions show even with 1-char prefix
             showCompletions = allCompletions.isNotEmpty()
         } else {
-            showCompletions = (prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()
+            showCompletions = (prefix.length >= 2 || isDotTriggered || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS) && allCompletions.isNotEmpty()
         }
         if (!showCompletions) { completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null }
     }
@@ -870,10 +897,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var ghostTextIsAi by remember { mutableStateOf(false) }
 
     // IntelliSense ghost text (existing behavior, 800ms debounce)
-    LaunchedEffect(prefix, isDotTriggered, allCompletions) {
+    LaunchedEffect(prefix, isDotTriggered, allCompletions, completionContext) {
         ghostText = null
         ghostTextLines = emptyList()
         ghostTextIsAi = false
+        // P41-V: Suppress ghost text in string/comment context
+        if (!completionContext.shouldShowCompletions) return@LaunchedEffect
         if ((prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
             val top = allCompletions.firstOrNull()
