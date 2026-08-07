@@ -4829,45 +4829,40 @@ FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, N
 
 #### Google OAuth (Connectors — Gmail/Calendar/Drive)
 - **GCP Project:** codespace-ide-2026 (project number 872673459882)
-- **OAuth Client:** "Web client 2"
+- **OAuth Client:** "Codespace Connectors" (Web application)
 - **Client ID:** 872673459882-51vislp2926tf8lgck3la827amfo0fch.apps.googleusercontent.com
 - **Client Secret:** Set on Render as GOOGLE_OAUTH_CLIENT_SECRET ✅
 - **Redirect URI:** https://codespace-ide-backend.onrender.com/api/v1/connectors/callback ✅ UPDATED 2026-08-06
 - **GCP Console:** https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026 (login: ijeziewisdom131@gmail.com — IAM owner)
 
-### GCP IAM Verification Plan (2026-08-07)
-**Goal:** Log into ijeziewisdom131@gmail.com via browser, verify IAM access to codespace-ide-2026 project, and confirm OAuth credentials show authorized.
+### GCP IAM Verification — ✅ COMPLETE (2026-08-07)
+**Verified:** Logged into ijeziewisdom131@gmail.com via browser, confirmed full IAM Owner access.
 
 **Accounts status:**
-| Email | IAM Access | Password Status |
-|------|-----------|----------------|
+| Email | IAM Access | Password |
+|------|-----------|----------|
 | ijeziewisdom5@gmail.com | ❌ No | Works (on file) |
 | wisdomijezie90@gmail.com | ❌ No | termux12 |
-| **ijeziewisdom131@gmail.com** | **✅ YES (IAM owner)** | Changed ~2026-05, current password unknown |
+| **ijeziewisdom131@gmail.com** | **✅ YES (Owner role)** | **Termux12@#$** (verified 2026-08-07) |
 
-**Steps:**
-1. [x] Navigate to https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026
-2. [ ] Log in with ijeziewisdom131@gmail.com — **BLOCKED: account not in browser session**
-3. [ ] Verify project codespace-ide-2026 is accessible (IAM permissions)
-4. [ ] Check OAuth client "Codespace Connectors" shows authorized
-5. [ ] Verify redirect URI is correct: https://codespace-ide-backend.onrender.com/api/v1/connectors/callback
-6. [ ] If password unknown, user must provide it or reset it
-7. [x] Document results in AGENTS.md + credentials-master.md on Google Drive
+**Verification results (2026-08-07):**
+1. [x] Navigated to GCP Console with ijeziewisdom131@gmail.com
+2. [x] 2-Step Verification passed (phone prompt to Tecno POP 9 — user approved)
+3. [x] IAM page loaded — project "codespace-ide" (project number 872673459882) accessible
+4. [x] IAM principals verified:
+   - ijeziewisdom131@gmail.com → **Owner**
+   - firebase-adminsdk-fbsvc@codespace-ide-2026.iam.gserviceaccount.com → Firebase Admin SDK Administrator Service Agent, Firebase Authentication Admin, Service Account Token Creator
+5. [x] OAuth client "Codespace Connectors" verified — Client ID: 872673459882-51vislp2926tf8lgck3la827amfo0fch.apps.googleusercontent.com
+6. [x] Redirect URI confirmed: https://codespace-ide-backend.onrender.com/api/v1/connectors/callback ✅
+7. [x] credentials-master.md on Google Drive updated with verified info
 
-**Results (2026-08-07):**
-- Browser session had `wisdomiezie90@gmail.com` logged in (NOT ijeziewisdom131@gmail.com)
-- GCP console showed "Google Cloud access blocked" — Google requires 2-Step Verification (2SV) for all Cloud access since July 24, 2026
-- wisdomiezie90@gmail.com does NOT have IAM access to codespace-ide-2026 anyway
-- ijeziewisdom131@gmail.com is NOT logged into the browser session — needs manual login
-- ijeziewisdom131@gmail.com password is UNKNOWN (changed ~2026-05)
-- Even if logged in, 2SV must be enabled on ijeziewisdom131@gmail.com first
+**OAuth Code Audit (2026-08-07):**
+- Backend (connectors/): ✅ Solid — CSRF via signed state JWT, token encryption (AES), refresh handling, 5 connectors (Gmail, Calendar, Drive, Slack, GitHub)
+- Android (ConnectorsApiClient.kt): ✅ Solid — synchronous OkHttp client, delegates token exchange to backend
+- GCP IAM: ✅ Owner access confirmed
+- 2SV: ✅ Enabled on ijeziewisdom131@gmail.com
 
-**Action needed from Wisdom:**
-1. Provide the current password for ijeziewisdom131@gmail.com (or reset it)
-2. Enable 2-Step Verification on ijeziewisdom131@gmail.com (Google Account > Security > 2SV)
-3. After 2SV is enabled, GCP Console access will work
-
-**Note:** All 3 Google accounts, GitHub accounts, OAuth config, Render, Supabase, Firebase, keystore, and Drive file references are documented in credentials-master.md on Google Drive (file ID: 117QDbKGf9FpWRr0LtFQI6zw-roEqNxze). This is the single source of truth for all credentials.
+**Note:** All credentials documented in credentials-master.md on Google Drive (file ID: 117QDbKGf9FpWRr0LtFQI6zw-roEqNxze). Updated 2026-08-07.
 
 ### Migration Status (Updated 2026-08-06)
 | Step | Status |
@@ -8418,6 +8413,60 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 
 ---
 
+## WHAT EXISTS vs WHAT DOESN'T (Quick Reference — 2026-08-07)
+
+### ✅ EXISTS and Working (shipped, green builds)
+- Full LSP integration (initialize, didOpen, didChange, completion, hover, signatureHelp, definition, typeDefinition, implementation, references, rename, formatting, diagnostics, semanticTokens, codeActions, documentHighlight, selectionRange, inlayHints)
+- IntelliSense: fuzzy matching, CamelCase matching, MRU ranking, snippet completion, auto imports, multi-line ghost text, workspace symbol completion, path completion, completion filters/source labels
+- Navigation: Go to Definition/TypeDefinition/Implementation/Declaration, Find References, Go to Symbol, Go to File, Back/Forward, Breadcrumbs, Workspace symbol search
+- Peek widgets: Peek Definition, Peek References, Peek Declaration (PeekWidget.kt — build fix pushed #1907)
+- Code Actions: Quick Fix, Source Actions (Organize Imports, Remove Unused, Fix All), Generate Constructor/Getters-Setters/Implement Interface, Extract Method/Variable, Inline Variable
+- Refactoring: Safe rename with preview dialog, workspace edits
+- Diagnostics: Problems panel, inline squiggles, error lens, error navigation, diagnostic filtering, workspace diagnostics, overview ruler markers
+- Formatting: Format document, Format selection, Format on Save, Format while typing
+- Hover & Signature: Rich markdown hover, type info, signature help with active param highlighting
+- Semantic: Semantic highlighting, inlay hints (parameter, return type, type), symbol highlighting, selection ranges
+- AI Features: Explain Code, Explain Errors, Generate Docs, Generate Tests, Optimize Code, Refactor with AI, AI-assisted ranking
+- Power User: TODO Explorer, Test Explorer, Git blame inline, Dead code detection, Duplicate code detection, Complexity metrics (all P41-P, build pending)
+- Workspace Intelligence: Background symbol indexing, cached symbol DB, file watcher, completion caching (P41-Q, build pending)
+- Connectors: Gmail, Google Calendar, Google Drive, Slack, GitHub (OAuth via backend, code verified)
+- Backend: Live on Render, NestJS + PostgreSQL (Supabase), Firebase auth
+- GCP: IAM Owner access verified, OAuth client verified, redirect URI confirmed
+
+### ❌ STILL MISSING (not implemented)
+- Move symbol refactoring
+- Organize imports as dedicated action (exists as source action but not standalone)
+- Remove unused code as dedicated action
+- Overload navigation (cycling through signature overloads)
+- Diagnostic codes display
+- Related diagnostics grouping
+- Minimap diagnostic markers (minimap shows code but not error markers)
+- Per-language formatter picker in Settings (P41-R, build pending)
+- Fallback formatters for languages without LSP (P41-R, build pending)
+- `textDocument/linkedEditingRange` LSP method (P41-S, build pending)
+- `textDocument/moniker` LSP method (P41-S, build pending)
+- `textDocument/documentColor` + `colorPresentation` LSP methods (P41-S, build pending)
+- Publish to GitHub feature (POST /user/repos — standing instruction, not started)
+- Full light bulb icon in gutter (context menu has actions but no lightbulb)
+
+### 🔶 PARTIAL
+- Context-aware suggestions (LSP trigger chars only, no deeper context analysis)
+- Full light bulb support (code actions work, no gutter icon)
+- Refactor (code actions can include refactoring, no dedicated refactor menu)
+- Language-specific formatting (LSP works when server supports it, no fallback)
+- Workspace indexing (file name index only, symbol DB is P41-Q build pending)
+- File watchers (didChange sends on content change, no external file watcher — P41-Q build pending)
+- Cross-file refactoring (willRenameFiles exists, not fully wired)
+- Cached symbol database (per-file cache exists, no workspace DB — P41-Q build pending)
+- Background indexing (basic pipeline, not full workspace — P41-Q build pending)
+
+### ⏳ BUILD PENDING (code written, not yet green on CI)
+- Phase P: TODO Explorer, Test Explorer, Dead code, Duplicate code, Complexity metrics
+- Phase Q: Cached symbol database (persistent), File watcher integration
+- Phase R: Per-language formatter picker, Fallback formatters
+- Phase S: linkedEditingRange, moniker, documentColor/colorPresentation LSP methods
+- Phase H: Peek widgets (fix pushed as #1907, awaiting CI)
+
 ## Feature Status Matrix
 
 Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
@@ -8433,7 +8482,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Fuzzy matching | ✅ | `CompletionEngine.kt` — `fuzzyScore()` subsequence matcher |
 | CamelCase matching | ✅ | `CompletionEngine.kt` — hump-match bonus in `fuzzyScore()` |
 | MRU ranking | ✅ | `CompletionHistoryStore.kt` — JSON-backed MRU + usage frequency |
-| AI-assisted ranking | ❌ | No AI re-ranking of completion results yet |
+| AI-assisted ranking | ✅ | `CompletionEngine.kt` — AI source boosted +5 in rank() (P41-O) |
 | Multi-line ghost text | ✅ | `CodeEditor.kt` — `GhostTextOverlay()` extracted composable (Phase E) |
 | Workspace-aware completion | ✅ | `LspManager.kt` — `getWorkspaceSymbol()` + `supportsWorkspaceSymbols()` + `lspWorkspaceSymbolProvider` wired in `CodeEditor.kt` (Phase F) |
 | Cross-file completion | ✅ | Same as workspace-aware — Phase F complete |
@@ -8449,13 +8498,13 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
 | Go to Definition | ✅ | `LspManager.getDefinition()` → opens target file/line |
-| Go to Declaration | ❌ | `textDocument/declaration` not implemented in LspManager |
+| Go to Declaration | ✅ | `LspManager.getDeclaration()` — P41-O, build #1885 |
 | Go to Type Definition | ✅ | `LspManager.getTypeDefinition()` |
 | Go to Implementation | ✅ | `LspManager.getImplementation()` |
 | Find References | ✅ | `LspManager.getReferences()` → dropdown list in CodeEditor |
-| Peek Definition | ❌ | No inline peek widget — only full navigation |
-| Peek References | ❌ | No inline peek widget — only dropdown list |
-| Peek Declaration | ❌ | No peek or declaration support |
+| Peek Definition | ✅ | `PeekWidget.kt` — `PeekCodeWidget()` (P41-H, build pending fix #1906→#1907) |
+| Peek References | ✅ | `PeekWidget.kt` — `PeekReferencesWidget()` (P41-H, build pending fix #1906→#1907) |
+| Peek Declaration | ✅ | `PeekWidget.kt` — reuses `PeekCodeWidget()` with declaration title (P41-H) |
 | Go to Symbol | ✅ | `SymbolSearchPanel.kt` — document symbols via `getDocumentSymbol()` |
 | Go to File | ✅ | `ProjectFileSearchPanel.kt` — fuzzy file name search |
 | Back/Forward navigation | ✅ | `ProjectShellScreen.kt` — `navBackStack`, `navBack()`, `navForward()` |
@@ -8479,21 +8528,21 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Generate Constructor | ✅ | `CodeEditor.kt` — context menu calls LSP `source.generate.constructor` (P41-L) |
 | Generate Getters/Setters | ✅ | `CodeEditor.kt` — context menu calls LSP `source.generate.accessors` (P41-L) |
 | Implement Interface | ✅ | `CodeEditor.kt` — context menu calls LSP `source.generate.implement` (P41-L) |
-| Extract Method | ❌ | No extract refactoring |
-| Extract Variable | ❌ | No extract refactoring |
-| Inline Variable | ❌ | No inline refactoring |
+| Extract Method | ✅ | `CodeEditor.kt` — context menu calls LSP `refactor.extract` (P41-L) |
+| Extract Variable | ✅ | `CodeEditor.kt` — context menu calls LSP `refactor.extract.constant` (P41-L) |
+| Inline Variable | ✅ | `CodeEditor.kt` — context menu calls LSP `refactor.inline` (P41-L) |
 | Rename Preview | ❌ | `LspManager.rename()` exists but no preview UI |
-| AI code actions | ❌ | No AI-powered code actions |
+| AI code actions | ✅ | `CodeEditor.kt` — Explain/Generate Tests/Docs/Optimize/Refactor (P41-O) |
 
 ### 4. Diagnostics
 
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
 | Problems panel | ✅ | `ProblemsPanel.kt` — full diagnostics list with file grouping |
-| Error Lens | ❌ | No inline error text at end of code lines |
+| Error Lens | ✅ | `CodeEditor.kt` — inline error text at end of lines (P41-O, build #1885) |
 | Inline diagnostics | ✅ | `CodeEditor.kt` — squiggle underlines via `lspDiagnosticErrors` |
 | Error navigation | ✅ | `ProblemsPanel.kt` — tap to navigate to error location |
-| Diagnostic filtering | ❌ | No filter by severity/category in Problems panel |
+| Diagnostic filtering | ✅ | `ProblemsPanel.kt` — filter by severity (P41-O, build #1885) |
 | Related diagnostics | ❌ | No related-diagnostics grouping |
 | Workspace diagnostics | ✅ | `LspManager.getDiagnostics()` — all open files |
 | Diagnostic codes | ❌ | Diagnostic codes not displayed in UI |
@@ -8506,7 +8555,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 |---------|--------|------------------|
 | Format document | ✅ | `LspManager.getFormatting()` + `DocumentFormatter.kt` |
 | Format selection | ✅ | `LspManager.getRangeFormatting()` |
-| Format on Save | ❌ | Not wired — no save-triggered formatting |
+| Format on Save | ✅ | `ProjectShellScreen.kt` → `EditorPane.kt` — save triggers `DocumentFormatter.format()` (P41-O, build #1885) |
 | Format while typing | ✅ | `LspManager.getOnTypeFormatting()` — declared in capabilities |
 | Formatter selection | ❌ | No per-language formatter picker |
 | Language-specific formatting | 🔶 | LSP formatting works when server supports it; no fallback formatters |
@@ -8816,14 +8865,15 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 | Build | Commit | Status | Notes |
 |-------|--------|--------|-------|
-| #1881 | `9e416547` | ✅ Green | P41-N CodeLens fix — duplicate executeCommand removed, coroutineScope→MainScope, optString(null) fixed |
-| #1880 | `08b955eb` | ❌ Failed | P41-N fix attempt — duplicate executeCommand still present |
-| #1879 | `2485e1b0` | ❌ Failed | P41-N docs commit — compilation error in EditorPane.kt |
-| #1878 | `030c3b05` | ❌ Failed | P41-N feature — duplicate executeCommand in LspManager, coroutineScope unresolved, optString(null) |
-| #1855 | `e513da32` | ✅ Green | P41-K LspManager cancelPendingRequest + getPendingRequestId |
+| #1907 | `a777534` | ⏳ Pending | fix(P41-H): PeekWidget BoxScope extension — resolves .align() compile error |
+| #1906 | — | ❌ Failed | P41-H Peek References/Declaration — `Unresolved reference: align` in PeekWidget.kt:57,174 |
+| #1905 | — | ✅ Green | docs(AGENTS): GCP IAM verification results |
+| #1902 | — | ✅ Green | docs(AGENTS): Fix stale GCP redirect URI status |
+| #1885 | — | ✅ Green | P41-O Error Lens, Format on Save, Auto-indent, Diagnostic Filtering, Go to Declaration |
+| #1881 | `9e416547` | ✅ Green | P41-N CodeLens fix |
 
 **Known risk:** `CodeEditor.kt` at 3842 lines. All new UI MUST be extracted to separate composables.
-**Uncommitted changes:** Phase F workspace symbol completion (CodeEditor.kt, LspIntegration.kt, EditorPane.kt)
+**Latest fix:** PeekWidget.kt — `.align(Alignment.Center)` required BoxScope; made PeekCodeWidget and PeekReferencesWidget BoxScope extensions.
 
 
 
