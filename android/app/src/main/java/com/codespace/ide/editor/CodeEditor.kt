@@ -447,6 +447,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     /** P38: LSP Go-to-Definition — returns true if LSP succeeded (falls back to regex if false/null) */
     onLspDefinition: (() -> Boolean)? = null,
     /** P41-O5: LSP Go to Declaration — semantic navigation to declaration (e.g. header file) */
+    /** P41-I: Source Actions — Organize Imports, Remove Unused, Fix All. Called with the CodeActionKind string. */
+    onSourceAction: ((kind: String) -> Unit)? = null,
     onLspDeclaration: (() -> Boolean)? = null,
 ) {
     val colors = LocalEditorColors.current
@@ -2573,6 +2575,37 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onClick = {
                                     val nextNewline = value.text.indexOf('\n', value.selection.end)
                                     if (nextNewline >= 0) {
+
+                            // P41-I: Source Actions
+                            if (onSourceAction != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("⟐", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Organize Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = { onSourceAction!!.invoke("source.organizeImports"); showLspMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("⟇", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Remove Unused Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = { onSourceAction!!.invoke("source.removeUnused"); showLspMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("✦", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Fix All", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = { onSourceAction!!.invoke("source.fixAll"); showLspMenu = false }
+                                )
+                            }
                                         extraCursors = (extraCursors + nextNewline + 1).distinct().sorted()
                                     }
                                     showLspMenu = false

@@ -1603,6 +1603,55 @@ fun EditorPane(
                                 }
                                 succeeded
                             }
+                        // P41-I: Source Actions — Organize Imports, Remove Unused, Fix All
+                        onSourceAction = if (LspManager.isServerRunning(active.language)) {
+                            { kind ->
+                                val uri = LspManager.fileUriFromHostPath(context, active.path)
+                                if (uri != null) {
+                                    val pos = lspCursorLine
+                                    val actions = try {
+                                        LspManager.getCodeActions(active.language, uri, pos, 0, only = listOf(kind))
+                                    } catch (_: Exception) { null }
+                                    if (actions != null && actions.length() > 0) {
+                                        val action = actions.optJSONObject(0)
+                                        if (action != null) {
+                                            var edit = action.opt("edit")?.toString()
+                                            var command = action.opt("command")?.toString()
+                                            val data = action.opt("data")
+                                            // If action has data but no edit, resolve it first
+                                            if (edit == null && data != null) {
+                                                try {
+                                                    val resolved = LspManager.resolveCodeAction(active.language, action.toString())
+                                                    if (resolved != null) {
+                                                        edit = resolved.opt("edit")?.toString()
+                                                        command = resolved.opt("command")?.toString()
+                                                    }
+                                                } catch (_: Exception) {}
+                                            }
+                                            if (edit != null) {
+                                                val newText = com.codespace.ide.lsp.applyWorkspaceEdit(edit, active.content, uri)
+                                                if (newText != null && newText != active.content) {
+                                                    val idx = tabs.indexOfFirst { it.id == activeId }
+                                                    if (idx >= 0) {
+                                                        tabs[idx] = active.copy(content = newText, isDirty = true)
+                                                        try { java.io.File(active.path).writeText(newText) } catch (_: Exception) {}
+                                                    }
+                                                }
+                                            } else if (command != null) {
+                                                try {
+                                                    val cmdJson = org.json.JSONObject(command)
+                                                    val cmdName = cmdJson.optString("command", "")
+                                                    val cmdArgs = cmdJson.optJSONArray("arguments")
+                                                    if (cmdName.isNotEmpty()) {
+                                                        LspManager.executeCommand(active.language, cmdName, cmdArgs)
+                                                    }
+                                                } catch (_: Exception) {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else null,
                         } else null,
                         // P25-LSP: Format document via LSP
                         // P26-1: LSP Document Highlight lines
