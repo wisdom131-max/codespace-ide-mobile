@@ -24,7 +24,7 @@
 
 | | |
 |-|-|
-| Latest green build | **79288397** (#1929) — P41-U Built-in source actions (organize/remove unused imports + remove unused code) |
+| Latest green build | **15e5870f** (#1931) — P41-V Context-aware completions — ALL VS Code parity features complete! |
 
 | Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–V complete. P41-V: Context-aware completions. ALL parity features now ✅!) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
