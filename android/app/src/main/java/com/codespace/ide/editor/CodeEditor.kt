@@ -2812,45 +2812,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             )
                             }
 
-                            // P41-L: Refactor Actions
-                            if (onSourceAction != null) {
-                            DropdownMenuItem(
-                            text = {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("R", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Extract Method", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                            }
-                            },
-                            onClick = { onSourceAction!!.invoke("refactor.extract"); showLspMenu = false }
+                            // P41-T: Refactor submenu (extracted to RefactorMenu.kt)
+                            RefactorSubmenu(
+                                onSourceAction = onSourceAction,
+                                onAiFixRequest = onAiFixRequest,
+                                onDismiss = { showLspMenu = false }
                             )
-                            DropdownMenuItem(
-                            text = {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("R", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Extract Variable", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                            }
-                            },
-                            onClick = { onSourceAction!!.invoke("refactor.extract.constant"); showLspMenu = false }
-                            )
-                            DropdownMenuItem(
-                            text = {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("I", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Inline Variable", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                            }
-                            },
-                            onClick = { onSourceAction!!.invoke("refactor.inline"); showLspMenu = false }
-                            )
-                            DropdownMenuItem(
-                            text = {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("M", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Move Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                            }
-                            },
-                            onClick = { onSourceAction!!.invoke("refactor.move"); showLspMenu = false }
-                            )
-                            }
 
                             // P41-L: Code Generation
                             if (onSourceAction != null) {
