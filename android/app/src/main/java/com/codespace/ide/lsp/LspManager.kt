@@ -1627,6 +1627,38 @@ object LspManager {
         return response as? JSONArray
     }
     // P26-1: LSP Inlay Hints — inline type/parameter hints
+    /**
+     * P41-N: Resolve a CodeLens that returned only `data` (no command).
+     * Some servers return a lens with just a range + data, and need a second
+     * round-trip to get the actual command/title.
+     */
+    fun resolveCodeLens(language: Language, lens: JSONObject): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "codeLensProvider")) return null
+        val caps = server.capabilities
+        val codeLensCap = caps?.opt("codeLensProvider")
+        val hasResolve = codeLensCap is JSONObject && codeLensCap.optBoolean("resolveProvider", false)
+        if (!hasResolve) return null
+        val response = server.client.request("codeLens/resolve", lens, timeoutSeconds = 5)
+        return response as? JSONObject
+    }
+
+    /**
+     * P41-N: Execute an LSP command (from CodeLens click).
+     * Supports workspace/executeCommand for servers that register commands.
+     */
+    fun executeCommand(language: Language, command: String, arguments: JSONArray?): JSONObject? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        val params = JSONObject().apply {
+            put("command", command)
+            if (arguments != null) put("arguments", arguments)
+        }
+        val response = server.client.request("workspace/executeCommand", params, timeoutSeconds = 10)
+        return response as? JSONObject
+    }
+
     fun getInlayHints(language: Language, uri: String): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
