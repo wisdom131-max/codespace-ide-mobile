@@ -369,6 +369,7 @@ fun CodeEditor(
     lspFoldingRanges: List<Pair<Int, Int>> = emptyList(),
     /** P26-1: LSP code lens — inline annotations (JSONArray of CodeLens). */
     lspCodeLenses: org.json.JSONArray? = null,
+    lspDocumentColors: org.json.JSONArray? = null, // P41-K: Color swatches
     /** P41-N: CodeLens click handler — receives the raw lens JSON for command execution. */
     onCodeLensClick: ((org.json.JSONObject) -> Unit)? = null,
     /** P26-1: LSP inlay hints — inline type/parameter hints (JSONArray of InlayHint). */
@@ -1715,6 +1716,44 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // P41-K: Color swatches — inline color indicators from LSP documentColor
+        if (lspDocumentColors != null && lspDocumentColors!!.length() > 0) {
+            val lineHeightPxCS = fontSize * 1.25f
+            val gutterDpCS = 74f
+            val charWidthPxCS = fontSize * 0.6f
+            for (ci in 0 until lspDocumentColors!!.length()) {
+                val colorInfo = lspDocumentColors!!.optJSONObject(ci) ?: continue
+                val range = colorInfo.optJSONObject("range") ?: continue
+                val startLine = range.optJSONObject("start")?.optInt("line", -1) ?: -1
+                val startChar = range.optJSONObject("start")?.optInt("character", 0) ?: 0
+                if (startLine < 0) continue
+                val color = colorInfo.optJSONObject("color") ?: continue
+                val r = color.optDouble("red", 0.0)
+                val g = color.optDouble("green", 0.0)
+                val b = color.optDouble("blue", 0.0)
+                val a = color.optDouble("alpha", 1.0)
+                val swatchColor = Color(
+                    red = r.toFloat(),
+                    green = g.toFloat(),
+                    blue = b.toFloat(),
+                    alpha = a.toFloat()
+                )
+                val swatchTopDp = startLine * lineHeightPxCS - vScroll.value
+                val swatchLeftDp = gutterDpCS + (startChar * charWidthPxCS) - 4f
+                if (swatchTopDp >= 0 && swatchTopDp < (displayLines.size + 5) * lineHeightPxCS) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = swatchLeftDp.dp, top = swatchTopDp.dp)
+                            .size(10.dp)
+                            .background(swatchColor, RoundedCornerShape(2.dp))
+                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(2.dp))
+                            .zIndex(4f)
+                    )
+                }
+            }
+        }
+
         // P41-O1: Error Lens — inline error text at end of code lines (VS Code-style)
         if (lintErrors.isNotEmpty() && !showCompletions) {
             val lineHeightPxEL = fontSize * 1.25f
@@ -1732,7 +1771,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 // Only render if visible in viewport
                 if (lineTopDp >= 0 && lineTopDp < (displayLines.size + 5) * lineHeightPxEL) {
                     Text(
-                        text = "  ${err.message.replace("\n", " ").take(80)}",
+                        text = "  ${if (err.code != null) "[${err.code}] " else ""}${err.message.replace("\n", " ").take(80)}",
                         color = Color(0xFFFF6B6B).copy(alpha = 0.7f),
                         fontSize = (fontSize * 0.8f).sp,
                         fontFamily = FontFamily.Monospace,
@@ -1961,7 +2000,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .verticalScroll(miniScroll)
                 ) {
 
-                    textLines.forEachIndexed { _, line ->
+                    // Pre-compute error lines for minimap markers
+                    val errorLinesMap = remember(value.text, lintErrors) {
+                        val map = mutableMapOf<Int, Int>() // line -> severity
+                        for (err in lintErrors) {
+                            val errLine = value.text.substring(0, err.start.coerceIn(0, value.text.length)).count { it == '\n' }
+                            if (errLine !in map || err.severity < map[errLine]!!) {
+                                map[errLine] = err.severity
+                            }
+                        }
+                        map
+                    }
+                    textLines.forEachIndexed { idx, line ->
                         // Classify line for syntax color
                         val trimmed = line.trimStart()
                         val lineColor = when {
@@ -1999,6 +2049,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             if (localDensity < 1f) {
                                 Spacer(Modifier.weight((1f - localDensity).coerceAtLeast(0f)))
                             }
+                            // Minimap error marker — small colored bar at right edge
+                            val lineSev = errorLinesMap[idx]
+                            if (lineSev != null) {
+                                Box(Modifier
+                                    .width(2.dp)
+                                    .fillMaxHeight()
+                                    .background(when (lineSev) {
+                                        1 -> Color(0xFFFF6B6B) // Error
+                                        2 -> Color(0xFFFFD700) // Warning
+                                        else -> Color(0xFF4EC9B0) // Info
+                                    })
+                                )
+                            }
                         }
                     }
                 }
@@ -2030,6 +2093,38 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             )
                         },
                 )
+            }
+        }
+
+        // P41-J: Overview ruler — thin diagnostic strip on right edge (when minimap hidden)
+        if (!showMinimapState && lintErrors.isNotEmpty()) {
+            val rulerWidth = 4.dp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .width(rulerWidth)
+                    .fillMaxHeight()
+                    .background(colors.gutter.copy(alpha = 0.2f))
+                    .zIndex(3f)
+            ) {
+                lintErrors.forEach { err ->
+                    val errLine = value.text.substring(0, err.start.coerceIn(0, value.text.length)).count { it == '\n' }
+                    val totalLines = value.text.split("\n").size
+                    val lineFrac = errLine.toFloat() / totalLines.coerceAtLeast(1)
+                    val markerColor = when (err.severity) {
+                        1 -> Color(0xFFFF6B6B)
+                        2 -> Color(0xFFFFD700)
+                        else -> Color(0xFF4EC9B0)
+                    }
+                    Box(
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .offset { IntOffset(0, (lineFrac * 9999f).toInt().coerceAtMost(9999)) }
+                            .background(markerColor)
+                    )
+                }
             }
         }
 

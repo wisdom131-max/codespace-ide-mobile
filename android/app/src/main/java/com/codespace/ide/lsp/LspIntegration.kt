@@ -290,7 +290,9 @@ fun lspDiagnosticsToLintErrors(diagnostics: JSONArray, fileContent: String): Lis
         }
         val endOffset = (lineOffsets[endLine] + endChar).coerceIn(startOffset + 1, fileContent.length)
         val message = diag.optString("message", "LSP diagnostic")
-        result.add(LintError(start = startOffset, end = endOffset, message = message))
+        val code = if (diag.has("code") && !diag.isNull("code")) diag.opt("code")?.toString() else null
+        val severity = diag.optInt("severity", 1)
+        result.add(LintError(start = startOffset, end = endOffset, message = message, code = code, severity = severity))
     }
     return result
 }

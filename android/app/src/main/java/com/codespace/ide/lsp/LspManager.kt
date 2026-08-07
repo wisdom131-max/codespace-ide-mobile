@@ -1261,6 +1261,25 @@ object LspManager {
         return response as? JSONArray
     }
 
+    // ── Document Colors ────────────────────────────────────────
+
+    /**
+     * P41-K: Request document colors from the LSP server.
+     * Returns a JSONArray of ColorInformation: { range: { start, end }, color: { red, green, blue, alpha } }
+     */
+    fun getDocumentColors(
+        language: Language,
+        uri: String,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "colorProvider")) return null
+        val td = JSONObject().put("uri", uri)
+        val params = JSONObject().put("textDocument", td)
+        val response = server.client.request("textDocument/documentColor", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
     // ── Formatting ──────────────────────────────────────────────
 
     /**

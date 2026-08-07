@@ -223,6 +223,7 @@ fun EditorPane(
     var lspFoldingRanges by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
     // P26-1: LSP Code Lens — inline annotations (ref count, run/test)
     var lspCodeLenses by remember { mutableStateOf<JSONArray?>(null) }
+    var lspDocumentColors by remember { mutableStateOf<JSONArray?>(null) } // P41-K: Color swatches
     // P26-1: LSP Inlay Hints — inline type/parameter hints
     var lspInlayHints by remember { mutableStateOf<JSONArray?>(null) }
     // P26-1: LSP Document Links — clickable links in comments
@@ -976,9 +977,15 @@ fun EditorPane(
                         LspManager.getCodeLens(active.language, uri)
                     }
                     lspCodeLenses = lenses
+                    // P41-K: Fetch document colors for inline swatches
+                    val colors = withContext(Dispatchers.IO) {
+                        LspManager.getDocumentColors(active.language, uri)
+                    }
+                    lspDocumentColors = colors
                 }
             } else {
                 lspCodeLenses = null
+                lspDocumentColors = null
             }
         }
 
@@ -1662,6 +1669,7 @@ fun EditorPane(
                         lspFoldingRanges = lspFoldingRanges,
                         // P26-1: LSP Code Lens
                         lspCodeLenses = lspCodeLenses,
+                        lspDocumentColors = lspDocumentColors,
                         // P41-N: CodeLens click — resolve if needed, then execute command
                         onCodeLensClick = if (LspManager.isServerRunning(active.language)) {
                             { lensJson ->

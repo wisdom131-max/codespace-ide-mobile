@@ -2,7 +2,7 @@ package com.codespace.ide.editor
 
 import com.codespace.ide.domain.Language
 
-data class LintError(val start: Int, val end: Int, val message: String)
+data class LintError(val start: Int, val end: Int, val message: String, val code: String? = null, val severity: Int = 1)
 
 /**
  * P2-5 — Lint Analyzer (hardened, low-noise)
