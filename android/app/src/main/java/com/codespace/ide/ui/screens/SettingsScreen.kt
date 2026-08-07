@@ -10,6 +10,7 @@ import java.util.Locale
 import android.content.Intent
 import android.net.Uri
 import androidx.biometric.BiometricManager
+import com.codespace.ide.ui.screens.PinRegistrationDialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -125,15 +127,15 @@ fun SettingsScreen(
     var savedMsg by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf<String?>(null) }
 
-    // ── Biometric lock state ─────────────────────────────────────────────────
+    // ── App lock state ──────────────────────────────────────────────────────
     var biometricEnabled by remember { mutableStateOf(tokenStore.biometricLockEnabled) }
+    var showPinRegistration by remember { mutableStateOf(false) }
 
-    // Check if the device actually supports biometric / device-credential auth
+    // Check if the device supports biometric (fingerprint/face) for optional unlock
     val biometricManager = remember { BiometricManager.from(context) }
     val biometricAvailable = remember {
         biometricManager.canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_WEAK or
-            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            BiometricManager.Authenticators.BIOMETRIC_WEAK
         ) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
@@ -215,6 +217,22 @@ fun SettingsScreen(
         }
     }
 
+    // ── PIN registration dialog ─────────────────────────────────────────────
+    if (showPinRegistration) {
+        PinRegistrationDialog(
+            onPinSet = { pin ->
+                tokenStore.pinHash = tokenStore.hashPin(pin)
+                tokenStore.biometricLockEnabled = true
+                biometricEnabled = true
+                showPinRegistration = false
+                savedMsg = "✓ App lock enabled — PIN set"
+            },
+            onDismiss = {
+                showPinRegistration = false
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -246,57 +264,45 @@ fun SettingsScreen(
             // ── Security ─────────────────────────────────────────────────────
             Text("Security", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
 
-            if (biometricAvailable) {
-                ListItem(
-                    headlineContent = { Text("Biometric / PIN lock") },
-                    supportingContent = {
-                        Text(
-                            if (biometricEnabled)
-                                "App requires fingerprint or PIN on every launch"
-                            else
-                                "Off — anyone who opens the app gets straight in"
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Default.Fingerprint,
-                            contentDescription = null,
-                            tint = if (biometricEnabled)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = biometricEnabled,
-                            onCheckedChange = { checked ->
-                                biometricEnabled = checked
-                                tokenStore.biometricLockEnabled = checked
-                                savedMsg = if (checked) "✓ Biometric lock enabled" else "✓ Biometric lock disabled"
+            ListItem(
+                headlineContent = { Text("App lock") },
+                supportingContent = {
+                    Text(
+                        when {
+                            biometricEnabled && biometricAvailable -> "PIN + fingerprint required on every launch"
+                            biometricEnabled -> "PIN required on every launch"
+                            else -> "Off — anyone who opens the app gets straight in"
+                        }
+                    )
+                },
+                leadingContent = {
+                    Icon(
+                        Icons.Default.Fingerprint,
+                        contentDescription = null,
+                        tint = if (biometricEnabled)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = biometricEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                // Enabling — must register a PIN first
+                                showPinRegistration = true
+                            } else {
+                                // Disabling — just turn it off
+                                biometricEnabled = false
+                                tokenStore.biometricLockEnabled = false
+                                tokenStore.pinHash = null
+                                savedMsg = "✓ App lock disabled"
                             }
-                        )
-                    },
-                )
-            } else {
-                // Device has no biometric / PIN set up — inform the user
-                ListItem(
-                    headlineContent = { Text("Biometric / PIN lock") },
-                    supportingContent = {
-                        Text("Not available — set up a fingerprint or screen lock in your device settings first")
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Default.Fingerprint,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        )
-                    },
-                    trailingContent = {
-                        Switch(checked = false, onCheckedChange = {}, enabled = false)
-                    },
-                )
-            }
+                        }
+                    )
+                },
+            )
             HorizontalDivider()
 
             // ── Accounts ────────────────────────────────────────────────────

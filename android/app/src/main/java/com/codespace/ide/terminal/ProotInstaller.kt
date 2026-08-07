@@ -757,7 +757,7 @@ echo '[Remotion] Done. Open the Preview tab -> http://localhost:3000'
 - ui/panes/ExplorerPane.kt — File tree, full MT-Manager-parity file type routing
 - ui/panes/TerminalPane.kt — Ubuntu proot terminal, Quick Actions row, PTY per project
 - ui/panes/PreviewPane.kt — WebView localhost preview, pinch-zoom, address bar
-- ui/panes/SourceControlPane.kt — Git status/commit/push/pull via GitEngine.kt
+- ui/panes/SourceControlPane.kt — Git status/commit/push/pull (runs git directly)
 - ui/panes/PdfViewerDialog.kt — Native PDF viewer (Android PdfRenderer)
 - ui/panes/MediaViewers.kt — Image viewer, audio player, video player
 - ui/panes/ArchiveViewer.kt — ZIP/RAR/7Z/TAR archive browser and extractor
@@ -786,7 +786,6 @@ echo '[Remotion] Done. Open the Preview tab -> http://localhost:3000'
 - agent/AgentConnectorManager.kt — ⚠️ DEAD CODE. Replaced by ConnectorsHubSheet + Railway OAuth.
 
 ## Git / Auth / Data
-- git/GitEngine.kt — All git ops (status/commit/push/pull). Working dir = active project root.
 - data/GitHubAuth.kt — GitHub Device Flow OAuth for git push/pull. WORKING — do not touch.
 - data/SecureTokenStore.kt — Encrypted token storage (GitHub PAT, JWT, biometric setting)
 - data/SessionStateStore.kt — Active project path, open file, tab state. Source of truth.
