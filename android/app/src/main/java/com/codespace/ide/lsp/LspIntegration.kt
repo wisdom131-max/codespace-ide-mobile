@@ -710,3 +710,48 @@ fun parseTypeHierarchyItems(items: JSONArray): List<TypeHierarchyItem> {
     }
     return result
 }
+
+/**
+ * P41-N: CodeLens data class — parsed from LSP textDocument/codeLens response.
+ */
+data class CodeLensData(
+    val startLine: Int,
+    val startChar: Int,
+    val endLine: Int,
+    val endChar: Int,
+    val title: String,
+    val command: String?,
+    val arguments: JSONArray?,
+    val hasData: Boolean,
+    val rawJson: String
+)
+
+/**
+ * P41-N: Parse a CodeLens JSONArray into a list of CodeLensData.
+ */
+fun parseCodeLensItems(lenses: JSONArray): List<CodeLensData> {
+    val result = mutableListOf<CodeLensData>()
+    for (i in 0 until lenses.length()) {
+        val lens = lenses.optJSONObject(i) ?: continue
+        val range = lens.optJSONObject("range") ?: continue
+        val start = range.optJSONObject("start") ?: continue
+        val end = range.optJSONObject("end") ?: continue
+        val command = lens.optJSONObject("command")
+        val title = command?.optString("title", "") ?: lens.optString("title", "")
+        val cmd = command?.optString("command", null)
+        val args = command?.opt("arguments") as? JSONArray
+        val hasData = lens.has("data")
+        result.add(CodeLensData(
+            startLine = start.optInt("line", 0),
+            startChar = start.optInt("character", 0),
+            endLine = end.optInt("line", 0),
+            endChar = end.optInt("character", 0),
+            title = title,
+            command = cmd,
+            arguments = args,
+            hasData = hasData,
+            rawJson = lens.toString()
+        ))
+    }
+    return result
+}
