@@ -2194,9 +2194,7 @@ private fun PssBottomPanelContent(
                         onRunTest = { relPath ->
                             val fullPath = projectRoot?.let { java.io.File(it, relPath).absolutePath }
                             if (fullPath != null) {
-                                showBottomPanel = true
-                                activeBottomTab = BottomTab.TERMINAL
-                                // Test run command will be typed by user in terminal
+                                onActiveBottomTabChange(BottomTab.TERMINAL)
                             }
                         },
                         onOpenFile = { relPath ->
