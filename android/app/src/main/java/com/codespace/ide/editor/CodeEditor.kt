@@ -1960,6 +1960,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // ── Minimap toggle button + realistic minimap ──────────────────────────
+        val textLines = remember(value.text) { value.text.split("\n") }
         val lineCountTotal = textLines.size
 
         // Scale: each minimap line = 2.dp when file is small, shrinks for large files
@@ -4149,6 +4150,7 @@ private fun lspCompletionIcon(kind: Int): Pair<androidx.compose.ui.graphics.vect
         25  -> Pair(Icons.Default.TextFields, Color(0xFF4EC9B0))  // TypeParameter — teal
         else -> Pair(Icons.Default.Code, Color(0xFFCCCCCC))       // Unknown — gray
     }
+}
 
 @Composable
 private fun GotoDefinitionDialog(
