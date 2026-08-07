@@ -836,6 +836,10 @@ object LspManager {
             put("codeLens", JSONObject().apply { put("dynamicRegistration", false) })
             put("inlayHint", JSONObject().apply { put("dynamicRegistration", false) })
             put("documentLink", JSONObject().apply { put("dynamicRegistration", false); put("tooltipSupport", true) })
+            // P41-M: Call Hierarchy
+            put("callHierarchy", JSONObject().apply { put("dynamicRegistration", false) })
+            // P41-M: Type Hierarchy
+            put("typeHierarchy", JSONObject().apply { put("dynamicRegistration", false) })
         }
         // workspace capabilities
         val workspace = JSONObject().apply {
@@ -1663,5 +1667,115 @@ object LspManager {
         }
         server.client.notify("textDocument/didSave", params)
         return true
+    }
+
+    // ── P41-M: Call Hierarchy ──────────────────────────────────────────────
+
+    /**
+     * P41-M: Prepare a call hierarchy item at the given position.
+     * Returns a CallHierarchyItem JSON array (usually 1 item) or null if unsupported.
+     * LSP method: textDocument/prepareCallHierarchy
+     */
+    fun prepareCallHierarchy(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "callHierarchyProvider")) return null
+
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/prepareCallHierarchy", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-M: Get incoming calls (who calls this function/method).
+     * LSP method: callHierarchy/incomingCalls
+     * Each result item has { from: CallHierarchyItem, fromRanges: Range[] }
+     */
+    fun callHierarchyIncoming(
+        language: Language,
+        item: JSONObject,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+
+        val params = JSONObject().apply { put("item", item) }
+        val response = server.client.request("callHierarchy/incomingCalls", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-M: Get outgoing calls (what does this function/method call).
+     * LSP method: callHierarchy/outgoingCalls
+     * Each result item has { to: CallHierarchyItem, fromRanges: Range[] }
+     */
+    fun callHierarchyOutgoing(
+        language: Language,
+        item: JSONObject,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+
+        val params = JSONObject().apply { put("item", item) }
+        val response = server.client.request("callHierarchy/outgoingCalls", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    // ── P41-M: Type Hierarchy ──────────────────────────────────────────────
+
+    /**
+     * P41-M: Prepare a type hierarchy item at the given position.
+     * Returns a TypeHierarchyItem JSON array (usually 1 item) or null if unsupported.
+     * LSP method: textDocument/prepareTypeHierarchy
+     */
+    fun prepareTypeHierarchy(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+        if (!hasCapability(language, "typeHierarchyProvider")) return null
+
+        val params = positionParams(uri, line, character)
+        val response = server.client.request("textDocument/prepareTypeHierarchy", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-M: Get supertypes (parent classes/interfaces).
+     * LSP method: typeHierarchy/supertypes
+     */
+    fun typeHierarchySupertypes(
+        language: Language,
+        item: JSONObject,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+
+        val params = JSONObject().apply { put("item", item) }
+        val response = server.client.request("typeHierarchy/supertypes", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
+    /**
+     * P41-M: Get subtypes (child classes/implementations).
+     * LSP method: typeHierarchy/subtypes
+     */
+    fun typeHierarchySubtypes(
+        language: Language,
+        item: JSONObject,
+    ): JSONArray? {
+        val server = servers[language] ?: return null
+        if (!server.initialized) return null
+
+        val params = JSONObject().apply { put("item", item) }
+        val response = server.client.request("typeHierarchy/subtypes", params, timeoutSeconds = 10)
+        return response as? JSONArray
     }
 }
