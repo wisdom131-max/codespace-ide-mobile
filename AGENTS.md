@@ -8438,11 +8438,11 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Full Light Bulb support | 🔶 | Context menu has code actions; no lightbulb icon in gutter |
 | Quick Fix | ✅ | `LspManager.getCodeActions()` → context menu |
 | Refactor | 🔶 | Code actions can include refactoring; no dedicated refactor menu |
-| Source Actions | ❌ | No `source.*` action kinds separated out |
-| Organize Imports | ❌ | No dedicated organize imports action |
-| Remove Unused Imports | ❌ | No dedicated action |
+| Source Actions | ✅ | `CodeEditor.kt` — context menu: Organize Imports, Remove Unused, Fix All (P41-I, build #1889) |
+| Organize Imports | ✅ | `CodeEditor.kt` — `source.organizeImports` via LSP (P41-I, build #1889) |
+| Remove Unused Imports | ✅ | `CodeEditor.kt` — `source.removeUnused` via LSP (P41-I, build #1889) |
 | Auto Import | ✅ | Via `additionalTextEdits` on completion accept (Phase D) |
-| Fix All | ❌ | No `source.fixAll` support |
+| Fix All | ✅ | `CodeEditor.kt` — `source.fixAll` via LSP (P41-I, build #1889) |
 | Generate Constructor | ❌ | No code generation actions |
 | Generate Getters/Setters | ❌ | No code generation actions |
 | Implement Interface | ❌ | No code generation actions |
@@ -8647,11 +8647,12 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [ ] Build inline Peek widget (overlay in editor, not full navigation)
 - [ ] Peek Definition, Peek References, Peek Declaration
 
-### Phase I — Code Actions: Light Bulb + Source Actions
-- [ ] Light bulb icon in gutter when `getCodeActions()` returns results
-- [ ] Separate Source Actions (`source.organizeImports`, `source.fixAll`)
-- [ ] Organize Imports action
-- [ ] Remove Unused Imports action
+### Phase I — Code Actions: Light Bulb + Source Actions ✅ DONE (commit 82f6d77, build #1889)
+- [x] Light bulb icon in gutter when `getCodeActions()` returns results — pre-existing in CodeEditor.kt:644
+- [x] Separate Source Actions (`source.organizeImports`, `source.fixAll`, `source.removeUnused`)
+- [x] Organize Imports action
+- [x] Remove Unused Imports action
+- [x] Fix All action
 
 ### Phase J — Diagnostics: Error Lens + Filtering + Markers
 - [x] Error Lens — inline error text at end of line (P41-O, build #1885)
@@ -8760,6 +8761,21 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [ ] Add `textDocument/documentColor` + `colorPresentation`
 
 ---
+
+
+### Error Trace: Build #1887–#1888 (P41-I Source Actions Compilation)
+
+| Field | Value |
+|-------|-------|
+| Feature | P41-I Source Actions — Organize Imports, Remove Unused, Fix All |
+| Files | `EditorPane.kt`, `CodeEditor.kt` |
+| Symptom #1887 | `e: EditorPane.kt:1654:36 Unexpected tokens (use ';' to separate expressions on the same line)` |
+| Root Cause #1887 | P41-I commit inserted `onSourceAction` block between `onLspDeclaration`'s lambda close `}` and its `} else null,` closer, leaving a stray duplicate `} else null,` on line 1655. |
+| Fix #1887 | Reinserted `} else null,` after the lambda close, removed the stray duplicate. Commit `ee8c2d4`. |
+| Symptom #1888 | 4 errors: (1-3) `CodeEditor.kt:2581/2590/2599 @Composable invocations can only happen from the context of a @Composable function`, (4) `EditorPane.kt:1625 Type mismatch: inferred type is String but JSONObject was expected` |
+| Root Cause #1888 | (1-3) Source Actions DropdownMenuItems were placed inside the "Add Cursor Below" `onClick` handler — a non-Composable lambda. (4) `resolveCodeAction(action.toString())` passed a String instead of the expected JSONObject. |
+| Fix #1888 | Moved 3 Source Actions DropdownMenuItems from inside `onClick` to the DropdownMenu body (siblings of other menu items). Changed `action.toString()` to `action`. Commit `29fe2f6`. |
+| Lesson | When inserting new menu items via code generation, ensure they go in the Composable menu body, NOT inside an existing item's `onClick` handler. And always check method parameter types — `toString()` on a JSONObject gives a String, not the object itself. |
 
 ## Build Status (latest)
 
