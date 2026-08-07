@@ -4379,7 +4379,6 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
     }
 }
 
-}
 
 
 @Composable
