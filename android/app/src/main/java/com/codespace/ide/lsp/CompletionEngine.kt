@@ -241,7 +241,7 @@ fun rank(
             CompletionSource.LSP -> 0f
             CompletionSource.SNIPPET -> 0f
             CompletionSource.BUFFER -> -5f
-            CompletionSource.AI -> -10f
+            CompletionSource.AI -> 5f // P41-O: AI completions are context-aware, boost them
             CompletionSource.WORKSPACE -> -15f
             CompletionSource.PATH -> -20f
         }

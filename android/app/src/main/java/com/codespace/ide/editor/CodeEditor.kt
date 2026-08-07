@@ -2275,21 +2275,47 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 onClick = {
                                                     // P39: Handle AI actions via onAiFixRequest
                                                     if (fix.kind != null && fix.kind.startsWith("ai.") && onAiFixRequest != null) {
-                                                        val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
-                                                        val lineStart = value.text.lastIndexOf('\n', value.selection.start - 1) + 1
-                                                        val lineEnd = value.text.indexOf('\n', value.selection.start)
-                                                        val lineText = value.text.substring(lineStart, if (lineEnd < 0) value.text.length else lineEnd)
+                                                        // P41-O: Use full selection if available, else current line
+                                                        val hasSelection = value.selection.start != value.selection.end
+                                                        val selText = if (hasSelection) {
+                                                            value.text.substring(
+                                                                value.selection.start.coerceIn(0, value.text.length),
+                                                                value.selection.end.coerceIn(0, value.text.length)
+                                                            )
+                                                        } else {
+                                                            val lineStart = value.text.lastIndexOf('\n', value.selection.start - 1) + 1
+                                                            val lineEnd = value.text.indexOf('\n', value.selection.start)
+                                                            value.text.substring(lineStart, if (lineEnd < 0) value.text.length else lineEnd)
+                                                        }
+                                                        // P41-O: Project-aware context — include file name, language, imports
+                                                        val fileName = filePath?.substringAfterLast('/') ?: "untitled"
+                                                        val langName = language.displayName
+                                                        val imports = value.text.lines().take(30).filter {
+                                                            it.trim().startsWith("import ") || it.trim().startsWith("from ") || it.trim().startsWith("package ") || it.trim().startsWith("#include")
+                                                        }.joinToString("\n")
+                                                        val contextHeader = "File: $fileName ($langName)\n" +
+                                                            (if (imports.isNotEmpty()) "Imports:\n$imports\n" else "") +
+                                                            "Selection (${if (hasSelection) "selected text" else "current line"}):\n"
+                                                        // P41-O: For Explain Error, include the diagnostic message at cursor
+                                                        val diagAtCursor = if (fix.kind == com.codespace.ide.lsp.CodeActionKind.AIExplainError) {
+                                                            val cursorOff = value.selection.start.coerceIn(0, value.text.length)
+                                                            val matchingErr = lintErrors.firstOrNull { err ->
+                                                                err.start <= cursorOff && err.end >= cursorOff
+                                                            }
+                                                            if (matchingErr != null) "Error: ${matchingErr.message}${if (matchingErr.code != null) " [${matchingErr.code}]" else ""}\n" else ""
+                                                        } else ""
                                                         val prompt = when (fix.kind) {
-                                                            com.codespace.ide.lsp.CodeActionKind.AIExplain -> "Explain this code:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> "Generate documentation for this code:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> "Generate unit tests for this code:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIOptimize -> "Optimize this code for better performance:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIRewrite -> "Rewrite this code for better clarity:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AISimplify -> "Simplify this code:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIAddComments -> "Add inline comments to this code:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIExplainError -> "Explain the error in this code:\n" + lineText
-                                                            com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> "Suggest performance improvements for:\n" + lineText
-                                                            else -> fix.title + ":\n" + lineText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIExplain -> contextHeader + "Explain this code:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> contextHeader + "Generate documentation for this code:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> contextHeader + "Generate unit tests for this code:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIOptimize -> contextHeader + "Optimize this code for better performance:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIRewrite -> contextHeader + "Rewrite this code for better clarity:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AISimplify -> contextHeader + "Simplify this code:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIRefactor -> contextHeader + "Refactor this code for better structure and readability:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIAddComments -> contextHeader + "Add inline comments to this code:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIExplainError -> contextHeader + diagAtCursor + "Explain the error in this code:\n" + selText
+                                                            com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> contextHeader + "Suggest performance improvements for:\n" + selText
+                                                            else -> contextHeader + fix.title + ":\n" + selText
                                                         }
                                                         onAiFixRequest!!.invoke(prompt)
                                                     } else if (fix.edit != null) {
@@ -4030,21 +4056,46 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onClick = {
                                 // P39: Handle AI actions via onAiFixRequest
                                 if (fix.kind != null && fix.kind.startsWith("ai.") && onAiFixRequest != null) {
-                                    val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
-                                    val lineStart = value.text.lastIndexOf('\n', value.selection.start - 1) + 1
-                                    val lineEnd = value.text.indexOf('\n', value.selection.start)
-                                    val lineText = value.text.substring(lineStart, if (lineEnd < 0) value.text.length else lineEnd)
+                                    // P41-O: Use full selection if available, else current line
+                                    val hasSelection2 = value.selection.start != value.selection.end
+                                    val selText2 = if (hasSelection2) {
+                                        value.text.substring(
+                                            value.selection.start.coerceIn(0, value.text.length),
+                                            value.selection.end.coerceIn(0, value.text.length)
+                                        )
+                                    } else {
+                                        val lineStart2 = value.text.lastIndexOf('\n', value.selection.start - 1) + 1
+                                        val lineEnd2 = value.text.indexOf('\n', value.selection.start)
+                                        value.text.substring(lineStart2, if (lineEnd2 < 0) value.text.length else lineEnd2)
+                                    }
+                                    // P41-O: Project-aware context
+                                    val fileName2 = filePath?.substringAfterLast('/') ?: "untitled"
+                                    val langName2 = language.displayName
+                                    val imports2 = value.text.lines().take(30).filter {
+                                        it.trim().startsWith("import ") || it.trim().startsWith("from ") || it.trim().startsWith("package ") || it.trim().startsWith("#include")
+                                    }.joinToString("\n")
+                                    val contextHeader2 = "File: $fileName2 ($langName2)\n" +
+                                        (if (imports2.isNotEmpty()) "Imports:\n$imports2\n" else "") +
+                                        "Selection (${if (hasSelection2) "selected text" else "current line"}):\n"
+                                    val diagAtCursor2 = if (fix.kind == com.codespace.ide.lsp.CodeActionKind.AIExplainError) {
+                                        val cursorOff2 = value.selection.start.coerceIn(0, value.text.length)
+                                        val matchingErr2 = lintErrors.firstOrNull { err ->
+                                            err.start <= cursorOff2 && err.end >= cursorOff2
+                                        }
+                                        if (matchingErr2 != null) "Error: ${matchingErr2.message}${if (matchingErr2.code != null) " [${matchingErr2.code}]" else ""}\n" else ""
+                                    } else ""
                                     val prompt = when (fix.kind) {
-                                        com.codespace.ide.lsp.CodeActionKind.AIExplain -> "Explain this code:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> "Generate documentation for this code:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> "Generate unit tests for this code:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIOptimize -> "Optimize this code for better performance:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIRewrite -> "Rewrite this code for better clarity:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AISimplify -> "Simplify this code:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIAddComments -> "Add inline comments to this code:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIExplainError -> "Explain the error in this code:\n" + lineText
-                                        com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> "Suggest performance improvements for:\n" + lineText
-                                        else -> fix.title + ":\n" + lineText
+                                        com.codespace.ide.lsp.CodeActionKind.AIExplain -> contextHeader2 + "Explain this code:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> contextHeader2 + "Generate documentation for this code:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> contextHeader2 + "Generate unit tests for this code:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIOptimize -> contextHeader2 + "Optimize this code for better performance:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIRewrite -> contextHeader2 + "Rewrite this code for better clarity:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AISimplify -> contextHeader2 + "Simplify this code:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIRefactor -> contextHeader2 + "Refactor this code for better structure and readability:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIAddComments -> contextHeader2 + "Add inline comments to this code:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIExplainError -> contextHeader2 + diagAtCursor2 + "Explain the error in this code:\n" + selText2
+                                        com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> contextHeader2 + "Suggest performance improvements for:\n" + selText2
+                                        else -> contextHeader2 + fix.title + ":\n" + selText2
                                     }
                                     onAiFixRequest!!.invoke(prompt)
                                 } else if (fix.edit != null) {

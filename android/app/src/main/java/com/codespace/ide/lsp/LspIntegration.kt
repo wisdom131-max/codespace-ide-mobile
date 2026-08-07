@@ -328,6 +328,7 @@ object CodeActionKind {
     const val AIImprovePerf = "ai.improvePerf"
     const val AIRewrite = "ai.rewrite"
     const val AISimplify = "ai.simplify"
+    const val AIRefactor = "ai.refactor"
     const val AIAddComments = "ai.addComments"
 
     /** Small emoji/glyph shown next to the action title in the dropdown menu. */
