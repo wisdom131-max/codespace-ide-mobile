@@ -1290,6 +1290,22 @@ fun EditorPane(
                                 symbols?.let { parseWorkspaceSymbols(it) } ?: emptyList()
                             }
                         } else null,
+                        // P41-K: Lazy resolve — resolves documentation/detail for highlighted completion items
+                        lspCompletionResolver = if (LspManager.isServerRunning(active.language)) {
+                            { item ->
+                                com.codespace.ide.lsp.resolveCompletionItem(active.language, item)
+                            }
+                        } else null,
+                        // P41-K: Request cancellation — sends $/cancelRequest for stale completion requests
+                        lspCancellationProvider = if (LspManager.isServerRunning(active.language)) {
+                            { reqId ->
+                                LspManager.cancelPendingRequest(active.language, reqId)
+                            }
+                        } else null,
+                        // P41-K: Request ID provider — returns current pending request ID for cancellation tracking
+                        lspRequestIdProvider = if (LspManager.isServerRunning(active.language)) {
+                            { -> LspManager.getPendingRequestId(active.language) }
+                        } else null,
                         // P37-4 + P39-FULL: LSP Code Actions (quick fixes in context menu)
                         // Requests ALL action kinds (no `only` filter) so the menu shows
                         // everything the server can do at this position.
