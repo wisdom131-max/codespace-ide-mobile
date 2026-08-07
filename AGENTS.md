@@ -24,9 +24,9 @@
 
 | | |
 |-|-|
-| Latest green build | **15e5870f** (#1931) — P41-V Context-aware completions — ALL VS Code parity features complete! |
+| Latest green build | **30cc9fc** (#1944) — P43 GitHub Integration (Clone + Sign-in + Repo Browser) |
 
-| Active phase | **Phase 41** (P41 — VS Code Parity Pass: Phases A–V complete. P41-V: Context-aware completions. ALL parity features now ✅!) |
+| Active phase | **Phase 44** (Missing Matrix Features Audit — LSP teardown, UDM injection, OutputPanel routing) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -9038,3 +9038,148 @@ All P41 phases (A–S) implemented and verified green on #1922. Major composable
 | Fix | Added `formatOnSaveTrigger: Int` parameter to `PssEditorColumn` function signature. Passed `formatOnSaveTrigger = formatOnSaveTrigger` at the call site in `ProjectShellScreen`. |
 | Fix Commit | `994d1058` |
 | Lesson | When extracting composables into separate functions (like `PssEditorColumn` from `ProjectShellScreen`), all state variables used by inner composable calls (like `EditorPane`) must be passed as parameters through the function chain. Compose composables do NOT inherit enclosing scope variables. |
+
+
+---
+
+## Phase 42 — Explorer Restructure: VS Code Layout (2026-08-07) ✅ COMPLETE
+
+### Goal
+Restructure the ExplorerPane to mirror VS Code's hierarchical section layout with collapsible sections for Open Editors, Workspace, Outline, and Timeline.
+
+### What Was Done
+
+| Step | Detail | Status |
+|------|--------|--------|
+| 1. Collapsible sections | Implemented 4 expandable/collapsible sections: Open Editors, Workspace, Outline, Timeline | ✅ |
+| 2. State management | Each section uses `remember { mutableStateOf(true) }` for expand/collapse state | ✅ |
+| 3. "..." overflow menu | Added overflow menu button in Explorer header (VS Code style) | ✅ |
+| 4. EXPLORER title | Added header title bar matching VS Code's explorer panel | ✅ |
+| 5. Existing functionality preserved | Tree navigation, git badges, binary file previews all retained | ✅ |
+| 6. Outline integration | Outline section reads from LSP document symbols (via OutlinePanel) | ✅ |
+| 7. Timeline section | Placeholder structure ready for timeline/history integration | ✅ |
+
+### Files Modified
+- `ExplorerPane.kt` — Restructured from flat list to collapsible section architecture
+- `ProjectShellScreen.kt` — Integrated new explorer layout into project UI shell
+
+### Builds
+| Build # | Commit | Status |
+|---------|--------|--------|
+| #1939 | `c97f7fe` | ✅ Green |
+| #1945 | verification build | ✅ Green |
+
+---
+
+## Phase 43 — GitHub Integration: Clone, Sign-in, Repo Browser (2026-08-07) ✅ COMPLETE
+
+### Goal
+Implement VS Code-style source control on-ramp: Clone from URL, GitHub OAuth Device Flow sign-in, Browse My Repos, and Publish to GitHub — all accessible from the Source Control empty-state UI.
+
+### What Was Done
+
+| Step | Detail | Status |
+|------|--------|--------|
+| 1. Clone from URL | Text field + Clone button in empty-state — clones any git URL into the workspace | ✅ |
+| 2. GitHub Sign-in (Device Flow) | OAuth device flow dialog — request code, show user code + verification URL, poll for token, persist to SecureTokenStore | ✅ |
+| 3. Browse My Repos | Fetches user's GitHub repos (sorted by updated), searchable list, tap to clone | ✅ |
+| 4. Publish to GitHub | Creates a new GitHub repo from local code (existing from P43-Publish, preserved) | ✅ |
+| 5. listUserRepos API | Added to GitHubAuth.kt — fetches up to 100 user repos via GitHub API | ✅ |
+| 6. Auth token injection | runGit() injects GitHub token as http.extraheader for authenticated push/pull/clone | ✅ |
+| 7. Empty-state 4 sections | Initialize, Clone from URL, Sign in/Browse, Publish — all in one clean layout | ✅ |
+
+### Empty-State UI Layout
+```
+┌─────────────────────────────────┐
+│  📁 This folder isn't a Git     │
+│     repository yet.             │
+│                                 │
+│  [Initialize Repository]        │
+│  ─────────────────────          │
+│  Clone from URL                 │
+│  [https://github.com/...     ]  │
+│  [Clone Repository]             │
+│  ─────────────────────          │
+│  [Sign in with GitHub]          │
+│  or                             │
+│  Connected as @username        │
+│  [Browse My Repos]              │
+│  ─────────────────────          │
+│  [Publish to GitHub]            │
+└─────────────────────────────────┘
+```
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `GitHubAuth.kt` | Added `listUserRepos()` — fetches user's repos via GitHub API (up to 100, sorted by updated). Added `RepoInfo` data class. |
+| `SourceControlPane.kt` | Added 9 state vars (cloneUrl, cloning, cloneError, showSignInDialog, showRepoBrowser, repos, loadingRepos, repoSearchQuery). Replaced empty-state UI with 4-section layout. Added `GitHubSignInDialog` composable (device flow UI). Added `GitHubRepoBrowserDialog` composable (searchable repo list). |
+| `EditorPane.kt` | Fixed LSP query guard reset on file switch (`LaunchedEffect(active?.path)` resets lastHover/lastHighlight vars to -1). |
+
+### Key Architecture Decisions
+1. **Device Flow over Browser Redirect:** Mobile apps can't easily handle OAuth redirect URIs. GitHub's device flow shows a code + URL, user approves on any browser, we poll. No redirect URI needed.
+2. **Token persistence:** Token + username stored in `SecureTokenStore` (SharedPreferences with key alias). Survives app restarts.
+3. **Auth header injection:** `runGit()` injects `x-access-token:TOKEN` as `http.extraheader` — works for both HTTPS clone and push.
+4. **LSP guard reset:** When switching active files, all 4 LSP query guards (lastHoverLine/Col, lastHighlightLine/Col) reset to -1, ensuring the first cursor position in a new file always gets queried.
+
+### Builds
+| Build # | Commit | Phase | Status | Root Cause |
+|---------|--------|-------|--------|------------|
+| #1940 | `fe80ce8` | P43 GitHubAuth | ✅ Green | — |
+| #1941 | `19fadc0` | P43 SourceControlPane | ❌ Failed | Nested quotes in string template + TypeScript union type in Kotlin |
+| #1942 | `a326c5c` | P43 fix attempt | ❌ Failed | State vars silently dropped + duplicate dialog implementations |
+| #1943 | `a296531` | P43 fix attempt 2 | ❌ Failed | Conflicting overloads (old broken dialogs not removed) |
+| #1944 | `30cc9fc` | P43 final fix | ✅ Green | Removed duplicates + added Dialog import |
+
+### Remaining (User Action Required)
+- [ ] End-to-end OAuth flow test on device: Sign in → get code → approve at github.com/login/device → token persists → Browse My Repos lists repos → tap to clone
+- [ ] Verify authenticated push/pull works with stored token
+
+---
+
+## Phase 44 — Missing Matrix Features Audit (2026-08-07)
+
+### Goal
+Systematic audit of all IDE features that are missing, broken, or incomplete — prioritized for the next development phase.
+
+### Audit Method
+Full codebase audit across 130+ Kotlin files. Each feature categorized as:
+- ✅ Working — fully functional
+- ⚠️ Broken — exists but doesn't work correctly
+- ❌ Missing — not implemented at all
+- 🔶 Partial — partially implemented, needs completion
+
+### Critical Issues (Blocking)
+
+| # | Feature | Status | File(s) | Issue |
+|---|---------|--------|---------|-------|
+| 1 | Breakpoint sync (UDM injection) | ⚠️ Broken | `ProjectShellScreen.kt`, `EditorPane.kt` | `UniversalDebugManager` reference is NOT passed from `ProjectShellState` to `EditorPane`. Breakpoints set in the editor never reach the UDM. |
+| 2 | VariableInspectorPanel | ⚠️ Broken | `VariableInspectorPanel.kt` | No active listener connection to UDM paused-state stream. Variables panel shows nothing during debug sessions. |
+| 3 | OutputPanel siloed | ⚠️ Broken | `OutputPanel.kt` | Only receives LSP log traffic. Build output, terminal output, and git output are NOT routed to it. |
+| 4 | LSP server teardown | ❌ Missing | `LspIntegration.kt`, `EditorPane.kt` | No `didClose` on tab close, no `stopServer` when last file for a language closes. Orphaned servers waste 200-400MB RAM each — critical on 2.3GB device. |
+| 5 | LSP server status reactive | ⚠️ Broken | `LspIntegration.kt` | Server status check is non-reactive. When the process dies after initialization (OOM-kill), the UI doesn't update — silent failure. |
+
+### High Priority (Functionality Gaps)
+
+| # | Feature | Status | File(s) | Issue |
+|---|---------|--------|---------|-------|
+| 6 | OutputPanel theme | ⚠️ Broken | `OutputPanel.kt` | Uses light-theme styling that clashes with the dark IDE interface. |
+| 7 | OAuth end-to-end test | 🔶 Pending | `SourceControlPane.kt` | Code is green and building, but needs on-device verification of the full device flow. |
+| 8 | Timeline section | 🔶 Placeholder | `ExplorerPane.kt` | Timeline section in Explorer is a placeholder — no actual file history/local timeline integration. |
+| 9 | Open Editors section | 🔶 Partial | `ExplorerPane.kt` | Section exists but may not dynamically update when tabs are opened/closed. |
+
+### Medium Priority (Polish & Robustness)
+
+| # | Feature | Status | File(s) | Issue |
+|---|---------|--------|---------|-------|
+| 10 | LSP error feedback | ❌ Missing | `LspIntegration.kt` | No user-visible feedback when LSP server fails to start (e.g., OOM-kill, missing binary). Silent failure. |
+| 11 | LSP memory management | ⚠️ Risk | `LspIntegration.kt` | On 2.3GB RAM device, running 2+ LSP servers concurrently can trigger OOM-kill. No pre-emptive shutdown of idle servers. |
+| 12 | Git branch display | ⚠️ Unverified | `SourceControlPane.kt` | Branch name may not display correctly after the P43 restructure — needs verification. |
+
+### Recommended Fix Order
+1. **LSP server teardown (#4)** — highest RAM impact, affects everything
+2. **LSP reactive status (#5) + error feedback (#10)** — together, makes LSP failures visible
+3. **Breakpoint/UDM injection (#1)** — unblocks the debugging system
+4. **VariableInspectorPanel listener (#2)** — completes the debugging UI
+5. **OutputPanel routing + theme (#3, #6)** — unifies all log output
+6. **OAuth on-device test (#7)** — user action required
