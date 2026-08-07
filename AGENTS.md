@@ -8441,17 +8441,19 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - Diagnostic codes display
 - Related diagnostics grouping
 - Minimap diagnostic markers (minimap shows code but not error markers)
-- Per-language formatter picker in Settings (P41-R, build pending)
-- Fallback formatters for languages without LSP (P41-R, build pending)
-- `textDocument/linkedEditingRange` LSP method (P41-S, build pending)
-- `textDocument/moniker` LSP method (P41-S, build pending)
-- `textDocument/documentColor` + `colorPresentation` LSP methods (P41-S, build pending)
-- Publish to GitHub feature (POST /user/repos — standing instruction, not started)
-- Full light bulb icon in gutter (context menu has actions but no lightbulb)
+- Per-language formatter picker in Settings (P41-R) ✅ IMPLEMENTED — FormatterConfig + SettingsScreen dropdown
+- Fallback formatters for languages without LSP (P41-R) ✅ IMPLEMENTED — built-in indentation/trailing whitespace formatter
+- `textDocument/linkedEditingRange` LSP method (P41-S) ✅ IMPLEMENTED — LspManager.getLinkedEditingRanges
+- `textDocument/moniker` LSP method (P41-S) ✅ IMPLEMENTED — LspManager.getMonikers
+- `textDocument/documentColor` + `colorPresentation` LSP methods (P41-S) ✅ IMPLEMENTED — getDocumentColors/getColorPresentations
+- Publish to GitHub feature (POST /user/repos) ✅ IMPLEMENTED — SourceControlPane publish dialog + GitHubAuth.createRepo
+- Full light bulb icon in gutter ✅ IMPLEMENTED — 💡 icon rendered in gutter + DropdownMenu with categorized code actions
+- Overload navigation in signature help ✅ IMPLEMENTED — up/down arrows to cycle overloads, 1/3 indicator
+- Diagnostic codes in Problems panel ✅ IMPLEMENTED — code/source badges + related diagnostics display
 
 ### 🔶 PARTIAL
 - Context-aware suggestions (LSP trigger chars only, no deeper context analysis)
-- Full light bulb support (code actions work, no gutter icon)
+- Full light bulb support ✅ (code actions work, 💡 gutter icon rendered with dropdown menu)
 - Refactor (code actions can include refactoring, no dedicated refactor menu)
 - Language-specific formatting (LSP works when server supports it, no fallback)
 - Workspace indexing (file name index only, symbol DB is P41-Q build pending)
@@ -8463,8 +8465,8 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 ### ⏳ BUILD PENDING (code written, not yet green on CI)
 - Phase P: TODO Explorer, Test Explorer, Dead code, Duplicate code, Complexity metrics
 - Phase Q: Cached symbol database (persistent), File watcher integration
-- Phase R: Per-language formatter picker, Fallback formatters
-- Phase S: linkedEditingRange, moniker, documentColor/colorPresentation LSP methods
+- Phase R: Per-language formatter picker ✅, Fallback formatters ✅
+- Phase S: linkedEditingRange ✅, moniker ✅, documentColor/colorPresentation ✅
 - Phase H: Peek widgets (fix pushed as #1907, awaiting CI)
 
 ## Feature Status Matrix
@@ -8637,12 +8639,12 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 |---------|--------|------------------|
 | Auto-indent | ❌ | No smart auto-indent on Enter (copies previous line indent only) |
 | Auto-closing pairs | ❌ | No bracket/quote auto-closing |
-| Linked editing | ❌ | `linkedEditingRange` not in LspManager |
+| Linked editing | ✅ | `linkedEditingRange` in LspManager (getLinkedEditingRanges) |
 | Multiple cursors | ❌ | Single cursor only |
 | Smart selection | ✅ | `LspManager.getSelectionRange()` — LSP-based semantic selection |
 | Sticky scroll | ❌ | Not implemented |
 | Code folding | ✅ | `CodeEditor.kt` — LSP + regex folding, fold toggle UI |
-| Color provider | ❌ | `textDocument/documentColor` not in LspManager |
+| Color provider | ✅ | `textDocument/documentColor` in LspManager (getDocumentColors) |
 | Bracket pair colorization | ✅ | `SyntaxHighlighter.kt` — `bracketColors` depth-based coloring |
 
 ### 13. AI Features
@@ -8833,16 +8835,16 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 ### Phase R — Format on Save + Formatter Selection
 - [x] Wire format-on-save to EditorPane save action (P41-O, build #1885)
-- [x] Per-language formatter picker in Settings (P41-R, build pending)
-- [x] Fallback formatters for languages without LSP server (P41-R, build pending)
+- [x] Per-language formatter picker in Settings (P41-R) ✅ IMPLEMENTED
+- [x] Fallback formatters for languages without LSP server (P41-R) ✅ IMPLEMENTED
 
 ### Phase S — LSP Spec Compliance Audit
 - [x] Verify all LSP methods declared in initialize capabilities (P41-S, build pending)
 - [x] Add missing capability declarations (P41-S, build pending)
 - [x] Test graceful degradation when server doesn't support a feature (P41-S, hasCapability guards verified)
-- [x] Add `textDocument/linkedEditingRange` (P41-S, build pending)
-- [x] Add `textDocument/moniker` (P41-S, build pending)
-- [x] Add `textDocument/documentColor` + `colorPresentation` (P41-S, build pending)
+- [x] Add `textDocument/linkedEditingRange` (P41-S) ✅ IMPLEMENTED
+- [x] Add `textDocument/moniker` (P41-S) ✅ IMPLEMENTED
+- [x] Add `textDocument/documentColor` + `colorPresentation` (P41-S) ✅ IMPLEMENTED
 
 ---
 
