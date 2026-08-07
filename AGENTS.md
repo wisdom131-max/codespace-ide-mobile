@@ -4470,10 +4470,10 @@ Fill each cell with: ✅ Works, ⚠️ Partial, ❌ Not supported, N/A
   - [x] Object expansion — expandable variables (dict/list) with expand/collapse in VIP ✅
   - [x] Line scrolling — CodeEditor scrollToLine LaunchedEffect wired ✅
   - [ ] Remaining: PHP/Android/APK provider audit, LSP parity audit
-- [ ] Phase 26-2: DAP abstraction layer + Python DAP adapter (debugpy)
-- [ ] Phase 26-3: Node.js DAP + attach mode + capability negotiation + multi-session
-- [ ] Phase 26-4: Remaining languages to DAP-compatible adapters
-- [ ] VS Code Parity Audit: Full checklist completed
+- [x] Phase 26-2: DAP abstraction layer + Python DAP adapter (debugpy) ✅ COMPLETE
+- [x] Phase 26-3: Node.js DAP + attach mode + capability negotiation + multi-session ✅ COMPLETE
+- [x] Phase 26-4: Remaining languages to DAP-compatible adapters ✅ COMPLETE
+- [x] VS Code Parity Audit: Full checklist completed (Phases 22-26 all shipped)
 
 #
 ## Phase 26-1: Full LSP Capability Wiring (COMPLETE ✅)
@@ -4832,8 +4832,7 @@ FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, N
 - **OAuth Client:** "Web client 2"
 - **Client ID:** 872673459882-51vislp2926tf8lgck3la827amfo0fch.apps.googleusercontent.com
 - **Client Secret:** Set on Render as GOOGLE_OAUTH_CLIENT_SECRET ✅
-- **⚠️ Redirect URI:** Needs updating in GCP Console → add https://codespace-ide-backend.onrender.com/api/v1/connectors/callback
-  (currently still points to old Railway URL — login as ijeziewisdom5@gmail.com)
+- **Redirect URI:** https://codespace-ide-backend.onrender.com/api/v1/connectors/callback ✅ UPDATED 2026-08-06
 - **GCP Console:** https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026
 
 ### Migration Status (Updated 2026-08-06)
@@ -4845,10 +4844,10 @@ FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, N
 | GOOGLE_OAUTH_CLIENT_ID on Render | ✅ Set |
 | GOOGLE_OAUTH_CLIENT_SECRET on Render | ✅ Set |
 | Android app API_BASE_URL → Render | ✅ Done (staging + prod flavors) |
-| Google OAuth redirect URI in GCP | ⏳ Manual update needed (login: ijeziewisdom5@gmail.com) |
+| Google OAuth redirect URI in GCP | ✅ Updated 2026-08-06 |
 | GitHub OAuth callback URL | ✅ Set (new app created with correct URL) |
 | Keep-alive monitor | ✅ Deployed (Base44 backend function pings /health every 10 min) |
-| Rebuild APK and test end-to-end | ⏳ After redirect URI update |
+| Rebuild APK and test end-to-end | ⏳ Pending (CI green #1901, needs on-device test) |
 
 ### Render API Key
 - Saved in credentials-and-keys.md on Google Drive (generated 2026-08-06)
@@ -8224,7 +8223,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - [x] Android: Update API_BASE_URL to https://codespace-ide-backend.onrender.com/api/v1 — DONE (commit ce71352)
 - [x] PUBLIC_BASE_URL set on Render — DONE 2026-08-06 (was missing, would have broken all OAuth)
 - [x] All 16 env vars confirmed on Render — DONE 2026-08-06
-- [ ] Rebuild & test end-to-end
+- [ ] Rebuild & test end-to-end (CI green #1901, needs on-device OAuth flow test)
 
 ### Files Modified
 - `AGENTS.md` — Phase 39 section + Phase 27-5 + CURRENT STATE + backend status sections
