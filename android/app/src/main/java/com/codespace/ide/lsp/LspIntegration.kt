@@ -105,6 +105,8 @@ data class LspCompletionItem(
     val textEditJson: String? = null,
     // P41-I: LSP insertTextFormat (1=PlainText, 2=Snippet). When 2, insertText contains $1/$0 syntax.
     val insertTextFormat: Int = 1,
+    // P41-K: Resolved documentation (lazily filled by completionItem/resolve)
+    val documentation: String? = null,
 )
 
 /**
@@ -501,4 +503,44 @@ public fun applyLspTextEdits(text: String, textEdits: JSONArray): String {
         result = lines.joinToString("\n")
     }
     return result
+}
+
+
+// ── P41-K: Completion Item Resolver ─────────────────────────────────────────
+
+/**
+ * P41-K: Resolve a completion item for richer documentation/detail.
+ * Called lazily when the user highlights an item in the dropdown (150ms debounce).
+ * Returns a new LspCompletionItem with documentation filled in, or null if resolution fails.
+ */
+fun resolveCompletionItem(language: Language, item: LspCompletionItem): LspCompletionItem? {
+    return try {
+        val server = LspManager
+        // Reconstruct a minimal JSONObject for the resolve request
+        val itemJson = org.json.JSONObject().apply {
+            put("label", item.label)
+            if (item.detail != null) put("detail", item.detail)
+            put("kind", item.kind)
+        }
+        val resolved = server.resolveCompletion(language, itemJson)
+        if (resolved != null) {
+            val docs = resolved.opt("documentation")
+            val docText = when (docs) {
+                is org.json.JSONObject -> docs.optString("value", "")
+                is String -> docs
+                else -> ""
+            }
+            val resolvedDetail = resolved.optString("detail", item.detail ?: "")
+            LspCompletionItem(
+                label = item.label,
+                detail = resolvedDetail.ifBlank { item.detail },
+                insertText = item.insertText,
+                kind = item.kind,
+                additionalTextEditsJson = resolved.optJSONArray("additionalTextEdits")?.toString() ?: item.additionalTextEditsJson,
+                textEditJson = resolved.optJSONObject("textEdit")?.toString() ?: item.textEditJson,
+                insertTextFormat = resolved.optInt("insertTextFormat", item.insertTextFormat),
+                documentation = docText.ifBlank { null },
+            )
+        } else null
+    } catch (_: Exception) { null }
 }
