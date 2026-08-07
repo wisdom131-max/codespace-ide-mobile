@@ -46,7 +46,7 @@ data class PeekRefsResult(
  * Renders code preview with highlighted target line.
  */
 @Composable
-fun PeekCodeWidget(
+fun BoxScope.PeekCodeWidget(
     result: PeekResult,
     currentFilePath: String?,
     onNavigate: (filePath: String, line: Int) -> Unit,
@@ -163,7 +163,7 @@ fun PeekCodeWidget(
  * Renders a scrollable list of reference locations.
  */
 @Composable
-fun PeekReferencesWidget(
+fun BoxScope.PeekReferencesWidget(
     result: PeekRefsResult,
     currentFilePath: String?,
     onNavigate: (filePath: String, line: Int) -> Unit,
