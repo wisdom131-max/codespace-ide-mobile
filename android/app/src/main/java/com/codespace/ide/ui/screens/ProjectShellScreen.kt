@@ -3392,6 +3392,10 @@ private fun PssEditorColumn(
                     activeBottomTab = BottomTab.PREVIEW
                     // activeEditorTab drives PreviewPane.activeFilePath — already set in onOpenFile
                 },
+                // P41-X: Workspace-aware AI context
+                projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath },
+                currentFilePath = activeEditorTab,
+                openFilePaths = editorTabs.toList(),
             )
         }
     }

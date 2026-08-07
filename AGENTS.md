@@ -8456,7 +8456,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - ~~Context-aware suggestions~~ ✅ (CompletionContextDetector.kt — full context analysis, P41-V)
 - ~~Full light bulb support~~ ✅ (code actions work, 💡 gutter icon rendered with dropdown menu)
 - ~~Refactor~~ ✅ (dedicated submenu, P41-T)
-- Language-specific formatting (LSP works when server supports it, no fallback)
+- ~~Language-specific formatting~~ ✅ (FormatterConfig per-language picker + built-in fallback, P41-R)
 - Workspace indexing ✅ (FileIndexer — background symbol indexing with persistent cache, P41-Q)
 - File watchers ✅ (FileIndexer.startFileWatcher/stopFileWatcher — P41-Q implemented)
 - ~~Cross-file refactoring~~ ✅ (willRenameFiles + applyWorkspaceEditToFilesystem wired in PSS, rename dialog applies cross-file edits)
@@ -8464,6 +8464,8 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - Background indexing ✅ (FileIndexer.startIndexing — full workspace scanning, P41-Q)
 
 ### ✅ ALL BUILD PENDING VERIFIED GREEN (build #1922, commit 07af657eaf)
+- Phase W: LSP Semantic Tokens — server-provided syntax highlighting (P41-W)
+- Phase X: Workspace-aware AI context — WorkspaceContextProvider (P41-X)
 - Phase P: TODO Explorer, Test Explorer, Dead code, Duplicate code, Complexity metrics — ✅ GREEN
 - Phase Q: Cached symbol database (persistent), File watcher integration — ✅ GREEN
 - Phase R: Per-language formatter picker, Fallback formatters — ✅ GREEN
@@ -8566,7 +8568,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Format on Save | ✅ | `ProjectShellScreen.kt` → `EditorPane.kt` — save triggers `DocumentFormatter.format()` (P41-O, build #1885) |
 | Format while typing | ✅ | `LspManager.getOnTypeFormatting()` — declared in capabilities |
 | Formatter selection | ✅ | `FormatterConfig.kt` + Settings dropdown per language (P41-R) |
-| Language-specific formatting | 🔶 | LSP formatting works when server supports it; no fallback formatters |
+| Language-specific formatting | ✅ | `FormatterConfig.kt` — per-language formatter picker + `DocumentFormatter.basicFormat()` built-in fallback (P41-R) |
 
 ### 6. Hover & Signature Help
 
@@ -8603,18 +8605,18 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Move symbol | ✅ | CodeEditor.kt — context menu "Move Symbol" calls LSP refactor.move (P41-L) |
 | Organize imports | ✅ | `source.organizeImports` via LSP (P41-I, build #1889) |
 | Remove unused code | ✅ | `source.removeUnused` via LSP (P41-I, build #1889) |
-| Cross-file refactoring | 🔶 | `willRenameFiles()` exists for file-rename import updates |
+| Cross-file refactoring | ✅ | `willRenameFiles()` + `applyWorkspaceEditToFilesystem` wired in PSS, rename dialog applies cross-file edits (P41-PSS) |
 | Workspace edits | ✅ | `LspManager` handles `WorkspaceEdit` responses |
 
 ### 9. Workspace Intelligence
 
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
-| Workspace indexing | 🔶 | `FileIndexer.kt` exists but basic — file name index only |
+| Workspace indexing | ✅ | `FileIndexer.kt` — background symbol indexing with persistent cache (P41-Q) |
 | Cached symbol database | ✅ | `FileIndexer.saveCache()`/`loadCache()` — persistent cross-session cache (P41-Q) |
 | Background indexing | ✅ | `FileIndexer.startIndexing()` — background workspace symbol scanning (P41-Q) |
 | Cross-file references | ✅ | `LspManager.getReferences()` searches across workspace |
-| File watchers | 🔶 | `LspManager.didChange()` sends on content change; no external file watcher |
+| File watchers | ✅ | `FileIndexer.startFileWatcher()`/`stopFileWatcher()` — P41-Q implemented |
 | Multi-root workspaces | ❌ | Single workspace only |
 | Update imports on rename | ✅ | `LspManager.willRenameFiles()` + `didRenameFiles()` |
 
@@ -8664,8 +8666,8 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Generate tests | ✅ | `EditorPane.kt` — "Generate Unit Tests" AI action (P41-O) |
 | Optimize code | ✅ | `EditorPane.kt` — "Optimize Code" AI action (P41-O) |
 | Refactor with AI | ✅ | `EditorPane.kt` — "Refactor with AI" + "Rewrite" + "Simplify" actions (P41-O) |
-| Project-aware AI context | 🔶 | AI completions use local context; AI actions send selection to CopilotChat |
-| Workspace-aware AI | ❌ | No workspace-wide context in AI prompts |
+| Project-aware AI context | ✅ | AI completions use local context; AI actions send selection + workspace context to CopilotChat (P41-X) |
+| Workspace-aware AI | ✅ | `WorkspaceContextProvider.kt` — project tree, current file, imports, open files injected into AI system prompts (P41-X) |
 
 ### 14. Power User Features
 

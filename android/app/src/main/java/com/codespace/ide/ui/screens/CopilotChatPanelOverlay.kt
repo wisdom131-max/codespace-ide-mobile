@@ -43,6 +43,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.codespace.ide.agent.AgentTools
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.ai.WorkspaceContextProvider
 import com.codespace.ide.domain.AiProviderId
 import java.util.concurrent.TimeUnit
 import androidx.compose.material.icons.automirrored.filled.*
@@ -327,8 +328,12 @@ private suspend fun chat(
     onOpenFile: ((String) -> Unit)? = null,
     onSwitchToPreview: ((String) -> Unit)? = null,
 ): String = withContext(Dispatchers.IO) {
+    // P41-X: Build workspace context for AI prompts
+    val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
+    
     val systemPrompt = when (mode) {
-        ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely."
+        ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely." + 
+            if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
         ChatMode.AGENT -> """
 You are an autonomous coding agent running inside CodeSpace IDE — a VS Code-style
 Android IDE with a built-in Ubuntu Linux terminal (no root needed).
@@ -384,8 +389,10 @@ If a tool returns an error, say exactly what went wrong. Never pretend success.
 All run_command calls execute inside the Ubuntu proot terminal. Standard Linux
 commands work (apt, git, node, python3). Android host commands do NOT work here.
 
-""" + AgentTools.TOOLS_DESCRIPTION
-        ChatMode.PLAN  -> "You are a planning assistant inside CodeSpace IDE. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution."
+""" + AgentTools.TOOLS_DESCRIPTION +
+            if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
+        ChatMode.PLAN  -> "You are a planning assistant inside CodeSpace IDE. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." +
+            if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
     }
 
     // Build conversation as mutable JSON array
@@ -858,6 +865,10 @@ internal fun CopilotChatPanelInline(
     // their prompt here to be auto-sent as a new chat message.
     pendingPrompt: String? = null,
     onPendingPromptConsumed: (() -> Unit)? = null,
+    // P41-X: Workspace-aware AI context — project root + current file + open files
+    projectRootPath: String? = null,
+    currentFilePath: String? = null,
+    openFilePaths: List<String> = emptyList(),
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
