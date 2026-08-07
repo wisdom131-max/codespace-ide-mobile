@@ -8434,7 +8434,7 @@ Railway free trial ended, backend went offline. App was made local-first (Phase 
 - GCP: IAM Owner access verified, OAuth client verified, redirect URI confirmed
 
 ### ❌ STILL MISSING (not implemented)
-- Move symbol refactoring
+- Move symbol refactoring ✅ IMPLEMENTED — context menu "Move Symbol" calls LSP refactor.move
 - Organize imports as dedicated action (exists as source action but not standalone)
 - Remove unused code as dedicated action
 - Overload navigation ✅ IMPLEMENTED — up/down arrows in signature help, 1/N indicator
@@ -8594,7 +8594,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Extract method | ✅ | `CodeEditor.kt` — context menu "Extract Method" calls LSP `refactor.extract` (P41-L) |
 | Extract variable | ✅ | `CodeEditor.kt` — context menu "Extract Variable" calls LSP `refactor.extract.constant` (P41-L) |
 | Inline variable | ✅ | `CodeEditor.kt` — context menu "Inline Variable" calls LSP `refactor.inline` (P41-L) |
-| Move symbol | ❌ | Not implemented |
+| Move symbol | ✅ | CodeEditor.kt — context menu "Move Symbol" calls LSP refactor.move (P41-L) |
 | Organize imports | ✅ | `source.organizeImports` via LSP (P41-I, build #1889) |
 | Remove unused code | ✅ | `source.removeUnused` via LSP (P41-I, build #1889) |
 | Cross-file refactoring | 🔶 | `willRenameFiles()` exists for file-rename import updates |
@@ -8642,7 +8642,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Linked editing | ✅ | `linkedEditingRange` in LspManager (getLinkedEditingRanges) |
 | Multiple cursors | ✅ | `extraCursors` list + double-tap to add cursor, BackHandler to clear (P22-K) |
 | Smart selection | ✅ | `LspManager.getSelectionRange()` — LSP-based semantic selection |
-| Sticky scroll | ❌ | Not implemented |
+| Sticky scroll | ✅ | CodeEditor.kt:600 — stickyLine pins nearest scope header at top while scrolling |
 | Code folding | ✅ | `CodeEditor.kt` — LSP + regex folding, fold toggle UI |
 | Color provider | ✅ | `textDocument/documentColor` in LspManager (getDocumentColors) |
 | Bracket pair colorization | ✅ | `SyntaxHighlighter.kt` — `bracketColors` depth-based coloring |
@@ -8682,7 +8682,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Incremental parsing | 🔶 | `didChange()` sends incremental content; no incremental parse cache |
 | Incremental diagnostics | ✅ | `LspManager` receives `publishDiagnostics` notifications |
 | Background indexing | ✅ | `FileIndexer.startIndexing` — background workspace symbol indexing |
-| Completion caching | ❌ | No result caching between keystrokes |
+| Completion caching | ✅ | CodeEditor.kt — cachedLspResults/cachedLspPrefix filter cached completions when prefix extends (P41-Q) |
 | Symbol caching | ✅ | `FileIndexer.saveCache`/`loadCache` — persistent cross-session cache |
 | Large-project optimization | ❌ | No optimization for >1000 file projects |
 | Low-memory optimization | ✅ | `largeHeap=true`, foreground service, memory-limited XZ decompressor |

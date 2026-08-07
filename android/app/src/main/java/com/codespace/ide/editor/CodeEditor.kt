@@ -713,6 +713,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
     // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
     var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+    // P41-Q: Completion caching — cache LSP results to avoid redundant requests when prefix extends
+    var cachedLspPrefix by remember { mutableStateOf("") }
+    var cachedLspResults by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
+    var cachedLspCursorLine by remember { mutableStateOf(-1) }
     LaunchedEffect(prefix, isDotTriggered, value.selection.end, pathContext) {
         // P41-G: Skip LSP completions when path context is active
         if (pathContext != null) { lspCompletions = emptyList(); workspaceCompletions = emptyList(); return@LaunchedEffect }
@@ -2834,6 +2838,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                             },
                             onClick = { onSourceAction!!.invoke("refactor.inline"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("M", color = Color(0xFF4EC9B0), fontSize = 14.sp)
+                            Text("Move Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("refactor.move"); showLspMenu = false }
                             )
                             }
 
