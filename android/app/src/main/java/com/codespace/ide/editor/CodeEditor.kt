@@ -1285,7 +1285,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 }
                             )
-                        },
+                        }
                         // P41-I: Intercept Tab/Shift+Tab for snippet tab-stop navigation
                         .onPreviewKeyEvent { event ->
                             if (snippetSession != null && event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
