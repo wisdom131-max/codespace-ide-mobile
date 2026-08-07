@@ -8465,7 +8465,7 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Workspace diagnostics | ✅ | `LspManager.getDiagnostics()` — all open files |
 | Diagnostic codes | ❌ | Diagnostic codes not displayed in UI |
 | Minimap markers | ❌ | Minimap shows code but not error/diagnostic markers |
-| Overview ruler markers | ❌ | No overview ruler (right-edge markers like VS Code) |
+| Overview ruler markers | ✅ | `CodeEditor.kt` — 4dp right-edge strip with colored marks when minimap hidden (P41-JK) |
 
 ### 5. Formatting
 
@@ -8654,19 +8654,19 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [x] Remove Unused Imports action
 - [x] Fix All action
 
-### Phase J — Diagnostics: Error Lens + Filtering + Markers
+### Phase J — Diagnostics: Error Lens + Filtering + Markers ✅ DONE (commit f260eff, build pending)
 - [x] Error Lens — inline error text at end of line (P41-O, build #1885)
 - [x] Diagnostic filtering in Problems Panel (by severity) (P41-O, build #1885)
-- [ ] Diagnostic codes display
-- [ ] Minimap error markers (red/yellow/blue squiggle indicators)
-- [ ] Overview ruler markers (right-edge diagnostic indicators)
+- [x] Diagnostic codes display — LintError gains code field, error lens shows [code] prefix (P41-JK)
+- [x] Minimap error markers — colored bars on minimap lines (red/yellow/teal by severity) (P41-JK)
+- [x] Overview ruler markers — thin 4dp right-edge strip when minimap hidden (P41-JK)
 
-### Phase K — Editing Experience
+### Phase K — Editing Experience ✅ DONE (commit f260eff, build pending)
 - [x] Auto-indent on Enter (smart, matching previous line) (P41-O, build #1885)
 - [x] Auto-closing pairs (brackets, quotes) — pre-existing in CodeEditor.kt:1268
 - [x] Multiple cursors — pre-existing in CodeEditor.kt:1034
-- [ ] Sticky scroll (pin current scope header at top while scrolling)
-- [ ] Color provider (`textDocument/documentColor` → color swatches)
+- [x] Sticky scroll (pin current scope header at top while scrolling) — P15-C pre-existing
+- [x] Color provider (`textDocument/documentColor` → color swatches) — P41-K: getDocumentColors in LspManager, inline swatches in CodeEditor
 
 ### Phase L — Refactoring ✅ DONE (commit a358fe1, build pending)
 - [x] Rename preview (show diff before applying rename) — P39-FULL: renamePreviewEdit dialog shows affected files + edit counts before applying
