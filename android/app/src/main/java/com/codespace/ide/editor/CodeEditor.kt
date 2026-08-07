@@ -2576,41 +2576,41 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val nextNewline = value.text.indexOf('\n', value.selection.end)
                                     if (nextNewline >= 0) {
 
-                            // P41-I: Source Actions
-                            if (onSourceAction != null) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("⟐", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Organize Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                                        }
-                                    },
-                                    onClick = { onSourceAction!!.invoke("source.organizeImports"); showLspMenu = false }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("⟇", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Remove Unused Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                                        }
-                                    },
-                                    onClick = { onSourceAction!!.invoke("source.removeUnused"); showLspMenu = false }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("✦", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Fix All", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                                        }
-                                    },
-                                    onClick = { onSourceAction!!.invoke("source.fixAll"); showLspMenu = false }
-                                )
-                            }
                                         extraCursors = (extraCursors + nextNewline + 1).distinct().sorted()
                                     }
                                     showLspMenu = false
                                 }
                             )
+                            // P41-I: Source Actions
+                            if (onSourceAction != null) {
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("⟐", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                            Text("Organize Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("source.organizeImports"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("⟇", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                            Text("Remove Unused Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("source.removeUnused"); showLspMenu = false }
+                            )
+                            DropdownMenuItem(
+                            text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("✦", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                            Text("Fix All", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            }
+                            },
+                            onClick = { onSourceAction!!.invoke("source.fixAll"); showLspMenu = false }
+                            )
+                            }
                             } // end scrollable Column
                         }
                     }

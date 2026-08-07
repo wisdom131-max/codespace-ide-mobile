@@ -1622,7 +1622,7 @@ fun EditorPane(
                                             // If action has data but no edit, resolve it first
                                             if (edit == null && data != null) {
                                                 try {
-                                                    val resolved = LspManager.resolveCodeAction(active.language, action.toString())
+                                                    val resolved = LspManager.resolveCodeAction(active.language, action)
                                                     if (resolved != null) {
                                                         edit = resolved.opt("edit")?.toString()
                                                         command = resolved.opt("command")?.toString()
