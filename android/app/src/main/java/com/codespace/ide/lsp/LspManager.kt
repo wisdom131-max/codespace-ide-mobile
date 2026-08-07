@@ -1443,6 +1443,26 @@ object LspManager {
         return response as? JSONObject
     }
 
+
+    /**
+     * P41-K: Cancel a pending completion request for the given language.
+     * Sends $/cancelRequest to the LSP server so it stops computing stale completions.
+     */
+    fun cancelPendingRequest(language: Language, requestId: Long) {
+        val server = servers[language] ?: return
+        if (!server.initialized) return
+        server.client.cancelRequest(requestId)
+    }
+
+    /**
+     * P41-K: Get the current pending request ID for a language server (for cancellation tracking).
+     */
+    fun getPendingRequestId(language: Language): Long {
+        val server = servers[language] ?: return -1L
+        if (!server.initialized) return -1L
+        return server.client.getPendingRequestId()
+    }
+
     // ── Prepare Rename ──────────────────────────────────────────
 
     /**
