@@ -8790,3 +8790,19 @@ Latest pushes: Phase H (icon audit) + Phase I (dynamic snippets). SnippetEngine.
 
 
 <!-- CI re-trigger Thu Aug  6 17:21:52 UTC 2026 -->
+
+### Error Trace: Build Failures #1856–#1859 (P41-K/L Compilation)
+
+| Field | Value |
+|-------|-------|
+| Feature | P41-K Performance + P41-L AI Features |
+| Files | `LspIntegration.kt`, `CodeEditor.kt` |
+| Symptom | Builds #1856–#1859 all failed. #1856 (LspIntegration.kt) was first failure after green #1855 (LspManager.kt). |
+| Root Cause 1 | `LspIntegration.kt`: Missing `import com.codespace.ide.domain.Language`. The `resolveCompletionItem()` function takes `language: Language` parameter but `Language` was not imported. |
+| Root Cause 2 | `CodeEditor.kt`: `kotlinx.coroutines.async {}` used fully-qualified name inside `withContext(Dispatchers.IO) { }` block. While `async` is a `CoroutineScope` extension, the fully-qualified call `kotlinx.coroutines.async {}` may not resolve correctly on all Kotlin compiler versions. Fixed by importing `async` and using unqualified `async {}` inside `kotlinx.coroutines.coroutineScope { }` wrapper for structured concurrency. |
+| Root Cause 3 | `CodeEditor.kt`: String interpolation `"${'$'}{highlighted.label}"` produces literal `${highlighted.label}` instead of the value. Fixed by using string concatenation: `""" + highlighted.label + """`. |
+| Root Cause 4 | `CodeEditor.kt`: `import kotlinx.coroutines.coroutineScope` would be shadowed by existing `val coroutineScope = rememberCoroutineScope()` variable (line 469). Removed the import and used fully-qualified `kotlinx.coroutines.coroutineScope { }` to avoid shadowing. |
+| Fix Commit | `9fee621a` (LspIntegration.kt) + `6d55595f` (CodeEditor.kt) |
+| Lesson | 1. Always check imports when adding functions that reference types from other packages. 2. Don't use fully-qualified extension function names when a local `val` shadows the import — use the import or fully-qualify the call. 3. `${'$'}{expr}` in Kotlin string templates produces literal `${expr}`, NOT the value of `expr`. Use string concatenation or `\$` escaping for literal dollar signs. |
+
+
