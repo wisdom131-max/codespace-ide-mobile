@@ -1726,7 +1726,8 @@ fun EditorPane(
                             val cmdStr = cmd?.opt("command") as? String
                             // P41-T: Handle synthetic test lens commands
                             if (cmdStr == "codespace.runTest" || cmdStr == "codespace.debugTest") {
-                                val testLine = cmd?.opt("arguments")?.optInt(0, -1) ?: -1
+                                val testArgs = cmd?.opt("arguments") as? org.json.JSONArray
+                                val testLine = testArgs?.optInt(0, -1) ?: -1
                                 val filePath = active.path
                                 val lang = active.language
                                 val testCmd = when (lang) {
