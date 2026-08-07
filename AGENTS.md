@@ -4835,6 +4835,27 @@ FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, N
 - **Redirect URI:** https://codespace-ide-backend.onrender.com/api/v1/connectors/callback ✅ UPDATED 2026-08-06
 - **GCP Console:** https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026 (login: ijeziewisdom131@gmail.com — IAM owner)
 
+### GCP IAM Verification Plan (2026-08-07)
+**Goal:** Log into ijeziewisdom131@gmail.com via browser, verify IAM access to codespace-ide-2026 project, and confirm OAuth credentials show authorized.
+
+**Accounts status:**
+| Email | IAM Access | Password Status |
+|------|-----------|----------------|
+| ijeziewisdom5@gmail.com | ❌ No | Works (on file) |
+| wisdomijezie90@gmail.com | ❌ No | termux12 |
+| **ijeziewisdom131@gmail.com** | **✅ YES (IAM owner)** | Changed ~2026-05, current password unknown |
+
+**Steps:**
+1. [ ] Navigate to https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026
+2. [ ] Log in with ijeziewisdom131@gmail.com
+3. [ ] Verify project codespace-ide-2026 is accessible (IAM permissions)
+4. [ ] Check OAuth client "Codespace Connectors" shows authorized
+5. [ ] Verify redirect URI is correct: https://codespace-ide-backend.onrender.com/api/v1/connectors/callback
+6. [ ] If password unknown, user must provide it or reset it
+7. [ ] Document results in AGENTS.md + credentials-master.md on Google Drive
+
+**Note:** All 3 Google accounts, GitHub accounts, OAuth config, Render, Supabase, Firebase, keystore, and Drive file references are documented in credentials-master.md on Google Drive (file ID: 117QDbKGf9FpWRr0LtFQI6zw-roEqNxze). This is the single source of truth for all credentials.
+
 ### Migration Status (Updated 2026-08-06)
 | Step | Status |
 |------|--------|
@@ -8633,13 +8654,13 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 ## Implementation Priority (Phases)
 
-### Phase F — Workspace Completion (in progress, uncommitted)
-- [ ] Finish + commit workspace symbol completion (code written, needs build audit)
-- [ ] Add `CompletionSource.WORKSPACE` to CompletionEngine enum if missing
+### Phase F — Workspace Completion ✅ DONE
+- [x] Workspace symbol completion — wired via lspWorkspaceSymbolProvider in CodeEditor + EditorPane (#1901)
+- [x] `CompletionSource.WORKSPACE` in CompletionEngine enum (line 26)
 
-### Phase G — Path Completion
-- [ ] File path completion inside import/require/include strings
-- [ ] Detect string context (inside quotes after import/require/include keyword)
+### Phase G — Path Completion ✅ DONE
+- [x] File path completion — PathCompletionProvider.kt (312 lines), detects import/require/include context, lists filesystem entries
+- [x] String context detection — detectPathContext() in PathCompletionProvider
 
 ### Phase H — Navigation: Peek + Declaration
 - [x] Add `textDocument/declaration` to LspManager (P41-O, build #1885)
