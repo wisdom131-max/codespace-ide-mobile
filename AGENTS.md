@@ -8443,9 +8443,9 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Remove Unused Imports | ✅ | `CodeEditor.kt` — `source.removeUnused` via LSP (P41-I, build #1889) |
 | Auto Import | ✅ | Via `additionalTextEdits` on completion accept (Phase D) |
 | Fix All | ✅ | `CodeEditor.kt` — `source.fixAll` via LSP (P41-I, build #1889) |
-| Generate Constructor | ❌ | No code generation actions |
-| Generate Getters/Setters | ❌ | No code generation actions |
-| Implement Interface | ❌ | No code generation actions |
+| Generate Constructor | ✅ | `CodeEditor.kt` — context menu calls LSP `source.generate.constructor` (P41-L) |
+| Generate Getters/Setters | ✅ | `CodeEditor.kt` — context menu calls LSP `source.generate.accessors` (P41-L) |
+| Implement Interface | ✅ | `CodeEditor.kt` — context menu calls LSP `source.generate.implement` (P41-L) |
 | Extract Method | ❌ | No extract refactoring |
 | Extract Variable | ❌ | No extract refactoring |
 | Inline Variable | ❌ | No inline refactoring |
@@ -8506,10 +8506,10 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 | Feature | Status | Location / Notes |
 |---------|--------|------------------|
 | Safe rename | ✅ | `LspManager.rename()` + `prepareRename()` — LSP rename |
-| Rename preview | ❌ | Rename executes immediately; no preview diff before apply |
-| Extract method | ❌ | Not implemented |
-| Extract variable | ❌ | Not implemented |
-| Inline variable | ❌ | Not implemented |
+| Rename preview | ✅ | `CodeEditor.kt` — P39-FULL renamePreviewEdit dialog with file/edit count list (P39-FULL) |
+| Extract method | ✅ | `CodeEditor.kt` — context menu "Extract Method" calls LSP `refactor.extract` (P41-L) |
+| Extract variable | ✅ | `CodeEditor.kt` — context menu "Extract Variable" calls LSP `refactor.extract.constant` (P41-L) |
+| Inline variable | ✅ | `CodeEditor.kt` — context menu "Inline Variable" calls LSP `refactor.inline` (P41-L) |
 | Move symbol | ❌ | Not implemented |
 | Organize imports | ❌ | Not implemented as dedicated action |
 | Remove unused code | ❌ | Not implemented |
@@ -8668,12 +8668,12 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - [ ] Sticky scroll (pin current scope header at top while scrolling)
 - [ ] Color provider (`textDocument/documentColor` → color swatches)
 
-### Phase L — Refactoring
-- [ ] Rename preview (show diff before applying rename)
-- [ ] Extract Method (send to LSP or implement locally)
-- [ ] Extract Variable
-- [ ] Inline Variable
-- [ ] Code generation: Generate Constructor, Getters/Setters, Implement Interface
+### Phase L — Refactoring ✅ DONE (commit a358fe1, build pending)
+- [x] Rename preview (show diff before applying rename) — P39-FULL: renamePreviewEdit dialog shows affected files + edit counts before applying
+- [x] Extract Method — context menu calls `getCodeActions(only=["refactor.extract"])` via LSP
+- [x] Extract Variable — context menu calls `getCodeActions(only=["refactor.extract.constant"])` via LSP
+- [x] Inline Variable — context menu calls `getCodeActions(only=["refactor.inline"])` via LSP
+- [x] Code generation: Generate Constructor, Getters/Setters, Implement Interface — context menu calls `getCodeActions(only=["source.generate.*"])` via LSP
 
 ### Phase M — Call & Type Hierarchy ✅ DONE (commit 9a081360)
 - [x] `textDocument/prepareCallHierarchy` in LspManager
