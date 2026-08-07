@@ -1644,21 +1644,6 @@ object LspManager {
         return response as? JSONObject
     }
 
-    /**
-     * P41-N: Execute an LSP command (from CodeLens click).
-     * Supports workspace/executeCommand for servers that register commands.
-     */
-    fun executeCommand(language: Language, command: String, arguments: JSONArray?): JSONObject? {
-        val server = servers[language] ?: return null
-        if (!server.initialized) return null
-        val params = JSONObject().apply {
-            put("command", command)
-            if (arguments != null) put("arguments", arguments)
-        }
-        val response = server.client.request("workspace/executeCommand", params, timeoutSeconds = 10)
-        return response as? JSONObject
-    }
-
     fun getInlayHints(language: Language, uri: String): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
