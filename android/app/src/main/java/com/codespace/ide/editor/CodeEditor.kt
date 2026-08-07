@@ -369,6 +369,8 @@ fun CodeEditor(
     lspFoldingRanges: List<Pair<Int, Int>> = emptyList(),
     /** P26-1: LSP code lens — inline annotations (JSONArray of CodeLens). */
     lspCodeLenses: org.json.JSONArray? = null,
+    /** P41-N: CodeLens click handler — receives the raw lens JSON for command execution. */
+    onCodeLensClick: ((org.json.JSONObject) -> Unit)? = null,
     /** P26-1: LSP inlay hints — inline type/parameter hints (JSONArray of InlayHint). */
     lspInlayHints: org.json.JSONArray? = null,
     /** P26-1: LSP document links — clickable links in comments (JSONArray of DocumentLink). */
@@ -1709,6 +1711,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         modifier = Modifier
                             .background(Color(0xFF1E1E1E).copy(alpha = 0.8f), RoundedCornerShape(2.dp))
                             .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .then(
+                                if (onCodeLensClick != null && command != null) {
+                                    Modifier.clickable { onCodeLensClick(lens) }
+                                } else Modifier
+                            )
                     )
                 }
             }
