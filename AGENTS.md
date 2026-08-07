@@ -8722,15 +8722,15 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 - #1884: `formatOnSaveTrigger` scope issue — needed to pass through `PssEditorColumn` parameter chain
 - #1885: ✅ GREEN
 
-### Phase O — AI Features
-- [ ] Explain Code action (send selection to AI, show in chat)
-- [ ] Explain Errors action (send diagnostic + code to AI)
-- [ ] Generate Documentation action
-- [ ] Generate Tests action
-- [ ] Optimize Code action
-- [ ] Refactor with AI action
-- [ ] Project-aware AI context (include open files, imports in prompt)
-- [ ] AI-assisted completion ranking
+### Phase O — AI Features ✅ DONE (commit 251af02, build pending)
+- [x] Explain Code action — context menu, sends full selection + file/language/imports context to AI chat
+- [x] Explain Errors action — includes diagnostic message + code at cursor position
+- [x] Generate Documentation action — context menu, sends selection + context to AI chat
+- [x] Generate Tests action — context menu, sends selection + context to AI chat
+- [x] Optimize Code action — context menu, sends selection + context to AI chat
+- [x] Refactor with AI action — new ai.refactor kind + context menu entry (P41-O)
+- [x] Project-aware AI context — file name, language, import list prepended to every AI prompt
+- [x] AI-assisted completion ranking — AI source boosted from -10 to +5 in CompletionEngine.rank()
 
 ### Phase P — Power User Features
 - [ ] TODO Explorer (scan workspace for TODO/FIXME/HACK comments)
