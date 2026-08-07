@@ -134,7 +134,6 @@ import com.codespace.ide.lsp.applyLspTextEdits
 import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
@@ -726,25 +725,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 try { lspRequestId = lspRequestIdProvider.invoke() } catch (_: Exception) {}
             }
 
-            // P41-K: Fetch LSP + workspace sources concurrently (worst-case = slowest source)
+            // P41-K: Fetch LSP + workspace sources (sequential — 2 LSP calls, negligible on mobile)
             val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                kotlinx.coroutines.coroutineScope {
-                    val lspDeferred = async {
-                        try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
-                    }
-                    // P41-K: Workspace symbols have own debounce (prefix >= 3) and result cap (top 50)
-                    val wsDeferred = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
-                        async {
-                            try {
-                                lspWorkspaceSymbolProvider.invoke(prefix).take(50)
-                            } catch (_: Exception) { emptyList() }
-                        }
-                    } else null
-
-                    val lsp = lspDeferred.await()
-                    val ws = wsDeferred?.await() ?: emptyList()
-                    Pair(lsp, ws)
-                }
+                val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
+                    try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                } else emptyList()
+                Pair(lsp, ws)
             }
 
             lspCompletions = results.first
@@ -2428,8 +2415,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             showCallHierarchy = true
                                             // Fetch incoming + outgoing in parallel
                                             coroutineScope.launch(Dispatchers.IO) {
-                                                val incoming = try { onCallHierarchyIncoming?.invoke(items.first()) } catch (_: Exception) { emptyList() }
-                                                val outgoing = try { onCallHierarchyOutgoing?.invoke(items.first()) } catch (_: Exception) { emptyList() }
+                                                val incoming = try { onCallHierarchyIncoming?.invoke(items.first()) ?: emptyList() } catch (_: Exception) { emptyList() }
+                                                val outgoing = try { onCallHierarchyOutgoing?.invoke(items.first()) ?: emptyList() } catch (_: Exception) { emptyList() }
                                                 withContext(Dispatchers.Main) {
                                                     callHierarchyIncoming = incoming
                                                     callHierarchyOutgoing = outgoing
@@ -2461,8 +2448,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             showTypeHierarchy = true
                                             // Fetch supertypes + subtypes in parallel
                                             coroutineScope.launch(Dispatchers.IO) {
-                                                val supers = try { onTypeHierarchySupertypes?.invoke(items.first()) } catch (_: Exception) { emptyList() }
-                                                val subs = try { onTypeHierarchySubtypes?.invoke(items.first()) } catch (_: Exception) { emptyList() }
+                                                val supers = try { onTypeHierarchySupertypes?.invoke(items.first()) ?: emptyList() } catch (_: Exception) { emptyList() }
+                                                val subs = try { onTypeHierarchySubtypes?.invoke(items.first()) ?: emptyList() } catch (_: Exception) { emptyList() }
                                                 withContext(Dispatchers.Main) {
                                                     typeHierarchySupertypes = supers
                                                     typeHierarchySubtypes = subs
