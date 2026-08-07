@@ -322,6 +322,9 @@ fun ExplorerSidePanel(
     var sortByType    by remember { mutableStateOf(false) }
     var showOutline   by remember { mutableStateOf(false) }
     var showTimeline  by remember { mutableStateOf(false) }
+    // P42: Explorer restructure — independent collapsible sections (VS Code style)
+    var openEditorsExpanded by remember { mutableStateOf(true) }
+    var workspaceExpanded   by remember { mutableStateOf(true) }
     var clipboardFile by remember { mutableStateOf<File?>(null) }
     var clipboardCut  by remember { mutableStateOf(false) }
     var gitStatus     by remember { mutableStateOf<Map<String, Char>>(emptyMap()) }
@@ -531,7 +534,9 @@ fun ExplorerSidePanel(
 
     Column(Modifier.fillMaxSize().background(BgColor)) {
 
-        // ── Header ───────────────────────────────────────────────────────
+        // ── Header: EXPLORER title bar (VS Code style) — title + "…" overflow only.
+        // All folder-toolbar icons and the git badge now live on the workspace section's
+        // own header below, matching real VS Code (the EXPLORER title bar itself is bare).
         Row(
             Modifier.fillMaxWidth().height(35.dp)
                 .background(Color(0xFFF3F3F3))
@@ -539,16 +544,95 @@ fun ExplorerSidePanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (showOutline) "OUTLINE" else if (showTimeline) "TIMELINE" else if (workspaceRoot != null) workspaceRoot.name.uppercase()
-                else "EXPLORER",
+                "EXPLORER",
                 fontSize = 11.sp, color = MutedColor,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Default.MoreVert, null, tint = MutedColor,
+                modifier = Modifier.size(18.dp).clickable { onMoreMenu() })
+        }
+        HorizontalDivider(color = DividerColor)
+
+        // Redundant "Filter files..." bar removed 2026-07-06 — the app already has a
+        // dedicated Search pane (magnifying glass in the activity bar) for this. filterQuery
+        // state is kept (harmless, unused input surface) in case a compact inline filter is
+        // reintroduced later, but no UI row is rendered here anymore.
+
+        // ── OPEN EDITORS section (collapsible, VS Code style — always visible,
+        // even with 0 open tabs or no folder opened) ───────────────────────────
+        Column {
+            Row(
+                Modifier.fillMaxWidth().height(24.dp)
+                    .background(Color(0xFFF0F0F0))
+                    .clickable { openEditorsExpanded = !openEditorsExpanded }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (openEditorsExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.ChevronRight,
+                    null, tint = MutedColor, modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("OPEN EDITORS", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                if (openTabs.isNotEmpty()) {
+                    Text(openTabs.size.toString(), fontSize = 10.sp, color = MutedColor)
+                }
+            }
+            if (openEditorsExpanded) {
+                openTabs.forEach { tabPath ->
+                    val isActive = tabPath == activeFilePath
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(if (isActive) SelectedBg else Color.Transparent)
+                            .clickable { onOpenFile(tabPath) }
+                            .padding(16.dp, 4.dp, 8.dp, 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(fileIcon(tabPath.substringAfterLast("/")), null, tint = IconColor, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            tabPath.substringAfterLast("/"),
+                            fontSize = 12.sp, color = TextColor,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(Icons.Default.Close, null, tint = MutedColor,
+                            modifier = Modifier.size(14.dp).clickable { onCloseTab?.invoke(tabPath) })
+                    }
+                }
+            }
+            HorizontalDivider(color = DividerColor, thickness = 1.dp)
+        }
+
+        // ── WORKSPACE / FOLDER section header (collapsible) — shows the folder name
+        // (or "NO FOLDER OPENED"). Everything below (toolbar, device panel, empty-state
+        // or tree) is placed as DIRECT children of the outer Column — not nested in an
+        // extra wrapper — so the tree LazyColumn below can legally use Modifier.weight(1f)
+        // and OUTLINE/TIMELINE stay visible underneath it instead of being pushed off. ──
+        Row(
+            Modifier.fillMaxWidth().height(24.dp)
+                .background(Color(0xFFF0F0F0))
+                .clickable { workspaceExpanded = !workspaceExpanded }
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (workspaceExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.ChevronRight,
+                null, tint = MutedColor, modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (workspaceRoot != null) workspaceRoot.name.uppercase() else "NO FOLDER OPENED",
+                fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 130.dp),
             )
-            // Local-vs-GitHub badge (UI bucket #6) — only rendered for the real explorer
-            // header, not the Outline mode, and only takes space when there's something to show.
-            if (!showOutline && workspaceRoot != null) {
+            // Local-vs-GitHub badge (UI bucket #6) — moved here from the old top
+            // EXPLORER bar so it sits next to the folder name it actually describes.
+            if (workspaceRoot != null) {
                 Spacer(Modifier.width(6.dp))
                 if (gitRemoteRepo != null) {
                     Row(
@@ -578,7 +662,16 @@ fun ExplorerSidePanel(
                 }
             }
             Spacer(Modifier.weight(1f))
-            if (workspaceRoot != null) {
+        }
+        // ── Folder toolbar — only when a folder is open and the section is expanded ──
+        if (workspaceRoot != null && workspaceExpanded) {
+            Row(
+                Modifier.fillMaxWidth().height(28.dp)
+                    .background(Color(0xFFF3F3F3))
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Spacer(Modifier.weight(1f))
                 // New File
                 Icon(Icons.Default.Add, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
@@ -620,14 +713,6 @@ fun ExplorerSidePanel(
                     Text(if (sortByType) "T" else "N", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(6.dp))
-                // Outline toggle
-                Icon(Icons.AutoMirrored.Filled.List, null, tint = if (showOutline) IconColor else MutedColor,
-                    modifier = Modifier.size(16.dp).clickable { showOutline = !showOutline })
-                Spacer(Modifier.width(6.dp))
-                // Timeline toggle
-                Icon(Icons.Default.History, null, tint = if (showTimeline) IconColor else MutedColor,
-                    modifier = Modifier.size(16.dp).clickable { showTimeline = !showTimeline })
-                Spacer(Modifier.width(6.dp))
                 // Add folder to workspace (multi-root)
                 Icon(Icons.Default.Add, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
@@ -643,18 +728,12 @@ fun ExplorerSidePanel(
                     modifier = Modifier.size(16.dp).clickable {
                         folderPicker.launch(null)
                     })
+                Spacer(Modifier.width(2.dp))
             }
-            Spacer(Modifier.width(8.dp))
         }
-        HorizontalDivider(color = DividerColor)
-
-        // Redundant "Filter files..." bar removed 2026-07-06 — the app already has a
-        // dedicated Search pane (magnifying glass in the activity bar) for this. filterQuery
-        // state is kept (harmless, unused input surface) in case a compact inline filter is
-        // reintroduced later, but no UI row is rendered here anymore.
 
         // ── Device folders quick-access panel ──
-        if (showDeviceFolders) {
+        if (showDeviceFolders && workspaceExpanded) {
             Column(Modifier.fillMaxWidth().background(Color(0xFFF8F8F8))) {
                 Text("  Device Folders", fontSize = 10.sp, color = MutedColor,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
@@ -697,359 +776,359 @@ fun ExplorerSidePanel(
             }
         }
 
-        // ── Open Editors section ──────────────────────────────────────────
-        if (workspaceRoot != null && openTabs.isNotEmpty()) {
-            Column {
+        if (workspaceExpanded) {
+            if (workspaceRoot == null) {
+                // ── No workspace selected — weight(1f) so it (like the tree below)
+                // pushes OUTLINE/TIMELINE towards the bottom of the panel, matching
+                // VS Code's layout when no folder is open. ──────────────────────
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(Icons.Default.Folder, null, tint = Color(0xFFDDDDDD),
+                        modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text("You have not yet opened a folder.", fontSize = 12.sp,
+                        color = MutedColor, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { folderPicker.launch(null) },
+                        colors = ButtonDefaults.buttonColors(containerColor = BlueBtn),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Open Folder") }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            // Quick pick: use /storage/emulated/0
+                            workspacePath = "/storage/emulated/0"
+                            saveWorkspacePath(context, projectId, "/storage/emulated/0")
+                            if ("/storage/emulated/0" !in workspaceRoots) {
+                                workspaceRoots = workspaceRoots + "/storage/emulated/0"
+                                saveWorkspaceRoots(context, projectId, workspaceRoots)
+                            }
+                            refresh++
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Use Phone Storage") }
+                    Spacer(Modifier.height(12.dp))
+                    // ── Device folder quick-access ──
+                    Text("Quick Access", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    DEVICE_FOLDERS.forEach { (label, path) ->
+                        val exists = File(path).exists()
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable(enabled = exists) {
+                                    workspacePath = path
+                                    saveWorkspacePath(context, projectId, path)
+                                    if (path !in workspaceRoots) {
+                                        workspaceRoots = workspaceRoots + path
+                                        saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                    }
+                                    refresh++
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                when (label) {
+                                    "DCIM (Camera)" -> Icons.Default.PhotoCamera
+                                    "Downloads" -> Icons.Default.Download
+                                    "Documents" -> Icons.AutoMirrored.Filled.Article
+                                    "Music" -> Icons.Default.MusicNote
+                                    "Movies" -> Icons.Default.Movie
+                                    else -> Icons.Default.Image
+                                },
+                                null, tint = if (exists) IconColor else Color(0xFFCCCCCC),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(label, fontSize = 12.sp,
+                                color = if (exists) TextColor else Color(0xFFCCCCCC))
+                            Spacer(Modifier.weight(1f))
+                            if (exists) {
+                                Text(File(path).listFiles()?.size?.toString() ?: "0",
+                                    fontSize = 10.sp, color = MutedColor)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // ── File tree ─────────────────────────────────────────────────
+                // Workspace root row
                 Row(
-                    Modifier.fillMaxWidth().height(24.dp)
+                    Modifier.fillMaxWidth()
                         .background(Color(0xFFF0F0F0))
-                        .padding(horizontal = 8.dp),
+                        .clickable {
+                            expanded[workspaceRoot.absolutePath] =
+                                !(expanded[workspaceRoot.absolutePath] ?: true)
+                            refresh++
+                        }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.KeyboardArrowDown, null,
+                        tint = MutedColor, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("OPEN EDITORS", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    Text(openTabs.size.toString(), fontSize = 10.sp, color = MutedColor)
+                    Icon(Icons.Default.Folder, null,
+                        tint = FolderColor, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(workspaceRoot.name, fontSize = 13.sp,
+                        color = TextColor, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth())
                 }
-                openTabs.forEach { tabPath ->
-                    val isActive = tabPath == activeFilePath
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .background(if (isActive) SelectedBg else Color.Transparent)
-                            .clickable { onOpenFile(tabPath) }
-                            .padding(16.dp, 4.dp, 8.dp, 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(fileIcon(tabPath.substringAfterLast("/")), null, tint = IconColor, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            tabPath.substringAfterLast("/"),
-                            fontSize = 12.sp, color = TextColor,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(Icons.Default.Close, null, tint = MutedColor,
-                            modifier = Modifier.size(14.dp).clickable { onCloseTab?.invoke(tabPath) })
-                    }
-                }
-                HorizontalDivider(color = DividerColor, thickness = 1.dp)
-            }
-        }
 
-        // ── No workspace selected ─────────────────────────────────────────
-        if (workspaceRoot == null) {
-            Column(
-                Modifier.fillMaxSize().padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(Icons.Default.Folder, null, tint = Color(0xFFDDDDDD),
-                    modifier = Modifier.size(48.dp))
-                Spacer(Modifier.height(12.dp))
-                Text("No folder opened", fontSize = 14.sp, color = MutedColor,
-                    fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                Text("Open a folder to start working", fontSize = 12.sp,
-                    color = MutedColor)
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { folderPicker.launch(null) },
-                    colors = ButtonDefaults.buttonColors(containerColor = BlueBtn),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Open Folder") }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = {
-                        // Quick pick: use /storage/emulated/0
-                        workspacePath = "/storage/emulated/0"
-                        saveWorkspacePath(context, projectId, "/storage/emulated/0")
-                        if ("/storage/emulated/0" !in workspaceRoots) {
-                            workspaceRoots = workspaceRoots + "/storage/emulated/0"
-                            saveWorkspaceRoots(context, projectId, workspaceRoots)
-                        }
-                        refresh++
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Use Phone Storage") }
-                Spacer(Modifier.height(12.dp))
-                // ── Device folder quick-access ──
-                Text("Quick Access", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                DEVICE_FOLDERS.forEach { (label, path) ->
-                    val exists = File(path).exists()
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable(enabled = exists) {
-                                workspacePath = path
-                                saveWorkspacePath(context, projectId, path)
-                                if (path !in workspaceRoots) {
-                                    workspaceRoots = workspaceRoots + path
+                // ── Multi-root workspace folders ──
+                if (workspaceRoots.size > 1 || (workspaceRoots.isNotEmpty() && workspaceRoots[0] != workspacePath)) {
+                    workspaceRoots.filter { it != workspacePath && File(it).exists() }.forEach { rootPath ->
+                        val rootFile = File(rootPath)
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(Color(0xFFF0F0F0))
+                                .clickable {
+                                    workspacePath = rootPath
+                                    saveWorkspacePath(context, projectId, rootPath)
+                                    expanded.clear()
+                                    refresh++
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Folder, null, tint = FolderColor, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(rootFile.name, fontSize = 11.sp, color = MutedColor, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.Close, null, tint = MutedColor,
+                                modifier = Modifier.size(12.dp).clickable {
+                                    workspaceRoots = workspaceRoots - rootPath
                                     saveWorkspaceRoots(context, projectId, workspaceRoots)
-                                }
-                                refresh++
-                            }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            when (label) {
-                                "DCIM (Camera)" -> Icons.Default.PhotoCamera
-                                "Downloads" -> Icons.Default.Download
-                                "Documents" -> Icons.AutoMirrored.Filled.Article
-                                "Music" -> Icons.Default.MusicNote
-                                "Movies" -> Icons.Default.Movie
-                                else -> Icons.Default.Image
-                            },
-                            null, tint = if (exists) IconColor else Color(0xFFCCCCCC),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, fontSize = 12.sp,
-                            color = if (exists) TextColor else Color(0xFFCCCCCC))
-                        Spacer(Modifier.weight(1f))
-                        if (exists) {
-                            Text(File(path).listFiles()?.size?.toString() ?: "0",
-                                fontSize = 10.sp, color = MutedColor)
+                                })
                         }
                     }
+                    HorizontalDivider(color = DividerColor, thickness = 1.dp)
                 }
-            }
-        } else {
-            // ── File tree ─────────────────────────────────────────────────
-            // Workspace root row
-            Row(
-                Modifier.fillMaxWidth()
-                    .background(Color(0xFFF0F0F0))
-                    .clickable {
-                        expanded[workspaceRoot.absolutePath] =
-                            !(expanded[workspaceRoot.absolutePath] ?: true)
-                        refresh++
-                    }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.KeyboardArrowDown, null,
-                    tint = MutedColor, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Default.Folder, null,
-                    tint = FolderColor, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(workspaceRoot.name, fontSize = 13.sp,
-                    color = TextColor, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth())
-            }
 
-            // ── Multi-root workspace folders ──
-            if (workspaceRoots.size > 1 || (workspaceRoots.isNotEmpty() && workspaceRoots[0] != workspacePath)) {
-                workspaceRoots.filter { it != workspacePath && File(it).exists() }.forEach { rootPath ->
-                    val rootFile = File(rootPath)
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .background(Color(0xFFF0F0F0))
-                            .clickable {
-                                workspacePath = rootPath
-                                saveWorkspacePath(context, projectId, rootPath)
-                                expanded.clear()
-                                refresh++
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Folder, null, tint = FolderColor, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(rootFile.name, fontSize = 11.sp, color = MutedColor, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.Close, null, tint = MutedColor,
-                            modifier = Modifier.size(12.dp).clickable {
-                                workspaceRoots = workspaceRoots - rootPath
-                                saveWorkspaceRoots(context, projectId, workspaceRoots)
-                            })
-                    }
-                }
-                HorizontalDivider(color = DividerColor, thickness = 1.dp)
-            }
-
-            LazyColumn(Modifier.fillMaxSize(), state = treeListState) {
-                items(nodes) { node ->
-                    val isSelected = selected == node.file.absolutePath
-                    // Image preview state for this node
-                    val isImage = !node.file.isDirectory && isImageFile(node.file.name)
-                    val isArchive = !node.file.isDirectory && isArchiveFile(node.file.name)
-                    val isPdf = !node.file.isDirectory && isPdfFile(node.file.name)
-                    val isVideo = !node.file.isDirectory && isVideoFile(node.file.name)
-                    val isAudio = !node.file.isDirectory && isAudioFile(node.file.name)
-                    val isSqlite = !node.file.isDirectory && isSqliteFile(node.file.name)
-                    val isDex    = !node.file.isDirectory && isDexFile(node.file.name)
-                    val isElf    = !node.file.isDirectory && isElfFile(node.file.name)
-                    val isHexBin = !node.file.isDirectory && !isSqlite && !isDex && !isElf && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .background(if (isSelected) SelectedBg else BgColor)
-                            .combinedClickable(
-                                onClick = {
-                                    selected = node.file.absolutePath
-                                    if (node.file.isDirectory) {
-                                        expanded[node.file.absolutePath] =
-                                            !(expanded[node.file.absolutePath] ?: false)
-                                        refresh++
-                                    } else if (isImage) {
-                                        // Images must never open in the text editor — show preview instead.
-                                        previewImagePath = node.file.absolutePath
-                                    } else if (isArchive) {
-                                        // .zip/.apk are binary containers — browse them like ZArchiver/MT
-                                        // Manager instead of dumping raw bytes into the text editor.
-                                        previewArchivePath = node.file.absolutePath
-                                    } else if (isPdf) {
-                                        // PDFs are binary too — render with the native PdfRenderer viewer.
-                                        previewPdfPath = node.file.absolutePath
-                                    } else if (isVideo) {
-                                        previewVideoPath = node.file.absolutePath
-                                    } else if (isAudio) {
-                                        previewAudioPath = node.file.absolutePath
-                                    } else if (isSqlite) {
-                                        previewSqlitePath = node.file.absolutePath
-                                    } else if (isDex) {
-                                        previewDexPath = node.file.absolutePath
-                                    } else if (isElf) {
-                                        previewElfPath = node.file.absolutePath
-                                    } else if (isApkAnalyzable(node.file.name)) {
-                                        previewApkPath = node.file.absolutePath
-                                    } else if (isHexBin) {
-                                        // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
-                                        // catches) — hex dump instead of corrupting/crashing the text editor.
-                                        previewHexPath = node.file.absolutePath
+                // weight(1f): this LazyColumn is a DIRECT child of the outer explorer
+                // Column, so it legally claims the remaining flexible space, scrolls
+                // its own content (treeListState — unchanged, so the breadcrumb
+                // scroll-to-directory math above still lines up with index 0 = first
+                // node), and leaves OUTLINE/TIMELINE visible underneath it.
+                LazyColumn(Modifier.fillMaxWidth().weight(1f), state = treeListState) {
+                    items(nodes) { node ->
+                        val isSelected = selected == node.file.absolutePath
+                        // Image preview state for this node
+                        val isImage = !node.file.isDirectory && isImageFile(node.file.name)
+                        val isArchive = !node.file.isDirectory && isArchiveFile(node.file.name)
+                        val isPdf = !node.file.isDirectory && isPdfFile(node.file.name)
+                        val isVideo = !node.file.isDirectory && isVideoFile(node.file.name)
+                        val isAudio = !node.file.isDirectory && isAudioFile(node.file.name)
+                        val isSqlite = !node.file.isDirectory && isSqliteFile(node.file.name)
+                        val isDex    = !node.file.isDirectory && isDexFile(node.file.name)
+                        val isElf    = !node.file.isDirectory && isElfFile(node.file.name)
+                        val isHexBin = !node.file.isDirectory && !isSqlite && !isDex && !isElf && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(if (isSelected) SelectedBg else BgColor)
+                                .combinedClickable(
+                                    onClick = {
+                                        selected = node.file.absolutePath
+                                        if (node.file.isDirectory) {
+                                            expanded[node.file.absolutePath] =
+                                                !(expanded[node.file.absolutePath] ?: false)
+                                            refresh++
+                                        } else if (isImage) {
+                                            // Images must never open in the text editor — show preview instead.
+                                            previewImagePath = node.file.absolutePath
+                                        } else if (isArchive) {
+                                            // .zip/.apk are binary containers — browse them like ZArchiver/MT
+                                            // Manager instead of dumping raw bytes into the text editor.
+                                            previewArchivePath = node.file.absolutePath
+                                        } else if (isPdf) {
+                                            // PDFs are binary too — render with the native PdfRenderer viewer.
+                                            previewPdfPath = node.file.absolutePath
+                                        } else if (isVideo) {
+                                            previewVideoPath = node.file.absolutePath
+                                        } else if (isAudio) {
+                                            previewAudioPath = node.file.absolutePath
+                                        } else if (isSqlite) {
+                                            previewSqlitePath = node.file.absolutePath
+                                        } else if (isDex) {
+                                            previewDexPath = node.file.absolutePath
+                                        } else if (isElf) {
+                                            previewElfPath = node.file.absolutePath
+                                        } else if (isApkAnalyzable(node.file.name)) {
+                                            previewApkPath = node.file.absolutePath
+                                        } else if (isHexBin) {
+                                            // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
+                                            // catches) — hex dump instead of corrupting/crashing the text editor.
+                                            previewHexPath = node.file.absolutePath
+                                        } else {
+                                            onOpenFile(node.file.absolutePath)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (isImage) {
+                                            // Show image preview popup
+                                            previewImagePath = node.file.absolutePath
+                                        }
+                                        contextFile = node.file
+                                        showCtxMenu = true
+                                    }
+                                )
+                                .padding(
+                                    start = (8 + node.depth * 14).dp,
+                                    top = 5.dp, bottom = 5.dp, end = 8.dp
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (node.file.isDirectory) {
+                                Icon(
+                                    if (node.isExpanded) Icons.Default.KeyboardArrowDown
+                                    else Icons.Default.ChevronRight,
+                                    null, tint = MutedColor,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Icon(Icons.Default.Folder, null,
+                                    tint = FolderColor, modifier = Modifier.size(16.dp))
+                            } else {
+                                if (isImage) {
+                                    // Show small thumbnail for image files
+                                    val thumbBitmap = remember(node.file.absolutePath) {
+                                        loadImageBitmap(node.file.absolutePath)
+                                    }
+                                    if (thumbBitmap != null) {
+                                        Image(
+                                            bitmap = thumbBitmap,
+                                            contentDescription = node.file.name,
+                                            modifier = Modifier.size(20.dp)
+                                                .clip(RoundedCornerShape(2.dp)),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                        Spacer(Modifier.width(2.dp))
                                     } else {
-                                        onOpenFile(node.file.absolutePath)
+                                        Spacer(Modifier.width(18.dp))
+                                        Icon(fileIcon(node.file.name), null,
+                                            tint = IconColor, modifier = Modifier.size(16.dp))
                                     }
-                                },
-                                onLongClick = {
-                                    if (isImage) {
-                                        // Show image preview popup
-                                        previewImagePath = node.file.absolutePath
-                                    }
-                                    contextFile = node.file
-                                    showCtxMenu = true
-                                }
-                            )
-                            .padding(
-                                start = (8 + node.depth * 14).dp,
-                                top = 5.dp, bottom = 5.dp, end = 8.dp
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (node.file.isDirectory) {
-                            Icon(
-                                if (node.isExpanded) Icons.Default.KeyboardArrowDown
-                                else Icons.Default.ChevronRight,
-                                null, tint = MutedColor,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(2.dp))
-                            Icon(Icons.Default.Folder, null,
-                                tint = FolderColor, modifier = Modifier.size(16.dp))
-                        } else {
-                            if (isImage) {
-                                // Show small thumbnail for image files
-                                val thumbBitmap = remember(node.file.absolutePath) {
-                                    loadImageBitmap(node.file.absolutePath)
-                                }
-                                if (thumbBitmap != null) {
-                                    Image(
-                                        bitmap = thumbBitmap,
-                                        contentDescription = node.file.name,
-                                        modifier = Modifier.size(20.dp)
-                                            .clip(RoundedCornerShape(2.dp)),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                    Spacer(Modifier.width(2.dp))
                                 } else {
                                     Spacer(Modifier.width(18.dp))
                                     Icon(fileIcon(node.file.name), null,
-                                        tint = IconColor, modifier = Modifier.size(16.dp))
+                                        tint = fileIconColor(node.file.name), modifier = Modifier.size(16.dp))
                                 }
-                            } else {
-                                Spacer(Modifier.width(18.dp))
-                                Icon(fileIcon(node.file.name), null,
-                                    tint = fileIconColor(node.file.name), modifier = Modifier.size(16.dp))
                             }
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            node.file.name,
-                            fontSize = 13.sp, color = TextColor,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        // Git status badge
-                        val gitChar = gitStatus[node.file.absolutePath]
-                        if (gitChar != null) {
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                gitChar.toString(),
-                                fontSize = 11.sp,
-                                color = when (gitChar) {
-                                    'M' -> Color(0xFFE2C08D)
-                                    'A' -> Color(0xFF73C991)
-                                    'U' -> Color(0xFF73C991)
-                                    'D' -> Color(0xFFF48771)
-                                    else -> MutedColor
-                                },
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(end = 4.dp),
+                                node.file.name,
+                                fontSize = 13.sp, color = TextColor,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
                             )
+                            // Git status badge
+                            val gitChar = gitStatus[node.file.absolutePath]
+                            if (gitChar != null) {
+                                Text(
+                                    gitChar.toString(),
+                                    fontSize = 11.sp,
+                                    color = when (gitChar) {
+                                        'M' -> Color(0xFFE2C08D)
+                                        'A' -> Color(0xFF73C991)
+                                        'U' -> Color(0xFF73C991)
+                                        'D' -> Color(0xFFF48771)
+                                        else -> MutedColor
+                                    },
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.padding(end = 4.dp),
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+        HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
-            // ── Outline section (real LSP documentSymbol) ─────────────────────
-            if (showOutline && activeFilePath != null) {
-                HorizontalDivider(color = DividerColor)
-                Row(
-                    Modifier.fillMaxWidth().height(24.dp)
-                        .background(Color(0xFFF0F0F0))
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("OUTLINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
+        // ── OUTLINE section (collapsible, real LSP documentSymbol) — always visible,
+        // independent of whether a folder is open (matches VS Code's Explorer layout). ──
+        Column {
+            Row(
+                Modifier.fillMaxWidth().height(24.dp)
+                    .background(Color(0xFFF0F0F0))
+                    .clickable { showOutline = !showOutline }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (showOutline) Icons.Default.KeyboardArrowDown else Icons.Default.ChevronRight,
+                    null, tint = MutedColor, modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("OUTLINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                if (activeFilePath != null) {
                     Text(activeFilePath.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
                 }
-                // Use the real LSP-backed OutlinePanel instead of inline regex
-                OutlinePanel(
-                    filePath = activeFilePath,
-                    onNavigate = { line ->
-                        onOpenFileAtLine?.invoke(activeFilePath, line)
-                    },
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
-                )
             }
+            if (showOutline) {
+                if (activeFilePath != null) {
+                    // Use the real LSP-backed OutlinePanel instead of inline regex
+                    OutlinePanel(
+                        filePath = activeFilePath,
+                        onNavigate = { line ->
+                            onOpenFileAtLine?.invoke(activeFilePath, line)
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                    )
+                } else {
+                    Text(
+                        "No editor is currently active.",
+                        fontSize = 11.sp, color = MutedColor,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                }
+            }
+            HorizontalDivider(color = DividerColor, thickness = 1.dp)
+        }
 
-            // ── Timeline section (git log for active file) ──────────────────
-            if (showTimeline && activeFilePath != null) {
-                HorizontalDivider(color = DividerColor)
-                Row(
-                    Modifier.fillMaxWidth().height(24.dp)
-                        .background(Color(0xFFF0F0F0))
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("TIMELINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
+        // ── TIMELINE section (collapsible, git log for active file) — always visible,
+        // independent of whether a folder is open (matches VS Code's Explorer layout). ──
+        Column {
+            Row(
+                Modifier.fillMaxWidth().height(24.dp)
+                    .background(Color(0xFFF0F0F0))
+                    .clickable { showTimeline = !showTimeline }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (showTimeline) Icons.Default.KeyboardArrowDown else Icons.Default.ChevronRight,
+                    null, tint = MutedColor, modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("TIMELINE", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                if (activeFilePath != null) {
                     Text(activeFilePath.substringAfterLast("/"), fontSize = 10.sp, color = MutedColor, maxLines = 1)
                 }
-                TimelinePanel(
-                    filePath = activeFilePath,
-                    projectDir = workspaceRoot,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
-                )
+            }
+            if (showTimeline) {
+                if (activeFilePath != null) {
+                    TimelinePanel(
+                        filePath = activeFilePath,
+                        projectDir = workspaceRoot,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                    )
+                } else {
+                    Text(
+                        "No editor is currently active.",
+                        fontSize = 11.sp, color = MutedColor,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                }
             }
         }
+
     }
 
     // ── Context menu (long press) ─────────────────────────────────────────
