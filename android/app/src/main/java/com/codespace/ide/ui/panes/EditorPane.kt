@@ -1559,9 +1559,9 @@ fun EditorPane(
                         onCodeLensClick = if (LspManager.isServerRunning(active.language)) {
                             { lensJson ->
                                 val cmd = lensJson.optJSONObject("command")
-                                val cmdStr = cmd?.optString("command", null)
+                                val cmdStr = cmd?.opt("command") as? String
                                 if (cmdStr != null) {
-                                    coroutineScope.launch(Dispatchers.IO) {
+                                    kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val args = cmd?.opt("arguments") as? org.json.JSONArray
                                         try {
                                             LspManager.executeCommand(active.language, cmdStr, args)
@@ -1571,12 +1571,12 @@ fun EditorPane(
                                     }
                                 } else if (lensJson.has("data")) {
                                     // Lens has data but no command — resolve it
-                                    coroutineScope.launch(Dispatchers.IO) {
+                                    kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             val resolved = LspManager.resolveCodeLens(active.language, lensJson)
                                             if (resolved != null) {
                                                 val rCmd = resolved.optJSONObject("command")
-                                                val rCmdStr = rCmd?.optString("command", null)
+                                                val rCmdStr = rCmd?.opt("command") as? String
                                                 if (rCmdStr != null) {
                                                     val rArgs = rCmd?.opt("arguments") as? org.json.JSONArray
                                                     LspManager.executeCommand(active.language, rCmdStr, rArgs)
