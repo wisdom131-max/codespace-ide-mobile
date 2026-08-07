@@ -327,6 +327,9 @@ private suspend fun chat(
     tokenStore: SecureTokenStore? = null,
     onOpenFile: ((String) -> Unit)? = null,
     onSwitchToPreview: ((String) -> Unit)? = null,
+    projectRootPath: String? = null,
+    currentFilePath: String? = null,
+    openFilePaths: List<String> = emptyList(),
 ): String = withContext(Dispatchers.IO) {
     // P41-X: Build workspace context for AI prompts
     val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
