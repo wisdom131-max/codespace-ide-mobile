@@ -296,7 +296,7 @@ private fun ideColors(themeName: String): IdeColors {
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
 
 // NotifItem moved to NotificationDrawerOverlay.kt
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, DOWNLOADS, BACKUP }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, DOWNLOADS, BACKUP, TODO, TESTS, ANALYSIS }
 
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
@@ -1925,6 +1925,7 @@ private fun PssBottomPanelContent(
     buildProblems: List<Problem> = emptyList(),
     onBuildProblemsChange: (List<Problem>) -> Unit = {},
     onJumpToSource: (Int) -> Unit = {},
+    onOpenFile: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -2144,6 +2145,82 @@ private fun PssBottomPanelContent(
                     })
                 },
             )
+            // P41-P: TODO Explorer
+            BottomTab.TODO -> {
+                val projectRoot = projectId?.let { java.io.File(context.filesDir, "projects/$it") }
+                var todoItems by remember { mutableStateOf<List<com.codespace.ide.editor.PowerUserAnalyzer.TodoItem>>(emptyList()) }
+                var scanning by remember { mutableStateOf(true) }
+                LaunchedEffect(projectId) {
+                    scanning = true
+                    todoItems = if (projectRoot != null && projectRoot.exists()) {
+                        com.codespace.ide.editor.PowerUserAnalyzer.scanTodosInWorkspace(projectRoot)
+                    } else emptyList()
+                    scanning = false
+                }
+                if (scanning) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
+                    }
+                } else {
+                    com.codespace.ide.ui.panes.TodoExplorerPanel(
+                        todos = todoItems,
+                        onJumpToSource = { file, line ->
+                            // Open file and jump to line
+                            val fullPath = projectRoot?.let { java.io.File(it, file).absolutePath }
+                            if (fullPath != null) onOpenFile(fullPath)
+                        },
+                    )
+                }
+            }
+            // P41-P: Test Explorer
+            BottomTab.TESTS -> {
+                val projectRoot = projectId?.let { java.io.File(context.filesDir, "projects/$it") }
+                var testFiles by remember { mutableStateOf<List<com.codespace.ide.ui.panes.TestFileInfo>>(emptyList()) }
+                var scanning by remember { mutableStateOf(true) }
+                LaunchedEffect(projectId) {
+                    scanning = true
+                    testFiles = if (projectRoot != null && projectRoot.exists()) {
+                        com.codespace.ide.ui.panes.discoverTestFiles(projectRoot)
+                    } else emptyList()
+                    scanning = false
+                }
+                if (scanning) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
+                    }
+                } else {
+                    com.codespace.ide.ui.panes.TestExplorerPanel(
+                        testFiles = testFiles,
+                        onRunTest = { relPath ->
+                            val fullPath = projectRoot?.let { java.io.File(it, relPath).absolutePath }
+                            if (fullPath != null) {
+                                showBottomPanel = true
+                                activeBottomTab = BottomTab.TERMINAL
+                                // Test run command will be typed by user in terminal
+                            }
+                        },
+                        onOpenFile = { relPath ->
+                            val fullPath = projectRoot?.let { java.io.File(it, relPath).absolutePath }
+                            if (fullPath != null) onOpenFile(fullPath)
+                        },
+                    )
+                }
+            }
+            // P41-P: Code Analysis (dead code, duplicates, complexity)
+            BottomTab.ANALYSIS -> {
+                val currentContent = activeEditorTab?.let { try { java.io.File(it).readText() } catch (_: Exception) { null } }
+                val deadCode = remember(currentContent) { currentContent?.let { com.codespace.ide.editor.PowerUserAnalyzer.detectDeadCode(it) } ?: emptyList() }
+                val duplicates = remember(currentContent) { currentContent?.let { com.codespace.ide.editor.PowerUserAnalyzer.detectDuplicateCode(it) } ?: emptyList() }
+                val complexity = remember(currentContent) { currentContent?.let { com.codespace.ide.editor.PowerUserAnalyzer.calculateComplexity(it) } ?: emptyList() }
+                com.codespace.ide.ui.panes.CodeAnalysisPanel(
+                    deadCode = deadCode,
+                    duplicates = duplicates,
+                    complexity = complexity,
+                    onJumpToLine = { line ->
+                        // Jump to line in current file
+                    },
+                )
+            }
         }
     }
 }
@@ -3359,6 +3436,9 @@ private fun PanelOverflowMenu(
         BottomTab.ARTIFACTS -> listOf("Refresh", "Open Folder", "Delete All")
         BottomTab.DOWNLOADS -> listOf("Clear Completed", "Retry Failed")
         BottomTab.BACKUP -> listOf("Backup Now", "Restore")
+        BottomTab.TODO -> listOf("Refresh", "Filter by Tag")
+        BottomTab.TESTS -> listOf("Refresh", "Run All", "Filter")
+        BottomTab.ANALYSIS -> listOf("Refresh", "Export Report")
     }
 
     Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
