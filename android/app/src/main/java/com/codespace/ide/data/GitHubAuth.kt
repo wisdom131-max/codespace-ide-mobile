@@ -30,7 +30,7 @@ object GitHubAuth {
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     data class DeviceCode(
@@ -39,6 +39,16 @@ object GitHubAuth {
         val verificationUri: String,
         val expiresInSeconds: Int,
         val pollIntervalSeconds: Int,
+    )
+
+    data class RepoInfo(
+        val name: String,
+        val fullName: String,
+        val cloneUrl: String,
+        val isPrivate: Boolean,
+        val updatedAt: String,
+        val description: String?,
+        val stars: Int,
     )
 
     private sealed interface PollResult {
@@ -130,6 +140,35 @@ object GitHubAuth {
         ).execute()
         if (!resp.isSuccessful) throw Exception("Signed in, but couldn't fetch your GitHub username (HTTP ${resp.code}).")
         JSONObject(resp.body?.string() ?: "{}").optString("login", "GitHub user")
+    }
+
+    /**
+     * Fetches the signed-in user's repositories, sorted by last updated.
+     * Returns up to 100 repos (one page — sufficient for the in-app browser).
+     */
+    suspend fun listUserRepos(accessToken: String): List<RepoInfo> = withContext(Dispatchers.IO) {
+        val resp = http.newCall(
+            Request.Builder()
+                .url("https://api.github.com/user/repos?sort=updated&per_page=100&type=owner")
+                .header("Authorization", "Bearer $accessToken")
+                .header("Accept", "application/vnd.github+json")
+                .build()
+        ).execute()
+        if (!resp.isSuccessful) throw Exception("Failed to fetch repos (HTTP ${resp.code})")
+        val body = resp.body?.string() ?: "[]"
+        val arr = org.json.JSONArray(body)
+        (0 until arr.length()).map { i ->
+            val obj = arr.getJSONObject(i)
+            RepoInfo(
+                name = obj.optString("name", "?"),
+                fullName = obj.optString("full_name", obj.optString("name", "?")),
+                cloneUrl = obj.optString("clone_url", ""),
+                isPrivate = obj.optBoolean("private", false),
+                updatedAt = obj.optString("updated_at", ""),
+                description = obj.optString("description").ifBlank { null },
+                stars = obj.optInt("stargazers_count", 0),
+            )
+        }
     }
 
     /**
