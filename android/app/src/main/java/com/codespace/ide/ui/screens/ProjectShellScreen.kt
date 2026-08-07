@@ -2243,7 +2243,8 @@ private fun buildRunCommand(path: String): String? {
 @Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, buildProblems: List<Problem> = emptyList(), onJumpToSource: (Int) -> Unit) {
     // P22-A: live-update — re-run lint every 2 s so edits are reflected without switching tabs
     // P22-G: Also fetch LSP diagnostics if server is running for this language
-    val problems by produceState<List<Problem>>(emptyList(), activeFilePath) {
+    // P41-FIX: Added buildProblems as key so panel refreshes when build completes too
+    val problems by produceState<List<Problem>>(emptyList(), activeFilePath, buildProblems) {
         while (true) {
             value = if (activeFilePath.isNullOrBlank()) emptyList()
                     else {
