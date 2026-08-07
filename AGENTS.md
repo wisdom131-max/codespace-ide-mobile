@@ -4833,7 +4833,7 @@ FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, OWNER_EMAIL, N
 - **Client ID:** 872673459882-51vislp2926tf8lgck3la827amfo0fch.apps.googleusercontent.com
 - **Client Secret:** Set on Render as GOOGLE_OAUTH_CLIENT_SECRET ✅
 - **Redirect URI:** https://codespace-ide-backend.onrender.com/api/v1/connectors/callback ✅ UPDATED 2026-08-06
-- **GCP Console:** https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026
+- **GCP Console:** https://console.cloud.google.com/apis/credentials?project=codespace-ide-2026 (login: ijeziewisdom131@gmail.com — IAM owner)
 
 ### Migration Status (Updated 2026-08-06)
 | Step | Status |
