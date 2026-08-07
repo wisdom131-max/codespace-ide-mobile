@@ -637,7 +637,8 @@ fun SourceControlPane(projectId: String) {
                 if (ghToken != null && ghToken.isNotBlank()) {
                     // Already signed in — show Browse My Repos
                     val ghUser = remember { SecureTokenStore(context).githubUsername }
-                    Text("Connected as ${'$'}{ghUser ?: "GitHub user"}", fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center)
+                    val userLabel = ghUser ?: "GitHub user"
+                    Text("Connected as $userLabel", fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(6.dp))
                     Button(
                         onClick = {
@@ -1308,7 +1309,7 @@ private fun GitHubSignInDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var phase by remember { mutableStateOf<"idle" | "code" | "polling" | "done" | "error">("idle") }
+    var phase by remember { mutableStateOf("idle") }
     var deviceCode by remember { mutableStateOf<com.codespace.ide.data.GitHubAuth.DeviceCode?>(null) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
