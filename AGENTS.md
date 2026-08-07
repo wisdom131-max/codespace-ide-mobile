@@ -8677,8 +8677,10 @@ Legend: ✅ EXISTS | 🔶 PARTIAL | ❌ MISSING
 
 ### Phase H — Navigation: Peek + Declaration
 - [x] Add `textDocument/declaration` to LspManager (P41-O, build #1885)
-- [ ] Build inline Peek widget (overlay in editor, not full navigation)
-- [ ] Peek Definition, Peek References, Peek Declaration
+- [x] Build inline Peek widget — extracted to PeekWidget.kt (PeekCodeWidget + PeekReferencesWidget composables)
+- [x] Peek Definition — pre-existing (P22-L), refactored to use extracted PeekCodeWidget
+- [x] Peek References — new context menu item, uses PeekReferencesWidget overlay
+- [x] Peek Declaration — new context menu item, uses PeekCodeWidget overlay
 
 ### Phase I — Code Actions: Light Bulb + Source Actions ✅ DONE (commit 82f6d77, build #1889)
 - [x] Light bulb icon in gutter when `getCodeActions()` returns results — pre-existing in CodeEditor.kt:644

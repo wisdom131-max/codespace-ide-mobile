@@ -117,6 +117,10 @@ import com.codespace.ide.lsp.retreat
 import com.codespace.ide.lsp.containsCursor
 import com.codespace.ide.lsp.shiftAfterEdit
 import com.codespace.ide.editor.PathCompletionProvider
+import com.codespace.ide.editor.PeekCodeWidget
+import com.codespace.ide.editor.PeekReferencesWidget
+import com.codespace.ide.editor.PeekResult
+import com.codespace.ide.editor.PeekRefsResult
 import com.codespace.ide.lsp.rank
 import com.codespace.ide.lsp.fuzzyScore
 import com.codespace.ide.lsp.fuzzyMatchIndices
@@ -997,6 +1001,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P38-FIX: Long-press trigger for auto-opening LSP menu
     var longPressTrigger by remember { mutableStateOf(0) }
     var peekUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for peek
+    // P41-H: Peek References + Peek Declaration state
+    var peekRefsResult by remember { mutableStateOf<PeekRefsResult?>(null) }
+    var peekDeclResult by remember { mutableStateOf<PeekResult?>(null) }
     var findRefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find references
     var typeDefUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for type definition
     var implUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for find implementations
@@ -2600,6 +2607,49 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     showLspMenu = false
                                 }
                             )
+                            // P41-H: Peek References — inline overlay
+                            if (onFindReferences != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("⊞", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Peek References", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
+                                        peekRefsResult = PeekRefsResult(word, refs, refs.isNotEmpty())
+                                        showLspMenu = false
+                                    }
+                                )
+                            }
+                            // P41-H: Peek Declaration — inline overlay
+                            if (onLspDeclaration != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("⊞", color = Color(0xFFD4D4D4), fontSize = 14.sp)
+                                            Text("Peek Declaration", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        // Use declaration LSP call — reuses the peek definition overlay
+                                        val declSucceeded = onLspDeclaration!!.invoke()
+                                        if (!declSucceeded) {
+                                            // Fallback: show message
+                                            peekDeclResult = PeekResult(
+                                                title = "Peek Declaration",
+                                                filePath = filePath ?: "",
+                                                line = 0,
+                                                lines = listOf("// No declaration found for '$word'"),
+                                                defLine = 0,
+                                                usedLsp = false,
+                                            )
+                                        }
+                                        showLspMenu = false
+                                    }
+                                )
+                            }
 
                             // P41-M: Call Hierarchy
                             if (onPrepareCallHierarchy != null) {
@@ -2898,121 +2948,66 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // ── P22-L: Peek Definition overlay ───────────────────────────────────────
+        // P41-H: Peek overlays (extracted to PeekWidget.kt to avoid 64KB limit)
         if (peekDefResult != null) {
-            val peek = peekDefResult!!
-            Card(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth(0.92f)
-                    .fillMaxHeight(0.5f)
-                    .zIndex(30f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF252526))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "Peek Definition",
-                            color = Color(0xFF4EC9B0),
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        // P37-3: LSP/Fallback badge
-                        Box(
-                            Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                .background(if (peekUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                if (peekUsedLsp) "LSP" else "Fallback",
-                                color = Color(0xFF1E1E1E),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
+            PeekCodeWidget(
+                result = PeekResult(
+                    title = "Peek Definition",
+                    filePath = peekDefResult!!.filePath,
+                    line = peekDefResult!!.line,
+                    lines = peekDefResult!!.lines,
+                    defLine = peekDefResult!!.defLine,
+                    usedLsp = peekUsedLsp,
+                ),
+                currentFilePath = filePath,
+                onNavigate = { fp, ln ->
+                    if (fp == filePath) {
+                        coroutineScope.launch {
+                            val localLineHeightPx = fontSize * 1.25f
+                            vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
                         }
-                        Spacer(Modifier.weight(1f))
-                        val fileName = peek.filePath.substringAfterLast('/')
-                        Text(
-                            "$fileName:${peek.line + 1}",
-                            color = Color(0xFF888888),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(
-                            onClick = { peekDefResult = null },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                        ) {
-                            Text("X", color = Color(0xFF888888), fontSize = 16.sp)
-                        }
+                    } else {
+                        onOpenFileAtLine?.invoke(fp, ln)
                     }
-                    HorizontalDivider(color = Color(0xFF333333))
-                    // Code preview
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(8.dp),
-                    ) {
-                        peek.lines.forEachIndexed { idx, line ->
-                            val isDefLine = idx == peek.defLine
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(if (isDefLine) Color(0xFF007ACC).copy(alpha = 0.15f) else Color.Transparent)
-                                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                            ) {
-                                Text(
-                                    "" + (peek.line - peek.defLine + idx + 1),
-                                    color = if (isDefLine) Color(0xFF007ACC) else Color(0xFF858585),
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.width(36.dp),
-                                )
-                                Text(
-                                    line.take(120),
-                                    color = if (isDefLine) Color(0xFFD4D4D4) else Color(0xFFAAAAAA),
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                            }
+                },
+                onClose = { peekDefResult = null },
+            )
+        }
+        // P41-H: Peek References overlay
+        if (peekRefsResult != null) {
+            PeekReferencesWidget(
+                result = peekRefsResult!!,
+                currentFilePath = filePath,
+                onNavigate = { fp, ln ->
+                    if (fp == filePath) {
+                        coroutineScope.launch {
+                            val localLineHeightPx = fontSize * 1.25f
+                            vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
                         }
+                    } else {
+                        onOpenFileAtLine?.invoke(fp, ln)
                     }
-                    // Footer
-                    HorizontalDivider(color = Color(0xFF333333))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(4.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        TextButton(onClick = { peekDefResult = null }) {
-                            Text("Close", color = Color(0xFF888888), fontSize = 12.sp)
+                },
+                onClose = { peekRefsResult = null },
+            )
+        }
+        // P41-H: Peek Declaration overlay
+        if (peekDeclResult != null) {
+            PeekCodeWidget(
+                result = peekDeclResult!!,
+                currentFilePath = filePath,
+                onNavigate = { fp, ln ->
+                    if (fp == filePath) {
+                        coroutineScope.launch {
+                            val localLineHeightPx = fontSize * 1.25f
+                            vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
                         }
-                        Spacer(Modifier.width(4.dp))
-                        TextButton(
-                            onClick = {
-                                if (peek.filePath == filePath) {
-                                    coroutineScope.launch {
-                                        val localLineHeightPx = fontSize * 1.25f
-                                        vScroll.animateScrollTo((peek.line * localLineHeightPx).toInt())
-                                    }
-                                } else {
-                                    onOpenFileAtLine?.invoke(peek.filePath, peek.line + 1)
-                                }
-                                peekDefResult = null
-                            }
-                        ) {
-                            Text("Go to Definition ->", color = Color(0xFF007ACC), fontSize = 12.sp)
-                        }
+                    } else {
+                        onOpenFileAtLine?.invoke(fp, ln)
                     }
-                }
-            }
+                },
+                onClose = { peekDeclResult = null },
+            )
         }
 
         if (renameDialogWord != null) {
