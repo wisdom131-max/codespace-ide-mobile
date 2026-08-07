@@ -130,6 +130,7 @@ import com.codespace.ide.lsp.applyLspTextEdits
 import com.codespace.ide.lsp.LspCodeAction
 import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.material3.HorizontalDivider
@@ -700,21 +701,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
             // P41-K: Fetch LSP + workspace sources concurrently (worst-case = slowest source)
             val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                val lspDeferred = kotlinx.coroutines.async {
-                    try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
-                }
-                // P41-K: Workspace symbols have own debounce (prefix >= 3) and result cap (top 50)
-                val wsDeferred = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
-                    kotlinx.coroutines.async {
-                        try {
-                            lspWorkspaceSymbolProvider.invoke(prefix).take(50)
-                        } catch (_: Exception) { emptyList() }
+                kotlinx.coroutines.coroutineScope {
+                    val lspDeferred = async {
+                        try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
                     }
-                } else null
+                    // P41-K: Workspace symbols have own debounce (prefix >= 3) and result cap (top 50)
+                    val wsDeferred = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
+                        async {
+                            try {
+                                lspWorkspaceSymbolProvider.invoke(prefix).take(50)
+                            } catch (_: Exception) { emptyList() }
+                        }
+                    } else null
 
-                val lsp = lspDeferred.await()
-                val ws = wsDeferred?.await() ?: emptyList()
-                Pair(lsp, ws)
+                    val lsp = lspDeferred.await()
+                    val ws = wsDeferred?.await() ?: emptyList()
+                    Pair(lsp, ws)
+                }
             }
 
             lspCompletions = results.first
@@ -4224,9 +4227,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             val lineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                             val lineEnd = text.indexOf('\n', cursor)
                                             val lineText = text.substring(lineStart, if (lineEnd < 0) text.length else lineEnd)
-                                            val prompt = "Explain why you suggested \"${'$'}{highlighted.label}\" here.\n" +
-                                                "Current line: ${'$'}{lineText}\n" +
-                                                "File type: ${'$'}{language.name}"
+                                            val prompt = "Explain why you suggested \"" + highlighted.label + "\" here.\n" +
+                                                "Current line: " + lineText + "\n" +
+                                                "File type: " + language.name
                                             onAiFixRequest?.invoke(prompt)
                                             showCompletions = false
                                         },
