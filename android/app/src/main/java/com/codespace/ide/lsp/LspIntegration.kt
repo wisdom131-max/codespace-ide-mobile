@@ -1,6 +1,7 @@
 package com.codespace.ide.lsp
 
 import com.codespace.ide.editor.LintError
+import com.codespace.ide.domain.Language
 
 import com.codespace.ide.diagnostics.Problem
 import org.json.JSONArray
