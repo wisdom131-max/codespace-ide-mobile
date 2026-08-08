@@ -539,7 +539,7 @@ fun ProjectFileSearchPanel(
                                                         onOpenFileAtLine(r.file.path, r.lineNumber)
                                                         onDismiss()
                                                     }
-                                                    .padding(start = 32.dp, end = 16.dp, vertical = 6.dp),
+                                                    .padding(start = 32.dp, top = 6.dp, end = 16.dp, bottom = 6.dp),
                                             ) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
