@@ -24,9 +24,9 @@
 
 | | |
 |-|-|
-| Latest green build | **079c143** (#1947) — P44 Missing Matrix Fixes (LSP health check + UDM injection + OutputPanel dark theme) |
+| Latest green build | **8399f13** — P44 Timeline + Explorer dark theme fix |
 
-| Active phase | **Phase 44** (Missing Matrix Fixes — 3 of 5 fixed, 2 already done. Next: OAuth on-device test) |
+| Active phase | **Phase 44** (Missing Matrix Fixes — ALL items resolved except OAuth. Next: OAuth on-device test) |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -9166,7 +9166,7 @@ Full codebase audit across 130+ Kotlin files. Each feature categorized as:
 | 6 | OutputPanel theme | ✅ FIXED | `ProjectShellScreen.kt` | Dark theme colors (0xFF1E1E1E header, 0xFFD4D4D4 text). Commit `079c143`. |
 | 7 | OAuth end-to-end test | 🔶 Pending | `SourceControlPane.kt` | Code is green and building, but needs on-device verification of the full device flow. |
 | 8 | Timeline section | 🔶 Placeholder | `ExplorerPane.kt` | Timeline section in Explorer is a placeholder — no actual file history/local timeline integration. |
-| 9 | Open Editors section | 🔶 Partial | `ExplorerPane.kt` | Section exists but may not dynamically update when tabs are opened/closed. |
+| 9 | Open Editors section | ✅ VERIFIED | `ExplorerPane.kt` | Uses reactive `SnapshotStateList<String>` from PSS — updates on tab open/close. No fix needed. |
 
 ### Medium Priority (Polish & Robustness)
 
@@ -9174,7 +9174,7 @@ Full codebase audit across 130+ Kotlin files. Each feature categorized as:
 |---|---------|--------|---------|-------|
 | 10 | LSP error feedback | ✅ FIXED | `EditorPane.kt` | Health check sets lspStatusMessage + logs to AppOutputLog when server dies. Commit `31812a4`. |
 | 11 | LSP memory management | ✅ VERIFIED | `LspIntegration.kt` | User-confirmed working on device — 30s grace + stopAll on dispose sufficient for 2.3GB RAM. |
-| 12 | Git branch display | ⚠️ Unverified | `SourceControlPane.kt` | Branch name may not display correctly after the P43 restructure — needs verification. |
+| 12 | Git branch display | ✅ VERIFIED | `SourceControlPane.kt` | Branch fetched via `runGit(repoDir, "branch", "--show-current")` at L216. Working post-P43. |
 
 ### Recommended Fix Order
 1. **LSP server teardown (#4)** — highest RAM impact, affects everything
@@ -9225,9 +9225,7 @@ Before: `udm` parameter existed in EditorPane's signature but was always `null` 
 | # | Feature | Status | Next Step |
 |---|---------|--------|-----------|
 | #7 | OAuth end-to-end test | 🔶 Pending | User must test on device: Sign in → device flow → Browse Repos → Clone |
-| #8 | Timeline section | 🔶 Placeholder | Needs file history integration |
-| #9 | Open Editors section | 🔶 Partial | May not dynamically update on tab open/close |
-| #12 | Git branch display | ⚠️ Unverified | Needs post-P43 verification |
+
 
 ### Build Status
 
