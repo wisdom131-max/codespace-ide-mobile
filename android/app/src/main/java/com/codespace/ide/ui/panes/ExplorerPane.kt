@@ -700,6 +700,15 @@ fun ExplorerSidePanel(
                 }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
                     Text("All", fontSize = 11.sp, color = Color(0xFF007ACC))
                 }
+                TextButton(onClick = {
+                    selectedFiles.forEach { path ->
+                        if (!File(path).isDirectory) onOpenFile(path)
+                    }
+                    multiSelectMode = false
+                    selectedFiles.clear()
+                }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
+                    Text("Open", fontSize = 11.sp, color = Color(0xFF007ACC))
+                }
                 Icon(Icons.Default.ContentCopy, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
                         if (selectedFiles.size == 1) {
@@ -731,8 +740,9 @@ fun ExplorerSidePanel(
             }
         }
 
-        // ── Folder toolbar — only when a folder is open and the section is expanded ──
+        // ── Folder toolbar — clean VS Code-style with 3-dot overflow ──
         if (workspaceRoot != null && workspaceExpanded) {
+            var showFolderOverflow by remember { mutableStateOf(false) }
             Row(
                 Modifier.fillMaxWidth().height(28.dp)
                     .background(Color(0xFFF3F3F3))
@@ -752,76 +762,68 @@ fun ExplorerSidePanel(
                         contextFile = workspaceRoot; showNewFolder = true; nameInput = ""
                     })
                 Spacer(Modifier.width(6.dp))
-                // Import Image(s) — pick from device Photos/Files, copy into project root
-                if (importingImages) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Default.AddPhotoAlternate, null, tint = MutedColor,
-                        modifier = Modifier.size(16.dp).clickable {
-                            pendingImageTargetDir = workspaceRoot
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        })
-                }
-                Spacer(Modifier.width(6.dp))
                 // Refresh
                 Icon(Icons.Default.Refresh, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable { refresh++ })
                 Spacer(Modifier.width(6.dp))
-                // Multi-select toggle
-                Icon(
-                    Icons.Default.CheckBox,
-                    null, tint = if (multiSelectMode) Color(0xFF007ACC) else MutedColor,
-                    modifier = Modifier.size(16.dp).clickable {
-                        multiSelectMode = !multiSelectMode
-                        if (!multiSelectMode) selectedFiles.clear()
-                    }
-                )
-                Spacer(Modifier.width(6.dp))
-                // Collapse All
-                Icon(Icons.Default.UnfoldLess, null, tint = MutedColor,
-                    modifier = Modifier.size(16.dp).clickable {
-                        expanded.clear()
-                        refresh++
-                    })
-                Spacer(Modifier.width(6.dp))
-                // Expand All
-                Icon(Icons.Default.UnfoldMore, null, tint = MutedColor,
-                    modifier = Modifier.size(16.dp).clickable {
-                        workspaceRoot?.let { root ->
-                            fun expandAll(f: File) {
-                                if (f.isDirectory) {
-                                    expanded[f.absolutePath] = true
-                                    f.listFiles()?.forEach { expandAll(it) }
+                // 3-dot overflow menu
+                Box {
+                    Icon(Icons.Default.MoreVert, null, tint = MutedColor,
+                        modifier = Modifier.size(16.dp).clickable { showFolderOverflow = true })
+                    DropdownMenu(expanded = showFolderOverflow, onDismissRequest = { showFolderOverflow = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (multiSelectMode) "✓ Multi-select Mode" else "Multi-select Mode", fontSize = 12.sp) },
+                            onClick = { showFolderOverflow = false; multiSelectMode = !multiSelectMode; if (!multiSelectMode) selectedFiles.clear() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Sort by: " + when (sortMode) { 0 -> "Name"; 1 -> "Date"; 2 -> "Size"; else -> "Type" }, fontSize = 12.sp) },
+                            onClick = { showFolderOverflow = false; sortMode = (sortMode + 1) % 4 }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Expand All", fontSize = 12.sp) },
+                            onClick = {
+                                showFolderOverflow = false
+                                workspaceRoot?.let { root ->
+                                    fun expandAll(f: File) {
+                                        if (f.isDirectory) {
+                                            expanded[f.absolutePath] = true
+                                            f.listFiles()?.forEach { expandAll(it) }
+                                        }
+                                    }
+                                    expandAll(root)
                                 }
+                                refresh++
                             }
-                            expandAll(root)
-                        }
-                        refresh++
-                    })
-                Spacer(Modifier.width(6.dp))
-                // Sort toggle (N=Name, D=Date, S=Size, T=Type)
-                Box(Modifier.clickable { sortMode = (sortMode + 1) % 4 }.padding(2.dp)) {
-                    Text(when (sortMode) { 0 -> "N"; 1 -> "D"; 2 -> "S"; else -> "T" },
-                         fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Collapse All", fontSize = 12.sp) },
+                            onClick = { showFolderOverflow = false; expanded.clear(); refresh++ }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Import Images", fontSize = 12.sp) },
+                            onClick = {
+                                showFolderOverflow = false
+                                pendingImageTargetDir = workspaceRoot
+                                imagePickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Add Folder to Workspace", fontSize = 12.sp) },
+                            onClick = { showFolderOverflow = false; folderPicker.launch(null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (showDeviceFolders) "✓ Device Folders" else "Device Folders", fontSize = 12.sp) },
+                            onClick = { showFolderOverflow = false; showDeviceFolders = !showDeviceFolders }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Change Folder", fontSize = 12.sp) },
+                            onClick = { showFolderOverflow = false; folderPicker.launch(null) }
+                        )
+                    }
                 }
-                Spacer(Modifier.width(6.dp))
-                // Add folder to workspace (multi-root)
-                Icon(Icons.Default.Add, null, tint = MutedColor,
-                    modifier = Modifier.size(16.dp).clickable {
-                        folderPicker.launch(null)
-                    })
-                Spacer(Modifier.width(6.dp))
-                // Device folders quick toggle
-                Icon(Icons.Default.PhoneAndroid, null, tint = if (showDeviceFolders) IconColor else MutedColor,
-                    modifier = Modifier.size(16.dp).clickable { showDeviceFolders = !showDeviceFolders })
-                Spacer(Modifier.width(6.dp))
-                // Change folder
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = MutedColor,
-                    modifier = Modifier.size(16.dp).clickable {
-                        folderPicker.launch(null)
-                    })
                 Spacer(Modifier.width(2.dp))
             }
         }
