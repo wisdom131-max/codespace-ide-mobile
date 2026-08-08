@@ -9234,3 +9234,75 @@ Before: `udm` parameter existed in EditorPane's signature but was always `null` 
 | #1947 | `079c143` | ✅ Green | P44-3 UDM injection + P44-5 OutputPanel dark theme |
 | #1946 | `31812a4` | ✅ Green | P44-2 Reactive LSP health check |
 | #1945 | `cdd2268` | ✅ Green | P42+P43+P44 audit documentation |
+
+
+## Phase 45 — UI Matrix Features Audit & Implementation
+
+### Audit Summary
+
+| Group | ✅ Done | ⚠️ Partial | ❌ Missing | Total |
+|-------|---------|-------------|------------|-------|
+| 1 — Project Explorer | 6 | 4 | 4 | 14 |
+| 2 — Zen Mode | 0 | 0 | 5 | 5 |
+| 3 — Search | 6 | 3 | 3 | 14 |
+
+### Group 1 — Project Explorer (P45-G1)
+
+**Build order: Group 1 → Group 3 → Group 2**
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 1 | Tree view with expand/collapse | ✅ DONE | Pre-existing |
+| 2 | New File / New Folder | ✅ DONE | Pre-existing |
+| 3 | Rename / Delete / Duplicate | ✅ DONE | Pre-existing |
+| 4 | Copy / Cut / Paste | ✅ DONE | Pre-existing |
+| 5 | Multi-select | ✅ DONE | Checkbox mode + action bar (copy, delete, select all) |
+| 6 | File icons per type | ✅ DONE | Pre-existing (40+ extensions) |
+| 7 | File badges (Git status) | ✅ DONE | Pre-existing git status badge |
+| 8 | File badges (unsaved changes) | ❌ DEFERRED | Requires cross-file dirty state plumbing (EditorPane → PSS → Explorer) |
+| 9 | File badges (error count) | ❌ DEFERRED | Requires LSP diagnostic data piped to explorer |
+| 10 | Hidden files toggle | ❌ REMOVED | Per user request — not needed |
+| 11 | Sort by Name / Date / Size / Type | ✅ DONE | Cycling N→D→S→T in toolbar |
+| 12 | Search filenames within explorer | ✅ DONE | Pre-existing filterQuery |
+| 13 | Collapse all | ✅ DONE | Pre-existing |
+| 14 | Expand all | ✅ DONE | UnfoldMore icon next to Collapse All |
+| 15 | Refresh | ✅ DONE | Pre-existing |
+| 16 | Reveal Active File in tree | ❌ REMOVED | Per user request — not needed |
+| 17 | Favorites — pin files/folders | ❌ REMOVED | Per user request — not needed |
+| 18 | File preview on long press | ❌ REMOVED | Per user request — not needed |
+
+### Group 3 — Search (P45-G3) — NEXT
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 1 | Case sensitive toggle | ❌ MISSING | FindReplaceBar only has regex toggle |
+| 2 | Whole word toggle | ❌ MISSING | No wholeWord option |
+| 3 | Regex toggle | ✅ DONE | useRegex in FindReplaceBar |
+| 4 | Highlight all matches | ⚠️ PARTIAL | Matches computed but no visual highlight overlay |
+| 5 | Navigate next/previous | ✅ DONE | Prev/Next buttons in FindReplaceBar |
+| 6 | Replace single | ✅ DONE | "Replace" button |
+| 7 | Replace all in file | ✅ DONE | "All" button |
+| 8 | Global search across files | ✅ DONE | ProjectFileSearchPanel textMode |
+| 9 | Results tree grouped by file | ⚠️ PARTIAL | Results show but not grouped as expandable tree |
+| 10 | Replace across files with preview | ⚠️ PARTIAL | Replace mode exists, no preview/confirm |
+| 11 | Include / Exclude file patterns | ❌ MISSING | No glob pattern inputs |
+| 12 | Recent search history | ❌ MISSING | No persistence |
+| 13 | Quick Open — fuzzy filename | ✅ DONE | ProjectFileSearchPanel fuzzyScore |
+| 14 | Workspace Symbol Search | ✅ DONE | SymbolSearchPanel + LSP workspace/symbol |
+
+### Group 2 — Zen Mode (P45-G2) — LAST
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 1 | Zen Mode toggle | ❌ MISSING | No zen state in PSS |
+| 2 | Save/restore layout | ❌ MISSING | Depends on #1 |
+| 3 | Toggle reachable in Zen Mode | ❌ MISSING | Depends on #1 |
+| 4 | Individual element toggles | ❌ MISSING | No per-element visibility state |
+| 5 | Centered Layout option | ❌ MISSING | No centered layout state |
+
+### Build Status
+
+| Build # | Commit | Status | Notes |
+|---------|--------|--------|-------|
+| #1955 | `3ea8674` | 🔄 | showNotification fix for multi-select |
+| Next | TBD | ⏳ | Cleaned ExplorerPane (removed 4 features per user request) |
