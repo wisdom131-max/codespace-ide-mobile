@@ -300,6 +300,7 @@ fun ExplorerSidePanel(
             ?.forEach { walk(it, 0) }
         treeListState.animateScrollToItem(idx.coerceAtLeast(0))
     }
+    var selected      by remember { mutableStateOf<String?>(null) }
     var contextFile   by remember { mutableStateOf<File?>(null) }
     var showCtxMenu   by remember { mutableStateOf(false) }
     var showHistoryDialog  by remember { mutableStateOf(false) }
