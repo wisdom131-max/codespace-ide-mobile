@@ -10706,3 +10706,23 @@ After completing all tests, record results here:
 - INCONCLUSIVE: 3
 - TOTAL TESTS: 148
 
+
+
+---
+
+## Phase 46 — Additional Bug Report: Notification Crash (2026-08-08)
+
+### Bug: Duplicate LazyColumn Key Crash on Notification Overload
+**Exception:** `java.lang.IllegalArgumentException: Key "1786215031866" was already used. If you are using LazyColumn/Row please make sure you provide a unique key for each item.`
+**Trace:** `SubcomposeLayout.kt:437` → `LazyListMeasureKt.measureLazyList` → crash during scroll of the notification list.
+**Root cause:** The notification list (LazyColumn) uses a key likely derived from a timestamp (`1786215031866` looks like an epoch millis value). When multiple notifications are created in rapid succession (e.g. many diagnostics/LSP/build events firing at once), two or more notifications can get the same millisecond timestamp, producing a duplicate `key()` in the LazyColumn — Compose crashes immediately since keys must be unique.
+**Fix needed:** Use a guaranteed-unique key (e.g. notification `id` from an incrementing counter or UUID, not a raw timestamp) for each item in the notification LazyColumn.
+
+### Feature Request: Notification Detail View
+- Tapping/opening a notification should show the **full** notification text (currently truncated/cut off in the drawer row).
+- Add a **copy-to-clipboard button** on the notification detail view so the user can copy the full message text.
+
+### Screenshots show additional context (test_feature.py editing session)
+- User was testing hover docs (`self`, `open()` builtin signature) and AI actions menu — confirmed AI menu includes: Explain Code, Generate Documentation, Generate Unit Tests, Optimize Code, Rewrite Code, Simplify Code, Refactor with AI, Add Comments, Improve Performance. This is a different/separate AI menu from the "Fix with AI" long-press action referenced in B1 — worth reconciling during the Fix-with-AI audit.
+- Source Control panel screenshot shows the SCM panel layout is cramped/overlapping with editor pane when opened side-by-side in landscape — text is cut off ("SOUR", "Chan", "ges", "Grap" instead of full labels). Reinforces test E2/E4 finding that the Source Control panel needs a full restructure.
+
