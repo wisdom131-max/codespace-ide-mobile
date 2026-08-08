@@ -71,11 +71,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import androidx.compose.material.icons.automirrored.filled.*
 
-private val BgColor      = Color(0xFFFFFFFF)
-private val SelectedBg   = Color(0xFFCCE5FF)
-private val TextColor    = Color(0xFF333333)
-private val MutedColor   = Color(0xFF717171)
-private val DividerColor = Color(0xFFE0E0E0)
+private val BgColor      = Color(0xFF1E1E1E)
+private val SelectedBg   = Color(0xFF37373D)
+private val TextColor    = Color(0xFFD4D4D4)
+private val MutedColor   = Color(0xFF858585)
+private val DividerColor = Color(0xFF2D2D30)
 private val FolderColor  = Color(0xFFDCB67A)
 private val IconColor    = Color(0xFF007ACC)
 private val BlueBtn      = Color(0xFF007ACC)
@@ -565,7 +565,7 @@ fun ExplorerSidePanel(
         Column {
             Row(
                 Modifier.fillMaxWidth().height(24.dp)
-                    .background(Color(0xFFF0F0F0))
+                    .background(Color(0xFF252526))
                     .clickable { openEditorsExpanded = !openEditorsExpanded }
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -614,7 +614,7 @@ fun ExplorerSidePanel(
         // and OUTLINE/TIMELINE stay visible underneath it instead of being pushed off. ──
         Row(
             Modifier.fillMaxWidth().height(24.dp)
-                .background(Color(0xFFF0F0F0))
+                .background(Color(0xFF252526))
                 .clickable { workspaceExpanded = !workspaceExpanded }
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -858,7 +858,7 @@ fun ExplorerSidePanel(
                 // Workspace root row
                 Row(
                     Modifier.fillMaxWidth()
-                        .background(Color(0xFFF0F0F0))
+                        .background(Color(0xFF252526))
                         .clickable {
                             expanded[workspaceRoot.absolutePath] =
                                 !(expanded[workspaceRoot.absolutePath] ?: true)
@@ -884,7 +884,7 @@ fun ExplorerSidePanel(
                         val rootFile = File(rootPath)
                         Row(
                             Modifier.fillMaxWidth()
-                                .background(Color(0xFFF0F0F0))
+                                .background(Color(0xFF252526))
                                 .clickable {
                                     workspacePath = rootPath
                                     saveWorkspacePath(context, projectId, rootPath)
@@ -1054,7 +1054,7 @@ fun ExplorerSidePanel(
         Column {
             Row(
                 Modifier.fillMaxWidth().height(24.dp)
-                    .background(Color(0xFFF0F0F0))
+                    .background(Color(0xFF252526))
                     .clickable { showOutline = !showOutline }
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1096,7 +1096,7 @@ fun ExplorerSidePanel(
         Column {
             Row(
                 Modifier.fillMaxWidth().height(24.dp)
-                    .background(Color(0xFFF0F0F0))
+                    .background(Color(0xFF252526))
                     .clickable { showTimeline = !showTimeline }
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
