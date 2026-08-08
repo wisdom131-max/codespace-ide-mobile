@@ -334,6 +334,7 @@ private val MENU_BAR = listOf(
         MenuAction("Terminal","Ctrl+`"), MenuAction("Problems","Ctrl+Shift+M"),
         MenuAction("Output"), MenuAction("",divider=true),
         MenuAction("Toggle Sidebar","Ctrl+B"),
+        MenuAction("Toggle Zen Mode","Ctrl+K Z"),
         MenuAction("Zoom In"), MenuAction("Zoom Out"),
     )),
     MenuBarItem("Go", listOf(
@@ -511,6 +512,7 @@ fun ProjectShellScreen(
     val _prefs = remember { context.getSharedPreferences("app_prefs", 0) }
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     val showBottomPanelMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }; var showBottomPanel by showBottomPanelMs
+    var zenMode by remember { mutableStateOf(false) }
     val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
     val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var _splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
@@ -755,6 +757,15 @@ fun ProjectShellScreen(
             "Zoom In"            -> editorFontSize = (editorFontSize + 1).coerceAtMost(24)
             "Zoom Out"           -> editorFontSize = (editorFontSize - 1).coerceAtLeast(8)
             "Exit"               -> onBack()
+            "Toggle Zen Mode"    -> {
+                zenMode = !zenMode
+                if (zenMode) {
+                    activePanel = null
+                    showBottomPanel = false
+                    showChatPanel = false
+                }
+                showNotification(if (zenMode) "Zen Mode — tap floating button to exit" else "Zen Mode off", "info")
+            }
             "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
             "Create Snapshot" -> {
                 scope.launch {
@@ -883,7 +894,8 @@ fun ProjectShellScreen(
     ) {
         Column(Modifier.fillMaxSize()) {
 
-            // ── Top Bar + Menu Bar (extracted to PssTopBar to stay under JVM 64KB limit)
+            // ── Top Bar + Menu Bar (hidden in Zen Mode)
+            if (!zenMode) {
             PssTopBar(
                 projectName = projectName,
                 currentTheme = currentTheme,
@@ -904,12 +916,13 @@ fun ProjectShellScreen(
                 onToggleChat = { showChatPanel = !showChatPanel },
                 onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
-            )
+            ) }
 
             // ── Main body
             Row(Modifier.weight(1f).fillMaxWidth()) {
 
-                // Activity Bar — extracted to PssActivityBar (DEX register reduction)
+                // Activity Bar — hidden in Zen Mode
+                if (!zenMode) {
                 PssActivityBar(
                     projectId = projectId,
                     activeEditorTab = activeEditorTab,
@@ -921,10 +934,10 @@ fun ProjectShellScreen(
                     activityBarIcon = ActivityBarIcon,
                     activityBarIconActive = ActivityBarIconActive,
                     dividerColor = DividerColor,
-                )
+                ) }
 
-                // Side Panel
-                if (activePanel != null) {
+                // Side Panel — hidden in Zen Mode
+                if (!zenMode && activePanel != null) {
                     val spWidth = with(density) { sidePanelWidth.toDp() }.coerceIn(150.dp, 500.dp)
                     Column(Modifier.width(spWidth).fillMaxHeight().background(BgColor)) {
                         when (activePanel) {
@@ -1275,16 +1288,46 @@ fun ProjectShellScreen(
     }
 
 
-            // ── VS Code status bar (blue bar at bottom) ──
+            // ── VS Code status bar (hidden in Zen Mode) ──
+            if (!zenMode) {
             StatusBarContent(
                 statusBarBg = StatusBarBg,
                 activeEditorTab = activeEditorTab,
                 cursorLine = cursorLine,
                 cursorCol = cursorCol,
                 onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
-            )
+            ) }
     } // end Editor Column
 
+        // P45-G2: Floating Zen Mode exit button
+        if (zenMode) {
+            Box(
+                Modifier.fillMaxSize().pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            zenMode = false
+                            showNotification("Zen Mode off", "info")
+                        }
+                    )
+                }
+            )
+            Box(
+                Modifier.fillMaxSize().padding(16.dp),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        zenMode = false
+                        showNotification("Zen Mode off", "info")
+                    },
+                    containerColor = Color(0xFF007ACC),
+                    contentColor = Color.White,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Default.FullscreenExit, null, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
 
         PssOverlays(
             activePanel = activePanel,
@@ -1472,7 +1515,7 @@ private fun PssOverlays(
                         HorizontalDivider(color = DividerColor)
                         val filtered = listOf(
                             "New File", "New Folder", "Save File", "Open File",
-                            "Toggle Sidebar", "Toggle Terminal", "Select Color Theme",
+                            "Toggle Sidebar", "Toggle Terminal", "Toggle Zen Mode", "Select Color Theme",
                             "Go to File", "Find in Files", "Run Program", "Split Terminal",
                             "Explorer", "Search", "Source Control", "Run & Debug", "Extensions",
                             "Git: Commit", "Git: Push", "Git: Pull", "Git: Stage All",
@@ -1538,6 +1581,7 @@ private fun PssOverlays(
                             "Toggle Sidebar" to { onActivePanelChange(if (activePanel == null) SidePanel.EXPLORER else null); onShowGearMenuChange(false) },
                             "Toggle Terminal" to { onShowBottomPanelChange(!showBottomPanel); onShowGearMenuChange(false) },
                             "Toggle Copilot Chat" to { onShowChatPanelChange(!showChatPanel); onShowGearMenuChange(false) },
+                            "Toggle Zen Mode" to { onHandleMenuAction("Toggle Zen Mode"); onShowGearMenuChange(false) },
                             "Font Size +" to { onEditorFontSizeChange((editorFontSize + 1).coerceAtMost(32)); onShowGearMenuChange(false) },
                             "Font Size -" to { onEditorFontSizeChange((editorFontSize - 1).coerceAtLeast(8)); onShowGearMenuChange(false) },
                             "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
