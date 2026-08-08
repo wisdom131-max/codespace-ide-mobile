@@ -9165,7 +9165,7 @@ Full codebase audit across 130+ Kotlin files. Each feature categorized as:
 |---|---------|--------|---------|-------|
 | 6 | OutputPanel theme | ✅ FIXED | `ProjectShellScreen.kt` | Dark theme colors (0xFF1E1E1E header, 0xFFD4D4D4 text). Commit `079c143`. |
 | 7 | OAuth end-to-end test | 🔶 Pending | `SourceControlPane.kt` | Code is green and building, but needs on-device verification of the full device flow. |
-| 8 | Timeline section | 🔶 Placeholder | `ExplorerPane.kt` | Timeline section in Explorer is a placeholder — no actual file history/local timeline integration. |
+| 8 | Timeline section | ✅ FIXED (theme) | `TimelinePanel.kt`, `ExplorerPane.kt` | Was functional (git log --follow for active file) but used light theme. Fixed to dark theme. Commits `3019fe4`, `8399f13`. |
 | 9 | Open Editors section | ✅ VERIFIED | `ExplorerPane.kt` | Uses reactive `SnapshotStateList<String>` from PSS — updates on tab open/close. No fix needed. |
 
 ### Medium Priority (Polish & Robustness)
