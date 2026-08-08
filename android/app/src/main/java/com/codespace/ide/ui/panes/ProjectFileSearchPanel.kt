@@ -29,6 +29,13 @@ import java.io.File
 import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.History
 
 // ── Palette colours (VS Code-like dark) ─────────────────────────────────────
 private val SBg     = Color(0xFF1E1E1E)
@@ -85,13 +92,52 @@ fun ProjectFileSearchPanel(
     val scope         = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
+    // P45-G3: Include/Exclude file patterns
+    var showFilters   by remember { mutableStateOf(false) }
+    var includePattern by remember { mutableStateOf("") }
+    var excludePattern by remember { mutableStateOf("") }
+    var useCaseSensitive by remember { mutableStateOf(false) }
+
+    // P45-G3: Recent search history
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("search_history", Context.MODE_PRIVATE) }
+    var recentSearches by remember { mutableStateOf(prefs.getString("recent_text", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()) }
+    var recentFileSearches by remember { mutableStateOf(prefs.getString("recent_files", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()) }
+
+    fun saveRecentSearch(q: String) {
+        if (q.isBlank()) return
+        val key = if (textMode) "recent_text" else "recent_files"
+        val current = prefs.getString(key, "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+        val updated = (listOf(q) + current.filter { it != q }).take(10)
+        prefs.edit().putString(key, updated.joinToString("\n")).apply()
+        if (textMode) recentSearches = updated else recentFileSearches = updated
+    }
+
     // ── File index — collected once (or when root changes) ─────────────────
-    val allFiles = remember(projectRoot) {
+    fun matchesGlob(pattern: String, path: String): Boolean {
+        if (pattern.isBlank()) return true
+        return pattern.split(",").any { p ->
+            val trimmed = p.trim()
+            if (trimmed.isEmpty()) false
+            else {
+                val regex = trimmed.replace(".", "\\.").replace("*", ".*").replace("?", ".")
+                Regex(regex, RegexOption.IGNORE_CASE).matches(path)
+            }
+        }
+    }
+
+    val allFiles = remember(projectRoot, includePattern, excludePattern) {
         mutableListOf<FileResult>().also { list ->
             val root = File(projectRoot)
             if (root.exists()) {
                 root.walkTopDown()
                     .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
+                    .filter { f ->
+                        val rel = f.relativeTo(root).path
+                        val incOk = matchesGlob(includePattern, rel)
+                        val excOk = excludePattern.isBlank() || !matchesGlob(excludePattern, rel)
+                        incOk && excOk
+                    }
                     .take(5000)
                     .forEach { f ->
                         list.add(FileResult(f.absolutePath, f.relativeTo(root).path))
@@ -101,26 +147,27 @@ fun ProjectFileSearchPanel(
     }
 
     // ── Debounced search ────────────────────────────────────────────────────
-    LaunchedEffect(query, textMode) {
+    LaunchedEffect(query, textMode, useCaseSensitive, includePattern, excludePattern) {
         if (query.isBlank()) {
             fileResults = emptyList(); textResults = emptyList(); return@LaunchedEffect
         }
         delay(200L)
         searching = true
         if (!textMode) {
-            // Filename fuzzy match — score by consecutive-char match
-            val q = query.lowercase()
+            val q = if (useCaseSensitive) query else query.lowercase()
             fileResults = withContext(Dispatchers.Default) {
                 allFiles
-                    .map { f -> Pair(f, fuzzyScore(f.relativePath.lowercase(), q)) }
+                    .map { f ->
+                        val target = if (useCaseSensitive) f.relativePath else f.relativePath.lowercase()
+                        Pair(f, fuzzyScore(target, q))
+                    }
                     .filter { it.second >= 0 }
                     .sortedByDescending { it.second }
                     .take(50)
                     .map { it.first }
             }
         } else {
-            // Full-text search
-            val q = query.lowercase()
+            val q = if (useCaseSensitive) query else query.lowercase()
             textResults = withContext(Dispatchers.IO) {
                 val results = mutableListOf<TextResult>()
                 for (f in allFiles) {
@@ -128,7 +175,8 @@ fun ProjectFileSearchPanel(
                     try {
                         val lines = File(f.path).readLines(Charsets.UTF_8)
                         lines.forEachIndexed { idx, line ->
-                            val col = line.lowercase().indexOf(q)
+                            val target = if (useCaseSensitive) line else line.lowercase()
+                            val col = target.indexOf(q)
                             if (col >= 0) {
                                 results.add(TextResult(f, idx + 1, line.trim(), col, col + q.length))
                                 if (results.size >= 200) return@forEachIndexed
@@ -214,12 +262,72 @@ fun ProjectFileSearchPanel(
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) { Text("Replace", color = if (replaceMode) Color(0xFF1E1E1E) else SDim, fontSize = 11.sp) }
                 Spacer(Modifier.width(4.dp))
+                // P45-G3: Filter toggle button
+                IconButton(onClick = { showFilters = !showFilters }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.FilterAlt, null,
+                        tint = if (showFilters || includePattern.isNotBlank() || excludePattern.isNotBlank()) SAccent else SDim,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                // P45-G3: Case sensitive toggle
+                Box(
+                    Modifier
+                        .background(
+                            if (useCaseSensitive) SAccent else Color(0xFF3C3C3C),
+                            RoundedCornerShape(4.dp),
+                        )
+                        .clickable { useCaseSensitive = !useCaseSensitive }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) { Text("Aa", color = if (useCaseSensitive) Color.White else SDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Close, null, tint = SDim, modifier = Modifier.size(16.dp))
                 }
             }
 
             HorizontalDivider(color = SDivider)
+
+            // P45-G3: Include/Exclude filter panel
+            if (showFilters) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF2D2D2D))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    OutlinedTextField(
+                        value = includePattern,
+                        onValueChange = { includePattern = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Include: *.kt, *.java", color = SDim, fontSize = 11.sp) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SText, unfocusedTextColor = SText,
+                            focusedBorderColor = SAccent, unfocusedBorderColor = SDivider,
+                            cursorColor = SAccent,
+                            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                        ),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = SText),
+                    )
+                    OutlinedTextField(
+                        value = excludePattern,
+                        onValueChange = { excludePattern = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Exclude: *.min.js, test/*", color = SDim, fontSize = 11.sp) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SText, unfocusedTextColor = SText,
+                            focusedBorderColor = SAccent, unfocusedBorderColor = SDivider,
+                            cursorColor = SAccent,
+                            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                        ),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = SText),
+                    )
+                }
+                HorizontalDivider(color = SDivider)
+            }
 
             // ── Replace field (P18-A) ──────────────────────────────────────
             if (replaceMode && textMode) {
@@ -285,11 +393,40 @@ fun ProjectFileSearchPanel(
             Box(Modifier.fillMaxSize()) {
                 when {
                     query.isBlank() -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                if (textMode) "Type to search file contents" else "Type to search by filename",
-                                color = SDim, fontSize = 12.sp,
-                            )
+                        val recents = if (textMode) recentSearches else recentFileSearches
+                        if (recents.isNotEmpty()) {
+                            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                                Text(
+                                    "Recent Searches",
+                                    color = SDim, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                )
+                                recents.forEach { recent ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                query = recent
+                                                saveRecentSearch(recent)
+                                            }
+                                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Default.History, null, tint = SDim, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(recent, color = SText, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                             maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    HorizontalDivider(color = SDivider, thickness = 0.5.dp)
+                                }
+                            }
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    if (textMode) "Type to search file contents" else "Type to search by filename",
+                                    color = SDim, fontSize = 12.sp,
+                                )
+                            }
                         }
                     }
                     searching -> {
@@ -308,7 +445,7 @@ fun ProjectFileSearchPanel(
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
-                                            .clickable { onOpenFile(f.path); onDismiss() }
+                                            .clickable { saveRecentSearch(query); onOpenFile(f.path); onDismiss() }
                                             .padding(horizontal = 16.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -340,48 +477,88 @@ fun ProjectFileSearchPanel(
                                 Text("No matches for \"$query\"", color = SDim, fontSize = 12.sp)
                             }
                         } else {
+                            // P45-G3: Group results by file
+                            val grouped = remember(textResults) {
+                                textResults.groupBy { it.file }.toList()
+                            }
+                            var expandedFiles by remember { mutableStateOf(setOf<String>()) }
                             LazyColumn(Modifier.fillMaxSize()) {
-                                items(textResults) { r ->
-                                    Column(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                onOpenFileAtLine(r.file.path, r.lineNumber)
-                                                onDismiss()
-                                            }
-                                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    ) {
-                                        // File name + line number
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                grouped.forEach { (file, results) ->
+                                    val isExpanded = expandedFiles.contains(file.path)
+                                    item(key = "header_" + file.path) {
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    expandedFiles = if (isExpanded)
+                                                        expandedFiles - file.path
+                                                    else
+                                                        expandedFiles + file.path
+                                                }
+                                                .background(if (isExpanded) Color(0xFF2D2D2D) else Color.Transparent)
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
                                             Text(
-                                                r.file.relativePath.split("/").last(),
+                                                if (isExpanded) "▼" else "▶",
+                                                color = SDim, fontSize = 10.sp,
+                                                modifier = Modifier.width(14.dp),
+                                            )
+                                            Text(
+                                                file.relativePath.split("/").last(),
                                                 color = SText, fontSize = 12.sp,
                                                 fontWeight = FontWeight.Medium,
                                             )
                                             Spacer(Modifier.width(6.dp))
                                             Text(
-                                                ":${r.lineNumber}",
-                                                color = SDim, fontSize = 11.sp,
-                                            )
-                                            Spacer(Modifier.width(6.dp))
-                                            Text(
-                                                r.file.relativePath.split("/").dropLast(1).joinToString("/"),
+                                                file.relativePath.split("/").dropLast(1).joinToString("/"),
                                                 color = SDim, fontSize = 10.sp,
                                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f),
                                             )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                results.size.toString(),
+                                                color = SAccent, fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.background(
+                                                    Color(0xFF007ACC).copy(alpha = 0.15f),
+                                                    RoundedCornerShape(8.dp),
+                                                ).padding(horizontal = 6.dp, vertical = 1.dp),
+                                            )
                                         }
-                                        // Matching line preview
-                                        Text(
-                                            r.lineText.take(120),
-                                            color = Color(0xFF9CDCFE),
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
+                                        HorizontalDivider(color = SDivider, thickness = 0.5.dp)
                                     }
-                                    HorizontalDivider(color = SDivider, thickness = 0.5.dp)
+                                    if (isExpanded) {
+                                        items(results) { r ->
+                                            Column(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        saveRecentSearch(query)
+                                                        onOpenFileAtLine(r.file.path, r.lineNumber)
+                                                        onDismiss()
+                                                    }
+                                                    .padding(start = 32.dp, end = 16.dp, vertical = 6.dp),
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        ":" + r.lineNumber,
+                                                        color = SDim, fontSize = 11.sp,
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(
+                                                        r.lineText.take(120),
+                                                        color = Color(0xFF9CDCFE),
+                                                        fontSize = 11.sp,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 item {
                                     if (textResults.size >= 200) {
