@@ -1581,7 +1581,7 @@ private fun PssOverlays(
                             "Toggle Sidebar" to { onActivePanelChange(if (activePanel == null) SidePanel.EXPLORER else null); onShowGearMenuChange(false) },
                             "Toggle Terminal" to { onShowBottomPanelChange(!showBottomPanel); onShowGearMenuChange(false) },
                             "Toggle Copilot Chat" to { onShowChatPanelChange(!showChatPanel); onShowGearMenuChange(false) },
-                            "Toggle Zen Mode" to { onHandleMenuAction("Toggle Zen Mode"); onShowGearMenuChange(false) },
+                            "Toggle Zen Mode" to { handleMenuAction("Toggle Zen Mode"); onShowGearMenuChange(false) },
                             "Font Size +" to { onEditorFontSizeChange((editorFontSize + 1).coerceAtMost(32)); onShowGearMenuChange(false) },
                             "Font Size -" to { onEditorFontSizeChange((editorFontSize - 1).coerceAtLeast(8)); onShowGearMenuChange(false) },
                             "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
