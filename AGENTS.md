@@ -9307,3 +9307,1199 @@ Before: `udm` parameter existed in EditorPane's signature but was always `null` 
 | #1959 | `9810b66` | ✅ GREEN | FindReplaceBar: case sensitive, whole word, match highlighting |
 | #1961 | `9d42572` | ✅ GREEN | ProjectFileSearchPanel: include/exclude, search history, grouped results |
 | #1963 | `a7e2e6b` | ✅ GREEN | Zen Mode: hide all chrome, floating exit button |
+
+
+---
+
+## Appendix: Complete Feature Test Suite (2026-08-08)
+
+Generated from every ✅ DONE / ✅ COMPLETE feature in this document. 148 tests across 25 groups. Run manually on-device and record PASS/PARTIAL/FAIL/SKIP.
+
+> **Instructions:** Create `test_feature.py` and `test_feature.js` first (content below). Then follow each test step. Record results. Group into CONFIRMED WORKING / NEEDS FIXING / NOT IMPLEMENTED at the end.
+
+# CodeSpace IDE — Complete Feature Test Suite
+Generated from AGENTS.md — every ✅ DONE / ✅ COMPLETE feature extracted and tested.
+
+**How to use:** Open/create the specified files, follow the exact steps, and record PASS/PARTIAL/FAIL/SKIP after each test. Restore any modified files before moving to the next test.
+
+**Test file content:** A single Python file is used for most tests. Create it first:
+
+**File to create:** `test_feature.py` in your project root
+```python
+import os
+import sys
+
+def greet(name):
+    """Greet someone by name."""
+    return f"Hello, {name}!"
+
+class Calculator:
+    """A simple calculator class."""
+    def __init__(self):
+        self.result = 0
+    
+    def add(self, a, b):
+        self.result = a + b
+        return self.result
+    
+    def subtract(self, a, b):
+        self.result = a - b
+        return self.result
+
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+# Unused variable for lint testing
+unused_var = 42
+
+if __name__ == "__main__":
+    calc = Calculator()
+    print(greet("World"))
+    print(calc.add(5, 3))
+    print(fibonacci(10))
+```
+
+**File to create:** `test_feature.js` in your project root
+```javascript
+function greet(name) {
+    return `Hello, ${name}!`;
+}
+
+class Calculator {
+    constructor() {
+        this.result = 0;
+    }
+    
+    add(a, b) {
+        this.result = a + b;
+        return this.result;
+    }
+}
+
+const unused = 42;
+
+console.log(greet("World"));
+```
+
+---
+
+## GROUP A — Code Editor Intelligence (Phase 2)
+
+### Test A1: Syntax Highlighting
+- **File:** Open `test_feature.py`
+- **Action:** Look at the editor content
+- **Expected:** Keywords (`import`, `def`, `class`, `if`, `return`) are colored. Strings (`"Hello"`, `"World"`) are a different color. Comments (`# Unused...`) are dimmed/italic. Function names have a distinct color.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A2: Autocomplete Dropdown
+- **File:** Open `test_feature.py`
+- **Cursor:** Line 14, after `self.result = a + b` — place cursor at the end of the line and press Enter to create a new blank line, then type `self.`
+- **Action:** Type `self.r`
+- **Expected:** A dropdown appears showing `result` as a completion suggestion. Tap it to insert.
+- **Modifies file:** Yes — delete the extra line you created before the next test
+- **Result:** ___
+
+### Test A3: Hover Docs
+- **File:** Open `test_feature.py`
+- **Action:** Long-press the word `def` on line 5 or `print` on line 24
+- **Expected:** A hover popup appears showing documentation for the keyword/function
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A4: Sticky Scroll
+- **File:** Open `test_feature.py`
+- **Action:** Scroll down past the `Calculator` class definition so the `class Calculator:` line would be off-screen
+- **Expected:** The `class Calculator:` line stays pinned at the top of the editor while scrolling through its methods
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A5: Rich Language Snippets
+- **File:** Open `test_feature.py`
+- **Cursor:** Line 25, end of file. Type `def` then press Tab or accept the snippet.
+- **Expected:** A function snippet template appears (e.g., `def name(params):\n    body`) with tab-stops for navigating between name/params/body
+- **Modifies file:** Yes — undo (Ctrl+Z) to remove the snippet before next test
+- **Result:** ___
+
+### Test A6: P2-1 Rename Symbol
+- **File:** Open `test_feature.py`
+- **Action:** Long-press the word `greet` on line 5 (the function definition). In the context sheet that appears, tap "Rename Symbol".
+- **Expected:** An AlertDialog appears asking for the new name. Type `sayHello` and confirm. All occurrences of `greet` (on line 5 and line 24) should be changed to `sayHello`.
+- **Modifies file:** Yes — undo (Ctrl+Z) to restore before next test, or change it back manually
+- **Result:** ___
+
+### Test A7: P2-2 Find & Replace
+- **File:** Open `test_feature.py`
+- **Action:** Tap the search/magnifying glass icon in the editor toolbar, or use the Find bar at the bottom.
+- **Type:** In the search field, type `result`
+- **Expected:** All instances of `result` are highlighted. The match counter shows "x/N" (current match / total). Prev (↑) and Next (↓) buttons navigate between matches.
+- **Then:** Type `total` in the Replace field and tap "Replace" (single) or "All" (replace all).
+- **Expected:** `result` is replaced with `total` (single or all occurrences). For "All", the counter updates.
+- **Modifies file:** Yes — undo (Ctrl+Z) to restore
+- **Result:** ___
+
+### Test A8: P2-3 Multi-cursor Editing
+- **File:** Open `test_feature.py`
+- **Action:** Long-press the word `result` on line 8 (`self.result = a + b`). In the context sheet, tap "Select Next Occurrence" (or similar multi-cursor action).
+- **Expected:** The next occurrence of `result` gets a second cursor (amber tint line highlight). Continue tapping to add more cursors. Type something — all cursors type simultaneously.
+- **Modifies file:** Yes — tap back/clear or undo to remove extra cursors and restore text
+- **Result:** ___
+
+### Test A9: P2-4 Go to Definition
+- **File:** Open `test_feature.py`
+- **Action:** Long-press the word `greet` on line 24 (the call site `print(greet("World"))`). In the context sheet, tap "Go to Def".
+- **Expected:** Editor scrolls to line 5 where `def greet(name):` is defined. If there are multiple definitions, a results dialog appears listing them.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A10: P2-5 Error Squiggles (Lint)
+- **File:** Open `test_feature.py`
+- **Action:** Look at line 21 (`unused_var = 42`)
+- **Expected:** `unused_var` has a red wavy underline indicating an unused variable lint warning. The red underline is visible on the text.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A11: P2-6 Git Diff Gutter
+- **Precondition:** The project must be a git repository (`git init` if needed). Make sure `test_feature.py` is tracked by git.
+- **File:** Open `test_feature.py`
+- **Action:** Modify a line (e.g., change `Hello` to `Hi` on line 6). Save the file. Look at the gutter (left margin near line numbers).
+- **Expected:** The modified line shows a yellow bar in the gutter. New lines show green. Deleted lines show red triangle.
+- **Modifies file:** Yes — change `Hi` back to `Hello` and save
+- **Result:** ___
+
+### Test A12: P2-7 Code Folding
+- **File:** Open `test_feature.py`
+- **Action:** Look at the gutter for the `Calculator` class (around line 9). There should be a ▼ chevron icon.
+- **Tap:** Tap the ▼ chevron
+- **Expected:** The class body collapses into a single `···` placeholder line. The chevron changes to ▶. Tap again to expand.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A13: P2-8 Breadcrumb Navigation
+- **File:** Open `test_feature.py`
+- **Action:** Look at the breadcrumb bar above the editor (shows the file path hierarchy).
+- **Expected:** Breadcrumbs show the project name > folder(s) > `test_feature.py`. Each segment is clickable. Tapping a folder segment opens the Explorer and scrolls to that directory.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A14: P2-9 Code Bookmarks
+- **File:** Open `test_feature.py`
+- **Action:** Tap the line number area (gutter) on line 14 to toggle a bookmark. Look for a ◆ diamond icon in the gutter.
+- **Expected:** A ◆ dot appears in the gutter on line 14. Tap the ◆ button in the editor toolbar to open the bookmarks panel — it should list the bookmark (file:line + preview). Tap it to jump to the bookmark. Tap the gutter ◆ again to remove it.
+- **Modifies file:** No (bookmark state only)
+- **Result:** ___
+
+### Test A15: P2-10 Jump Back/Forward History
+- **File:** Open `test_feature.py`
+- **Action:** Use "Go to Def" (Test A9) to jump to the definition. Then tap the ← (back arrow) button in the editor toolbar.
+- **Expected:** Editor jumps back to where you were before (line 24). Tap → (forward arrow) to go forward again to the definition.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A16: P2-11 Inlay Hints
+- **File:** Open `test_feature.py`
+- **Action:** Look near function parameters and variable declarations. If the Inlay Hints toggle (⊕) is on, type hints and parameter names appear as gray inline annotations.
+- **Expected:** Gray text annotations appear inline (e.g., parameter name hints at call sites, type labels near declarations). Toggle the ⊕ button in the toolbar to show/hide them.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test A17: P2-12 Parameter Hints / Signature Help
+- **File:** Open `test_feature.py`
+- **Cursor:** Line 24, place cursor inside the parentheses of `greet("World")` — between `(` and `)`.
+- **Action:** Type a comma after `"World"` so it looks like `greet("World",`
+- **Expected:** A floating popup appears showing the function signature `def greet(name)` with parameter info.
+- **Modifies file:** Yes — remove the comma you added
+- **Result:** ___
+
+---
+
+## GROUP B — Phase 15 Editor Enhancements
+
+### Test B1: Fix with AI
+- **File:** Open `test_feature.py`
+- **Action:** Long-press on a word with a lint error (e.g., `unused_var` on line 21). In the context sheet, look for a "Fix with AI" or AI-related action.
+- **Expected:** An AI fix request is triggered — either an AI chat panel opens with a suggested fix, or a context sheet action appears offering to fix the issue.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test B2: Bracket Pair Colorization
+- **File:** Open `test_feature.py`
+- **Action:** Look at the brackets/parentheses in the file (e.g., `print(greet("World"))` on line 24).
+- **Expected:** Matching bracket pairs are color-coded — each pair has a distinct color, and matching open/close brackets share the same color.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test B3: Ghost Text Inline Completion
+- **File:** Open `test_feature.py`
+- **Cursor:** Line 25, after `print(fibonacci(10))`. Press Enter for a new line and type `print(g`
+- **Action:** Wait ~800ms without typing
+- **Expected:** Gray "ghost text" appears suggesting a completion (e.g., `reet(...)` to complete `greet`). Tap Tab to accept it.
+- **Modifies file:** Yes — undo to remove the ghost text acceptance
+- **Result:** ___
+
+---
+
+## GROUP C — LSP Features (Phase 22 + 26-1)
+
+### Test C1: LSP Diagnostics (Python)
+- **File:** Open `test_feature.py`
+- **Action:** Wait 2-5 seconds for the Python language server to start. Look at the Problems panel (bottom panel → Problems tab).
+- **Expected:** The Problems panel shows diagnostics — at minimum, the `unused_var` warning. Each diagnostic has a severity icon, message, file name, and line number.
+- **Output tab:** May show LSP server startup messages (installing python-lsp-server, etc.)
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C2: LSP Hover (JS/TS)
+- **File:** Open `test_feature.js`
+- **Action:** Wait for the TypeScript language server to start. Long-press the word `console` on line 15.
+- **Expected:** A hover popup shows TypeScript documentation for `console`.
+- **Output tab:** Shows tsserver / typescript-language-server startup logs
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C3: LSP Completion (Python)
+- **File:** Open `test_feature.py`
+- **Cursor:** Line 24, change `greet("World")` to `greet(` and type `"`
+- **Action:** Wait for the completion popup
+- **Expected:** A dropdown appears with completions. If LSP is running, completions include LSP-provided items (with icons, detail). Previously typed completions also appear.
+- **Modifies file:** Yes — undo to restore `greet("World")`
+- **Result:** ___
+
+### Test C4: LSP Code Lens
+- **File:** Open `test_feature.py`
+- **Action:** Look above the `Calculator` class definition (around line 9) and `fibonacci` function (line 18).
+- **Expected:** Teal-colored inline annotations appear (e.g., "1 reference", "Run | Debug" for testable functions). These are clickable.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C5: LSP Inlay Hints (server-provided)
+- **File:** Open `test_feature.py`
+- **Action:** Look at function parameters and return types throughout the file.
+- **Expected:** Gray inline text annotations show parameter names at call sites and type information (if the server provides them).
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C6: LSP Document Links
+- **File:** Create a new file `test_links.py` with:
+```python
+import os
+# See: https://docs.python.org/3/
+```
+- **Action:** Open it. Look at the URL on line 2.
+- **Expected:** The URL `https://docs.python.org/3/` appears as a blue, underlined, clickable link. Tapping it opens it in the preview pane or browser.
+- **Modifies file:** Yes — delete `test_links.py` after test
+- **Result:** ___
+
+### Test C7: LSP Code Folding (LSP-based)
+- **File:** Open `test_feature.py`
+- **Action:** Look at the gutter chevrons (▼) for the `Calculator` class and `fibonacci` function.
+- **Expected:** Chevrons appear at foldable regions. The fold ranges are precise (start/end of the class/function body), not just regex-based indentation.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C8: Document Symbol Outline Panel
+- **File:** Open `test_feature.py`
+- **Action:** Tap the Outline icon in the activity bar (sidebar). Or look at the Explorer panel's "Outline" section.
+- **Expected:** A tree view of document symbols appears — `greet` (function), `Calculator` (class), `Calculator.add` (method), `Calculator.subtract` (method), `fibonacci` (function). Tap a symbol to jump to its definition.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C9: Type Definition Peek
+- **File:** Open `test_feature.py`
+- **Action:** Long-press the word `Calculator` on line 22 (`calc = Calculator()`). In the context sheet, tap "Go to Type Definition" (if available).
+- **Expected:** A peek overlay appears inline showing the `class Calculator:` definition without navigating away from the current position.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C10: Find Implementations
+- **File:** Open `test_feature.py`
+- **Action:** Long-press the word `greet` on line 5 (the function definition). In the context sheet, tap "Find Implementations" (if available).
+- **Expected:** An overlay appears listing all implementations of `greet` in the project. If only one definition exists, it may show just that one.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C11: Peek Definition Overlay
+- **File:** Open `test_feature.py`
+- **Action:** Long-press `greet` on line 24 (the call site). In the context sheet, tap "Peek Definition" (if available, may be same as Go to Def with peek).
+- **Expected:** An inline overlay shows the definition of `greet` without leaving the current position. Tap to jump to it.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C12: Format Document
+- **File:** Open `test_feature.py`
+- **Action:** Tap the Format button in the editor toolbar (or menu → Edit → Format Document).
+- **Expected:** The document is reformatted using the appropriate formatter (black for Python, prettier for JS). Indentation, spacing, and line breaks are normalized.
+- **Output tab:** May show formatter execution logs
+- **Modifies file:** Yes — undo (Ctrl+Z) to restore original formatting
+- **Result:** ___
+
+### Test C13: Auto Import
+- **File:** Open `test_feature.py`
+- **Cursor:** At the top of the file (line 1), type `import math` then on a new line type `math.` and accept a completion like `math.sqrt`.
+- **Expected:** If the auto-import is triggered, `import math` is added automatically (or the completion includes an auto-import action that inserts the import statement).
+- **Modifies file:** Yes — undo to remove the import and the `math.sqrt` line
+- **Result:** ___
+
+### Test C14: LSP Reactive Health Check
+- **File:** Open `test_feature.py`
+- **Action:** Wait for LSP to start. Then force-kill the server (if possible) or wait for an OOM. Alternatively, check the LSP status indicator on the editor tab.
+- **Expected:** Within 5 seconds, the LSP status badge changes from "LSP" (active) to a warning message indicating the server was terminated. A message like "language server was terminated (possibly out of memory)" appears.
+- **Output tab:** Logs the server death event
+- **Modifies file:** No
+- **Result:** ___
+
+### Test C15: Problems Panel Live Update
+- **File:** Open `test_feature.py`
+- **Action:** Open the Problems panel (bottom panel → Problems tab). Then modify line 21 — change `unused_var = 42` to add a syntax error like `unused_var = 42 42`.
+- **Expected:** Within 2 seconds, the Problems panel updates to show the new error. Remove the error and the panel updates again.
+- **Modifies file:** Yes — change `42 42` back to `42`
+- **Result:** ___
+
+---
+
+## GROUP D — Completion System (Phase A-N)
+
+### Test D1: Fuzzy Match Highlighting
+- **File:** Open `test_feature.py`
+- **Cursor:** Type `self.r` somewhere in the `Calculator` class
+- **Expected:** In the completion dropdown, the matched characters in `result` are shown in bold and blue (e.g., **r**esult). The matching is fuzzy (subsequence), not just prefix.
+- **Modifies file:** Yes — delete what you typed
+- **Result:** ___
+
+### Test D2: Completion History (MRU)
+- **File:** Open `test_feature.py`
+- **Action:** Type `self.` and accept `result` from the dropdown several times. Then type `self.` again.
+- **Expected:** `result` appears at the top of the completion list because it was recently used (MRU ranking).
+- **Modifies file:** Yes — delete what you typed
+- **Result:** ___
+
+### Test D3: Import Completion
+- **File:** Open `test_feature.py`
+- **Cursor:** On a new line, type `import o` and wait for completions.
+- **Expected:** Completions include `os` with an import icon. Accepting it may auto-insert the import statement at the top of the file.
+- **Modifies file:** Yes — undo to remove
+- **Result:** ___
+
+### Test D4: Path Completion
+- **File:** Open `test_feature.py`
+- **Cursor:** On a new line, type `import os` then on another line type `open("./`
+- **Expected:** A completion dropdown appears listing files in the current directory. Tap to complete the path.
+- **Modifies file:** Yes — undo to remove
+- **Result:** ___
+
+### Test D5: Code Actions (Light Bulb)
+- **File:** Open `test_feature.py`
+- **Action:** Look at line 21 (`unused_var = 42`). If there's a lint warning, look for a light bulb 💡 icon in the gutter or near the text.
+- **Expected:** A light bulb icon appears near the warning. Tapping it shows code actions like "Remove unused variable" or "Rename to _unused_var".
+- **Modifies file:** No (unless you accept an action — undo if you do)
+- **Result:** ___
+
+### Test D6: Call Hierarchy
+- **File:** Open `test_feature.py`
+- **Action:** Long-press `fibonacci` on line 18. In the context sheet, look for "Show Call Hierarchy" or "Incoming Calls".
+- **Expected:** A panel/overlay shows incoming calls to `fibonacci` (e.g., the `if __name__` block calls it) and possibly outgoing calls (recursive calls to `fibonacci`).
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP E — Git & Version Control (Phase 3, 6, 19, 20-A, 43)
+
+### Test E1: Source Control Panel
+- **Action:** Tap the Source Control icon in the activity bar (branch/tree icon, 3rd from top).
+- **Expected:** The Source Control panel opens in the sidebar showing changes, staging area, and commit input.
+- **Result:** ___
+
+### Test E2: Stage / Unstage
+- **Precondition:** Modify `test_feature.py` (e.g., add a comment). Save it.
+- **Action:** In Source Control, tap the "+" next to the modified file to stage it. Then tap the "-" to unstage.
+- **Expected:** File moves between "Changes" and "Staged Changes" sections.
+- **Modifies file:** Yes — remove the comment you added after the test
+- **Result:** ___
+
+### Test E3: Commit
+- **Precondition:** Stage a change (add a comment to `test_feature.py`, save, stage it).
+- **Action:** Type a commit message in the commit input field and tap the commit button (✓ or Commit).
+- **Expected:** The commit succeeds. The staged changes section clears. A notification appears.
+- **Modifies file:** Yes — the commit is now in git history. You can `git reset HEAD~1` to undo.
+- **Result:** ___
+
+### Test E4: Inline Diff Viewer
+- **Precondition:** Modify `test_feature.py` after committing.
+- **Action:** In Source Control, tap the modified file to expand its inline diff.
+- **Expected:** An expandable diff view appears showing added lines (green), removed lines (red), and context lines. Unified diff format.
+- **Modifies file:** Yes — undo changes after test
+- **Result:** ___
+
+### Test E5: Branch Create / Switch
+- **Action:** In Source Control, tap the branch name in the header. Tap "Create new branch". Type `test-branch` and confirm.
+- **Expected:** A new git branch `test-branch` is created and checked out. The branch name in the header updates.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test E6: Branch Delete / Rename
+- **Action:** Long-press the branch name. In the context menu, select "Delete branch" or "Rename branch".
+- **Expected:** The branch is deleted or renamed accordingly.
+- **Modifies file:** No (git metadata only)
+- **Result:** ___
+
+### Test E7: Commit History / Log
+- **Action:** In Source Control, tap the "Log" tab.
+- **Expected:** A list of the last 100 commits appears, each showing SHA, author, date, and message. Tap to expand for full details.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test E8: Branch Graph
+- **Action:** In Source Control, tap the "Graph" tab.
+- **Expected:** An ASCII branch graph is rendered in monospace, showing branch lines, merges, and commit nodes.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test E9: Stash
+- **Action:** In Source Control, tap the "Stash" tab. Tap "Save" with a message.
+- **Expected:** Current changes are stashed. The stash list shows the entry. Tap "Pop" to restore.
+- **Modifies file:** Yes — pop the stash to restore
+- **Result:** ___
+
+### Test E10: Tags
+- **Action:** In Source Control, tap the "Tags" tab. Tap "Create Tag", type `v0.1-test`, and confirm.
+- **Expected:** A new git tag is created. The tags list shows it. Tap delete to remove it.
+- **Modifies file:** No (git metadata only)
+- **Result:** ___
+
+### Test E11: .gitignore Editor
+- **Action:** In Source Control, look for a .gitignore edit button (next to the branch row or in a menu).
+- **Expected:** A dialog opens allowing you to edit .gitignore entries. Add `*.tmp` and save.
+- **Modifies file:** Yes — remove the entry after test
+- **Result:** ___
+
+### Test E12: Merge Conflict Resolution
+- **Precondition:** Create a merge conflict (modify the same line on two branches, try to merge).
+- **Action:** In Source Control, look for the conflict banner. Tap the file with the conflict.
+- **Expected:** A conflict resolver appears with Ours/Theirs/Both buttons per conflict hunk. Tap to resolve.
+- **Modifies file:** Yes — abort the merge (`git merge --abort`) after test
+- **Result:** ___
+
+### Test E13: Git Blame
+- **File:** Open `test_feature.py`
+- **Action:** Tap the blame toggle button (Info icon) in the editor toolbar.
+- **Expected:** Author names appear per line in a dedicated column next to the gutter. Each line shows who last modified it and when.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test E14: Cross-file Go to Definition (P19-A)
+- **Precondition:** Create two files. In `defs.py`:
+```python
+def shared_function():
+    return "hello"
+```
+In `caller.py`:
+```python
+from defs import shared_function
+shared_function()
+```
+- **Action:** Open `caller.py`. Long-press `shared_function` on line 2. Tap "Go to Def".
+- **Expected:** Results show "In this file" (none) and "In project" — pointing to `defs.py` line 1. Tap to open that file at the definition.
+- **Modifies file:** Yes — delete `defs.py` and `caller.py` after test
+- **Result:** ___
+
+### Test E15: GitHub Clone from URL
+- **Action:** Open Source Control on a non-git project. Look for "Clone from URL" section. Type a public repo URL (e.g., `https://github.com/octocat/Hello-World.git`).
+- **Expected:** The repo clones into the workspace. A notification confirms success.
+- **Modifies file:** No (creates a new project folder)
+- **Result:** ___
+
+### Test E16: GitHub Sign-in (Device Flow)
+- **Action:** In Source Control empty state, tap "Sign in with GitHub".
+- **Expected:** A dialog appears showing a device code and the URL `github.com/login/device`. The app polls for authorization.
+- **Result:** ___
+
+### Test E17: Browse My Repos
+- **Precondition:** Must be signed in to GitHub (Test E16 complete).
+- **Action:** Tap "Browse My Repos" in Source Control.
+- **Expected:** A searchable list of your GitHub repos appears (sorted by updated). Tap to clone.
+- **Result:** ___
+
+### Test E18: Publish to GitHub
+- **Precondition:** Have a local non-git project open.
+- **Action:** In Source Control, tap "Publish to GitHub".
+- **Expected:** A publish dialog appears asking for repo name, public/private. On confirm, creates a GitHub repo, adds remote, commits, and pushes.
+- **Result:** ___
+
+---
+
+## GROUP F — Debugging (Phase 8, 23, 26-2/3/4)
+
+### Test F1: Breakpoint Gutter Markers
+- **File:** Open `test_feature.py`
+- **Action:** Tap the line number 24 (`print(greet("World"))`) in the gutter.
+- **Expected:** A red dot appears in the gutter on line 24. Tap again to remove it. The breakpoint persists across sessions (stored in SharedPreferences).
+- **Modifies file:** No (breakpoint state only)
+- **Result:** ___
+
+### Test F2: Breakpoint Sync (UDM injection)
+- **File:** Open `test_feature.py`, set a breakpoint on line 18 (`fibonacci` function).
+- **Action:** Start a debug session (Run & Debug → Start Debugging).
+- **Expected:** The breakpoint is hit during execution. The debugger pauses at line 18. The UniversalDebugManager receives the breakpoint because it's now properly injected from ProjectShellState → EditorPane.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test F3: Variable Inspector Panel
+- **Precondition:** Have a paused debug session (from Test F2).
+- **Action:** Open the bottom panel → Variables tab.
+- **Expected:** The VariableInspectorPanel shows local variables, watch expressions, and the call stack. Variables update in real-time when the debugger pauses.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test F4: Debug Step Controls
+- **Precondition:** Paused at a breakpoint.
+- **Action:** Look at the debug toolbar — ▶ Continue, ⏸ Pause, ↷ Step Over, ↓ Step Into, ↑ Step Out.
+- **Expected:** Each button performs the corresponding debug action. Continue resumes execution. Step Over moves to the next line. Step Into enters function calls. Step Out exits the current function.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test F5: Logcat Viewer
+- **Action:** Open the bottom panel. Select the Logcat tab (or find it in the panel overflow menu).
+- **Expected:** A logcat panel appears showing Android system log output, color-coded by level (Error=red, Warn=yellow, Info=green/blue, Debug=gray, Verbose=light gray). Filter chips for E/W/I/D/V are present.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test F6: Attach Debug Dialog
+- **Action:** In Run & Debug panel, look for "Attach" option.
+- **Expected:** An AttachDebugDialog appears with a port/PID picker, Attach button, and progress indicator. Shows running processes/ports to attach to.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test F7: Multi-Session Switcher
+- **Precondition:** Start two debug sessions.
+- **Action:** Look at the debug panel for a LazyRow tab bar showing active sessions.
+- **Expected:** Multiple debug sessions appear as tabs. Tap to switch between them. Each session can be stopped/stepped independently.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP G — Performance & Monitoring (Phase 9)
+
+### Test G1: Memory Pressure Monitor (Status Bar)
+- **Action:** Look at the status bar at the bottom of the IDE.
+- **Expected:** RAM usage is displayed (e.g., "2031/2288MB"). When memory is low, the number turns red. Updates every 5 seconds.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test G2: Code Metrics (Status Bar)
+- **File:** Open `test_feature.py`
+- **Action:** Look at the status bar.
+- **Expected:** Shows line count, file size, and function count for the active file (e.g., "26 lines", "0.4KB", "3 fn").
+- **Modifies file:** No
+- **Result:** ___
+
+### Test G3: Live Cursor Position
+- **File:** Open `test_feature.py`
+- **Action:** Move the cursor to different lines.
+- **Expected:** The status bar updates showing "Ln X, Col Y" reflecting the current cursor position in real-time.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test G4: Symbol Search (Workspace)
+- **Action:** Tap the symbol search button (or Ctrl+Shift+O / Go to Symbol in the menu).
+- **Expected:** A search overlay appears. Type a symbol name (e.g., `greet`) and results show matching symbols across the workspace. Tap to jump to the definition.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test G5: File Caching (Large File)
+- **File:** Create a large file (paste 2000+ lines of any content) named `large_test.py`.
+- **Action:** Open `large_test.py`. Close it. Reopen it.
+- **Expected:** The file opens faster the second time (loaded from LRU cache). The editor should handle >1MB files without crashing. If the file is large, a warning may appear.
+- **Modifies file:** Yes — delete `large_test.py` after test
+- **Result:** ___
+
+---
+
+## GROUP H — Terminal (Phase 4, 14)
+
+### Test H1: Terminal Restore
+- **Action:** Open a terminal tab. Type a few commands. Close the app completely. Reopen the app and open the project.
+- **Expected:** The terminal tab(s) are restored with their names. Scrollback buffer is preserved (P14-A persistent scrollback).
+- **Modifies file:** No
+- **Result:** ___
+
+### Test H2: Shell History Search
+- **Action:** In the terminal, type a few commands (e.g., `ls`, `pwd`, `echo hello`). Then tap the 🔍 Hist button in the quick-actions bar (or long-press it).
+- **Expected:** A search overlay appears showing previously typed commands. Type to filter. Tap a command to re-execute it.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test H3: Terminal Hyperlink Detection
+- **Action:** In the terminal, type `echo "https://example.com"`. Wait 2 seconds.
+- **Expected:** A dismissible chip bar appears above the quick-actions showing the detected URL. Tap to open it in the preview pane or browser.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test H4: Terminal Session Rename
+- **Action:** Long-press a terminal tab. A rename dialog appears.
+- **Expected:** Type a new name (e.g., "Build Server") and confirm. The tab name updates.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test H5: Quick Command Palette
+- **Action:** Long-press the 🔍 Hist button in the terminal quick-actions.
+- **Expected:** A strip of recent 5 commands appears. Tap to inject. "Search all →" opens the full history search.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP I — Recovery & Reliability (Phase 4, 7)
+
+### Test I1: Autosave + Restore Dialog
+- **File:** Open `test_feature.py`. Make changes but don't save. Wait 30 seconds.
+- **Expected:** The file is auto-saved to `.autosave/test_feature.autosave`. If you close the app abnormally and reopen, a restore dialog appears offering to recover unsaved changes.
+- **Modifies file:** No (autosave doesn't modify the original file)
+- **Result:** ___
+
+### Test I2: Workspace Snapshot
+- **Action:** Menu → File → Create Snapshot (or similar menu action).
+- **Expected:** A zip file is created in `Downloads/CodespaceIDE/` containing the project files. A notification confirms success.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test I3: Diagnostics Report
+- **Action:** Menu → File → Diagnostics Report (or similar).
+- **Expected:** A report is generated with device info + crash logs. A share sheet opens allowing you to share the report.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test I4: Workspace Trash
+- **Action:** In the Explorer, long-press a file and select "Delete".
+- **Expected:** The file is moved to `.ide-trash/<timestamp>-<name>`. A notification appears. The file disappears from the explorer.
+- **Modifies file:** Yes — restore the file from trash after test (or use the trash restore UI in Explorer)
+- **Result:** ___
+
+### Test I5: Safe Mode
+- **Action:** Force-close the app 3+ times rapidly.
+- **Expected:** On the next launch, a Safe Mode dialog appears asking if you want to start in safe mode (with heavy features disabled).
+- **Note:** This is hard to test without actually crashing the app. SKIP if you don't want to risk it.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP J — File Management (Phase 17)
+
+### Test J1: Compress to ZIP
+- **Action:** In the Explorer, long-press a file or folder. Select "Compress" or "Create ZIP".
+- **Expected:** A zip file is created in the same directory. A rename dialog may appear first to let you name the zip.
+- **Modifies file:** Yes — delete the zip after test
+- **Result:** ___
+
+### Test J2: File Permissions Viewer
+- **Action:** In the Explorer, long-press a file. Select "Permissions" or "Properties".
+- **Expected:** A dialog shows r/w/x permissions. An executable toggle allows setting the executable bit via `setExecutable()`.
+- **Modifies file:** No (unless you toggle executable)
+- **Result:** ___
+
+### Test J3: Trash Restore UI
+- **Precondition:** Have files in `.ide-trash/` (from Test I4).
+- **Action:** In the Explorer, look for a trash/restore option (may be in the overflow menu or a dedicated section).
+- **Expected:** A list of `.ide-trash` entries appears. Tap "Restore" to move a file back, or "Purge" to permanently delete.
+- **Modifies file:** Yes — restore files back to their original location
+- **Result:** ___
+
+### Test J4: Local Version History
+- **Precondition:** Have `test_feature.py` open and modify it every 30+ seconds.
+- **Action:** Long-press `test_feature.py` in the Explorer. Select "Local History" or "Show History".
+- **Expected:** A list of snapshots (taken every 30s) appears with timestamps. Tap to view, or "Restore" to revert to that version.
+- **Modifies file:** No (unless you restore)
+- **Result:** ___
+
+---
+
+## GROUP K — File Viewers (Phase 21)
+
+### Test K1: Hex Viewer
+- **File:** Create a binary file or use an existing one (e.g., an image file). Long-press it in Explorer and open it.
+- **Action:** The hex viewer should appear for binary files.
+- **Expected:** A hex dump view showing offset, hex bytes, and ASCII representation.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test K2: Image Viewer
+- **File:** Open any image file (`.png`, `.jpg`, `.gif`, `.webp`, `.svg`).
+- **Expected:** The image is rendered in the editor area. Zoom/pan should work for raster images.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test K3: PDF Viewer
+- **File:** Open a `.pdf` file.
+- **Expected:** PDF pages render. In landscape, "Fill Width" scaling. In portrait, "Fit" scaling. Zoom and pan work.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test K4: Markdown Preview
+- **File:** Create `test.md`:
+```markdown
+# Hello
+
+This is **bold** and *italic*.
+
+- Item 1
+- Item 2
+
+```code
+print("hello")
+```
+```
+- **Action:** Open it. Look for a preview toggle.
+- **Expected:** A rendered markdown preview appears with formatted headings, bold/italic text, lists, and code blocks.
+- **Modifies file:** Yes — delete `test.md` after test
+- **Result:** ___
+
+---
+
+## GROUP L — Binary Analysis (Phase 21-X)
+
+### Test L1: DEX Viewer
+- **File:** Find a `.dex` file (from an APK or in the project). Long-press and open it.
+- **Expected:** A DEX viewer dialog with 5 tabs opens — class browser showing classes, methods, fields.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test L2: ELF Viewer
+- **File:** Find an ELF binary (e.g., a native `.so` library). Long-press and open it.
+- **Expected:** An ELF viewer with 4 tabs opens — showing symbol table, sections, headers, etc.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test L3: APK Analyzer
+- **File:** Find a `.apk` file. Long-press and open it.
+- **Expected:** An APK analyzer dialog opens showing manifest (AXML decoded), resources, and package info.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test L4: Entropy Heatmap
+- **File:** Any binary file. Long-press → "Entropy Analysis" or similar.
+- **Expected:** An entropy heatmap dialog appears — 256-byte blocks shown as colored cells, with statistics (mean entropy, min/max).
+- **Modifies file:** No
+- **Result:** ___
+
+### Test L5: Binary Diff Viewer
+- **Precondition:** Two similar binary files.
+- **Action:** Select both and "Compare" or long-press one and select "Binary Diff" with the other.
+- **Expected:** A side-by-side byte diff view showing differences between the two files.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP M — Explorer (Phase 42, 45)
+
+### Test M1: VS Code-style Explorer Sections
+- **Action:** Open the Explorer panel in the sidebar.
+- **Expected:** Four collapsible sections appear: Open Editors, Workspace, Outline, Timeline. Each can be expanded/collapsed independently.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M2: Open Editors Section
+- **Action:** Open 2-3 files. Look at the "Open Editors" section in the Explorer.
+- **Expected:** Lists currently open editor tabs. Tap to switch. Close a tab and the list updates reactively.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M3: Outline Section
+- **File:** Open `test_feature.py`
+- **Action:** Expand the "Outline" section in the Explorer.
+- **Expected:** Document symbols from LSP appear (functions, classes, methods). Tap to jump to the symbol.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M4: Timeline Section
+- **File:** Open `test_feature.py`
+- **Action:** Expand the "Timeline" section in the Explorer.
+- **Expected:** Shows git log for the active file (`git log --follow`). Entries with timestamps. Tap to view.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M5: Multi-Select
+- **Action:** In the Explorer, long-press a file, then tap another file. Look for checkboxes appearing.
+- **Expected:** Multiple files can be selected. An action bar appears with Copy, Delete, Select All options.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M6: Expand All
+- **Action:** In the Explorer toolbar, tap the UnfoldMore icon (next to Collapse All).
+- **Expected:** All folder nodes in the workspace tree expand recursively.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M7: Sort by Name / Date / Size / Type
+- **Action:** In the Explorer toolbar, tap the sort button (shows "N" or similar). Tap again to cycle through Name → Date → Size → Type.
+- **Expected:** Files are re-sorted according to the selected criterion. The current sort mode is indicated on the button (N/D/S/T).
+- **Modifies file:** No
+- **Result:** ___
+
+### Test M8: File Icons
+- **Action:** Look at file icons in the Explorer for different file types.
+- **Expected:** Each file type shows a unique icon with brand color (e.g., .py = snake/blue, .js = yellow, .kt = purple, .json = braces/yellow, .md = document/blue). 80+ file types should have unique icons.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP N — Search (Phase 45, Group 3)
+
+### Test N1: Case Sensitive Toggle (FindReplaceBar)
+- **File:** Open `test_feature.py`
+- **Action:** Open the Find bar. Type `Result` in the search field. Look for the "Aa" button.
+- **Expected:** With "Aa" OFF, `Result` matches `result` (case insensitive). With "Aa" ON (blue/accent background), only exact-case `Result` matches. Match count updates.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N2: Whole Word Toggle
+- **File:** Open `test_feature.py`
+- **Action:** Open the Find bar. Type `result` in the search field. Look for the "W" button.
+- **Expected:** With "W" OFF, `result` matches inside other words (e.g., `self.result`). With "W" ON, only whole-word `result` matches (not `self.result`). Match count updates.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N3: Highlight All Matches
+- **File:** Open `test_feature.py`
+- **Action:** Open the Find bar. Type `result`.
+- **Expected:** All matches are highlighted in the editor. The current match is highlighted in blue. Other matches are highlighted in gray. As you navigate with ↑/↓, the blue highlight moves.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N4: Regex Toggle
+- **File:** Open `test_feature.py`
+- **Action:** Open the Find bar. Tap the regex toggle button. Type `self\..+` as the search.
+- **Expected:** Matches are found using regex pattern (e.g., `self.result`, `self.result = a + b`). Non-regex mode would treat this as literal text.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N5: Find in Files (Global Search)
+- **Action:** Tap the search icon in the activity bar (sidebar → Search panel). Or use menu → Edit → Find in Files. Type `greet`.
+- **Expected:** The ProjectFileSearchPanel opens. Results show across all project files. Each result shows file name, line number, and the matching line text.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N6: Grouped Results by File
+- **Precondition:** Test N5 active with results.
+- **Action:** Look at the search results.
+- **Expected:** Results are grouped by file in an expandable tree (▼/▶). Each file header shows the file name, relative path, and a match count badge (blue). Expand/collapse shows/hides individual matches.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N7: Include/Exclude File Patterns
+- **Action:** In the search panel, tap the funnel (FilterAlt) icon in the header. Type `*.py` in the Include field and `test_*` in the Exclude field.
+- **Expected:** Only `.py` files matching the include pattern are searched. Files matching the exclude pattern are skipped. The filter toggle button turns accent-colored when active.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N8: Case Sensitive (Project Search)
+- **Action:** In the search panel header, tap the "Aa" button.
+- **Expected:** With Aa ON (accent background), search is case-sensitive. With OFF, it's case-insensitive.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N9: Recent Search History
+- **Action:** Perform several searches. Then clear the search query (empty input).
+- **Expected:** When the query is blank, recent searches appear with a History icon. Tap to re-run. Up to 10 recent searches are stored in SharedPreferences.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test N10: Replace Across Files
+- **Precondition:** Have search results for `greet`.
+- **Action:** Toggle replace mode (Replace chip). Type `sayHello` in the replace field. Tap "Replace All".
+- **Expected:** All occurrences across all files are replaced. A snackbar confirms the count. Files are written to disk.
+- **Modifies file:** Yes — undo all changes (Ctrl+Z in each file, or `git checkout .`)
+- **Result:** ___
+
+### Test N11: Quick Open (Fuzzy Filename)
+- **Action:** Tap the quick open button (or Ctrl+P). Type `test_f`.
+- **Expected:** A fuzzy filename search appears. `test_feature.py` matches with highlighted characters. Fuzzy matching (subsequence) works — typing `tf` would also match.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP O — Zen Mode (Phase 45, Group 2)
+
+### Test O1: Zen Mode Toggle
+- **Action:** Menu → View → "Toggle Zen Mode". Or use the command palette and type "Zen".
+- **Expected:** The following UI elements disappear: top bar (menu), activity bar (left sidebar icons), side panel, bottom panel, status bar (bottom blue bar), chat panel. The editor fills the full screen.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test O2: Zen Mode Exit (Floating Button)
+- **Precondition:** Zen Mode is active (Test O1).
+- **Action:** Look for a floating circular button in the bottom-right corner (blue, with a FullscreenExit icon).
+- **Expected:** Tapping the floating button exits Zen Mode. All UI elements reappear. A notification says "Zen Mode off".
+- **Modifies file:** No
+- **Result:** ___
+
+### Test O3: Zen Mode Exit (Double-Tap)
+- **Precondition:** Re-enter Zen Mode.
+- **Action:** Double-tap anywhere in the editor area.
+- **Expected:** Double-tap exits Zen Mode. All UI elements reappear.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test O4: Zen Mode via Gear Menu
+- **Action:** Open the gear menu (bottom-left settings icon). Look for "Toggle Zen Mode" in the menu.
+- **Expected:** Tapping it activates Zen Mode. The gear menu closes and Zen Mode is on.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP P — Cloud Backup & Sync (Phase 16)
+
+### Test P1: Cloud Backup Panel
+- **Action:** Open the bottom panel → look for a BACKUP tab (may be in the overflow menu).
+- **Expected:** A CloudBackupPanel appears with backup/restore options and a sync status indicator.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test P2: Sync Status Indicator
+- **Action:** Look at the status bar (bottom blue bar).
+- **Expected:** A sync indicator appears — shows Idle, Syncing (spinner), Success (✓), or Error depending on sync state. The indicator is color-coded.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP Q — Project Setup (Phase 12, 13)
+
+### Test Q1: Project Wizard
+- **Action:** On the home screen, tap "New Project".
+- **Expected:** A two-step wizard appears: first select project type (e.g., Python, Node.js, HTML, Kotlin, etc.), then enter a project name.
+- **Modifies file:** No (creates a new project)
+- **Result:** ___
+
+### Test Q2: Project Templates
+- **Action:** Create a new project and select "Python" as the type.
+- **Expected:** The project is scaffolded with appropriate template files (e.g., `main.py` with a hello world template).
+- **Modifies file:** No (new project)
+- **Result:** ___
+
+### Test Q3: Download Center
+- **Action:** Open the bottom panel → look for a DOWNLOADS tab.
+- **Expected:** A download center panel appears showing any active/completed downloads with live progress indicators.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test Q4: Live Git/Lint Badge Counts
+- **Action:** Look at the activity bar (left sidebar icons).
+- **Expected:** The Source Control icon shows a badge with the count of modified files. The Run & Debug icon may show a badge. These counts update in real-time as files change.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test Q5: Toolchain Panel
+- **Action:** Open the Run & Debug panel. Look for a "Toolchain" section or button.
+- **Expected:** A ToolchainPanel appears showing detected tools (JDK, Gradle, Node, Python, etc.) with install buttons for missing tools.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test Q6: Rename Project
+- **Action:** On the home screen, long-press a project card.
+- **Expected:** A rename dialog appears. Type a new name and confirm. The project is renamed.
+- **Modifies file:** No (project metadata)
+- **Result:** ___
+
+---
+
+## GROUP R — Multi-File Edit (Phase 18)
+
+### Test R1: Select All Occurrences
+- **File:** Open `test_feature.py`
+- **Action:** Long-press `result` anywhere in the `Calculator` class. In the context sheet, tap "Select All Occurrences".
+- **Expected:** Cursors appear at every occurrence of `result` in the file (multi-cursor). Type to edit all simultaneously.
+- **Modifies file:** Yes — undo (Ctrl+Z) to restore
+- **Result:** ___
+
+### Test R2: Cross-file Rename Symbol
+- **File:** Open `test_feature.py`
+- **Action:** Long-press `greet` on line 5. In the context sheet, tap "Rename Symbol" (or "Rename in Project"). Type `sayHello` and confirm.
+- **Expected:** A progress indicator appears. All occurrences across all files in the project are renamed from `greet` to `sayHello`. Snackbar confirms count.
+- **Modifies file:** Yes — undo all changes
+- **Result:** ___
+
+---
+
+## GROUP S — OutputPanel & LSP Server (Phase 22, 24, 44)
+
+### Test S1: OutputPanel Dark Theme
+- **Action:** Open the bottom panel → Output tab.
+- **Expected:** The Output panel has a dark theme (dark background `#1E1E1E`, light text `#D4D4D4`). Matches VS Code dark theme. No light-theme clash.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test S2: LSP Server Teardown on Tab Close
+- **File:** Open `test_feature.py` (Python LSP starts). Then close the tab.
+- **Action:** Close the tab (tap X on the tab).
+- **Expected:** The Python language server receives `didClose` notification. If no other Python files are open, the server stops after a 30s grace period. RAM is freed.
+- **Output tab:** May log the shutdown
+- **Modifies file:** No
+- **Result:** ___
+
+### Test S3: LSP Server Teardown on Panel Dispose
+- **Action:** Navigate away from the editor panel entirely (e.g., go to home screen, then back to project).
+- **Expected:** `stopAll()` is called on dispose, stopping all running LSP servers. When returning, servers restart as needed.
+- **Modifies file:** No
+- **Result:** ___
+
+---
+
+## GROUP T — Phase 24 Audit Items
+
+### Test T1: Breadcrumb Navigation (Enhanced)
+- **File:** Open `test_feature.py` in a subfolder (e.g., move it to `src/test_feature.py`).
+- **Action:** Look at the breadcrumb bar.
+- **Expected:** Shows `project-name > src > test_feature.py` with clickable segments. Tap `src` to open Explorer and scroll to that directory.
+- **Modifies file:** Yes — move the file back to root after test
+- **Result:** ___
+
+### Test T2: Line Number Alignment
+- **File:** Open a file with 100+ lines.
+- **Action:** Look at the gutter line numbers.
+- **Expected:** Line numbers are right-aligned in the gutter. The gutter is wide enough (72dp) to accommodate 3-4 digit numbers. No misalignment.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test T3: Minimap Toggle
+- **File:** Open `test_feature.py`
+- **Action:** Look for a minimap toggle button in the editor toolbar.
+- **Expected:** A toggle button shows/hides the minimap (if implemented). Note: AGENTS.md says minimap was reverted to fixed button per user preference.
+- **Modifies file:** No
+- **Result:** ___
+
+### Test T4: Auto-Save Indicator
+- **File:** Open `test_feature.py`. Type a character.
+- **Action:** Type something and observe the breadcrumb bar area.
+- **Expected:** After typing, a dirty indicator appears (e.g., dot on the tab). After 2 seconds of no typing, the dirty flag auto-clears and "Saved" text appears in the breadcrumbs bar.
+- **Modifies file:** Yes — undo what you typed
+- **Result:** ___
+
+### Test T5: Quick Fixes / Code Actions
+- **File:** Open `test_feature.py`. Look at line 21 (`unused_var = 42`).
+- **Action:** If there's a lint warning, long-press the underlined text or look for a light bulb icon.
+- **Expected:** Code actions appear — e.g., "Remove unused variable", "Rename to _unused_var". Tap to apply.
+- **Modifies file:** Yes — undo if you apply a fix
+- **Result:** ___
+
+---
+
+## GROUP U — Phase 30 (File Icons)
+
+### Test U1: File Icon Coverage (80+ types)
+- **Action:** Create files with various extensions in the Explorer: `.vue`, `.svelte`, `.graphql`, `.sql`, `.csv`, `.prisma`, `.kt`, `.java`, `.py`, `.js`, `.ts`, `.json`, `.xml`, `.html`, `.css`, `.md`, `.yaml`, `.toml`, `.go`, `.rs`, `.php`, `.sh`, `.dart`.
+- **Expected:** Each file type shows a unique icon with brand-appropriate color. No generic blue document fallback for any of these.
+- **Modifies file:** Yes — delete the test files after the test
+- **Result:** ___
+
+---
+
+## GROUP V — Project Recycle Bin (Phase 29)
+
+### Test V1: Project Recycle Bin
+- **Action:** On the home screen, delete a project (long-press → Delete).
+- **Expected:** The project is moved to a recycle bin (not permanently deleted). A way to restore it should exist.
+- **Modifies file:** No (project metadata)
+- **Result:** ___
+
+---
+
+## GROUP W — Diagnostics & LSP Visual (Phase J, K, L)
+
+### Test W1: Error Lens (Inline diagnostics)
+- **File:** Open `test_feature.py`. Add a syntax error (e.g., type `def(` on a new line).
+- **Expected:** In addition to the red squiggle underline, the error message may appear inline at the end of the line (Error Lens style), colored red.
+- **Modifies file:** Yes — remove the error
+- **Result:** ___
+
+### Test W2: Refactoring Actions
+- **File:** Open `test_feature.py`
+- **Action:** Long-press a function name. In the context sheet, look for "Refactor" submenu.
+- **Expected:** A submenu or list of refactor actions appears (e.g., "Extract Function", "Extract Variable", "Inline").
+- **Modifies file:** No (unless you apply — undo if so)
+- **Result:** ___
+
+### Test W3: Run/Debug CodeLens
+- **File:** Create `test_runnable.py`:
+```python
+def test_add():
+    assert 1 + 1 == 2
+
+def test_subtract():
+    assert 5 - 3 == 2
+
+if __name__ == "__main__":
+    test_add()
+    test_subtract()
+    print("All tests passed")
+```
+- **Action:** Open it. Look for CodeLens annotations above test functions.
+- **Expected:** "Run | Debug" CodeLens appears above `test_add` and `test_subtract` functions (teal colored, clickable). Tap "Run" to execute the function.
+- **Modifies file:** Yes — delete `test_runnable.py` after test
+- **Result:** ___
+
+---
+
+## SUMMARY TEMPLATE
+
+After completing all tests, record results here:
+
+### CONFIRMED WORKING
+(List test names that passed)
+
+### NEEDS FIXING
+(List test names with one-line description of the bug)
+
+### NOT IMPLEMENTED
+(List test names where the feature is missing entirely)
+
+---
+
+## FEATURES NOT IN AGENTS.md (Additional Tests)
+
+### Test X1: Activity Bar Navigation
+- **Action:** Tap each icon in the activity bar (left sidebar): Explorer, Search, Source Control, Run & Debug, Extensions.
+- **Expected:** Each opens its respective panel. The active icon is highlighted (accent color).
+- **Result:** ___
+
+### Test X2: Command Palette
+- **Action:** Tap the menu → "Keyboard Shortcuts" or press the command palette button.
+- **Expected:** A command palette overlay appears with a search field and filtered command list. Type to filter commands. Tap to execute.
+- **Result:** ___
+
+### Test X3: Color Theme Switcher
+- **Action:** Menu → Preferences → Color Theme (or gear menu → Color Theme).
+- **Expected:** A theme picker dialog appears. Select a theme and the entire IDE changes colors.
+- **Result:** ___
+
+### Test X4: AI Chat Panel
+- **Action:** Tap the chat/AI toggle button in the top bar.
+- **Expected:** An AI chat panel opens on the right side. Type a prompt and get a response.
+- **Result:** ___
+
+### Test X5: Split Terminal
+- **Action:** Open a terminal. Tap the split terminal button or use the panel overflow menu → Split Terminal.
+- **Expected:** A second terminal pane opens side by side with the first.
+- **Result:** ___
+
+### Test X6: Go to Line
+- **Action:** Menu → Go → Go to Line (or Ctrl+G).
+- **Expected:** A dialog appears asking for a line number. Type a number and confirm to jump to that line.
+- **Result:** ___
+
+### Test X7: MCP Agent API Status
+- **Action:** Look at the status bar for a green/red dot labeled "MCP".
+- **Expected:** Green dot = MCP agent API running. Red dot = not running.
+- **Result:** ___
+
+### Test X8: Notification Drawer
+- **Action:** Tap the notification bell icon (top bar or status bar).
+- **Expected:** A notification drawer opens showing recent notifications. "Mark all read" or clear option.
+- **Result:** ___
