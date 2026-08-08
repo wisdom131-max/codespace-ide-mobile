@@ -2,6 +2,7 @@ package com.codespace.ide.ui.panes
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -36,19 +37,19 @@ import java.util.*
 import androidx.compose.material.icons.automirrored.filled.*
 
 // ── Palette ──────────────────────────────────────────────────────────────────
-private val BgColor        = Color(0xFFFFFFFF)
-private val HeaderBg       = Color(0xFFF3F3F3)
-private val TextColor      = Color(0xFF333333)
-private val MutedColor     = Color(0xFF717171)
-private val DividerColor   = Color(0xFFE0E0E0)
-private val IconColor      = Color(0xFF007ACC)
-private val ModifiedColor  = Color(0xFFE2C08D)
-private val UntrackedColor = Color(0xFF73C991)
-private val DeletedColor   = Color(0xFFF48771)
-private val AddedColor     = Color(0xFF73C991)
-private val ErrorColor     = Color(0xFFCC0000)
-private val ConflictColor  = Color(0xFFE51400)
-private val TagColor       = Color(0xFFDA70D6)
+@Composable private fun BgColor()        = if (isSystemInDarkTheme()) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
+@Composable private fun HeaderBg()       = if (isSystemInDarkTheme()) Color(0xFF252526) else Color(0xFFF3F3F3)
+@Composable private fun TextColor()      = if (isSystemInDarkTheme()) Color(0xFFCCCCCC) else Color(0xFF333333)
+@Composable private fun MutedColor()     = if (isSystemInDarkTheme()) Color(0xFF858585) else Color(0xFF717171)
+@Composable private fun DividerColor()   = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFE0E0E0)
+@Composable private fun IconColor()      = if (isSystemInDarkTheme()) Color(0xFF569CD6) else Color(0xFF007ACC)
+@Composable private fun ModifiedColor()  = if (isSystemInDarkTheme()) Color(0xFFE2C08D) else Color(0xFFE2C08D)
+@Composable private fun UntrackedColor() = if (isSystemInDarkTheme()) Color(0xFF73C991) else Color(0xFF73C991)
+@Composable private fun DeletedColor()   = if (isSystemInDarkTheme()) Color(0xFFF48771) else Color(0xFFF48771)
+@Composable private fun AddedColor()     = if (isSystemInDarkTheme()) Color(0xFF73C991) else Color(0xFF73C991)
+@Composable private fun ErrorColor()     = if (isSystemInDarkTheme()) Color(0xFFF48771) else Color(0xFFCC0000)
+@Composable private fun ConflictColor()  = if (isSystemInDarkTheme()) Color(0xFFE51400) else Color(0xFFE51400)
+@Composable private fun TagColor()       = if (isSystemInDarkTheme()) Color(0xFFDA70D6) else Color(0xFFDA70D6)
 
 private data class GitChange(
     val status: String,
@@ -346,7 +347,7 @@ fun SourceControlPane(projectId: String) {
                     }
                     publishError?.let { err ->
                         Spacer(Modifier.height(6.dp))
-                        Text(err, fontSize = 10.sp, color = ErrorColor)
+                        Text(err, fontSize = 10.sp, color = ErrorColor())
                     }
                 }
             },
@@ -427,19 +428,19 @@ fun SourceControlPane(projectId: String) {
     }
 
     // ── root layout ──────────────────────────────────────────────────────────
-    Column(Modifier.fillMaxSize().background(BgColor)) {
+    Column(Modifier.fillMaxSize().background(BgColor())) {
 
         // ── Header ───────────────────────────────────────────────────────────
         Row(
-            Modifier.fillMaxWidth().height(35.dp).background(HeaderBg).padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth().height(35.dp).background(HeaderBg()).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("SOURCE CONTROL", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            if (loading) CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = IconColor)
+            Text("SOURCE CONTROL", fontSize = 11.sp, color = MutedColor(), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (loading) CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = IconColor())
             Spacer(Modifier.width(6.dp))
-            Icon(Icons.Default.Refresh, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable { refresh++ })
+            Icon(Icons.Default.Refresh, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable { refresh++ })
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.ArrowDownward, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
+            Icon(Icons.Default.ArrowDownward, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }
                     refreshStatus()
@@ -447,7 +448,7 @@ fun SourceControlPane(projectId: String) {
                 }
             })
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.Sync, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
+            Icon(Icons.Default.Sync, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "fetch", "--all") }
                     refreshStatus()
@@ -455,7 +456,7 @@ fun SourceControlPane(projectId: String) {
                 }
             })
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Default.ArrowUpward, null, tint = MutedColor, modifier = Modifier.size(16.dp).clickable {
+            Icon(Icons.Default.ArrowUpward, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
                     refreshStatus()
@@ -473,7 +474,7 @@ fun SourceControlPane(projectId: String) {
                 }
             }
         }
-        HorizontalDivider(color = DividerColor)
+        HorizontalDivider(color = DividerColor())
 
         // P16-A: action feedback toast
         actionToast?.let { msg ->
@@ -484,8 +485,8 @@ fun SourceControlPane(projectId: String) {
             Text(
                 text = msg,
                 fontSize = 11.sp,
-                color = if (msg.contains("failed")) ErrorColor else IconColor,
-                modifier = Modifier.fillMaxWidth().background(HeaderBg).padding(horizontal = 8.dp, vertical = 3.dp),
+                color = if (msg.contains("failed")) ErrorColor() else IconColor(),
+                modifier = Modifier.fillMaxWidth().background(HeaderBg()).padding(horizontal = 8.dp, vertical = 3.dp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -495,12 +496,12 @@ fun SourceControlPane(projectId: String) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 Row(Modifier.clickable { showBranchMenu = true }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AccountTree, null, tint = IconColor, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.AccountTree, null, tint = IconColor(), modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     val displayBranch = if (branch.startsWith("Error:") || branch.isBlank()) "—" else branch
-                    Text(displayBranch, fontSize = 12.sp, color = TextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (aheadBehind.isNotBlank()) { Spacer(Modifier.width(6.dp)); Text(aheadBehind, fontSize = 10.sp, color = MutedColor) }
-                    Icon(Icons.Default.ArrowDropDown, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                    Text(displayBranch, fontSize = 12.sp, color = TextColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (aheadBehind.isNotBlank()) { Spacer(Modifier.width(6.dp)); Text(aheadBehind, fontSize = 10.sp, color = MutedColor()) }
+                    Icon(Icons.Default.ArrowDropDown, null, tint = MutedColor(), modifier = Modifier.size(14.dp))
                 }
                 DropdownMenu(expanded = showBranchMenu, onDismissRequest = { showBranchMenu = false }) {
                     branches.forEach { b ->
@@ -512,7 +513,7 @@ fun SourceControlPane(projectId: String) {
                             },
                             trailingIcon = {
                                 // long-press context via dedicated button
-                                Icon(Icons.Default.MoreVert, null, tint = MutedColor, modifier = Modifier.size(14.dp).clickable {
+                                Icon(Icons.Default.MoreVert, null, tint = MutedColor(), modifier = Modifier.size(14.dp).clickable {
                                     showBranchMenu = false; branchContextMenu = b
                                 })
                             }
@@ -520,33 +521,66 @@ fun SourceControlPane(projectId: String) {
                     }
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Text("New branch…", fontSize = 12.sp, color = IconColor) },
+                        text = { Text("New branch…", fontSize = 12.sp, color = IconColor()) },
                         onClick = { showBranchMenu = false; newBranchName = ""; newBranchError = null; showNewBranchDialog = true }
                     )
                 }
             }
             // .gitignore quick button
-            Icon(Icons.Default.Block, null, tint = MutedColor, modifier = Modifier.size(15.dp).clickable {
+            Icon(Icons.Default.Block, null, tint = MutedColor(), modifier = Modifier.size(15.dp).clickable {
                 val gitignoreFile = File(repoDir, ".gitignore")
                 gitignoreContent = if (gitignoreFile.exists()) gitignoreFile.readText() else "# .gitignore\n"
                 showGitignoreDialog = true
             })
         }
-        HorizontalDivider(color = DividerColor)
+        HorizontalDivider(color = DividerColor())
 
         // ── Not-a-repo empty state ────────────────────────────────────────────
         if (!isGitRepo && !loading) {
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.FolderOff, null, tint = MutedColor, modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.FolderOff, null, tint = MutedColor(), modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(8.dp))
-                Text("This folder isn\'t a Git repository yet.", fontSize = 12.sp, color = MutedColor, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("This folder isn\'t a Git repository yet.", fontSize = 12.sp, color = MutedColor(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
+
+                // ── Open Remote Repository (VS Code-style flow) ──
+                Button(
+                    onClick = {
+                        val token = SecureTokenStore(context).githubToken
+                        if (token != null && token.isNotBlank()) {
+                            scope.launch {
+                                loadingRepos = true
+                                try {
+                                    repos = com.codespace.ide.data.GitHubAuth.listUserRepos(token)
+                                    showRepoBrowser = true
+                                } catch (e: Exception) {
+                                    cloneError = "Failed to load repos: " + (e.message ?: "")
+                                }
+                                loadingRepos = false
+                            }
+                        } else {
+                            showSignInDialog = true
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Cloud, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Open Remote Repository", fontSize = 12.sp, color = Color.White)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Open a repository from GitHub without cloning.",
+                    fontSize = 10.sp, color = MutedColor(), textAlign = TextAlign.Center)
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = DividerColor())
+                Spacer(Modifier.height(12.dp))
 
                 // ── Initialize Repository ──
                 if (initializing) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = IconColor)
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = IconColor())
                     Spacer(Modifier.height(4.dp))
-                    Text("Initializing...", fontSize = 11.sp, color = MutedColor)
+                    Text("Initializing...", fontSize = 11.sp, color = MutedColor())
                 } else {
                     Button(
                         onClick = {
@@ -564,7 +598,7 @@ fun SourceControlPane(projectId: String) {
                                 }
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Code, null, modifier = Modifier.size(16.dp))
@@ -574,14 +608,14 @@ fun SourceControlPane(projectId: String) {
                 }
                 initError?.let { err ->
                     Spacer(Modifier.height(6.dp))
-                    Text(err, fontSize = 10.sp, color = ErrorColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(err, fontSize = 10.sp, color = ErrorColor(), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
 
                 // ── Clone from URL ──
                 Spacer(Modifier.height(12.dp))
-                HorizontalDivider(color = DividerColor)
+                HorizontalDivider(color = DividerColor())
                 Spacer(Modifier.height(12.dp))
-                Text("Clone from URL", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                Text("Clone from URL", fontSize = 11.sp, color = MutedColor(), fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
                     value = cloneUrl,
@@ -595,9 +629,9 @@ fun SourceControlPane(projectId: String) {
                 Spacer(Modifier.height(6.dp))
                 if (cloning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor())
                         Spacer(Modifier.width(8.dp))
-                        Text("Cloning...", fontSize = 11.sp, color = MutedColor)
+                        Text("Cloning...", fontSize = 11.sp, color = MutedColor())
                     }
                 } else {
                     Button(
@@ -626,7 +660,7 @@ fun SourceControlPane(projectId: String) {
                             }
                         },
                         enabled = cloneUrl.isNotBlank() && !cloning,
-                        colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Download, null, modifier = Modifier.size(16.dp))
@@ -636,18 +670,18 @@ fun SourceControlPane(projectId: String) {
                 }
                 cloneError?.let { err ->
                     Spacer(Modifier.height(4.dp))
-                    Text(err, fontSize = 10.sp, color = ErrorColor, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(err, fontSize = 10.sp, color = ErrorColor(), maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
 
                 // ── Sign in with GitHub / Browse My Repos ──
                 Spacer(Modifier.height(12.dp))
-                HorizontalDivider(color = DividerColor)
+                HorizontalDivider(color = DividerColor())
                 Spacer(Modifier.height(12.dp))
                 val ghToken = remember { SecureTokenStore(context).githubToken }
                 if (ghToken != null && ghToken.isNotBlank()) {
                     val ghUser = remember { SecureTokenStore(context).githubUsername }
                     val userLabel = ghUser ?: "GitHub user"
-                    Text("Connected as " + userLabel, fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center)
+                    Text("Connected as " + userLabel, fontSize = 10.sp, color = MutedColor(), textAlign = TextAlign.Center)
                     Spacer(Modifier.height(6.dp))
                     Button(
                         onClick = {
@@ -684,7 +718,7 @@ fun SourceControlPane(projectId: String) {
 
                 // ── Publish to GitHub (existing — appears for repos with no remote) ──
                 Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = DividerColor)
+                HorizontalDivider(color = DividerColor())
                 Spacer(Modifier.height(8.dp))
                 val publishToken = remember { SecureTokenStore(context).githubToken }
                 if (publishToken != null && !publishToken.isBlank()) {
@@ -700,44 +734,44 @@ fun SourceControlPane(projectId: String) {
                 } else {
                     Text(
                         "Connect GitHub to publish",
-                        fontSize = 10.sp, color = MutedColor, textAlign = TextAlign.Center
+                        fontSize = 10.sp, color = MutedColor(), textAlign = TextAlign.Center
                     )
                 }
                 publishSuccess?.let { url ->
                     Spacer(Modifier.height(6.dp))
-                    Text("Published: " + url, fontSize = 10.sp, color = UntrackedColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("Published: " + url, fontSize = 10.sp, color = UntrackedColor(), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 publishError?.let { err ->
                     Spacer(Modifier.height(4.dp))
-                    Text(err, fontSize = 10.sp, color = ErrorColor, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(err, fontSize = 10.sp, color = ErrorColor(), maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }
-            HorizontalDivider(color = DividerColor)
+            HorizontalDivider(color = DividerColor())
         } else if (statusError != null) {
         } else if (statusError != null) {
         } else if (statusError != null) {
             // ── Error banner (only shown if it IS a git repo but something went wrong) ──
-            Row(Modifier.fillMaxWidth().background(ErrorColor.copy(alpha = 0.08f)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, null, tint = ErrorColor, modifier = Modifier.size(14.dp))
+            Row(Modifier.fillMaxWidth().background(ErrorColor().copy(alpha = 0.08f)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, null, tint = ErrorColor(), modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(statusError ?: "", fontSize = 11.sp, color = ErrorColor, modifier = Modifier.weight(1f), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(statusError ?: "", fontSize = 11.sp, color = ErrorColor(), modifier = Modifier.weight(1f), maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
-            HorizontalDivider(color = DividerColor)
+            HorizontalDivider(color = DividerColor())
         }
 
         // ── Conflict banner ──────────────────────────────────────────────────
         if (conflictedFiles.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().background(ConflictColor.copy(alpha = 0.08f)).padding(8.dp)) {
+            Column(Modifier.fillMaxWidth().background(ConflictColor().copy(alpha = 0.08f)).padding(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, tint = ConflictColor, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Warning, null, tint = ConflictColor(), modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("${conflictedFiles.size} merge conflict(s)", fontSize = 12.sp, color = ConflictColor, fontWeight = FontWeight.Bold)
+                    Text("${conflictedFiles.size} merge conflict(s)", fontSize = 12.sp, color = ConflictColor(), fontWeight = FontWeight.Bold)
                 }
                 conflictedFiles.forEach { f ->
                     ConflictResolverRow(filePath = f, repoDir = repoDir, context = context, onResolved = { refreshStatus() })
                 }
             }
-            HorizontalDivider(color = DividerColor)
+            HorizontalDivider(color = DividerColor())
         }
 
         // ── Commit box (only on CHANGES tab) ─────────────────────────────────
@@ -745,13 +779,13 @@ fun SourceControlPane(projectId: String) {
             Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                 OutlinedTextField(
                     value = message, onValueChange = { message = it },
-                    placeholder = { Text("Commit message (Ctrl+Enter)", fontSize = 11.sp, color = MutedColor) },
+                    placeholder = { Text("Commit message (Ctrl+Enter)", fontSize = 11.sp, color = MutedColor()) },
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = TextColor),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = TextColor()),
                     minLines = 2, maxLines = 4,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = IconColor, unfocusedBorderColor = DividerColor,
-                        focusedContainerColor = BgColor, unfocusedContainerColor = BgColor,
+                        focusedBorderColor = IconColor(), unfocusedBorderColor = DividerColor(),
+                        focusedContainerColor = BgColor(), unfocusedContainerColor = BgColor(),
                     )
                 )
                 Spacer(Modifier.height(6.dp))
@@ -766,7 +800,7 @@ fun SourceControlPane(projectId: String) {
                         },
                         enabled = message.isNotBlank(),
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                         contentPadding = PaddingValues(vertical = 6.dp),
                     ) { Text("Commit", fontSize = 12.sp) }
                     OutlinedButton(
@@ -784,11 +818,11 @@ fun SourceControlPane(projectId: String) {
                     ) { Text("Commit & Push", fontSize = 12.sp) }
                 }
             }
-            HorizontalDivider(color = DividerColor)
+            HorizontalDivider(color = DividerColor())
         }
 
         // ── Tab row ──────────────────────────────────────────────────────────
-        Row(Modifier.fillMaxWidth().background(HeaderBg)) {
+        Row(Modifier.fillMaxWidth().background(HeaderBg())) {
             ScmTab.entries.forEach { tab ->
                 val label = when (tab) { ScmTab.CHANGES -> "Changes"; ScmTab.LOG -> "Log"; ScmTab.GRAPH -> "Graph"; ScmTab.STASH -> "Stash"; ScmTab.TAGS -> "Tags" }
                 val active = tab == activeTab
@@ -799,12 +833,12 @@ fun SourceControlPane(projectId: String) {
                     }.padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, fontSize = 11.sp, color = if (active) IconColor else MutedColor,
+                    Text(label, fontSize = 11.sp, color = if (active) IconColor() else MutedColor(),
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)
                 }
             }
         }
-        HorizontalDivider(color = if (activeTab != ScmTab.CHANGES) IconColor else DividerColor, thickness = if (activeTab != ScmTab.CHANGES) 1.dp else 0.5.dp)
+        HorizontalDivider(color = if (activeTab != ScmTab.CHANGES) IconColor() else DividerColor(), thickness = if (activeTab != ScmTab.CHANGES) 1.dp else 0.5.dp)
 
         // ── Tab content ──────────────────────────────────────────────────────
         when (activeTab) {
@@ -848,11 +882,11 @@ fun SourceControlPane(projectId: String) {
             ScmTab.LOG -> {
                 if (logLoading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = IconColor)
+                        CircularProgressIndicator(color = IconColor())
                     }
                 } else if (commitLog.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No commits yet", fontSize = 12.sp, color = MutedColor)
+                        Text("No commits yet", fontSize = 12.sp, color = MutedColor())
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
@@ -863,19 +897,19 @@ fun SourceControlPane(projectId: String) {
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(c.shortSha, fontSize = 10.sp, color = IconColor, fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp))
-                                    Text(c.message, fontSize = 12.sp, color = TextColor, modifier = Modifier.weight(1f), maxLines = if (expanded) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
+                                    Text(c.shortSha, fontSize = 10.sp, color = IconColor(), fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp))
+                                    Text(c.message, fontSize = 12.sp, color = TextColor(), modifier = Modifier.weight(1f), maxLines = if (expanded) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 if (expanded) {
                                     Spacer(Modifier.height(4.dp))
-                                    Text("Author: ${c.author}", fontSize = 11.sp, color = MutedColor)
-                                    Text("Date:   ${c.date}",   fontSize = 11.sp, color = MutedColor)
-                                    Text("SHA:    ${c.sha}",    fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                                    Text("Author: ${c.author}", fontSize = 11.sp, color = MutedColor())
+                                    Text("Date:   ${c.date}",   fontSize = 11.sp, color = MutedColor())
+                                    Text("SHA:    ${c.sha}",    fontSize = 11.sp, color = MutedColor(), fontFamily = FontFamily.Monospace)
                                 } else {
-                                    Text("${c.author}  ${c.date}", fontSize = 10.sp, color = MutedColor)
+                                    Text("${c.author}  ${c.date}", fontSize = 10.sp, color = MutedColor())
                                 }
                             }
-                            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                            HorizontalDivider(color = DividerColor(), thickness = 0.5.dp)
                         }
                     }
                 }
@@ -885,21 +919,21 @@ fun SourceControlPane(projectId: String) {
             ScmTab.GRAPH -> {
                 if (logLoading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = IconColor)
+                        CircularProgressIndicator(color = IconColor())
                     }
                 } else if (graphData.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No graph data", fontSize = 12.sp, color = MutedColor)
+                        Text("No graph data", fontSize = 12.sp, color = MutedColor())
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(graphData) { row ->
                             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(row.graph.ifBlank { " " }, color = Color(0xFF569CD6), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(80.dp))
-                                Text(row.sha, color = IconColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp))
-                                Text(row.message, color = TextColor, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(row.sha, color = IconColor(), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp))
+                                Text(row.message, color = TextColor(), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             }
-                            HorizontalDivider(color = DividerColor, thickness = 0.3.dp)
+                            HorizontalDivider(color = DividerColor(), thickness = 0.3.dp)
                         }
                     }
                 }
@@ -911,15 +945,15 @@ fun SourceControlPane(projectId: String) {
                     Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { stashMsg = ""; showStashDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                            colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         ) { Text("Save Stash", fontSize = 12.sp) }
                     }
-                    HorizontalDivider(color = DividerColor)
+                    HorizontalDivider(color = DividerColor())
                     if (stashLoading) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = IconColor) }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = IconColor()) }
                     } else if (stashes.isEmpty()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No stashes", fontSize = 12.sp, color = MutedColor) }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No stashes", fontSize = 12.sp, color = MutedColor()) }
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             items(stashes) { s ->
@@ -928,24 +962,24 @@ fun SourceControlPane(projectId: String) {
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(s.message, fontSize = 12.sp, color = TextColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text("stash@{${s.index}}", fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                                        Text(s.message, fontSize = 12.sp, color = TextColor(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text("stash@{${s.index}}", fontSize = 10.sp, color = MutedColor(), fontFamily = FontFamily.Monospace)
                                     }
-                                    Text("Pop", fontSize = 11.sp, color = IconColor, modifier = Modifier.clickable {
+                                    Text("Pop", fontSize = 11.sp, color = IconColor(), modifier = Modifier.clickable {
                                         scope.launch {
                                             withContext(Dispatchers.IO) { runGit(context, repoDir, "stash", "pop", "stash@{${s.index}}") }
                                             loadStashes(); refreshStatus()
                                         }
                                     }.padding(4.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Drop", fontSize = 11.sp, color = DeletedColor, modifier = Modifier.clickable {
+                                    Text("Drop", fontSize = 11.sp, color = DeletedColor(), modifier = Modifier.clickable {
                                         scope.launch {
                                             withContext(Dispatchers.IO) { runGit(context, repoDir, "stash", "drop", "stash@{${s.index}}") }
                                             loadStashes()
                                         }
                                     }.padding(4.dp))
                                 }
-                                HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                                HorizontalDivider(color = DividerColor(), thickness = 0.5.dp)
                             }
                         }
                     }
@@ -958,15 +992,15 @@ fun SourceControlPane(projectId: String) {
                     Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { newTagName = ""; newTagMsg = ""; newTagAnnotated = true; showTagDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+                            colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         ) { Text("New Tag", fontSize = 12.sp) }
                     }
-                    HorizontalDivider(color = DividerColor)
+                    HorizontalDivider(color = DividerColor())
                     if (tagsLoading) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = IconColor) }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = IconColor()) }
                     } else if (tags.isEmpty()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No tags", fontSize = 12.sp, color = MutedColor) }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No tags", fontSize = 12.sp, color = MutedColor()) }
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             items(tags) { t ->
@@ -976,20 +1010,20 @@ fun SourceControlPane(projectId: String) {
                                 ) {
                                     Column(Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(t.name, fontSize = 13.sp, color = TagColor, fontWeight = FontWeight.Medium)
-                                            if (t.isAnnotated) { Spacer(Modifier.width(6.dp)); Text("annotated", fontSize = 9.sp, color = MutedColor) }
+                                            Text(t.name, fontSize = 13.sp, color = TagColor(), fontWeight = FontWeight.Medium)
+                                            if (t.isAnnotated) { Spacer(Modifier.width(6.dp)); Text("annotated", fontSize = 9.sp, color = MutedColor()) }
                                         }
-                                        Text(t.sha, fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
-                                        if (t.message.isNotBlank()) Text(t.message, fontSize = 11.sp, color = MutedColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(t.sha, fontSize = 10.sp, color = MutedColor(), fontFamily = FontFamily.Monospace)
+                                        if (t.message.isNotBlank()) Text(t.message, fontSize = 11.sp, color = MutedColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
-                                    Text("Delete", fontSize = 11.sp, color = DeletedColor, modifier = Modifier.clickable {
+                                    Text("Delete", fontSize = 11.sp, color = DeletedColor(), modifier = Modifier.clickable {
                                         scope.launch {
                                             withContext(Dispatchers.IO) { runGit(context, repoDir, "tag", "-d", t.name) }
                                             loadTags()
                                         }
                                     }.padding(4.dp))
                                 }
-                                HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                                HorizontalDivider(color = DividerColor(), thickness = 0.5.dp)
                             }
                         }
                     }
@@ -1007,7 +1041,7 @@ fun SourceControlPane(projectId: String) {
             title = { Text("New Branch", fontSize = 14.sp) },
             text = {
                 Column {
-                    if (newBranchError != null) Text(newBranchError!!, fontSize = 11.sp, color = ErrorColor)
+                    if (newBranchError != null) Text(newBranchError!!, fontSize = 11.sp, color = ErrorColor())
                     OutlinedTextField(value = newBranchName, onValueChange = { newBranchName = it; newBranchError = null },
                         label = { Text("Branch name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
@@ -1043,7 +1077,7 @@ fun SourceControlPane(projectId: String) {
                             refreshStatus()
                         }
                     }, modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DeletedColor)) { Text("Delete") }
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DeletedColor())) { Text("Delete") }
                 }
             },
             confirmButton = {},
@@ -1132,7 +1166,7 @@ fun SourceControlPane(projectId: String) {
                         label = { Text("Message (blank = lightweight)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = newTagAnnotated, onCheckedChange = { newTagAnnotated = it })
-                        Text("Annotated tag", fontSize = 12.sp, color = TextColor)
+                        Text("Annotated tag", fontSize = 12.sp, color = TextColor())
                     }
                 }
             },
@@ -1256,13 +1290,13 @@ fun SourceControlPane(projectId: String) {
 @Composable
 private fun SectionHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Unit, action: String?, onAction: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable { onToggle() }.background(HeaderBg).padding(horizontal = 8.dp, vertical = 5.dp),
+        Modifier.fillMaxWidth().clickable { onToggle() }.background(HeaderBg()).padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null, tint = MutedColor, modifier = Modifier.size(14.dp))
+        Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null, tint = MutedColor(), modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(4.dp))
-        Text("$title ($count)", fontSize = 11.sp, color = MutedColor, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        if (action != null) Text(action, fontSize = 10.sp, color = IconColor, modifier = Modifier.clickable { onAction() }.padding(horizontal = 4.dp))
+        Text("$title ($count)", fontSize = 11.sp, color = MutedColor(), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        if (action != null) Text(action, fontSize = 10.sp, color = IconColor(), modifier = Modifier.clickable { onAction() }.padding(horizontal = 4.dp))
     }
 }
 
@@ -1275,8 +1309,8 @@ private fun ChangeRow(change: GitChange, onStage: (() -> Unit)?, onUnstage: (() 
     var loadingDiff by remember { mutableStateOf(false) }
 
     val statusColor = when (change.statusCode) {
-        'M' -> ModifiedColor; 'A' -> AddedColor; 'D' -> DeletedColor
-        '?' -> UntrackedColor; 'R', 'C' -> Color(0xFF4EC9B0); else -> MutedColor
+        'M' -> ModifiedColor(); 'A' -> AddedColor(); 'D' -> DeletedColor()
+        '?' -> UntrackedColor(); 'R', 'C' -> Color(0xFF4EC9B0); else -> MutedColor()
     }
     val statusLabel = when (change.statusCode) {
         'M' -> "M"; 'A' -> "A"; 'D' -> "D"; '?' -> "U"; 'R' -> "R"; 'C' -> "C"
@@ -1307,19 +1341,19 @@ private fun ChangeRow(change: GitChange, onStage: (() -> Unit)?, onUnstage: (() 
         ) {
             Text(statusLabel, fontSize = 10.sp, color = statusColor, fontFamily = FontFamily.Monospace, modifier = Modifier.width(14.dp))
             Spacer(Modifier.width(4.dp))
-            Text(change.file, fontSize = 12.sp, color = TextColor, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(change.file, fontSize = 12.sp, color = TextColor(), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (repoDir != null && change.statusCode != '?') {
-                Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null, tint = MutedColor, modifier = Modifier.size(13.dp))
+                Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null, tint = MutedColor(), modifier = Modifier.size(13.dp))
                 Spacer(Modifier.width(4.dp))
             }
-            if (onStage   != null) { Icon(Icons.Default.Add,   "Stage",   tint = IconColor,    modifier = Modifier.size(15.dp).clickable { onStage() });   Spacer(Modifier.width(4.dp)) }
-            if (onUnstage != null) { Icon(Icons.Default.Remove, "Unstage", tint = MutedColor,  modifier = Modifier.size(15.dp).clickable { onUnstage() }); Spacer(Modifier.width(4.dp)) }
-            if (onDiscard != null) { Icon(Icons.AutoMirrored.Filled.Undo,   "Discard", tint = DeletedColor, modifier = Modifier.size(15.dp).clickable { onDiscard() }) }
+            if (onStage   != null) { Icon(Icons.Default.Add,   "Stage",   tint = IconColor(),    modifier = Modifier.size(15.dp).clickable { onStage() });   Spacer(Modifier.width(4.dp)) }
+            if (onUnstage != null) { Icon(Icons.Default.Remove, "Unstage", tint = MutedColor(),  modifier = Modifier.size(15.dp).clickable { onUnstage() }); Spacer(Modifier.width(4.dp)) }
+            if (onDiscard != null) { Icon(Icons.AutoMirrored.Filled.Undo,   "Discard", tint = DeletedColor(), modifier = Modifier.size(15.dp).clickable { onDiscard() }) }
         }
         if (expanded) {
             if (loadingDiff) {
                 Box(Modifier.fillMaxWidth().padding(start = 32.dp, bottom = 4.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = IconColor)
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = IconColor())
                 }
             } else {
                 DiffViewer(
@@ -1330,7 +1364,7 @@ private fun ChangeRow(change: GitChange, onStage: (() -> Unit)?, onUnstage: (() 
                 )
             }
         }
-        HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+        HorizontalDivider(color = DividerColor().copy(alpha = 0.5f), thickness = 0.5.dp)
     }
 }
 
@@ -1342,13 +1376,13 @@ private fun ConflictResolverRow(filePath: String, repoDir: File, context: Contex
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, top = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
-            Text(filePath, fontSize = 11.sp, color = ConflictColor, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (expanded) "v" else ">", color = MutedColor, fontSize = 10.sp)
+            Text(filePath, fontSize = 11.sp, color = ConflictColor(), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (expanded) "v" else ">", color = MutedColor(), fontSize = 10.sp)
         }
         if (expanded) {
             Spacer(Modifier.height(6.dp))
             LaunchedEffect(filePath) { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { val t = f.readText(); conflictInfo = "${t.split("<<<<<<< ").size - 1} conflict(s)" } } }
-            conflictInfo?.let { Text(it, fontSize = 10.sp, color = MutedColor); Spacer(Modifier.height(6.dp)) }
+            conflictInfo?.let { Text(it, fontSize = 10.sp, color = MutedColor()); Spacer(Modifier.height(6.dp)) }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Button(onClick = { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { var t = f.readText(); t = Regex("(?s)<<<<<<< .*?\n(.*?)=======.*?>>>>>>> .*\n").replace(t) { m -> m.groupValues[1] }; f.writeText(t); runGit(context, repoDir, "add", filePath); onResolved() } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)), modifier = Modifier.weight(1f)) { Text("Ours", color = Color.White, fontSize = 10.sp) }
                 Button(onClick = { scope.launch(Dispatchers.IO) { val f = File(repoDir, filePath); if (f.exists()) { var t = f.readText(); t = Regex("(?s)<<<<<<< .*?=======\n(.*?)>>>>>>> .*\n").replace(t) { m -> m.groupValues[1] }; f.writeText(t); runGit(context, repoDir, "add", filePath); onResolved() } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD16969)), modifier = Modifier.weight(1f)) { Text("Theirs", color = Color.White, fontSize = 10.sp) }
