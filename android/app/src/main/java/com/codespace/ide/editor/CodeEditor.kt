@@ -1062,6 +1062,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var findQuery by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
     var useRegex by remember { mutableStateOf(false) }
+    var caseSensitive by remember { mutableStateOf(false) }
+    var wholeWord by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
 
     // ── Lint state ───────────────────────────────────────────────────────
@@ -1097,11 +1099,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // ── Go to Line state ─────────────────────────────────────────────────
     var goToLineInput by remember { mutableStateOf("") }
 
-    val matches = remember(value.text, findQuery, useRegex) {
+    val matches = remember(value.text, findQuery, useRegex, caseSensitive, wholeWord) {
         if (findQuery.isEmpty()) emptyList()
         else try {
-            val pattern = if (useRegex) Regex(findQuery) else Regex(Regex.escape(findQuery))
-            pattern.findAll(value.text).map { it.range }.toList()
+            val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+            val rawPattern = if (useRegex) findQuery else Regex.escape(findQuery)
+            val finalPattern = if (wholeWord && !useRegex) "\\b${'$'}rawPattern\\b" else rawPattern
+            Regex(finalPattern, opts).findAll(value.text).map { it.range }.toList()
         } catch (e: Exception) { emptyList() }
     }
     LaunchedEffect(matches.size, findQuery) {
@@ -1689,6 +1693,38 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         }
                     }
                 }
+            }
+        }
+
+        // ── P45-G3: Highlight all search matches ─────────────────────────────
+        if (findReplaceOpen && matches.isNotEmpty() && matches.size <= 200) {
+            val lineHeightPxM = fontSize * 1.25f
+            val charWidthPxM  = fontSize * 0.6f
+            val gutterDpM    = 74f
+            val scrollOffsetPxM = vScroll.value
+            matches.forEachIndexed { idx, range ->
+                val matchStart = range.first
+                val lineIdx = value.text.take(matchStart).count { it == '\n' }
+                val lineStart = value.text.lastIndexOf('\n', (matchStart - 1).coerceAtLeast(0))
+                    .let { if (it < 0) 0 else it + 1 }
+                val col = matchStart - lineStart
+                val matchLen = range.last - range.first + 1
+                val topDpM = lineIdx * lineHeightPxM - scrollOffsetPxM
+                val startDpM = gutterDpM + col * charWidthPxM
+                val widthDpM = (matchLen * charWidthPxM).coerceAtLeast(3f)
+                val isCurrent = idx == matchIndex
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = startDpM.dp, top = topDpM.dp)
+                        .width(widthDpM.dp)
+                        .height(lineHeightPxM.dp)
+                        .background(
+                            if (isCurrent) Color(0xFF007ACC).copy(alpha = 0.35f)
+                            else Color(0xFFD4D4D4).copy(alpha = 0.15f)
+                        )
+                        .zIndex(if (isCurrent) 5.5f else 3.5f),
+                )
             }
         }
 
@@ -3333,6 +3369,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onReplaceQueryChange = { replaceQuery = it },
             useRegex = useRegex,
             onToggleRegex = { useRegex = !useRegex },
+            caseSensitive = caseSensitive,
+            onToggleCaseSensitive = { caseSensitive = !caseSensitive },
+            wholeWord = wholeWord,
+            onToggleWholeWord = { wholeWord = !wholeWord },
             matches = matches,
             matchIndex = matchIndex,
             onMatchIndexChange = { matchIndex = it },
@@ -4522,6 +4562,10 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
     onReplaceQueryChange: (String) -> Unit,
     useRegex: Boolean,
     onToggleRegex: () -> Unit,
+    caseSensitive: Boolean,
+    onToggleCaseSensitive: () -> Unit,
+    wholeWord: Boolean,
+    onToggleWholeWord: () -> Unit,
     matches: List<IntRange>,
     matchIndex: Int,
     onMatchIndexChange: (Int) -> Unit,
@@ -4596,6 +4640,29 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                         color = if (useRegex) Color(0xFF007ACC) else Color(0xFF888888),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
+                    )
+                }
+                IconButton(
+                    onClick = { onToggleCaseSensitive() },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Text(
+                        "Aa",
+                        color = if (caseSensitive) Color(0xFF007ACC) else Color(0xFF888888),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                IconButton(
+                    onClick = { onToggleWholeWord() },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Text(
+                        "W",
+                        color = if (wholeWord) Color(0xFF007ACC) else Color(0xFF888888),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
                 IconButton(
@@ -4698,9 +4765,10 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                     onClick = {
                         if (findQuery.isNotEmpty() && matches.isNotEmpty()) {
                             val newText = try {
-                                val pattern = if (useRegex) Regex(findQuery)
-                                              else Regex(Regex.escape(findQuery))
-                                pattern.replace(text, replaceQuery)
+                                val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+                                val rawPat = if (useRegex) findQuery else Regex.escape(findQuery)
+                                val finalPat = if (wholeWord && !useRegex) "\\b${'$'}rawPat\\b" else rawPat
+                                Regex(finalPat, opts).replace(text, replaceQuery)
                             } catch (e: Exception) { text }
                             onTextChange(newText, 0)
                         }
