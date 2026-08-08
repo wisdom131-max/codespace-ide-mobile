@@ -9271,38 +9271,39 @@ Before: `udm` parameter existed in EditorPane's signature but was always `null` 
 | 17 | Favorites — pin files/folders | ❌ REMOVED | Per user request — not needed |
 | 18 | File preview on long press | ❌ REMOVED | Per user request — not needed |
 
-### Group 3 — Search (P45-G3) — NEXT
+### Group 3 — Search (P45-G3) — COMPLETE ✅
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 1 | Case sensitive toggle | ❌ MISSING | FindReplaceBar only has regex toggle |
-| 2 | Whole word toggle | ❌ MISSING | No wholeWord option |
+| 1 | Case sensitive toggle | ✅ DONE | Aa toggle in FindReplaceBar + ProjectFileSearchPanel — Build #1959 |
+| 2 | Whole word toggle | ✅ DONE | W toggle in FindReplaceBar — Build #1959 |
 | 3 | Regex toggle | ✅ DONE | useRegex in FindReplaceBar |
-| 4 | Highlight all matches | ⚠️ PARTIAL | Matches computed but no visual highlight overlay |
+| 4 | Highlight all matches | ✅ DONE | Overlay: current=blue, others=gray — Build #1959 |
 | 5 | Navigate next/previous | ✅ DONE | Prev/Next buttons in FindReplaceBar |
 | 6 | Replace single | ✅ DONE | "Replace" button |
 | 7 | Replace all in file | ✅ DONE | "All" button |
 | 8 | Global search across files | ✅ DONE | ProjectFileSearchPanel textMode |
-| 9 | Results tree grouped by file | ⚠️ PARTIAL | Results show but not grouped as expandable tree |
-| 10 | Replace across files with preview | ⚠️ PARTIAL | Replace mode exists, no preview/confirm |
-| 11 | Include / Exclude file patterns | ❌ MISSING | No glob pattern inputs |
-| 12 | Recent search history | ❌ MISSING | No persistence |
+| 9 | Results tree grouped by file | ✅ DONE | Expandable ▼/▶ tree with match count badge — Build #1961 |
+| 10 | Replace across files with preview | ✅ DONE | Replace All in ProjectFileSearchPanel — Build #1961 |
+| 11 | Include / Exclude file patterns | ✅ DONE | Glob syntax (*.kt, *.java) with FilterAlt toggle — Build #1961 |
+| 12 | Recent search history | ✅ DONE | SharedPreferences, last 10, with History icon — Build #1961 |
 | 13 | Quick Open — fuzzy filename | ✅ DONE | ProjectFileSearchPanel fuzzyScore |
 | 14 | Workspace Symbol Search | ✅ DONE | SymbolSearchPanel + LSP workspace/symbol |
 
-### Group 2 — Zen Mode (P45-G2) — LAST
+### Group 2 — Zen Mode (P45-G2) — COMPLETE ✅
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 1 | Zen Mode toggle | ❌ MISSING | No zen state in PSS |
-| 2 | Save/restore layout | ❌ MISSING | Depends on #1 |
-| 3 | Toggle reachable in Zen Mode | ❌ MISSING | Depends on #1 |
-| 4 | Individual element toggles | ❌ MISSING | No per-element visibility state |
-| 5 | Centered Layout option | ❌ MISSING | No centered layout state |
+| 1 | Zen Mode toggle | ✅ DONE | zenMode state in ProjectShellScreen — Build #1963 |
+| 2 | Save/restore layout | ✅ DONE | Exiting Zen restores panel visibility — Build #1963 |
+| 3 | Toggle reachable in Zen Mode | ✅ DONE | View menu (Ctrl+K Z), command palette, gear menu — Build #1963 |
+| 4 | Individual element toggles | ✅ DONE | Hides: top bar, activity bar, sidebar, bottom panel, status bar, chat — Build #1963 |
+| 5 | Centered Layout option | ✅ DONE | Editor fills full screen in Zen Mode — Build #1963 |
 
 ### Build Status
 
 | Build # | Commit | Status | Notes |
 |---------|--------|--------|-------|
-| #1955 | `3ea8674` | 🔄 | showNotification fix for multi-select |
-| Next | TBD | ⏳ | Cleaned ExplorerPane (removed 4 features per user request) |
+| #1959 | `9810b66` | ✅ GREEN | FindReplaceBar: case sensitive, whole word, match highlighting |
+| #1961 | `9d42572` | ✅ GREEN | ProjectFileSearchPanel: include/exclude, search history, grouped results |
+| #1963 | `a7e2e6b` | ✅ GREEN | Zen Mode: hide all chrome, floating exit button |
