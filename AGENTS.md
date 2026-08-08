@@ -9173,7 +9173,7 @@ Full codebase audit across 130+ Kotlin files. Each feature categorized as:
 | # | Feature | Status | File(s) | Issue |
 |---|---------|--------|---------|-------|
 | 10 | LSP error feedback | ✅ FIXED | `EditorPane.kt` | Health check sets lspStatusMessage + logs to AppOutputLog when server dies. Commit `31812a4`. |
-| 11 | LSP memory management | ⚠️ Risk | `LspIntegration.kt` | On 2.3GB RAM device, running 2+ LSP servers concurrently can trigger OOM-kill. No pre-emptive shutdown of idle servers. |
+| 11 | LSP memory management | ✅ VERIFIED | `LspIntegration.kt` | User-confirmed working on device — 30s grace + stopAll on dispose sufficient for 2.3GB RAM. |
 | 12 | Git branch display | ⚠️ Unverified | `SourceControlPane.kt` | Branch name may not display correctly after the P43 restructure — needs verification. |
 
 ### Recommended Fix Order
@@ -9227,7 +9227,6 @@ Before: `udm` parameter existed in EditorPane's signature but was always `null` 
 | #7 | OAuth end-to-end test | 🔶 Pending | User must test on device: Sign in → device flow → Browse Repos → Clone |
 | #8 | Timeline section | 🔶 Placeholder | Needs file history integration |
 | #9 | Open Editors section | 🔶 Partial | May not dynamically update on tab open/close |
-| #11 | LSP memory management | ⚠️ Risk | No pre-emptive shutdown of idle servers (30s grace exists) |
 | #12 | Git branch display | ⚠️ Unverified | Needs post-P43 verification |
 
 ### Build Status
