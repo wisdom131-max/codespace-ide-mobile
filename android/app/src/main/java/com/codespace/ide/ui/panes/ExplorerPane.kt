@@ -181,6 +181,17 @@ data class FsNode(
     val isExpanded: Boolean = false,
 )
 
+// ── Favorites helpers ────────────────────────────────────────────────────────
+private fun loadFavorites(context: Context, projectId: String): List<String> {
+    val prefs = context.getSharedPreferences("explorer_favorites", Context.MODE_PRIVATE)
+    return prefs.getStringSet("fav_$projectId", emptySet())?.toList()?.sorted() ?: emptyList()
+}
+
+private fun saveFavorites(context: Context, projectId: String, favorites: List<String>) {
+    val prefs = context.getSharedPreferences("explorer_favorites", Context.MODE_PRIVATE)
+    prefs.edit().putStringSet("fav_$projectId", favorites.toSet()).apply()
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExplorerSidePanel(
@@ -300,6 +311,40 @@ fun ExplorerSidePanel(
             ?.forEach { walk(it, 0) }
         treeListState.animateScrollToItem(idx.coerceAtLeast(0))
     }
+    // Reveal Active File: expand all ancestors and scroll to the active file in tree
+    LaunchedEffect(activeFilePath, workspacePath) {
+        val active = activeFilePath ?: return@LaunchedEffect
+        val activeFile = File(active)
+        val root = workspacePath?.let { File(it) } ?: return@LaunchedEffect
+        // Only act if the file is inside the workspace
+        if (!active.startsWith(root.absolutePath)) return@LaunchedEffect
+        // Expand all ancestor directories
+        var dir = activeFile.parentFile
+        while (dir != null && dir.absolutePath != root.absolutePath) {
+            expanded[dir.absolutePath] = true
+            dir = dir.parentFile
+        }
+        // Give the tree a frame to recompose
+        kotlinx.coroutines.delay(100)
+        // Find the index of the active file in the visible nodes
+        var idx = 0
+        fun findIndex(f: File, depth: Int): Boolean {
+            if (f.absolutePath == active) return true
+            idx++
+            if (expanded[f.absolutePath] == true && f.isDirectory) {
+                f.listFiles()
+                    ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                    ?.forEach { child ->
+                        if (findIndex(child, depth + 1)) return true
+                    }
+            }
+            return false
+        }
+        root.listFiles()
+            ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            ?.forEach { findIndex(it, 0) }
+        treeListState.animateScrollToItem(idx.coerceAtLeast(0))
+    }
     var selected      by remember { mutableStateOf<String?>(null) }
     var contextFile   by remember { mutableStateOf<File?>(null) }
     var showCtxMenu   by remember { mutableStateOf(false) }
@@ -320,6 +365,12 @@ fun ExplorerSidePanel(
     var refresh       by remember { mutableStateOf(0) }
     var filterQuery   by remember { mutableStateOf("") }
     var sortByType    by remember { mutableStateOf(false) }
+    var showHidden    by remember { mutableStateOf(false) }
+    var sortMode      by remember { mutableStateOf(0) } // 0=Name, 1=Date, 2=Size, 3=Type
+    var multiSelectMode by remember { mutableStateOf(false) }
+    val selectedFiles = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    var favorites     by remember(projectId) { mutableStateOf(loadFavorites(context, projectId)) }
+    var previewTextPath by remember { mutableStateOf<String?>(null) }
     var showOutline   by remember { mutableStateOf(false) }
     var showTimeline  by remember { mutableStateOf(false) }
     // P42: Explorer restructure — independent collapsible sections (VS Code style)
@@ -456,15 +507,19 @@ fun ExplorerSidePanel(
         nodes.add(FsNode(dir, depth, isExp))
         if (isExp) {
             val children = dir.listFiles()
-                ?.filter { !it.name.trimEnd().startsWith(".") }
+                ?.filter { showHidden || !it.name.trimEnd().startsWith(".") }
                 ?.filter { f ->
                     if (filterQuery.isBlank()) true
                     else f.name.contains(filterQuery, ignoreCase = true) ||
                          (f.isDirectory && f.walkTopDown().any { it.name.contains(filterQuery, ignoreCase = true) })
                 }
                 ?.sortedWith(
-                    if (sortByType) compareByDescending<File> { it.isDirectory }.thenBy { it.extension }.thenBy { it.name }
-                    else compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() }
+                    when (sortMode) {
+                        1 -> compareByDescending<File> { it.isDirectory }.thenByDescending { it.lastModified() }.thenBy { it.name }
+                        2 -> compareByDescending<File> { it.isDirectory }.thenByDescending { it.length() }.thenBy { it.name }
+                        3 -> compareByDescending<File> { it.isDirectory }.thenBy { it.extension }.thenBy { it.name }
+                        else -> compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() }
+                    }
                 )
                 ?: emptyList()
             children.forEach { child ->
@@ -519,12 +574,19 @@ fun ExplorerSidePanel(
         }
     }
 
-    val nodes = remember(workspacePath, expanded.toMap(), refresh, filterQuery, sortByType) {
+    val nodes = remember(workspacePath, expanded.toMap(), refresh, filterQuery, showHidden, sortMode) {
         val root = workspaceRoot ?: return@remember emptyList()
         if (!root.exists()) return@remember emptyList()
         val children = root.listFiles()
-            ?.filter { !it.name.trimEnd().startsWith(".") }
-            ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() })
+            ?.filter { showHidden || !it.name.trimEnd().startsWith(".") }
+            ?.sortedWith(
+                when (sortMode) {
+                    1 -> compareByDescending<File> { it.isDirectory }.thenByDescending { it.lastModified() }.thenBy { it.name }
+                    2 -> compareByDescending<File> { it.isDirectory }.thenByDescending { it.length() }.thenBy { it.name }
+                    3 -> compareByDescending<File> { it.isDirectory }.thenBy { it.extension }.thenBy { it.name }
+                    else -> compareByDescending<File> { it.isDirectory }.thenBy { it.name.trimEnd() }
+                }
+            )
             ?: emptyList()
         children.flatMap { f ->
             if (f.isDirectory) buildNodes(f, 0)
@@ -607,6 +669,60 @@ fun ExplorerSidePanel(
             HorizontalDivider(color = DividerColor, thickness = 1.dp)
         }
 
+        // ── FAVORITES section (pinned files/folders, persisted via SharedPreferences)
+        if (favorites.isNotEmpty()) {
+            Column {
+                Row(
+                    Modifier.fillMaxWidth().height(24.dp)
+                        .background(Color(0xFF252526))
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Star, null, tint = Color(0xFFDCB670), modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("FAVORITES", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text(favorites.size.toString(), fontSize = 10.sp, color = MutedColor)
+                }
+                favorites.forEach { favPath ->
+                    val favFile = File(favPath)
+                    if (favFile.exists()) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(if (favPath == activeFilePath) SelectedBg else Color.Transparent)
+                                .clickable {
+                                    if (favFile.isDirectory) {
+                                        expanded[favFile.absolutePath] = true
+                                        navigateToDir?.let { /* could navigate */ }
+                                    } else {
+                                        onOpenFile(favPath)
+                                    }
+                                }
+                                .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (favFile.isDirectory) Icons.Default.Folder else fileIcon(favFile.name),
+                                null,
+                                tint = if (favFile.isDirectory) FolderColor else fileIconColor(favFile.name),
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                favFile.name,
+                                fontSize = 12.sp, color = TextColor,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(Icons.Default.Star, null, tint = Color(0xFFDCB670),
+                                modifier = Modifier.size(12.dp))
+                        }
+                    }
+                }
+                HorizontalDivider(color = DividerColor, thickness = 1.dp)
+            }
+        }
+
         // ── WORKSPACE / FOLDER section header (collapsible) — shows the folder name
         // (or "NO FOLDER OPENED"). Everything below (toolbar, device panel, empty-state
         // or tree) is placed as DIRECT children of the outer Column — not nested in an
@@ -663,6 +779,60 @@ fun ExplorerSidePanel(
             }
             Spacer(Modifier.weight(1f))
         }
+        // ── Multi-select action bar ──
+        if (multiSelectMode) {
+            Row(
+                Modifier.fillMaxWidth().height(32.dp)
+                    .background(Color(0xFF252526))
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("${selectedFiles.size} selected", fontSize = 11.sp, color = Color(0xFF007ACC), fontWeight = FontWeight.Medium)
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = {
+                    workspaceRoot?.let { root ->
+                        fun collectFiles(f: File) {
+                            if (!f.isDirectory) selectedFiles.add(f.absolutePath)
+                            if (expanded[f.absolutePath] == true && f.isDirectory) {
+                                f.listFiles()?.forEach { collectFiles(it) }
+                            }
+                        }
+                        root.listFiles()?.forEach { collectFiles(it) }
+                    }
+                }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
+                    Text("All", fontSize = 11.sp, color = Color(0xFF007ACC))
+                }
+                Icon(Icons.Default.ContentCopy, null, tint = MutedColor,
+                    modifier = Modifier.size(16.dp).clickable {
+                        if (selectedFiles.size == 1) {
+                            clipboardFile = File(selectedFiles.first())
+                            clipboardCut = false
+                        }
+                        multiSelectMode = false
+                        selectedFiles.clear()
+                        showNotification?.invoke("Copied", "success")
+                    })
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.Delete, null, tint = Color(0xFFF48771),
+                    modifier = Modifier.size(16.dp).clickable {
+                        selectedFiles.forEach { path ->
+                            val f = File(path)
+                            if (f.isDirectory) f.deleteRecursively() else f.delete()
+                        }
+                        selectedFiles.clear()
+                        multiSelectMode = false
+                        refresh++
+                        showNotification?.invoke("Deleted files", "success")
+                    })
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.Close, null, tint = MutedColor,
+                    modifier = Modifier.size(16.dp).clickable {
+                        multiSelectMode = false
+                        selectedFiles.clear()
+                    })
+            }
+        }
+
         // ── Folder toolbar — only when a folder is open and the section is expanded ──
         if (workspaceRoot != null && workspaceExpanded) {
             Row(
@@ -701,6 +871,16 @@ fun ExplorerSidePanel(
                 Icon(Icons.Default.Refresh, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable { refresh++ })
                 Spacer(Modifier.width(6.dp))
+                // Multi-select toggle
+                Icon(
+                    Icons.Default.CheckBox,
+                    null, tint = if (multiSelectMode) Color(0xFF007ACC) else MutedColor,
+                    modifier = Modifier.size(16.dp).clickable {
+                        multiSelectMode = !multiSelectMode
+                        if (!multiSelectMode) selectedFiles.clear()
+                    }
+                )
+                Spacer(Modifier.width(6.dp))
                 // Collapse All
                 Icon(Icons.Default.UnfoldLess, null, tint = MutedColor,
                     modifier = Modifier.size(16.dp).clickable {
@@ -708,10 +888,33 @@ fun ExplorerSidePanel(
                         refresh++
                     })
                 Spacer(Modifier.width(6.dp))
-                // Sort toggle (N=name, T=type)
-                Box(Modifier.clickable { sortByType = !sortByType }.padding(2.dp)) {
-                    Text(if (sortByType) "T" else "N", fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
+                // Expand All
+                Icon(Icons.Default.UnfoldMore, null, tint = MutedColor,
+                    modifier = Modifier.size(16.dp).clickable {
+                        workspaceRoot?.let { root ->
+                            fun expandAll(f: File) {
+                                if (f.isDirectory) {
+                                    expanded[f.absolutePath] = true
+                                    f.listFiles()?.forEach { expandAll(it) }
+                                }
+                            }
+                            expandAll(root)
+                        }
+                        refresh++
+                    })
+                Spacer(Modifier.width(6.dp))
+                // Sort toggle (N=Name, D=Date, S=Size, T=Type)
+                Box(Modifier.clickable { sortMode = (sortMode + 1) % 4 }.padding(2.dp)) {
+                    Text(when (sortMode) { 0 -> "N"; 1 -> "D"; 2 -> "S"; else -> "T" },
+                         fontSize = 10.sp, color = MutedColor, fontWeight = FontWeight.Bold)
                 }
+                Spacer(Modifier.width(6.dp))
+                // Hidden files toggle
+                Icon(
+                    if (showHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                    null, tint = if (showHidden) Color(0xFF007ACC) else MutedColor,
+                    modifier = Modifier.size(16.dp).clickable { showHidden = !showHidden }
+                )
                 Spacer(Modifier.width(6.dp))
                 // Add folder to workspace (multi-root)
                 Icon(Icons.Default.Add, null, tint = MutedColor,
@@ -926,12 +1129,25 @@ fun ExplorerSidePanel(
                         val isDex    = !node.file.isDirectory && isDexFile(node.file.name)
                         val isElf    = !node.file.isDirectory && isElfFile(node.file.name)
                         val isHexBin = !node.file.isDirectory && !isSqlite && !isDex && !isElf && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
+                        val isMultiSelected = selectedFiles.contains(node.file.absolutePath)
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .background(if (isSelected) SelectedBg else BgColor)
+                                .background(
+                                    when {
+                                        isMultiSelected -> SelectedBg
+                                        isSelected -> SelectedBg
+                                        else -> BgColor
+                                    }
+                                )
                                 .combinedClickable(
                                     onClick = {
+                                        if (multiSelectMode) {
+                                            val path = node.file.absolutePath
+                                            if (selectedFiles.contains(path)) selectedFiles.remove(path)
+                                            else selectedFiles.add(path)
+                                            return@combinedClickable
+                                        }
                                         selected = node.file.absolutePath
                                         if (node.file.isDirectory) {
                                             expanded[node.file.absolutePath] =
@@ -968,12 +1184,16 @@ fun ExplorerSidePanel(
                                         }
                                     },
                                     onLongClick = {
-                                        if (isImage) {
-                                            // Show image preview popup
-                                            previewImagePath = node.file.absolutePath
+                                        if (multiSelectMode) {
+                                            multiSelectMode = false
+                                            selectedFiles.clear()
+                                        } else {
+                                            if (isImage) {
+                                                previewImagePath = node.file.absolutePath
+                                            }
+                                            contextFile = node.file
+                                            showCtxMenu = true
                                         }
-                                        contextFile = node.file
-                                        showCtxMenu = true
                                     }
                                 )
                                 .padding(
@@ -982,6 +1202,22 @@ fun ExplorerSidePanel(
                                 ),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            if (multiSelectMode) {
+                                Checkbox(
+                                    checked = isMultiSelected,
+                                    onCheckedChange = { checked ->
+                                        val path = node.file.absolutePath
+                                        if (checked) selectedFiles.add(path)
+                                        else selectedFiles.remove(path)
+                                    },
+                                    modifier = Modifier.size(20.dp),
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = Color(0xFF007ACC),
+                                        uncheckedColor = MutedColor,
+                                    ),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
                             if (node.file.isDirectory) {
                                 Icon(
                                     if (node.isExpanded) Icons.Default.KeyboardArrowDown
@@ -1180,6 +1416,7 @@ fun ExplorerSidePanel(
                     buildList {
                         add("Open" to Icons.AutoMirrored.Filled.OpenInNew)
                         if (hasPreview) add("Preview" to Icons.Default.Image)
+                        if (!f.isDirectory && !isHexBin && !isArch && !isPdf && !isVid && !isAud && !isDex && !isElf && !isApkAnalyzable(f.name) && !isNetworkCapture(f.name) && !isAiModel(f.name) && !isAndroidRuntimeFile(f.name)) add("Quick Preview" to Icons.Default.Description)
                         add("Rename" to Icons.Default.Edit)
                         add("Copy" to Icons.Default.ContentCopy)
                         add("Cut" to Icons.Default.ContentCut)
@@ -1187,6 +1424,9 @@ fun ExplorerSidePanel(
                         add("Duplicate" to Icons.Default.FileCopy)
                         add("Delete" to Icons.Default.Delete)
                         add("Copy Path" to Icons.Default.ContentCopy)
+                        val isFav = favorites.contains(f.absolutePath)
+                        if (isFav) add("Remove from Favorites" to Icons.Default.Star)
+                        else add("Add to Favorites" to Icons.Default.StarBorder)
                         add("Share" to Icons.Default.Share)
                         add("Open in Terminal" to Icons.Default.Computer)
                         add("New File Here" to Icons.Default.Add)
@@ -1229,6 +1469,7 @@ fun ExplorerSidePanel(
                                                    else if (isElf) previewElfPath = f.absolutePath
                                                    else if (isHexBin) previewHexPath = f.absolutePath
                                                    else onOpenFile(f.absolutePath)
+                                        "Quick Preview" -> { previewTextPath = f.absolutePath; showCtxMenu = false }
                                         "Preview" -> when {
                                             isImg -> { previewImagePath = f.absolutePath; showCtxMenu = false }
                                             isArch -> { previewArchivePath = f.absolutePath; showCtxMenu = false }
@@ -1312,6 +1553,14 @@ fun ExplorerSidePanel(
                                                 trashEntries = WorkspaceManager.listTrash(projectDir)
                                             }
                                             showTrashDialog = true
+                                        }
+                                        "Add to Favorites" -> {
+                                            favorites = (favorites + f.absolutePath).sorted()
+                                            saveFavorites(context, projectId, favorites)
+                                        }
+                                        "Remove from Favorites" -> {
+                                            favorites = favorites.filter { it != f.absolutePath }
+                                            saveFavorites(context, projectId, favorites)
                                         }
                                         "Copy Path" -> {
                                             val clipboard = context.getSystemService(
@@ -1517,6 +1766,51 @@ fun ExplorerSidePanel(
 
     // ── Hex viewer — compiled binaries/DBs/fonts/.dex, or anything the NUL-byte sniff
     // catches that wasn't already routed to a dedicated viewer above ──
+    // Quick Preview dialog (first 10 lines of a text file)
+    if (previewTextPath != null) {
+        val previewFile = File(previewTextPath!!)
+        val previewLines = remember(previewTextPath) {
+            try { previewFile.readLines().take(10) } catch (_: Exception) { emptyList() }
+        }
+        Dialog(onDismissRequest = { previewTextPath = null }) {
+            Card(
+                Modifier.fillMaxWidth(0.95f).heightIn(max = 400.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(fileIcon(previewFile.name), null,
+                            tint = fileIconColor(previewFile.name), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(previewFile.name, fontSize = 14.sp, color = TextColor, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.Close, null, tint = MutedColor,
+                            modifier = Modifier.size(20.dp).clickable { previewTextPath = null })
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = DividerColor, thickness = 1.dp)
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        previewLines.forEachIndexed { i, line ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                Text("${i + 1}", fontSize = 11.sp, color = MutedColor,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.width(30.dp))
+                                Text(line, fontSize = 12.sp, color = TextColor,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f))
+                            }
+                        }
+                        if (previewFile.length() > 0 && previewLines.size == 10) {
+                            Spacer(Modifier.height(4.dp))
+                            Text("… (showing first 10 lines)", fontSize = 10.sp, color = MutedColor)
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (previewHexPath != null) {
         HexViewerDialog(
             filePath = previewHexPath!!,
