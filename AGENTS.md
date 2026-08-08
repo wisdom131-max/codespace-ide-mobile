@@ -10726,3 +10726,53 @@ After completing all tests, record results here:
 - User was testing hover docs (`self`, `open()` builtin signature) and AI actions menu — confirmed AI menu includes: Explain Code, Generate Documentation, Generate Unit Tests, Optimize Code, Rewrite Code, Simplify Code, Refactor with AI, Add Comments, Improve Performance. This is a different/separate AI menu from the "Fix with AI" long-press action referenced in B1 — worth reconciling during the Fix-with-AI audit.
 - Source Control panel screenshot shows the SCM panel layout is cramped/overlapping with editor pane when opened side-by-side in landscape — text is cut off ("SOUR", "Chan", "ges", "Grap" instead of full labels). Reinforces test E2/E4 finding that the Source Control panel needs a full restructure.
 
+
+
+---
+
+## Phase 46 — Final Screenshot Batch: Confirmed Causes + New Bugs (2026-08-09)
+
+### Confirmed Root Causes (from Output panel evidence)
+
+**G4 — Symbol Search "no symbol found":** Output panel shows the exact reason:
+`[lsp] LSP ${language.displayName} does not support workspace/symbol — skipping (capability not advertised)`.
+The Python LSP server (pylsp) itself does not advertise `workspace/symbol` capability. The app correctly detects this and skips rather than hanging — but there's no fallback (e.g. regex-based project-wide symbol scan) when the LSP can't do it. Need a fallback symbol indexer for servers without this capability.
+
+**G5 — Large file crash/lag confirmed root cause:** Output panel shows:
+```
+[lsp][Python][stderr] WARNING - pylsp.config.config - Failed to load hook pylsp_signature_help: `line` parameter is not in a valid range.
+Traceback (most recent call last): File ".../pylsp/config/config.py"...
+```
+Signature help requests for the 1070-line file send a `line` parameter that pylsp rejects as out of range — likely an off-by-one or stale line count being sent from the client for large files, or debounced signature-help firing with a cursor position computed before the full document synced. This explains the crash + lag on large files.
+
+**E14 cross-file Go to Def confirmed FAIL:** Testing `shared_function()` call in `caller.py` referencing `defs.py` -> "Not found — No declaration found in current file or project." Cross-file/cross-module go-to-definition does not work at all, only same-file works.
+
+### New Bugs Found
+
+1. **Global/sidebar Search panel returns false "No results found"** — Searched "greet" in the Search sidebar panel while `test_feature.py` (which clearly contains `def greet`, `print(greet(...))`) was open — panel returned "No results found". The sidebar Find-in-Files search is not actually searching file contents correctly. This is more severe than previously logged (N5/N9) — it's returning wrong results, not just failing to highlight.
+
+2. **Editor text rendering overlap glitch** — Screenshot shows lines rendering on top of each other (docstring text overlapping other text). Likely a horizontal-scroll or line-measurement cache not invalidating correctly, causing visual corruption. Needs investigation — could be same family as the negative-padding bug (stale layout state).
+
+3. **Cloud Backup specific error confirmed:** `Failed to load backups: unexpected end of stream on com.android.okhttp.Address@510a7d1d` — this is an OkHttp network-level failure (connection dropped mid-response), not a logic bug — check the backup server endpoint/timeout config.
+
+4. **Preview browser blocked by Google:** Navigating to youtube.com in the in-app Preview browser and attempting sign-in shows Google's "Couldn't sign you in — This browser or app may not be secure." Google blocks WebView-based sign-in for security reasons by default — would need Custom Tabs / System WebView with proper user-agent, or accept that Google login won't work in an embedded WebView (this is a Google policy restriction, not purely an app bug — needs a modern WebView configuration or Chrome Custom Tabs approach).
+
+### Confirmed Working (retest / new evidence)
+
+- **J1 Compress to Zip** — confirmed working, produced `test_links.py.zip` successfully with save location shown.
+- **Run/Debug CodeLens (W3)** — confirmed: "Debug Test" annotation appears above test functions, tapping runs `python3 -m pytest ... test_runnable.py` correctly in Output panel.
+- **Hover docs for builtins** — confirmed working for `int()`, `str()`, `open()` etc. showing proper signatures.
+- **A6 Rename Symbol** — retested, renamed to `sayhello` and it DID persist this time (previous test run's crash-before-autosave issue may be intermittent, tied to the padding crash timing).
+- **Notification truncation** — reconfirmed via Notifications drawer: "Diagnostics failed: Couldn't find met..." cut off, matches earlier bug report (need full-view + copy button, unique keys).
+
+### Design Reference Captured: VS Code "Open Remote Repository" Flow
+User provided VS Code Desktop reference screenshots showing the exact target UX for the Source Control GitHub flow:
+1. Tap "Open Remote Repository" button in Source Control panel (empty state shows this prominently with description "You can open a remote repository or pull request without cloning.")
+2. A command-palette-style search overlay appears: "Enter a remote url, or select a remote provider" with quick-pick options: "Open Repository from Azure Repos", "Open Repository from GitHub", "Open Pull Request from GitHub"
+3. After selecting GitHub (triggers OAuth if not signed in), the same overlay becomes a live search: "Choose a repository, or type an organization or repo name to search" — shows the user's own repos as a filterable list (e.g. `wisdom131-max/codespace-ide-mobile`, `wisdom131-max/ubuntu-proot-bash-test`, etc.) with descriptions
+4. Selecting a repo opens it in the workspace
+
+This is the exact flow to replicate: OAuth sign-in -> redirect back to app -> command-palette-style searchable repo picker (not the current broken/confusing panel).
+
+### App branding note
+Empty editor state shows "Visual Node Code" logo/wordmark with tagline "Open Explorer -> tap a file to start" — confirms current app branding in the UI differs from "CodeSpace IDE" name used in code/docs. Worth reconciling naming consistency across the app.
