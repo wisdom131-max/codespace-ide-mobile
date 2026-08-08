@@ -27,12 +27,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val TlBgColor   = Color(0xFFFFFFFF)
-private val TlHeaderBg  = Color(0xFFF3F3F3)
-private val TlMuted     = Color(0xFF717171)
-private val TlText      = Color(0xFF333333)
-private val TlDivider   = Color(0xFFE0E0E0)
-private val TlIcon      = Color(0xFF007ACC)
+private val TlBgColor   = Color(0xFF1E1E1E)
+private val TlHeaderBg  = Color(0xFF252526)
+private val TlMuted     = Color(0xFF858585)
+private val TlText      = Color(0xFFD4D4D4)
+private val TlDivider   = Color(0xFF2D2D30)
+private val TlIcon      = Color(0xFF569CD6)
 
 private data class TimelineEntry(
     val shortHash: String,
