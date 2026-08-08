@@ -10776,3 +10776,119 @@ This is the exact flow to replicate: OAuth sign-in -> redirect back to app -> co
 
 ### App branding note
 Empty editor state shows "Visual Node Code" logo/wordmark with tagline "Open Explorer -> tap a file to start" — confirms current app branding in the UI differs from "CodeSpace IDE" name used in code/docs. Worth reconciling naming consistency across the app.
+
+
+---
+
+## Phase 46 — Fix Plan: Grouped by Related Systems (2026-08-09)
+
+### PRIORITY ORDER (per user request):
+1. Group A: GitHub & Source Control (FIRST)
+2. Group B: UI/UX Restructuring (SECOND)
+3. Then remaining groups in severity order
+
+---
+
+### GROUP A: GitHub & Source Control (PRIORITY 1)
+Related issues: E1-E18, Q4, Q5 (SCM-affected), GitHubAuth.CLIENT_ID
+- E1: SCM panel opens but layout cramped/overlapping in landscape
+- E2: Stage/unstage not working, panel structure confusing
+- E3: Commit/push/pull doesn't show anything
+- E4-E13: All SCM features broken (branch, log, graph, stash, tags, gitignore, conflicts, blame)
+- E14: Cross-file Go to Definition shows "not found"
+- E15-E18: GitHub clone/sign-in/browse/publish all broken (OAuth CLIENT_ID 404)
+- Q4: Badge counts affected by SCM
+- Q5: Two debuggers not wired properly
+- **TARGET UX:** VS Code "Open Remote Repository" flow: tap button -> OAuth -> redirect back -> command-palette searchable repo picker
+- **Fix:** GitHubAuth CLIENT_ID must be set to real OAuth Device Flow client ID
+- **Fix:** SourceControlPane.kt full restructure to VS Code-style layout
+
+### GROUP B: UI/UX Restructuring (PRIORITY 2)
+Related issues: M5, M7, N1, S1, X8, O1, notification UI, settings
+- M5: Multi-select -> move to 3-dot overflow menu, add "open in editor" button
+- M7: Sort by old-fashioned, needs restructuring
+- N1: Find panel input text cutoff/hidden, toggle buttons not visible
+- S1: Output panel light theme white-on-white. Add copy-to-clipboard + save-as-zip with location picker
+- S1: Output panel should keep running when tab closed (collect logs)
+- X8: Notifications need restructuring
+- Notification: full detail view + copy-to-clipboard button
+- Notification: duplicate LazyColumn key crash (use unique ID not timestamp)
+- O1: Zen Mode keyboard doesn't open, all editor functions must work
+- Settings: add "Remove Password" button near register pin/fingerprint
+- Modernize all UI components (not old-fashioned)
+
+### GROUP C: Editor Rendering & Crashes (CRITICAL)
+Related issues: padding crash, notification crash, text overlap, line numbers, scroll highlight
+- Negative padding crash (CodeEditor.kt:1814, 1719, EditorPane.kt:1286) -> clamp to coerceAtLeast(0.dp)
+- Notification LazyColumn duplicate key crash -> use unique ID
+- Editor text rendering overlap glitch -> stale layout cache
+- Line number alignment (affects T2, G3, W1, T5, X6, squiggles, highlights)
+- Find/Replace highlight doesn't follow scroll (A7, N3) -> track live scroll offset
+- G5: Large file crash/lag -> fix stale line parameter to pylsp signature help
+
+### GROUP D: LSP & Completion
+Related issues: C8, C13, C1, D1, D3, A5, B3, G4, M3, M4
+- C8/M3: Outline panel stops after LSP configures -> document symbol cache not populated
+- C13: No stdlib/builtin completions (math., import o)
+- C1: LintAnalyzer AND LSP diagnostics must both feed Problems panel
+- D1/D3: Completion dropdown issues
+- A5: Snippet Tab expansion broken -> Tab key must check for pending snippet
+- B3: Bracket auto-close + ghost text conflict
+- G4: Symbol search no fallback when LSP lacks workspace/symbol -> add regex fallback
+- M4: Timeline panel worse than outline, needs audit
+
+### GROUP E: Debugger System
+Related issues: F2-F7, Q5
+- F2: No progress in debug panel/terminal
+- F3: Variable inspector not showing data
+- F4: Step buttons don't work
+- F6: Attach debug dialog shows nothing
+- F7: Multi-session affected
+- Q5: Two debuggers (terminal + explorer) not wired properly
+- Root cause: UDM not injected from PSS to EditorPane (known issue)
+
+### GROUP F: Search System
+Related issues: N1-N11, sidebar search
+- N1: Find panel input cutoff/hidden
+- N5: Find in Files doesn't transfer keywords to editor
+- N8: Recent search history not working
+- N9: Workspace search returns false "No results found"
+- N10: Affected by N9
+- N11: Go > Find in File search bar doesn't call keyboard
+- Sidebar search not actually searching file contents
+
+### GROUP G: File Management
+Related issues: J3, small file detection, extract zip, V1, Q2
+- J3: Trash restore UI only shows deleted projects, not files
+- Small files show "too small to be ELF" -> add "edit/open in editor" in long-press menu
+- Add "Extract ZIP" to long-press menu for .zip files
+- V1: Recycle bin restore doesn't show project on project screen after restore
+- Q2: Auto-generate scaffolded template files in chosen main folder
+
+### GROUP H: Terminal
+Related issues: H2, H5, X7
+- H2: Shell history search doesn't call keyboard
+- H5: Quick command palette doesn't work
+- X7: MCP status only works in terminal tab, turns off when switching
+
+### GROUP I: Other Features
+Related issues: B1, I3, P1, A8, A9, A14, C9, C11, D5, K4, .MD icon
+- B1: Fix with AI stub -> wire handler to open chat panel
+- I3: Diagnostics report says "failed"
+- P1: Cloud backup failed (OkHttp stream error)
+- A8: Select Next Occurrence no-op until manual re-select
+- A9/C9/C11: Peek Definition just navigates, no overlay
+- A14: Bookmark icon invisible until theme switch, then clipped
+- D5: Lightbulb shows on wrong line (16 not 28)
+- K4: Markdown preview needs clearer test instructions
+- .MD file icon shows generic blue document fallback
+
+### GROUP J: Preview/Browser
+Related issues: YouTube, browser security
+- YouTube login blocked by Google (WebView security policy)
+- Shorts videos show black (audio only)
+- Zoom button restarts everything instead of mirroring
+- Browser security improvements needed (Chrome Custom Tabs approach)
+
+---
+
