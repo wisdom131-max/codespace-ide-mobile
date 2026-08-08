@@ -810,7 +810,7 @@ fun ExplorerSidePanel(
                         }
                         multiSelectMode = false
                         selectedFiles.clear()
-                        showNotification?.invoke("Copied", "success")
+                        onShowNotification?.invoke("Copied", "success")
                     })
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Delete, null, tint = Color(0xFFF48771),
@@ -822,7 +822,7 @@ fun ExplorerSidePanel(
                         selectedFiles.clear()
                         multiSelectMode = false
                         refresh++
-                        showNotification?.invoke("Deleted files", "success")
+                        onShowNotification?.invoke("Deleted files", "success")
                     })
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Close, null, tint = MutedColor,
