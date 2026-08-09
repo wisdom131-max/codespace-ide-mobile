@@ -3731,7 +3731,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Column(
                     modifier = Modifier
                         .widthIn(min = 160.dp, max = 280.dp)
-                        .heightIn(max = if (availableHeightPx > 200) 220.dp else ((availableHeightPx.value * 0.4f).coerceAtLeast(120f)).dp)
+                        .heightIn(max = if (availableHeightPx > 200) 220.dp else (availableHeightPx * 0.4f).coerceAtLeast(120f).toInt().dp)
                         .background(Color(0xFF252526), RoundedCornerShape(4.dp))
                         .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
                         .clickable { } // consume touches to prevent touch-through to editor
@@ -4830,7 +4830,7 @@ private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
         val hoverScrollState = rememberScrollState()
         var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
         val cursorLineIdxHover = text.take(cursorOffset).count { it == '\n' }
-        val hoverTopDp = ((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScrollValue).coerceAtLeast(0f)
+        val hoverTopDp = (((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScrollValue).coerceAtLeast(0f)
         if (hoverTopDp > 0) {
             Box(
                 modifier = Modifier
