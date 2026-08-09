@@ -3571,22 +3571,52 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     }
                 }
             }
+            var sigExpanded by remember { mutableStateOf(false) }
+            val sigScrollState = rememberScrollState()
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = GUTTER_WIDTH.dp, top = popupTopDp.dp)
                     .widthIn(max = 320.dp)
                     .zIndex(10f)
-                    .background(Color(0xFF252526), RoundedCornerShape(4.dp))
-                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
+                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp)),
             ) {
-                Text(
-                    text = annotated,
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFFD4D4D4),
-                )
+                Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
+                    // Header: expand + copy — matches HoverPopup pattern
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Box(
+                            modifier = Modifier.size(20.dp).clickable { sigExpanded = !sigExpanded },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(text = if (sigExpanded) "▾" else "▸", color = Color(0xFF888888), fontSize = 11.sp)
+                        }
+                        Spacer(Modifier.width(2.dp))
+                        Box(
+                            modifier = Modifier.size(20.dp).clickable {
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(sig.label + "(" + sig.params.joinToString(", ") + ")"))
+                            },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(text = "⧉", color = Color(0xFF888888), fontSize = 11.sp)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .then(if (sigExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(sigScrollState) else Modifier)
+                    ) {
+                        Text(
+                            text = annotated,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFFD4D4D4),
+                        )
+                    }
+                }
             }
         }
 
@@ -3731,9 +3761,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Column(
                     modifier = Modifier
                         .widthIn(min = 160.dp, max = 280.dp)
-                        .heightIn(max = if (availableHeightPx > 200) 220.dp else (availableHeightPx * 0.4f).coerceAtLeast(120f).toInt().dp)
-                        .background(Color(0xFF252526), RoundedCornerShape(4.dp))
-                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
+                        .heightIn(max = if (availableHeightDp > 200) 220.dp else (availableHeightDp * 0.4f).coerceAtLeast(120f).toInt().dp)
+                        .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp))
                         .clickable { } // consume touches to prevent touch-through to editor
                 ) {
                     // P41-J: Filter chips row
@@ -4091,31 +4121,60 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                     }
-                    // P41-J: Detail panel — full documentation for highlighted item
+                    // P41-J: Detail panel — full documentation for highlighted item (modern: expand + copy + scroll)
+                    var detailExpanded by remember { mutableStateOf(false) }
+                    val detailScrollState = rememberScrollState()
                     if (detailDoc != null && detailDoc!!.isNotBlank()) {
                         HorizontalDivider(color = Color(0xFF3C3C3C), thickness = 1.dp)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 80.dp)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .verticalScroll(rememberScrollState()),
+                                .background(Color(0xFF252526))
+                                .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp),
                         ) {
-                            if (detailLabel != null) {
-                                Text(
-                                    text = detailLabel!!,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color(0xFF569CD6),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                            // Header row: expand (▾/▸) + copy (⧉) — matches HoverPopup pattern
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(20.dp).clickable { detailExpanded = !detailExpanded },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(text = if (detailExpanded) "▾" else "▸", color = Color(0xFF888888), fontSize = 11.sp)
+                                }
+                                Spacer(Modifier.width(2.dp))
+                                Box(
+                                    modifier = Modifier.size(20.dp).clickable {
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(detailDoc ?: ""))
+                                    },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(text = "⧉", color = Color(0xFF888888), fontSize = 11.sp)
+                                }
                             }
-                            Text(
-                                text = detailDoc!!,
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFCCCCCC),
+                            // Content: expandable + scrollable
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .then(if (detailExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(detailScrollState) else Modifier.heightIn(max = 60.dp)),
+                            ) {
+                                Column {
+                                    if (detailLabel != null) {
+                                        Text(
+                                            text = detailLabel!!,
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color(0xFF569CD6),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    Text(
+                                        text = detailDoc!!,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFCCCCCC),
                             )
                         }
                     }
