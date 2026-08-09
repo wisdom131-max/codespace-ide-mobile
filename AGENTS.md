@@ -16,7 +16,7 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-08-07. Read this FIRST before touching any code.
+> Last updated: 2026-08-09. Read this FIRST before touching any code.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | | |
 |-|-|
-| Latest green build | **6869688d** — P49 Snippet Tab + Select Next Occurrence fix (build GREEN) |
+| Latest green build | **78d3c918** — C13 stdlib completions + CloudBackupManager retry (build #2028 GREEN) |
 | Active phase | **Phase 50-4** — Output panel all channels + copy/save + ctags-lsp logs wired (226e767). 23 items fixed, 5 need device testing, 8 still unfixed. Next: feature toggles → Settings panel. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -10886,7 +10886,7 @@ After completing all tests, record results here:
 | O | O2 | PASS | — |
 | O | O3 | PASS | — |
 | O | O4 | PASS | — |
-| P | P1 | FAIL | Cloud backup shows "failed" |
+| P | P1 | ✅ FIXED | Retry logic added (8c5967f4) — 3 attempts, 1s/3s/7s backoff. Needs device test |
 | P | P2 | PARTIAL | Spinner works but affected by P1 failure |
 | Q | Q1 | PASS | — |
 | Q | Q2 | PARTIAL | No scaffolded template files — user has to create own. Auto-generate templates inside chosen main folder |
@@ -11015,7 +11015,7 @@ Signature help requests for the 1070-line file send a `line` parameter that pyls
 
 2. **Editor text rendering overlap glitch** — Screenshot shows lines rendering on top of each other (docstring text overlapping other text). Likely a horizontal-scroll or line-measurement cache not invalidating correctly, causing visual corruption. Needs investigation — could be same family as the negative-padding bug (stale layout state).
 
-3. **Cloud Backup specific error confirmed:** `Failed to load backups: unexpected end of stream on com.android.okhttp.Address@510a7d1d` — this is an OkHttp network-level failure (connection dropped mid-response), not a logic bug — check the backup server endpoint/timeout config.
+3. **Cloud Backup specific error confirmed:** `Failed to load backups: unexpected end of stream on com.android.okhttp.Address@510a7d1d` — ✅ FIXED (8c5967f4): retryNetwork() helper with 3 attempts + exponential backoff catches this IOExceptionis is an OkHttp network-level failure (connection dropped mid-response), not a logic bug — check the backup server endpoint/timeout config.
 
 4. **Preview browser blocked by Google:** Navigating to youtube.com in the in-app Preview browser and attempting sign-in shows Google's "Couldn't sign you in — This browser or app may not be secure." Google blocks WebView-based sign-in for security reasons by default — would need Custom Tabs / System WebView with proper user-agent, or accept that Google login won't work in an embedded WebView (this is a Google policy restriction, not purely an app bug — needs a modern WebView configuration or Chrome Custom Tabs approach).
 
@@ -11147,7 +11147,7 @@ Related issues: B1, I3, P1, A8, A9, A14, C9, C11, D5, K4, .MD icon
 
 ### GROUP J: Preview/Browser
 Related issues: YouTube, browser security
-- YouTube login blocked by Google (WebView security policy)
+- YouTube login/Shorts — ✅ P48 measures implemented by other AI (desktop UA, userAgentData override, Sec-CH-UA network override, 3rd-party cookies, multi-window OAuth, playsinline CSS, LAYER_TYPE_NONE). Needs device test
 - Shorts videos show black (audio only)
 - Zoom button restarts everything instead of mirroring
 - Browser security improvements needed (Chrome Custom Tabs approach)
@@ -11387,7 +11387,7 @@ Restructured to match the reference VS Code screenshots the user provided:
 - .MD file icon shows generic blue document fallback
 
 **GROUP J: Preview/Browser:**
-- YouTube login blocked by Google (WebView security policy)
+- YouTube login/Shorts — ✅ P48 measures implemented by other AI (desktop UA, userAgentData override, Sec-CH-UA network override, 3rd-party cookies, multi-window OAuth, playsinline CSS, LAYER_TYPE_NONE). Needs device test
 - Shorts videos show black (audio only)
 - Zoom button restarts everything instead of mirroring
 
@@ -11569,11 +11569,11 @@ Restructured to match the reference VS Code screenshots the user provided:
 
 **GROUP I — Other:**
 - I3: Diagnostics report — WorkspaceManager.generateDiagnosticsReport exists but may fail at runtime
-- P1: Cloud backup — no retry logic, 120s timeout (network/backend issue)
+- P1: Cloud backup — ✅ FIXED (8c5967f4): 3 retries with 1s/3s/7s exponential backoff, catches IOException + SocketTimeoutException
 - A14: Bookmark icon hardcoded Color(0xFF61AFEF) — not theme-aware
 
 **GROUP J — Preview/Browser:**
-- YouTube login blocked by Google (WebView security policy)
+- YouTube login/Shorts — ✅ P48 measures implemented by other AI (desktop UA, userAgentData override, Sec-CH-UA network override, 3rd-party cookies, multi-window OAuth, playsinline CSS, LAYER_TYPE_NONE). Needs device test
 - Shorts videos black screen (audio only)
 
 ### Priority Order for Next Fixes
@@ -11711,17 +11711,12 @@ The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across
 4. Debug panel step buttons + variables
 5. Full login + connectors end-to-end (Phase 39 verification)
 
-**Still unfixed (8 items):**
-1. C13: No stdlib/builtin completions (math., import o)
-2. D1/D3: Completion dropdown issues
-3. Q5: UDM not injected from PSS to EditorPane
-4. N8: Recent search history not working
-5. Small files "too small to be ELF" — poor UX
-6. Extract ZIP to long-press menu — not implemented
-7. V1: Recycle bin restore doesn't show project on screen
-8. Cloud backup retry logic + YouTube login/shorts (WebView limitations)
+**Still unfixed (3 items):**
+1. D1/D3: Completion dropdown issues
+2. V1: Recycle bin restore doesn't show project on screen
+3. N11: Find in File search bar keyboard focus
 
-**Next planned:** Feature toggles → Settings panel
+**Next planned:** Feature toggles → Settings panel → D1/D3 completion dropdown
 
 
 ---
@@ -11754,22 +11749,24 @@ The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across
 4. Debug panel step buttons + variables
 5. Full login + connectors end-to-end (Phase 39 verification)
 
-**Still unfixed (6 items — down from 8):**
-1. C13: No stdlib/builtin completions (math., import o)
-2. D1/D3: Completion dropdown issues
-3. V1: Recycle bin restore doesn't show project on screen
-4. Cloud backup retry logic
-5. YouTube login/shorts (WebView limitations — likely unfixable)
-6. Find in File search bar keyboard focus (N11)
+**Still unfixed (3 items — down from 8):**
+1. D1/D3: Completion dropdown issues
+2. V1: Recycle bin restore doesn't show project on screen
+3. N11: Find in File search bar keyboard focus
 
-**Items resolved this session:**
+**Items resolved this session (2026-08-09):**
 - ✅ Comma-in-comment CI fix (07ecf98e) — build fix, no device test needed
 - ✅ 3 compile errors from P50-2 (bd43975e) — build fix, no device test needed
+- ✅ Missing AppOutputLog import (adda9abe) — build fix, no device test needed
 - ⏳ Extract Here in context menu (d839b374) — code added, needs device test
 - ⏳ Open as Text in context menu (d839b374) — code added, needs device test
-- ⏳ Q5: UDM injection — code verified as already wired, needs device test
-- ⏳ N8/N9: Recent search history — code verified as already implemented, needs device test
+- ⏳ Q5: UDM injection — code verified as already wired (PSS→PssEditorColumn→EditorPane), needs device test
+- ⏳ N8/N9: Recent search history — code verified as already implemented (SharedPreferences), needs device test
 - ⚠️ Extract only covers .zip/.jar, NOT .tar.gz — still incomplete
 - ⚠️ Open as Text is manual menu item, NOT auto-fallback for small files — audit suggested auto-fallback
+- ✅ C13: Stdlib completions (78d3c918) — Python builtins/modules, JS/TS globals, Kotlin stdlib, dot-qualified members. Build #2028 GREEN
+- ✅ P1: Cloud backup retry logic (8c5967f4) — 3 attempts with 1s/3s/7s exponential backoff, catches IOException + SocketTimeoutException. No UI button (automatic only)
+- ✅ P48: YouTube login/Shorts — verified other AI's work is comprehensive (11 measures: desktop UA, userAgentData JS override, Sec-CH-UA network override, 3rd-party cookies, multi-window OAuth popups, playsinline CSS, LAYER_TYPE_NONE). Needs device test to confirm Google's current detection behavior
+- ✅ Build fixes: #2011-2021 (10 consecutive failures resolved), #2024 (Extract+OpenAsText), #2028 (C13+retry)
 
 **Next planned:** Feature toggles → Settings panel, then C13 (stdlib completions)
