@@ -29,6 +29,7 @@ object AppOutputLog {
 
     private const val TAG = "AppOutputLog"
     private const val MAX_LINES = 500
+    val availableChannels = listOf("info", "build", "git", "debug", "terminal", "lsp")
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -85,5 +86,16 @@ object AppOutputLog {
                 internalLines.add(entry)
             }
         }
+    }
+}
+
+    
+    /**
+     * P44-OUTPUT: Get lines filtered by channel. Used by the Output panel's channel selector.
+     * If channel is null or "all", returns all lines.
+     */
+    fun getLines(channel: String? = null): List<String> {
+        if (channel == null || channel == "all") return lines.toList()
+        return lines.filter { it.contains("[$channel]") }
     }
 }
