@@ -105,9 +105,16 @@ object CompletionContextDetector {
         }
 
         // Import context: after "import ", "from ", "package ", "require("
-        if (isAfterKeyword(beforeCursor, "import") || isAfterKeyword(beforeCursor, "from") ||
+        // D3-FIX: Also detect when user has started typing a partial word after import
+        val currentLine = beforeCursor.substringBeforeLast('
+')
+        val lineTrimmed = currentLine.trimStart()
+        val isImportLine = lineTrimmed.startsWith("import ") || lineTrimmed.startsWith("from ") ||
+            lineTrimmed.startsWith("package ") || beforeCursor.trim().endsWith("require(")
+        if (isImportLine || isAfterKeyword(beforeCursor, "import") || isAfterKeyword(beforeCursor, "from") ||
             isAfterKeyword(beforeCursor, "package") || beforeCursor.trim().endsWith("require(")) {
-            return ContextInfo(CompletionContext.IMPORT_CONTEXT, shouldShowCompletions = true, lspOnly = true, boostKind = 0, nonMatchKindPenalty = 0f)
+            // D3-FIX: lspOnly=false so stdlib module completions show even without LSP
+            return ContextInfo(CompletionContext.IMPORT_CONTEXT, shouldShowCompletions = true, lspOnly = false, boostKind = 0, nonMatchKindPenalty = 0f)
         }
 
         // After control-flow keywords — suppress keyword suggestions
