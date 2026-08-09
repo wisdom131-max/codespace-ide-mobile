@@ -514,6 +514,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes
     val scrollDensity = androidx.compose.ui.platform.LocalDensity.current
+    // P50-FIX: Density-corrected line height — matches BasicTextField's sp-based lineHeight.
+    // Without this, gutter rows (.dp) and text lines (.sp) drift apart when fontScale != 1.0.
+    val lineHeightDp = with(scrollDensity) { (fontSize * 1.25f).sp.toDp() }
+    // P50-FIX: vScroll.value is in PIXELS — convert to dp before mixing with dp-based math.
+    // Without this conversion, overlays (squiggles, highlights, cursors) drift to wrong lines.
+    val vScrollDp = with(scrollDensity) { vScroll.value.toDp() }.value
     // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
     var highlightTargetLine by remember { mutableStateOf(0) }
@@ -662,7 +668,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Finds the nearest non-blank, non-folded ancestor line above the visible top.
     val stickyLine: String? = remember(vScroll.value, rawLines, foldedLineIndices, fontSize) {
         if (rawLines.size < 3) return@remember null
-        val lineHeightPx = fontSize * 1.25f
+        val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
         val topLineIdx = (vScroll.value / lineHeightPx).toInt()
         // Walk upward from topLineIdx to find the nearest scope-opening line
         var i = (topLineIdx - 1).coerceIn(0, rawLines.lastIndex)
@@ -1233,7 +1239,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .padding(end = if (showMinimapState) 62.dp else 4.dp, top = if (stickyLine != null) (fontSize * 1.4f).dp else 0.dp)
+                .padding(end = if (showMinimapState) 62.dp else 4.dp, top = if (stickyLine != null) with(scrollDensity) { (fontSize * 1.4f).sp.toDp() } else 0.dp)
                 .verticalScroll(vScroll)
         ) {
             // Gutter
@@ -1250,7 +1256,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // Visual placeholder row in gutter
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height((fontSize * 1.25f).dp)
+                            modifier = Modifier.height(lineHeightDp)
                         ) {
                             Spacer(Modifier.width(20.dp))
                             Text(
@@ -1269,7 +1275,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height((fontSize * 1.25f).dp)
+                            modifier = Modifier.height(lineHeightDp)
                         ) {
                             // P2-6 diff gutter bar + deletion triangle
                             Column(modifier = Modifier.width(3.dp)) {
@@ -1338,7 +1344,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 if (bookmarkedLines.contains(lineNum)) {
                                     Text(
                                         text = "◆",
-                                        color = Color(0xFF61AFEF),  // blue bookmark
+                                        color = colors.keyword,  // P50-FIX: theme-aware bookmark color (was hardcoded 0xFF61AFEF)
                                         fontSize = (fontSize * 0.6f).sp,
                                     )
                                 }
@@ -1347,7 +1353,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height((fontSize * 1.25f).dp)
+                                    .height(lineHeightDp)
                                     .clickable { onBreakpointToggle(lineNum) },
                                 contentAlignment = Alignment.CenterEnd,
                             ) {
@@ -1362,7 +1368,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     Text(
                                         text = (lineNum + 1).toString(),
                                         color = if (bookmarkedLines.contains(lineNum))
-                                            Color(0xFF61AFEF) else colors.gutter,
+                                            colors.keyword else colors.gutter  // P50-FIX: theme-aware bookmark color,
                                         fontSize = fontSize.sp,
                                         lineHeight = (fontSize * 1.25f).sp,
                                         fontFamily = FontFamily.Monospace,
@@ -1691,12 +1697,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // ── P2-11 Inlay hint overlay ───────────────────────────────────
         if (showInlayHints && inlayHints.isNotEmpty()) {
             val density = androidx.compose.ui.platform.LocalDensity.current
-            val lineHeightDp = with(density) { fontSize.sp.toDp() }
+            val lineHeightDpInlay = lineHeightDp  // use the shared density-corrected value
             val gutterWidthDp = if (blameData != null) 72.dp + 120.dp else 72.dp
             inlayHints.forEach { hint ->
                 val displayIdx = displayLines.indexOfFirst { it.first == hint.line }
                 if (displayIdx < 0) return@forEach
-                val yOffset = lineHeightDp * displayIdx
+                val yOffset = lineHeightDpInlay * displayIdx
                 val hintColor = when (hint.kind) {
                     InlayHint.Kind.TYPE   -> androidx.compose.ui.graphics.Color(0xFF888888)
                     InlayHint.Kind.RETURN -> androidx.compose.ui.graphics.Color(0xFF7A9EC2)
@@ -1736,7 +1742,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Column(Modifier.verticalScroll(vScroll)) {
                     blameData.entries.sortedBy { it.key }.forEach { (_, blame) ->
                         Box(
-                            Modifier.height(fontSize.dp * 1.25f).fillMaxWidth().padding(start = 4.dp),
+                            Modifier.height(lineHeightDp).fillMaxWidth().padding(start = 4.dp),
                             contentAlignment = Alignment.CenterStart,
                         ) {
                             Text(
@@ -1755,7 +1761,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // ── P22-D: Merge conflict overlay ──────────────────────────────────
         if (toggles.showMergeConflicts && conflictData != null && conflictData.isNotEmpty()) {
-            val lineHeight = fontSize * 1.25f
+            val lineHeight = lineHeightDp.value  // P50-FIX: density-corrected
             conflictData.forEach { hunk ->
                 val oursHeight = (lineHeight * (hunk.separatorLine - hunk.startLine)).dp
                 val theirsHeight = (lineHeight * (hunk.endLine - hunk.separatorLine)).dp
@@ -1827,10 +1833,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // ── P45-G3: Highlight all search matches ─────────────────────────────
         if (findReplaceOpen && matches.isNotEmpty() && matches.size <= 200) {
-            val lineHeightPxM = fontSize * 1.25f
+            val lineHeightPxM = lineHeightDp.value  // P50-FIX: density-corrected line height
             val charWidthPxM  = fontSize * 0.6f
             val gutterDpM = GUTTER_WIDTH
-            val scrollOffsetPxM = vScroll.value
+            val scrollOffsetPxM = vScrollDp
             matches.forEachIndexed { idx, range ->
                 val matchStart = range.first
                 val lineIdx = lineFromOffset(matchStart)
@@ -1847,7 +1853,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .align(Alignment.TopStart)
                         .padding(start = startDpM.dp, top = topDpM.dp)
                         .width(widthDpM.dp)
-                        .height(lineHeightPxM.dp)
+                        .height(lineHeightDp)
                         .background(
                             if (isCurrent) Color(0xFF007ACC).copy(alpha = 0.35f)
                             else Color(0xFFD4D4D4).copy(alpha = 0.15f)
@@ -1862,11 +1868,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // positions using the same line-height formula as every other overlay
         // in this file: y = lineIdx * fontSize * 1.25f dp, x = 64dp + col * fontSize * 0.6f dp.
         if (extraCursors.isNotEmpty()) {
-            val lineHeightPx = fontSize * 1.25f
+            val lineHeightPx = lineHeightDp.value  // P50-FIX: density-corrected line height
             val charWidthPx  = fontSize * 0.6f
             val gutterDp = GUTTER_WIDTH
             // BUG-3 FIX: subtract scroll offset
-            val scrollOffsetPx = vScroll.value
+            val scrollOffsetPx = vScrollDp
             extraCursors.forEach { off ->
                 val clamped  = off.coerceIn(0, value.text.length)
                 val lineIdx  = lineFromOffset(clamped)
@@ -1882,7 +1888,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .padding(start = gutterDp.dp, top = topDp.dp)
-                        .height(lineHeightPx.dp)
+                        .height(lineHeightDp)
                         .background(Color(0xFFE5C07B).copy(alpha = 0.08f))
                         .zIndex(4f),
                 )
@@ -1893,7 +1899,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .align(Alignment.TopStart)
                         .padding(start = startDp.dp, top = topDp.dp)
                         .width(2.dp)
-                        .height(lineHeightPx.dp)
+                        .height(lineHeightDp)
                         .background(Color(0xFFE5C07B))   // amber — distinct from primary cursor
                         .zIndex(5f),
                 )
@@ -1902,16 +1908,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // PROBLEMS-TAB FIX: Gold highlight on the problem target line (fades after 2.5s)
         if (highlightTargetLine > 0) {
-            val lineHeightPxHl = fontSize * 1.25f
+            val lineHeightPxHl = lineHeightDp.value  // P50-FIX: density-corrected line height
             val gutterDpHl = GUTTER_WIDTH
-            val scrollOffsetPxHl = vScroll.value
+            val scrollOffsetPxHl = vScrollDp
             val topDpHl = ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
                     .padding(start = gutterDpHl.dp, top = topDpHl.dp)
-                    .height(lineHeightPxHl.dp)
+                    .height(lineHeightDp)
                     .background(Color(0xFFFFD700).copy(alpha = 0.15f))
                     .zIndex(3.5f),
             )
@@ -1921,7 +1927,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .align(Alignment.TopStart)
                     .padding(start = gutterDpHl.dp, top = topDpHl.dp)
                     .width(3.dp)
-                    .height(lineHeightPxHl.dp)
+                    .height(lineHeightDp)
                     .background(Color(0xFFFFD700))
                     .zIndex(4.5f),
             )
@@ -1929,10 +1935,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P26-1: LSP Document Highlight — subtle background tint on all occurrences
         if (toggles.showLspHighlights && lspHighlightLines.isNotEmpty()) {
-            val lineHeightPxHighlight = fontSize * 1.25f
+            val lineHeightPxHighlight = lineHeightDp.value  // P50-FIX: density-corrected line height
             val gutterDpHighlight = GUTTER_WIDTH
             // BUG-3 FIX: subtract scroll offset so highlights track the correct lines on scroll
-            val scrollOffsetPx = vScroll.value
+            val scrollOffsetPx = vScrollDp
             lspHighlightLines.forEach { (startLine, endLine) ->
                 val topDp = (startLine * lineHeightPxHighlight - scrollOffsetPx).coerceAtLeast(0f)
                 val heightDp = ((endLine - startLine + 1) * lineHeightPxHighlight).coerceAtLeast(0f)
@@ -1950,7 +1956,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P41-K: Color swatches — inline color indicators from LSP documentColor
         if (toggles.showColorSwatches && lspDocumentColors != null && lspDocumentColors!!.length() > 0) {
-            val lineHeightPxCS = fontSize * 1.25f
+            val lineHeightPxCS = lineHeightDp.value  // P50-FIX: density-corrected line height
             val gutterDpCS = GUTTER_WIDTH
             val charWidthPxCS = fontSize * 0.6f
             for (ci in 0 until lspDocumentColors!!.length()) {
@@ -1970,7 +1976,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     blue = b.toFloat(),
                     alpha = a.toFloat()
                 )
-                val swatchTopDp = startLine * lineHeightPxCS - vScroll.value
+                val swatchTopDp = startLine * lineHeightPxCS - vScrollDp
                 val swatchLeftDp = gutterDpCS + (startChar * charWidthPxCS) - 4f
                 if (swatchTopDp >= 0 && swatchTopDp < (displayLines.size + 5) * lineHeightPxCS) {
                     Box(
@@ -1988,7 +1994,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P41-O1: Error Lens — inline error text at end of code lines (VS Code-style)
         if (toggles.showErrorLens && lintErrors.isNotEmpty() && !showCompletions) {
-            val lineHeightPxEL = fontSize * 1.25f
+            val lineHeightPxEL = lineHeightDp.value  // P50-FIX: density-corrected line height
             val charWidthPxEL = fontSize * 0.6f
             for (err in lintErrors) {
                 // Find which line this error is on
@@ -1998,7 +2004,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val lineStart = value.text.lastIndexOf('\n', (err.start - 1).coerceAtLeast(0)) + 1
                 val lineEnd = value.text.indexOf('\n', err.start)
                 val lineLength = (if (lineEnd < 0) value.text.length else lineEnd) - lineStart
-                val lineTopDp = errorLine * lineHeightPxEL - vScroll.value
+                val lineTopDp = errorLine * lineHeightPxEL - vScrollDp
                 val lineLeftDp = (lineLength * charWidthPxEL) + 80f // gutter width + code width + small gap
                 // Only render if visible in viewport
                 if (lineTopDp >= 0 && lineTopDp < (displayLines.size + 5) * lineHeightPxEL) {
@@ -2018,7 +2024,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (toggles.showCodeLens && lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
-            val lineHeightPxCL = fontSize * 1.25f
+            val lineHeightPxCL = lineHeightDp.value  // P50-FIX: density-corrected line height
             val gutterDpCL = GUTTER_WIDTH
             for (i in 0 until lspCodeLenses!!.length()) {
                 val lens = lspCodeLenses!!.optJSONObject(i) ?: continue
@@ -2029,7 +2035,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val title = command?.optString("title", "") ?: lens.optString("title", "")
                 if (title.isBlank()) continue
                 // BUG-3 FIX: subtract scroll offset
-                val topDpCL = (startLine * lineHeightPxCL - vScroll.value).coerceAtLeast(0f)
+                val topDpCL = (startLine * lineHeightPxCL - vScrollDp).coerceAtLeast(0f)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -2057,7 +2063,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P26-1: LSP Inlay Hints — inline type/parameter hints within code
         if (toggles.showInlayHints && lspInlayHints != null && lspInlayHints!!.length() > 0) {
-            val lineHeightPxIH = fontSize * 1.25f
+            val lineHeightPxIH = lineHeightDp.value  // P50-FIX: density-corrected line height
             val gutterDpIH = GUTTER_WIDTH
             val charWidthPx = fontSize * 0.6f
             for (i in 0 until lspInlayHints!!.length()) {
@@ -2099,7 +2105,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P26-1: LSP Document Links — clickable underlined links in comments
         if (toggles.showDocumentLinks && lspDocumentLinks != null && lspDocumentLinks!!.length() > 0) {
-            val lineHeightPxDL = fontSize * 1.25f
+            val lineHeightPxDL = lineHeightDp.value  // P50-FIX: density-corrected line height
             val gutterDpDL = GUTTER_WIDTH
             val charWidthPxDL = fontSize * 0.6f
             for (i in 0 until lspDocumentLinks!!.length()) {
@@ -2171,7 +2177,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val miniLineHeightPx = with(density) { minimapLineHeightDp.toPx() }
         val miniWidthPx = with(density) { 60.dp.toPx() }
         // Viewport position: where in the minimap the current view is
-        val lineHeightPx = fontSize * 1.25f
+        val lineHeightPx = lineHeightDp.value  // P50-FIX: density-corrected line height
         val viewportTopLine = (vScroll.value / lineHeightPx).toInt()
         val visibleLineCount = with(density) {
             ((maxOf(1, vScroll.viewportSize) / lineHeightPx).toInt())
@@ -3102,7 +3108,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onDismiss = { gotoResults = null },
                 onScrollToLine = { line ->
                     coroutineScope.launch {
-                        val localLineHeightPx = fontSize * 1.25f
+                        val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                         vScroll.animateScrollTo((line * localLineHeightPx).toInt())
                     }
                 },
@@ -3126,7 +3132,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onNavigate = { fp, ln ->
                     if (fp == filePath) {
                         coroutineScope.launch {
-                            val localLineHeightPx = fontSize * 1.25f
+                            val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                             vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
                         }
                     } else {
@@ -3144,7 +3150,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onNavigate = { fp, ln ->
                     if (fp == filePath) {
                         coroutineScope.launch {
-                            val localLineHeightPx = fontSize * 1.25f
+                            val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                             vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
                         }
                     } else {
@@ -3162,7 +3168,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onNavigate = { fp, ln ->
                     if (fp == filePath) {
                         coroutineScope.launch {
-                            val localLineHeightPx = fontSize * 1.25f
+                            val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                             vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
                         }
                     } else {
@@ -3445,7 +3451,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onDismissFindRef = { findRefWord = null; findRefResults = emptyList() },
             onScrollToLine = { line ->
                 coroutineScope.launch {
-                    val lineHeightPx = fontSize * 1.25f
+                    val lineHeightPx = lineHeightDp.value  // P50-FIX: density-corrected line height
                     vScroll.animateScrollTo((line * lineHeightPx).toInt())
                 }
             },
@@ -3656,7 +3662,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val cursorLineIdx = lineFromOffset(value.selection.end)
             val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
             // BUG-2 FIX: subtract scroll offset so the popup appears at the visible cursor position
-            val popupTopDp = ((popupLineIdx * fontSize * 1.25f) - vScroll.value).coerceAtLeast(0f)
+            val popupTopDp = ((popupLineIdx * lineHeightDp.value) - vScrollDp).coerceAtLeast(0f)
             val annotated = remember(sig) {
                 buildAnnotatedString {
                     append(sig.name)
@@ -3761,12 +3767,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val activeStop = session.activeStop()
             if (activeStop != null && activeStop.choices.isNotEmpty()) {
                 val cursorLine = lineFromOffset(activeStop.startOffset)
-                val lineHeightPx = fontSize * 1.25f
-                val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+                val lineHeightPxPopup = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
+                val popupOffsetY = ((cursorLine + 1) * lineHeightPxPopup - vScroll.value).roundToInt().coerceAtLeast(0)
                 val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
                 Popup(
                     alignment = Alignment.TopStart,
-                    offset = androidx.compose.ui.unit.IntOffset(popupOffsetX, popupOffsetY + (fontSize * 1.25f).roundToInt()),
+                    offset = androidx.compose.ui.unit.IntOffset(popupOffsetX, popupOffsetY + with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }.roundToInt()),
                 ) {
                     androidx.compose.material3.Surface(
                         modifier = Modifier.width(180.dp),
@@ -3829,9 +3835,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val availableHeightDp = LocalConfiguration.current.screenHeightDp - imeHeightDpVal
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = lineFromOffset(value.selection.end)
-            val lineHeightPx = fontSize * 1.25f
+            val lineHeightPx = lineHeightDp.value  // P50-FIX: density-corrected line height
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
-            val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            val popupOffsetY = ((cursorLine + 1) * lineHeightPx - with(scrollDensity) { vScroll.value.toPx() }).roundToInt().coerceAtLeast(0)
             val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
             
             // P41-J: Apply filter if active
@@ -4953,7 +4959,10 @@ private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
         val hoverScrollState = rememberScrollState()
         var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
         val cursorLineIdxHover = text.take(cursorOffset).count { it == '\n' }
-        val hoverTopDp = (((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScrollValue).coerceAtLeast(0f)
+        val densityBulb = androidx.compose.ui.platform.LocalDensity.current
+                val vScrollDpHover = with(densityBulb) { vScrollValue.toDp() }.value
+                val lineHeightDpHover = with(densityBulb) { (fontSize * 1.25f).sp.toDp() }.value
+                val hoverTopDp = (((cursorLineIdxHover + 1) * lineHeightDpHover) - vScrollDpHover).coerceAtLeast(0f)
         if (hoverTopDp > 0) {
             Box(
                 modifier = Modifier
@@ -5034,8 +5043,9 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
         // to drift to the wrong line. Convert scroll px to dp before subtracting.
         val density = LocalDensity.current
         val vScrollDp = with(density) { vScrollValue.toDp() }.value
-        val bulbTopDp = ((lightbulbLine * fontSize * 1.25f) - vScrollDp).coerceAtLeast(0f)
-        val bulbHeight = fontSize * 1.25f
+        val lineHeightDpBulb = with(density) { (fontSize * 1.25f).sp.toDp() }.value
+        val bulbTopDp = ((lightbulbLine * lineHeightDpBulb) - vScrollDp).coerceAtLeast(0f)
+        val bulbHeight = lineHeightDpBulb
         if (bulbTopDp >= 0 && bulbTopDp < (displayLinesSize + 5) * bulbHeight) {
             Box(
                 modifier = Modifier
