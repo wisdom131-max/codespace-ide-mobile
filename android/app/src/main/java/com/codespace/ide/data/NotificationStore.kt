@@ -49,7 +49,7 @@ object NotificationStore {
 
     // ── Notification item ─────────────────────────────────────────────────────
     data class Item(
-        val id: Long = System.currentTimeMillis(),
+        val id: Long = nextId.getAndIncrement(),
         val title: String,
         val body: String,
         val severity: Severity = Severity.INFO,
@@ -90,6 +90,7 @@ object NotificationStore {
     )
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val nextId = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
 
     val items = mutableStateListOf<Item>()
 
