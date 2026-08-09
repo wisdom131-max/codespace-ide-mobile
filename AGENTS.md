@@ -11084,3 +11084,68 @@ Restructured to match the reference VS Code screenshots the user provided:
 6. Address Group E: debugger wiring and UDM synchronization
 7. Implement regex-based fallback for LSP workspace/symbol search
 8. Investigate large-file crash in pylsp (signature help line-numbering)
+
+
+## Phase 46 — Audit Results & Bug Fixes (2026-08-09) ✅ 3 FIXED, 8 ALREADY WORKING
+
+### Fixes Applied (commit 50fdf59):
+1. **O1: Zen Mode keyboard** — `detectTapGestures` in the Zen Mode overlay consumed ALL tap events, preventing the editor from receiving focus → soft keyboard never opened. Fix: added empty `onTap` callback so single taps pass through to the editor. Double-tap still exits Zen Mode.
+2. **D5: Lightbulb on wrong line** — `vScrollValue` (pixels from `ScrollState.value`) was subtracted from `lightbulbLine * fontSize * 1.25f` (dp) without density conversion. On devices with screen density ≠ 1.0 (every real phone), this caused the lightbulb to drift to the wrong line. Fix: added `LocalDensity` conversion to convert scroll px → dp before position calculation.
+3. **S1: Problems panel dark theme** — Header, empty state text, and problem rows all used light theme colors (0xFFF5F5F5, 0xFF717171, 0xFF424242, 0xFF9E9E9E). Switched to VS Code dark theme colors (0xFF1E1E1E, 0xFF858585, 0xFFD4D4D4, 0xFF858585).
+
+### Audit Results — Already Working (no fix needed):
+- **B3: Bracket auto-close** — Already implemented at CodeEditor.kt lines 1352-1374. Ghost text dismissed at line 1350 (before auto-close), so no conflict.
+- **C1: LSP diagnostics → Problems panel** — Already wired: EditorPane uses push via `setDiagnosticsHandler` for inline squiggles, ProblemsPanel polls `LspManager.getDiagnostics()` every 2s. Both merge lint + LSP + build problems.
+- **C8: Outline panel fallback** — OutlinePanel.kt already has LSP `documentSymbol` + regex fallback via `extractSymbolsFromText()` with language-specific patterns.
+- **G4: Symbol search fallback** — SymbolSearchPanel.kt already has LSP `workspace/symbol` + FileIndexer regex fallback with visible "Fallback" badge when LSP unavailable.
+- **E14: Cross-file Go to Definition** — Already has LSP-first + regex fallback + FileIndexer cross-file search (max 10 results). FileIndexer indexes on project open.
+- **N1/N5/N9: Search system** — Find bar uses BasicTextField with weight(1f) in a Row (no clipping). Find in Files uses ProjectFileSearchPanel with full text search (reads file contents, max 200 results). Workspace search properly walks project tree.
+- **GitHub integration** — Full VS Code "Open Remote Repository" flow working: OAuth Device Flow, repo browser, clone, push/pull/fetch, stage/unstage, commit, branch, stash, tags, conflicts, gitignore, publish. Confirmed via on-device screenshots.
+- **Trash restore (J3)** — Trash dialog lists individual files from `.ide-trash/` with restore/delete per entry. `findTrashProjectDir` walks up to find project root.
+
+### Remaining Items to Fix (from Phase 46 groups):
+**GROUP C: Editor Rendering:**
+- Negative padding crash (CodeEditor.kt:1814, 1719, EditorPane.kt:1286) → clamp with `coerceAtLeast(0.dp)`
+- Notification LazyColumn duplicate key crash → use unique ID
+- Editor text rendering overlap glitch → stale layout cache
+- Find/Replace highlight doesn't follow scroll (A7, N3) → track live scroll offset
+- G5: Large file pylsp signature help stale line parameter
+
+**GROUP D: LSP & Completion:**
+- C13: No stdlib/builtin completions (math., import o) — need to add stdlib completion data
+- A5: Snippet Tab expansion broken → Tab key must check for pending snippet
+- D1/D3: Completion dropdown issues
+
+**GROUP E: Debugger System:**
+- F2-F7: Debug panel/terminal not showing progress, variables, step buttons
+- Q5: Two debuggers not wired — UDM not injected from PSS to EditorPane
+
+**GROUP F: Search System:**
+- N8: Recent search history not working in Find in Files
+- N11: Go > Find in File search bar doesn't call keyboard
+
+**GROUP G: File Management:**
+- Small files show "too small to be ELF" → add "edit/open in editor" in long-press menu
+- Add "Extract ZIP" to long-press menu
+- V1: Recycle bin restore doesn't show project on project screen after restore
+- Q2: Auto-generate scaffolded template files
+
+**GROUP H: Terminal:**
+- H2: Shell history search doesn't call keyboard
+- H5: Quick command palette doesn't work
+- X7: MCP status only works in terminal tab
+
+**GROUP I: Other Features:**
+- B1: Fix with AI stub → wire handler to open chat panel
+- I3: Diagnostics report says "failed"
+- P1: Cloud backup failed (OkHttp stream error)
+- A8: Select Next Occurrence no-op until manual re-select
+- A9/C9/C11: Peek Definition just navigates, no overlay
+- A14: Bookmark icon invisible until theme switch, then clipped
+- K4: Markdown preview needs clearer test instructions
+- .MD file icon shows generic blue document fallback
+
+**GROUP J: Preview/Browser:**
+- YouTube login blocked by Google (WebView security policy)
+- Shorts videos show black (audio only)
+- Zoom button restarts everything instead of mirroring
