@@ -143,6 +143,24 @@ import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.material3.HorizontalDivider
 
+/** Standard gutter width in dp — ALL overlays must use this constant to stay aligned with the text.
+ *  Previously: hardcoded values of 64f, 66.dp, 72.dp, 74f, 74.dp, 80f were used inconsistently,
+ *  causing overlays (highlights, cursors, squiggles, popups) to be misaligned with the text by 2-8dp. */
+private const val GUTTER_WIDTH = 72f
+
+/** Feature toggles for editor overlays — pass from EditorPane to enable/disable individual features. */
+data class EditorFeatureToggles(
+    val showCodeLens: Boolean = true,
+    val showLspHighlights: Boolean = true,
+    val showErrorLens: Boolean = true,
+    val showColorSwatches: Boolean = true,
+    val showDocumentLinks: Boolean = true,
+    val showStickyScroll: Boolean = true,
+    val showGhostText: Boolean = true,
+    val showInlayHints: Boolean = true,
+    val showMergeConflicts: Boolean = true,
+)
+
 private data class Completion(
     val label: String,
     val kind: CompletionKind,
@@ -429,6 +447,7 @@ fun CodeEditor(
     lspRequestIdProvider: (() -> Long)? = null,
     /** P24-1: LSP diagnostics as LintErrors — shown as squiggles on top of syntax highlighting */
     lspDiagnosticErrors: List<LintError> = emptyList(),
+    toggles: EditorFeatureToggles = EditorFeatureToggles(),
     /** P24-3: Find References — called with word at cursor, returns list of (filePath, line, snippet) */
     onFindReferences: ((String) -> List<Triple<String, Int, String>>)? = null,
     /** P24-3: Rename Symbol — called with (word, newName) to apply workspace rename */
