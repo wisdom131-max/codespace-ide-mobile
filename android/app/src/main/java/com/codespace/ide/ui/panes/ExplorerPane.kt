@@ -1325,6 +1325,8 @@ fun ExplorerSidePanel(
                         if (!f.isDirectory) add("Local History" to Icons.Default.History)
                         add("Restore from Trash" to Icons.Default.RestoreFromTrash)
                         add("Compress" to Icons.Default.FolderZip)
+                        if (!f.isDirectory && isArch && (f.name.lowercase().endsWith(".zip") || f.name.lowercase().endsWith(".jar"))) add("Extract Here" to Icons.Default.FolderOpen)
+                        if (!f.isDirectory && (isHexBin || isElf || isArch)) add("Open as Text" to Icons.Default.Description)
                         add("Permissions" to Icons.Default.Lock)
                         if (!f.isDirectory) add("File Info" to Icons.Default.Info)
                         if (!f.isDirectory && (isHexBin || isArch)) add("Open as Strings" to Icons.AutoMirrored.Filled.FormatListBulleted)
@@ -1458,6 +1460,43 @@ fun ExplorerSidePanel(
                                         }
                                         "Open in Terminal" -> onOpenInTerminal(if (f.isDirectory) f.absolutePath else f.parent ?: f.absolutePath)
                                         "Compress" -> { showCompressDialog = true }
+                                        "Extract Here" -> {
+                                            showCtxMenu = false
+                                            val outDir = File(f.parentFile ?: File(f.parent ?: "/"), f.nameWithoutExtension)
+                                            if (!outDir.exists()) outDir.mkdirs()
+                                            scope.launch(Dispatchers.IO) {
+                                                try {
+                                                    java.util.zip.ZipInputStream(f.inputStream().buffered()).use { zis ->
+                                                        var entry = zis.nextEntry
+                                                        while (entry != null) {
+                                                            val outFile = File(outDir, entry.name)
+                                                            val outPath = outFile.canonicalPath
+                                                            val dirPath = outDir.canonicalPath
+                                                            if (!outPath.startsWith(dirPath)) {
+                                                                entry = zis.nextEntry
+                                                                continue
+                                                            }
+                                                            if (entry.isDirectory) {
+                                                                outFile.mkdirs()
+                                                            } else {
+                                                                outFile.parentFile?.mkdirs()
+                                                                outFile.outputStream().buffered().use { os ->
+                                                                    val buf = ByteArray(8192)
+                                                                    var n = zis.read(buf)
+                                                                    while (n > 0) { os.write(buf, 0, n); n = zis.read(buf) }
+                                                                }
+                                                            }
+                                                            zis.closeEntry()
+                                                            entry = zis.nextEntry
+                                                        }
+                                                    }
+                                                    refresh++
+                                                } catch (e: Exception) {
+                                                    AppOutputLog.log("Extract error: ${e.message}", "terminal")
+                                                }
+                                            }
+                                        }
+                                        "Open as Text" -> { onOpenFile(f.absolutePath); showCtxMenu = false }
                                         "Permissions" -> { showPermDialog = true }
                                         "File Info" -> { showFileInfoDialog = true }
                                         "Open as Strings" -> { previewStringsPath = f.absolutePath }
