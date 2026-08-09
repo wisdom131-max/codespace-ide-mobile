@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **6869688d** — P49 Snippet Tab + Select Next Occurrence fix (build GREEN) |
-| Active phase | **Phase 50-3** — ctags-lsp + pylsp-workspace-symbols for universal symbol search (ba46e2e). 22 items fixed, 5 need device testing, 9 still unfixed. Next: remaining roadmap items. |
+| Active phase | **Phase 50-4** — Output panel all channels + copy/save + ctags-lsp logs wired (226e767). 23 items fixed, 5 need device testing, 8 still unfixed. Next: feature toggles → Settings panel. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -4093,6 +4093,46 @@ The editor rendered ALL file lines as composables regardless of viewport:
 ### Items Resolved
 - ✅ G5: Large file (1000+ lines) performance — pylsp signature help stale line numbers were a symptom of the editor not handling large files efficiently
 - ✅ Infinite line support — editor now handles files of any size without lag or OOM
+
+
+
+## Phase 50-4 — Output Panel: All Channels + Copy/Save (2026-08-09)
+
+**Commit:** `226e767`
+**Files:** ProjectShellScreen.kt (OutputPanel), LspManager.kt (pylsp install verification)
+
+### Problem
+1. Output panel only showed 4 of 6 channel filters (`.take(4)`) — **LSP and Terminal channels were hidden**. All ctags-lsp install/startup logs go to the "lsp" channel but users couldn't filter to it.
+2. No way to copy or save output logs for debugging.
+
+### Fix
+1. Show ALL 6 channels: all, build, git, debug, lsp, terminal (removed `.take(4)`)
+2. Copy-to-clipboard button (Icons.Default.ContentCopy) — copies filtered lines via ClipboardManager
+3. Save-to-file button (Icons.Default.Save) — exports to `filesDir/exports/output_<timestamp>.log`
+4. `remember(logs, selectedChannel)` for filteredLogs — avoids re-filtering on every recomposition
+5. Added pylsp-workspace-symbols install verification echo to lsp channel
+
+### How to see ctags-lsp logs
+1. Open the **Output** tab in the bottom panel
+2. Tap **Lsp** in the channel filter row
+3. You'll see:
+   - `[LSP] Installing universal-ctags...`
+   - `[LSP] Installing ctags-lsp via go install...`
+   - `[LSP] Starting ctags-lsp secondary server...`
+   - `[LSP] ctags-lsp started successfully — workspace/symbol fallback ready`
+   - `[LSP] Python does not support workspace/symbol — trying ctags-lsp fallback`
+4. Tap the copy icon to copy all filtered lines, or save icon to export to a file
+
+### Items Resolved
+- ✅ Output panel copy-to-clipboard
+- ✅ Output panel save-to-file (exports to filesDir/exports/)
+- ✅ LSP + Terminal channels now visible in Output panel filter row
+- ✅ ctags-lsp logs fully visible in Output tab (LSP channel)
+
+### Error Trace Log
+| File | Symptom | Root Cause | Fix | Lesson |
+|------|---------|------------|-----|--------|
+| ProjectShellScreen.kt:2395 | LSP and Terminal channels not visible in Output panel | `channels.take(4)` only showed first 4 of 6 channels | `226e767` — removed `.take(4)`, show all channels | When adding channel filters, ensure ALL channels are visible — hiding a channel makes its logs inaccessible |
 
 
 ## Phase 50-3 — Symbol Search: ctags-lsp + pylsp-workspace-symbols (2026-08-09)
