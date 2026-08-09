@@ -28,6 +28,13 @@ object GitHubAuth {
     // are public identifiers, safe to ship in the app — this is not the client secret.
     const val CLIENT_ID = "Ov23liEA2inOMzi7bYrJ" // "Visual Node Code" OAuth App — verified working 2026-08-09
 
+    /**
+     * Check if the CLIENT_ID is configured and valid.
+     */
+    fun isConfigured(): Boolean {
+        return CLIENT_ID.isNotBlank()
+    }
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
