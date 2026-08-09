@@ -142,6 +142,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.ui.platform.LocalConfiguration
 
 /** Standard gutter width in dp — ALL overlays must use this constant to stay aligned with the text.
  *  Previously: hardcoded values of 64f, 66.dp, 72.dp, 74f, 74.dp, 80f were used inconsistently,
@@ -2035,7 +2039,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 74.dp, top = 4.dp)
+                    .padding(end = GUTTER_WIDTH.dp, top = 4.dp)
                     .background(Color(0xFF007ACC), RoundedCornerShape(3.dp))
                     .clickable { extraCursors = emptyList() }
                     .padding(horizontal = 8.dp, vertical = 3.dp)
@@ -2288,6 +2292,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     alignment = androidx.compose.ui.Alignment.TopEnd,
                     offset = androidx.compose.ui.unit.IntOffset(0, 0),
                     properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
+            // Touch consumption handled by popup content
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
                     // P38-FIX: Auto-open LSP menu when long-press triggers
@@ -3638,7 +3643,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val cursorLine = value.text.take(activeStop.startOffset).count { it == '\n' }
                 val lineHeightPx = fontSize * 1.25f
                 val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
-                val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { 74.dp.toPx() }.roundToInt()
+                val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
                 Popup(
                     alignment = Alignment.TopStart,
                     offset = androidx.compose.ui.unit.IntOffset(popupOffsetX, popupOffsetY + (fontSize * 1.25f).roundToInt()),
@@ -3698,12 +3703,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // IntelliSense dropdown — rendered in a Popup window so it's never clipped
         // by parent bounds, scroll offset, or the soft keyboard.
+        // KEYBOARD FIX: detect IME height and clamp popup so it never covers the keyboard.
+        val imeHeightPx = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
+        val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }.toInt()
+        val availableHeightPx = screenHeightPx - imeHeightPx
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
             val lineHeightPx = fontSize * 1.25f
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
             val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
-            val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { 74.dp.toPx() }.roundToInt()
+            val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
             
             // P41-J: Apply filter if active
             val filteredCompletions = if (completionFilter != null) {
@@ -3722,9 +3731,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Column(
                     modifier = Modifier
                         .widthIn(min = 160.dp, max = 280.dp)
-                        .heightIn(max = 220.dp)
+                        .heightIn(max = if (availableHeightPx > 200) 220.dp else ((availableHeightPx.value * 0.4f).coerceAtLeast(120f)).dp)
                         .background(Color(0xFF252526), RoundedCornerShape(4.dp))
                         .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
+                        .clickable { } // consume touches to prevent touch-through to editor
                 ) {
                     // P41-J: Filter chips row
                     if (availableSources.size > 1) {
@@ -4820,12 +4830,12 @@ private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
         val hoverScrollState = rememberScrollState()
         var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
         val cursorLineIdxHover = text.take(cursorOffset).count { it == '\n' }
-        val hoverTopDp = ((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScrollValue
+        val hoverTopDp = ((cursorLineIdxHover + 1) * fontSize * 1.25f) - vScrollValue).coerceAtLeast(0f)
         if (hoverTopDp > 0) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 74.dp, top = hoverTopDp.dp)
+                    .padding(start = GUTTER_WIDTH.dp, top = hoverTopDp.dp)
                     .widthIn(max = 300.dp)
                     .zIndex(12f)
                     .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
@@ -4896,7 +4906,7 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
     onShowLightbulbMenu: (Boolean) -> Unit,
 ) {
     if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
-        val bulbTopDp = (lightbulbLine * fontSize * 1.25f) - vScrollValue
+        val bulbTopDp = ((lightbulbLine * fontSize * 1.25f) - vScrollValue).coerceAtLeast(0f)
         val bulbHeight = fontSize * 1.25f
         if (bulbTopDp >= 0 && bulbTopDp < (displayLinesSize + 5) * bulbHeight) {
             Box(
