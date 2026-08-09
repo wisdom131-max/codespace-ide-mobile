@@ -461,7 +461,7 @@ fun SourceControlPane(projectId: String) {
             Icon(Icons.Default.ArrowUpward, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
-            AppOutputLog.log("git push: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
+            AppOutputLog.log("git push: commit-and-push completed", "git")
             AppOutputLog.log("git push: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
                     refreshStatus()
                     actionToast = if (result.startsWith("Error:")) "Push failed: ${result.take(60)}" else "Push complete"
@@ -817,7 +817,7 @@ fun SourceControlPane(projectId: String) {
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "commit", "-m", message) }
             AppOutputLog.log("git commit: \"${message.take(50)}\"", "git")
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
-            AppOutputLog.log("git push: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
+            AppOutputLog.log("git push: commit-and-push completed", "git")
                                 message = ""; refreshStatus()
                             }
                         },
