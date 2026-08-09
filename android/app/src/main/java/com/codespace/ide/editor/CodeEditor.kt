@@ -3590,7 +3590,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         }
                         Spacer(Modifier.width(2.dp))
                         Box(modifier = Modifier.size(20.dp).clickable {
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(sig.label))
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(sig.name))
                             }, contentAlignment = Alignment.Center) {
                             Text(text = "⏉", color = Color(0xFF888888), fontSize = 11.sp)
                         }
@@ -3719,8 +3719,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // by parent bounds, scroll offset, or the soft keyboard.
         // KEYBOARD FIX: detect IME height and clamp popup so it never covers the keyboard.
         val imeHeightPx = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
-        val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }.toInt()
-        val availableHeightPx = screenHeightPx - imeHeightPx
+        val imeHeightDpVal = with(androidx.compose.ui.platform.LocalDensity.current) { imeHeightPx.toDp() }.value.toInt().toInt()
+        val availableHeightDp = LocalConfiguration.current.screenHeightDp - imeHeightDpVal
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
             val lineHeightPx = fontSize * 1.25f
