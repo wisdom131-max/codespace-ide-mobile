@@ -2273,7 +2273,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     val miniVisibleStart = viewportTopLine.coerceAtLeast(0)
                     val miniVisibleEnd = (miniVisibleStart + visibleLineCount + 10).coerceAtMost(textLines.size)
                     if (miniVisibleStart > 0) {
-                        Spacer(Modifier.height((miniVisibleStart * minimapLineHeightDp)))
+                        Spacer(Modifier.height((miniVisibleStart * minimapLineHeightDp.value).dp))
                     }
                     textLines.subList(miniVisibleStart.coerceAtMost(textLines.size), miniVisibleEnd).forEachIndexed { vi, line ->
                         val idx = vi + miniVisibleStart
@@ -2329,13 +2329,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                     }
+                    // P50-VIRT: Bottom spacer for minimap (inside Column scope)
+                    if (textLines.size - miniVisibleEnd > 0) {
+                        Spacer(Modifier.height(((textLines.size - miniVisibleEnd) * minimapLineHeightDp.value).dp))
+                    }
                 }
 
-                // P50-VIRT: Bottom spacer for minimap
-                    if (textLines.size - miniVisibleEnd > 0) {
-                        Spacer(Modifier.height(((textLines.size - miniVisibleEnd) * minimapLineHeightDp)))
-                    }
-// Viewport indicator rectangle — shows current scroll position
+                // Viewport indicator rectangle — shows current scroll position
                 val viewportTopPx = (viewportTopLine * miniLineHeightPx)
                 val viewportHeightPx = (visibleLineCount * miniLineHeightPx).coerceAtLeast(20f)
                 Box(
@@ -3866,9 +3866,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val availableHeightDp = LocalConfiguration.current.screenHeightDp - imeHeightDpVal
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = lineFromOffset(value.selection.end)
-            val lineHeightPx = lineHeightDp.value  // P50-FIX: density-corrected line height
+            val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }  // P50-FIX: density-corrected, convert to px
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
-            val popupOffsetY = ((cursorLine + 1) * lineHeightPx - with(scrollDensity) { vScroll.value.toPx() }).roundToInt().coerceAtLeast(0)
+            val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
             val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
             
             // P41-J: Apply filter if active
