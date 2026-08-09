@@ -346,7 +346,11 @@ private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     val snips = snippetsFor(lang).filter {
         it.label.lowercase().startsWith(p) || it.insertText.lowercase().startsWith(p)
     }
-    return (snips + kw + ty).distinctBy { it.label }.take(10)
+    // C13: Stdlib completions — builtins, modules, and dot-qualified members
+    val stdlib = StdlibCompletions.completionsFor(prefix, lang).map { (label, doc) ->
+        Completion(label, CompletionKind.KEYWORD, label, doc)
+    }
+    return (snips + stdlib + kw + ty).distinctBy { it.label }.take(15)
 }
 
 private fun currentWord(text: String, cursor: Int): String {
