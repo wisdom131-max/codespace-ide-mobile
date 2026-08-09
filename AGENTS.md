@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **6869688d** — P49 Snippet Tab + Select Next Occurrence fix (build GREEN) |
-| Active phase | **Phase 50** — Full audit complete, 18 items confirmed fixed, 4 need device testing, 15 still unfixed. Next: fix highest-priority remaining items. |
+| Active phase | **Phase 50-1** — Line alignment + bookmark color fixed (56a9b04). 20 items fixed, 4 need device testing, 11 still unfixed. Next: remaining editor items. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -4046,6 +4046,43 @@ Phase 25 was a full IDE reliability audit. 7 sub-phases investigated:
 - No launch.json equivalent — debug configs are hardcoded in dropdown
 
 ---
+
+
+## Phase 50-1 — Line Number Alignment + Bookmark Color Fix (2026-08-09)
+
+**Commit:** `56a9b04`
+**File:** `CodeEditor.kt` (57 insertions, 47 deletions)
+
+### Root Cause
+All editor overlays (gutter, squiggles, highlights, cursors, popups, search matches, error lens, code lens, inlay hints, color swatches, minimap) used raw `fontSize * 1.25f` as `.dp` values while subtracting `vScroll.value` (which is in **PIXELS**) without density conversion. On any device with `density != 1.0` or `fontScale != 1.0` (every real phone), this caused:
+- Line numbers drifting away from text lines as you scroll down
+- Squiggly error underlines appearing on wrong lines (2+ lines off)
+- Search match highlights not following scroll
+- Cursor indicators misaligned
+- Completion/hover popups appearing at wrong vertical positions
+
+The lightbulb composable already had this fix (P46-D5, commit 50fdf596) — but all other overlays were missed.
+
+### Fix
+1. Added `lineHeightDp = with(density) { (fontSize * 1.25f).sp.toDp() }` — density-corrected line height matching BasicTextField's `.sp` lineHeight
+2. Added `vScrollDp = with(density) { vScroll.value.toDp() }.value` — converts pixel scroll offset to dp before mixing with dp-based math
+3. Replaced **all 15+ overlay sections** to use `lineHeightDp` and `vScrollDp` instead of raw values
+4. Fixed sticky line calculation to use `sp.toPx()` for correct pixel line height
+5. Fixed minimap viewport and conflict resolution overlays
+6. **A14:** Bookmark icon color changed from hardcoded `Color(0xFF61AFEF)` to `colors.keyword` (theme-aware)
+
+### Items Resolved
+- ✅ A14: Bookmark icon hardcoded color → theme-aware
+- ✅ Line number alignment (G3, T2, W1, X6) — affects squiggles, highlights, go-to-line
+- ✅ A7/N3: Find/Replace highlight scroll follow (overlay now uses correct scroll offset)
+- ✅ Editor text rendering overlap (stale layout cache caused by misaligned overlays)
+
+### Error Trace Log
+| File | Symptom | Root Cause | Fix | Lesson |
+|------|---------|------------|-----|--------|
+| CodeEditor.kt (15+ overlays) | Line numbers, squiggles, highlights drift from text; worse on scroll | `vScroll.value` (pixels) subtracted from `fontSize*1.25f` used as .dp — no density conversion | `56a9b04` — added `lineHeightDp` (sp→dp) and `vScrollDp` (px→dp) | When mixing Compose scroll state (px) with dp-based positioning math, ALWAYS convert via `with(density) { px.toDp() }` |
+| CodeEditor.kt:1365 | Bookmark icon invisible in some themes, clipped | Hardcoded `Color(0xFF61AFEF)` only visible in dark themes | `56a9b04` — replaced with `colors.keyword` | Never hardcode colors — always use theme-aware `EditorColors` |
+
 
 ## PHASE 26 — DAP MIGRATION & VS CODE DEBUGGING PARITY
 
