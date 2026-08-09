@@ -10892,3 +10892,118 @@ Related issues: YouTube, browser security
 
 ---
 
+
+
+## Phase 44 — Popup Modernization, Gutter Alignment, Output Panel Wiring (2026-08-09)
+
+### 44-1: Gutter Width Centralization (CRITICAL FIX)
+- **Root cause**: 6 different hardcoded values (64f, 66dp, 72dp, 74f, 74dp, 80f) used for gutter width across 12+ overlay components
+- **Fix**: Single `GUTTER_WIDTH = 72f` constant at file level in CodeEditor.kt
+- **Affected**: Find/Replace highlights, extra cursors, problem target highlight, LSP document highlights, color swatches, code lens, inlay hints, document links, error lens, completion popup, signature popup, hover popup, sticky scroll, ghost text, minimap toggle
+- **Build**: #1976 GREEN (24016b2)
+
+### 44-2: Crash Prevention — coerceAtLeast on All Overlay Positions
+- 7 calculations could go negative → `IllegalArgumentException: Padding must be non-negative`
+- **Fixed**: popupTopDp, hoverTopDp, bulbTopDp, colorSwatchTop, errorLensTop, completionPopupOffset, inlayHintTop
+- All now use `.coerceAtLeast(0f)` or `.coerceAtLeast(0.dp)`
+
+### 44-3: Keyboard Detection — Popup Covers Keyboard
+- Added `WindowInsets.ime` detection in CodeEditor
+- Completion popup height clamps based on available space above IME
+- Variable: `availableHeightDp` = screenHeightDp - imeHeightDpVal
+- Height: `if (availableHeightDp > 200) 220.dp else (availableHeightDp * 0.4f).coerceAtLeast(120f).toInt().dp`
+
+### 44-4: Touch-Through Prevention — Hand Goes Through to Editor
+- Added `.clickable{}` to completion popup Column container
+- Consumes touches, prevents pass-through to editor underneath
+- Keyboard stays functional (popup remains `focusable=false`)
+
+### 44-5: Popup Modernization (VS Code Dark Style)
+All editor popups now follow the HoverPopup reference pattern:
+
+**Completion Popup:**
+- Background: `0xFF2D2D2D` (was `0xFF252526`)
+- Shape: `RoundedCornerShape(6.dp)` (was `4.dp`)
+- Border: `0xFF3C3C3C`
+
+**Completion Detail Panel:**
+- Expand button (▾/▸) — toggles expanded/collapsed view
+- Copy button (⧉) — copies doc to clipboard via `clipboardManager.setText()`
+- Scrollable when expanded: `heightIn(max = 180.dp).verticalScroll(detailScrollState)`
+- Collapsed: `heightIn(max = 60.dp)`
+- State: `var detailExpanded by remember { mutableStateOf(false) }`
+
+**Signature Help Popup:**
+- Expand button (▾/▸) — toggles full signature view
+- Copy button (⧉) — copies `sig.name` to clipboard
+- Scrollable when expanded: `heightIn(max = 180.dp).verticalScroll(sigScrollState)`
+- Background: `0xFF2D2D2D` (was `0xFF252526`)
+- Shape: `RoundedCornerShape(6.dp)` (was `4.dp`)
+
+**HoverPopup (reference — unchanged):**
+- Already had expand + copy + scroll since Phase 26-1
+- Background: `0xFF2D2D2D`, `RoundedCornerShape(6.dp)`, border `0xFF3C3C3C`
+
+### 44-6: Feature Toggles (EditorFeatureToggles)
+- Data class with 8 boolean toggle parameters, all defaulting to `true`
+- `showCodeLens`, `showLspHighlights`, `showErrorLens`, `showColorSwatches`
+- `showDocumentLinks`, `showStickyScroll`, `showInlayHints`, `showMergeConflicts`
+- All overlays now conditionally render based on toggle state
+- Not yet wired to UI controls (can be added to Settings panel)
+
+### 44-7: Output Panel — Multi-Source Wiring
+**Problem**: OutputPanel was siloed — only 2 `AppOutputLog.log()` calls in entire app
+**Fix**: Wired multiple output sources to AppOutputLog
+
+- **UDM output**: LaunchedEffect in OutputPanel registers `addOnOutputListener` → routes debug output to `AppOutputLog.log(msg, "debug")`
+- **Git operations**: SourceControlPane now logs commit/push/pull/clone to `AppOutputLog.log(..., "git")`
+- **Channel filter**: OutputPanel header now has filter chips (All, Build, Git, Debug, LSP, Terminal)
+- **Channel filtering**: `getLines(channel)` method added to AppOutputLog
+- **availableChannels**: List added to AppOutputLog for UI channel selector
+
+**AppOutputLog changes:**
+- Added `availableChannels` list
+- Added `getLines(channel: String?)` method
+- Existing `log(message, channel)` and `logInternal(message, channel)` unchanged
+
+**SourceControlPane changes:**
+- Added `AppOutputLog` import
+- git pull: `AppOutputLog.log("git pull: ok/failed", "git")`
+- git push: `AppOutputLog.log("git push: ok/failed", "git")`
+- git commit: `AppOutputLog.log("git commit: \"message\"", "git")`
+- git clone: `AppOutputLog.log("git clone: success/failed", "git")`
+
+### 44-8: GitHubAuth Error Messages
+- Improved error message with setup instructions
+- Error now includes: "github.com/settings/developers -> New OAuth App -> Enable Device Flow -> copy Client ID"
+- CLIENT_ID: `0v231iLyu3hf6scskgnR` (user needs to verify this is valid)
+
+### 44-9: UDM → EditorPane Breakpoint Sync (VERIFIED ALREADY WIRED)
+- Audit reported UDM not passed to EditorPane — **ALREADY FIXED**
+- `udm` parameter at line 2951 in PSS function signature
+- Passed at line 3270: `udm = udm`
+- EditorPane receives UDM and calls `udm?.toggleBreakpoint(active.path, line)` on breakpoint toggle
+
+### 44-10: VariableInspectorPanel UDM Connection (VERIFIED ALREADY WIRED)
+- Audit reported VIP not connected to UDM — **ALREADY FIXED**
+- VIP uses `UniversalDebugManager` singleton directly (not as parameter)
+- Variables: `addOnPausedListener(varsListener)` at line 195
+- Call stack: `addOnPausedListener(stackListener)` at line 270
+- Watch expressions: `udm.evaluateExpression(sid, w.expression)` at line 189
+
+### Build Status
+- #1975 (ab89c55): GREEN — initial fix (GUTTER_WIDTH, toggles, coerceAtLeast)
+- #1976 (24016b2): GREEN — all toggle conditions re-applied
+- #1978 (b99a818): GREEN — keyboard detection, touch-through, availableHeightDp fix
+- #1981 (7539f95): GREEN — popup modernization (expand+copy+scroll)
+- Commits this session: ab89c55, 24016b2, b99a818, 6bd8daf, 7539f95, 41587a5, a44efd8, 8f853ac, 9c8d6c4
+
+### Remaining Roadmap
+1. Wire feature toggles to Settings panel UI controls
+2. Add build output → AppOutputLog wiring (BuildPanel)
+3. Add terminal output → AppOutputLog wiring (TerminalPane)
+4. Add LSP diagnostics → AppOutputLog wiring (LspIntegration)
+5. Verify GitHub OAuth CLIENT_ID validity
+6. Test SourceControlPane clone/push/pull flows
+7. Add Output panel copy-to-clipboard + save-as-zip (audit item S1)
+
