@@ -175,7 +175,10 @@ object LspManager {
                 "pip3 install --break-system-packages python-lsp-server; " +
                 // Auto-install pylsp-inlay-hints (archived but functional). Non-fatal:
                 // if pip/network fails, hasCapability() gate handles it gracefully.
-                "pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null",
+                "pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null; " +
+                // P50-3: pylsp-workspace-symbols plugin — adds workspace/symbol support via Jedi.
+                // Auto-advertises workspaceSymbolProvider via pylsp_experimental_capabilities.
+                "pip3 install --break-system-packages pylsp-workspace-symbols 2>/dev/null",
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
@@ -347,10 +350,20 @@ object LspManager {
                 "npm install -g vscode-langservers-extracted",
             240,
         ),
+        // P50-3: ctags-lsp — universal symbol search + go-to-definition for 100+ languages.
+        // Uses universal-ctags as backend. Installed via go install (Go already present for gopls).
+        // Needs universal-ctags runtime dependency (apt-get install universal-ctags).
+        // We use a dummy Language entry since ctags-lsp isn't tied to a specific language.
     )
 
     // Running servers: language -> LspServer
     private val servers = ConcurrentHashMap<Language, LspServer>()
+
+    // P50-3: ctags-lsp as secondary server for workspace/symbol fallback.
+    // Runs alongside primary servers. When a primary server doesn't support
+    // workspace/symbol, we route the request to ctags-lsp instead.
+    private var ctagsServer: LspServer? = null
+    private var ctagsInstallChecked = false
 
     // Diagnostics handlers: language -> (uri, diagnostics) -> Unit
     private val diagnosticsHandlers = ConcurrentHashMap<Language, (String, JSONArray) -> Unit>()
@@ -728,6 +741,12 @@ object LspManager {
 
         Log.d(TAG, "startServer: SUCCESS — LSP server RUNNING for ${language.displayName} at $rootUri")
         AppOutputLog.log("[LSP] ✓ ${language.displayName} server RUNNING at $rootUri", "lsp")
+        // P50-3: If this server doesn't support workspace/symbol, auto-start ctags-lsp
+        // as a secondary server so workspace symbol search still works for this language.
+        if (!supportsWorkspaceSymbols(language)) {
+            AppOutputLog.log("[LSP] ${language.displayName} lacks workspaceSymbolProvider — starting ctags-lsp fallback", "lsp")
+            startCtagsLsp(context, workspacePath)
+        }
         return true
     }
 
@@ -1025,6 +1044,19 @@ object LspManager {
 
     fun stopAll() {
         servers.keys.toList().forEach { stopServer(it) }
+        // P50-3: Also stop ctags-lsp secondary server
+        ctagsServer?.let { server ->
+            try {
+                if (server.initialized) {
+                    server.client.request("shutdown", timeoutSeconds = 5)
+                    server.client.notify("exit")
+                }
+            } catch (_: Exception) {}
+            server.client.stop()
+            server.process.destroyForcibly()
+            ctagsServer = null
+            AppOutputLog.log("[LSP] ctags-lsp secondary server stopped", "lsp")
+        }
     }
 
     // ── Text document synchronization ──────────────────────────────
@@ -1708,28 +1740,167 @@ object LspManager {
 
     // ── Workspace Symbol ────────────────────────────────────────
 
+    // ── P50-3: ctags-lsp secondary server ─────────────────────────────────
+
+    /**
+     * P50-3: Install universal-ctags + ctags-lsp in the proot rootfs.
+     * Called lazily when workspace/symbol fallback is first needed.
+     * universal-ctags via apt, ctags-lsp via go install (Go already present for gopls).
+     */
+    fun ensureCtagsLspInstalled(context: Context): Boolean {
+        if (ctagsInstallChecked) return ctagsServer != null
+        ctagsInstallChecked = true
+        try {
+            // Install universal-ctags if not present
+            val ctagsCheck = ProotInstaller.execOnce(context, "which ctags && echo OK", timeoutSeconds = 15)
+            if (!ctagsCheck.trim().endsWith("OK")) {
+                AppOutputLog.log("[LSP] Installing universal-ctags...", "lsp")
+                ProotInstaller.execOnce(context,
+                    "apt-get update -qq && apt-get install -y --no-install-recommends universal-ctags",
+                    timeoutSeconds = 120, logToOutput = true)
+            }
+            // Install ctags-lsp if not present
+            val ctagsLspCheck = ProotInstaller.execOnce(context, "which ctags-lsp && echo OK", timeoutSeconds = 15)
+            if (!ctagsLspCheck.trim().endsWith("OK")) {
+                AppOutputLog.log("[LSP] Installing ctags-lsp via go install...", "lsp")
+                ProotInstaller.execOnce(context,
+                    "go install github.com/netmute/ctags-lsp@latest",
+                    timeoutSeconds = 180, logToOutput = true)
+            }
+            return true
+        } catch (e: Exception) {
+            AppOutputLog.log("[LSP] ctags-lsp install failed: ${'$'}{e.message}", "lsp")
+            return false
+        }
+    }
+
+    /**
+     * P50-3: Start ctags-lsp as a secondary server for workspace/symbol fallback.
+     * Uses the same ProcessBuilder + proot pattern as startServer().
+     */
+    fun startCtagsLsp(context: Context, workspacePath: String): Boolean {
+        if (ctagsServer?.process?.isAlive == true && ctagsServer?.initialized == true) return true
+        if (!ensureCtagsLspInstalled(context)) return false
+
+        try {
+            AppOutputLog.log("[LSP] Starting ctags-lsp secondary server...", "lsp")
+
+            val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
+            val filteredArgs = baseArgs.filter {
+                it != "--bind=/proc/self/fd/0:/dev/stdin" &&
+                it != "--bind=/proc/self/fd/1:/dev/stdout" &&
+                it != "--bind=/proc/self/fd/2:/dev/stderr"
+            }
+            val headArgs = filteredArgs.dropLast(2).toTypedArray()
+            // Source profiles (same pattern as startServer), then exec ctags-lsp
+            val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec ctags-lsp"
+            val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
+
+            val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
+            pb.redirectErrorStream(false)
+            val envMap = pb.environment()
+            envVars.forEach { kv ->
+                val idx = kv.indexOf('=')
+                if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
+            }
+
+            val process = pb.start()
+
+            // Drain stderr in background
+            Thread {
+                try {
+                    process.errorStream.bufferedReader().forEachLine { line ->
+                        if (line.isNotBlank()) {
+                            AppOutputLog.log("[LSP][ctags-lsp][stderr] $line", "lsp")
+                        }
+                    }
+                } catch (_: Exception) {}
+            }.also { it.isDaemon = true }.start()
+
+            val client = JsonRpcClient(process)
+            val guestPath = workspaceGuestPath(context, workspacePath) ?: "/root"
+            val rootUri = "file://" + guestPath
+
+            val server = LspServer(Language.PLAINTEXT, process, client, rootUri)
+
+            // Initialize handshake
+            val initParams = JSONObject().apply {
+                put("processId", 0)
+                put("rootUri", rootUri)
+                put("capabilities", JSONObject())
+            }
+            val response = client.request("initialize", initParams, timeoutSeconds = 30)
+            if (response is JSONObject) {
+                server.capabilities = response.optJSONObject("result")
+                server.initialized = true
+                client.notify("initialized", JSONObject())
+                ctagsServer = server
+                AppOutputLog.log("[LSP] ctags-lsp started successfully — workspace/symbol fallback ready", "lsp")
+                return true
+            }
+        } catch (e: Exception) {
+            AppOutputLog.log("[LSP] ctags-lsp start failed: ${'$'}{e.message}", "lsp")
+        }
+        return false
+    }
+
+    /**
+     * P50-3: Query ctags-lsp for workspace symbols.
+     * Returns a JSONArray of SymbolInformation, or null if ctags-lsp isn't running.
+     */
+    fun getCtagsWorkspaceSymbol(query: String): JSONArray? {
+        val server = ctagsServer ?: return null
+        if (!server.initialized || !server.process.isAlive) return null
+        val params = JSONObject().apply { put("query", query) }
+        val response = server.client.request("workspace/symbol", params, timeoutSeconds = 10)
+        return response as? JSONArray
+    }
+
     /**
      * Request workspace symbols matching a query string.
      * Returns a JSONArray of SymbolInformation { name, kind, location, containerName? }.
+     *
+     * P50-3: Now with fallback chain:
+     *   1. Primary LSP server (if it supports workspace/symbol)
+     *   2. ctags-lsp secondary server (universal symbol search)
+     *   3. FileIndexer regex (tertiary fallback, handled by SymbolSearchPanel)
      */
     fun getWorkspaceSymbol(
         language: Language,
         query: String,
     ): JSONArray? {
-        val server = servers[language] ?: return null
-        if (!server.initialized) return null
-        // P38-FIX: Don't send workspace/symbol if the server doesn't advertise it.
-        // pylsp crashes with KeyError when it receives an unsupported method,
-        // killing the entire LSP process and breaking all other features.
-        if (!supportsWorkspaceSymbols(language)) {
-            AppOutputLog.log("[LSP] ${'$'}{language.displayName} does not support workspace/symbol — skipping (capability not advertised)", "lsp")
+        val server = servers[language]
+        if (server != null && server.initialized && supportsWorkspaceSymbols(language)) {
+            // Primary server supports workspace/symbol — use it directly
+            val params = JSONObject().apply {
+                put("query", query)
+            }
+            val response = server.client.request("workspace/symbol", params, timeoutSeconds = 10)
+            return response as? JSONArray
+        }
+
+        // P50-3: Primary server doesn't support workspace/symbol — try ctags-lsp
+        if (server != null && server.initialized && !supportsWorkspaceSymbols(language)) {
+            AppOutputLog.log("[LSP] ${'$'}{language.displayName} does not support workspace/symbol — trying ctags-lsp fallback", "lsp")
+            // Auto-start ctags-lsp if not running
+            if (ctagsServer == null || ctagsServer?.process?.isAlive != true) {
+                // Need context + workspacePath to start — we get these from the active server
+                // We can't start ctags-lsp here (no Context param). It must be started
+                // proactively when a server that lacks workspace/symbol starts.
+                // For now, just query if it's already running.
+                AppOutputLog.log("[LSP] ctags-lsp not running — using FileIndexer regex fallback", "lsp")
+                return null
+            }
+            val ctagsResult = getCtagsWorkspaceSymbol(query)
+            if (ctagsResult != null && ctagsResult.length() > 0) {
+                return ctagsResult
+            }
+            AppOutputLog.log("[LSP] ctags-lsp fallback returned no results — using FileIndexer regex", "lsp")
             return null
         }
-        val params = JSONObject().apply {
-            put("query", query)
-        }
-        val response = server.client.request("workspace/symbol", params, timeoutSeconds = 10)
-        return response as? JSONArray
+
+        // No server running at all — return null (FileIndexer regex will handle it)
+        return null
     }
 
     // ── Diagnostics ────────────────────────────────────────────────
