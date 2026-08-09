@@ -1625,7 +1625,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // ── P22-D: Merge conflict overlay ──────────────────────────────────
-        if (conflictData != null && conflictData.isNotEmpty()) {
+        if (toggles.showMergeConflicts && conflictData != null && conflictData.isNotEmpty()) {
             val lineHeight = fontSize * 1.25f
             conflictData.forEach { hunk ->
                 val oursHeight = (lineHeight * (hunk.separatorLine - hunk.startLine)).dp
@@ -1700,7 +1700,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if (findReplaceOpen && matches.isNotEmpty() && matches.size <= 200) {
             val lineHeightPxM = fontSize * 1.25f
             val charWidthPxM  = fontSize * 0.6f
-            val gutterDpM    = 74f
+            val gutterDpM = GUTTER_WIDTH
             val scrollOffsetPxM = vScroll.value
             matches.forEachIndexed { idx, range ->
                 val matchStart = range.first
@@ -1735,7 +1735,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if (extraCursors.isNotEmpty()) {
             val lineHeightPx = fontSize * 1.25f
             val charWidthPx  = fontSize * 0.6f
-            val gutterDp     = 74f
+            val gutterDp = GUTTER_WIDTH
             // BUG-3 FIX: subtract scroll offset
             val scrollOffsetPx = vScroll.value
             extraCursors.forEach { off ->
@@ -1774,7 +1774,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // PROBLEMS-TAB FIX: Gold highlight on the problem target line (fades after 2.5s)
         if (highlightTargetLine > 0) {
             val lineHeightPxHl = fontSize * 1.25f
-            val gutterDpHl = 74f
+            val gutterDpHl = GUTTER_WIDTH
             val scrollOffsetPxHl = vScroll.value
             val topDpHl = ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
             Box(
@@ -1801,7 +1801,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // P26-1: LSP Document Highlight — subtle background tint on all occurrences
         if (lspHighlightLines.isNotEmpty()) {
             val lineHeightPxHighlight = fontSize * 1.25f
-            val gutterDpHighlight = 74f
+            val gutterDpHighlight = GUTTER_WIDTH
             // BUG-3 FIX: subtract scroll offset so highlights track the correct lines on scroll
             val scrollOffsetPx = vScroll.value
             lspHighlightLines.forEach { (startLine, endLine) ->
@@ -1822,7 +1822,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // P41-K: Color swatches — inline color indicators from LSP documentColor
         if (lspDocumentColors != null && lspDocumentColors!!.length() > 0) {
             val lineHeightPxCS = fontSize * 1.25f
-            val gutterDpCS = 74f
+            val gutterDpCS = GUTTER_WIDTH
             val charWidthPxCS = fontSize * 0.6f
             for (ci in 0 until lspDocumentColors!!.length()) {
                 val colorInfo = lspDocumentColors!!.optJSONObject(ci) ?: continue
@@ -1890,7 +1890,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
             val lineHeightPxCL = fontSize * 1.25f
-            val gutterDpCL = 74f
+            val gutterDpCL = GUTTER_WIDTH
             for (i in 0 until lspCodeLenses!!.length()) {
                 val lens = lspCodeLenses!!.optJSONObject(i) ?: continue
                 val range = lens.optJSONObject("range") ?: continue
@@ -1929,7 +1929,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // P26-1: LSP Inlay Hints — inline type/parameter hints within code
         if (lspInlayHints != null && lspInlayHints!!.length() > 0) {
             val lineHeightPxIH = fontSize * 1.25f
-            val gutterDpIH = 74f
+            val gutterDpIH = GUTTER_WIDTH
             val charWidthPx = fontSize * 0.6f
             for (i in 0 until lspInlayHints!!.length()) {
                 val hint = lspInlayHints!!.optJSONObject(i) ?: continue
@@ -1971,7 +1971,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // P26-1: LSP Document Links — clickable underlined links in comments
         if (lspDocumentLinks != null && lspDocumentLinks!!.length() > 0) {
             val lineHeightPxDL = fontSize * 1.25f
-            val gutterDpDL = 74f
+            val gutterDpDL = GUTTER_WIDTH
             val charWidthPxDL = fontSize * 0.6f
             for (i in 0 until lspDocumentLinks!!.length()) {
                 val link = lspDocumentLinks!!.optJSONObject(i) ?: continue
@@ -3526,7 +3526,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val cursorLineIdx = value.text.take(value.selection.end).count { it == '\n' }
             val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
             // BUG-2 FIX: subtract scroll offset so the popup appears at the visible cursor position
-            val popupTopDp = (popupLineIdx * fontSize * 1.25f) - vScroll.value
+            val popupTopDp = ((popupLineIdx * fontSize * 1.25f) - vScroll.value).coerceAtLeast(0f)
             val annotated = remember(sig) {
                 buildAnnotatedString {
                     append(sig.name)
@@ -3550,7 +3550,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 74.dp, top = popupTopDp.dp)
+                    .padding(start = GUTTER_WIDTH.dp, top = popupTopDp.dp)
                     .widthIn(max = 320.dp)
                     .zIndex(10f)
                     .background(Color(0xFF252526), RoundedCornerShape(4.dp))
