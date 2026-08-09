@@ -11591,3 +11591,134 @@ Restructured to match the reference VS Code screenshots the user provided:
 - CI status: **✅ GREEN**
 - Previous green: ff185bf3 (setBrandVersionList fix)
 - Previous green: ff4e1904 (P48 Markdown preview + drag)
+
+
+---
+
+## Phase 50 — CI Fix: Comma-in-Comment Bug (2026-08-09, by Superagent)
+
+**Bug:** Builds #2011 through #2019 (9 consecutive failures) all caused by a single syntax error in `CodeEditor.kt`.
+
+**Root cause:** The other AI's P50-1 commit (`56a9b042`) placed a trailing comma **inside a `//` line comment**, so Kotlin never saw the argument separator:
+
+```kotlin
+// BROKEN — comma is inside the comment, argument never terminated
+color = if (bookmarkedLines.contains(lineNum))
+    colors.keyword else colors.gutter  // P50-FIX: theme-aware bookmark color,
+    fontSize = fontSize.sp,
+```
+
+The `//` comment extends to end of line, swallowing the `,`. The parser then sees `fontSize = fontSize.sp` as part of the `color =` expression → "Expecting an element" at 3 positions on the next line.
+
+**Fix:** Commit `07ecf98e` — moved the comma before the comment:
+
+```kotlin
+// FIXED — comma before comment, argument properly terminated
+color = if (bookmarkedLines.contains(lineNum))
+    colors.keyword else colors.gutter,  // P50-FIX: theme-aware bookmark color
+    fontSize = fontSize.sp,
+```
+
+**Why all 9 builds failed:** P50-1 introduced the bug. P50-2, P50-3, P50-4 were committed on top of the broken P50-1, so they all inherited the same compile error. The other AI documented its work in AGENTS.md (which are docs-only commits that pass CI) but never noticed the code commits were all failing.
+
+**Lesson:** When a `//` comment is the last thing on a line in a function call, the comma separator MUST come before the comment, not at the end of the comment text. Added to known failure patterns.
+
+### Error Trace Log
+
+| File | Symptom | Root Cause | Fix | Lesson |
+|------|---------|------------|-----|--------|
+| CodeEditor.kt:1385 | 9 consecutive CI failures (#2011-#2019) — "Expecting an element" at 3 positions | Comma separator placed inside `//` line comment → argument never terminated → parser chokes on next named argument | `07ecf98e` — moved comma before comment | A `//` comment swallows everything to end of line including trailing commas. Always place `,` separators BEFORE `//` comments in multi-line function calls |
+
+### Known Kotlin/Compose CI Failure Patterns — UPDATED
+
+Previous patterns (from USER.md):
+1. Raw newlines inside double-quoted strings
+2. remember() inside if/else branches or LazyColumn items{}
+3. Double-quotes inside a double-quoted string
+4. Triple-quoted strings inside ${} interpolation
+5. LocalContext.current inside coroutine lambdas — capture at top of @Composable
+
+**NEW (P50 lesson):**
+6. **Comma inside `//` comment** — a `,` at the end of a `//` comment line is swallowed by the comment and does NOT act as an argument separator. Always place `,` before `//` in multi-line function calls.
+
+---
+
+## CURRENT STATE UPDATE (2026-08-09 18:15, by Superagent)
+
+| | |
+|-|-|
+| Latest commit | **07ecf98e** — CI fix: comma-in-comment in CodeEditor.kt (fixes #2011-#2019) |
+| Previous green | **6869688d** — P49 Snippet Tab + Select Next Occurrence (build #2009) |
+| Active phase | **Phase 50** — P50-1 through P50-4 implemented by other AI, all were broken by comma bug, now fixed |
+| Backend | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com |
+| Phase 39 | ✅ COMPLETE — OAuth, env vars, redirect URIs all configured |
+
+### Summary of Other AI's Work (Aug 8-9, commits before our fix)
+
+The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across Phases 44-50:
+
+**Phase 44 — Popup Modernization, Gutter Alignment, Output Panel (Aug 8-9):**
+- Gutter width centralized to single `GUTTER_WIDTH = 72f` constant (was 6 different hardcoded values)
+- `EditorFeatureToggles` data class for feature flags
+- Popup modernization: expand/copy/scroll pattern (VS Code style)
+- Output panel wired to AppOutputLog with channel filtering (Build, Terminal, Git, GitHub, LSP)
+- Negative padding crash fix: clamp all scroll-offset topDp to `coerceAtLeast(0f)`
+- Notification duplicate-key crash: AtomicLong counter instead of `currentTimeMillis()`
+
+**Phase 45 — GitHub Codespace Retention + SourceControlPane Restructure (Aug 9):**
+- GitHub Codespace retention warning resolved (5GB stray `~/` folder removed via `gh codespace ssh`)
+- SourceControlPane restructured to VS Code "Open Remote Repository" flow
+- GitHubAuth.isConfigured() check + setup guide when OAuth not configured
+- GitHubAuth CLIENT_ID switched to working OAuth App
+- BasicTextField → OutlinedTextField for VS Code-style search
+
+**Phase 46 — Full Feature Test + Bug Fixes (Aug 8-9):**
+- Full feature audit: 18 confirmed fixed, 4 need device testing, 15 still unfixed
+- Zen Mode keyboard passthrough (empty `onTap` callback)
+- Lightbulb dp/px mismatch (density conversion for scroll position)
+- Problems panel dark theme fix
+
+**Phase 47 — Markdown Live Preview, SCM Overflow, Preview Close (Aug 9):**
+- Markdown live preview split view (EditorPane + MarkdownRenderer.kt)
+- SCM 3-dot overflow menu (Pull, Fetch, Push, etc.)
+- Preview close button (X in PreviewPane top bar)
+
+**Phase 48 — Browser/WebView Fixes (Aug 9):**
+- Shared WebView instance for fullscreen (no page reload)
+- Desktop User-Agent via UserAgentMetadata
+- YouTube playsinline CSS injection
+- `setBrandVersionList` (not `setBrandList`) — API name fix
+- Markdown preview as bottom panel with drag-to-resize
+
+**Phase 49 — Snippet Tab + Select Next Occurrence (Aug 9):**
+- Tab interceptor checks local snippet triggers when no session active (A5)
+- `currentWord()` scans forward for Select Next Occurrence (A8)
+
+**Phase 50 — Line Alignment + Virtualization + Symbol Search + Output Panel (Aug 9):**
+- P50-1: Density-corrected line heights + scroll offsets for all 15+ overlays (gutter, squiggles, highlights, cursors, popups, search, error lens, minimap). Bookmark icon theme-aware color.
+- P50-2: Gutter + minimap virtualization (O(visible) instead of O(total) composables). Syntax highlighting cache in VisualTransformation.
+- P50-3: ctags-lsp as secondary LSP server for workspace symbol search (100+ languages). pylsp-workspace-symbols plugin for Python.
+- P50-4: Output panel all channels visible + copy-to-clipboard + save-to-file.
+
+**All P50 commits were broken by the comma-in-comment bug in P50-1. Fixed by Superagent in commit `07ecf98e`.**
+
+### What's Still Remaining (from Phase 50 audit):
+
+**Needs on-device testing (5 items):**
+1. Find in File / Shell history keyboard focus
+2. Quick command palette (TerminalPane recent-5 commands strip)
+3. MCP status indicator polling
+4. Debug panel step buttons + variables
+5. Full login + connectors end-to-end (Phase 39 verification)
+
+**Still unfixed (8 items):**
+1. C13: No stdlib/builtin completions (math., import o)
+2. D1/D3: Completion dropdown issues
+3. Q5: UDM not injected from PSS to EditorPane
+4. N8: Recent search history not working
+5. Small files "too small to be ELF" — poor UX
+6. Extract ZIP to long-press menu — not implemented
+7. V1: Recycle bin restore doesn't show project on screen
+8. Cloud backup retry logic + YouTube login/shorts (WebView limitations)
+
+**Next planned:** Feature toggles → Settings panel
