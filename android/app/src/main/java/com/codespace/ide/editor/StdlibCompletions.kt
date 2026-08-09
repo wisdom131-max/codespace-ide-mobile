@@ -157,7 +157,7 @@ object StdlibCompletions {
      * Also handles dot-qualified member access (e.g. "math." returns math module members).
      */
     fun completionsFor(prefix: String, lang: Language): List<Pair<String, String>> {
-        if (prefix.length < 2) return emptyList()
+        if (prefix.isEmpty()) return emptyList()
         val p = prefix.lowercase()
         val results = mutableListOf<Pair<String, String>>()
 
