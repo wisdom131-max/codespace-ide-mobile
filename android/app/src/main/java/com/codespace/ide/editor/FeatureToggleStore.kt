@@ -32,7 +32,6 @@ object FeatureToggleStore {
         Toggle("ghost_text", true, "Ghost text", "AI suggestion preview as dimmed text"),
         Toggle("merge_conflicts", true, "Merge conflicts", "Highlight merge conflict markers with resolve buttons"),
         Toggle("lsp_highlights", true, "LSP highlights", "Highlight occurrences of symbol under cursor"),
-        Toggle("line_numbers", true, "Line numbers", "Show line numbers in the gutter"),
     )
 
     private val states = mutableMapOf<String, MutableState<Boolean>>()
