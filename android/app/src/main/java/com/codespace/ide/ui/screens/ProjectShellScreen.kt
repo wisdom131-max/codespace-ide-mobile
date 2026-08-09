@@ -2349,6 +2349,7 @@ private fun buildRunCommand(path: String): String? {
 @Composable private fun OutputPanel() {
     val logs = AppOutputLog.lines
     val listState = rememberLazyListState()
+    var selectedChannel by remember { mutableStateOf("all") }
     
     // P44-OUTPUT: Wire UDM output to AppOutputLog so debug output appears here
     LaunchedEffect(Unit) {
@@ -2380,7 +2381,6 @@ private fun buildRunCommand(path: String): String? {
             Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
             // P44-OUTPUT: Channel filter chips
             val channels = listOf("all", "build", "git", "debug", "lsp", "terminal")
-            var selectedChannel by remember { mutableStateOf("all") }
             channels.take(4).forEach { ch ->
                 val isActive = selectedChannel == ch
                 Text(
