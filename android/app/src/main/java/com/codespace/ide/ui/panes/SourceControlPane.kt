@@ -558,7 +558,10 @@ fun SourceControlPane(projectId: String) {
                                     repos = com.codespace.ide.data.GitHubAuth.listUserRepos(token)
                                     showRepoBrowser = true
                                 } catch (e: Exception) {
-                                    cloneError = "Failed to load repos: " + (e.message ?: "")
+                                    cloneError = e.message ?: "Failed"
+                if (!com.codespace.ide.data.GitHubAuth.isConfigured()) {
+                    cloneError = "GitHub OAuth not configured. See setup steps in the error message above."
+                }
                                 }
                                 loadingRepos = false
                             }
@@ -697,7 +700,10 @@ fun SourceControlPane(projectId: String) {
                                     repos = com.codespace.ide.data.GitHubAuth.listUserRepos(ghToken)
                                     showRepoBrowser = true
                                 } catch (e: Exception) {
-                                    cloneError = "Failed to load repos: " + (e.message ?: "")
+                                    cloneError = e.message ?: "Failed"
+                if (!com.codespace.ide.data.GitHubAuth.isConfigured()) {
+                    cloneError = "GitHub OAuth not configured. See setup steps in the error message above."
+                }
                                 }
                                 loadingRepos = false
                             }
