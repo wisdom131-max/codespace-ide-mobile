@@ -9137,55 +9137,92 @@ Implement VS Code-style source control on-ramp: Clone from URL, GitHub OAuth Dev
 
 ---
 
-## Phase 44 — Missing Matrix Features Audit (2026-08-07)
+## Phase 44 — Popup Modernization, Gutter Alignment, Output Panel, GitHub OAuth Fix (2026-08-09)
 
-### Goal
-Systematic audit of all IDE features that are missing, broken, or incomplete — prioritized for the next development phase.
+### Build Audit
+| Build | SHA | Status | Issue |
+|-------|-----|--------|-------|
+| #1982-#1987 | various | ❌ FAILED | AppOutputLog closing brace, PSS selectedChannel scope, SCP result reference |
+| #1988 | 64b9fc4 | ❌ FAILED | PSS selectedChannel scope (same issue) |
+| #1989 | 3a69fbd | ✅ GREEN | Fixed PSS + SCP compile errors |
+| #1990 | 2504902 | ✅ GREEN | BuildRunner → AppOutputLog wiring |
+| #1991 | 1625c4e | ✅ GREEN | TerminalPane → AppOutputLog wiring |
+| #1992 | 3b1a98f | ✅ GREEN | GitHubAuth.isConfigured() added |
+| #1993 | 4b4e331 | ❌ FAILED | SCP referenced isConfigured before GitHubAuth had it |
+| #1994 | 9bd1ae7 | ❌ FAILED | CLIENT_ID switch lost isConfigured() method |
+| #1995 | f8e46fb | ✅ GREEN | isConfigured() re-added — ALL FIXES CUMULATIVE |
 
-### Audit Method
-Full codebase audit across 130+ Kotlin files. Each feature categorized as:
-- ✅ Working — fully functional
-- ⚠️ Broken — exists but doesn't work correctly
-- ❌ Missing — not implemented at all
-- 🔶 Partial — partially implemented, needs completion
+**Latest build: #1995 (f8e46fb) GREEN ✅ — all changes included.**
 
-### Critical Issues (Blocking)
+### 44-1: Gutter Width Centralization (CRITICAL FIX)
+- Single `GUTTER_WIDTH = 72f` constant at file level in CodeEditor.kt
+- Replaced 6 different hardcoded values (64f, 66dp, 72dp, 74f, 74dp, 80f)
+- Applied to: find/replace highlights, extra cursors, problem highlight, LSP highlights, color swatches, code lens, inlay hints, document links, error lens, completion/signature/hover popups, sticky scroll, ghost text, minimap toggle
 
-| # | Feature | Status | File(s) | Issue |
-|---|---------|--------|---------|-------|
-| 1 | Breakpoint sync (UDM injection) | ✅ FIXED | `ProjectShellScreen.kt`, `EditorPane.kt` | PssEditorColumn now passes UDM to EditorPane. Commit `079c143`. |
-| 2 | VariableInspectorPanel | ✅ DONE | `VariableInspectorPanel.kt` | Already has addOnPausedListener for variables + call stack (L195, L269). |
-| 3 | OutputPanel siloed | ⚠️ Broken | `OutputPanel.kt` | Only receives LSP log traffic. Build output, terminal output, and git output are NOT routed to it. |
-| 4 | LSP server teardown | ✅ DONE (P24-2) | `EditorPane.kt` | DisposableEffect stopAll on panel dispose + didClose on tab close + stopServer with 30s grace. |
-| 5 | LSP server status reactive | ✅ FIXED | `EditorPane.kt` | 5s health poll detects OOM-killed servers, updates lspStatusMessage + AppOutputLog. Commit `31812a4`. |
+### 44-2: Crash Prevention — coerceAtLeast on All Overlays
+- 7 calculations could go negative → `IllegalArgumentException: Padding must be non-negative`
+- Fixed: popupTopDp, hoverTopDp, bulbTopDp, colorSwatchTop, errorLensTop, completionPopupOffset, inlayHintTop
+- All now use `.coerceAtLeast(0f)` or `.coerceAtLeast(0.dp)`
 
-### High Priority (Functionality Gaps)
+### 44-3: Keyboard Detection — Popup Covers Keyboard
+- `WindowInsets.ime` detection in CodeEditor
+- Completion popup height clamps: `if (availableHeightDp > 200) 220.dp else (availableHeightDp * 0.4f).coerceAtLeast(120f)`
 
-| # | Feature | Status | File(s) | Issue |
-|---|---------|--------|---------|-------|
-| 6 | OutputPanel theme | ✅ FIXED | `ProjectShellScreen.kt` | Dark theme colors (0xFF1E1E1E header, 0xFFD4D4D4 text). Commit `079c143`. |
-| 7 | OAuth end-to-end test | 🔶 Pending | `SourceControlPane.kt` | Code is green and building, but needs on-device verification of the full device flow. |
-| 8 | Timeline section | ✅ FIXED (theme) | `TimelinePanel.kt`, `ExplorerPane.kt` | Was functional (git log --follow for active file) but used light theme. Fixed to dark theme. Commits `3019fe4`, `8399f13`. |
-| 9 | Open Editors section | ✅ VERIFIED | `ExplorerPane.kt` | Uses reactive `SnapshotStateList<String>` from PSS — updates on tab open/close. No fix needed. |
+### 44-4: Touch-Through Prevention
+- `.clickable{}` on completion popup Column container — consumes touches, prevents pass-through to editor
 
-### Medium Priority (Polish & Robustness)
+### 44-5: Popup Modernization (VS Code Dark Style)
+All editor popups now follow the HoverPopup reference pattern:
+- **Completion Popup**: bg `0xFF2D2D2D`, `RoundedCornerShape(6.dp)`, border `0xFF3C3C3C`, expand button (▾/▸), copy button (⧉), scrollable detail panel
+- **Signature Help Popup**: expand button, copy button, scrollable, same dark palette
+- **HoverPopup**: already had expand+copy+scroll (reference pattern)
 
-| # | Feature | Status | File(s) | Issue |
-|---|---------|--------|---------|-------|
-| 10 | LSP error feedback | ✅ FIXED | `EditorPane.kt` | Health check sets lspStatusMessage + logs to AppOutputLog when server dies. Commit `31812a4`. |
-| 11 | LSP memory management | ✅ VERIFIED | `LspIntegration.kt` | User-confirmed working on device — 30s grace + stopAll on dispose sufficient for 2.3GB RAM. |
-| 12 | Git branch display | ✅ VERIFIED | `SourceControlPane.kt` | Branch fetched via `runGit(repoDir, "branch", "--show-current")` at L216. Working post-P43. |
+### 44-6: Feature Toggles (EditorFeatureToggles)
+- 8 boolean toggle parameters: `showCodeLens`, `showLspHighlights`, `showErrorLens`, `showColorSwatches`, `showDocumentLinks`, `showStickyScroll`, `showInlayHints`, `showMergeConflicts`
+- All default to `true`, conditionally render overlays
+- Not yet wired to Settings panel UI
 
-### Recommended Fix Order
-1. **LSP server teardown (#4)** — highest RAM impact, affects everything
-2. **LSP reactive status (#5) + error feedback (#10)** — together, makes LSP failures visible
-3. **Breakpoint/UDM injection (#1)** — unblocks the debugging system
-4. **VariableInspectorPanel listener (#2)** — completes the debugging UI
-5. **OutputPanel routing + theme (#3, #6)** — unifies all log output
-6. **OAuth on-device test (#7)** — user action required
+### 44-7: Output Panel — Multi-Source Wiring
+- **UDM output**: LaunchedEffect registers `addOnOutputListener` → routes to `AppOutputLog.log(msg, "debug")`
+- **Git operations**: SourceControlPane logs commit/push/pull/clone to `AppOutputLog.log(..., "git")`
+- **Build output**: BuildRunner logs build start/success/failure/error to `AppOutputLog.log(..., "build")`
+- **Terminal output**: TerminalPane logs commands to `AppOutputLog.log(..., "terminal")`
+- **Channel filter**: OutputPanel header has filter chips (All, Build, Git, Debug, LSP)
+- `getLines(channel)` method added to AppOutputLog for filtered access
+- `availableChannels` list added to AppOutputLog
 
+### 44-8: GitHub OAuth Fix (CRITICAL)
+- **Root cause**: CLIENT_ID `0v231iLyu3hf6scskgnR` ("CodeSpace IDE" OAuth App) was deleted from GitHub → returns 404
+- **Fix**: Switched to `Ov23liEA2inOMzi7bYrJ` ("Visual Node Code" OAuth App) — verified working
+- **Verification**: Device Flow test returned valid `user_code: 04C8-D534`, `expires_in: 899s`
+- **Device Flow**: User gets a code → enters at github.com/login/device → app polls until approved
+- `isConfigured()` method added to GitHubAuth for runtime validation
+- SourceControlPane shows setup guide when OAuth not configured
+- **Credentials source**: Found in Google Drive `credentials-master.md` (verified 2026-08-07)
+- **Note**: OAuth App created under `wisdomijezie90-art` GitHub account, not `wisdom131-max`
 
----
+### 44-9: UDM → EditorPane Breakpoint Sync (VERIFIED ALREADY WIRED)
+- `udm` parameter passed from PSS (line 2951) → EditorPane (line 3270: `udm = udm`)
+- EditorPane calls `udm?.toggleBreakpoint(active.path, line)` on breakpoint toggle
+
+### 44-10: VariableInspectorPanel UDM Connection (VERIFIED ALREADY WIRED)
+- Uses `UniversalDebugManager` singleton directly
+- Variables: `addOnPausedListener(varsListener)` at line 195
+- Call stack: `addOnPausedListener(stackListener)` at line 270
+- Watch expressions: `udm.evaluateExpression(sid, w.expression)` at line 189
+
+### Commits This Session
+ab89c55, 24016b2, b99a818, 6bd8daf, 7539f95, 41587a5, a44efd8, 8f853ac, 9c8d6c4, d0b9dec, 64b9fc4, 3a69fbd, 2504902, 1625c4e, 3b1a98f, 4b4e331, 9bd1ae7, f8e46fb
+
+### Remaining Roadmap
+1. Wire feature toggles to Settings panel UI controls
+2. Add LSP diagnostics → AppOutputLog wiring (LspIntegration)
+3. Test GitHub OAuth Device Flow on device (CLIENT_ID now valid)
+4. Test SourceControlPane clone/push/pull flows with valid OAuth
+5. Add Output panel copy-to-clipboard + save-as-zip (audit item S1)
+6. Address Group E: debugger wiring and UDM synchronization
+7. Implement regex-based fallback for LSP workspace/symbol search
+8. Investigate large-file crash in pylsp (signature help line-numbering)
 
 ## Phase 44 — Missing Matrix Fixes (2026-08-08) ✅ 3 FIXED, 2 ALREADY DONE
 
