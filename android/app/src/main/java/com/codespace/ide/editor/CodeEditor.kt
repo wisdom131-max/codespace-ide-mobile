@@ -1250,8 +1250,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 if (savedContent.isEmpty()) null
                 else GitDiffAnalyzer.diff(currentLines, savedLines)
             }
+            
+            // P50-VIRT: Gutter virtualization — only render visible lines to handle infinite files without lag.
+            // Previously the gutter rendered ALL lines as composables, causing OOM and jank on 1000+ line files.
+            val viewportHeightPx = vScroll.viewportSize.toFloat().coerceAtLeast(1f)
+            val visibleCount = ((viewportHeightPx / with(scrollDensity) { lineHeightDp.toPx() }).toInt() + 8) // +8 buffer for smooth scroll
+            val topVisibleIdx = (vScroll.value / with(scrollDensity) { lineHeightDp.toPx() }).toInt().coerceAtLeast(0)
+            val bottomVisibleIdx = (topVisibleIdx + visibleCount).coerceAtMost(displayLines.size)
+            val topSpacerLines = topVisibleIdx.coerceAtLeast(0)
+            val bottomSpacerLines = (displayLines.size - bottomVisibleIdx).coerceAtLeast(0)
+
             Column(modifier = Modifier.padding(horizontal = 4.dp).width(72.dp)) {
-                displayLines.forEach { (lineNum, _) ->
+                // P50-VIRT: Spacer for lines above viewport — avoids composing off-screen rows
+                if (topSpacerLines > 0) {
+                    Spacer(Modifier.height((topSpacerLines * lineHeightDp.value).dp))
+                }
+                displayLines.subList(topVisibleIdx.coerceAtMost(displayLines.size), bottomVisibleIdx).forEachIndexed { vi, (lineNum, _) ->
                     if (lineNum == -1) {
                         // Visual placeholder row in gutter
                         Row(
@@ -1378,6 +1392,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                     }
+                }
+                // P50-VIRT: Spacer for lines below viewport
+                if (bottomSpacerLines > 0) {
+                    Spacer(Modifier.height((bottomSpacerLines * lineHeightDp.value).dp))
                 }
             }
             // Editor surface
@@ -1517,7 +1535,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             fontFamily = FontFamily.Monospace,
                         )
                     ),
-                    visualTransformation = SyntaxTransformation(language, colors, lintErrors, foldedLineIndices, semanticTokens),
+                    visualTransformation = remember(language, colors, lintErrors, foldedLineIndices, semanticTokens) {
+                        SyntaxTransformation(language, colors, lintErrors, foldedLineIndices, semanticTokens)
+                    },
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
                         .padding(end = 24.dp)
@@ -2249,7 +2269,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         }
                         map
                     }
-                    textLines.forEachIndexed { idx, line ->
+                    // P50-VIRT: Virtualize minimap — only render visible lines
+                    val miniVisibleStart = viewportTopLine.coerceAtLeast(0)
+                    val miniVisibleEnd = (miniVisibleStart + visibleLineCount + 10).coerceAtMost(textLines.size)
+                    if (miniVisibleStart > 0) {
+                        Spacer(Modifier.height((miniVisibleStart * minimapLineHeightDp)))
+                    }
+                    textLines.subList(miniVisibleStart.coerceAtMost(textLines.size), miniVisibleEnd).forEachIndexed { vi, line ->
+                        val idx = vi + miniVisibleStart
                         // Classify line for syntax color
                         val trimmed = line.trimStart()
                         val lineColor = when {
@@ -2304,7 +2331,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     }
                 }
 
-                // Viewport indicator rectangle — shows current scroll position
+                // P50-VIRT: Bottom spacer for minimap
+                    if (textLines.size - miniVisibleEnd > 0) {
+                        Spacer(Modifier.height(((textLines.size - miniVisibleEnd) * minimapLineHeightDp)))
+                    }
+// Viewport indicator rectangle — shows current scroll position
                 val viewportTopPx = (viewportTopLine * miniLineHeightPx)
                 val viewportHeightPx = (visibleLineCount * miniLineHeightPx).coerceAtLeast(20f)
                 Box(

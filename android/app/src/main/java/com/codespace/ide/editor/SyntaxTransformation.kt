@@ -29,10 +29,23 @@ class SyntaxTransformation(
     private val semanticTokens: List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange> = emptyList(),
 ) : VisualTransformation {
 
+    // P50-PERF: Cache the last transformed result so we don't rebuild the AnnotatedString
+    // on every recomposition. The filter() method is called frequently by Compose, and
+    // rebuilding syntax highlighting for a 5000-line file on every frame would cause jank.
+    private var cachedText: String? = null
+    private var cachedResult: TransformedText? = null
+
     override fun filter(text: AnnotatedString): TransformedText {
+        // Return cached result if text hasn't changed
+        if (cachedText == text.text && cachedResult != null) {
+            return cachedResult!!
+        }
         // ── Step 1: build folding map ─────────────────────────────────────
         if (foldedLineIndices.isEmpty()) {
-            return applyHighlightAndLint(text, OffsetMapping.Identity)
+            val result = applyHighlightAndLint(text, OffsetMapping.Identity)
+            cachedText = text.text
+            cachedResult = result
+            return result
         }
 
         val raw = text.text
