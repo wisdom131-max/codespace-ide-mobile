@@ -334,7 +334,7 @@ private fun snippetsFor(lang: Language): List<Completion> = when (lang) {
     )
 }
 private fun completionsFor(prefix: String, lang: Language): List<Completion> {
-    if (prefix.length < 2) return emptyList()
+    if (prefix.isEmpty()) return emptyList()
     val spec = LanguageSpecs.forLanguage(lang)
     val p = prefix.lowercase()
     val kw = spec.keywords.filter { it.startsWith(p) }.sorted().map {
