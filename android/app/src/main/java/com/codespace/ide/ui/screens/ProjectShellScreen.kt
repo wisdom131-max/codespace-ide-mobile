@@ -1301,13 +1301,17 @@ fun ProjectShellScreen(
 
         // P45-G2: Floating Zen Mode exit button
         if (zenMode) {
+            // P46-O1: Transparent overlay that ONLY catches double-tap to exit.
+            // Must NOT consume single taps — otherwise the editor underneath can't
+            // receive focus and the soft keyboard won't open in Zen Mode.
             Box(
                 Modifier.fillMaxSize().pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = {
                             zenMode = false
                             showNotification("Zen Mode off", "info")
-                        }
+                        },
+                        onTap = { /* intentionally empty — let the tap fall through to the editor */ }
                     )
                 }
             )
@@ -2310,14 +2314,15 @@ private fun buildRunCommand(path: String): String? {
         }
     }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("PROBLEMS" + if (problems.isNotEmpty()) " (${problems.size})" else "", fontSize = 11.sp, color = Color(0xFF717171), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.FilterList, null, tint = Color(0xFF717171), modifier = Modifier.size(16.dp))
+        // P46-S1: Dark theme colors — was light (0xFFF5F5F5)
+        Row(Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("PROBLEMS" + if (problems.isNotEmpty()) " (${problems.size})" else "", fontSize = 11.sp, color = Color(0xFF858585), modifier = Modifier.weight(1f))
+            Icon(Icons.Default.FilterList, null, tint = Color(0xFF858585), modifier = Modifier.size(16.dp))
         }
-        HorizontalDivider(color = Color(0xFFE0E0E0))
+        HorizontalDivider(color = Color(0xFF2D2D30))
         if (activeFilePath.isNullOrBlank()) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("Open a file to see problems detected in it.", fontSize = 13.sp, color = Color(0xFF717171))
+                Text("Open a file to see problems detected in it.", fontSize = 13.sp, color = Color(0xFF858585))
             }
         } else if (problems.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
@@ -2337,8 +2342,8 @@ private fun buildRunCommand(path: String): String? {
                     ) {
                         Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(p.message, fontSize = 12.sp, color = Color(0xFF424242), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${activeFilePath.substringAfterLast('/')}:${p.line}", fontSize = 11.sp, color = Color(0xFF9E9E9E))
+                        Text(p.message, fontSize = 12.sp, color = Color(0xFFD4D4D4), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${'$'}{activeFilePath.substringAfterLast('/')}:${'$'}{p.line}", fontSize = 11.sp, color = Color(0xFF858585))
                     }
                 }
             }

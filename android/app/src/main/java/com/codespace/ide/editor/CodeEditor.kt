@@ -146,6 +146,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 
 /** Standard gutter width in dp — ALL overlays must use this constant to stay aligned with the text.
  *  Previously: hardcoded values of 64f, 66.dp, 72.dp, 74f, 74.dp, 80f were used inconsistently,
@@ -4923,7 +4924,12 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
     onShowLightbulbMenu: (Boolean) -> Unit,
 ) {
     if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
-        val bulbTopDp = ((lightbulbLine * fontSize * 1.25f) - vScrollValue).coerceAtLeast(0f)
+        // P46-D5 FIX: vScrollValue is in PIXELS, but lightbulbLine * fontSize * 1.25f is in DP.
+        // On devices with density != 1.0 (every real phone), this mismatch caused the lightbulb
+        // to drift to the wrong line. Convert scroll px to dp before subtracting.
+        val density = LocalDensity.current
+        val vScrollDp = with(density) { vScrollValue.toDp() }.value
+        val bulbTopDp = ((lightbulbLine * fontSize * 1.25f) - vScrollDp).coerceAtLeast(0f)
         val bulbHeight = fontSize * 1.25f
         if (bulbTopDp >= 0 && bulbTopDp < (displayLinesSize + 5) * bulbHeight) {
             Box(
