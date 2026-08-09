@@ -75,7 +75,7 @@ object GitHubAuth {
         if (!resp.isSuccessful || json.has("error")) {
             throw Exception(
                 json.optString("error_description", "Failed to start GitHub sign-in (HTTP ${resp.code}). " +
-                    "Make sure GitHubAuth.CLIENT_ID is set to a real OAuth App Client ID with Device Flow enabled.")
+                    "Make sure GitHubAuth.CLIENT_ID is set to a real OAuth App Client ID with Device Flow enabled.\n\nSetup: github.com/settings/developers -> New OAuth App -> Enable Device Flow -> copy Client ID.")
             )
         }
         DeviceCode(
