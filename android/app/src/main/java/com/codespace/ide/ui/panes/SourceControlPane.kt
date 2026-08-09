@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.diagnostics.AppOutputLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -443,6 +444,7 @@ fun SourceControlPane(projectId: String) {
             Icon(Icons.Default.ArrowDownward, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }
+            AppOutputLog.log("git pull: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
                     refreshStatus()
                     actionToast = if (result.startsWith("Error:")) "Pull failed: ${result.take(60)}" else "Pull complete"
                 }
@@ -459,6 +461,8 @@ fun SourceControlPane(projectId: String) {
             Icon(Icons.Default.ArrowUpward, null, tint = MutedColor(), modifier = Modifier.size(16.dp).clickable {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
+            AppOutputLog.log("git push: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
+            AppOutputLog.log("git push: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
                     refreshStatus()
                     actionToast = if (result.startsWith("Error:")) "Push failed: ${result.take(60)}" else "Push complete"
                 }
@@ -652,8 +656,10 @@ fun SourceControlPane(projectId: String) {
                                 cloning = false
                                 if (result.startsWith("Exit code") || result.startsWith("Error")) {
                                     cloneError = "Clone failed: " + result.take(200)
+                AppOutputLog.log("git clone failed: ${result.take(100)}", "git")
                                 } else {
                                     cloneUrl = ""
+                AppOutputLog.log("git clone: $repoName cloned successfully", "git")
                                     isGitRepo = true
                                     refresh++
                                 }
@@ -795,6 +801,7 @@ fun SourceControlPane(projectId: String) {
                             scope.launch {
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "commit", "-m", message) }
+            AppOutputLog.log("git commit: \"${message.take(50)}\"", "git")
                                 message = ""; refreshStatus()
                             }
                         },
@@ -808,7 +815,9 @@ fun SourceControlPane(projectId: String) {
                             scope.launch {
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "add", ".") }
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "commit", "-m", message) }
+            AppOutputLog.log("git commit: \"${message.take(50)}\"", "git")
                                 withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
+            AppOutputLog.log("git push: ${if (result.startsWith("Error:")) "failed" else "ok"}", "git")
                                 message = ""; refreshStatus()
                             }
                         },
@@ -1274,6 +1283,7 @@ fun SourceControlPane(projectId: String) {
                     cloning = false
                     if (result.startsWith("Exit code") || result.startsWith("Error")) {
                         cloneError = "Clone failed: " + result.take(200)
+                AppOutputLog.log("git clone failed: ${result.take(100)}", "git")
                     } else {
                         isGitRepo = true
                         refresh++
