@@ -1382,7 +1382,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     Text(
                                         text = (lineNum + 1).toString(),
                                         color = if (bookmarkedLines.contains(lineNum))
-                                            colors.keyword else colors.gutter  // P50-FIX: theme-aware bookmark color,
+                                            colors.keyword else colors.gutter,  // P50-FIX: theme-aware bookmark color
                                         fontSize = fontSize.sp,
                                         lineHeight = (fontSize * 1.25f).sp,
                                         fontFamily = FontFamily.Monospace,
