@@ -1170,7 +1170,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     Box(modifier = modifier.fillMaxSize()) {
 
         // P15-C: Sticky scroll header — shows current scope line pinned at top
-        if (stickyLine != null) {
+        if (toggles.showStickyScroll && stickyLine != null) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -1818,7 +1818,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P26-1: LSP Document Highlight — subtle background tint on all occurrences
-        if (lspHighlightLines.isNotEmpty()) {
+        if (toggles.showLspHighlights && lspHighlightLines.isNotEmpty()) {
             val lineHeightPxHighlight = fontSize * 1.25f
             val gutterDpHighlight = GUTTER_WIDTH
             // BUG-3 FIX: subtract scroll offset so highlights track the correct lines on scroll
@@ -1839,7 +1839,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P41-K: Color swatches — inline color indicators from LSP documentColor
-        if (lspDocumentColors != null && lspDocumentColors!!.length() > 0) {
+        if (toggles.showColorSwatches && lspDocumentColors != null && lspDocumentColors!!.length() > 0) {
             val lineHeightPxCS = fontSize * 1.25f
             val gutterDpCS = GUTTER_WIDTH
             val charWidthPxCS = fontSize * 0.6f
@@ -1877,7 +1877,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P41-O1: Error Lens — inline error text at end of code lines (VS Code-style)
-        if (lintErrors.isNotEmpty() && !showCompletions) {
+        if (toggles.showErrorLens && lintErrors.isNotEmpty() && !showCompletions) {
             val lineHeightPxEL = fontSize * 1.25f
             val charWidthPxEL = fontSize * 0.6f
             for (err in lintErrors) {
@@ -1907,7 +1907,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
-        if (lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
+        if (toggles.showCodeLens && lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
             val lineHeightPxCL = fontSize * 1.25f
             val gutterDpCL = GUTTER_WIDTH
             for (i in 0 until lspCodeLenses!!.length()) {
@@ -1946,7 +1946,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P26-1: LSP Inlay Hints — inline type/parameter hints within code
-        if (lspInlayHints != null && lspInlayHints!!.length() > 0) {
+        if (toggles.showInlayHints && lspInlayHints != null && lspInlayHints!!.length() > 0) {
             val lineHeightPxIH = fontSize * 1.25f
             val gutterDpIH = GUTTER_WIDTH
             val charWidthPx = fontSize * 0.6f
@@ -1988,7 +1988,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P26-1: LSP Document Links — clickable underlined links in comments
-        if (lspDocumentLinks != null && lspDocumentLinks!!.length() > 0) {
+        if (toggles.showDocumentLinks && lspDocumentLinks != null && lspDocumentLinks!!.length() > 0) {
             val lineHeightPxDL = fontSize * 1.25f
             val gutterDpDL = GUTTER_WIDTH
             val charWidthPxDL = fontSize * 0.6f
