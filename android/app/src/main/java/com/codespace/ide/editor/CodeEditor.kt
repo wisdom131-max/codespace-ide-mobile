@@ -1709,7 +1709,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .let { if (it < 0) 0 else it + 1 }
                 val col = matchStart - lineStart
                 val matchLen = range.last - range.first + 1
-                val topDpM = lineIdx * lineHeightPxM - scrollOffsetPxM
+                val topDpM = (lineIdx * lineHeightPxM - scrollOffsetPxM).coerceAtLeast(0f)
                 val startDpM = gutterDpM + col * charWidthPxM
                 val widthDpM = (matchLen * charWidthPxM).coerceAtLeast(3f)
                 val isCurrent = idx == matchIndex
@@ -1744,7 +1744,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val lineStart = (value.text.lastIndexOf('\n', (clamped - 1).coerceAtLeast(0)) + 1)
                                     .coerceAtLeast(0)
                 val col      = (clamped - lineStart).coerceAtLeast(0)
-                val topDp    = lineIdx * lineHeightPx - scrollOffsetPx
+                val topDp    = (lineIdx * lineHeightPx - scrollOffsetPx).coerceAtLeast(0f)
                 val startDp  = gutterDp + col * charWidthPx
 
                 // 1. Subtle full-line background tint — gives line context at a glance
@@ -1776,7 +1776,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val lineHeightPxHl = fontSize * 1.25f
             val gutterDpHl = 74f
             val scrollOffsetPxHl = vScroll.value
-            val topDpHl = (highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl
+            val topDpHl = ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -1805,8 +1805,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // BUG-3 FIX: subtract scroll offset so highlights track the correct lines on scroll
             val scrollOffsetPx = vScroll.value
             lspHighlightLines.forEach { (startLine, endLine) ->
-                val topDp = startLine * lineHeightPxHighlight - scrollOffsetPx
-                val heightDp = (endLine - startLine + 1) * lineHeightPxHighlight
+                val topDp = (startLine * lineHeightPxHighlight - scrollOffsetPx).coerceAtLeast(0f)
+                val heightDp = ((endLine - startLine + 1) * lineHeightPxHighlight).coerceAtLeast(0f)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1900,7 +1900,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val title = command?.optString("title", "") ?: lens.optString("title", "")
                 if (title.isBlank()) continue
                 // BUG-3 FIX: subtract scroll offset
-                val topDpCL = startLine * lineHeightPxCL - vScroll.value
+                val topDpCL = (startLine * lineHeightPxCL - vScroll.value).coerceAtLeast(0f)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1950,7 +1950,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     else -> ""
                 }
                 if (label.isBlank()) continue
-                val topDpIH = line * lineHeightPxIH
+                val topDpIH = (line * lineHeightPxIH).coerceAtLeast(0f)
                 val leftDpIH = gutterDpIH + character * charWidthPx
                 val paddingLeft = if (hint.optBoolean("paddingLeft", false)) 2f else 0f
                 val paddingRight = if (hint.optBoolean("paddingRight", false)) 2f else 0f
@@ -1983,7 +1983,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val target = link.optString("target", "")
                 val tooltip = link.optString("tooltip", target)
                 if (target.isBlank()) continue
-                val topDpDL = startLine * lineHeightPxDL
+                val topDpDL = (startLine * lineHeightPxDL).coerceAtLeast(0f)
                 val leftDpDL = gutterDpDL + startChar * charWidthPxDL
                 val widthDp = (endChar - startChar) * charWidthPxDL
                 Box(
@@ -4120,7 +4120,7 @@ private fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
     ghostLines.forEachIndexed { lineIdx, _ ->
         val line = if (lineIdx == 0) ghostText else ghostLines[lineIdx]
         if (line.isBlank() && lineIdx > 0) return@forEachIndexed
-        val topDp = (cursorLine + lineIdx) * lineHeightDp - vScrollValue
+        val topDp = ((cursorLine + lineIdx) * lineHeightDp - vScrollValue).coerceAtLeast(0f)
         val startDp = if (lineIdx == 0) {
             64f + cursorCol * fontSize * 0.6f
         } else {
