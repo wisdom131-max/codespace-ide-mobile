@@ -11044,3 +11044,43 @@ All editor popups now follow the HoverPopup reference pattern:
 6. Test SourceControlPane clone/push/pull flows
 7. Add Output panel copy-to-clipboard + save-as-zip (audit item S1)
 
+
+## Phase 45 — GitHub Codespace Retention Fix + SourceControlPane VS Code Restructure (2026-08-09)
+
+### 45-1: GitHub Codespace Deletion Warning — RESOLVED
+- GitHub sent a retention warning: codespace `urban-adventure-77vgv5jqr45qcp65w` (repo `wisdom131-max/codespace-ide-mobile`, account `wisdomijezie90-art`) flagged for deletion on 16 Aug 2026 due to uncommitted/unpushed changes.
+- **Root cause investigation via `gh codespace ssh`:**
+  - No actual pending commits — `git status` showed only untracked junk files
+  - Stale duplicate `TerminalPane.kt` (609 lines, dated June 25) at repo root — superseded weeks ago by the real file at `android/app/src/main/java/com/codespace/ide/ui/panes/TerminalPane.kt` (1624 lines)
+  - `chunk_aa` + `project_files.zip` — old debug dumps (terminal_files.txt, project_structure.txt) from a June 30 file-transfer experiment
+  - **A literal folder named `~`** (5.0GB) containing a full Android SDK + emulator download — created by mistake when a script's `~` wasn't shell-expanded and landed inside the git working directory instead of the home directory
+- **Fix:** Removed all four stray artifacts via `gh codespace ssh`. Working tree confirmed clean (`nothing to commit, working tree clean`), `has_uncommitted_changes` and `has_unpushed_changes` both now `false`, `last_used_at` refreshed (resets retention clock), freed 5GB disk. Codespace stopped afterward (was left running from June 23).
+- **Tooling:** Installed `gh` CLI in the sandbox (not preinstalled) to access codespaces via SSH — REST API alone can't exec commands inside a codespace.
+- **Account note confirmed again:** The GitHub OAuth App and this codespace both live under `wisdomijezie90-art`, a separate account from `wisdom131-max` (used for repo API commits). Two tokens are configured: `GITHUB_TOKEN` (wisdom131-max, used for all repo/API pushes) and `GITHUB_TOKEN_2` (wisdomijezie90-art, needed for codespace access).
+
+### 45-2: SourceControlPane — VS Code "Open Remote Repository" Flow (Build #1998 GREEN ✅)
+Restructured to match the reference VS Code screenshots the user provided:
+- **Empty state:** replaced generic "not a git repo" messaging with VS Code's exact copy — "You can open a remote repository or pull request without cloning."
+- **Primary button:** recolored from GitHub black (`#24292F`) to VS Code blue (`IconColor()`/`#007ACC`) across all three states (not-connected, connected, publish)
+- **Fixed a nesting bug:** `isConfigured()` check had gotten physically misplaced inside a `catch` block on both the empty-state and connected-state buttons — moved to a proper pre-condition
+- **Removed a full duplicate block:** `GitHubSignInDialog` + `GitHubRepoBrowserDialog` invocations were duplicated verbatim (copy-paste artifact from build #1993/#1994 fix cycle) — deleted the second copy
+- **Repo browser dialog rebuilt as a command palette** (previously a plain searchable list with a Material `OutlinedTextField` header):
+  - Back-arrow + "Open Remote Repository" title row
+  - Search field placeholder: "Choose a repository, or type an organization or repo name to search" with a blue focus border matching VS Code's underline treatment
+  - Full dark/light theme support (was hardcoded white/black before)
+  - Rows show `fullName` (org/repo) + description + a trailing "repositories" label, matching the reference screenshots exactly
+  - First build attempt (`f801412`, #1997) failed — `BasicTextField` wasn't resolving (missing import chain issue); switched to `OutlinedTextField` with custom `OutlinedTextFieldDefaults.colors()` for the same visual effect — fixed in `9b9b993` (#1998, GREEN)
+- Also added `AppOutputLog.log()` calls to the primary clone success/failure path (previously only present in the now-deleted duplicate block)
+
+### Commits This Session
+2e3a179 (AGENTS.md audit), f801412 (SCP restructure, build failed), 9b9b993 (fix BasicTextField→OutlinedTextField, build GREEN)
+
+### Remaining Roadmap
+1. Wire feature toggles to Settings panel UI controls
+2. Add LSP diagnostics → AppOutputLog wiring (LspIntegration)
+3. Test GitHub OAuth Device Flow + new "Open Remote Repository" picker on-device
+4. Test SourceControlPane clone/push/pull flows with valid OAuth
+5. Add Output panel copy-to-clipboard + save-as-zip (audit item S1)
+6. Address Group E: debugger wiring and UDM synchronization
+7. Implement regex-based fallback for LSP workspace/symbol search
+8. Investigate large-file crash in pylsp (signature help line-numbering)
