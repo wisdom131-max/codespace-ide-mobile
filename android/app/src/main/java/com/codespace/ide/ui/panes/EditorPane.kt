@@ -1592,6 +1592,11 @@ fun EditorPane(
                             { line, col ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
+                                    // C-5 FIX: Force-sync document state before signature help.
+                                    // Without this, the server may have a stale version of the document
+                                    // and reject the line parameter as "not in valid range" for large files.
+                                    val syncVersion = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                                    LspManager.didChange(active.language, uri, active.content, syncVersion)
                                     val sigHelp = try {
                                         LspManager.getSignatureHelp(active.language, uri, line, col)
                                     } catch (_: Exception) { null }

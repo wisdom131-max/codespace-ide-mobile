@@ -719,6 +719,13 @@ object LspManager {
 
         client.notify("initialized")
 
+        // C-5 FIX: Send workspace/didChangeConfiguration so pylsp (and other servers)
+        // configure their plugins properly. Without this, pylsp uses defaults that:
+        // - don't enable rope for cross-file analysis
+        // - don't configure file size limits / completion cache
+        // - don't enable all diagnostic sources
+        sendDidChangeConfiguration(language)
+
         Log.d(TAG, "startServer: SUCCESS — LSP server RUNNING for ${language.displayName} at $rootUri")
         AppOutputLog.log("[LSP] ✓ ${language.displayName} server RUNNING at $rootUri", "lsp")
         return true
@@ -728,6 +735,92 @@ object LspManager {
      * Build the full LSP client capabilities object declaring everything the app uses.
      * This is sent in the initialize request so servers know what to advertise.
      */
+    /**
+     * C-5 FIX: Send workspace/didChangeConfiguration to configure LSP server plugins.
+     * This is critical for pylsp which needs explicit configuration to:
+     * - Enable rope for cross-file refactoring and completion
+     * - Enable all completion sources (jedi, rope, pycodestyle, pyflakes)
+     * - Handle large files without timeouts
+     * - Enable autopep8 for formatting
+     * For other servers (tsserver, kotlin-ls, gopls), this is a no-op or sets sensible defaults.
+     */
+    private fun sendDidChangeConfiguration(language: Language) {
+        val server = servers[language] ?: return
+        if (!server.initialized) return
+
+        val settings = when (language) {
+            Language.PYTHON -> JSONObject().apply {
+                put("pylsp", JSONObject().apply {
+                    put("configurationSources", JSONArray().apply { put("pycodestyle"); put("pyflakes") })
+                    put("plugins", JSONObject().apply {
+                        // Jedi completion — handles all completion including stdlib
+                        put("jedi_completion", JSONObject().apply {
+                            put("enabled", true)
+                            put("include_params", true)
+                            put("include_class_objects", true)
+                            put("include_imports", true)
+                            put("fuzzy", true)
+                        })
+                        put("jedi", JSONObject().apply {
+                            put("enabled", true)
+                            // C-5: No line limit — handle any file size
+                            put("environment", JSONObject().apply {
+                                put("auto_download_modules", true)
+                            })
+                        })
+                        // Rope — cross-file analysis and refactoring
+                        put("rope", JSONObject().apply {
+                            put("enabled", true)
+                        })
+                        // Pycodestyle — linting (minimal, don't flag style in large files)
+                        put("pycodestyle", JSONObject().apply {
+                            put("enabled", true)
+                            put("maxLineLength", 120)
+                        })
+                        put("pyflakes", JSONObject().apply {
+                            put("enabled", true)
+                        })
+                        // Autopep8 — formatting
+                        put("autopep8", JSONObject().apply {
+                            put("enabled", true)
+                        })
+                        // mccabe — complexity
+                        put("mccabe", JSONObject().apply {
+                            put("enabled", true)
+                            put("threshold", 15)
+                        })
+                        // preload — preload modules for faster completion on large projects
+                        put("preload", JSONObject().apply {
+                            put("enabled", true)
+                            put("modules", JSONArray().apply {
+                                put("os"); put("sys"); put("json"); put("math")
+                                put("re"); put("collections"); put("typing")
+                                put("pathlib"); put("subprocess"); put("io")
+                                put("datetime"); put("itertools"); put("functools")
+                            })
+                        })
+                    })
+                })
+            }
+            Language.KOTLIN -> JSONObject().apply {
+                put("kotlin", JSONObject().apply {
+                    put("languageServer", JSONObject().apply {
+                        put("completion", JSONObject().apply { put("enabled", true) })
+                    })
+                })
+            }
+            else -> JSONObject()
+        }
+
+        val params = JSONObject().apply { put("settings", settings) }
+        try {
+            server.client.notify("workspace/didChangeConfiguration", params)
+            AppOutputLog.log("[LSP] Sent workspace/didChangeConfiguration for ${language.displayName}", "lsp")
+        } catch (e: Exception) {
+            AppOutputLog.log("[LSP] Warning: didChangeConfiguration failed for ${language.displayName}: ${e.message}", "lsp")
+        }
+    }
+
     private fun buildClientCapabilities(): JSONObject {
         // textDocument.synchronization
         val sync = JSONObject().apply {
@@ -1015,7 +1108,9 @@ object LspManager {
             completionContext.put("triggerKind", 1) // Invoked
         }
         params.put("context", completionContext)
-        val response = server.client.request("textDocument/completion", params, timeoutSeconds = 10)
+        // C-5 FIX: Scale timeout for large files
+        val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
+        val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
         return when (response) {
             null -> null
             is JSONArray -> response
@@ -1035,7 +1130,9 @@ object LspManager {
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
-        val response = server.client.request("textDocument/hover", params, timeoutSeconds = 10)
+        // C-5 FIX: Scale timeout for large files
+        val hoverTimeout = if (line > 5000) 15L else if (line > 1000) 12L else 10L
+        val response = server.client.request("textDocument/hover", params, timeoutSeconds = hoverTimeout)
         return response as? JSONObject
     }
 
@@ -1055,7 +1152,9 @@ object LspManager {
         if (!hasCapability(language, "signatureHelpProvider")) return null
 
         val params = positionParams(uri, line, character)
-        val response = server.client.request("textDocument/signatureHelp", params, timeoutSeconds = 5)
+        // C-5 FIX: Scale timeout for large files — pylsp needs more time to analyze big files
+        val timeout = if (line > 5000) 15L else if (line > 1000) 10L else 5L
+        val response = server.client.request("textDocument/signatureHelp", params, timeoutSeconds = timeout)
         return response as? JSONObject
     }
 

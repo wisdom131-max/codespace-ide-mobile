@@ -624,6 +624,34 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     val _lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
+    // C-5 FIX: Cached newline offsets for O(log n) line lookup instead of O(n) take().count()
+    // Updated whenever the text changes. Used by completion, signature help, hover, and
+    // diagnostic overlays to avoid scanning the entire text on every keystroke for large files.
+    val newlineOffsets: List<Int> = remember(value.text) {
+        val list = mutableListOf<Int>()
+        val len = value.text.length
+        var i = 0
+        while (i < len) {
+            if (value.text[i] == '\n') list.add(i)
+            i++
+        }
+        list
+    }
+
+    /** C-5 FIX: O(log n) line number lookup from character offset using cached newline offsets */
+    fun lineFromOffset(offset: Int): Int {
+        if (newlineOffsets.isEmpty() || offset <= 0) return 0
+        // Binary search: find how many newlines are before the offset
+        var lo = 0
+        var hi = newlineOffsets.size - 1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (newlineOffsets[mid] < offset) lo = mid + 1
+            else hi = mid - 1
+        }
+        return hi + 1  // line number (0-based)
+    }
+
     // P15-C: Sticky scroll — derives the "current scope" line from the scroll position.
     // Uses the line height formula: lineIdx = scrollPx / (fontSize * 1.25f).
     // Finds the nearest non-blank, non-folded ancestor line above the visible top.
@@ -688,7 +716,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(value.selection.start) {
         if (lspCodeActionProvider != null) {
             kotlinx.coroutines.delay(500L)
-            val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+            val cursorLine = lineFromOffset(value.selection.start)
             try {
                 val actions = lspCodeActionProvider.invoke(cursorLine)
                 if (actions.isNotEmpty()) {
@@ -770,7 +798,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
 
             val cOff = value.selection.end
-            val cLine = value.text.take(cOff).count { it == '\n' }
+            val cLine = lineFromOffset(cOff)
             val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
             val cCol = cOff - cLineStart
 
@@ -1024,7 +1052,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
         if (lspSignatureHelpProvider != null && insideCall) {
-            val cLine = value.text.take(value.selection.end).count { it == '\n' }
+            val cLine = lineFromOffset(value.selection.end)
             val cCol = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
             try { lspSignatureHelpProvider.invoke(cLine, cCol) } catch (_: Exception) { null }
                 ?: SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
@@ -1728,7 +1756,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val scrollOffsetPxM = vScroll.value
             matches.forEachIndexed { idx, range ->
                 val matchStart = range.first
-                val lineIdx = value.text.take(matchStart).count { it == '\n' }
+                val lineIdx = lineFromOffset(matchStart)
                 val lineStart = value.text.lastIndexOf('\n', (matchStart - 1).coerceAtLeast(0))
                     .let { if (it < 0) 0 else it + 1 }
                 val col = matchStart - lineStart
@@ -1764,7 +1792,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val scrollOffsetPx = vScroll.value
             extraCursors.forEach { off ->
                 val clamped  = off.coerceIn(0, value.text.length)
-                val lineIdx  = value.text.take(clamped).count { it == '\n' }
+                val lineIdx  = lineFromOffset(clamped)
                 val lineStart = (value.text.lastIndexOf('\n', (clamped - 1).coerceAtLeast(0)) + 1)
                                     .coerceAtLeast(0)
                 val col      = (clamped - lineStart).coerceAtLeast(0)
@@ -2338,12 +2366,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
                             // Fix with AI (if there's a nearby error)
                             val nearbyError = lintErrors.firstOrNull { err ->
-                                val errLine = value.text.take(err.start).count { it == '\n' }
-                                val selLine = value.text.take(value.selection.start).count { it == '\n' }
+                                val errLine = lineFromOffset(err.start)
+                                val selLine = lineFromOffset(value.selection.start)
                                 kotlin.math.abs(errLine - selLine) <= 2
                             }
                             if (nearbyError != null) {
-                                val errLine = value.text.take(nearbyError.start).count { it == '\n' } + 1
+                                val errLine = lineFromOffset(nearbyError.start) + 1
                                 DropdownMenuItem(
                                     text = { Text("⚡ Fix with AI", color = Color(0xFF4EC9B0), fontSize = 13.sp) },
                                     onClick = {
@@ -2362,7 +2390,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             if (lspCodeActionProvider != null) {
                                 val allActions: List<com.codespace.ide.lsp.LspCodeAction> =
                                     remember(value.selection.start) {
-                                        val cursorLine = value.text.take(value.selection.start).count { it == '\n' }
+                                        val cursorLine = lineFromOffset(value.selection.start)
                                         try { lspCodeActionProvider.invoke(cursorLine) }
                                         catch (_: Exception) { emptyList() }
                                     }
@@ -2489,7 +2517,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onClick = {
                                     if (onLspSelectionRange != null) {
                                         try {
-                                            val cLine = value.text.take(value.selection.start).count { it == '\n' }
+                                            val cLine = lineFromOffset(value.selection.start)
                                             val cCol = value.selection.start - value.text.lastIndexOf('\n', (value.selection.start - 1).coerceAtLeast(0)) - 1
                                             val resp = onLspSelectionRange.invoke(cLine, cCol)
                                             if (resp != null && resp.length() > 0) {
@@ -2650,7 +2678,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onClick = {
                                     if (onLspPrepareRename != null) {
                                         val pos = value.selection.start
-                                        val cLine = value.text.take(pos).count { it == '\n' }
+                                        val cLine = lineFromOffset(pos)
                                         val cLineStart = value.text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)) + 1
                                         val cCol = pos - cLineStart
                                         val renameInfo = try { onLspPrepareRename.invoke(cLine, cCol) } catch (_: Exception) { null }
@@ -2783,7 +2811,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     },
                                     onClick = {
                                         val cOff = value.selection.end
-                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLine = lineFromOffset(cOff)
                                         val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                                         val cCol = cOff - cLineStart
                                         val items = try { onPrepareCallHierarchy.invoke(cLine, cCol) } catch (_: Exception) { null }
@@ -2816,7 +2844,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     },
                                     onClick = {
                                         val cOff = value.selection.end
-                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLine = lineFromOffset(cOff)
                                         val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                                         val cCol = cOff - cLineStart
                                         val items = try { onPrepareTypeHierarchy.invoke(cLine, cCol) } catch (_: Exception) { null }
@@ -2847,7 +2875,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    val currentLine = value.text.take(value.selection.start).count { it == '\n' }
+                                    val currentLine = lineFromOffset(value.selection.start)
                                     if (currentLine > 0) {
                                         val prevLineStart = value.text.lastIndexOf('\n', value.text.lastIndexOf('\n', value.selection.start - 1) - 1) + 1
                                         extraCursors = (extraCursors + prevLineStart).distinct().sorted()
@@ -3162,7 +3190,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val uri = LspManager.fileUriFromHostPath(ctx, filePath)
                                     if (uri != null) {
                                         val cOff = value.selection.end
-                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLine = lineFromOffset(cOff)
                                         val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                                         val cCol = cOff - cLineStart
                                         try {
@@ -3211,7 +3239,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val uri = LspManager.fileUriFromHostPath(ctx, filePath)
                                     if (uri != null) {
                                         val cOff = value.selection.end
-                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLine = lineFromOffset(cOff)
                                         val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                                         val cCol = cOff - cLineStart
                                         // Try prepareRename first (some servers require it)
@@ -3548,7 +3576,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // to avoid stacking two popups on the same spot.
         if (!showCompletions && activeSignature != null) {
             val sig = activeSignature
-            val cursorLineIdx = value.text.take(value.selection.end).count { it == '\n' }
+            val cursorLineIdx = lineFromOffset(value.selection.end)
             val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
             // BUG-2 FIX: subtract scroll offset so the popup appears at the visible cursor position
             val popupTopDp = ((popupLineIdx * fontSize * 1.25f) - vScroll.value).coerceAtLeast(0f)
@@ -3655,7 +3683,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val session = snippetSession!!
             val activeStop = session.activeStop()
             if (activeStop != null && activeStop.choices.isNotEmpty()) {
-                val cursorLine = value.text.take(activeStop.startOffset).count { it == '\n' }
+                val cursorLine = lineFromOffset(activeStop.startOffset)
                 val lineHeightPx = fontSize * 1.25f
                 val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
                 val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
@@ -3723,7 +3751,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val imeHeightDpVal = with(androidx.compose.ui.platform.LocalDensity.current) { imeHeightPx.toDp() }.value.toInt().toInt()
         val availableHeightDp = LocalConfiguration.current.screenHeightDp - imeHeightDpVal
         if (showCompletions && allCompletions.isNotEmpty()) {
-            val cursorLine = value.text.take(value.selection.end).count { it == '\n' }
+            val cursorLine = lineFromOffset(value.selection.end)
             val lineHeightPx = fontSize * 1.25f
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
             val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
@@ -3841,9 +3869,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     // P41-I: If snippet, parse and replace insertText with cleaned version
                                                     val (textToInsert, snippetParsed) = if (comp.insertTextFormat == 2) {
                                                         val parsed = parseSnippet(comp.insertText, SnippetContext(
-                                                            lineNumber = value.text.take(start).count { it == '\n' } + 1,
-                                                            lineIndex = value.text.take(start).count { it == '\n' },
-                                                            currentLine = value.text.split('\n').getOrNull(value.text.take(start).count { it == '\n' }) ?: "",
+                                                            lineNumber = lineFromOffset(start) + 1,
+                                                            lineIndex = lineFromOffset(start),
+                                                            currentLine = value.text.split('\n').getOrNull(lineFromOffset(start)) ?: "",
                                                             selectedText = if (start != end) value.text.substring(start, end) else "",
                                                         ))
                                                         Pair(parsed.cleanedText, parsed)
@@ -3894,9 +3922,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         // P41-I: Handle snippet insertTextFormat == 2
                                         val (rawInsert, snipParsed) = if (comp.insertTextFormat == 2) {
                                             val parsed = parseSnippet(comp.insertText, SnippetContext(
-                                                lineNumber = value.text.take(start).count { it == '\n' } + 1,
-                                                lineIndex = value.text.take(start).count { it == '\n' },
-                                                currentLine = value.text.split('\n').getOrNull(value.text.take(start).count { it == '\n' }) ?: "",
+                                                lineNumber = lineFromOffset(start) + 1,
+                                                lineIndex = lineFromOffset(start),
+                                                currentLine = value.text.split('\n').getOrNull(lineFromOffset(start)) ?: "",
                                                 selectedText = if (start != end) value.text.substring(start, end) else "",
                                             ))
                                             Pair(parsed.cleanedText, parsed)
@@ -3963,9 +3991,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             if (comp.insertTextFormat == 2) {
                                                 val parsed = parseSnippet(comp.insertText, SnippetContext(
                                                 fileName = "",
-                                                lineNumber = value.text.take(start).count { it == '\n' } + 1,
-                                                lineIndex = value.text.take(start).count { it == '\n' },
-                                                currentLine = value.text.split('\n').getOrNull(value.text.take(start).count { it == '\n' }) ?: "",
+                                                lineNumber = lineFromOffset(start) + 1,
+                                                lineIndex = lineFromOffset(start),
+                                                currentLine = value.text.split('\n').getOrNull(lineFromOffset(start)) ?: "",
                                                 selectedText = if (start != end) value.text.substring(start, end) else "",
                                             ))
                                                 val snippetText = parsed.cleanedText
