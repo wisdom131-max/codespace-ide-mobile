@@ -106,8 +106,7 @@ object CompletionContextDetector {
 
         // Import context: after "import ", "from ", "package ", "require("
         // D3-FIX: Also detect when user has started typing a partial word after import
-        val currentLine = beforeCursor.substringBeforeLast('
-')
+        val currentLine = beforeCursor.substringBeforeLast("\n")
         val lineTrimmed = currentLine.trimStart()
         val isImportLine = lineTrimmed.startsWith("import ") || lineTrimmed.startsWith("from ") ||
             lineTrimmed.startsWith("package ") || beforeCursor.trim().endsWith("require(")
