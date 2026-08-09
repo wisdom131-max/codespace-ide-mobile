@@ -701,25 +701,22 @@ fun SourceControlPane(projectId: String) {
                                     showRepoBrowser = true
                                 } catch (e: Exception) {
                                     cloneError = e.message ?: "Failed"
-                if (!com.codespace.ide.data.GitHubAuth.isConfigured()) {
-                    cloneError = "GitHub OAuth not configured. See setup steps in the error message above."
-                }
                                 }
                                 loadingRepos = false
                             }
                         },
                         enabled = !loadingRepos,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F)),
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.List, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                        Icon(Icons.Default.Cloud, null, modifier = Modifier.size(16.dp), tint = Color.White)
                         Spacer(Modifier.width(6.dp))
-                        Text("Browse My Repos", fontSize = 12.sp, color = Color.White)
+                        Text("Open Remote Repository", fontSize = 12.sp, color = Color.White)
                     }
                 } else {
                     Button(
                         onClick = { showSignInDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F)),
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Login, null, modifier = Modifier.size(16.dp), tint = Color.White)
@@ -736,7 +733,7 @@ fun SourceControlPane(projectId: String) {
                 if (publishToken != null && !publishToken.isBlank()) {
                     Button(
                         onClick = { showPublishDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F)),
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor()),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(16.dp), tint = Color.White)
@@ -1240,8 +1237,10 @@ fun SourceControlPane(projectId: String) {
                     cloning = false
                     if (result.startsWith("Exit code") || result.startsWith("Error")) {
                         cloneError = "Clone failed: ${'$'}{result.take(200)}"
+                        AppOutputLog.log("git clone failed: ${'$'}{result.take(100)}", "git")
                     } else {
                         isGitRepo = true
+                        AppOutputLog.log("git clone succeeded: ${'$'}repoName", "git")
                         refresh++
                     }
                 }
@@ -1250,57 +1249,9 @@ fun SourceControlPane(projectId: String) {
     }
 
 
-    // ── P43: GitHub Sign-in Dialog (Device Flow) ────────────────────────────
-    if (showSignInDialog) {
-        GitHubSignInDialog(
-            onDismiss = { showSignInDialog = false },
-            onSuccess = {
-                scope.launch {
-                    loadingRepos = true
-                    try {
-                        val token = SecureTokenStore(context).githubToken
-                        if (token != null) {
-                            repos = com.codespace.ide.data.GitHubAuth.listUserRepos(token)
-                            showRepoBrowser = true
-                        }
-                    } catch (_: Exception) {}
-                    loadingRepos = false
-                }
-            }
-        )
-    }
 
-    // ── P43: Repo Browser Dialog ─────────────────────────────────────────────
-    if (showRepoBrowser) {
-        GitHubRepoBrowserDialog(
-            repos = repos,
-            searchQuery = repoSearchQuery,
-            onSearchChange = { repoSearchQuery = it },
-            onDismiss = { showRepoBrowser = false; repoSearchQuery = "" },
-            onClone = { repoUrl ->
-                showRepoBrowser = false; repoSearchQuery = ""
-                scope.launch {
-                    cloning = true; cloneError = null
-                    val repoName = repoUrl.substringAfterLast("/").removeSuffix(".git").ifBlank { "cloned-repo" }
-                    val guestWorkspace = ProotInstaller.hostToGuestPath(context, repoDir.absolutePath) ?: "/root"
-                    val result = withContext(Dispatchers.IO) {
-                        ProotInstaller.execOnce(context, "git clone '" + repoUrl + "' '" + repoName + "'", guestWorkspace)
-                    }
-                    cloning = false
-                    if (result.startsWith("Exit code") || result.startsWith("Error")) {
-                        cloneError = "Clone failed: " + result.take(200)
-                AppOutputLog.log("git clone failed: ${result.take(100)}", "git")
-                    } else {
-                        isGitRepo = true
-                        refresh++
-                    }
-                }
-            }
-        )
-    }
 
 }
-
 // ══ Shared sub-composables ════════════════════════════════════════════════════
 
 @Composable
@@ -1519,7 +1470,7 @@ private fun GitHubSignInDialog(
     )
 }
 
-// ── P43: GitHub Repo Browser Dialog ─────────────────────────────────────────────
+// ── VS Code-style "Open Remote Repository" command palette ──────────────────
 @Composable
 private fun GitHubRepoBrowserDialog(
     repos: List<com.codespace.ide.data.GitHubAuth.RepoInfo>,
@@ -1532,44 +1483,72 @@ private fun GitHubRepoBrowserDialog(
         if (searchQuery.isBlank()) repos
         else repos.filter { it.name.contains(searchQuery, ignoreCase = true) || it.fullName.contains(searchQuery, ignoreCase = true) }
     }
+    val dark = isSystemInDarkTheme()
+    val dialogBg = if (dark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
+    val dialogText = if (dark) Color(0xFFCCCCCC) else Color(0xFF333333)
+    val dialogMuted = if (dark) Color(0xFF858585) else Color(0xFF717171)
+    val dialogDivider = if (dark) Color(0xFF333333) else Color(0xFFE0E0E0)
+    val selectedBg = if (dark) Color(0xFF094771) else Color(0xFFE5F0FF)
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             Modifier.fillMaxWidth().fillMaxHeight(0.85f),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFFFF)),
+            colors = CardDefaults.cardColors(containerColor = dialogBg),
             elevation = CardDefaults.cardElevation(8.dp),
         ) {
             Column(Modifier.fillMaxSize()) {
-                // Header
+                // ── Header with back arrow (VS Code style) ──
                 Row(
-                    Modifier.fillMaxWidth().padding(12.dp),
+                    Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 10.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Cloud, null, tint = Color(0xFF24292F), modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Your Repositories", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    Text("${filtered.size}", fontSize = 11.sp, color = Color(0xFF717171))
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = dialogText, modifier = Modifier.size(18.dp))
+                    }
+                    Text("Open Remote Repository", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = dialogText)
                 }
-                // Search bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchChange,
-                    placeholder = { Text("Search repos...", fontSize = 12.sp) },
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(16.dp)) },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
-                )
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = Color(0xFFE0E0E0))
-                // Repo list
+                // ── Search input with blue underline (VS Code style) ──
+                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 13.sp,
+                            color = dialogText,
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(IconColor()),
+                        decorationBox = { innerTextField ->
+                            Column(Modifier.fillMaxWidth()) {
+                                Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            "Choose a repository, or type an organization or repo name to search",
+                                            fontSize = 12.sp,
+                                            color = dialogMuted,
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                                // Blue active underline
+                                HorizontalDivider(color = IconColor(), thickness = 2.dp)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider(color = dialogDivider)
+                // ── Repo list (command palette style) ──
                 LazyColumn(Modifier.fillMaxSize().weight(1f)) {
-                    items(filtered) { repo ->
+                    items(filtered.size) { index ->
+                        val repo = filtered[index]
+                        val isSelected = index == 0 && searchQuery.isNotEmpty()
                         Row(
                             Modifier.fillMaxWidth()
                                 .clickable { onClone(repo.cloneUrl) }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .background(if (isSelected) selectedBg else Color.Transparent)
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
@@ -1578,27 +1557,17 @@ private fun GitHubRepoBrowserDialog(
                                 tint = if (repo.isPrivate) Color(0xFFD29922) else Color(0xFF73C991),
                                 modifier = Modifier.size(16.dp),
                             )
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(repo.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(repo.fullName, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = dialogText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 repo.description?.let { desc ->
-                                    Text(desc, fontSize = 10.sp, color = Color(0xFF999999), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(desc, fontSize = 10.sp, color = dialogMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                             Spacer(Modifier.width(8.dp))
-                            if (repo.stars > 0) {
-                                Text("★ ${repo.stars}", fontSize = 10.sp, color = Color(0xFF999999))
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            Icon(Icons.Default.Download, null, tint = Color(0xFF007ACC), modifier = Modifier.size(16.dp))
+                            Text("repositories", fontSize = 9.sp, color = dialogMuted)
                         }
-                        HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 0.5.dp)
                     }
-                }
-                // Footer
-                HorizontalDivider(color = Color(0xFFE0E0E0))
-                Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
                 }
             }
         }
