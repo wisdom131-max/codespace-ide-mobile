@@ -11245,3 +11245,22 @@ Restructured to match the reference VS Code screenshots the user provided:
 - SourceControlPane.kt — 3-dot overflow menu
 - PreviewPane.kt — close button + onClosePreview callback
 - ProjectShellScreen.kt — wired onClosePreview to hide bottom panel
+
+## Phase 48 — Browser Security, YouTube Video, Fullscreen Mirror, Desktop View (2026-08-09)
+
+### Plan
+1. **Fullscreen/Zoom Mirror (45-1)**: Share single WebView instance between inline and fullscreen Dialog — no page reload, no state loss
+2. **Browser Security (45-3)**: Add `androidx.webkit:webkit` dependency, use `WebSettingsCompat.setUserAgentMetadata()` to override UA client hints at network level (not just JS), inject override on `onPageStarted` too
+3. **YouTube Shorts Black Screen (45-2)**: Inject `playsinline` CSS on YouTube pages, set `LAYER_TYPE_NONE` explicitly, ensure hardware acceleration from Activity level only
+4. **Desktop/Laptop View**: Set desktop UA string, wide viewport, inject CSS viewport width override for desktop rendering, force request desktop site
+5. **Settings Page Blank**: Fixed by the browser security + desktop view fixes above
+6. **YouTube Login**: Google blocks embedded WebViews — override `userAgentData` at BOTH the JS level AND the network/HTTP header level via `androidx.webkit` to hide WebView identity
+
+### Implementation Status
+- [ ] Add androidx.webkit dependency
+- [ ] Shared WebView for fullscreen mirror
+- [ ] WebSettingsCompat.setUserAgentMetadata for Sec-CH-UA headers
+- [ ] onPageStarted JS injection for all browser WebViews
+- [ ] YouTube playsinline CSS injection
+- [ ] Desktop viewport CSS injection
+- [ ] Address bar in fullscreen toolbar

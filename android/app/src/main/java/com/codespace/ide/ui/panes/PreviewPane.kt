@@ -11,6 +11,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
+import androidx.webkit.UserAgentMetadata
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
@@ -153,12 +157,10 @@ fun PreviewPane(
     var pageTitle by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
-    // P45-1: Save WebView state before going fullscreen so the fullscreen
-    // dialog can restore the exact same page + scroll position instead of resetting.
-    var savedWebViewUrl by remember { mutableStateOf("") }
-    var savedScrollY by remember { mutableStateOf(0) }
-    var savedScrollX by remember { mutableStateOf(0) }
-    var savedZoomScale by remember { mutableFloatStateOf(1f) }
+    // P48: Shared WebView instance for Browser/Remotion modes — survives fullscreen
+    // toggle without reloading the page. The same WebView is reused in both inline
+    // and fullscreen, so scroll position, login state, and video playback are preserved.
+    val sharedWebView = remember { mutableStateOf<WebView?>(null) }
     // First time this pane sees a deep-linked port (from the Ports panel), jump straight to
     // Browser mode pointed at it. Only fires on an actual initialPort change, not every
     // recomposition, so it doesn't fight with the user manually switching modes afterwards.
@@ -263,13 +265,9 @@ fun PreviewPane(
                     contentDescription = "Fullscreen preview",
                     tint = TextMuted,
                     modifier = Modifier.size(18.dp).clickable {
-                        // P45-1: Save current WebView state before going fullscreen
+                        // P48: Sync address bar with current URL before going fullscreen
+                        // (shared WebView keeps its state — no save/restore needed)
                         webViewRef?.let { wv ->
-                            savedWebViewUrl = wv.url ?: ""
-                            savedScrollY = wv.scrollY
-                            savedScrollX = wv.scrollX
-                            savedZoomScale = wv.scale
-                            // Also sync the address bar with the actual current URL
                             val actualUrl = wv.url ?: ""
                             if (actualUrl.isNotBlank() && actualUrl != "about:blank") {
                                 if (sharedState.activeMode == PreviewMode.BROWSER) {
@@ -429,20 +427,25 @@ fun PreviewPane(
         }
 
         // ── Preview body ────────────────────────────────────────────────────
-        Box(Modifier.fillMaxSize()) {
-            PreviewBody(
-                activeMode = sharedState.activeMode,
-                content = content,
-                language = language,
-                activeFilePath = activeFilePath,
-                browserUrl = sharedState.browserUrl,
-                remotionUrl = sharedState.remotionUrl,
-                projectRootPath = projectRootPath,
-                onWebView = { webViewRef = it },
-                onTitle = { pageTitle = it },
-                onLoading = { isLoading = it },
-                onCanGoBack = { sharedState.canGoBack = it },
-            )
+        // P48: Only render inline when NOT fullscreen — the shared WebView moves
+        // to the fullscreen Dialog when isFullscreen is true, preventing duplicate WebViews
+        if (!isFullscreen) {
+            Box(Modifier.fillMaxSize()) {
+                PreviewBody(
+                    activeMode = sharedState.activeMode,
+                    content = content,
+                    language = language,
+                    activeFilePath = activeFilePath,
+                    browserUrl = sharedState.browserUrl,
+                    remotionUrl = sharedState.remotionUrl,
+                    projectRootPath = projectRootPath,
+                    onWebView = { webViewRef = it },
+                    onTitle = { pageTitle = it },
+                    onLoading = { isLoading = it },
+                    onCanGoBack = { sharedState.canGoBack = it },
+                    sharedWebView = sharedWebView,
+                )
+            }
         }
     }
 
@@ -486,13 +489,44 @@ fun PreviewPane(
                             .clickable(enabled = sharedState.canGoBack) { webViewRef?.goBack() },
                     )
                     Spacer(Modifier.width(4.dp))
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Text(
-                            sharedState.activeMode.label,
-                            fontSize = 13.sp,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.SemiBold,
+                    // P48: Address bar in fullscreen for Browser/Remotion modes
+                    if (sharedState.activeMode == PreviewMode.BROWSER || sharedState.activeMode == PreviewMode.REMOTION) {
+                        val isRemotion = sharedState.activeMode == PreviewMode.REMOTION
+                        val currentInput = if (isRemotion) sharedState.remotionInput else sharedState.browserInput
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(BgDark)
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                currentInput,
+                                fontSize = 11.sp,
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = TextMuted,
+                            modifier = Modifier.size(18.dp).clickable { webViewRef?.reload() },
                         )
+                        Spacer(Modifier.width(6.dp))
+                    } else {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            Text(
+                                sharedState.activeMode.label,
+                                fontSize = 13.sp,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                     Icon(
                         Icons.Default.Close,
@@ -501,12 +535,9 @@ fun PreviewPane(
                         modifier = Modifier
                             .size(22.dp)
                             .clickable {
-                                // P45-1: Save fullscreen WebView state before exiting
+                                // P48: Sync address bar with current URL before exiting
+                                // (shared WebView keeps its state — no save/restore needed)
                                 webViewRef?.let { wv ->
-                                    savedWebViewUrl = wv.url ?: ""
-                                    savedScrollY = wv.scrollY
-                                    savedScrollX = wv.scrollX
-                                    savedZoomScale = wv.scale
                                     val actualUrl = wv.url ?: ""
                                     if (actualUrl.isNotBlank() && actualUrl != "about:blank") {
                                         if (sharedState.activeMode == PreviewMode.BROWSER) {
@@ -531,23 +562,11 @@ fun PreviewPane(
                         browserUrl = sharedState.browserUrl,
                         remotionUrl = sharedState.remotionUrl,
                         projectRootPath = projectRootPath,
-                        onWebView = { wv ->
-                            webViewRef = wv
-                            // P45-1: Restore scroll position and zoom after the page loads
-                            if (savedWebViewUrl.isNotBlank() && savedWebViewUrl != "about:blank") {
-                                wv.postDelayed({
-                                    try {
-                                        wv.scrollTo(savedScrollX, savedScrollY)
-                                        if (savedZoomScale != 1f) {
-                                            wv.setInitialScale((savedZoomScale * 100).toInt())
-                                        }
-                                    } catch (_: Exception) {}
-                                }, 500L)
-                            }
-                        },
+                        onWebView = { wv -> webViewRef = wv },
                         onTitle = { pageTitle = it },
                         onLoading = { isLoading = it },
                         onCanGoBack = { sharedState.canGoBack = it },
+                        sharedWebView = sharedWebView,
                     )
                 }
             }
@@ -573,6 +592,7 @@ private fun PreviewBody(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
     onCanGoBack: (Boolean) -> Unit = {},
+    sharedWebView: MutableState<WebView?>? = null,
 ) {
     when (activeMode) {
         PreviewMode.HTML      -> {
@@ -594,11 +614,11 @@ private fun PreviewBody(
             }
         PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
-        PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack)
+        PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
         PreviewMode.DASHBOARD -> DashboardPreview(activeFilePath, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
         // Independent from Browser's URL now — each mode has its own connection (this is the
         // fix for the "Browser and Remotion port mirroring" bug).
-        PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack)
+        PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
     }
 }
 
@@ -894,12 +914,13 @@ private fun SvgPreview(
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser Preview — points at localhost or any URL (e.g. running dev server)
 // ─────────────────────────────────────────────────────────────────────────────
-// P45-3: JavaScript to override navigator.userAgentData so Google/YouTube
+// P48: JavaScript to override navigator.userAgentData so Google/YouTube
 // don't detect this as an embedded WebView and block login.
-// Google checks Sec-CH-UA client hints AND navigator.userAgentData.
+// Also overrides Sec-CH-UA, platform, mobile, and forces desktop viewport.
 private const val USER_AGENT_DATA_OVERRIDE_JS = """
 (function() {
   try {
+    // Override navigator.userAgentData — Google checks this to detect WebViews
     Object.defineProperty(navigator, 'userAgentData', {
       get: function() {
         return {
@@ -915,8 +936,112 @@ private const val USER_AGENT_DATA_OVERRIDE_JS = """
       configurable: true
     });
   } catch(e) {}
+  // Override navigator.platform to match desktop Chrome
+  try {
+    Object.defineProperty(navigator, 'platform', {
+      get: function() { return 'Win32'; },
+      configurable: true
+    });
+  } catch(e) {}
+  // Override navigator.maxTouchPoints — 0 indicates a desktop (no touch)
+  try {
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      get: function() { return 0; },
+      configurable: true
+    });
+  } catch(e) {}
 })();
 """
+
+// P48: CSS to inject on YouTube pages to fix Shorts black screen and force desktop layout
+private const val YOUTUBE_FIX_CSS = """
+/* Force playsinline for all videos — fixes YouTube Shorts black screen */
+video { playsinline: true; -webkit-playsinline: true; }
+/* Force desktop viewport for YouTube */
+ytd-app { min-width: 1280px !important; }
+/* Ensure video elements have a visible background */
+video, .html5-video-player, #movie_player { background-color: #000 !important; }
+"""
+
+// P48: CSS to force desktop layout on all sites
+private const val DESKTOP_VIEWPORT_CSS = """
+/* Force desktop viewport width */
+html { min-width: 1024px !important; }
+/* Disable mobile-specific CSS */
+@media only screen and (max-width: 768px) { body { min-width: 1024px !important; } }
+"""
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P48: Configure a WebView with full browser security, desktop view, and video fixes
+// Used by both BrowserPreview and RemotionPreview to share configuration
+// ─────────────────────────────────────────────────────────────────────────────
+private fun configureSecureWebView(webView: WebView) {
+    webView.settings.apply {
+        javaScriptEnabled = true
+        domStorageEnabled = true
+        loadWithOverviewMode = true
+        useWideViewPort = true
+        setSupportZoom(true)
+        builtInZoomControls = true
+        displayZoomControls = false
+        mediaPlaybackRequiresUserGesture = false
+        // P48: Desktop user-agent — latest Chrome on Windows
+        userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        // P48: File and content access
+        allowFileAccess = true
+        allowContentAccess = true
+        // P48: Allow local file URLs and universal access (for local preview)
+        allowFileAccessFromFileURLs = true
+        allowUniversalAccessFromFileURLs = true
+        // P48: Database + cache for SPAs
+        databaseEnabled = true
+        cacheMode = WebSettings.LOAD_DEFAULT
+        // P48: Multiple windows for OAuth popups (YouTube/Google login)
+        setSupportMultipleWindows(true)
+        javaScriptCanOpenWindowsAutomatically = true
+        // P48: Mixed content
+        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        // P48: Safe browsing
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            setSafeBrowsingEnabled(true)
+        }
+    }
+    // P48: Cookies — third-party needed for login flows
+    CookieManager.getInstance().setAcceptCookie(true)
+    CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+    // P48: Override User-Agent client hints at the NETWORK level (HTTP headers)
+    // This is the key fix — JS override alone doesn't change the Sec-CH-UA headers
+    // that Google reads to detect embedded WebViews
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+        try {
+            val brands = listOf(
+                UserAgentMetadata.BrandVersion.Builder()
+                    .setBrand("Google Chrome").setMajorVersion("125").build(),
+                UserAgentMetadata.BrandVersion.Builder()
+                    .setBrand("Chromium").setMajorVersion("125").build(),
+                UserAgentMetadata.BrandVersion.Builder()
+                    .setBrand("Not.A/Brand").setMajorVersion("24").build()
+            )
+            val metadata = UserAgentMetadata.Builder()
+                .setBrandList(brands)
+                .setPlatform("Windows")
+                .setMobile(false)
+                .build()
+            WebSettingsCompat.setUserAgentMetadata(webView.settings, metadata)
+        } catch (e: Exception) {
+            // Fallback: if UserAgentMetadata API isn't available, the JS override still works
+        }
+    }
+    // P48: Set layer type to NONE — let Android manage hardware acceleration
+    // LAYER_TYPE_HARDWARE causes black screen for YouTube Shorts on Samsung
+    // LAYER_TYPE_SOFTWARE is too slow for video
+    // LAYER_TYPE_NONE lets the Activity-level hardwareAccelerated=true handle it
+    webView.setLayerType(View.LAYER_TYPE_NONE, null)
+    // P48: Initial scale 0 lets WebView pick natural scale
+    webView.setInitialScale(0)
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -926,72 +1051,39 @@ private fun BrowserPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
     onCanGoBack: (Boolean) -> Unit = {},
+    sharedWebView: MutableState<WebView?>? = null,
 ) {
     val fileChooserHandler = rememberOnShowFileChooser()
-    // codespace-ide fix (2026-07-08): raw video/audio URLs (e.g. http://localhost:3000/test.mp4)
-    // loaded directly via loadUrl() don't reliably render inline in this WebView — sometimes a
-    // blank page, sometimes nothing at all. Auto-detect known media extensions and wrap them in a
-    // minimal HTML page with a real <video>/<audio> tag instead, same trick documented as a manual
-    // workaround in the proot debug notes — now automatic, no hand-written wrapper file needed.
     var lastLoadedUrl by remember { mutableStateOf("") }
     AndroidView(
         factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                settings.mediaPlaybackRequiresUserGesture = false
-                // P34-BROWSER: Enable cookies (including third-party) for login flows
-                // (YouTube/Google login requires third-party cookies)
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                // P35-BROWSER: Full browser-grade WebView — YouTube, Google login, etc.
-                // Multiple windows: YouTube/Google OAuth opens new windows for login
-                settings.setSupportMultipleWindows(true)
-                settings.javaScriptCanOpenWindowsAutomatically = true
-                // Mixed content: allow HTTP resources in HTTPS pages (some embeds need this)
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                // Database + cache: some SPAs need WebSQL/IndexedDB
-                settings.databaseEnabled = true
-                settings.cacheMode = WebSettings.LOAD_DEFAULT
-                // P45-2: Removed LAYER_TYPE_HARDWARE — it causes black screen
-                // for YouTube Shorts on Samsung (GPU compositing conflicts with
-                // VP9/AV1 media pipeline). Activity already has hardwareAccelerated=true.
-                // P45-3: Safe browsing enabled explicitly for security
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    settings.setSafeBrowsingEnabled(true)  // P45-3: API 26+
-                }
-                // P45-3: File and content access for local resource loading
-                settings.allowFileAccess = true
-                settings.allowContentAccess = true
-                // P32-BROWSER: Desktop user-agent — makes sites render in laptop/desktop
-                // layout instead of mobile layout. Identical to Chrome on a laptop.
-                settings.userAgentString =
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                // P32-BROWSER: setInitialScale(0) lets the WebView pick a natural 1:1 scale
-                // after useWideViewPort maps the page to its declared viewport width.
-                // Without this, Android can force a 75% scale that clips content.
-                setInitialScale(0)
-                webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { onLoading(true) }
+            // P48: Reuse shared WebView if available (fullscreen mirror), else create new
+            val wv = sharedWebView?.value ?: WebView(ctx)
+            if (sharedWebView?.value == null) {
+                // First time — configure the WebView with all security + desktop + video fixes
+                configureSecureWebView(wv)
+                wv.webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        onLoading(true)
+                        // P48: Inject UA override on page START, not just finish —
+                        // Google checks navigator.userAgentData before the page fully loads
+                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                    }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)
                         onTitle(view?.title ?: "")
                         onCanGoBack(view?.canGoBack() == true)
-                        // P45-3: Inject userAgentData override to hide WebView identity
-                        // from Google/YouTube login detection
+                        // P48: Re-inject UA override after page loads
                         view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
-                        // P45-1: Sync address bar with actual URL after navigation
-                        val actualUrl = url ?: ""
-                        if (actualUrl.isNotBlank() && actualUrl != "about:blank") {
-                            view?.url?.let { /* url already captured */ }
+                        // P48: Inject CSS fixes for YouTube (playsinline + desktop layout)
+                        val currentUrl = url ?: ""
+                        if (currentUrl.contains("youtube.com") || currentUrl.contains("youtu.be")) {
+                            view?.evaluateJavascript("var s=document.createElement('style');s.textContent='" + YOUTUBE_FIX_CSS.replace("\n"," ") + "';document.head.appendChild(s);", null)
                         }
-                        // P34-BROWSER: Flush cookies after page load for login persistence
+                        // P48: Inject desktop viewport CSS on all sites
+                        view?.evaluateJavascript("var s2=document.createElement('style');s2.textContent='" + DESKTOP_VIEWPORT_CSS.replace("\n"," ") + "';document.head.appendChild(s2);", null)
+                        // P48: Force desktop site by overriding viewport meta tag
+                        view?.evaluateJavascript("var m=document.querySelector('meta[name=viewport]');if(m)m.setAttribute('content','width=1280,initial-scale=0.4,maximum-scale=4.0,user-scalable=yes');", null)
                         CookieManager.getInstance().flush()
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
@@ -1001,35 +1093,33 @@ private fun BrowserPreview(
                             <div><h2>Cannot connect</h2><p>$description</p><p style="color:#717171;font-size:13px;">Is your server running on ${url}?</p></div></body></html>"""
                         view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
                     }
-                    // P34-BROWSER: Trust SSL certificates — YouTube/Google login uses
-                    // certificate chains that WebView may not trust by default.
-                    // Proceeding fixes the "site not trusted" error.
                     override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
                         handler?.proceed()
                     }
                 }
-                webChromeClient = object : WebChromeClient() {
+                wv.webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
                     override fun onShowFileChooser(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
                     ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
 
-                    // P35-BROWSER: Handle window creation (YouTube/Google login popups)
-                    // Without this, JS window.open() silently fails and login shows nothing
                     override fun onCreateWindow(
                         view: WebView?, isDialog: Boolean, isUserGesture: Boolean,
                         resultMsg: android.os.Message?,
                     ): Boolean {
                         if (view == null || resultMsg == null) return false
-                        // Create a new WebView for the popup window
                         val newWebView = WebView(view.context)
-                        newWebView.settings.javaScriptEnabled = true
-                        newWebView.settings.domStorageEnabled = true
+                        configureSecureWebView(newWebView)
                         newWebView.webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(popupView: WebView?, url: String?) {
-                                // Redirect popup content back to the main WebView
-                                if (url != null) { view.loadUrl(url) }
+                            override fun onPageStarted(pv: WebView?, pu: String?, favicon: android.graphics.Bitmap?) {
+                                pv?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                            }
+                            override fun onPageFinished(popupView: WebView?, popupUrl: String?) {
+                                if (popupUrl != null) { view.loadUrl(popupUrl) }
+                            }
+                            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
+                                handler?.proceed()
                             }
                         }
                         val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
@@ -1038,40 +1128,29 @@ private fun BrowserPreview(
                         return true
                     }
 
-                    // P35-BROWSER: JavaScript dialogs — many sites use alert/confirm
-                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
-                        result?.confirm()
-                        return true
-                    }
-                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
-                        result?.confirm()
-                        return true
-                    }
-                    override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: android.webkit.JsPromptResult?): Boolean {
-                        result?.confirm(defaultValue ?: "")
-                        return true
-                    }
+                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
+                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
+                    override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: android.webkit.JsPromptResult?): Boolean { result?.confirm(defaultValue ?: ""); return true }
 
-                    // P35-BROWSER: Fullscreen video playback (YouTube fullscreen button)
                     override fun onShowCustomView(view: View?, callback: WebChromeClient.CustomViewCallback?) {
-                        // Forward to the host activity if available — for now, keep inline
                         callback?.onCustomViewHidden()
                     }
                     override fun onHideCustomView() {}
 
-                    // P35-BROWSER: Permission requests (camera, mic, geolocation)
                     override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
                         request?.grant(request.resources)
                     }
                 }
-                onWebView(this)
+                sharedWebView?.value = wv
             }
+            onWebView(wv)
+            wv
         },
         update = { wv ->
-            // P25-4: only load if url changed AND is a real address (not localhost:0 from a
-            // cold open with no port forwarded — that was the root cause of the blank screen bug)
             val isRealUrl = url.isNotBlank() && url != "http://localhost:0" && url != "http://localhost:"
-            if (lastLoadedUrl != url && isRealUrl) {
+            // P48: Check if WebView already has this URL loaded (shared WebView from fullscreen)
+            val alreadyLoaded = wv.url != null && wv.url == url
+            if (lastLoadedUrl != url && isRealUrl && !alreadyLoaded) {
                 lastLoadedUrl = url
                 val clean = url.substringBefore('?').substringBefore('#').lowercase()
                 val videoExts = listOf(".mp4", ".webm", ".mov", ".mkv", ".m4v")
@@ -1093,8 +1172,7 @@ private fun BrowserPreview(
                     )
                     else -> wv.loadUrl(url)
                 }
-            } else if (!isRealUrl && lastLoadedUrl.isEmpty()) {
-                // Show a helpful waiting placeholder instead of a blank white page
+            } else if (!isRealUrl && lastLoadedUrl.isEmpty() && wv.url == null) {
                 wv.loadDataWithBaseURL(null, """
                     <html><body style="background:#1e1e1e;color:#717171;font-family:sans-serif;
                     display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;margin:0;">
@@ -1108,8 +1186,6 @@ private fun BrowserPreview(
             }
             onWebView(wv)
         },
-        // P32-BROWSER: clipToBounds ensures pinch-zoom never visually bleeds outside
-        // the panel while still allowing unlimited zoom in/out within the pane.
         modifier = Modifier.fillMaxSize().clipToBounds(),
     )
 }
@@ -1127,39 +1203,17 @@ private fun RemotionPreview(
     onTitle: (String) -> Unit,
     onLoading: (Boolean) -> Unit,
     onCanGoBack: (Boolean) -> Unit = {},
+    sharedWebView: MutableState<WebView?>? = null,
 ) {
     val fileChooserHandler = rememberOnShowFileChooser()
-    // Default Remotion Studio runs on port 3000
     val remotionUrl = if (url.isBlank()) "http://localhost:3000" else url
 
     AndroidView(
         factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.allowFileAccess = true
-                settings.allowContentAccess = true
-                // P35-BROWSER: Full browser-grade settings (same as BrowserPreview)
-                settings.setSupportMultipleWindows(true)
-                settings.javaScriptCanOpenWindowsAutomatically = true
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.databaseEnabled = true
-                settings.cacheMode = WebSettings.LOAD_DEFAULT
-                // P45-2: No LAYER_TYPE_HARDWARE (same fix as BrowserPreview)
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                // P32-BROWSER: Desktop UA — Remotion Studio renders its full desktop layout
-                settings.userAgentString =
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                setInitialScale(0)
-                webViewClient = object : WebViewClient() {
+            val wv = sharedWebView?.value ?: WebView(ctx)
+            if (sharedWebView?.value == null) {
+                configureSecureWebView(wv)
+                wv.webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
                         view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
@@ -1183,26 +1237,23 @@ private fun RemotionPreview(
                             </div></body></html>"""
                         view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
                     }
-                    // P34-BROWSER: Trust SSL for Remotion HTTPS connections
                     override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
                         handler?.proceed()
                     }
                 }
-                webChromeClient = object : WebChromeClient() {
+                wv.webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
                     override fun onShowFileChooser(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
                     ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
-                    // P35-BROWSER: Window creation + JS dialogs + permissions
                     override fun onCreateWindow(
                         view: WebView?, isDialog: Boolean, isUserGesture: Boolean,
                         resultMsg: android.os.Message?,
                     ): Boolean {
                         if (view == null || resultMsg == null) return false
                         val newWebView = WebView(view.context)
-                        newWebView.settings.javaScriptEnabled = true
-                        newWebView.settings.domStorageEnabled = true
+                        configureSecureWebView(newWebView)
                         val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
                         transport?.webView = newWebView
                         resultMsg.sendToTarget()
@@ -1212,17 +1263,17 @@ private fun RemotionPreview(
                     override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
                     override fun onPermissionRequest(request: android.webkit.PermissionRequest?) { request?.grant(request.resources) }
                 }
-                onWebView(this)
+                sharedWebView?.value = wv
             }
+            onWebView(wv)
+            wv
         },
         update = { wv ->
-            // P25-4: guard against loading localhost:0 (no port connected)
             val isRealUrl = remotionUrl.isNotBlank() && remotionUrl != "http://localhost:0"
             if (wv.url != remotionUrl && isRealUrl) wv.loadUrl(remotionUrl)
             onCanGoBack(wv.canGoBack())
             onWebView(wv)
         },
-        // P32-BROWSER: clipToBounds so zoom never bleeds outside the panel
         modifier = Modifier.fillMaxSize().clipToBounds(),
     )
 }
