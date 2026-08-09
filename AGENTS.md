@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **6869688d** — P49 Snippet Tab + Select Next Occurrence fix (build GREEN) |
-| Active phase | **Phase 50-3** — ctags-lsp + pylsp-workspace-symbols for universal symbol search. 21 items fixed, 4 need device testing, 10 still unfixed. Next: implement ctags-lsp integration. |
+| Active phase | **Phase 50-3** — ctags-lsp + pylsp-workspace-symbols for universal symbol search (ba46e2e). 22 items fixed, 5 need device testing, 9 still unfixed. Next: remaining roadmap items. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -4097,7 +4097,7 @@ The editor rendered ALL file lines as composables regardless of viewport:
 
 ## Phase 50-3 — Symbol Search: ctags-lsp + pylsp-workspace-symbols (2026-08-09)
 
-**Status:** PLANNED — implementation next
+**Status:** DONE (commit `ba46e2e`)
 **Research:** Compared 5 approaches for workspace symbol search when LSP servers don't support it
 
 ### Problem
@@ -4166,6 +4166,36 @@ Primary LSP server (tsserver/gopls/clangd/etc.)
 - ✅ Symbol search for languages without a dedicated LSP server (via ctags-lsp)
 - ✅ Bonus: basic go-to-definition for languages without a dedicated server (ctags-lsp)
 
+
+
+
+### Implementation Results
+
+**Commit `ba46e2e`** — 184 insertions, 13 deletions in LspManager.kt
+
+**Part A — pylsp-workspace-symbols plugin (DONE):**
+- Added `pip install pylsp-workspace-symbols` to Python's installCommand
+- Plugin uses `pylsp_experimental_capabilities` to advertise `workspaceSymbolProvider: true`
+- Uses `pylsp_dispatchers` to register custom `workspace/symbol` handler
+- Powered by Jedi — real semantic symbol search for Python
+- Non-fatal install (2>/dev/null) — if pip/network fails, FileIndexer regex handles it
+
+**Part B — ctags-lsp secondary server (DONE):**
+- `ensureCtagsLspInstalled()`: installs universal-ctags (apt-get) + ctags-lsp (go install)
+- `startCtagsLsp()`: starts ctags-lsp via ProcessBuilder + proot (same pattern as startServer)
+- `getCtagsWorkspaceSymbol()`: queries ctags-lsp for workspace symbols
+- Auto-start: when a primary server starts that lacks `workspaceSymbolProvider`, ctags-lsp auto-starts
+- Cleanup: ctags-lsp stopped in `stopAll()`
+- Fallback chain: primary LSP → ctags-lsp → FileIndexer regex
+
+**Note:** ctags-lsp needs Go (already installed for gopls) and universal-ctags (apt-get).
+Both are installed lazily when workspace/symbol fallback is first needed.
+
+### Error Trace Log
+| File | Symptom | Root Cause | Fix | Lesson |
+|------|---------|------------|-----|--------|
+| LspManager.kt:1721 | workspace/symbol returns null for pylsp — no symbol search for Python | pylsp doesn't advertise `workspaceSymbolProvider` | `ba46e2e` — pylsp-workspace-symbols plugin adds it via Jedi | When an LSP server lacks a capability, look for third-party plugins before building from scratch |
+| LspManager.kt (getWorkspaceSymbol) | workspace/symbol returns null for languages without a dedicated server | Only primary LSP server was queried, no fallback | `ba46e2e` — ctags-lsp secondary server + FileIndexer regex tertiary fallback | Always implement a multi-tier fallback chain for critical IDE features |
 
 ## Phase 50-1 — Line Number Alignment + Bookmark Color Fix (2026-08-09)
 
