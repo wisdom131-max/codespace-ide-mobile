@@ -30,6 +30,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        FeatureToggleStore.init(this)
         super.onCreate()
         // CRITICAL: Do NOT acquire WakeLocks or start foreground service here.
         //
