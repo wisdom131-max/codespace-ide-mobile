@@ -88,6 +88,7 @@ import com.codespace.ide.ui.panes.SymbolSearchPanel
 import com.codespace.ide.ui.panes.OutlinePanel
 import com.codespace.ide.ui.panes.ProjectFileSearchPanel
 import com.codespace.ide.ui.panes.BuildPanel
+import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FileIndexer
 import org.json.JSONArray
 import com.codespace.ide.lsp.LspManager
@@ -556,8 +557,8 @@ fun ProjectShellScreen(
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     val showFindBarMs = remember { mutableStateOf(false) }; var showFindBar by showFindBarMs
-    val wordWrapMs = remember { mutableStateOf(false) }; var _wordWrap by wordWrapMs
-    val showInlayHintsMs = remember { mutableStateOf(true) }; var _showInlayHints by showInlayHintsMs  // P2-11
+    val wordWrapMs = remember { FeatureToggleStore.state("word_wrap") }; var _wordWrap by wordWrapMs
+    val showInlayHintsMs = remember { FeatureToggleStore.state("inlay_hints") }; var _showInlayHints by showInlayHintsMs  // P2-11
     val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
     var goToLineInput      by remember { mutableStateOf("") }
     val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
@@ -3332,6 +3333,7 @@ private fun PssEditorColumn(
                     onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
                     wordWrap           = wordWrap,
                     showInlayHints     = showInlayHints,
+                    toggles            = FeatureToggleStore.toEditorFeatureToggles(),
                     scrollToLineParam  = scrollTargetLine,
                     projectId          = projectId,
                     sessionStateStore  = sessionStateStore,
