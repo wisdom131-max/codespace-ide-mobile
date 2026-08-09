@@ -10913,7 +10913,7 @@ Related issues: B1, I3, P1, A8, A9, A14, C9, C11, D5, K4, .MD icon
 - B1: Fix with AI stub -> wire handler to open chat panel
 - I3: Diagnostics report says "failed"
 - P1: Cloud backup failed (OkHttp stream error)
-- A8: Select Next Occurrence no-op until manual re-select
+- A8: ~~Select Next Occurrence no-op~~ ✅ FIXED (P49) — currentWord() now scans forward too
 - A9/C9/C11: Peek Definition just navigates, no overlay
 - A14: Bookmark icon invisible until theme switch, then clipped
 - D5: Lightbulb shows on wrong line (16 not 28)
@@ -11103,6 +11103,22 @@ Restructured to match the reference VS Code screenshots the user provided:
 - **GitHub integration** — Full VS Code "Open Remote Repository" flow working: OAuth Device Flow, repo browser, clone, push/pull/fetch, stage/unstage, commit, branch, stash, tags, conflicts, gitignore, publish. Confirmed via on-device screenshots.
 - **Trash restore (J3)** — Trash dialog lists individual files from `.ide-trash/` with restore/delete per entry. `findTrashProjectDir` walks up to find project root.
 
+
+## Phase 49 — Snippet Tab Expansion + Select Next Occurrence Fix (2026-08-09)
+
+### Fixes Applied
+
+| # | Issue | Fix | Files |
+|-------|-------|--------|-------|
+| A5 | Snippet Tab expansion broken — Tab key didn't expand snippets when no snippet session was active, only worked through completion dropdown | Added Tab interceptor: when no snippet session is active and no completion popup is open, Tab checks if the word before the cursor matches a local snippet trigger (supports single-word like `fun`, `def`, `class` and two-word like `data class`, `let mut`). If matched, expands the snippet — for `insertTextFormat==2` creates a snippet session with tab-stops, for plain text inserts and places cursor at end. | `CodeEditor.kt` |
+| A8 | Select Next Occurrence no-op until manual re-select — `currentWord()` only scanned backwards, so after moving selection to next match start, `selWord` was empty and popup wouldn't reopen | Fixed `currentWord()` to also scan forward from the cursor position, so the full word is found whether cursor is at start, middle, or end of the word. | `CodeEditor.kt` |
+
+### Root Causes
+
+**A5:** The `onPreviewKeyEvent` handler only checked for Tab when `snippetSession != null` (already in snippet mode). When no session was active, Tab fell through to `BasicTextField` for normal indentation. Local snippets (`snippetsFor(lang)`) were only accessible through the completion dropdown, not through Tab expansion.
+
+**A8:** `currentWord(text, cursor)` scanned backwards from the cursor to find word characters. After "Select Next Occurrence" moved the selection to the START of the next match, `value.selection.start` pointed to the first character of the word. Since there were no word characters BEFORE the cursor (only a space or punctuation), `currentWord` returned an empty string. The popup condition `selWord.length >= 2` failed, preventing the menu from reopening.
+
 ### Remaining Items to Fix (from Phase 46 groups):
 **GROUP C: Editor Rendering:**
 - Negative padding crash (CodeEditor.kt:1814, 1719, EditorPane.kt:1286) → clamp with `coerceAtLeast(0.dp)`
@@ -11113,7 +11129,7 @@ Restructured to match the reference VS Code screenshots the user provided:
 
 **GROUP D: LSP & Completion:**
 - C13: No stdlib/builtin completions (math., import o) — need to add stdlib completion data
-- A5: Snippet Tab expansion broken → Tab key must check for pending snippet
+- A5: ~~Snippet Tab expansion broken~~ ✅ FIXED (P49) — Tab now checks for local snippet triggers before falling through
 - D1/D3: Completion dropdown issues
 
 **GROUP E: Debugger System:**
@@ -11139,7 +11155,7 @@ Restructured to match the reference VS Code screenshots the user provided:
 - B1: Fix with AI stub → wire handler to open chat panel
 - I3: Diagnostics report says "failed"
 - P1: Cloud backup failed (OkHttp stream error)
-- A8: Select Next Occurrence no-op until manual re-select
+- A8: ~~Select Next Occurrence no-op~~ ✅ FIXED (P49) — currentWord() now scans forward too
 - A9/C9/C11: Peek Definition just navigates, no overlay
 - A14: Bookmark icon invisible until theme switch, then clipped
 - K4: Markdown preview needs clearer test instructions

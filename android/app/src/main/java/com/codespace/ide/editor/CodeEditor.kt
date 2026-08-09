@@ -350,9 +350,14 @@ private fun completionsFor(prefix: String, lang: Language): List<Completion> {
 }
 
 private fun currentWord(text: String, cursor: Int): String {
-    val end = cursor.coerceAtMost(text.length)
-    var start = end
+    val pos = cursor.coerceIn(0, text.length)
+    // Scan backward from cursor to find word start
+    var start = pos
     while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
+    // P46-A8: Also scan forward so the word is found when cursor is at its start
+    // (e.g. after Select Next Occurrence moves selection to next match start)
+    var end = pos
+    while (end < text.length && (text[end].isLetterOrDigit() || text[end] == '_')) end++
     return text.substring(start, end)
 }
 
@@ -1541,8 +1546,80 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             )
                         }
                         // P41-I: Intercept Tab/Shift+Tab for snippet tab-stop navigation
+                        // P46-A5: Also intercept Tab to expand local snippets when no session is active
                         .onPreviewKeyEvent { event ->
-                            if (snippetSession != null && event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
+                            // P46-A5: Tab expansion for local snippets (when no snippet session active)
+                            if (snippetSession == null && event.key == Key.Tab && event.type == KeyEventType.KeyDown &&
+                                !event.nativeKeyEvent.isShiftPressed && !showCompletions) {
+                                val cursor = value.selection.end
+                                // P46-A5: Find the word (or two-word combo) before the cursor for snippet expansion
+                                var wordStart = cursor
+                                while (wordStart > 0 && (value.text[wordStart - 1].isLetterOrDigit() || value.text[wordStart - 1] == '_')) {
+                                    wordStart--
+                                }
+                                val singleWord = value.text.substring(wordStart, cursor)
+                                // Check for two-word triggers like "data class", "let mut"
+                                var twoWordStart = wordStart
+                                if (wordStart > 0 && value.text[wordStart - 1] == ' ') {
+                                    var ws = wordStart - 1
+                                    while (ws > 0 && value.text[ws - 1] == ' ') ws--
+                                    var prevWordEnd = ws
+                                    if (prevWordEnd > 0 && (value.text[prevWordEnd - 1].isLetterOrDigit() || value.text[prevWordEnd - 1] == '_')) {
+                        var prevWordStart = prevWordEnd
+                        while (prevWordStart > 0 && (value.text[prevWordStart - 1].isLetterOrDigit() || value.text[prevWordStart - 1] == '_')) prevWordStart--
+                        twoWordStart = prevWordStart
+                    }
+                                }
+                                val twoWord = if (twoWordStart < wordStart) value.text.substring(twoWordStart, cursor) else singleWord
+                                if (singleWord.isNotEmpty()) {
+                                    val localSnippets = snippetsFor(language)
+                                    // Try two-word exact match first, then single word
+                                    val matched = localSnippets.firstOrNull { it.label == twoWord }
+                                        ?: localSnippets.firstOrNull { it.label == singleWord }
+                                        ?: localSnippets.firstOrNull { it.label.startsWith(singleWord) && singleWord.length >= 3 }
+                                    if (matched != null) {
+                                        val expandStart = if (matched.label == twoWord) twoWordStart else wordStart
+                                        val matchedLabel = matched
+                                        // Expand the snippet: replace the word with insertText
+                                        val snippetText = matched.insertText
+                                        val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
+                                        // For insertTextFormat == 2 (snippet syntax), parse and create a session
+                                        if (matched.insertTextFormat == 2) {
+                                            val parsed = parseSnippet(snippetText, SnippetContext(
+                                                lineNumber = lineFromOffset(expandStart) + 1,
+                                                lineIndex = lineFromOffset(expandStart),
+                                                currentLine = value.text.split('\n').getOrNull(lineFromOffset(expandStart)) ?: "",
+                                                selectedText = "",
+                                            ))
+                                            val cleanedText = parsed.cleanedText
+                                            val finalText = value.text.substring(0, expandStart) + cleanedText + value.text.substring(cursor)
+                                            val session = createSnippetSession(expandStart, parsed)
+                                            snippetSession = session
+                                            showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
+                                            val firstStop = session.tabStops.firstOrNull()
+                                            val selRange = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                TextRange(firstStop.startOffset, firstStop.endOffset)
+                                            } else {
+                                                TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                            }
+                                            value = TextFieldValue(text = finalText, selection = selRange)
+                                            onContentChange(finalText)
+                                        } else {
+                                            // Plain text snippet — place cursor at end of inserted text
+                                            value = TextFieldValue(
+                                                text = newText,
+                                                selection = TextRange(expandStart + snippetText.length)
+                                            )
+                                            onContentChange(newText)
+                                        }
+                                        true // consume the Tab key
+                                    } else {
+                                        false // no snippet match, let Tab work normally
+                                    }
+                                } else {
+                                    false
+                                }
+                            } else if (snippetSession != null && event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
                                 val session = snippetSession!!
                                 val isShift = event.nativeKeyEvent.isShiftPressed
                                 if (isShift) {
