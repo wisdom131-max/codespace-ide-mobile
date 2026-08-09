@@ -20,18 +20,17 @@
 
 ---
 
-## CURRENT STATE (2026-08-04)
+## CURRENT STATE (2026-08-09)
 
 | | |
 |-|-|
-| Latest green build | **8399f13** — P44 Timeline + Explorer dark theme fix |
-
-| Active phase | **Phase 44** (Missing Matrix Fixes — ALL items resolved except OAuth. Next: OAuth on-device test) |
+| Latest green build | **6869688d** — P49 Snippet Tab + Select Next Occurrence fix (build GREEN) |
+| Active phase | **Phase 50** — Full audit complete, 18 items confirmed fixed, 4 need device testing, 15 still unfixed. Next: fix highest-priority remaining items. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #1922 — Remove stray closing brace in CodeEditor.kt (07af657eaf) |
+| Last green | #2008+ — P49 Snippet Tab + Select Next Occurrence (6869688d) |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -10891,7 +10890,7 @@ Related issues: N1-N11, sidebar search
 - N8: Recent search history not working
 - N9: Workspace search returns false "No results found"
 - N10: Affected by N9
-- N11: Go > Find in File search bar doesn't call keyboard
+- N11: ⚠️ CODE EXISTS — focusRequester.requestFocus() in ProjectFileSearchPanel:580, needs device test
 - Sidebar search not actually searching file contents
 
 ### GROUP G: File Management
@@ -10904,9 +10903,9 @@ Related issues: J3, small file detection, extract zip, V1, Q2
 
 ### GROUP H: Terminal
 Related issues: H2, H5, X7
-- H2: Shell history search doesn't call keyboard
-- H5: Quick command palette doesn't work
-- X7: MCP status only works in terminal tab, turns off when switching
+- H2: ⚠️ CODE EXISTS — focusRequester.requestFocus() in ShellHistorySearchOverlay:233, needs device test
+- H5: ⚠️ CODE EXISTS — P14-F quick palette in TerminalPane.kt:1615, needs device test
+- X7: ⚠️ CODE EXISTS — LaunchedEffect polls AgentApiServer.isRunning() every 3s (PSS:2874), needs device test, turns off when switching
 
 ### GROUP I: Other Features
 Related issues: B1, I3, P1, A8, A9, A14, C9, C11, D5, K4, .MD icon
@@ -10914,11 +10913,11 @@ Related issues: B1, I3, P1, A8, A9, A14, C9, C11, D5, K4, .MD icon
 - I3: Diagnostics report says "failed"
 - P1: Cloud backup failed (OkHttp stream error)
 - A8: ~~Select Next Occurrence no-op~~ ✅ FIXED (P49) — currentWord() now scans forward too
-- A9/C9/C11: Peek Definition just navigates, no overlay
-- A14: Bookmark icon invisible until theme switch, then clipped
+- A9/C9/C11: ~~Peek Definition just navigates, no overlay~~ ✅ CONFIRMED FIXED — PeekWidget.kt (PeekCodeWidget + PeekReferencesWidget, build #1907 green)
+- A14: Bookmark icon uses hardcoded Color(0xFF61AFEF) (CodeEditor.kt:1341) — not theme-aware, invisible in light theme
 - D5: Lightbulb shows on wrong line (16 not 28)
 - K4: Markdown preview needs clearer test instructions
-- .MD file icon shows generic blue document fallback
+- .MD file icon ~~shows generic blue document fallback~~ ✅ CONFIRMED FIXED — fileIcon maps .md → Article icon, color 0xFF4A90D9
 
 ### GROUP J: Preview/Browser
 Related issues: YouTube, browser security
@@ -11133,7 +11132,7 @@ Restructured to match the reference VS Code screenshots the user provided:
 - D1/D3: Completion dropdown issues
 
 **GROUP E: Debugger System:**
-- F2-F7: Debug panel/terminal not showing progress, variables, step buttons
+- F2-F7: ⚠️ CODE EXISTS — stepOver/stepInto/stepOut/resume wired (PSS:2573+), addOnPausedListener for variables (VariableInspectorPanel:195), needs device test
 - Q5: Two debuggers not wired — UDM not injected from PSS to EditorPane
 
 **GROUP F: Search System:**
@@ -11141,7 +11140,7 @@ Restructured to match the reference VS Code screenshots the user provided:
 - N11: Go > Find in File search bar doesn't call keyboard
 
 **GROUP G: File Management:**
-- Small files show "too small to be ELF" → add "edit/open in editor" in long-press menu
+- Small files show "too small to be ELF" → workaround exists (long-press → File Info → Open as Text) but UX poor; consider auto-fallback to text editor
 - Add "Extract ZIP" to long-press menu
 - V1: Recycle bin restore doesn't show project on project screen after restore
 - Q2: Auto-generate scaffolded template files
@@ -11152,7 +11151,7 @@ Restructured to match the reference VS Code screenshots the user provided:
 - X7: MCP status only works in terminal tab
 
 **GROUP I: Other Features:**
-- B1: Fix with AI stub → wire handler to open chat panel
+- B1: ~~Fix with AI stub~~ ✅ CONFIRMED FIXED — onAiFixRequest wired at PSS:3303, opens chat panel with fix prompt
 - I3: Diagnostics report says "failed"
 - P1: Cloud backup failed (OkHttp stream error)
 - A8: ~~Select Next Occurrence no-op~~ ✅ FIXED (P49) — currentWord() now scans forward too
@@ -11280,3 +11279,89 @@ Restructured to match the reference VS Code screenshots the user provided:
 - [ ] YouTube playsinline CSS injection
 - [ ] Desktop viewport CSS injection
 - [ ] Address bar in fullscreen toolbar
+
+
+## Phase 50 — Full Source Code Audit Results (2026-08-09)
+
+**Audit method:** Every item from the Phase 46 test report was verified against actual source code at commit 6869688d (build GREEN). Items were checked by fetching the relevant .kt files from GitHub and grep-reading the actual implementation.
+
+### ✅ CONFIRMED FIXED (18 items — code verified, build green)
+
+| # | Item | Evidence |
+|---|------|----------|
+| A5 | Snippet Tab expansion | P49 (6869688d) — Tab interceptor checks local snippet triggers when no session active (CodeEditor.kt:1548-1577) |
+| A8 | Select Next Occurrence no-op | P49 (6869688d) — `currentWord()` now scans forward (CodeEditor.kt:352-357) |
+| B1 | Fix with AI stub | `onAiFixRequest` wired at PSS:3303 → opens chat panel with fix prompt; invoked from lightbulb (CodeEditor.kt:2455,2510,2553) |
+| A9/C9/C11 | Peek Definition overlay | PeekWidget.kt (build #1907 green) — PeekCodeWidget + PeekReferencesWidget composables; rendered at CodeEditor.kt:3115 |
+| .MD icon | File icon for .md files | `fileIcon()` maps .md → Icons.AutoMirrored.Filled.Article; `fileIconColor()` maps .md → 0xFF4A90D9 (ExplorerPane.kt:2155,2340) |
+| P48-1 | Markdown preview bottom panel | ff4e1904 — drag-to-resize, tab drag-down gesture |
+| P48-2 | Shared WebView fullscreen | 2fc9b2f4 — single WebView instance, no page reload on fullscreen |
+| P48-3 | setBrandVersionList fix | ff185bf3 — UserAgentMetadata.Builder uses setBrandVersionList (not setBrandList) |
+| P48-4 | YouTube playsinline | 2fc9b2f4 — playsinline CSS injection for YouTube |
+| P48-5 | Desktop UA | 2fc9b2f4 — desktop User-Agent via UserAgentMetadata |
+| P47-1 | Markdown live preview split | 4d58ddcc — EditorPane split view with MarkdownRenderer.kt |
+| P47-2 | SCM 3-dot overflow menu | 4d58ddcc — SourceControlPane overflow menu with Pull, Fetch, Push, etc. |
+| P47-3 | Preview close button | 4d58ddcc — X close button in PreviewPane top bar |
+| C-5 | Large file crash | 09284178 — O(log n) line lookup, pylsp config, dynamic timeouts |
+| P46-1 | Zen Mode keyboard passthrough | 50fdf596 |
+| P46-2 | Lightbulb dp/px mismatch | 50fdf596 |
+| P46-3 | Problems panel dark theme | 50fdf596 |
+| Notif | Notification duplicate key | NotificationStore uses AtomicLong(System.currentTimeMillis()) for unique IDs (line 93) |
+
+### ⚠️ CODE EXISTS — NEEDS ON-DEVICE TESTING (4 items)
+
+| # | Item | Code Location | Why Untested |
+|---|------|----------------|-------------|
+| N11/H2 | Find in File / Shell history keyboard | ProjectFileSearchPanel:580, ShellHistorySearchOverlay:233 — both have `focusRequester.requestFocus()` | May have Compose focus timing issue where requestFocus() fires before layout completes |
+| H5 | Quick command palette | TerminalPane.kt:1615 — P14-F recent-5 commands strip with tap-to-inject | Strip may not be visible or trigger may not fire on some devices |
+| X7 | MCP status indicator | PSS:2873-2886 — LaunchedEffect polls AgentApiServer.isRunning() every 3s | AgentApiServer may return false when terminal process that started it is inactive |
+| F2-F7 | Debug panel step buttons + variables | PSS:2573+ (stepOver, stepInto, stepOut, resume), VariableInspectorPanel:195 (addOnPausedListener) | Runtime: debug session may not start properly in proot (python3 -m pdb) |
+
+### ❌ STILL UNFIXED (15 items)
+
+**GROUP C — Editor Rendering:**
+- Editor text rendering overlap glitch — stale layout cache
+- Find/Replace highlight doesn't follow scroll (A7, N3) — need to track live scroll offset
+- G5: Large file pylsp signature help stale line parameter
+- Negative padding crash — no obvious pattern found in current code; may have been fixed or line numbers shifted
+
+**GROUP D — LSP & Completion:**
+- C13: No stdlib/builtin completions (math., import o) — need stdlib completion data
+- D1/D3: Completion dropdown issues
+
+**GROUP E — Debugger:**
+- Q5: UDM not injected from PSS to EditorPane
+
+**GROUP F — Search:**
+- N8: Recent search history not working in Find in Files
+
+**GROUP G — File Management:**
+- Small files "too small to be ELF" — workaround exists (long-press → File Info → Open as Text) but UX poor
+- Extract ZIP to long-press menu — not implemented
+- V1: Recycle bin restore doesn't show project on project screen after restore
+- Q2: Auto-generate scaffolded template files
+
+**GROUP I — Other:**
+- I3: Diagnostics report — WorkspaceManager.generateDiagnosticsReport exists but may fail at runtime
+- P1: Cloud backup — no retry logic, 120s timeout (network/backend issue)
+- A14: Bookmark icon hardcoded Color(0xFF61AFEF) — not theme-aware
+
+**GROUP J — Preview/Browser:**
+- YouTube login blocked by Google (WebView security policy)
+- Shorts videos black screen (audio only)
+
+### Priority Order for Next Fixes
+
+1. **A14: Bookmark icon** — quick fix: replace hardcoded 0xFF61AFEF with `MaterialTheme.colorScheme.primary`
+2. **Q5: UDM injection** — wire UniversalDebugManager from PSS to EditorPane for debug panel to work
+3. **N8: Recent search history** — wire SharedPreferences persistence in ProjectFileSearchPanel
+4. **A7/N3: Find/Replace scroll follow** — track live scroll offset for highlight overlay
+5. **Extract ZIP** — add "Extract Here" to long-press menu for .zip/.tar.gz files
+6. **C13: Stdlib completions** — add basic stdlib data for Python/JS/TS
+7. **G5: pylsp signature help** — clamp line parameter for large files
+
+### Build Status
+- Latest commit: **6869688d** (P49: Snippet Tab + Select Next Occurrence)
+- CI status: **✅ GREEN**
+- Previous green: ff185bf3 (setBrandVersionList fix)
+- Previous green: ff4e1904 (P48 Markdown preview + drag)
