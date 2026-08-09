@@ -48,6 +48,7 @@ import androidx.documentfile.provider.DocumentFile
 import android.content.ClipboardManager
 import android.content.ClipData
 import java.io.File
+import com.codespace.ide.diagnostics.AppOutputLog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.asImageBitmap
