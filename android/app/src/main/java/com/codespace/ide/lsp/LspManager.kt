@@ -178,7 +178,8 @@ object LspManager {
                 "pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null; " +
                 // P50-3: pylsp-workspace-symbols plugin — adds workspace/symbol support via Jedi.
                 // Auto-advertises workspaceSymbolProvider via pylsp_experimental_capabilities.
-                "pip3 install --break-system-packages pylsp-workspace-symbols 2>/dev/null",
+                "pip3 install --break-system-packages pylsp-workspace-symbols 2>/dev/null; " +
+                "command -v pylsp >/dev/null 2>&1 && python3 -c 'import pylsp_workspace_symbols' 2>/dev/null && echo 'pylsp-workspace-symbols OK' || echo 'pylsp-workspace-symbols not found'",
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────

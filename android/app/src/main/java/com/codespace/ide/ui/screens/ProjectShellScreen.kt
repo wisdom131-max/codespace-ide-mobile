@@ -2356,7 +2356,9 @@ private fun buildRunCommand(path: String): String? {
     val logs = AppOutputLog.lines
     val listState = rememberLazyListState()
     var selectedChannel by remember { mutableStateOf("all") }
-    
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     // P44-OUTPUT: Wire UDM output to AppOutputLog so debug output appears here
     LaunchedEffect(Unit) {
         com.codespace.ide.debug.UniversalDebugManager.addOnOutputListener { msg ->
@@ -2370,24 +2372,29 @@ private fun buildRunCommand(path: String): String? {
         }
     }
     // P31-CRASH-FIX: Read size in a snapshot so it matches the items() count.
-    // Also clamp the scroll target to avoid IndexOutOfBoundsException when the
-    // list is trimmed (add+removeAt) between recomposition and prefetch.
     val logCount = logs.size
     LaunchedEffect(logCount, selectedChannel) {
         val filteredSize = if (selectedChannel == "all") logCount else logs.count { it.contains("[$selectedChannel]") }
         if (filteredSize > 0) listState.animateScrollToItem((filteredSize - 1).coerceAtLeast(0))
     }
-    // P44-5: Dark theme colors — was using light theme (0xFFF5F5F5, 0xFF424242)
+    // P44-5: Dark theme colors
     val headerBg = Color(0xFF1E1E1E)
     val headerText = Color(0xFF858585)
     val dividerClr = Color(0xFF2D2D30)
     val logText = Color(0xFFD4D4D4)
+
+    // P50-4: Get filtered logs for copy/save operations
+    val filteredLogs = remember(logs, selectedChannel) {
+        if (selectedChannel == "all") logs.toList() else logs.filter { it.contains("[$selectedChannel]") }
+    }
+
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
-            // P44-OUTPUT: Channel filter chips
+            // P50-4: Show ALL channels (was .take(4) which hid lsp + terminal)
+            // P50-3: ctags-lsp logs go to "lsp" channel — user must be able to filter to it
             val channels = listOf("all", "build", "git", "debug", "lsp", "terminal")
-            channels.take(4).forEach { ch ->
+            channels.forEach { ch ->
                 val isActive = selectedChannel == ch
                 Text(
                     text = ch.replaceFirstChar { it.uppercase() },
@@ -2398,14 +2405,44 @@ private fun buildRunCommand(path: String): String? {
                         .padding(horizontal = 4.dp),
                 )
             }
+            Spacer(Modifier.width(8.dp))
+            // P50-4: Copy to clipboard button
+            Icon(
+                Icons.Default.ContentCopy, null,
+                tint = headerText,
+                modifier = Modifier.size(16.dp).clickable {
+                    val text = filteredLogs.joinToString("\n")
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Output", text))
+                    AppOutputLog.log("Output copied to clipboard (${'$'}{filteredLogs.size} lines)", "info")
+                }
+            )
+            Spacer(Modifier.width(6.dp))
+            // P50-4: Save logs to file button
+            Icon(
+                Icons.Default.Save, null,
+                tint = headerText,
+                modifier = Modifier.size(16.dp).clickable {
+                    scope.launch {
+                        try {
+                            val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                            val fileName = "output_${'$'}ts.log"
+                            val dir = java.io.File(context.filesDir, "exports")
+                            if (!dir.exists()) dir.mkdirs()
+                            val file = java.io.File(dir, fileName)
+                            file.writeText(filteredLogs.joinToString("\n"))
+                            AppOutputLog.log("Output saved to ${'$'}{file.absolutePath}", "info")
+                        } catch (e: Exception) {
+                            AppOutputLog.log("Failed to save output: ${'$'}{e.message}", "info")
+                        }
+                    }
+                }
+            )
+            Spacer(Modifier.width(6.dp))
             Icon(Icons.Default.Delete, null, tint = headerText, modifier = Modifier.size(16.dp).clickable { AppOutputLog.clear() })
         }
         HorizontalDivider(color = dividerClr)
         LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = listState) {
-            // P31-CRASH-FIX: Use itemCount + index-based access with bounds check.
-            // If the list shrinks between composition and item access, the lazy
-            // layout handles it gracefully instead of crashing.
-            val filteredLogs = if (selectedChannel == "all") logs else logs.filter { it.contains("[$selectedChannel]") }
             items(filteredLogs.size) { index ->
                 val line = if (index < filteredLogs.size) filteredLogs[index] else return@items
                 Text(line, fontSize = 12.sp, color = logText, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp))
