@@ -1025,7 +1025,7 @@ private fun configureSecureWebView(webView: WebView) {
                     .setBrand("Not.A/Brand").setMajorVersion("24").build()
             )
             val metadata = UserAgentMetadata.Builder()
-                .setBrandList(brands)
+                .setBrandVersionList(brands)
                 .setPlatform("Windows")
                 .setMobile(false)
                 .build()
