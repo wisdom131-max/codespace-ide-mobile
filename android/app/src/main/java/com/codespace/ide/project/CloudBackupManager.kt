@@ -2,6 +2,7 @@ package com.codespace.ide.project
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,6 +25,29 @@ import java.util.zip.GZIPOutputStream
  *   GET  /api/backup/:id/download — returns tar.gz stream
  */
 object CloudBackupManager {
+
+    private const val MAX_RETRIES = 3
+    private val backoffDelayMs = longArrayOf(1000, 3000, 7000)
+
+    private suspend fun <T> retryNetwork(tag: String, block: suspend () -> T): T {
+        var lastError: Exception? = null
+        for (attempt in 0 until MAX_RETRIES) {
+            try {
+                return block()
+            } catch (e: java.io.IOException) {
+                lastError = e
+                if (attempt < MAX_RETRIES - 1) {
+                    kotlinx.coroutines.delay(backoffDelayMs[attempt])
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                lastError = e
+                if (attempt < MAX_RETRIES - 1) {
+                    kotlinx.coroutines.delay(backoffDelayMs[attempt])
+                }
+            }
+        }
+        throw lastError ?: java.io.IOException("$tag failed after $MAX_RETRIES attempts")
+    }
 
     data class BackupEntry(
         val id: String,
@@ -48,37 +72,39 @@ object CloudBackupManager {
             try {
                 createTarGz(projectDir, archiveFile)
 
-                val boundary = "----Boundary${System.currentTimeMillis()}"
-                val url = URL("$backendUrl/api/backup/upload")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    setRequestProperty("Authorization", "Bearer $authToken")
-                    setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                    connectTimeout = 30_000
-                    readTimeout = 120_000
+                retryNetwork("backup") {
+                    val boundary = "----Boundary${System.currentTimeMillis()}"
+                    val url = URL("$backendUrl/api/backup/upload")
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        doOutput = true
+                        setRequestProperty("Authorization", "Bearer $authToken")
+                        setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                        connectTimeout = 30_000
+                        readTimeout = 120_000
+                    }
+
+                    conn.outputStream.use { out ->
+                        val bos = BufferedOutputStream(out)
+                        val CRLF = "\r\n"
+                        // part header
+                        bos.write("--$boundary$CRLF".toByteArray())
+                        bos.write("Content-Disposition: form-data; name=\"archive\"; filename=\"$projectId.tar.gz\"$CRLF".toByteArray())
+                        bos.write("Content-Type: application/gzip$CRLF$CRLF".toByteArray())
+                        // file content
+                        FileInputStream(archiveFile).use { fis -> fis.copyTo(bos) }
+                        bos.write("$CRLF--$boundary--$CRLF".toByteArray())
+                        bos.flush()
+                    }
+
+                    val code = conn.responseCode
+                    val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                        ?.bufferedReader()?.readText() ?: ""
+                    conn.disconnect()
+
+                    if (code !in 200..299) error("Upload failed ($code): $body")
+                    JSONObject(body).getString("id")
                 }
-
-                conn.outputStream.use { out ->
-                    val bos = BufferedOutputStream(out)
-                    val CRLF = "\r\n"
-                    // part header
-                    bos.write("--$boundary$CRLF".toByteArray())
-                    bos.write("Content-Disposition: form-data; name=\"archive\"; filename=\"$projectId.tar.gz\"$CRLF".toByteArray())
-                    bos.write("Content-Type: application/gzip$CRLF$CRLF".toByteArray())
-                    // file content
-                    FileInputStream(archiveFile).use { fis -> fis.copyTo(bos) }
-                    bos.write("$CRLF--$boundary--$CRLF".toByteArray())
-                    bos.flush()
-                }
-
-                val code = conn.responseCode
-                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()?.readText() ?: ""
-                conn.disconnect()
-
-                if (code !in 200..299) error("Upload failed ($code): $body")
-                JSONObject(body).getString("id")
             } finally {
                 archiveFile.delete()
             }
@@ -96,21 +122,23 @@ object CloudBackupManager {
         runCatching {
             val archiveFile = File(context.cacheDir, "restore_${backupId}_${System.currentTimeMillis()}.tar.gz")
             try {
-                val url = URL("$backendUrl/api/backup/$backupId/download")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    setRequestProperty("Authorization", "Bearer $authToken")
-                    connectTimeout = 30_000
-                    readTimeout = 120_000
-                }
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    val body = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                retryNetwork("restore") {
+                    val url = URL("$backendUrl/api/backup/$backupId/download")
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        setRequestProperty("Authorization", "Bearer $authToken")
+                        connectTimeout = 30_000
+                        readTimeout = 120_000
+                    }
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        val body = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                        conn.disconnect()
+                        error("Download failed ($code): $body")
+                    }
+                    conn.inputStream.use { ins -> FileOutputStream(archiveFile).use { out -> ins.copyTo(out) } }
                     conn.disconnect()
-                    error("Download failed ($code): $body")
                 }
-                conn.inputStream.use { ins -> FileOutputStream(archiveFile).use { out -> ins.copyTo(out) } }
-                conn.disconnect()
 
                 val destDir = File(context.filesDir, "projects")
                 destDir.mkdirs()
@@ -129,27 +157,29 @@ object CloudBackupManager {
         authToken: String,
     ): Result<List<BackupEntry>> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = URL("$backendUrl/api/backup/list")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("Authorization", "Bearer $authToken")
-                connectTimeout = 15_000
-                readTimeout = 30_000
-            }
-            val code = conn.responseCode
-            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                ?.bufferedReader()?.readText() ?: "[]"
-            conn.disconnect()
-            if (code !in 200..299) error("List failed ($code): $body")
-            val arr = JSONArray(body)
-            (0 until arr.length()).map { i ->
-                val obj = arr.getJSONObject(i)
-                BackupEntry(
-                    id = obj.optString("id"),
-                    name = obj.optString("name"),
-                    sizeBytes = obj.optLong("size"),
-                    createdAt = obj.optString("created_at"),
-                )
+            retryNetwork("listBackups") {
+                val url = URL("$backendUrl/api/backup/list")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Authorization", "Bearer $authToken")
+                    connectTimeout = 15_000
+                    readTimeout = 30_000
+                }
+                val code = conn.responseCode
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.readText() ?: "[]"
+                conn.disconnect()
+                if (code !in 200..299) error("List failed ($code): $body")
+                val arr = JSONArray(body)
+                (0 until arr.length()).map { i ->
+                    val obj = arr.getJSONObject(i)
+                    BackupEntry(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        sizeBytes = obj.optLong("size"),
+                        createdAt = obj.optString("created_at"),
+                    )
+                }
             }
         }
     }
