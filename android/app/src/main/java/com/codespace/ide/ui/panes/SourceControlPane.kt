@@ -1508,36 +1508,23 @@ private fun GitHubRepoBrowserDialog(
                     Text("Open Remote Repository", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = dialogText)
                 }
                 // ── Search input with blue underline (VS Code style) ──
-                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = onSearchChange,
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            fontSize = 13.sp,
-                            color = dialogText,
-                        ),
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(IconColor()),
-                        decorationBox = { innerTextField ->
-                            Column(Modifier.fillMaxWidth()) {
-                                Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                                    if (searchQuery.isEmpty()) {
-                                        Text(
-                                            "Choose a repository, or type an organization or repo name to search",
-                                            fontSize = 12.sp,
-                                            color = dialogMuted,
-                                        )
-                                    }
-                                    innerTextField()
-                                }
-                                // Blue active underline
-                                HorizontalDivider(color = IconColor(), thickness = 2.dp)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    placeholder = { Text("Choose a repository, or type an organization or repo name to search", fontSize = 11.sp, color = dialogMuted) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(16.dp), tint = dialogMuted) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = dialogText),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = IconColor(),
+                        unfocusedBorderColor = IconColor(),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        cursorColor = IconColor(),
+                    ),
+                )
+                Spacer(Modifier.height(2.dp))
                 HorizontalDivider(color = dialogDivider)
                 // ── Repo list (command palette style) ──
                 LazyColumn(Modifier.fillMaxSize().weight(1f)) {
