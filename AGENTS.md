@@ -25,7 +25,7 @@
 | | |
 |-|-|
 | Latest green build | **6869688d** — P49 Snippet Tab + Select Next Occurrence fix (build GREEN) |
-| Active phase | **Phase 50-2** — Infinite-line virtualization + syntax cache (e020b82). 21 items fixed, 4 need device testing, 10 still unfixed. Next: remaining roadmap items. |
+| Active phase | **Phase 50-3** — ctags-lsp + pylsp-workspace-symbols for universal symbol search. 21 items fixed, 4 need device testing, 10 still unfixed. Next: implement ctags-lsp integration. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -4093,6 +4093,79 @@ The editor rendered ALL file lines as composables regardless of viewport:
 ### Items Resolved
 - ✅ G5: Large file (1000+ lines) performance — pylsp signature help stale line numbers were a symptom of the editor not handling large files efficiently
 - ✅ Infinite line support — editor now handles files of any size without lag or OOM
+
+
+## Phase 50-3 — Symbol Search: ctags-lsp + pylsp-workspace-symbols (2026-08-09)
+
+**Status:** PLANNED — implementation next
+**Research:** Compared 5 approaches for workspace symbol search when LSP servers don't support it
+
+### Problem
+When an LSP server doesn't advertise `workspaceSymbolProvider`, the editor silently returns null — users can't search for symbols across the workspace at all. Currently only Python (pylsp) is affected; TS/JS, Go, Java, C/C++, Rust, PHP all already support workspace/symbol natively.
+
+### Research Findings
+
+**Approaches evaluated:**
+
+| # | Approach | Accuracy | Coverage | Effort | Verdict |
+|---|---------|----------|----------|--------|---------|
+| 1 | In-process LSP proxy (FileIndexer regex → LSP JSON) | Low (regex) | All indexed languages | ~2h | Good fallback |
+| 2 | pylsp-workspace-symbols plugin (Jedi-powered) | High (Jedi) | Python only | ~30min | ✅ Selected |
+| 3 | ctags-lsp as secondary LSP server | High (ctags parsers) | 100+ languages | ~4-6h | ✅ Selected |
+| 4 | Replace pylsp with jedi-language-server | High (Jedi) | Python only | ~4h | Rejected (migration risk) |
+| 5 | Tree-sitter tags API | Highest (AST) | 40+ languages | 2-3 days | Rejected (too complex for now) |
+
+**Selected: #2 + #3 (ctags-lsp + pylsp-workspace-symbols)**
+
+### Why ctags-lsp + pylsp plugin over in-process proxy
+- ctags-lsp uses universal-ctags parsers (100+ languages) — much more accurate than FileIndexer's hand-written regex
+- Provides workspace/symbol, documentSymbol, AND go-to-definition for languages without a dedicated server
+- Maintained upstream project (148 stars, active development)
+- Linux ARM64 supported (brew formula confirms aarch64)
+- pylsp-workspace-symbols plugin adds real Jedi-powered semantic search for Python specifically
+- The two don't conflict: ctags-lsp only activates for languages where no primary server is running
+
+### Implementation Plan
+
+#### Part A: pylsp-workspace-symbols Plugin (~30 min)
+1. Add `pip install pylsp-workspace-symbols` to Python's installCommand in LspManager.kt
+2. Plugin auto-advertises `workspaceSymbolProvider: true` via pylsp_experimental_capabilities
+3. No other changes needed — existing `supportsWorkspaceSymbols()` check will pass
+
+#### Part B: ctags-lsp as Secondary Server (~4-6 hours)
+1. Add ctags-lsp ServerConfig to LspManager.kt (install via `go install` or prebuilt binary)
+2. Add universal-ctags as dependency (apt-get install universal-ctags in proot)
+3. Start ctags-lsp alongside primary server when primary doesn't support workspace/symbol
+4. Route `workspace/symbol` requests: primary server first, fall back to ctags-lsp
+5. Merge results from both servers when both support it
+6. ctags-lsp also provides `textDocument/definition` for languages without a dedicated server
+
+#### Part C: Keep FileIndexer as tertiary fallback
+- Existing regex-based FileIndexer remains as third-tier fallback
+- If both LSP and ctags-lsp fail, regex results still show
+- SymbolSearchPanel already merges LSP + regex results
+
+### Architecture
+
+```
+Symbol Search Request
+    │
+    ▼
+Primary LSP server (tsserver/gopls/clangd/etc.)
+    │ has workspaceSymbolProvider?
+    ├── YES → query primary server → done
+    └── NO  → query ctags-lsp (secondary)
+                │
+                ├── ctags-lsp running? → query ctags-lsp → merge with FileIndexer regex
+                └── ctags-lsp not running → FileIndexer regex only (current behavior)
+```
+
+### Items This Phase Will Resolve
+- ✅ Regex fallback for LSP workspace/symbol search
+- ✅ Python workspace/symbol support (via pylsp-workspace-symbols plugin)
+- ✅ Symbol search for languages without a dedicated LSP server (via ctags-lsp)
+- ✅ Bonus: basic go-to-definition for languages without a dedicated server (ctags-lsp)
+
 
 ## Phase 50-1 — Line Number Alignment + Bookmark Color Fix (2026-08-09)
 
