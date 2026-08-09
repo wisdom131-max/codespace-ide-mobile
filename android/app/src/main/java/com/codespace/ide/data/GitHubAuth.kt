@@ -24,9 +24,9 @@ import java.util.concurrent.TimeUnit
  */
 object GitHubAuth {
 
-    // TODO: paste your GitHub OAuth App's Client ID here (see setup steps above). Client IDs
+    // OAuth App "Visual Node Code" — Device Flow verified working. Client IDs
     // are public identifiers, safe to ship in the app — this is not the client secret.
-    const val CLIENT_ID = "0v231iLyu3hf6scskgnR"
+    const val CLIENT_ID = "Ov23liEA2inOMzi7bYrJ" // "Visual Node Code" OAuth App — verified working 2026-08-09
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
