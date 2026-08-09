@@ -929,7 +929,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // P41-G: Path completions show even with 1-char prefix
             showCompletions = allCompletions.isNotEmpty()
         } else {
-            showCompletions = (prefix.length >= 2 || isDotTriggered || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS) && allCompletions.isNotEmpty()
+            showCompletions = (prefix.length >= 2 || isDotTriggered || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT) && allCompletions.isNotEmpty()
         }
         if (!showCompletions) { completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null }
     }
