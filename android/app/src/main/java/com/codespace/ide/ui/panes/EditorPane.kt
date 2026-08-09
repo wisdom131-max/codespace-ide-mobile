@@ -31,13 +31,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.EditorTab
 import com.codespace.ide.domain.Language
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.CodeEditor
 import org.json.JSONArray
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.PeekDefResult
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.FileCache
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.MergeConflictParser
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.ConflictHunk
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.ConflictResolution
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.lsp.LspManager
@@ -50,6 +57,7 @@ import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
 import com.codespace.ide.lsp.SemanticTokensApplier
 import com.codespace.ide.lsp.parseCodeActions
 import com.codespace.ide.lsp.LspCodeAction
+import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.SignatureInfo
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Popup
@@ -126,6 +134,7 @@ fun EditorPane(
     onCursorChange: ((Int, Int) -> Unit)? = null,
     wordWrap: Boolean = false,
     showInlayHints: Boolean = true,  // P2-11
+    toggles: EditorFeatureToggles = EditorFeatureToggles(),
     scrollToLineParam: Int = 0,
     projectId: String? = null,
     sessionStateStore: SessionStateStore? = null,
