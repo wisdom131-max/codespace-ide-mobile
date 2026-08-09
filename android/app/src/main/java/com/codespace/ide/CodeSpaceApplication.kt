@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
+import com.codespace.ide.editor.FeatureToggleStore
 
 @HiltAndroidApp
 class CodeSpaceApplication : Application(), Configuration.Provider {
