@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.TerminalSessionStore
+import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.terminal.BackupManager
 import com.codespace.ide.terminal.McpShellProfile
 import android.content.ServiceConnection
@@ -1264,6 +1265,7 @@ internal fun TerminalPane(
 
     LaunchedEffect(initialCommand, active?.id) {
         val command = initialCommand ?: return@LaunchedEffect
+        AppOutputLog.log("Terminal command: ${command.take(80)}", "terminal")
         active?.session?.write(command)
         onCommandConsumed()
     }
