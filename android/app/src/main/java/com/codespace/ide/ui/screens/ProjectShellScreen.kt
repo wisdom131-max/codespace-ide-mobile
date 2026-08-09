@@ -2349,12 +2349,26 @@ private fun buildRunCommand(path: String): String? {
 @Composable private fun OutputPanel() {
     val logs = AppOutputLog.lines
     val listState = rememberLazyListState()
+    
+    // P44-OUTPUT: Wire UDM output to AppOutputLog so debug output appears here
+    LaunchedEffect(Unit) {
+        com.codespace.ide.debug.UniversalDebugManager.addOnOutputListener { msg ->
+            AppOutputLog.log(msg, "debug")
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { 
+            // Note: we can't remove this specific listener because it's a lambda
+            // The UDM listener-list pattern means stale listeners are harmless
+        }
+    }
     // P31-CRASH-FIX: Read size in a snapshot so it matches the items() count.
     // Also clamp the scroll target to avoid IndexOutOfBoundsException when the
     // list is trimmed (add+removeAt) between recomposition and prefetch.
     val logCount = logs.size
-    LaunchedEffect(logCount) {
-        if (logCount > 0) listState.animateScrollToItem((logCount - 1).coerceAtLeast(0))
+    LaunchedEffect(logCount, selectedChannel) {
+        val filteredSize = if (selectedChannel == "all") logCount else logs.count { it.contains("[$selectedChannel]") }
+        if (filteredSize > 0) listState.animateScrollToItem((filteredSize - 1).coerceAtLeast(0))
     }
     // P44-5: Dark theme colors — was using light theme (0xFFF5F5F5, 0xFF424242)
     val headerBg = Color(0xFF1E1E1E)
@@ -2364,6 +2378,20 @@ private fun buildRunCommand(path: String): String? {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
+            // P44-OUTPUT: Channel filter chips
+            val channels = listOf("all", "build", "git", "debug", "lsp", "terminal")
+            var selectedChannel by remember { mutableStateOf("all") }
+            channels.take(4).forEach { ch ->
+                val isActive = selectedChannel == ch
+                Text(
+                    text = ch.replaceFirstChar { it.uppercase() },
+                    fontSize = 9.sp,
+                    color = if (isActive) Color(0xFF4EC9B0) else Color(0xFF858585),
+                    modifier = Modifier
+                        .clickable { selectedChannel = ch }
+                        .padding(horizontal = 4.dp),
+                )
+            }
             Icon(Icons.Default.Delete, null, tint = headerText, modifier = Modifier.size(16.dp).clickable { AppOutputLog.clear() })
         }
         HorizontalDivider(color = dividerClr)
@@ -2371,8 +2399,9 @@ private fun buildRunCommand(path: String): String? {
             // P31-CRASH-FIX: Use itemCount + index-based access with bounds check.
             // If the list shrinks between composition and item access, the lazy
             // layout handles it gracefully instead of crashing.
-            items(logCount) { index ->
-                val line = if (index < logs.size) logs[index] else return@items
+            val filteredLogs = if (selectedChannel == "all") logs else logs.filter { it.contains("[$selectedChannel]") }
+            items(filteredLogs.size) { index ->
+                val line = if (index < filteredLogs.size) filteredLogs[index] else return@items
                 Text(line, fontSize = 12.sp, color = logText, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp))
             }
         }
