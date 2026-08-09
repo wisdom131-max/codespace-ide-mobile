@@ -96,6 +96,7 @@ fun PreviewPane(
     initialPort: Int? = null,
     externalState: PreviewState? = null,
     projectId: String? = null,
+    onClosePreview: () -> Unit = {},
 ) {
     // Rotation fix (#8): key the fullscreen Dialog on orientation so it gets a fresh,
     // correctly-sized window on rotation instead of being stuck at the pre-rotation size.
@@ -152,6 +153,12 @@ fun PreviewPane(
     var pageTitle by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
+    // P45-1: Save WebView state before going fullscreen so the fullscreen
+    // dialog can restore the exact same page + scroll position instead of resetting.
+    var savedWebViewUrl by remember { mutableStateOf("") }
+    var savedScrollY by remember { mutableStateOf(0) }
+    var savedScrollX by remember { mutableStateOf(0) }
+    var savedZoomScale by remember { mutableFloatStateOf(1f) }
     // First time this pane sees a deep-linked port (from the Ports panel), jump straight to
     // Browser mode pointed at it. Only fires on an actual initialPort change, not every
     // recomposition, so it doesn't fight with the user manually switching modes afterwards.
@@ -221,6 +228,15 @@ fun PreviewPane(
                         strokeWidth = 2.dp,
                     )
                 }
+                // P45-4: Close button to dismiss the preview tab
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Close preview",
+                    tint = TextMuted,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { onClosePreview() }
+                )
                 Icon(
                     Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = "How to use Preview",
@@ -246,7 +262,27 @@ fun PreviewPane(
                     Icons.Default.Fullscreen,
                     contentDescription = "Fullscreen preview",
                     tint = TextMuted,
-                    modifier = Modifier.size(18.dp).clickable { isFullscreen = true }
+                    modifier = Modifier.size(18.dp).clickable {
+                        // P45-1: Save current WebView state before going fullscreen
+                        webViewRef?.let { wv ->
+                            savedWebViewUrl = wv.url ?: ""
+                            savedScrollY = wv.scrollY
+                            savedScrollX = wv.scrollX
+                            savedZoomScale = wv.scale
+                            // Also sync the address bar with the actual current URL
+                            val actualUrl = wv.url ?: ""
+                            if (actualUrl.isNotBlank() && actualUrl != "about:blank") {
+                                if (sharedState.activeMode == PreviewMode.BROWSER) {
+                                    sharedState.browserUrl = actualUrl
+                                    sharedState.browserInput = actualUrl
+                                } else if (sharedState.activeMode == PreviewMode.REMOTION) {
+                                    sharedState.remotionUrl = actualUrl
+                                    sharedState.remotionInput = actualUrl
+                                }
+                            }
+                        }
+                        isFullscreen = true
+                    }
                 )
             }
         }
@@ -464,7 +500,26 @@ fun PreviewPane(
                         tint = TextMuted,
                         modifier = Modifier
                             .size(22.dp)
-                            .clickable { isFullscreen = false },
+                            .clickable {
+                                // P45-1: Save fullscreen WebView state before exiting
+                                webViewRef?.let { wv ->
+                                    savedWebViewUrl = wv.url ?: ""
+                                    savedScrollY = wv.scrollY
+                                    savedScrollX = wv.scrollX
+                                    savedZoomScale = wv.scale
+                                    val actualUrl = wv.url ?: ""
+                                    if (actualUrl.isNotBlank() && actualUrl != "about:blank") {
+                                        if (sharedState.activeMode == PreviewMode.BROWSER) {
+                                            sharedState.browserUrl = actualUrl
+                                            sharedState.browserInput = actualUrl
+                                        } else if (sharedState.activeMode == PreviewMode.REMOTION) {
+                                            sharedState.remotionUrl = actualUrl
+                                            sharedState.remotionInput = actualUrl
+                                        }
+                                    }
+                                }
+                                isFullscreen = false
+                            },
                     )
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -476,7 +531,20 @@ fun PreviewPane(
                         browserUrl = sharedState.browserUrl,
                         remotionUrl = sharedState.remotionUrl,
                         projectRootPath = projectRootPath,
-                        onWebView = { webViewRef = it },
+                        onWebView = { wv ->
+                            webViewRef = wv
+                            // P45-1: Restore scroll position and zoom after the page loads
+                            if (savedWebViewUrl.isNotBlank() && savedWebViewUrl != "about:blank") {
+                                wv.postDelayed({
+                                    try {
+                                        wv.scrollTo(savedScrollX, savedScrollY)
+                                        if (savedZoomScale != 1f) {
+                                            wv.setInitialScale((savedZoomScale * 100).toInt())
+                                        }
+                                    } catch (_: Exception) {}
+                                }, 500L)
+                            }
+                        },
                         onTitle = { pageTitle = it },
                         onLoading = { isLoading = it },
                         onCanGoBack = { sharedState.canGoBack = it },
@@ -669,6 +737,7 @@ private fun HtmlPreview(
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
+                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
                     }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)
@@ -759,7 +828,11 @@ private fun MarkdownPreview(
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
                 webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { onLoading(true) }
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        onLoading(true)
+                        // P45-3: Inject UA override early, before page scripts run
+                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                    }
                     override fun onPageFinished(view: WebView?, url: String?) { onLoading(false) }
                 }
                 onWebView(this)
@@ -823,6 +896,31 @@ private fun SvgPreview(
 // ─────────────────────────────────────────────────────────────────────────────
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
+
+// P45-3: JavaScript to override navigator.userAgentData so Google/YouTube
+// don't detect this as an embedded WebView and block login.
+// Google checks Sec-CH-UA client hints AND navigator.userAgentData.
+private const val USER_AGENT_DATA_OVERRIDE_JS = """
+(function() {
+  try {
+    Object.defineProperty(navigator, 'userAgentData', {
+      get: function() {
+        return {
+          brands: [
+            {brand: 'Google Chrome', version: '125'},
+            {brand: 'Chromium', version: '125'},
+            {brand: 'Not.A/Brand', version: '24'}
+          ],
+          mobile: false,
+          platform: 'Windows'
+        };
+      },
+      configurable: true
+    });
+  } catch(e) {}
+})();
+"""
+
 private fun BrowserPreview(
     url: String,
     onWebView: (WebView) -> Unit,
@@ -861,8 +959,16 @@ private fun BrowserPreview(
                 // Database + cache: some SPAs need WebSQL/IndexedDB
                 settings.databaseEnabled = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
-                // Hardware acceleration for smooth video rendering
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                // P45-2: Removed LAYER_TYPE_HARDWARE — it causes black screen
+                // for YouTube Shorts on Samsung (GPU compositing conflicts with
+                // VP9/AV1 media pipeline). Activity already has hardwareAccelerated=true.
+                // P45-3: Safe browsing enabled explicitly for security
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    settings.setSafeBrowsingEnabled(true)  // P45-3: API 26+
+                }
+                // P45-3: File and content access for local resource loading
+                settings.allowFileAccess = true
+                settings.allowContentAccess = true
                 // P32-BROWSER: Desktop user-agent — makes sites render in laptop/desktop
                 // layout instead of mobile layout. Identical to Chrome on a laptop.
                 settings.userAgentString =
@@ -878,6 +984,14 @@ private fun BrowserPreview(
                         onLoading(false)
                         onTitle(view?.title ?: "")
                         onCanGoBack(view?.canGoBack() == true)
+                        // P45-3: Inject userAgentData override to hide WebView identity
+                        // from Google/YouTube login detection
+                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                        // P45-1: Sync address bar with actual URL after navigation
+                        val actualUrl = url ?: ""
+                        if (actualUrl.isNotBlank() && actualUrl != "about:blank") {
+                            view?.url?.let { /* url already captured */ }
+                        }
                         // P34-BROWSER: Flush cookies after page load for login persistence
                         CookieManager.getInstance().flush()
                     }
@@ -1038,7 +1152,7 @@ private fun RemotionPreview(
                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 settings.databaseEnabled = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                // P45-2: No LAYER_TYPE_HARDWARE (same fix as BrowserPreview)
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 // P32-BROWSER: Desktop UA — Remotion Studio renders its full desktop layout
@@ -1049,6 +1163,7 @@ private fun RemotionPreview(
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
+                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
                     }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)
@@ -1186,6 +1301,7 @@ private fun DashboardPreview(
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
+                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
                     }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)

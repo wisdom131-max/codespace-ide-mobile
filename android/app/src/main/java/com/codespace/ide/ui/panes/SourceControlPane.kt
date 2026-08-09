@@ -467,6 +467,115 @@ fun SourceControlPane(projectId: String) {
                     actionToast = if (result.startsWith("Error:")) "Push failed: ${result.take(60)}" else "Push complete"
                 }
             })
+            // P45-5: 3-dot overflow menu (VS Code style)
+            var showOverflowMenu by remember { mutableStateOf(false) }
+            Spacer(Modifier.width(4.dp))
+            Box {
+                Icon(Icons.Default.MoreVert, null, tint = MutedColor(),
+                    modifier = Modifier.size(16.dp).clickable { showOverflowMenu = true })
+                DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("View as Tree", fontSize = 12.sp) },
+                        onClick = { showOverflowMenu = false; activeTab = ScmTab.GRAPH; loadLog() },
+                        leadingIcon = { Icon(Icons.Default.AccountTree, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Pull", fontSize = 12.sp) },
+                        onClick = {
+                            showOverflowMenu = false
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "pull") }
+                                refreshStatus()
+                                actionToast = if (result.startsWith("Error:")) "Pull failed: ${'$'}{result.take(60)}" else "Pull complete"
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Default.ArrowDownward, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Fetch", fontSize = 12.sp) },
+                        onClick = {
+                            showOverflowMenu = false
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "fetch", "--all") }
+                                refreshStatus()
+                                actionToast = if (result.startsWith("Error:")) "Fetch failed: ${'$'}{result.take(60)}" else "Fetch complete"
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Default.Sync, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Push", fontSize = 12.sp) },
+                        onClick = {
+                            showOverflowMenu = false
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { runGit(context, repoDir, "push") }
+                                refreshStatus()
+                                actionToast = if (result.startsWith("Error:")) "Push failed: ${'$'}{result.take(60)}" else "Push complete"
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Default.ArrowUpward, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Commit", fontSize = 12.sp) },
+                        onClick = { showOverflowMenu = false; activeTab = ScmTab.CHANGES },
+                        leadingIcon = { Icon(Icons.Default.Edit, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Branch…", fontSize = 12.sp) },
+                        onClick = { showOverflowMenu = false; newBranchName = ""; newBranchError = null; showNewBranchDialog = true },
+                        leadingIcon = { Icon(Icons.Default.CallSplit, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Stash", fontSize = 12.sp) },
+                        onClick = { showOverflowMenu = false; activeTab = ScmTab.STASH; loadStashes() },
+                        leadingIcon = { Icon(Icons.Default.Save, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Tags", fontSize = 12.sp) },
+                        onClick = { showOverflowMenu = false; activeTab = ScmTab.TAGS; loadTags() },
+                        leadingIcon = { Icon(Icons.Default.Label, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Gitignore", fontSize = 12.sp) },
+                        onClick = {
+                            showOverflowMenu = false
+                            val gitignoreFile = File(repoDir, ".gitignore")
+                            gitignoreContent = if (gitignoreFile.exists()) gitignoreFile.readText() else "# .gitignore\n"
+                            showGitignoreDialog = true
+                        },
+                        leadingIcon = { Icon(Icons.Default.Block, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Publish to GitHub", fontSize = 12.sp) },
+                        onClick = { showOverflowMenu = false; showPublishDialog = true },
+                        leadingIcon = { Icon(Icons.Default.CloudUpload, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Open Remote Repository", fontSize = 12.sp) },
+                        onClick = {
+                            showOverflowMenu = false
+                            val token = SecureTokenStore(context).githubToken
+                            if (token != null && token.isNotBlank()) {
+                                scope.launch {
+                                    loadingRepos = true
+                                    try {
+                                        repos = com.codespace.ide.data.GitHubAuth.listUserRepos(token)
+                                        showRepoBrowser = true
+                                    } catch (e: Exception) {
+                                        cloneError = e.message ?: "Failed"
+                                    }
+                                    loadingRepos = false
+                                }
+                            } else {
+                                showSignInDialog = true
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Default.Cloud, null, tint = IconColor(), modifier = Modifier.size(14.dp)) }
+                    )
+                }
+            }
             // P43-Publish: Show Publish button for repos without a remote
             if (isGitRepo && !hasRemote) {
                 Spacer(Modifier.width(6.dp))
@@ -756,8 +865,6 @@ fun SourceControlPane(projectId: String) {
                 }
             }
             HorizontalDivider(color = DividerColor())
-        } else if (statusError != null) {
-        } else if (statusError != null) {
         } else if (statusError != null) {
             // ── Error banner (only shown if it IS a git repo but something went wrong) ──
             Row(Modifier.fillMaxWidth().background(ErrorColor().copy(alpha = 0.08f)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

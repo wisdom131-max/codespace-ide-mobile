@@ -61,6 +61,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.view.AndroidView
+import androidx.compose.ui.input.pointer.pointerInput
 
 // Legacy global session prefs removed — workspace memory now handled by SessionStateStore.
 // Kept only for migration: read once then clear.
@@ -225,6 +230,9 @@ fun EditorPane(
         }
     }
     var splitId by remember { mutableStateOf<String?>(null) }
+    // P45-4: Markdown preview — shows rendered .md next to editor
+    var showMdPreview by remember { mutableStateOf(false) }
+    var mdPreviewWeight by remember { mutableFloatStateOf(0.5f) }  // split ratio (0.3..0.7)
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
     // P8-1 Breakpoints: path → set of breakpoint line indices (0-based)
@@ -739,6 +747,17 @@ fun EditorPane(
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
+                // P45-4: Markdown preview toggle — only visible for .md files
+                if (active != null && active.language == Language.MARKDOWN) {
+                    IconButton(onClick = { showMdPreview = !showMdPreview }, modifier = Modifier.size(35.dp)) {
+                        Icon(
+                            Icons.Default.Visibility,
+                            contentDescription = "Markdown Preview",
+                            tint = if (showMdPreview) Color(0xFF61AFEF) else TabTextInactive,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
                 // P2-9 Bookmarks panel toggle
                 IconButton(onClick = { showBookmarkPanel = !showBookmarkPanel }, modifier = Modifier.size(35.dp)) {
                     Text(
@@ -1252,6 +1271,106 @@ fun EditorPane(
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
                     )
+                }
+            } else if (showMdPreview && active.language == Language.MARKDOWN) {
+                // P45-4: Markdown Preview — rendered .md side-by-side with editor
+                val mdContent = active.content
+                val htmlContent = remember(mdContent) {
+                    com.codespace.ide.editor.MarkdownRenderer.render(mdContent)
+                }
+                val density = LocalDensity.current
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val totalWidthPx = with(density) { maxWidth.toPx() }
+                    Row(Modifier.fillMaxSize()) {
+                    // Left: Code editor
+                    CodeEditor(
+                        content = mdContent,
+                        language = active.language,
+                        fontSize = fontSize,
+                        savedContent = active.savedContent,
+                        onContentChange = { newText ->
+                            val idx = tabs.indexOfFirst { it.id == active.id }
+                            if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
+                            if (active.path.startsWith("/")) {
+                                try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f - mdPreviewWeight)
+                            .fillMaxHeight(),
+                        wordWrap = wordWrap,
+                        showInlayHints = false,
+                        findReplaceOpen = findReplaceOpen,
+                        onFindReplaceClose = { findReplaceOpen = false },
+                        goToLineOpen = goToLineOpen,
+                        onGoToLineClose = { goToLineOpen = false },
+                        projectRoot = projectRootPath,
+                        currentFilePath = active.path,
+                    )
+                    // Middle: Draggable divider
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(Color(0xFF333333))
+                            .pointerInput(Unit) {
+                                detectDragGestures(
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    if (totalWidthPx > 0) {
+                                        val delta = dragAmount.x / totalWidthPx
+                                        mdPreviewWeight = (mdPreviewWeight + delta).coerceIn(0.3f, 0.7f)
+                                    }
+                                }
+                            }
+                    )
+                    // Right: Markdown preview WebView with close button
+                    Column(Modifier.weight(mdPreviewWeight).fillMaxHeight().background(Color(0xFF1E1E1E))) {
+                        // Preview header bar
+                        Row(
+                            Modifier.fillMaxWidth().height(28.dp).background(Color(0xFF252526)),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Preview",
+                                fontSize = 11.sp,
+                                color = Color(0xFFCCCCCC),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 8.dp).weight(1f),
+                            )
+                            // Close button
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Close preview",
+                                tint = Color(0xFF888888),
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .padding(2.dp)
+                                    .clickable { showMdPreview = false }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        HorizontalDivider(color = Color(0xFF333333))
+                        // WebView showing rendered markdown
+                        AndroidView(
+                            factory = { ctx ->
+                                android.webkit.WebView(ctx).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.useWideViewPort = true
+                                    settings.builtInZoomControls = true
+                                    settings.displayZoomControls = false
+                                    webViewClient = android.webkit.WebViewClient()
+                                    loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+                                }
+                            },
+                            update = { wv ->
+                                wv.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
                 }
             } else {
                 // ── Sticky Scroll header (computed above unconditionally) ───────────

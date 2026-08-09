@@ -363,8 +363,8 @@ fun HomeScreen(
         }
     }
 
-    if (showRepoBrowser) {
-        // Rename dialog
+    // Rename dialog — BUG FIX: was incorrectly nested inside `if (showRepoBrowser)`,
+    // so renaming a project only worked if the repo browser sheet was also open.
     if (projectToRename != null) {
         AlertDialog(
             onDismissRequest = { projectToRename = null },
@@ -397,7 +397,8 @@ fun HomeScreen(
         )
     }
 
-    RepoBrowserSheet(
+    if (showRepoBrowser) {
+        RepoBrowserSheet(
             onDismiss = { showRepoBrowser = false },
             onProjectCreated = { project ->
                 projects.add(project)

@@ -2124,6 +2124,7 @@ private fun PssBottomPanelContent(
                 initialPort = previewPort,  // P25-4: pass null (not 0) — 0 was triggering BROWSER mode on every cold open
                 externalState = sharedPreviewState,
                 projectId = projectId,
+                onClosePreview = { showBottomPanel = false },  // P45-4: close the preview tab
             )
             BottomTab.LOGCAT   -> if (heavyPanesReady) {
                 LogcatPanel(modifier = Modifier.fillMaxSize())

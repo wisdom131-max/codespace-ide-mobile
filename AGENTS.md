@@ -11149,3 +11149,99 @@ Restructured to match the reference VS Code screenshots the user provided:
 - YouTube login blocked by Google (WebView security policy)
 - Shorts videos show black (audio only)
 - Zoom button restarts everything instead of mirroring
+
+---
+
+## Phase 45 — Preview Browser Security, YouTube Fix, Fullscreen Mirror, Preview Tab (2026-08-09)
+
+### 45-1: Fullscreen/Zoom Mirror (CRITICAL)
+**Problem:** Tapping the fullscreen button creates a new `Dialog` that re-renders `PreviewBody` with a brand new `WebView` — page state, scroll position, cookies, everything is lost.
+**Fix:** Share a single `WebView` instance between inline and fullscreen modes:
+- Create the WebView ONCE in `remember { WebView(context) }` at PreviewPane level
+- Don't use `Dialog` for fullscreen — use a `Box` overlay in the same composable tree
+- Only one `AndroidView(factory = { sharedWebView })` active at a time
+- When fullscreen opens, the inline AndroidView is removed (WebView detached from old parent), fullscreen AndroidView is added (WebView attached to new parent) — same instance, no page reload
+
+### 45-2: YouTube Shorts Black Screen (audio only, no video)
+**Problem:** YouTube Shorts show audio but black/no video in the WebView.
+**Root causes:**
+1. `setLayerType(View.LAYER_TYPE_HARDWARE, null)` can cause black video on Samsung devices with VP9/AV1 decode issues — the hardware layer renderer conflicts with the media pipeline
+2. Missing `playsinline` support in the WebChromeClient
+3. YouTube Shorts require hardware-accelerated video rendering which can be blocked by `LAYER_TYPE_HARDWARE` on some chipsets
+**Fix:**
+- Remove `setLayerType(View.LAYER_TYPE_HARDWARE, null)` — let Android manage layer type automatically (Activity already has `android:hardwareAccelerated="true"`)
+- Inject CSS `video { playsinline: true }` via `onPageFinished` for YouTube
+- Ensure `settings.mediaPlaybackRequiresUserGesture = false` (already set)
+- Add `WebChromeClient.onVideoTextureView` override for embedded video rendering
+
+### 45-3: Google/YouTube Login — "Browser isn't secure"
+**Problem:** Google blocks login from embedded WebViews even with a desktop User-Agent.
+**Root causes:**
+1. Android WebView sends `Sec-CH-UA` client hints header containing `"Android WebView"` or `"Google WebView"` brand — Google detects this and blocks login
+2. `navigator.userAgentData` JavaScript API exposes WebView identity
+3. Even though `userAgentString` is overridden, the client hints are automatically sent by WebView
+**Fix:**
+- Inject JavaScript on every page load (`onPageStarted`) to override `navigator.userAgentData`:
+  ```javascript
+  Object.defineProperty(navigator, 'userAgentData', {
+    get: () => ({
+      brands: [
+        {brand: 'Google Chrome', version: '125'},
+        {brand: 'Chromium', version: '125'},
+        {brand: 'Not.A/Brand', version: '24'}
+      ],
+      mobile: false,
+      platform: 'Windows'
+    })
+  });
+  ```
+- Add `androidx.webkit:webkit` dependency for `WebSettingsCompat` to override UA client hints at the network level
+- Set `settings.setSafeBrowsingEnabled(true)` explicitly
+- Add `settings.allowFileAccess = true` and `settings.allowContentAccess = true`
+- Ensure `CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)` (already done)
+
+### 45-4: Temporary Preview Tab for Remote Repos
+**Problem:** When opening a remote repo, user wants a temporary preview tab that's closable and resizable.
+**Fix:**
+- Add `[Preview]` tab type to editor tabs — shows README.md or repo structure preview
+- Add a close (X) button on the preview tab
+- Make preview tab resizable (drag handle or width slider)
+
+### 45-5: SourceControlPane VS Code-style Restructure
+**Problem:** SCM panel layout is confusing, stage/unstage/commit all broken, no 3-dot menu.
+**Fix:**
+- Header: branch dropdown + sync button + 3-dot overflow menu
+- 3-dot menu items: View as Tree, Pull, Fetch, Commit, Branch, Stash, Tags, Gitignore, Blame
+- Commit message box above changes list (VS Code style)
+- Staged/Unstaged sections with inline stage/unstage actions
+- Modern dark theme matching VS Code
+
+
+
+## Phase 47 — Markdown Live Preview, SCM Overflow Menu, Preview Close (2026-08-09) ✅
+
+### 47-1: Markdown Live Preview (P45-4) — IMPLEMENTED
+- When a .md file is open, a preview toggle button (eye/Visibility icon) appears in the editor toolbar
+- Tapping it opens a split view: code editor on the left, rendered markdown on the right
+- The rendered markdown is shown in a WebView with full CSS styling (VS Code dark theme)
+- **MarkdownRenderer.kt** — custom lightweight Markdown→HTML renderer (no external deps):
+  - Supports: headings, bold, italic, inline code, code blocks, links, images, lists, blockquotes, hr, tables
+  - Dark theme CSS matching VS Code colors
+- **Drag to resize:** A draggable divider between editor and preview adjusts the split ratio (30%-70%)
+- **Close button:** X icon in the preview header bar closes the preview and returns to full editor
+- Live updates: editing the markdown immediately re-renders the preview
+
+### 47-2: SourceControlPane 3-Dot Overflow Menu (P45-5) — IMPLEMENTED
+- Added VS Code-style 3-dot overflow menu in the SCM header
+- Menu items: View as Tree, Pull, Fetch, Push, Commit, Branch, Stash, Tags, Gitignore, Publish to GitHub, Open Remote Repository
+
+### 47-3: Preview Pane Close Button (P45-4) — IMPLEMENTED
+- Added X close button to the PreviewPane top bar
+- Clicking it hides the bottom panel (closes the preview tab)
+
+### Files Changed:
+- EditorPane.kt — markdown preview split view, drag-to-resize, preview toggle button
+- MarkdownRenderer.kt — NEW file: markdown→HTML renderer
+- SourceControlPane.kt — 3-dot overflow menu
+- PreviewPane.kt — close button + onClosePreview callback
+- ProjectShellScreen.kt — wired onClosePreview to hide bottom panel
