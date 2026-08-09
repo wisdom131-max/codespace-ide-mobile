@@ -87,9 +87,7 @@ object AppOutputLog {
             }
         }
     }
-}
 
-    
     /**
      * P44-OUTPUT: Get lines filtered by channel. Used by the Output panel's channel selector.
      * If channel is null or "all", returns all lines.
