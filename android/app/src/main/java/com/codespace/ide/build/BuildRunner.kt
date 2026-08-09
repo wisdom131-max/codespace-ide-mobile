@@ -2,6 +2,7 @@ package com.codespace.ide.build
 
 import android.content.Context
 import android.util.Log
+import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,6 +113,7 @@ object BuildRunner {
         _buildStatus.value = BuildStatus.BUILDING
         _buildOutput.value = "Building: $task\n"
         _buildProgress.value = 0f
+        AppOutputLog.log("Build started: $task", "build")
 
         try {
             // Map host path to guest path for proot
@@ -156,6 +158,7 @@ object BuildRunner {
             }
 
             _buildStatus.value = status
+            AppOutputLog.log("Build ${if (isSuccess) "SUCCESSFUL" else "FAILED"} (${duration}ms, ${errors.size} errors, ${warnings.size} warnings)", "build")
 
             BuildResult(
                 status = status,
@@ -170,6 +173,7 @@ object BuildRunner {
             val duration = System.currentTimeMillis() - startTime
             _buildStatus.value = BuildStatus.FAILED
             _buildOutput.value = "Build error: ${e.message ?: "Unknown error"}"
+            AppOutputLog.log("Build error: ${e.message ?: "Unknown"}", "build")
             BuildResult(
                 status = BuildStatus.FAILED,
                 output = "Build error: ${e.message ?: "Unknown error"}",
