@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
@@ -64,7 +65,7 @@ import kotlinx.coroutines.withContext
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.view.AndroidView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.input.pointer.pointerInput
 
 // Legacy global session prefs removed — workspace memory now handled by SessionStateStore.
@@ -748,7 +749,8 @@ fun EditorPane(
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
                 // P45-4: Markdown preview toggle — only visible for .md files
-                if (active != null && active.language == Language.MARKDOWN) {
+                val activeTabMd = tabs.firstOrNull { it.id == activeId }
+                if (activeTabMd != null && activeTabMd.language == Language.MARKDOWN) {
                     IconButton(onClick = { showMdPreview = !showMdPreview }, modifier = Modifier.size(35.dp)) {
                         Icon(
                             Icons.Default.Visibility,
