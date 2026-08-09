@@ -34,17 +34,11 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.CodeEditor
 import org.json.JSONArray
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.PeekDefResult
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.FileCache
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.MergeConflictParser
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.ConflictHunk
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.ConflictResolution
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.lsp.LspManager
@@ -57,7 +51,6 @@ import com.codespace.ide.lsp.lspDiagnosticsToLintErrors
 import com.codespace.ide.lsp.SemanticTokensApplier
 import com.codespace.ide.lsp.parseCodeActions
 import com.codespace.ide.lsp.LspCodeAction
-import com.codespace.ide.editor.EditorFeatureToggles
 import com.codespace.ide.editor.SignatureInfo
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Popup
