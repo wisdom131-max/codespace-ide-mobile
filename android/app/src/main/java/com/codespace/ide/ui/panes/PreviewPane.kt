@@ -894,9 +894,6 @@ private fun SvgPreview(
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser Preview — points at localhost or any URL (e.g. running dev server)
 // ─────────────────────────────────────────────────────────────────────────────
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-
 // P45-3: JavaScript to override navigator.userAgentData so Google/YouTube
 // don't detect this as an embedded WebView and block login.
 // Google checks Sec-CH-UA client hints AND navigator.userAgentData.
@@ -921,6 +918,8 @@ private const val USER_AGENT_DATA_OVERRIDE_JS = """
 })();
 """
 
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
 private fun BrowserPreview(
     url: String,
     onWebView: (WebView) -> Unit,
