@@ -11739,11 +11739,11 @@ The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across
 1. **Extract Here** — Added to file long-press context menu for .zip/.jar files. Uses ZipInputStream with path traversal protection. Creates a subfolder named after the archive (without extension).
 2. **Open as Text** — Added to file long-press context menu for binary/ELF/archive files. Forces opening the file in the text editor regardless of binary detection.
 
-### Items Verified Already Fixed (by other AI, not marked in audit)
-| # | Item | Status | Evidence |
-|---|------|--------|----------|
-| Q5 | UDM not injected from PSS to EditorPane | ✅ FIXED | PSS L1210 passes udm to PssEditorColumn, L3342 passes to EditorPane, EditorPane L1267 uses udm?.toggleBreakpoint. VariableInspectorPanel + DebugConsolePanel use UDM singleton directly. |
-| N8 | Recent search history not working | ✅ FIXED | ProjectFileSearchPanel L101-113 has SharedPreferences persistence with saveRecentSearch(), L396-417 displays recent searches with History icon. |
+### Items Verified in Code (NOT device-tested — Christie must test before marking resolved)
+| # | Item | Code Status | Evidence | Device Test Needed |
+|---|------|-------------|----------|---------------------|
+| Q5 | UDM not injected from PSS to EditorPane | CODE VERIFIED | PSS L1210 passes udm to PssEditorColumn, L3342 passes to EditorPane, EditorPane L1267 uses udm?.toggleBreakpoint. VariableInspectorPanel + DebugConsolePanel use UDM singleton directly. | YES — verify breakpoints work, step buttons work, variables show when paused |
+| N8/N9 | Recent search history | CODE VERIFIED | ProjectFileSearchPanel L101-113 has SharedPreferences persistence with saveRecentSearch(), L396-417 displays recent searches with History icon. NOTE: Test definitions map N8=Case Sensitive, N9=Recent History, but results table swapped them — N8 says "recent search history" in the FAIL column. | YES — verify searches persist after closing/reopening panel, History icon appears on blank query |
 
 ### Updated Remaining Items List
 
@@ -11763,11 +11763,13 @@ The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across
 6. Find in File search bar keyboard focus (N11)
 
 **Items resolved this session:**
-- ✅ Comma-in-comment CI fix (07ecf98e)
-- ✅ 3 compile errors from P50-2 (bd43975e)
-- ✅ Extract Here in context menu (d839b374)
-- ✅ Open as Text in context menu (d839b374)
-- ✅ Q5: UDM injection — verified already wired
-- ✅ N8: Recent search history — verified already implemented
+- ✅ Comma-in-comment CI fix (07ecf98e) — build fix, no device test needed
+- ✅ 3 compile errors from P50-2 (bd43975e) — build fix, no device test needed
+- ⏳ Extract Here in context menu (d839b374) — code added, needs device test
+- ⏳ Open as Text in context menu (d839b374) — code added, needs device test
+- ⏳ Q5: UDM injection — code verified as already wired, needs device test
+- ⏳ N8/N9: Recent search history — code verified as already implemented, needs device test
+- ⚠️ Extract only covers .zip/.jar, NOT .tar.gz — still incomplete
+- ⚠️ Open as Text is manual menu item, NOT auto-fallback for small files — audit suggested auto-fallback
 
 **Next planned:** Feature toggles → Settings panel, then C13 (stdlib completions)
