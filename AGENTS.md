@@ -11722,3 +11722,52 @@ The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across
 8. Cloud backup retry logic + YouTube login/shorts (WebView limitations)
 
 **Next planned:** Feature toggles → Settings panel
+
+
+---
+
+## Superagent Fixes — Aug 9 Evening Session (2026-08-09 19:00)
+
+### Build Fixes
+| Commit | Build | Issue | Fix |
+|--------|------|-------|-----|
+| 07ecf98e | #2020 | 9 consecutive CI failures (#2011-#2019) — comma inside `//` comment in CodeEditor.kt:1385 | Moved comma before comment |
+| bd43975e | #2022 ✅ | 3 hidden errors from P50-2: Int*Dp, minimap spacer scope, popup px conversion | Fixed Dp multiplication, moved spacer inside Column, proper px conversion |
+| d839b374→adda9abe | #2024 ✅ | Missing AppOutputLog import in ExplorerPane.kt | Added import |
+
+### Feature Fixes (commit d839b374)
+1. **Extract Here** — Added to file long-press context menu for .zip/.jar files. Uses ZipInputStream with path traversal protection. Creates a subfolder named after the archive (without extension).
+2. **Open as Text** — Added to file long-press context menu for binary/ELF/archive files. Forces opening the file in the text editor regardless of binary detection.
+
+### Items Verified Already Fixed (by other AI, not marked in audit)
+| # | Item | Status | Evidence |
+|---|------|--------|----------|
+| Q5 | UDM not injected from PSS to EditorPane | ✅ FIXED | PSS L1210 passes udm to PssEditorColumn, L3342 passes to EditorPane, EditorPane L1267 uses udm?.toggleBreakpoint. VariableInspectorPanel + DebugConsolePanel use UDM singleton directly. |
+| N8 | Recent search history not working | ✅ FIXED | ProjectFileSearchPanel L101-113 has SharedPreferences persistence with saveRecentSearch(), L396-417 displays recent searches with History icon. |
+
+### Updated Remaining Items List
+
+**Needs on-device testing (5 items):**
+1. Find in File / Shell history keyboard focus
+2. Quick command palette (TerminalPane recent-5 commands strip)
+3. MCP status indicator polling
+4. Debug panel step buttons + variables
+5. Full login + connectors end-to-end (Phase 39 verification)
+
+**Still unfixed (6 items — down from 8):**
+1. C13: No stdlib/builtin completions (math., import o)
+2. D1/D3: Completion dropdown issues
+3. V1: Recycle bin restore doesn't show project on screen
+4. Cloud backup retry logic
+5. YouTube login/shorts (WebView limitations — likely unfixable)
+6. Find in File search bar keyboard focus (N11)
+
+**Items resolved this session:**
+- ✅ Comma-in-comment CI fix (07ecf98e)
+- ✅ 3 compile errors from P50-2 (bd43975e)
+- ✅ Extract Here in context menu (d839b374)
+- ✅ Open as Text in context menu (d839b374)
+- ✅ Q5: UDM injection — verified already wired
+- ✅ N8: Recent search history — verified already implemented
+
+**Next planned:** Feature toggles → Settings panel, then C13 (stdlib completions)
