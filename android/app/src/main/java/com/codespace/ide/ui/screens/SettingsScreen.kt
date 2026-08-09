@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FormatterConfig
 import com.codespace.ide.util.WorkspaceManager
 import androidx.compose.foundation.layout.Box
@@ -607,6 +608,21 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── P41-R: Formatter Selection ──────────────────────────────────
+            Text("Feature Toggles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            FeatureToggleStore.toggles.forEach { toggle ->
+                val state = remember(toggle.key) { FeatureToggleStore.state(toggle.key) }
+                ListItem(
+                    headlineContent = { Text(toggle.label) },
+                    supportingContent = { Text(toggle.description) },
+                    trailingContent = {
+                        Switch(
+                            checked = state.value,
+                            onCheckedChange = { state.value = it; FeatureToggleStore.set(toggle.key, it) }
+                        )
+                    }
+                )
+                HorizontalDivider()
+            }
             Text("Formatter Selection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             Text(
                 "Choose your preferred code formatter for each language.",
