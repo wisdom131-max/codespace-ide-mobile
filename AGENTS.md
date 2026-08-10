@@ -12158,3 +12158,29 @@ direction on which pieces to actually build.
 - Pyright install (npm install -g pyright) in proot
 - Cursor blink animation smoothness on 3GB device
 - Terminal notification toggle actually suppressing notification text
+
+---
+
+## P-NOTIF-RESTRUCTURE: VS Code Notification Popup Redesign (2026-08-10)
+
+**Goal:** Remove the top notification bell, restructure the bottom notification toast + drawer to match VS Code's exact popup style (bottom-right floating card, compact sizing, icon + message + action buttons + close). Position toggle between top/bottom preserved via existing `bellPosition` setting.
+
+### Screenshots reference
+User provided 10 VS Code screenshots showing:
+- Notification toasts: bottom-right floating cards (~320dp wide), dark card background, subtle border, icon + message + optional action buttons + X close
+- Notification center: bottom-right panel, same width, scrollable list with severity filters
+- Both are anchored to the corner, NOT full-width
+
+### Plan
+
+| Step | File | Change |
+|------|------|--------|
+| 1 | `ProjectShellScreen.kt` — `PssTopBar` | Remove `NotificationBell` from top bar |
+| 2 | `NotificationDrawerOverlay.kt` — `NotificationToastBanner` | Redesign: bottom-right floating card (~320dp wide), rounded corners, card bg, border, shadow — not full-width |
+| 3 | `NotificationDrawerOverlay.kt` — `NotificationDrawerOverlay` | Redesign: anchor to bottom-right (not top-right), match VS Code panel style |
+| 4 | `NotificationDrawerOverlay.kt` — position toggle | Respect `bellPosition` setting — when "top", drawer/toast appear from top-right; when "bottom", from bottom-right |
+| 5 | `ProjectShellScreen.kt` — `StatusBarContent` | Keep bell in status bar (bottom), this is the primary entry point now |
+| 6 | Compile + push | Build test |
+
+**Status:** 🔄 IN PROGRESS
+

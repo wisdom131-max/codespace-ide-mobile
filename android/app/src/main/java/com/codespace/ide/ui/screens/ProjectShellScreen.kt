@@ -379,7 +379,6 @@ private fun PssTopBar(
     onShowBuild: () -> Unit,
     onShowSplit: () -> Unit,
     onToggleChat: () -> Unit,
-    onToggleNotif: () -> Unit,
     onMenuAction: (String) -> Unit,
 ) {
     // ── Top Bar (VS Code style)
@@ -414,9 +413,6 @@ private fun PssTopBar(
         Icon(Icons.Default.VerticalSplit, null, tint = Color(0xFF007ACC), modifier = Modifier.size(20.dp).clickable { onShowSplit() })
         Spacer(Modifier.width(8.dp))
         AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleChat() })
-        Spacer(Modifier.width(8.dp))
-        // P34-NOTIF: Unified NotificationBell — reads from NotificationStore directly
-        NotificationBell(iconSize = 20, onClick = onToggleNotif)
         Spacer(Modifier.width(8.dp))
     }
     // ── Menu bar
@@ -917,7 +913,6 @@ fun ProjectShellScreen(
                 onShowBuild = { showBottomPanel = true; activeBottomTab = BottomTab.BUILD },
                 onShowSplit = { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT },
                 onToggleChat = { showChatPanel = !showChatPanel },
-                onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
             ) }
 

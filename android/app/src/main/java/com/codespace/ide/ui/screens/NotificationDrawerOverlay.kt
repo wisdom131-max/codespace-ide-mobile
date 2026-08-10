@@ -79,56 +79,89 @@ internal fun NotificationBell(
     }
 }
 
-// ── In-app Toast Banner ───────────────────────────────────────────────────────
+// ── In-app Toast Banner (VS Code-style bottom-right floating card) ─────────────
 
 /**
- * P34-NOTIF: VS Code-style in-app toast banner.
- * Appears at the bottom-right of the screen, auto-dismisses after toastDurationMs.
- * Call from the root scaffold — NOT inside a scroll container.
+ * P-NOTIF-RESTRUCTURE: VS Code-style notification toast.
+ * Appears as a compact floating card at the bottom-right (or top-right based on bellPosition).
+ * Card is ~320dp wide, rounded corners, subtle border, shadow — NOT full-width.
+ * Auto-dismisses after toastDurationMs.
  */
 @Composable
 internal fun NotificationToastBanner() {
-    // Re-render when activeToast changes by polling (simple approach — no Flow needed)
     var toast by remember { mutableStateOf(NotificationStore.activeToast) }
-    // Poll via LaunchedEffect — re-reads every 100ms
     LaunchedEffect(Unit) {
         while (true) {
             toast = NotificationStore.activeToast
             kotlinx.coroutines.delay(100)
         }
     }
-    AnimatedVisibility(
-        visible = toast != null,
-        enter = slideInVertically { it } + fadeIn(),
-        exit = slideOutVertically { it } + fadeOut(),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+    val isTop = NotificationStore.settings.bellPosition == "top"
+
+    Box(
+        Modifier
+            .fillMaxSize()
             .zIndex(100f),
+        contentAlignment = if (isTop) Alignment.TopEnd else Alignment.BottomEnd,
     ) {
-        val t = toast ?: return@AnimatedVisibility
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF2D2D3F), RoundedCornerShape(6.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        AnimatedVisibility(
+            visible = toast != null,
+            enter = if (isTop) slideInVertically { -it } + fadeIn() else slideInVertically { it } + fadeIn(),
+            exit = if (isTop) slideOutVertically { -it } + fadeOut() else slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .padding(
+                    top = if (isTop) 28.dp else 0.dp,
+                    bottom = if (isTop) 0.dp else 28.dp,
+                    end = 8.dp,
+                ),
         ) {
-            val (icon, color) = severityIcon(t.severity)
-            Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                if (t.title.isNotBlank() && t.title != t.body) {
-                    Text(t.title, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFCDD6F4), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val t = toast ?: return@AnimatedVisibility
+            // VS Code-style compact card — 320dp wide, rounded, border, shadow
+            Card(
+                Modifier
+                    .width(320.dp)
+                    .clickable(enabled = false) {},
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
+                elevation = CardDefaults.cardElevation(6.dp),
+                shape = RoundedCornerShape(6.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF313244)),
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    val (icon, color) = severityIcon(t.severity)
+                    Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        if (t.title.isNotBlank() && t.title != t.body) {
+                            Text(
+                                t.title,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFCDD6F4),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Text(
+                            t.body,
+                            fontSize = 11.sp,
+                            color = Color(0xFF9CA0B0),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Default.Close, null,
+                        tint = Color(0xFF6C7086),
+                        modifier = Modifier.size(14.dp).clickable { NotificationStore.dismissToast() },
+                    )
                 }
-                Text(t.body, fontSize = 11.sp, color = Color(0xFF9CA0B0), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.Default.Close, null,
-                tint = Color(0xFF555570),
-                modifier = Modifier.size(13.dp).clickable { NotificationStore.dismissToast() },
-            )
         }
     }
 }
@@ -172,8 +205,12 @@ internal fun NotificationDrawerOverlay(
     ) {
         Card(
             Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 28.dp, end = 4.dp)
+                .align(if (NotificationStore.settings.bellPosition == "top") Alignment.TopEnd else Alignment.BottomEnd)
+                .padding(
+                    top = if (NotificationStore.settings.bellPosition == "top") 28.dp else 0.dp,
+                    bottom = if (NotificationStore.settings.bellPosition == "top") 0.dp else 28.dp,
+                    end = 4.dp,
+                )
                 .width(320.dp)
                 .heightIn(max = 520.dp)
                 .clickable(enabled = false) {},
