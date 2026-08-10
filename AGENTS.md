@@ -12074,3 +12074,44 @@ changes for existing users until they explicitly switch to Manual.
 
 
 
+---
+
+## REFERENCE — VS Code Settings Screenshots for In-Project Settings Expansion (2026-08-10)
+
+User pasted 12 screenshots of vscode.dev's native Settings UI as reference for expanding
+`InProjectSettingsDialog.kt`. Not yet scoped into an implementation plan — awaiting user
+direction on which pieces to actually build.
+
+### What the screenshots show
+
+1. **Search-driven Settings shell** — Search bar at top ("notification", "server" searches
+   shown), result count badge ("14 Settings Found", "58 Settings Found"), User/Workspace
+   tabs, categorized left sidebar (Commonly Used, Text Editor, Chat, Features, Extensions,
+   Terminal, Task, etc.) with per-category item counts, "Backup and Sync Settings" button
+   top-right, gear icon next to the currently-focused setting (reset-to-default affordance).
+
+2. **Notifications section:**
+   - `Task: Notify Window On Task Completion` — numeric ms input (default 60000), -1 disables, 0 always shows
+   - `GitHub Repositories > Indexing: Verbose Download Notification` — checkbox
+   - `Terminal > Integrated: Enable Notifications` — checkbox, describes OSC 99 terminal notifications
+
+3. **Text Editor section:**
+   - `Cursor Blinking` — dropdown (e.g. "blink") under Text Editor > Cursor
+
+4. **Python language server settings** (searched "server"):
+   - `Python > Analysis: Pyright Version` — free-text version string or path to local pyright-langserver.js
+   - `Python > Analysis: Node Arguments` — editable list of CLI args, default item `--max-old-space-size=8192`, Add Item button
+   - `Python > Analysis: Diagnostics Source` — dropdown: Pylance (default) / Pylance + Pyright / Pylance + Pyrefly
+
+### Open questions (need user's answer before implementing)
+- Is this **visual/UX style reference only** (search bar + sidebar categories + reset-gear
+  affordance for our existing `InProjectSettingsDialog`), or does the user want the **actual
+  settings themselves** ported in (task notification threshold, terminal notification toggle,
+  cursor blinking style, LSP diagnostics source selection, etc.)?
+- If actual settings: our app doesn't have Pylance/Pyright/Pyrefly — we use our own LSP setup
+  (pylsp, jedi, ctags-lsp per Phase 50-3). A "Diagnostics Source" equivalent would need mapping
+  to our actual language servers, not copy-pasted VS Code product names.
+- Priority — which section first: search+categorize the existing dialog, Notifications, Text
+  Editor (cursor style), or Python/LSP settings?
+
+**Status:** ⏳ AWAITING SCOPE — do not implement until user confirms which of the above.
