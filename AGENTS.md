@@ -12004,5 +12004,59 @@ The GotoDefinitionDialog checked `if (results.isEmpty())` and immediately showed
 
 **Next planned:** D1/D3 device testing → Full login + connectors end-to-end (Phase 39 verification) → SCM panel layout restructure
 
+---
+
+## PLAN — In-Project Settings Floating Page + Termux Rebrand (2026-08-10)
+
+User reviewed 30+ screenshots of VS Code Settings UI (vscode.dev) as visual/UX reference and requested:
+
+### 1. New "In-Project Settings" floating page (gear menu → new entry)
+A full-screen dark-themed Dialog (matches VS Code Settings dark aesthetic from
+screenshots: `#1E1E1E` bg, bold labels, muted gray descriptions below each row,
+checkboxes for booleans, dropdowns for enums), scrollable via LazyColumn.
+
+**Section: AI Agent Flow** (new functionality, not just a placeholder toggle):
+- **Flow Mode: Manual / Auto** dropdown — governs whether AI Agent tool calls
+  (`AgentTools.executeTool` — write_file, run_command, etc. in Agent chat mode)
+  execute immediately (Auto, current/default behavior) or pause for an
+  Approve/Reject tap first (Manual). Implemented via a new `AgentFlowGate`
+  suspend-gate object so it's real, wired functionality — not cosmetic.
+- **Verbose Tool Output** checkbox — show full JSON args/results vs a short
+  one-line summary in the Agent chat transcript.
+
+**Section: Editor Features** — migrate the existing 11 `FeatureToggleStore`
+toggles (word wrap, inlay hints, minimap, CodeLens, sticky scroll, error lens,
+color swatches, document links, ghost text, merge conflicts, LSP highlights)
+out of the global Settings page and into this floating page as checkbox rows.
+
+### 2. Termux branding bug (from notification screenshot)
+`TerminalService.kt` registers the foreground-service notification channel
+with the literal name `"Termux App"` — this is what Android's system
+notification settings shows verbatim ("Turn off Termux App notifications?").
+Fix: rename the channel display name to `"VN Code"` (app_name is already
+correctly "Visual Node Code" in strings.xml — only this one runtime string
+was wrong). Internal code comments referencing Termux (architecture parity
+notes, e.g. "matches Termux's TermuxService pattern") are left as-is — they're
+not user-visible and document *why* the code is shaped the way it is.
+
+### 3. Implementation plan
+| File | Change |
+|------|--------|
+| `editor/ProjectSettingsStore.kt` (NEW) | `FlowMode` enum (MANUAL/AUTO), `verboseToolOutput` bool — SharedPreferences-backed, mirrors `FeatureToggleStore` pattern |
+| `agent/AgentFlowGate.kt` (NEW) | `suspend fun awaitApproval(toolName, argsSummary): Boolean` — returns `true` immediately in AUTO mode (zero behavior change from today); in MANUAL mode suspends via `CompletableDeferred` until the user taps Approve/Reject on a floating card |
+| `ui/screens/CopilotChatPanelOverlay.kt` | Tool-execution loop calls `AgentFlowGate.awaitApproval()` before `AgentTools.executeTool()`; renders the pending-approval card when `AgentFlowGate.pending.value != null`; verbose/compact tool-result formatting driven by `ProjectSettingsStore` |
+| `ui/screens/InProjectSettingsDialog.kt` (NEW) | The floating settings page itself |
+| `ui/screens/ProjectShellScreen.kt` | New gear-menu item "In-Project Settings" opens the dialog (new `showInProjectSettings` state) |
+| `ui/screens/SettingsScreen.kt` | Remove the "Feature Toggles" section (moved out) |
+| `terminal/TerminalService.kt` | Notification channel name `"Termux App"` → `"VN Code"` |
+| `CodeSpaceApplication.kt` | `ProjectSettingsStore.init(this)` alongside `FeatureToggleStore.init(this)` |
+
+All additive/surgical — no existing behavior changes except the Termux string
+fix and the Feature Toggles relocation. Default Flow Mode is AUTO, so nothing
+changes for existing users until they explicitly switch to Manual.
+
+**Status:** implementing now.
+
+
 
 
