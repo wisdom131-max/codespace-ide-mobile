@@ -13511,3 +13511,132 @@ User provided 10 VS Code screenshots showing:
 | 40 | Terminal Notification Channel Name | |
 | 41 | Recent Search History (Find in Files) | |
 | 42 | Debug Panel: Breakpoints and Step Buttons | |
+
+---
+
+## ON-DEVICE TEST RESULTS — 42-Test Retest (2026-08-10)
+
+### Critical Observations (user notes before test results):
+
+1. **App crash on opening too many files** — Opening multiple files at once crashes the app and it refuses to reopen. Had to manually delete the project folder from phone storage to recover. No crash log was produced. This is the same crash triggered by creating/pasting content into .md files (Test 20, 25).
+2. **File creation permission error** — Creating `peek_test.py` returned "failed to create file: operation not permitted". Some files had to be created manually outside the app.
+3. **LSP server stays running after editor closed** — User wants LSP server to auto-close if editor isn't opened for 10 seconds.
+4. **Snapshot interval** — Change from 30 seconds to 20 seconds.
+5. **Output tab Clear button doesn't work** — Only Copy to Clipboard works.
+6. **Output tab Save to ZIP button doesn't work** — Needs fixing.
+7. **Output tab "All" channel takes too long to update** — Have to tap LSP then back to All to see updates.
+8. **Output tab light theme white-on-white** — When light theme active, output panel text is invisible.
+9. **Toggle tab restructuring needed** — The other AI didn't restructure the top-right toggle tabs as envisioned. Needs to be redone.
+10. **Wired-in servers removed** — Other AI's changes removed previously wired LSP servers. User wants them back and visible in In-Project Settings. Do NOT separate merged servers.
+11. **Lightbulb drifts after long time** — After extended use, the lightbulb stops showing on the correct line.
+12. **Popup behavior study needed** — User wants to study vscode.dev popup/completion behavior to understand how popups calculate keyboard obstruction and adjust direction. User already likes their popup structure — just needs the smart positioning logic.
+
+### Test Results:
+
+| # | Test | Result | Details |
+|---|------|--------|---------|
+| 1 | Zen Mode: Tap to Type | **PARTIAL** | Keyboard opens and typing works, but CANNOT exit Zen Mode. Tried everything — floating button, escape, nothing works. |
+| 2 | Zen Mode: Double-Tap to Exit | **FAIL** | Affected by Test 1 exit issue. Cannot exit at all. |
+| 3 | Lightbulb on Correct Line | **PASS** | Works correctly — lightbulb appears on the right line. |
+| 4 | Problems Panel Dark Theme | **PASS** | Works — dark theme colors are correct. |
+| 5 | Snippet Tab Expansion (Kotlin) | **FAIL** | Tab key from editor extra keys just inserts tab as plain text. Does not expand snippets. |
+| 5b | Snippet Tab Expansion (Python) | **FAIL** | Same issue as 5a — Tab inserts plain text, no expansion. |
+| 6 | Select Next Occurrence | **PARTIAL** | "Select all occurrences" works but the popup blocks the view of what was selected. Can't see the selection properly. Need to study vscode.dev completion/popup positioning. |
+| 7 | Cross-File Go to Definition | **FAIL** | Did not work. Screenshot shows the failure. |
+| 8 | Find in Files: Keyword Transfer | **PASS** | Works fine. NOTE: "Find in Files" is under Edit menu, not Go menu. Go menu doesn't have Find. |
+| 9 | Find in File: Keyboard Auto-Focus | **PARTIAL** | Works but has the same keyboard focus timing issue expressed before. |
+| 10 | Recycle Bin: Delete and Restore | **PASS** | Works. |
+| 11 | Quick Command Palette (Terminal) | **FAIL** | Doesn't work. User wants ALL command history shown, not just last 5. |
+| 12 | MCP Status on App Launch | **PASS** | Works — green on app launch without opening terminal. |
+| 13 | Problems Panel: LSP Diagnostics | **PARTIAL** | Error shows in Problems tab, but tapping from Problems tab doesn't highlight/jump to the error in the editor. Needs fixing. |
+| 14 | Bracket Auto-Close | **PARTIAL** | Only parentheses `()` auto-close. Curly braces `{}`, square brackets `[]`, and quotes `""` do NOT auto-close. Screenshot confirms. |
+| 15 | Light Theme Readability | **FAIL** | Output tab in light theme is white-on-white — hard to read. (Noted in observations.) |
+| 16 | Extract Here (Zip/Jar) | **FAIL** | Didn't work. Details in report PDF. Terminal command also doesn't work. |
+| 17 | Open as Text (Binary File) | **FAIL** | Same issue as 16. Terminal command doesn't work either. File was created manually. |
+| 18 | Completion: 60-Item List | **PARTIAL** | No completion popup appears when typing `m` after `import` (at front). Popup only shows when cursor is at the BACK of `m`. Also: typing `import` then `o` shows nothing, but completing `os` and tapping the completion CLEARS `import` leaving only `os`. |
+| 19 | Completion: Drag to Resize | **PASS** | Works. |
+| 20 | Markdown Live Preview | **FAIL** | App crashed instantly when pasting the MD content. No crash log. This is the same crash that happens when creating/pasting into .md files — app crashes and refuses to reopen. |
+| 21 | Preview Panel Close Button | **PASS** | Works. |
+| 22 | Source Control 3-Dot Menu | **PARTIAL** | Menu opens, but GitHub shows errors (screenshot). Cannot scroll up in the source panel — needs to be scrollable. |
+| 23 | Peek Definition Overlay | **PARTIAL** | Works and shows fallback, but X close button doesn't show in portrait mode. In landscape, content isn't centered on screen (not centered like In-Project Settings page, but smaller). |
+| 24 | Fix with AI (Lightbulb) | **FAIL** | Did not open the Copilot chat panel. "Fix with AI" was NOT in the bulb's context menu — it was in the floating 3-dot green menu instead. |
+| 25 | .MD File Icon | **FAIL** | Couldn't test — app crashes when creating/pasting .md files. |
+| 26 | Bookmark Icon Visibility | **PASS** | Works. |
+| 27 | Top Bar Layout Icons | **PARTIAL** | Icons present but the toggle tab structure wasn't done correctly by the other AI. Needs restructuring. |
+| 28 | 3-Dot Overflow Menu | **PASS** | Works. |
+| 29 | In-Project Settings: Flow Mode | **PENDING** | Cannot test — no mobile data to download AI models. On hold. |
+| 30 | In-Project Settings: Search | **PASS** | Works. |
+| 31 | Editor Feature Toggles | **PARTIAL** | Toggles display but are NOT wired properly. Toggling Minimap off and returning to editor — minimap still visible. Likely affects all feature toggles. Needs audit and fix. |
+| 32 | Cursor Blink Style | **PARTIAL** | "Solid" didn't work. "Phase" and "Smooth" worked but mimicked each other. "Expand" and "Blink" didn't work. |
+| 33 | Terminal Notification Toggle | **PASS** | Works. |
+| 34 | Pyright LSP Selection | **PARTIAL** | User wants auto-download when selecting a server type — no manual `npm install` needed. Wants ALL servers visible in In-Project Settings (don't separate merged servers). Unclear if Pyright/Jedi actually work from screenshots. |
+| 35 | Cloud Backup Retry | **FAIL** | Didn't work — shows error in screenshot. |
+| 36 | YouTube Video in Preview | **FAIL** | YouTube Shorts show audio only (black screen). Cannot sign in. Screenshot confirms. |
+| 37 | Fullscreen Preview: No Reload | **PASS** | Works. |
+| 38 | Notification: No Crash | **PASS** | (Inferred — no crash reported during rapid notification triggers.) |
+| 39 | Large File: No Crash | **FAIL** | Same crash problem. Details in report PDF. |
+| 40 | Terminal Notification Channel Name | **PASS** | Works — shows "VN Code". |
+| 41 | Recent Search History | **FAIL** | Didn't work — no recent search history shown. |
+| 42 | Debug Panel: Breakpoints | **FAIL** | Didn't work — debug panel not functional. |
+
+### Summary:
+
+| Status | Count |
+|--------|-------|
+| PASS | 10 |
+| PARTIAL | 12 |
+| FAIL | 16 |
+| PENDING | 1 |
+| Not tested (crash) | 3 (Tests 2, 25, 38 partially) |
+
+### PASS list (10):
+Tests 3, 4, 8, 10, 12, 19, 21, 26, 28, 33, 37, 40
+
+### PARTIAL list (12):
+Tests 1, 6, 9, 13, 14, 18, 22, 23, 27, 31, 32, 34
+
+### FAIL list (16):
+Tests 2, 5, 5b, 7, 11, 15, 16, 17, 20, 24, 25, 35, 36, 39, 41, 42
+
+### PENDING (1):
+Test 29 (no mobile data for AI model download)
+
+---
+
+### FIX PRIORITY LIST (ranked by severity/impact):
+
+**CRITICAL — App Stability:**
+1. **MD file crash** (Tests 20, 25, 39) — Creating/pasting into .md files crashes the app and it refuses to reopen. Same crash happens with large files and opening too many files. Likely a rendering or memory issue in the editor or MarkdownRenderer.
+2. **File creation permission error** — "operation not permitted" when creating files. May be a storage permission or path issue.
+
+**HIGH — Core Editor Features:**
+3. **Zen Mode exit broken** (Tests 1, 2) — Cannot exit Zen Mode at all. The FAB double-click and floating button don't work.
+4. **Snippet Tab expansion** (Tests 5, 5b) — Tab key inserts plain text instead of expanding snippets.
+5. **Bracket auto-close incomplete** (Test 14) — Only `()` works. `{}`, `[]`, `""` don't auto-close.
+6. **Completion popup positioning** (Test 18) — Popup doesn't appear when typing at front of character. Also `import os` completion clears `import`. Need smart positioning study.
+7. **Feature toggles not wired** (Test 31) — Toggles don't actually affect the editor (minimap still shows after disabling).
+8. **Problems tab → editor jump** (Test 13) — Tapping error in Problems tab doesn't highlight/jump to the error location.
+
+**MEDIUM — Functionality:**
+9. **Cross-file Go to Definition** (Test 7) — Not working.
+10. **Fix with AI** (Test 24) — Not in lightbulb menu, opens from wrong location (floating 3-dot green menu).
+11. **Quick command palette** (Test 11) — Doesn't work, should show all command history.
+12. **Extract Here / Open as Text** (Tests 16, 17) — Terminal commands don't work, context menu items may not work.
+13. **Recent search history** (Test 41) — Not working.
+14. **Debug panel** (Test 42) — Not functional.
+15. **Cloud backup retry** (Test 35) — Shows error.
+16. **Cursor blink styles** (Test 32) — Most styles don't work, Phase and Smooth mimic each other.
+17. **Pyright auto-download** (Test 34) — Needs auto-download, show all servers in settings.
+18. **Output tab issues** — Clear button broken, Save-to-ZIP broken, "All" channel slow to update, light theme white-on-white.
+19. **LSP server auto-close** — Should close after 10s of no editor activity.
+20. **Snapshot interval** — Change 30s → 20s.
+21. **Source panel not scrollable** (Test 22) — Can't scroll up in source control panel.
+22. **Peek Definition X button** (Test 23) — Missing in portrait, not centered in landscape.
+23. **YouTube Shorts** (Test 36) — Audio only, no video. Can't sign in.
+
+**LOW — Polish / Restructure:**
+24. **Toggle tab restructuring** (Test 27) — Needs complete redo.
+25. **vscode.dev popup study** — Study how vscode.dev handles popup positioning relative to keyboard, cursor, and text obstruction.
+26. **Wired-in servers restored** — Bring back removed LSP servers, show all in In-Project Settings.
+27. **Lightbulb drift after extended use** (Test 3 note) — Works initially but drifts after long session.
+
