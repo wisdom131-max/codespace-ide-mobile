@@ -4554,8 +4554,8 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
     typeHierarchyRoot: TypeHierarchyItem?,
     typeHierarchySupertypes: List<com.codespace.ide.lsp.TypeHierarchyItem>,
     typeHierarchySubtypes: List<com.codespace.ide.lsp.TypeHierarchyItem>,
-    onDismissTypeHierarchy: () -> Unit,
 ) {
+    val colors = LocalEditorColors.current
     // ── P24-3: Find References Overlay ──
     if (findRefWord != null) {
         Card(
@@ -5027,6 +5027,7 @@ private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
     text: String,
     clipboardManager: androidx.compose.ui.platform.ClipboardManager,
 ) {
+    val colors = LocalEditorColors.current
     if (lspHoverContent != null && !showCompletions) {
         val hoverScrollState = rememberScrollState()
         var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
