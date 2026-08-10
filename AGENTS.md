@@ -125,7 +125,7 @@ Modified files in Phase 9:
 
 ### ⚠️ ARCHITECTURAL RISK: ProjectShellScreen.kt method size
 
-**ProjectShellScreen.kt is 2160 lines.** It hit the JVM 64KB method-too-large limit during Phase 9 (#1126–#1128 failed).
+**ProjectShellScreen.kt is 3967 lines.** It hit the JVM 64KB method-too-large limit during Phase 9 (#1126–#1128 failed).
 The fix was extracting `SymbolSearchOverlay()` and `StatusBarContent()` into separate @Composable functions (#1129 green).
 
 **RULE FOR FUTURE PHASES:** Any new UI added to ProjectShellScreen MUST be extracted into a separate
@@ -12233,3 +12233,447 @@ User provided 10 VS Code screenshots showing:
 - 3-dot dropdown two-level navigation on touch
 - Customize Layout dropdown menu item behavior
 - Top bar icon spacing on small screen (Samsung Android 14, 3GB RAM)
+
+---
+
+## On-Device Test Plan — All Recent Changes (2026-08-10)
+
+> Test each item below in order. After each test, write PASS, PARTIAL, or FAIL.
+> All paths assume a project is already open in the IDE.
+
+---
+
+### TEST 1 — Toggle Sidebar Button (Left Panel)
+
+**What to do:**
+1. Look at the top bar (the single row at the very top of the screen).
+2. Find the icon that looks like a sidebar panel on the left side — it is the **ViewSidebar** icon (a rectangle with a darker left strip), positioned after the project name / search pill.
+3. Tap it once.
+
+**What to expect:**
+- The left panel (Explorer / file tree) disappears.
+- Tap it again — the left panel reappears.
+
+---
+
+### TEST 2 — Toggle Bottom Panel Button
+
+**What to do:**
+1. In the same top bar row, find the icon that looks like a panel at the bottom — it is the **VerticalAlignBottom** icon (a rectangle with a darker bottom strip), next to the sidebar toggle.
+2. Tap it once.
+
+**What to expect:**
+- The bottom panel (Terminal / Problems / Output) appears or disappears.
+
+---
+
+### TEST 3 — Toggle Secondary Sidebar (AI Chat Panel)
+
+**What to do:**
+1. In the top bar, find the robot/bot icon — it is the **AnimatedBotIcon**, next to the bottom panel toggle.
+2. Tap it once.
+
+**What to expect:**
+- The AI Copilot chat panel slides in from the right side.
+- Tap again — it slides away.
+
+---
+
+### TEST 4 — Customize Layout Dropdown
+
+**What to do:**
+1. In the top bar, find the **DashboardCustomize** icon (a grid of small rectangles), next to the bot icon.
+2. Tap it.
+3. A dropdown menu appears with these items: "Toggle Primary Side Bar", "Toggle Panel", "Toggle Secondary Side Bar", a separator, "Zen Mode", "Centered Layout", another separator, "Preferences (Open Settings)".
+4. Tap "Centered Layout".
+
+**What to expect:**
+- A small notification toast appears at the bottom-right saying "Centered layout toggled".
+- Tap the DashboardCustomize icon again, tap "Zen Mode" — the UI enters Zen Mode (panels hidden, minimal view).
+- A notification appears saying "Zen Mode — tap floating button to exit".
+
+---
+
+### TEST 5 — 3-Dot Overflow Menu (Two-Level Navigation)
+
+**What to do:**
+1. In the top bar, find the **⋮ (three vertical dots)** icon at the far right.
+2. Tap it.
+3. A menu appears with categories: File, Edit, Selection, View, Go, Run, Terminal, Help — each with a **›** arrow on the right.
+4. Tap "File" — the menu slides to a second level showing: New File, New Folder, Save, Auto Save, Exit.
+5. Tap the **‹ back arrow** at the top to return to the first level.
+6. Tap "View" — verify it shows: Explorer, Search, Source Control, Run & Debug, Extensions, Terminal, Problems, Output, Zoom In, Zoom Out.
+7. Tap outside the menu to dismiss it.
+
+**What to expect:**
+- Two-level navigation works smoothly on touch.
+- Each category opens its own submenu.
+- Back arrow returns to the category list.
+- Tapping a menu item performs the action (e.g., tapping "Terminal" opens the bottom panel with the Terminal tab).
+
+---
+
+### TEST 6 — Notification Floating Card (Bottom-Right)
+
+**What to do:**
+1. Open the 3-dot overflow menu (⋮).
+2. Tap "View" → "Problems" (this triggers a notification).
+3. Look at the **bottom-right corner** of the screen.
+
+**What to expect:**
+- A small floating card appears at the bottom-right (NOT a full-width banner at the top).
+- The card has a dark background, rounded corners, a subtle border, and a small icon + message text.
+- The card has an **X** close button.
+- Tap the X to dismiss it.
+
+---
+
+### TEST 7 — Notification Drawer / Center
+
+**What to do:**
+1. Look at the **bottom status bar** (the thin bar at the very bottom of the screen).
+2. Find the **bell icon** on the right side of the status bar.
+3. Tap the bell icon.
+
+**What to expect:**
+- A notification center panel opens, anchored to the bottom-right corner.
+- It shows a list of past notifications with severity filter buttons.
+- Tap outside or tap the bell again to close it.
+
+---
+
+### TEST 8 — In-Project Settings Search
+
+**What to do:**
+1. Open the 3-dot overflow menu (⋮) → "File" → look for "Preferences", OR tap the DashboardCustomize icon → "Preferences (Open Settings)".
+2. The Settings screen opens.
+3. Look for a **search bar** at the top of the settings page.
+4. Type "cursor" in the search bar.
+
+**What to expect:**
+- The settings list filters to show only settings matching "cursor" (e.g., Cursor Blink Style, Cursor Smooth Animation).
+- Clear the search bar — all settings reappear.
+
+---
+
+### TEST 9 — Cursor Blink Animation
+
+**What to do:**
+1. Open any code file in the editor (tap a .py or .kt file in the Explorer).
+2. Tap somewhere in the code to place the text cursor.
+3. Watch the cursor for 3–5 seconds.
+
+**What to expect:**
+- The cursor blinks smoothly (not frozen, not janky).
+- It should look like a standard blinking vertical line, similar to VS Code.
+- If you go to Settings → Text Editor → Cursor Blink Style, you can change it to: Blink, Phase, Solid, Expand, or Smooth. Change it and verify the cursor style updates.
+
+---
+
+### TEST 10 — Python Import Completions (Expanded List)
+
+**What to do:**
+1. Create or open a Python file (`.py`) in the editor.
+2. On a new line, type: `import m`
+3. Wait for the autocomplete popup to appear.
+
+**What to expect:**
+- A dropdown appears with 18+ items including: mailbox, markdown, marshal, math, matplotlib, mimetypes, mmap, mock, modulefinder, multiprocessing, mypy_extensions, and more.
+- The list should NOT be truncated at 15 items.
+- Scroll down to verify you can see the full list.
+- At the bottom of the popup, there is a small **drag handle bar** (~14dp tall). Press and drag it downward to expand the popup height. Drag upward to shrink it back.
+
+---
+
+### TEST 11 — Completion Popup Resize Handle
+
+**What to do:**
+1. In any code file, type a few characters to trigger the autocomplete popup (e.g., type `val` in a .kt file, or `def` in a .py file).
+2. Look at the bottom edge of the completion popup.
+3. Press and hold the small drag bar at the bottom.
+4. Drag **downward** slowly.
+
+**What to expect:**
+- The popup grows taller, showing more items.
+- Drag **upward** — the popup shrinks back to its default size.
+- The resize should feel smooth, not laggy.
+- The popup should NOT overlap the keyboard.
+
+---
+
+### TEST 12 — Snippet Tab Expansion
+
+**What to do:**
+1. Open a Kotlin file (`.kt`) in the editor.
+2. On a new line, type: `Launched`
+3. The autocomplete popup should show "LaunchedEffect" with a description.
+4. Press **Tab** on the keyboard (NOT tapping the popup item — press the actual Tab key).
+
+**What to expect:**
+- The full snippet is inserted: `LaunchedEffect(key) { }` (not just the word "LaunchedEffect").
+- The cursor lands inside the parentheses or braces, ready to type.
+
+---
+
+### TEST 13 — Select Next Occurrence
+
+**What to do:**
+1. Open a code file with some repeated words (e.g., a file that uses the same variable name multiple times).
+2. Long-press on a word to select it.
+3. A context menu appears. Tap **"Select Next Occurrence"**.
+4. Tap it again.
+
+**What to expect:**
+- The next occurrence of that word gets selected (multi-cursor).
+- Each tap selects the next matching word.
+- You can type simultaneously in all selected positions.
+
+---
+
+### TEST 14 — Extract Here (Zip/Jar Context Menu)
+
+**What to do:**
+1. In the Explorer file tree, find a `.zip` or `.jar` file.
+2. Long-press the file.
+3. The context menu appears. Find and tap **"Extract Here"**.
+
+**What to expect:**
+- A new folder is created next to the archive, named after the file (without the .zip/.jar extension).
+- The contents of the archive are extracted into that folder.
+- A success notification appears.
+
+---
+
+### TEST 15 — Open as Text (Binary File Context Menu)
+
+**What to do:**
+1. In the Explorer file tree, find a binary file (e.g., a `.so`, `.dex`, or `.bin` file).
+2. Long-press the file.
+3. The context menu appears. Find and tap **"Open as Text"**.
+
+**What to expect:**
+- The file opens in the text editor instead of the hex viewer.
+- You see raw text / garbled characters (expected for binary content viewed as text).
+- The editor does not crash or freeze.
+
+---
+
+### TEST 16 — Quick Command Palette (Terminal)
+
+**What to do:**
+1. Open the bottom panel and switch to the Terminal tab.
+2. Tap the **⋮ (three dots)** overflow menu in the terminal toolbar.
+3. Look for a row of recent commands (up to 5) at the top of the menu or in a "Recent Commands" section.
+
+**What to expect:**
+- A strip or list of your last 5 terminal commands appears.
+- Tapping one inserts it into the terminal input.
+- This saves typing repetitive commands.
+
+---
+
+### TEST 17 — MCP Status Indicator
+
+**What to do:**
+1. Tap the activity bar icon for **Extensions** (the icon on the far left that looks like blocks/squares).
+2. Look at the MCP / Agent API status section.
+
+**What to expect:**
+- A green or red dot appears, indicating the MCP server status.
+- Green = running, red = not running.
+- A tool count is displayed (e.g., "32 tools available").
+- There is a Start/Restart button if the server is not running.
+
+---
+
+### TEST 18 — Markdown Live Preview
+
+**What to do:**
+1. Create or open a Markdown file (`.md`) in the editor.
+2. Type some markdown content, e.g., `# Hello World` and `**bold text**`.
+3. Open the bottom panel and switch to the **Preview** tab.
+
+**What to expect:**
+- The preview renders the markdown as formatted text (large heading, bold text).
+- Changes in the editor update the preview (may need to save first or switch tabs).
+
+---
+
+### TEST 19 — Source Control Overflow Menu
+
+**What to do:**
+1. Tap the activity bar icon for **Source Control** (the branch/git icon on the left).
+2. The Source Control panel opens.
+3. Look for a **⋮ (three dots)** overflow button in the Source Control toolbar.
+4. Tap it.
+
+**What to expect:**
+- A menu appears with items: View as Tree, Pull, Fetch, Push, Commit, Branch, Stash, Tags, Gitignore, Publish to GitHub, Open Remote Repository.
+- Tapping any item performs that git action.
+
+---
+
+### TEST 20 — Preview Panel Close Button
+
+**What to do:**
+1. Open the bottom panel and switch to the **Preview** tab.
+2. Look for a **close (X)** button in the Preview panel header or tab.
+
+**What to expect:**
+- Tapping the X closes the preview panel.
+- The bottom panel switches to the next available tab or collapses.
+
+---
+
+### TEST 21 — Zen Mode Keyboard Exit
+
+**What to do:**
+1. Enter Zen Mode (DashboardCustomize icon → "Zen Mode", or 3-dot menu → View → "Toggle Zen Mode").
+2. The UI enters a minimal, distraction-free view.
+3. Press the **Escape (Esc)** key on the keyboard, OR tap the floating exit button.
+
+**What to expect:**
+- Zen Mode exits and the full IDE UI returns (sidebars, panels, menus visible again).
+- A notification briefly says "Zen Mode off".
+
+---
+
+### TEST 22 — Find in Files (Keyword Transfer)
+
+**What to do:**
+1. Tap the activity bar icon for **Search** (the magnifying glass on the left).
+2. The project search panel opens.
+3. Type a search term (e.g., "fun" or "import").
+3. Look at the search results.
+
+**What to expect:**
+- Results show matching files with the search term highlighted.
+- Tapping a result opens that file in the editor.
+- The search keyword is passed correctly to the results (not blank or wrong).
+
+---
+
+### TEST 23 — Recycle Bin Restore
+
+**What to do:**
+1. In the Explorer file tree, long-press a file and tap **Delete**.
+2. The file disappears from the tree (moved to trash).
+3. Long-press on the project folder or any file.
+4. Look for a "Trash" or "Restore" option in the context menu.
+5. Tap it to open the trash list.
+6. Tap "Restore" on the deleted file.
+
+**What to expect:**
+- The file reappears in the Explorer tree at its original location.
+- The file content is intact.
+- The IDE shows the restored file in the tree immediately (you should NOT need to close and reopen the project).
+
+---
+
+### TEST 24 — Find in File (Keyboard Focus)
+
+**What to do:**
+1. Open any code file in the editor.
+2. Tap the 3-dot overflow menu (⋮) → Edit → "Find" (or look for a Find icon in the editor toolbar).
+3. The Find bar appears at the top or bottom of the editor.
+4. Check if the keyboard appears and the search field is **ready to type** (cursor blinking in the field).
+
+**What to expect:**
+- The search input field has keyboard focus immediately when the Find bar opens.
+- You can start typing your search term without tapping the field first.
+- Matching text is highlighted in the editor as you type.
+
+---
+
+### TEST 25 — Cloud Backup Retry
+
+**What to do:**
+1. Open the bottom panel and look for a **Backup** tab (or go to Settings → Backup).
+2. Tap "Backup Now" or "Create Backup".
+3. If the backup fails (network error), watch the behavior.
+
+**What to expect:**
+- On failure, the backup automatically retries up to 3 times.
+- There is a brief pause between retries (1s, then 3s, then 7s).
+- A notification appears showing the final result (success after retry, or failure after all 3 attempts).
+
+---
+
+### TEST 26 — YouTube Video in Preview (Browser Security Fixes)
+
+**What to do:**
+1. Open the bottom panel and switch to the **Preview** tab.
+2. In the preview's address/navigation bar, type a YouTube URL (e.g., `https://www.youtube.com/watch?v=dQw4w9WgXcQ`).
+3. Press Go/Enter.
+
+**What to expect:**
+- The YouTube page loads in the in-app browser.
+- The video player appears and should be playable (not a blank box or error).
+- If prompted for Google login, it should work without the page freezing.
+
+---
+
+### TEST 27 — Terminal Notification Toggle
+
+**What to do:**
+1. Open Settings (3-dot menu → File → Preferences, or DashboardCustomize → Preferences).
+2. Find the **Notifications** section.
+3. Look for a toggle that says "Terminal Notifications" or "Suppress Terminal Notifications".
+4. Toggle it ON.
+5. Run a command in the terminal (e.g., `ls`).
+
+**What to expect:**
+- With the toggle ON, terminal command completions do NOT trigger notification toasts.
+- With the toggle OFF, terminal command completions DO trigger notification toasts.
+- The toggle setting persists after closing and reopening the app.
+
+---
+
+### TEST 28 — Pyright LSP Selection
+
+**What to do:**
+1. Open Settings → find the **Python / LSP** section.
+2. Look for a dropdown or toggle to select the Python language server.
+3. Select **Pyright** (if available).
+4. Open a Python file and type some code with a deliberate error (e.g., `x = undefined_var`).
+
+**What to expect:**
+- If Pyright is installed (may need `npm install -g pyright` in the terminal first), error squiggles appear under the undefined variable.
+- Hovering over the error shows a description.
+- If Pyright is not installed, the setting saves but no diagnostics appear until it is installed.
+
+---
+
+## Summary Checklist
+
+| # | Feature | Result |
+|---|---------|--------|
+| 1 | Toggle Sidebar Button | |
+| 2 | Toggle Bottom Panel Button | |
+| 3 | Toggle Secondary Sidebar (AI Chat) | |
+| 4 | Customize Layout Dropdown | |
+| 5 | 3-Dot Overflow Menu | |
+| 6 | Notification Floating Card | |
+| 7 | Notification Drawer / Center | |
+| 8 | In-Project Settings Search | |
+| 9 | Cursor Blink Animation | |
+| 10 | Python Import Completions | |
+| 11 | Completion Popup Resize Handle | |
+| 12 | Snippet Tab Expansion | |
+| 13 | Select Next Occurrence | |
+| 14 | Extract Here (Zip/Jar) | |
+| 15 | Open as Text (Binary) | |
+| 16 | Quick Command Palette (Terminal) | |
+| 17 | MCP Status Indicator | |
+| 18 | Markdown Live Preview | |
+| 19 | Source Control Overflow Menu | |
+| 20 | Preview Panel Close | |
+| 21 | Zen Mode Keyboard Exit | |
+| 22 | Find in Files (Keyword Transfer) | |
+| 23 | Recycle Bin Restore | |
+| 24 | Find in File (Keyboard Focus) | |
+| 25 | Cloud Backup Retry | |
+| 26 | YouTube Video in Preview | |
+| 27 | Terminal Notification Toggle | |
+| 28 | Pyright LSP Selection | |
+
