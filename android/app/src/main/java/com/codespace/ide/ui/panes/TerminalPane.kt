@@ -1875,20 +1875,25 @@ internal fun TerminalPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Cmds", color = if (showCustomCmds) Color(0xFFBB86FC) else Color(0xFFCCCCCC), fontSize = 11.sp) }
 
-            // History search — P14-B: tap = full overlay, long-press = quick palette (P14-F)
+            // Quick command palette — P14-F: single-tap toggle (H5 fix: long-press was unreliable)
             Box(
                 Modifier
                     .background(
-                        if (showHistorySearch || showCmdPalette) Color(0xFF1A3A2A) else Color(0xFF2A2A2A),
+                        if (showCmdPalette) Color(0xFF1A3A2A) else Color(0xFF2A2A2A),
                         androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap     = { showHistorySearch = true },
-                            onLongPress = { showCmdPalette = !showCmdPalette },
-                        )
-                    }
+                    .clickable { showCmdPalette = !showCmdPalette }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) { Text("🔍 Hist", color = if (showHistorySearch || showCmdPalette) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+            ) { Text("⚡ Cmds", color = if (showCmdPalette) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
+
+            // History search — P14-B: tap = full overlay
+            Box(
+                Modifier
+                    .background(
+                        if (showHistorySearch) Color(0xFF1A3A2A) else Color(0xFF2A2A2A),
+                        androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { showHistorySearch = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) { Text("🔍 Hist", color = if (showHistorySearch) Color(0xFF4EC9B0) else Color(0xFFCCCCCC), fontSize = 11.sp) }
         }
         }
         HorizontalDivider(color = Color(0xFF2A2A2A))

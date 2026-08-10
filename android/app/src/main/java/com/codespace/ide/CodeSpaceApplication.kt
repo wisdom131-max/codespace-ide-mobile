@@ -33,6 +33,10 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         FeatureToggleStore.init(this)
         super.onCreate()
+        // X7 fix: Start Agent API server on app launch so the MCP status indicator
+        // is green from startup, not just when a terminal session is created.
+        // start() no-ops if already running, so this is safe to call here.
+        com.codespace.ide.agent.AgentApiServer.start(this)
         // CRITICAL: Do NOT acquire WakeLocks or start foreground service here.
         //
         // TECNO HiOS power management kills apps that acquire WakeLocks + start FGS
