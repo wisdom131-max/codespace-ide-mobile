@@ -350,7 +350,7 @@ private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     val stdlib = StdlibCompletions.completionsFor(prefix, lang).map { (label, doc) ->
         Completion(label, CompletionKind.KEYWORD, label, doc)
     }
-    return (snips + stdlib + kw + ty).distinctBy { it.label }.take(15)
+    return (snips + stdlib + kw + ty).distinctBy { it.label }.take(60)
 }
 
 private fun currentWord(text: String, cursor: Int): String {
@@ -696,6 +696,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
+    // NEW (2026-08-10): Resizable completion popup — drag bottom edge to grow/shrink, like VS Code.
+    // Extra height added on top of the default max height (220dp), clamped to available screen space.
+    var completionPopupExtraHeightDp by remember { mutableStateOf(0f) }
     // P41-I: Active snippet edit session — when non-null, Tab/Shift+Tab cycles tab-stops
     var snippetSession by remember { mutableStateOf<SnippetSession?>(null) }
     var showSnippetChoices by remember { mutableStateOf(false) }  // P41-I: choice dropdown visibility
@@ -903,7 +906,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             ranked = ranked.filter { it.source == com.codespace.ide.lsp.CompletionSource.LSP || it.source == com.codespace.ide.lsp.CompletionSource.AI }
         }
         // Map back to Completion for the existing dropdown UI
-        ranked.take(15).map { rc ->
+        // D3/D1-EXPANSION: raised from 15 to 60 to match VS Code parity (scrollable list, not truncated)
+        ranked.take(60).map { rc ->
             val kind = when (rc.kind) {
                 CompletionItemKind.SNIPPET -> CompletionKind.SNIPPET
                 in 2..13 -> CompletionKind.TYPE
@@ -3889,10 +3893,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 offset = IntOffset(popupOffsetX, popupOffsetY),
                 properties = PopupProperties(focusable = false),
             ) {
+                // NEW (2026-08-10): Resizable popup — base max height + user-dragged extra height,
+                // clamped so it never exceeds available screen space above the keyboard.
+                val basePopupMaxDp = if (availableHeightDp > 200) 220f else (availableHeightDp * 0.4f).coerceAtLeast(120f)
+                val popupMaxDp = (basePopupMaxDp + completionPopupExtraHeightDp)
+                    .coerceIn(120f, availableHeightDp.toFloat().coerceAtLeast(120f))
                 Column(
                     modifier = Modifier
                         .widthIn(min = 160.dp, max = 280.dp)
-                        .heightIn(max = if (availableHeightDp > 200) 220.dp else (availableHeightDp * 0.4f).coerceAtLeast(120f).toInt().dp)
+                        .heightIn(max = popupMaxDp.dp)
                         .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
                         .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp))
                         .clickable { } // consume touches to prevent touch-through to editor
@@ -4282,6 +4291,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             }
                         }
+                    }
+                    // NEW (2026-08-10): Drag handle to resize the popup — drag down to grow, up to shrink.
+                    // Matches VS Code's resizable IntelliSense widget seen in vscode.dev testing.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .background(Color(0xFF2D2D2D))
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val dragDp = with(scrollDensity) { dragAmount.y.toDp().value }
+                                    completionPopupExtraHeightDp = (completionPopupExtraHeightDp + dragDp)
+                                        .coerceIn(0f, 400f)
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(28.dp)
+                                .height(3.dp)
+                                .background(Color(0xFF5A5A5A), RoundedCornerShape(2.dp))
+                        )
                     }
                 }
             }

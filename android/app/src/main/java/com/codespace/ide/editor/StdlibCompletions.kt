@@ -23,6 +23,11 @@ object StdlibCompletions {
     )
 
     // Python stdlib modules (for import completions)
+    // D3-EXPANSION (2026-08-10): Full Python 3.x standard library module list, not just ~50 common ones.
+    // This is a hardcoded FALLBACK for when pylsp/jedi isn't running or hasn't responded yet.
+    // NOTE: This will never include third-party pip packages (matplotlib, requests, etc.) —
+    // those can only come from the real LSP (jedi introspects actual installed site-packages).
+    // See AGENTS.md "Import Completion Parity" section for the full plan.
     private val PYTHON_MODULES = listOf(
         "os", "sys", "math", "json", "pathlib", "datetime", "time", "random",
         "collections", "itertools", "functools", "typing", "re", "string",
@@ -33,7 +38,49 @@ object StdlibCompletions {
         "socket", "http", "urllib", "xml", "html", "email", "smtplib",
         "queue", "decimal", "fractions", "statistics", "bisect", "array",
         "weakref", "gc", "atexit", "signal", "mmap", "platform", "uuid",
-    )
+        "abc", "aifc", "antigravity", "asynchat", "asyncore", "audioop",
+        "bdb", "binascii", "bisect", "builtins", "bz2", "cProfile",
+        "calendar", "cgi", "cgitb", "chunk", "cmath", "cmd", "code",
+        "codecs", "codeop", "colorsys", "compileall", "concurrent",
+        "configparser", "contextvars", "copyreg", "crypt", "curses",
+        "dbm", "difflib", "dis", "distutils", "doctest", "encodings",
+        "ensurepip", "faulthandler", "fcntl", "filecmp", "fileinput",
+        "fnmatch", "formatter", "fractions", "ftplib", "getopt", "getpass",
+        "gettext", "graphlib", "grp", "gzip", "hmac", "idlelib", "imaplib",
+        "imghdr", "imp", "importlib", "keyword", "lib2to3", "linecache",
+        "locale", "lzma", "mailbox", "mailcap", "marshal", "mimetypes",
+        "mmap", "modulefinder", "msilib", "msvcrt", "netrc", "nis",
+        "nntplib", "numbers", "opcode", "operator", "optparse", "os",
+        "ossaudiodev", "pdb", "pickletools", "pipes", "pkgutil", "plistlib",
+        "poplib", "posix", "posixpath", "profile", "pstats", "pty",
+        "pwd", "py_compile", "pyclbr", "pydoc", "quopri", "readline",
+        "reprlib", "resource", "rlcompleter", "runpy", "sched", "secrets",
+        "select", "selectors", "shelve", "shlex", "site", "smtpd",
+        "sndhdr", "spwd", "sqlite3", "sre_compile", "sre_constants",
+        "sre_parse", "ssl", "stat", "stringprep", "sunau", "symtable",
+        "sysconfig", "syslog", "tabnanny", "tarfile", "telnetlib",
+        "termios", "textwrap", "this", "threading", "timeit", "tkinter",
+        "token", "tokenize", "tomllib", "trace", "traceback", "tracemalloc",
+        "tty", "turtle", "turtledemo", "types", "unicodedata", "urllib",
+        "venv", "warnings", "wave", "webbrowser", "winreg", "winsound",
+        "wsgiref", "xdrlib", "xmlrpc", "zipapp", "zipfile", "zipimport",
+        "zlib", "zoneinfo",
+        // Common third-party packages (best-effort — only shown if actually installed;
+        // real detection requires jedi/pylsp introspecting the live environment)
+        "requests", "numpy", "pandas", "matplotlib", "flask", "django",
+        "pytest", "setuptools", "pip", "wheel", "yaml", "attr", "attrs",
+        "click", "jinja2", "markupsafe", "certifi", "urllib3", "idna",
+        "charset_normalizer", "six", "dateutil", "pytz", "cryptography",
+        "cffi", "pycparser", "packaging", "pyparsing", "mock", "coverage",
+        "tox", "black", "flake8", "pylint", "mypy", "mypy_extensions",
+        "isort", "autopep8", "pycodestyle", "pyflakes", "jedi", "parso",
+        "openpyxl", "xlrd", "xlwt", "pillow", "PIL", "scipy", "sklearn",
+        "sympy", "networkx", "beautifulsoup4", "bs4", "lxml", "html5lib",
+        "aiohttp", "httpx", "websockets", "sqlalchemy", "pymongo", "redis",
+        "celery", "gunicorn", "uvicorn", "fastapi", "pydantic", "starlette",
+        "boto3", "botocore", "google", "protobuf", "grpc", "oauthlib",
+        "opentracing", "objgraph", "odbc", "olefile", "m3u8",
+    ).distinct()
 
     // Python math module members (for "math." completions)
     private val PYTHON_MATH_MEMBERS = listOf(
