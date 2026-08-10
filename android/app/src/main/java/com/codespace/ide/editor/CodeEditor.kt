@@ -4465,6 +4465,7 @@ private fun GotoDefinitionDialog(
     onScrollToLine: (Int) -> Unit,
     onOpenFileAtLine: (String, Int) -> Unit,
 ) {
+    val colors = LocalEditorColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.background,

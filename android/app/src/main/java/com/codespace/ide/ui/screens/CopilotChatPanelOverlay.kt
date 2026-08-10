@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +44,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import com.codespace.ide.agent.AgentTools
+import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.ai.WorkspaceContextProvider
 import com.codespace.ide.domain.AiProviderId
@@ -453,10 +456,24 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
             val toolCalls = AgentTools.parseToolCalls(content)
             val toolResults = StringBuilder()
             for ((toolName, toolArgs) in toolCalls) {
-                val result = AgentTools.executeTool(toolName, toolArgs, context)
-                toolResults.append("[Tool: $toolName] Result:\n$result\n\n")
+                // P-FLOW: In Manual flow mode, pause and wait for the user to tap
+                // Approve/Reject on the floating card before running this tool call.
+                // In Auto mode (default), awaitApproval() returns true immediately.
+                val argsSummary = toolArgs.toString().take(160)
+                val approved = com.codespace.ide.agent.AgentFlowGate.awaitApproval(toolName, argsSummary)
+                val result = if (approved) {
+                    AgentTools.executeTool(toolName, toolArgs, context)
+                } else {
+                    "Skipped — rejected by user in Manual Flow Mode."
+                }
+                val resultForTranscript = if (ProjectSettingsStore.verboseToolOutput.value) {
+                    result
+                } else {
+                    result.lineSequence().firstOrNull()?.take(200) ?: result.take(200)
+                }
+                toolResults.append("[Tool: $toolName] Result:\n$resultForTranscript\n\n")
                 // Auto-open file in editor + switch preview when AI writes a visual file
-                if (toolName == "write_file") {
+                if (approved && toolName == "write_file") {
                     val writtenPath = try { toolArgs.getString("path") } catch (_: Exception) { "" }
                     if (writtenPath.isNotBlank()) {
                         val lower = writtenPath.lowercase()
@@ -1247,6 +1264,55 @@ internal fun CopilotChatPanelInline(
             }
         }
             } // end chat column
+        }
+
+        // P-FLOW: Approve/Reject floating card for Manual Flow Mode
+        val pendingApproval = com.codespace.ide.agent.AgentFlowGate.pending
+        pendingApproval.let { pa ->
+            val ap = pa.value
+            if (ap != null) {
+                Box(
+                    Modifier.fillMaxSize().background(Color(0x80000000)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Card(
+                        Modifier.width(280.dp).padding(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(8.dp),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("AI Tool Approval",
+                                color = Color(0xFFE0E0E0),
+                                fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Mode: Manual Flow", fontSize = 11.sp, color = Color(0xFF888888))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Tool: ${'$'}{ap.toolName}",
+                                color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                            Spacer(Modifier.height(6.dp))
+                            Text(ap.argsSummary,
+                                color = Color(0xFF999999), fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace, maxLines = 4,
+                                overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(16.dp))
+                            Row(Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { com.codespace.ide.agent.AgentFlowGate.reject() },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFCC4444)),
+                                ) { Text("Reject") }
+                                Button(
+                                    onClick = { com.codespace.ide.agent.AgentFlowGate.approve() },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                ) { Text("Approve") }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -608,21 +608,7 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── P41-R: Formatter Selection ──────────────────────────────────
-            Text("Feature Toggles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
-            FeatureToggleStore.toggles.forEach { toggle ->
-                val state = remember(toggle.key) { FeatureToggleStore.state(toggle.key) }
-                ListItem(
-                    headlineContent = { Text(toggle.label) },
-                    supportingContent = { Text(toggle.description) },
-                    trailingContent = {
-                        Switch(
-                            checked = state.value,
-                            onCheckedChange = { state.value = it; FeatureToggleStore.set(toggle.key, it) }
-                        )
-                    }
-                )
-                HorizontalDivider()
-            }
+            // Feature Toggles moved to In-Project Settings (gear menu → In-Project Settings)
             Text("Formatter Selection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             Text(
                 "Choose your preferred code formatter for each language.",

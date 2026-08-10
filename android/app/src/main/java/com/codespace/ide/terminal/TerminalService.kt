@@ -232,7 +232,7 @@ class TerminalService : Service() {
     private fun buildNotification(text: String): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "Termux App", NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, "VN Code", NotificationManager.IMPORTANCE_LOW
             )
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }

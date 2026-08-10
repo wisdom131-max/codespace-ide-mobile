@@ -572,6 +572,7 @@ fun ProjectShellScreen(
     val terminalCommandToRunMs = remember { mutableStateOf<String?>(null) }; var terminalCommandToRun by terminalCommandToRunMs
     val previewPortMs = remember { mutableStateOf<Int?>(null) }; var _previewPort by previewPortMs
     var showGearMenu       by remember { mutableStateOf(false) }
+    var showInProjectSettings by remember { mutableStateOf(false) }
     var showRunMenu        by remember { mutableStateOf(false) }
     var showPanelMenu      by remember { mutableStateOf(false) }
     var showExplorerMore   by remember { mutableStateOf(false) }
@@ -877,6 +878,7 @@ fun ProjectShellScreen(
             showMoreMenu            -> showMoreMenu = false
             showPersonMenu          -> showPersonMenu = false
             showGearMenu            -> showGearMenu = false
+            showInProjectSettings   -> showInProjectSettings = false
             showRunMenu             -> showRunMenu = false
             showColorTheme          -> showColorTheme = false
             showChatPanel           -> showChatPanel = false
@@ -1358,6 +1360,8 @@ fun ProjectShellScreen(
             onShowPersonMenuChange = { showPersonMenu = it },
             showGearMenu = showGearMenu,
             onShowGearMenuChange = { showGearMenu = it },
+            showInProjectSettings = showInProjectSettings,
+            onShowInProjectSettingsChange = { showInProjectSettings = it },
             commandQuery = commandQuery,
             onCommandQueryChange = { commandQuery = it },
             showNotifDrawer = showNotifDrawer,
@@ -1423,6 +1427,8 @@ private fun PssOverlays(
     onShowPersonMenuChange: (Boolean) -> Unit,
     showGearMenu: Boolean,
     onShowGearMenuChange: (Boolean) -> Unit,
+    showInProjectSettings: Boolean,
+    onShowInProjectSettingsChange: (Boolean) -> Unit,
     commandQuery: String,
     onCommandQueryChange: (String) -> Unit,
     showNotifDrawer: Boolean,
@@ -1617,6 +1623,16 @@ private fun PssOverlays(
                         item {
                             Row(
                                 Modifier.fillMaxWidth()
+                                    .clickable { onShowInProjectSettingsChange(true); onShowGearMenuChange(false) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("In-Project Settings", fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
                                     .clickable { onShowGearMenuChange(false); onOpenSettings() }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1637,6 +1653,11 @@ private fun PssOverlays(
                     }
                 }
             }
+        }
+
+        // P-FLOW: In-Project Settings floating dialog
+        if (showInProjectSettings) {
+            InProjectSettingsDialog(onDismiss = { onShowInProjectSettingsChange(false) })
         }
 
         // Person / Account menu
