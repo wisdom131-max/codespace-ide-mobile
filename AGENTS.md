@@ -13640,3 +13640,104 @@ Test 29 (no mobile data for AI model download)
 26. **Wired-in servers restored** — Bring back removed LSP servers, show all in In-Project Settings.
 27. **Lightbulb drift after extended use** (Test 3 note) — Works initially but drifts after long session.
 
+
+---
+
+## IN-PROJECT SETTINGS TOGGLE AUDIT + FIXES (2026-08-11, commit 7915b27)
+
+### Full Toggle Audit Results
+
+Every toggle in the In-Project Settings → Editor Feature Toggles section was audited.
+Below is the status of each BEFORE the fix and what was done:
+
+| Toggle Key | Label | Was Wired? | Fix Applied |
+|------------|-------|-------------|------------|
+| `word_wrap` | Word wrap | ✅ Already reactive via `FeatureToggleStore.state()` param | Toolbar toggle now persists via `FeatureToggleStore.set()` |
+| `inlay_hints` | Inlay hints | ✅ Already reactive via `FeatureToggleStore.state()` param + `toggles.showInlayHints` | Toolbar toggle now persists via `FeatureToggleStore.set()` |
+| `minimap` | Minimap | ❌ Used `remember(showMinimap)` — NOT reactive to Settings changes | Now uses `FeatureToggleStore.state("minimap")` — fully reactive |
+| `code_lens` | CodeLens | ✅ Already wired via `toggles.showCodeLens` | No fix needed |
+| `sticky_scroll` | Sticky scroll | ✅ Already wired via `toggles.showStickyScroll` | No fix needed |
+| `error_lens` | Error lens | ✅ Already wired via `toggles.showErrorLens` | No fix needed |
+| `color_swatches` | Color swatches | ✅ Already wired via `toggles.showColorSwatches` | No fix needed |
+| `document_links` | Document links | ✅ Already wired via `toggles.showDocumentLinks` | No fix needed |
+| `ghost_text` | Ghost text | ❌ Overlay and AI fetch had NO toggle check | Both overlay AND AI fetch now gated by `toggles.showGhostText` |
+| `merge_conflicts` | Merge conflicts | ✅ Already wired via `toggles.showMergeConflicts` | No fix needed |
+| `lsp_highlights` | LSP highlights | ✅ Already wired via `toggles.showLspHighlights` | No fix needed |
+
+### Non-Toggle Settings Audit (all confirmed working)
+
+| Setting | Wired? | Where Used |
+|---------|--------|------------|
+| Flow Mode (Auto/Manual) | ✅ | `AgentFlowGate.kt` — gates agent auto-execution |
+| Verbose Tool Output | ✅ | `CopilotChatPanelOverlay.kt` — controls tool output detail in chat |
+| Task Notify Threshold | ✅ | `LspManager.kt` — notifications fire only above threshold |
+| Terminal Notifications | ✅ | `TerminalService.kt` — controls foreground notification visibility |
+| Verbose Download Notify | ✅ | `LspManager.kt` — controls download progress notifications |
+| Cursor Blink Style | ✅ | `CodeEditor.kt:5156` — controls cursor animation (Solid/Blink/Phase/Smooth/Expand) |
+| Diagnostics Source | ✅ | `LspManager.kt` — switches between Pyright and Jedi |
+| Pyright Version | ✅ | `LspManager.kt:692` — used in pyright install command |
+| Pyright Node Args | ✅ | `LspManager.kt:691` — passed to node when launching pyright |
+| Zen Exit Box Size | ✅ | Controls draggable Zen Mode exit button size |
+
+### What Changed (3 files, commit 7915b27)
+
+**`FeatureToggleStore.kt`:**
+- `toEditorFeatureToggles()` now includes `showMinimap` and `showWordWrap`
+
+**`CodeEditor.kt`:**
+- `EditorFeatureToggles` data class: added `showMinimap` and `showWordWrap` fields
+- `showMinimapState`: changed from `remember { mutableStateOf(showMinimap) }` to `FeatureToggleStore.state("minimap")` — now reactive
+- Ghost text overlay (line ~3771): gated by `toggles.showGhostText &&`
+- Ghost text AI fetch (line ~1002): gated by `toggles.showGhostText &&`
+- Select All Occurrences: popup dismisses FIRST (`showLspMenu = false` before selection), then scrolls to show the match using `vScroll.animateScrollTo()`
+- Select Next Occurrence: same treatment — dismiss first, scroll after, case-insensitive matching
+
+**`ProjectShellScreen.kt`:**
+- Word wrap toolbar toggle: `FeatureToggleStore.set("word_wrap", !wordWrap)` instead of `wordWrap = !wordWrap` — now persists
+- Inlay hints toolbar toggle: `FeatureToggleStore.set("inlay_hints", !showInlayHints)` instead of `showInlayHints = !showInlayHints` — now persists
+
+### How to Test Each Fix
+
+**Test A — Minimap Toggle (Test 31 re-test):**
+1. Open any file in the editor
+2. Open 3-dot menu → In-Project Settings → Editor Feature Toggles
+3. Toggle "Minimap" OFF
+4. Go back to the editor
+5. EXPECT: Minimap panel on the right side disappears immediately
+6. Toggle "Minimap" ON, go back
+7. EXPECT: Minimap reappears
+
+**Test B — Ghost Text Toggle:**
+1. Open a Python file, type some code
+2. Confirm ghost text suggestions appear (dimmed text after cursor)
+3. Open In-Project Settings → Editor Feature Toggles
+4. Toggle "Ghost text" OFF
+5. Go back to editor, type more code
+6. EXPECT: No ghost text suggestions appear
+7. Toggle "Ghost text" ON, type again
+8. EXPECT: Ghost text suggestions return
+
+**Test C — Word Wrap Toggle Persists:**
+1. Tap the word-wrap icon (↵) in the toolbar to toggle ON
+2. Long lines should wrap instead of horizontal scroll
+3. Close the app completely (force stop or swipe away)
+4. Reopen the app and the same file
+5. EXPECT: Word wrap is still ON (previously it would reset)
+
+**Test D — Inlay Hints Toggle Persists:**
+1. Tap the inlay-hints icon (⊕) in the toolbar to toggle OFF
+2. Close the app completely
+3. Reopen the app and the same file
+4. EXPECT: Inlay hints are still OFF (previously it would reset)
+
+**Test E — Select All Occurrences (Test 6 re-test):**
+1. Open a file with a word that appears multiple times (e.g., "value" in a Python file)
+2. Long-press on the word → 3-dot menu → Select All Occurrences
+3. EXPECT: Popup closes immediately, all occurrences are highlighted, first match is scrolled into view
+4. You should be able to SEE the selections clearly (popup no longer blocks)
+
+**Test F — Select Next Occurrence:**
+1. Long-press on a word → 3-dot menu → Select Next Occurrence
+2. EXPECT: Popup closes, the next occurrence of that word is selected and scrolled into view
+3. Tap again from the menu to cycle to the next one
+4. EXPECT: Each time, popup closes first and selection jumps to the next match
