@@ -4550,6 +4550,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
     callHierarchyIncoming: List<com.codespace.ide.lsp.IncomingCall>,
     callHierarchyOutgoing: List<com.codespace.ide.lsp.OutgoingCall>,
     onDismissCallHierarchy: () -> Unit,
+    onDismissTypeHierarchy: () -> Unit,
     showTypeHierarchy: Boolean,
     typeHierarchyRoot: TypeHierarchyItem?,
     typeHierarchySupertypes: List<com.codespace.ide.lsp.TypeHierarchyItem>,
