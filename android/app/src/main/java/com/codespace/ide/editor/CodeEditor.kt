@@ -1,4 +1,11 @@
 package com.codespace.ide.editor
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.animation.core.infiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 
 import androidx.compose.foundation.background
 import org.json.JSONObject
