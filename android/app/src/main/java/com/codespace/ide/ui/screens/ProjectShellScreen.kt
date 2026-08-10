@@ -365,7 +365,7 @@ private data class NavEntry(val path: String, val line: Int = 0)
 private fun PssTopBar(
     projectName: String,
     currentTheme: String,
-    openMenuBar: String?,  // P34-NOTIF: notifUnread removed — bell reads from store
+    openMenuBar: String?,
     bgColor: Color,
     tabTextInactive: Color,
     dividerColor: Color,
@@ -374,23 +374,27 @@ private fun PssTopBar(
     onOpenMenuBarChange: (String?) -> Unit,
     onBack: () -> Unit,
     onShowCommandPalette: () -> Unit,
-    onShowTerminal: () -> Unit,
-    onRunProgram: () -> Unit,
-    onShowBuild: () -> Unit,
-    onShowSplit: () -> Unit,
-    onToggleChat: () -> Unit,
+    onToggleSidebar: () -> Unit,
+    onToggleBottomPanel: () -> Unit,
+    onToggleSecondarySidebar: () -> Unit,
+    onEditorLayout: () -> Unit,
     onMenuAction: (String) -> Unit,
 ) {
-    // ── Top Bar (VS Code style)
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var openSubmenu by remember { mutableStateOf<String?>(null) }
+
+    // ── Top Bar (VS Code style) — single row, no separate menu bar
     Row(
         Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(Modifier.width(4.dp))
+        // Back button
         Box(Modifier.size(44.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(22.dp))
         }
+        // Centered search pill
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(
                 Modifier.background(Color(0xFFECECEC), RoundedCornerShape(4.dp))
@@ -404,31 +408,75 @@ private fun PssTopBar(
                 Text(projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1)
             }
         }
-        Icon(Icons.Default.Computer, null, tint = tabTextInactive, modifier = Modifier.size(20.dp).clickable { onShowTerminal() })
-        Spacer(Modifier.width(8.dp))
-        Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp).clickable { onRunProgram() })
-        Spacer(Modifier.width(4.dp))
-        Icon(Icons.Default.Build, null, tint = Color(0xFF007ACC), modifier = Modifier.size(20.dp).clickable { onShowBuild() })
-        Spacer(Modifier.width(8.dp))
-        Icon(Icons.Default.VerticalSplit, null, tint = Color(0xFF007ACC), modifier = Modifier.size(20.dp).clickable { onShowSplit() })
-        Spacer(Modifier.width(8.dp))
-        AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleChat() })
-        Spacer(Modifier.width(8.dp))
-    }
-    // ── Menu bar
-    Row(Modifier.fillMaxWidth().height(26.dp).background(bgColor), verticalAlignment = Alignment.CenterVertically) {
-        MENU_BAR.forEach { menuItem ->
-            Box {
-                val isOpen = openMenuBar == menuItem.label
-                Text(
-                    menuItem.label, fontSize = 12.sp,
-                    color = if (isOpen) menuText else menuText.copy(alpha = 0.85f),
-                    modifier = Modifier.background(if (isOpen) menuBg else Color.Transparent)
-                        .clickable { onOpenMenuBarChange(if (isOpen) null else menuItem.label) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-                androidx.compose.material3.DropdownMenu(expanded = isOpen, onDismissRequest = { onOpenMenuBarChange(null) }) {
-                    menuItem.items.forEach { action ->
+        // ── VS Code-style layout box icons (top-right) ──
+        // Editor Layout (split view)
+        Icon(
+            Icons.Default.GridView, null,
+            tint = tabTextInactive,
+            modifier = Modifier.size(20.dp).clickable { onEditorLayout() },
+        )
+        Spacer(Modifier.width(10.dp))
+        // Toggle Sidebar (left panel)
+        Icon(
+            Icons.Default.ViewSidebar, null,
+            tint = tabTextInactive,
+            modifier = Modifier.size(20.dp).clickable { onToggleSidebar() },
+        )
+        Spacer(Modifier.width(10.dp))
+        // Toggle Bottom Panel (terminal/build/output)
+        Icon(
+            Icons.Default.VerticalAlignBottom, null,
+            tint = tabTextInactive,
+            modifier = Modifier.size(20.dp).clickable { onToggleBottomPanel() },
+        )
+        Spacer(Modifier.width(10.dp))
+        // Toggle Secondary Sidebar (AI chat — right panel)
+        AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleSecondarySidebar() })
+        Spacer(Modifier.width(10.dp))
+        // ── 3-dot overflow menu (replaces File/Edit/View/Go/Run/Terminal/Help bar) ──
+        Box {
+            Icon(
+                Icons.Default.MoreVert, null,
+                tint = tabTextInactive,
+                modifier = Modifier.size(20.dp).clickable { showOverflowMenu = !showOverflowMenu },
+            )
+            androidx.compose.material3.DropdownMenu(
+                expanded = showOverflowMenu,
+                onDismissRequest = { showOverflowMenu = false; openSubmenu = null },
+            ) {
+                if (openSubmenu == null) {
+                    // First level: category names
+                    MENU_BAR.forEach { menuItem ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(menuItem.label, fontSize = 13.sp, color = menuText, fontWeight = FontWeight.Medium)
+                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = menuText.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                                }
+                            },
+                            onClick = { openSubmenu = menuItem.label },
+                        )
+                    }
+                    HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(currentTheme, fontSize = 11.sp, color = menuText.copy(alpha = 0.5f)) },
+                        onClick = { onMenuAction("Preferences"); showOverflowMenu = false },
+                    )
+                } else {
+                    // Second level: items of selected category
+                    val menuItem = MENU_BAR.find { it.label == openSubmenu }
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = menuText.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(openSubmenu!!, fontSize = 13.sp, color = menuText, fontWeight = FontWeight.Medium)
+                            }
+                        },
+                        onClick = { openSubmenu = null },
+                    )
+                    HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                    menuItem?.items?.forEach { action ->
                         if (action.divider) {
                             HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
                         } else {
@@ -441,15 +489,14 @@ private fun PssTopBar(
                                         }
                                     }
                                 },
-                                onClick = { onMenuAction(action.label) },
+                                onClick = { onMenuAction(action.label); showOverflowMenu = false; openSubmenu = null },
                             )
                         }
                     }
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
-        Text(currentTheme, fontSize = 10.sp, color = menuText.copy(alpha = 0.5f), modifier = Modifier.padding(end = 8.dp))
+        Spacer(Modifier.width(8.dp))
     }
 }
 
@@ -898,8 +945,7 @@ fun ProjectShellScreen(
             PssTopBar(
                 projectName = projectName,
                 currentTheme = currentTheme,
-                openMenuBar = openMenuBar,  // P34-NOTIF: notifUnread removed
-
+                openMenuBar = openMenuBar,
                 bgColor = BgColor,
                 tabTextInactive = TabTextInactive,
                 dividerColor = DividerColor,
@@ -908,11 +954,10 @@ fun ProjectShellScreen(
                 onOpenMenuBarChange = { openMenuBar = it },
                 onBack = onBack,
                 onShowCommandPalette = { showCommandPalette = true },
-                onShowTerminal = { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL },
-                onRunProgram = { handleMenuAction("Run Program") },
-                onShowBuild = { showBottomPanel = true; activeBottomTab = BottomTab.BUILD },
-                onShowSplit = { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT },
-                onToggleChat = { showChatPanel = !showChatPanel },
+                onToggleSidebar = { activePanel = if (activePanel == null) SidePanel.EXPLORER else null },
+                onToggleBottomPanel = { showBottomPanel = !showBottomPanel },
+                onToggleSecondarySidebar = { showChatPanel = !showChatPanel },
+                onEditorLayout = { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
             ) }
 
