@@ -12055,7 +12055,21 @@ All additive/surgical — no existing behavior changes except the Termux string
 fix and the Feature Toggles relocation. Default Flow Mode is AUTO, so nothing
 changes for existing users until they explicitly switch to Manual.
 
-**Status:** implementing now.
+**Status:** IN PROGRESS — partial implementation committed locally (not yet pushed).
+
+### Progress tracker
+| Step | File | Status |
+|------|------|--------|
+| 1 | `editor/ProjectSettingsStore.kt` | ✅ DONE — FlowMode enum + verboseToolOutput, SharedPreferences-backed |
+| 2 | `agent/AgentFlowGate.kt` | ✅ DONE — suspend gate with CompletableDeferred, AUTO returns immediately |
+| 3 | `ui/screens/CopilotChatPanelOverlay.kt` — wire gate into tool loop | ✅ DONE — `awaitApproval()` called before `executeTool()`, verbose/compact formatting |
+| 4 | `ui/screens/CopilotChatPanelOverlay.kt` — Approve/Reject floating card UI | ⬜ TODO |
+| 5 | `ui/screens/InProjectSettingsDialog.kt` (NEW) | ⬜ TODO |
+| 6 | `ui/screens/ProjectShellScreen.kt` — gear menu entry + state | ⬜ TODO |
+| 7 | `ui/screens/SettingsScreen.kt` — remove Feature Toggles section | ⬜ TODO |
+| 8 | `terminal/TerminalService.kt` — "Termux App" → "VN Code" | ⬜ TODO |
+| 9 | `CodeSpaceApplication.kt` — `ProjectSettingsStore.init()` | ⬜ TODO |
+| 10 | Compile check + commit + push | ⬜ TODO |
 
 
 
