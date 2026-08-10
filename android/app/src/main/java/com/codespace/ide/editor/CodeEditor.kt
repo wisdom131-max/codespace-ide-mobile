@@ -4489,10 +4489,13 @@ private fun GotoDefinitionDialog(
             }
         },
         text = {
-            if (results.isEmpty()) {
+            if (results.isEmpty() && (crossFileResults == null || crossFileResults.isEmpty())) {
                 Text("No declaration found in current file or project.", color = Color(0xFF888888), fontSize = 12.sp)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (results.isNotEmpty()) {
+                        Text("In this file", color = Color(0xFF888888), fontSize = 10.sp)
+                    }
                     results.forEach { def ->
                         TextButton(
                             onClick = { onScrollToLine(def.line); onDismiss() },
