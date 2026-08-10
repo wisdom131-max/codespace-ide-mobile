@@ -174,6 +174,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.animation:animation-core")
     implementation("androidx.webkit:webkit:1.14.0")  // P48: WebSettingsCompat.setUserAgentMetadata for Sec-CH-UA override
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.navigation:navigation-compose:2.7.7")
