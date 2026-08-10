@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.domain.Language
+import com.codespace.ide.editor.DiagnosticsSource
+import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
 import org.json.JSONObject
@@ -468,7 +470,11 @@ object LspManager {
      * to the install command here and runs `npm install -g typescript@5.6.3` to repair.
      */
     fun installServer(context: Context, language: Language): String {
-        val config = configs[language] ?: return "No LSP server configured for ${language.displayName}"
+        var config = configs[language] ?: return "No LSP server configured for ${language.displayName}"
+        // P-PYRIGHT: Use Pyright config if Python + diagnostics source is PYRIGHT
+        if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
+            config = pyrightConfig
+        }
         if (isServerInstalled(context, language)) {
             AppOutputLog.log("[LSP] ${language.displayName} install check PASSED (binary + runtime files present) — skipping install", "lsp")
             return "${language.displayName} LSP server already installed"
@@ -476,9 +482,45 @@ object LspManager {
         AppOutputLog.log("[LSP] ${language.displayName} install check FAILED (binary missing or runtime files broken) — running install/repair", "lsp")
         Log.d(TAG, "Installing LSP server for ${language.displayName}...")
         AppOutputLog.log("[LSP] Installing ${language.displayName} server (timeout: ${config.installTimeout}s) — this may take 1-2 minutes…", "lsp")
+        // P-NOTIFY: Verbose download notification — show detailed progress in output log if enabled
+        if (ProjectSettingsStore.verboseDownloadNotify.value) {
+            AppOutputLog.log("[LSP] [Verbose] Install command: ${config.installCommand.take(300)}", "lsp")
+        }
         val installOutput = ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout, logToOutput = true)
         AppOutputLog.log("[LSP] Install output for ${language.displayName}: ${installOutput.take(200).trim()}", "lsp")
+        // P-NOTIFY: Task completion notification — fire system notification if threshold allows
+        notifyTaskComplete(context, "${language.displayName} LSP server installed")
         return installOutput
+    }
+
+    /**
+     * P-NOTIFY: Fire a system notification when a task completes, respecting the
+     * task notification threshold from In-Project Settings.
+     * - threshold -1: never notify
+     * - threshold 0: always notify
+     * - threshold N: notify only if task took > N ms (caller passes elapsed time or 0 for instant)
+     */
+    private fun notifyTaskComplete(context: Context, message: String, elapsedMs: Long = 0) {
+        try {
+            val threshold = ProjectSettingsStore.taskNotifyThresholdMs.value
+            if (threshold == -1) return  // never
+            if (threshold > 0 && elapsedMs < threshold) return  // under threshold
+            val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            val channelId = "task_complete"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(channelId, "Task Complete", android.app.NotificationManager.IMPORTANCE_LOW)
+                nm.createNotificationChannel(channel)
+            }
+            val notif = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                .setContentTitle("VN Code")
+                .setContentText(message)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setAutoCancel(true)
+                .build()
+            nm.notify(System.currentTimeMillis().toInt(), notif)
+        } catch (_: Exception) {
+            // Notification failed — don't crash the app
+        }
     }
 
     /**
@@ -489,10 +531,40 @@ object LspManager {
      * BUG-FIX: If a server is already running and healthy for this language,
      * reuse it instead of killing and restarting. Only kill dead processes.
      */
+
+    /** P-PYRIGHT: Pyright language server config — Microsoft's Node.js-based Python LSP. */
+    private val pyrightConfig = ServerConfig(
+        Language.PYTHON,
+        "pyright-langserver",
+        listOf("--stdio"),
+        // Check: node + pyright-langserver must be present
+        "which pyright-langserver && echo OK",
+        // Install: pyright is an npm package — requires Node.js (already installed for tsserver)
+        "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+            "dpkg --configure -a 2>/dev/null; " +
+            "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+            "( apt-get install -f -y 2>/dev/null; " +
+            "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+            "apt-get autoremove -y 2>/dev/null; " +
+            "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+            "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+            "apt-get install -y nodejs ); " +
+            "npm config set prefix /usr/local 2>/dev/null; " +
+            "npm install -g pyright",
+        300,
+    )
+
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
-        val config = configs[language] ?: run {
+        // P-PYRIGHT: If Python and diagnostics source is set to Pyright, use that config
+        var config = configs[language] ?: run {
             AppOutputLog.log("[LSP] No server config for ${language.displayName} — language not supported", "lsp")
             return false
+        }
+        if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
+            config = pyrightConfig
+            AppOutputLog.log("[LSP] Using Pyright (Microsoft) instead of pylsp for Python — per In-Project Settings", "lsp")
         }
         Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
         AppOutputLog.log("[LSP] startServer BEGIN: ${language.displayName} workspace=$workspacePath", "lsp")
@@ -614,7 +686,25 @@ object LspManager {
             it != "--bind=/proc/self/fd/2:/dev/stderr"
         }
         val headArgs = filteredArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
-        val serverCmd = config.command + if (config.args.isEmpty()) "" else " " + config.args.joinToString(" ")
+        // P-PYRIGHT: Inject Node.js arguments from In-Project Settings when using Pyright
+        val effectiveCmd = if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
+            val nodeArgs = ProjectSettingsStore.pyrightNodeArgs.value.trim()
+            val pyrightVer = ProjectSettingsStore.pyrightVersion.value.trim()
+            val baseCmd = if (pyrightVer.isNotEmpty() && pyrightVer.startsWith("/")) {
+                // User specified a path to local pyright-langserver.js
+                "node $nodeArgs $pyrightVer --stdio"
+            } else if (pyrightVer.isNotEmpty()) {
+                // User specified a version — npm installs to /usr/local/lib/node_modules/pyright
+                "node $nodeArgs /usr/local/lib/node_modules/pyright/langserver.index.js --stdio"
+            } else {
+                // Default: use the installed pyright-langserver binary
+                "node $nodeArgs \$(which pyright-langserver) --stdio"
+            }
+            baseCmd
+        } else {
+            config.command + if (config.args.isEmpty()) "" else " " + config.args.joinToString(" ")
+        }
+        val serverCmd = effectiveCmd
         // Source profiles with output redirected to /dev/null, then exec the LSP server.
         // >/dev/null 2>&1 redirects ALL stdout/stderr from the sourcing to /dev/null,
         // so no echo/banner/cat output can reach the JSON-RPC pipe. Environment

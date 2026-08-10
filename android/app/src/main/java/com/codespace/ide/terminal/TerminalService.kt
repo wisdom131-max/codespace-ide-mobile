@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
 import androidx.core.app.NotificationCompat
+import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
@@ -230,6 +231,25 @@ class TerminalService : Service() {
     // ── Notification ──
 
     private fun buildNotification(text: String): Notification {
+        // P-NOTIFY: Respect In-Project Settings > Notifications > Terminal notifications
+        if (!ProjectSettingsStore.terminalNotifications.value) {
+            // User disabled terminal notifications — use a minimal silent notification
+            // (Android requires SOME notification for foreground services, so we keep
+            // it but make it invisible: no content text, lowest priority).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID, "VN Code", NotificationManager.IMPORTANCE_MIN
+                )
+                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            }
+            return NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setShowWhen(false)
+                .setSilent(true)
+                .build()
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID, "VN Code", NotificationManager.IMPORTANCE_LOW

@@ -1543,6 +1543,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             fontFamily = FontFamily.Monospace,
                         )
                     ),
+                    // P-CURSOR: Animated cursor brush based on In-Project Settings > Text Editor > Cursor Blinking
+                    cursorBrush = animatedCursorBrush(colors.cursor),
                     visualTransformation = remember(language, colors, lintErrors, foldedLineIndices, semanticTokens) {
                         SyntaxTransformation(language, colors, lintErrors, foldedLineIndices, semanticTokens)
                     },
@@ -5137,5 +5139,41 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
                 )
             }
         }
+    }
+}
+
+
+// P-CURSOR: Animated cursor brush composable — handles different blink styles
+@androidx.compose.runtime.Composable
+private fun animatedCursorBrush(baseColor: androidx.compose.ui.graphics.Color): androidx.compose.ui.graphics.Brush {
+    val style = ProjectSettingsStore.cursorBlinkStyle.value
+    return when (style) {
+        com.codespace.ide.editor.CursorBlinkStyle.BLINK -> SolidColor(baseColor)
+        com.codespace.ide.editor.CursorBlinkStyle.SOLID -> SolidColor(baseColor)
+        com.codespace.ide.editor.CursorBlinkStyle.PHASE -> {
+            val transition = androidx.compose.animation.core.infiniteTransition(label = "cursorPhase")
+            val alpha by transition.animateFloat(
+                initialValue = 0.3f, targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    androidx.compose.animation.core.tween(1200, easing = androidx.compose.animation.core.LinearEasing),
+                    androidx.compose.animation.core.RepeatMode.Reverse,
+                ),
+                label = "phaseAlpha"
+            )
+            SolidColor(baseColor.copy(alpha = alpha))
+        }
+        com.codespace.ide.editor.CursorBlinkStyle.SMOOTH -> {
+            val transition = androidx.compose.animation.core.infiniteTransition(label = "cursorSmooth")
+            val alpha by transition.animateFloat(
+                initialValue = 0.5f, targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.LinearEasing),
+                    androidx.compose.animation.core.RepeatMode.Reverse,
+                ),
+                label = "smoothAlpha"
+            )
+            SolidColor(baseColor.copy(alpha = alpha))
+        }
+        com.codespace.ide.editor.CursorBlinkStyle.EXPAND -> SolidColor(baseColor)
     }
 }

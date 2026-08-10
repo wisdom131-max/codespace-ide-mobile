@@ -1,38 +1,64 @@
 package com.codespace.ide.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.codespace.ide.editor.CursorBlinkStyle
+import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FlowMode
 import com.codespace.ide.editor.ProjectSettingsStore
 
 /**
- * P-FLOW: "In-Project Settings" floating page — accessible from the gear menu.
- * Dark-themed, VS Code-style settings dialog with:
- *   - AI Agent Flow section (Flow Mode dropdown + Verbose Tool Output checkbox)
- *   - Editor Features section (11 FeatureToggleStore toggles as checkbox rows)
+ * In-Project Settings — VS Code-style settings dialog with search bar,
+ * categorized sidebar, and multiple sections:
+ *
+ *   - AI Agent Flow (Flow Mode, Verbose Tool Output)
+ *   - Editor Features (11 FeatureToggleStore toggles)
+ *   - Notifications (Task completion threshold, Terminal notifications, Verbose download)
+ *   - Text Editor (Cursor blinking style)
+ *   - Python / LSP (Diagnostics source, Pyright version, Node arguments)
  */
 @Composable
 fun InProjectSettingsDialog(onDismiss: () -> Unit) {
     val bg       = Color(0xFF1E1E1E)
-    val surface  = Color(0xFF252526)
+    val sidebarBg = Color(0xFF252526)
+    val surface  = Color(0xFF2D2D2D)
     val textPri  = Color(0xFFE0E0E0)
     val textSec  = Color(0xFF888888)
     val accent   = Color(0xFF4FC3F7)
+    val accentDim = Color(0xFF3794C3)
     val divider  = Color(0xFF333333)
+    val activeCatBg = Color(0xFF37373D)
+
+    var searchQuery by remember { mutableStateOf("") }
+    var activeCategory by remember { mutableStateOf(SettingsCategory.AI_AGENT) }
+
+    val categories = SettingsCategory.entries.toList()
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -40,55 +66,122 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
     ) {
         Surface(modifier = Modifier.fillMaxSize(), color = bg, tonalElevation = 0.dp) {
             Column(Modifier.fillMaxSize()) {
-                // Title bar
+                // ── Title bar with search ──────────────────────────────
                 Row(
-                    Modifier.fillMaxWidth().background(surface)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    Modifier.fillMaxWidth().background(sidebarBg)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("In-Project Settings",
-                        color = textPri, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(Modifier.weight(1f))
+                        color = textPri, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(Modifier.width(16.dp))
+
+                    // Search bar
+                    Box(
+                        Modifier.weight(1f)
+                            .background(Color(0xFF3C3C3C), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Search, null, tint = textSec,
+                                modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                singleLine = true,
+                                textStyle = TextStyle(color = textPri, fontSize = 13.sp),
+                                cursorBrush = SolidColor(accent),
+                                modifier = Modifier.fillMaxWidth(),
+                                decorationBox = { inner ->
+                                    if (searchQuery.isEmpty()) {
+                                        Text("Search settings...",
+                                            color = textSec, fontSize = 13.sp)
+                                    }
+                                    inner()
+                                }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Close, null, tint = textSec, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Close, null, tint = textSec,
+                            modifier = Modifier.size(18.dp))
                     }
                 }
                 HorizontalDivider(color = divider)
 
-                LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                ) {
-                    // ── AI Agent Flow ──────────────────────────────────
-                    item {
-                        SectionHeader("AI Agent Flow", textPri)
-                    }
-                    item {
-                        FlowModeRow(accent, textPri, textSec, surface, divider)
-                    }
-                    item { HorizontalDivider(color = divider, modifier = Modifier.padding(vertical = 4.dp)) }
-                    item {
-                        VerboseToolOutputRow(textPri, textSec, divider)
+                // ── Body: sidebar + content ────────────────────────────
+                Row(Modifier.fillMaxSize()) {
+                    // Sidebar
+                    LazyColumn(
+                        Modifier.width(200.dp).background(sidebarBg).fillMaxHeight(),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                    ) {
+                        items(categories) { category ->
+                            val isActive = activeCategory == category && searchQuery.isEmpty()
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .background(if (isActive) activeCatBg else Color.Transparent)
+                                    .clickable { activeCategory = category; searchQuery = "" }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(category.label,
+                                    color = if (isActive) accent else textPri,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
+                            }
+                        }
                     }
 
-                    item { Spacer(Modifier.height(16.dp)) }
+                    VerticalDivider(color = divider, modifier = Modifier.fillMaxHeight())
 
-                    // ── Editor Features ───────────────────────────────
-                    item {
-                        SectionHeader("Editor Features", textPri)
+                    // Content
+                    val allRows = remember { buildAllSettingsRows() }
+                    val filteredRows = if (searchQuery.isEmpty()) {
+                        allRows.filter { it.category == activeCategory }
+                    } else {
+                        val q = searchQuery.lowercase()
+                        allRows.filter {
+                            it.label.lowercase().contains(q) ||
+                            it.description.lowercase().contains(q) ||
+                            it.category.label.lowercase().contains(q)
+                        }
                     }
-                    items(FeatureToggleStore.toggles.size) { index ->
-                        val toggle = FeatureToggleStore.toggles[index]
-                        val state = remember(toggle.key) { FeatureToggleStore.state(toggle.key) }
-                        ToggleRow(
-                            label = toggle.label,
-                            description = toggle.description,
-                            checked = state.value,
-                            onCheckedChange = { state.value = it; FeatureToggleStore.set(toggle.key, it) },
-                            textPri = textPri,
-                            textSec = textSec,
-                            divider = divider,
+
+                    if (searchQuery.isNotEmpty() && filteredRows.isNotEmpty()) {
+                        Text(
+                            "${filteredRows.size} Setting${if (filteredRows.size > 1) "s" else ""} Found",
+                            color = textSec, fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         )
+                    }
+
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxHeight(),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                    ) {
+                        if (filteredRows.isEmpty()) {
+                            item {
+                                Text("No settings found",
+                                    color = textSec, fontSize = 14.sp,
+                                    modifier = Modifier.padding(24.dp))
+                            }
+                        } else {
+                            var lastCategory: SettingsCategory? = null
+                            for (row in filteredRows) {
+                                if (searchQuery.isNotEmpty() && row.category != lastCategory) {
+                                    item(key = "header_${row.category}") {
+                                        SectionHeader(row.category.label, textPri)
+                                    }
+                                    lastCategory = row.category
+                                }
+                                item(key = row.id) {
+                                    SettingsRowRenderer(row, accent, textPri, textSec, surface, divider)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -96,19 +189,128 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
     }
 }
 
+// ── Data model for settings rows ─────────────────────────────────────
+
+enum class SettingsCategory(val label: String) {
+    AI_AGENT("AI Agent Flow"),
+    EDITOR("Editor Features"),
+    NOTIFICATIONS("Notifications"),
+    TEXT_EDITOR("Text Editor"),
+    PYTHON_LSP("Python / LSP"),
+}
+
+data class SettingsRow(
+    val id: String,
+    val category: SettingsCategory,
+    val label: String,
+    val description: String,
+    val type: RowType,
+)
+
+enum class RowType {
+    FLOW_MODE_DROPDOWN,
+    VERBOSE_TOOL_CHECKBOX,
+    FEATURE_TOGGLE,           // index into FeatureToggleStore.toggles
+    TASK_NOTIFY_THRESHOLD,
+    TERMINAL_NOTIFY_CHECKBOX,
+    VERBOSE_DOWNLOAD_CHECKBOX,
+    CURSOR_BLINK_DROPDOWN,
+    DIAGNOSTICS_SOURCE_DROPDOWN,
+    PYRIGHT_VERSION_INPUT,
+    PYRIGHT_NODE_ARGS_INPUT,
+}
+
+private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
+    add(SettingsRow("flow_mode", SettingsCategory.AI_AGENT, "Flow Mode",
+        "Auto = tool calls execute immediately, Manual = approve each step",
+        RowType.FLOW_MODE_DROPDOWN))
+    add(SettingsRow("verbose_tool", SettingsCategory.AI_AGENT, "Verbose Tool Output",
+        "Show full JSON args/results in agent chat",
+        RowType.VERBOSE_TOOL_CHECKBOX))
+
+    FeatureToggleStore.toggles.forEachIndexed { idx, toggle ->
+        add(SettingsRow("toggle_$idx", SettingsCategory.EDITOR,
+            toggle.label, toggle.description,
+            RowType.FEATURE_TOGGLE))
+    }
+
+    add(SettingsRow("task_notify_threshold", SettingsCategory.NOTIFICATIONS,
+        "Task: Notify On Task Completion",
+        "Show notification when a long-running task finishes (ms, -1 = never, 0 = always)",
+        RowType.TASK_NOTIFY_THRESHOLD))
+    add(SettingsRow("terminal_notify", SettingsCategory.NOTIFICATIONS,
+        "Terminal: Enable Notifications",
+        "Show foreground-service notification while terminal is running",
+        RowType.TERMINAL_NOTIFY_CHECKBOX))
+    add(SettingsRow("verbose_download", SettingsCategory.NOTIFICATIONS,
+        "LSP: Verbose Download Notification",
+        "Show detailed progress for LSP server downloads and installs",
+        RowType.VERBOSE_DOWNLOAD_CHECKBOX))
+
+    add(SettingsRow("cursor_blink", SettingsCategory.TEXT_EDITOR,
+        "Cursor Blinking",
+        "Controls cursor animation style",
+        RowType.CURSOR_BLINK_DROPDOWN))
+
+    add(SettingsRow("diag_source", SettingsCategory.PYTHON_LSP,
+        "Diagnostics Source",
+        "Which language server provides Python completions and diagnostics",
+        RowType.DIAGNOSTICS_SOURCE_DROPDOWN))
+    add(SettingsRow("pyright_version", SettingsCategory.PYTHON_LSP,
+        "Pyright Version",
+        "Version string or path to local pyright-langserver.js (empty = auto-install latest)",
+        RowType.PYRIGHT_VERSION_INPUT))
+    add(SettingsRow("pyright_node_args", SettingsCategory.PYTHON_LSP,
+        "Node Arguments",
+        "CLI arguments passed to Node.js when running Pyright (e.g. --max-old-space-size=8192)",
+        RowType.PYRIGHT_NODE_ARGS_INPUT))
+}
+
+// ── Row renderer ─────────────────────────────────────────────────────
+
+@Composable
+private fun SettingsRowRenderer(
+    row: SettingsRow,
+    accent: Color,
+    textPri: Color,
+    textSec: Color,
+    surface: Color,
+    divider: Color,
+) {
+    when (row.type) {
+        RowType.FLOW_MODE_DROPDOWN -> FlowModeRow(accent, textPri, textSec, divider)
+        RowType.VERBOSE_TOOL_CHECKBOX -> VerboseToolOutputRow(textPri, textSec, divider)
+        RowType.FEATURE_TOGGLE -> {
+            val idx = row.id.removePrefix("toggle_").toInt()
+            val toggle = FeatureToggleStore.toggles[idx]
+            val state = remember(toggle.key) { FeatureToggleStore.state(toggle.key) }
+            ToggleRow(toggle.label, toggle.description, state.value,
+                { state.value = it; FeatureToggleStore.set(toggle.key, it) },
+                textPri, textSec, divider)
+        }
+        RowType.TASK_NOTIFY_THRESHOLD -> TaskNotifyThresholdRow(textPri, textSec, divider)
+        RowType.TERMINAL_NOTIFY_CHECKBOX -> TerminalNotifyRow(textPri, textSec, divider)
+        RowType.VERBOSE_DOWNLOAD_CHECKBOX -> VerboseDownloadRow(textPri, textSec, divider)
+        RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
+        RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
+        RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
+        RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
+    }
+}
+
 @Composable
 private fun SectionHeader(text: String, color: Color) {
     Text(text,
         color = color, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp))
+        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp))
 }
 
 @Composable
-private fun FlowModeRow(accent: Color, textPri: Color, textSec: Color, surface: Color, divider: Color) {
+private fun FlowModeRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
     var expanded by remember { mutableStateOf(false) }
     val currentMode = ProjectSettingsStore.flowMode.value
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -129,28 +331,23 @@ private fun FlowModeRow(accent: Color, textPri: Color, textSec: Color, surface: 
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
                     text = { Text("Auto — execute immediately") },
-                    onClick = {
-                        ProjectSettingsStore.setFlowMode(FlowMode.AUTO)
-                        expanded = false
-                    },
+                    onClick = { ProjectSettingsStore.setFlowMode(FlowMode.AUTO); expanded = false },
                 )
                 DropdownMenuItem(
                     text = { Text("Manual — approve each step") },
-                    onClick = {
-                        ProjectSettingsStore.setFlowMode(FlowMode.MANUAL)
-                        expanded = false
-                    },
+                    onClick = { ProjectSettingsStore.setFlowMode(FlowMode.MANUAL); expanded = false },
                 )
             }
         }
     }
+    HorizontalDivider(color = divider)
 }
 
 @Composable
 private fun VerboseToolOutputRow(textPri: Color, textSec: Color, divider: Color) {
     val verbose = ProjectSettingsStore.verboseToolOutput
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -163,20 +360,17 @@ private fun VerboseToolOutputRow(textPri: Color, textSec: Color, divider: Color)
             colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
         )
     }
+    HorizontalDivider(color = divider)
 }
 
 @Composable
 private fun ToggleRow(
-    label: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    textPri: Color,
-    textSec: Color,
-    divider: Color,
+    label: String, description: String,
+    checked: Boolean, onCheckedChange: (Boolean) -> Unit,
+    textPri: Color, textSec: Color, divider: Color,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -187,6 +381,186 @@ private fun ToggleRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun TaskNotifyThresholdRow(textPri: Color, textSec: Color, divider: Color) {
+    val threshold = ProjectSettingsStore.taskNotifyThresholdMs.value
+    var textValue by remember(threshold) { mutableStateOf(threshold.toString()) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Task: Notify On Task Completion", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Show notification when a long-running task finishes (ms, -1 = never, 0 = always)", color = textSec, fontSize = 11.sp)
+        }
+        OutlinedTextField(
+            value = textValue,
+            onValueChange = { newText ->
+                textValue = newText.filter { it.isDigit() || it == '-' }
+                textValue.toIntOrNull()?.let { ProjectSettingsStore.setTaskNotifyThresholdMs(it) }
+            },
+            modifier = Modifier.width(100.dp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            textStyle = TextStyle(color = textPri, fontSize = 12.sp),
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun TerminalNotifyRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.terminalNotifications
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Terminal: Enable Notifications", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Show foreground-service notification while terminal is running", color = textSec, fontSize = 11.sp)
+        }
+        Checkbox(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setTerminalNotifications(it) },
+            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun VerboseDownloadRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.verboseDownloadNotify
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("LSP: Verbose Download Notification", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Show detailed progress for LSP server downloads and installs", color = textSec, fontSize = 11.sp)
+        }
+        Checkbox(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setVerboseDownloadNotify(it) },
+            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun CursorBlinkRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = ProjectSettingsStore.cursorBlinkStyle.value
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Cursor Blinking", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Controls cursor animation style", color = textSec, fontSize = 11.sp)
+        }
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(current.name.lowercase().replaceFirstChar { it.titlecase() },
+                    fontSize = 12.sp, color = accent)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                CursorBlinkStyle.entries.forEach { style ->
+                    DropdownMenuItem(
+                        text = { Text(style.name.lowercase().replaceFirstChar { it.titlecase() }) },
+                        onClick = {
+                            ProjectSettingsStore.setCursorBlinkStyle(style)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun DiagnosticsSourceRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = ProjectSettingsStore.diagnosticsSource.value
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Diagnostics Source", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Which language server provides Python completions and diagnostics", color = textSec, fontSize = 11.sp)
+        }
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(when (current) {
+                    DiagnosticsSource.PYLSP -> "Pylsp (Jedi)"
+                    DiagnosticsSource.PYRIGHT -> "Pyright"
+                }, fontSize = 12.sp, color = accent)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Pylsp (Jedi) — default") },
+                    onClick = { ProjectSettingsStore.setDiagnosticsSource(DiagnosticsSource.PYLSP); expanded = false },
+                )
+                DropdownMenuItem(
+                    text = { Text("Pyright — Microsoft") },
+                    onClick = { ProjectSettingsStore.setDiagnosticsSource(DiagnosticsSource.PYRIGHT); expanded = false },
+                )
+            }
+        }
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun PyrightVersionRow(textPri: Color, textSec: Color, surface: Color, divider: Color) {
+    var text by remember { mutableStateOf(ProjectSettingsStore.pyrightVersion.value) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Pyright Version", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Version string or path to local pyright-langserver.js (empty = auto-install)", color = textSec, fontSize = 11.sp)
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; ProjectSettingsStore.setPyrightVersion(it) },
+            modifier = Modifier.width(180.dp),
+            singleLine = true,
+            textStyle = TextStyle(color = textPri, fontSize = 12.sp),
+            placeholder = { Text("auto", color = textSec, fontSize = 12.sp) },
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun PyrightNodeArgsRow(textPri: Color, textSec: Color, surface: Color, divider: Color) {
+    var text by remember { mutableStateOf(ProjectSettingsStore.pyrightNodeArgs.value) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Node Arguments", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("CLI arguments passed to Node.js when running Pyright", color = textSec, fontSize = 11.sp)
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; ProjectSettingsStore.setPyrightNodeArgs(it) },
+            modifier = Modifier.width(180.dp),
+            singleLine = true,
+            textStyle = TextStyle(color = textPri, fontSize = 12.sp),
+            placeholder = { Text("--max-old-space-size=8192", color = textSec, fontSize = 12.sp) },
         )
     }
     HorizontalDivider(color = divider)

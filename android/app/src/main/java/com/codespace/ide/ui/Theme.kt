@@ -15,6 +15,7 @@ data class EditorColors(
     val comment: Color, val function: Color, val type: Color,
     val variable: Color, val operator: Color, val selection: Color,
     val currentLine: Color,
+    val cursor: Color = Color(0xFFAEAFAD),
 )
 
 val LocalEditorColors = staticCompositionLocalOf { DraculaEditorColors }
@@ -30,6 +31,7 @@ val DarkEditorColors = EditorColors(
     type = Color(0xFF4EC9B0), variable = Color(0xFF9CDCFE),
     operator = Color(0xFFD4D4D4), selection = Color(0x4089B4FA),
     currentLine = Color(0xFF2A2A2A),
+    cursor = Color(0xFFAEAFAD),
 )
 
 val LightEditorColors = EditorColors(
@@ -40,6 +42,7 @@ val LightEditorColors = EditorColors(
     type = Color(0xFF267F99), variable = Color(0xFF001080),
     operator = Color(0xFF000000), selection = Color(0x401E66F5),
     currentLine = Color(0xFFEEF1FB),
+    cursor = Color(0xFF000000),
 )
 
 val DraculaEditorColors = EditorColors(
@@ -50,6 +53,7 @@ val DraculaEditorColors = EditorColors(
     type = Color(0xFF8BE9FD), variable = Color(0xFFFFB86C),
     operator = Color(0xFFFF79C6), selection = Color(0x44BD93F9),
     currentLine = Color(0xFF44475A),
+    cursor = Color(0xFFF8F8F0),
 )
 
 val AmoledEditorColors = EditorColors(
@@ -60,6 +64,7 @@ val AmoledEditorColors = EditorColors(
     type = Color(0xFF8BE9FD), variable = Color(0xFFFFB86C),
     operator = Color(0xFFFF79C6), selection = Color(0x44BD93F9),
     currentLine = Color(0xFF111111),
+    cursor = Color(0xFFCCCCCC),
 )
 
 val MonokaiEditorColors = EditorColors(
@@ -70,6 +75,7 @@ val MonokaiEditorColors = EditorColors(
     type = Color(0xFF66D9E8), variable = Color(0xFFF8F8F2),
     operator = Color(0xFFF92672), selection = Color(0x44A6E22E),
     currentLine = Color(0xFF3E3D32),
+    cursor = Color(0xFFF8F8F0),
 )
 
 val NordEditorColors = EditorColors(
@@ -80,6 +86,7 @@ val NordEditorColors = EditorColors(
     type = Color(0xFF8FBCBB), variable = Color(0xFFD8DEE9),
     operator = Color(0xFF81A1C1), selection = Color(0x4481A1C1),
     currentLine = Color(0xFF3B4252),
+    cursor = Color(0xFFD8DEE9),
 )
 
 val TokyoNightEditorColors = EditorColors(
@@ -90,6 +97,7 @@ val TokyoNightEditorColors = EditorColors(
     type = Color(0xFF2AC3DE), variable = Color(0xFFC0CAF5),
     operator = Color(0xFF89DDFF), selection = Color(0x449D7CD8),
     currentLine = Color(0xFF24283B),
+    cursor = Color(0xFFC0CAF5),
 )
 
 val OneDarkEditorColors = EditorColors(
@@ -100,6 +108,7 @@ val OneDarkEditorColors = EditorColors(
     type = Color(0xFFE5C07B), variable = Color(0xFFE06C75),
     operator = Color(0xFF56B6C2), selection = Color(0x44528BFF),
     currentLine = Color(0xFF2C313A),
+    cursor = Color(0xFFABB2BF),
 )
 
 val GithubDarkEditorColors = EditorColors(
@@ -110,6 +119,7 @@ val GithubDarkEditorColors = EditorColors(
     type = Color(0xFFFFA657), variable = Color(0xFFE6EDF3),
     operator = Color(0xFFFF7B72), selection = Color(0x443B5070),
     currentLine = Color(0xFF161B22),
+    cursor = Color(0xFFE6EDF3),
 )
 
 val GithubLightEditorColors = EditorColors(
@@ -120,6 +130,7 @@ val GithubLightEditorColors = EditorColors(
     type = Color(0xFFCF222E), variable = Color(0xFF1F2328),
     operator = Color(0xFFCF222E), selection = Color(0x440550AE),
     currentLine = Color(0xFFF6F8FA),
+    cursor = Color(0xFF1F2328),
 )
 
 val EyeCareEditorColors = EditorColors(
@@ -130,6 +141,7 @@ val EyeCareEditorColors = EditorColors(
     type = Color(0xFF7A3A5A), variable = Color(0xFF3C3328),
     operator = Color(0xFF7A4F3A), selection = Color(0x443A5A7A),
     currentLine = Color(0xFFEDE8DF),
+    cursor = Color(0xFF3C3328),
 )
 val CatppuccinEditorColors = EditorColors(
     background = Color(0xFF1E1E2E), gutter = Color(0xFF6C7086),
@@ -139,6 +151,7 @@ val CatppuccinEditorColors = EditorColors(
     type = Color(0xFFF9E2AF), variable = Color(0xFFF38BA8),
     operator = Color(0xFF89DCEB), selection = Color(0x4089B4FA),
     currentLine = Color(0xFF313244),
+    cursor = Color(0xFFF5E0DC),
 )
 
 // ── Material color schemes ───────────────────────────────────────────────────

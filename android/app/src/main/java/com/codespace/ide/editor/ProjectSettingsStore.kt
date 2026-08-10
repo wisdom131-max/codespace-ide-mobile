@@ -6,23 +6,56 @@ import androidx.compose.runtime.mutableStateOf
 
 /**
  * P-FLOW: Settings backing the "In-Project Settings" floating page (gear menu).
- * Persisted in SharedPreferences, mirrors the FeatureToggleStore pattern but
- * kept as a separate store since these settings govern AI Agent behavior
- * rather than editor rendering.
+ * Persisted in SharedPreferences, mirrors the FeatureToggleStore pattern.
+ *
+ * Expanded Aug 10 2026 to include:
+ * - AI Agent Flow (Flow Mode, Verbose Tool Output)
+ * - Notifications (Task completion threshold, Terminal notifications)
+ * - Text Editor (Cursor blinking style)
+ * - Python/LSP (Diagnostics source, Pyright version, Node arguments, Jedi completion params)
  */
 enum class FlowMode { MANUAL, AUTO }
+
+/** Cursor blink style — mirrors VS Code's editor.cursorBlinking setting. */
+enum class CursorBlinkStyle {
+    BLINK,      // Default — on/off blink
+    PHASE,      // Fade in/out smoothly
+    SOLID,      // No blink — always visible
+    EXPAND,     // Block expands/contracts
+    SMOOTH,     // Smooth pulse
+}
+
+/** Python diagnostics source — which LSP server provides completions + diagnostics. */
+enum class DiagnosticsSource {
+    PYLSP,      // python-lsp-server (jedi-based) — default
+    PYRIGHT,    // pyright-langserver (Node.js-based, Microsoft)
+}
 
 object ProjectSettingsStore {
     private const val PREFS = "project_settings"
     private lateinit var prefs: android.content.SharedPreferences
 
-    /** AUTO = current/default behavior (tool calls execute immediately).
-     *  MANUAL = each AI Agent tool call pauses for an Approve/Reject tap. */
+    // ── AI Agent Flow ──────────────────────────────────────────────────
     val flowMode: MutableState<FlowMode> = mutableStateOf(FlowMode.AUTO)
-
-    /** Show full JSON args/results for each tool call in the Agent chat transcript
-     *  instead of a compact one-line summary. */
     val verboseToolOutput: MutableState<Boolean> = mutableStateOf(false)
+
+    // ── Notifications ──────────────────────────────────────────────────
+    /** Task completion notification threshold in ms. -1 = never, 0 = always. */
+    val taskNotifyThresholdMs: MutableState<Int> = mutableStateOf(8000)
+    /** Enable terminal foreground-service notifications. */
+    terminalNotifications: MutableState<Boolean> = mutableStateOf(true)
+    /** Show verbose download/install notifications for LSP servers. */
+    val verboseDownloadNotify: MutableState<Boolean> = mutableStateOf(false)
+
+    // ── Text Editor ────────────────────────────────────────────────────
+    val cursorBlinkStyle: MutableState<CursorBlinkStyle> = mutableStateOf(CursorBlinkStyle.BLINK)
+
+    // ── Python / LSP ────────────────────────────────────────────────────
+    val diagnosticsSource: MutableState<DiagnosticsSource> = mutableStateOf(DiagnosticsSource.PYLSP)
+    /** Pyright version string or path to local pyright-langserver.js (empty = auto-install latest). */
+    val pyrightVersion: MutableState<String> = mutableStateOf("")
+    /** Node.js CLI args for pyright (e.g. --max-old-space-size=8192). */
+    val pyrightNodeArgs: MutableState<String> = mutableStateOf("--max-old-space-size=8192")
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -30,15 +63,54 @@ object ProjectSettingsStore {
             FlowMode.valueOf(prefs.getString("flow_mode", FlowMode.AUTO.name) ?: FlowMode.AUTO.name)
         } catch (_: Exception) { FlowMode.AUTO }
         verboseToolOutput.value = prefs.getBoolean("verbose_tool_output", false)
+        taskNotifyThresholdMs.value = prefs.getInt("task_notify_threshold_ms", 8000)
+        terminalNotifications.value = prefs.getBoolean("terminal_notifications", true)
+        verboseDownloadNotify.value = prefs.getBoolean("verbose_download_notify", false)
+        cursorBlinkStyle.value = try {
+            CursorBlinkStyle.valueOf(prefs.getString("cursor_blink_style", CursorBlinkStyle.BLINK.name) ?: CursorBlinkStyle.BLINK.name)
+        } catch (_: Exception) { CursorBlinkStyle.BLINK }
+        diagnosticsSource.value = try {
+            DiagnosticsSource.valueOf(prefs.getString("diagnostics_source", DiagnosticsSource.PYLSP.name) ?: DiagnosticsSource.PYLSP.name)
+        } catch (_: Exception) { DiagnosticsSource.PYLSP }
+        pyrightVersion.value = prefs.getString("pyright_version", "") ?: ""
+        pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
     }
 
+    // ── Setters ────────────────────────────────────────────────────────
     fun setFlowMode(mode: FlowMode) {
         flowMode.value = mode
         prefs.edit().putString("flow_mode", mode.name).apply()
     }
-
     fun setVerboseToolOutput(value: Boolean) {
         verboseToolOutput.value = value
         prefs.edit().putBoolean("verbose_tool_output", value).apply()
+    }
+    fun setTaskNotifyThresholdMs(value: Int) {
+        taskNotifyThresholdMs.value = value
+        prefs.edit().putInt("task_notify_threshold_ms", value).apply()
+    }
+    fun setTerminalNotifications(value: Boolean) {
+        terminalNotifications.value = value
+        prefs.edit().putBoolean("terminal_notifications", value).apply()
+    }
+    fun setVerboseDownloadNotify(value: Boolean) {
+        verboseDownloadNotify.value = value
+        prefs.edit().putBoolean("verbose_download_notify", value).apply()
+    }
+    fun setCursorBlinkStyle(style: CursorBlinkStyle) {
+        cursorBlinkStyle.value = style
+        prefs.edit().putString("cursor_blink_style", style.name).apply()
+    }
+    fun setDiagnosticsSource(source: DiagnosticsSource) {
+        diagnosticsSource.value = source
+        prefs.edit().putString("diagnostics_source", source.name).apply()
+    }
+    fun setPyrightVersion(version: String) {
+        pyrightVersion.value = version
+        prefs.edit().putString("pyright_version", version).apply()
+    }
+    fun setPyrightNodeArgs(args: String) {
+        pyrightNodeArgs.value = args
+        prefs.edit().putString("pyright_node_args", args).apply()
     }
 }
