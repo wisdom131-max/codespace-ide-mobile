@@ -377,10 +377,12 @@ private fun PssTopBar(
     onToggleSidebar: () -> Unit,
     onToggleBottomPanel: () -> Unit,
     onToggleSecondarySidebar: () -> Unit,
+    onToggleZenMode: () -> Unit,
     onMenuAction: (String) -> Unit,
 ) {
     var showOverflowMenu by remember { mutableStateOf(false) }
     var openSubmenu by remember { mutableStateOf<String?>(null) }
+    var showCustomizeLayout by remember { mutableStateOf(false) }
 
     // ── Top Bar (VS Code style) — single row, no separate menu bar
     Row(
@@ -424,6 +426,67 @@ private fun PssTopBar(
         Spacer(Modifier.width(10.dp))
         // Toggle Secondary Sidebar (AI chat — right panel)
         AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleSecondarySidebar() })
+        Spacer(Modifier.width(10.dp))
+        // ── Customize Layout (VS Code rightmost button) ──
+        Box {
+            Icon(
+                Icons.Default.DashboardCustomize, null,
+                tint = tabTextInactive,
+                modifier = Modifier.size(20.dp).clickable { showCustomizeLayout = !showCustomizeLayout },
+            )
+            androidx.compose.material3.DropdownMenu(
+                expanded = showCustomizeLayout,
+                onDismissRequest = { showCustomizeLayout = false },
+            ) {
+                // Header
+                Text(
+                    "Customize Layout",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = menuText.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                // Toggle Primary Side Bar
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Toggle Primary Side Bar", fontSize = 12.sp, color = menuText) },
+                    onClick = { onToggleSidebar(); showCustomizeLayout = false },
+                )
+                // Toggle Panel
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Toggle Panel", fontSize = 12.sp, color = menuText) },
+                    onClick = { onToggleBottomPanel(); showCustomizeLayout = false },
+                )
+                // Toggle Secondary Side Bar
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Toggle Secondary Side Bar", fontSize = 12.sp, color = menuText) },
+                    onClick = { onToggleSecondarySidebar(); showCustomizeLayout = false },
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                // Layout modes
+                Text(
+                    "Layout Modes",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = menuText.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Zen Mode", fontSize = 12.sp, color = menuText) },
+                    onClick = { onToggleZenMode(); showCustomizeLayout = false },
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Centered Layout", fontSize = 12.sp, color = menuText) },
+                    onClick = { onMenuAction("Toggle Centered Layout"); showCustomizeLayout = false },
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
+                // Appearance
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Preferences", fontSize = 12.sp, color = menuText) },
+                    onClick = { onMenuAction("Preferences"); showCustomizeLayout = false },
+                )
+            }
+        }
         Spacer(Modifier.width(10.dp))
         // ── 3-dot overflow menu (replaces File/Edit/View/Go/Run/Terminal/Help bar) ──
         Box {
@@ -949,6 +1012,7 @@ fun ProjectShellScreen(
                 onToggleSidebar = { activePanel = if (activePanel == null) SidePanel.EXPLORER else null },
                 onToggleBottomPanel = { showBottomPanel = !showBottomPanel },
                 onToggleSecondarySidebar = { showChatPanel = !showChatPanel },
+                onToggleZenMode = { handleMenuAction("Toggle Zen Mode") },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
             ) }
 
