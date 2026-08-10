@@ -165,6 +165,8 @@ data class EditorFeatureToggles(
     val showGhostText: Boolean = true,
     val showInlayHints: Boolean = true,
     val showMergeConflicts: Boolean = true,
+    val showMinimap: Boolean = true,
+    val showWordWrap: Boolean = false,
 )
 
 private data class Completion(
@@ -539,7 +541,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     val hScroll = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
-    var showMinimapState by remember { mutableStateOf(showMinimap) }
+    // Reactive minimap visibility from FeatureToggleStore — toggling in Settings updates immediately
+    var showMinimapState by FeatureToggleStore.state("minimap")
 
     // 2. Code folding state
     var foldedRanges by remember { mutableStateOf(setOf<Int>()) } // start line index (0-based)
@@ -996,7 +999,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Only fires when there's NO IntelliSense ghost text already showing
     // P41-L: Context-aware prompt framing — detects cursor context and appends a hint
     LaunchedEffect(value.text, value.selection.end) {
-        if (onAiGhostTextRequest != null && ghostText == null) {
+        if (toggles.showGhostText && onAiGhostTextRequest != null && ghostText == null) {
             kotlinx.coroutines.delay(600L)
             val cursor = value.selection.end
             if (cursor == value.selection.start && cursor > 0) {
@@ -2829,14 +2832,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    val pat = Regex("\\b" + Regex.escape(word) + "\\b")
+                                    showLspMenu = false
+                                    val pat = Regex("\\b" + Regex.escape(word) + "\\b", RegexOption.IGNORE_CASE)
                                     val matches = pat.findAll(value.text).toList()
                                     if (matches.isNotEmpty()) {
                                         val first = matches.first().range.first
                                         val last = matches.last().range.last + 1
                                         value = value.copy(selection = TextRange(first, last))
+                                        // Scroll to make the first match visible
+                                        val matchLine = value.text.substring(0, first).count { it == '\\n' }
+                                        coroutineScope.launch {
+                                            val lhPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
+                                            vScroll.animateScrollTo((matchLine * lhPx).toInt())
+                                        }
                                     }
-                                    showLspMenu = false
                                 }
                             )
 
@@ -2849,13 +2858,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    val pat = Regex("\\b" + Regex.escape(word) + "\\b")
+                                    showLspMenu = false
+                                    val pat = Regex("\\b" + Regex.escape(word) + "\\b", RegexOption.IGNORE_CASE)
                                     val currentPos = value.selection.end
                                     val nextMatch = pat.find(value.text, currentPos) ?: pat.find(value.text)
                                     if (nextMatch != null) {
                                         value = value.copy(selection = TextRange(nextMatch.range.first, nextMatch.range.last + 1))
+                                        // Scroll to make the next occurrence visible
+                                        val matchLine = value.text.substring(0, nextMatch.range.first).count { it == '\\n' }
+                                        coroutineScope.launch {
+                                            val lhPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
+                                            vScroll.animateScrollTo((matchLine * lhPx).toInt())
+                                        }
                                     }
-                                    showLspMenu = false
                                 }
                             )
 
@@ -3759,7 +3774,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P41-E: Multi-line ghost text overlay (extracted to separate composable to avoid method-too-large)
-        if (ghostText != null && !showCompletions) {
+        if (toggles.showGhostText && ghostText != null && !showCompletions) {
             GhostTextOverlay(
                 ghostText = ghostText!!,
                 ghostTextLines = ghostTextLines,

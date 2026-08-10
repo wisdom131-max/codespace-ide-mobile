@@ -68,6 +68,8 @@ object FeatureToggleStore {
             showGhostText = get("ghost_text"),
             showInlayHints = get("inlay_hints"),
             showMergeConflicts = get("merge_conflicts"),
+            showMinimap = get("minimap"),
+            showWordWrap = get("word_wrap"),
         )
     }
 }

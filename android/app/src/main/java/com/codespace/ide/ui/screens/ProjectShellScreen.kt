@@ -3319,10 +3319,10 @@ private fun PssEditorColumn(
                 Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
                 Spacer(Modifier.width(4.dp))
                 // Word wrap toggle
-                Box(Modifier.size(28.dp).clickable { wordWrap = !wordWrap }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(28.dp).clickable { FeatureToggleStore.set("word_wrap", !wordWrap) }, contentAlignment = Alignment.Center) {
                     Text("↵", fontSize = 14.sp, color = if (wordWrap) TabActiveIndicator else TabTextInactive)
                 }
-                Box(Modifier.size(28.dp).clickable { showInlayHints = !showInlayHints }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(28.dp).clickable { FeatureToggleStore.set("inlay_hints", !showInlayHints) }, contentAlignment = Alignment.Center) {
                     Text("⊕", fontSize = 13.sp, color = if (showInlayHints) TabActiveIndicator else TabTextInactive)
                 }
                 // Go to line
