@@ -12055,7 +12055,7 @@ All additive/surgical — no existing behavior changes except the Termux string
 fix and the Feature Toggles relocation. Default Flow Mode is AUTO, so nothing
 changes for existing users until they explicitly switch to Manual.
 
-**Status:** IN PROGRESS — partial implementation committed locally (not yet pushed).
+**Status:** ✅ COMPLETE — all 10 steps implemented (commit a6c054f5, build #2059 GREEN). Build errors fixed by Superagent (bc9ef865 + b12638d4). Needs device testing.
 
 ### Progress tracker
 | Step | File | Status |
@@ -12063,13 +12063,13 @@ changes for existing users until they explicitly switch to Manual.
 | 1 | `editor/ProjectSettingsStore.kt` | ✅ DONE — FlowMode enum + verboseToolOutput, SharedPreferences-backed |
 | 2 | `agent/AgentFlowGate.kt` | ✅ DONE — suspend gate with CompletableDeferred, AUTO returns immediately |
 | 3 | `ui/screens/CopilotChatPanelOverlay.kt` — wire gate into tool loop | ✅ DONE — `awaitApproval()` called before `executeTool()`, verbose/compact formatting |
-| 4 | `ui/screens/CopilotChatPanelOverlay.kt` — Approve/Reject floating card UI | ⬜ TODO |
-| 5 | `ui/screens/InProjectSettingsDialog.kt` (NEW) | ⬜ TODO |
-| 6 | `ui/screens/ProjectShellScreen.kt` — gear menu entry + state | ⬜ TODO |
-| 7 | `ui/screens/SettingsScreen.kt` — remove Feature Toggles section | ⬜ TODO |
-| 8 | `terminal/TerminalService.kt` — "Termux App" → "VN Code" | ⬜ TODO |
-| 9 | `CodeSpaceApplication.kt` — `ProjectSettingsStore.init()` | ⬜ TODO |
-| 10 | Compile check + commit + push | ⬜ TODO |
+| 4 | `ui/screens/CopilotChatPanelOverlay.kt` — Approve/Reject floating card UI | ✅ DONE — pendingApproval state + Approve/Reject buttons rendered |
+| 5 | `ui/screens/InProjectSettingsDialog.kt` (NEW) | ✅ DONE — dark-themed settings dialog with Flow Mode dropdown + verbose toggle + 11 feature toggles |
+| 6 | `ui/screens/ProjectShellScreen.kt` — gear menu entry + state | ✅ DONE — `showInProjectSettings` state + gear menu entry wired |
+| 7 | `ui/screens/SettingsScreen.kt` — remove Feature Toggles section | ✅ DONE — replaced with comment "moved to In-Project Settings" |
+| 8 | `terminal/TerminalService.kt` — "Termux App" → "VN Code" | ✅ DONE — channel name updated |
+| 9 | `CodeSpaceApplication.kt` — `ProjectSettingsStore.init()` | ✅ DONE — init called in onCreate alongside FeatureToggleStore |
+| 10 | Compile check + commit + push | ✅ DONE — build #2059 GREEN |
 
 
 
