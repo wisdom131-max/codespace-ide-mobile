@@ -11845,3 +11845,59 @@ installed package list from the proot Python environment.
 - ✅ Build fixes: #2011-2021 (10 consecutive failures resolved), #2024 (Extract+OpenAsText), #2028 (C13+retry)
 
 **Next planned:** Feature toggles → Settings panel, then C13 (stdlib completions)
+
+---
+
+## Superagent Fixes — Aug 10 Session (2026-08-10)
+
+### Commits
+| Commit | Fix | Files |
+|--------|-----|-------|
+| e6d51b8 | V1 + N11 | WorkspaceManager.kt, ProjectFileSearchPanel.kt, ShellHistorySearchOverlay.kt |
+| fc1bc21 | N5 + O1 | ProjectFileSearchPanel.kt, ProjectShellScreen.kt |
+| d83cf32 | S1 | CodeEditor.kt |
+
+### Fixes
+
+**V1 — Recycle bin restore** (`WorkspaceManager.kt`)
+`restoreTrashedProject()` moved the directory back to `projects/` but never updated SharedPreferences. HomeScreen reads from prefs, so the restored project was invisible after leaving Settings. Now re-registers the project in the prefs "list" after restoring.
+
+**N11 — Find in File / Shell History keyboard focus** (`ProjectFileSearchPanel.kt`, `ShellHistorySearchOverlay.kt`)
+`LaunchedEffect(Unit) { focusRequester.requestFocus() }` ran before the TextField was laid out, so focus silently failed. Fixed by adding 150ms delay + `keyboardController.show()`.
+
+**N5 — Find in Files doesn't transfer keywords** (`ProjectFileSearchPanel.kt`, `ProjectShellScreen.kt`)
+"Find in Files" opened the search panel in filename mode with an empty query. Now `ProjectFileSearchPanel` accepts `initialTextMode` and `initialQuery` params; the menu action passes `initialTextMode=true` and carries over `_findQuery` from the editor's find bar.
+
+**O1 — Zen Mode keyboard doesn't open** (`ProjectShellScreen.kt`)
+The `detectTapGestures` overlay with empty `onTap={}` STILL consumed single taps, blocking editor focus. Removed the overlay entirely; double-tap-to-exit now lives on the FAB via `combinedClickable(onDoubleClick=...)`, which lets single taps pass through to the editor.
+
+**S1 — Light theme white-on-white** (`CodeEditor.kt`)
+Replaced 11 hardcoded dark-only color constants with theme-aware `EditorColors` references: hover popup bg/border, LSP menu button + dropdown, rename dialog, completion popup outer container, multi-cursor indicator. Light themes now show readable text.
+
+### Updated Remaining Items
+
+**Needs on-device testing (7 items):**
+1. ✅→⏳ V1: Recycle bin restore (code fixed, needs device test)
+2. ✅→⏳ N11: Find in File / Shell history keyboard focus (code fixed, needs device test)
+3. ✅→⏳ N5: Find in Files keyword transfer (code fixed, needs device test)
+4. ✅→⏳ O1: Zen Mode keyboard (code fixed, needs device test)
+5. ✅→⏳ S1: Light theme readability (code fixed, needs device test)
+6. Quick command palette (TerminalPane recent-5 commands strip)
+7. MCP status indicator polling
+8. Debug panel step buttons + variables
+9. Full login + connectors end-to-end (Phase 39 verification)
+10. Completion resize handle (commit 22aff40)
+11. Completion limit + stdlib list (commit 22aff40)
+
+**Still unfixed (1 item):**
+1. D1/D3: Completion dropdown issues (previous sessions applied import context + member-access fixes — needs device test to confirm)
+
+**Items resolved this session (2026-08-10):**
+- ⏳ V1: Recycle bin restore (e6d51b8) — code fixed, needs device test
+- ⏳ N11: Find in File keyboard focus (e6d51b8) — code fixed, needs device test
+- ⏳ N5: Find in Files keyword transfer (fc1bc21) — code fixed, needs device test
+- ⏳ O1: Zen Mode keyboard (fc1bc21) — code fixed, needs device test
+- ⏳ S1: Light theme white-on-white (d83cf32) — code fixed, needs device test
+
+**Next planned:** Feature toggles → Settings panel → D1/D3 device testing
+
