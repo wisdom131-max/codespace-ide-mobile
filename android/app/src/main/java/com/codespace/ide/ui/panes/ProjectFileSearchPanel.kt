@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -91,6 +92,7 @@ fun ProjectFileSearchPanel(
     val snackState    = remember { SnackbarHostState() }
     val scope         = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // P45-G3: Include/Exclude file patterns
     var showFilters   by remember { mutableStateOf(false) }
@@ -577,7 +579,14 @@ fun ProjectFileSearchPanel(
         }
     }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // N11 FIX (2026-08-10): requestFocus() on Unit runs before layout completes, so it silently
+    // fails. Adding a frame delay gives Compose time to attach the FocusRequester to the
+    // laid-out TextField. Also explicitly show the software keyboard after focusing.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(150)
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
+        keyboardController?.show()
+    }
 
     // Snackbar for replace feedback
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

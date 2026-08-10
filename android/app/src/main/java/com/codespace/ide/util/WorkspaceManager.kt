@@ -310,6 +310,11 @@ object WorkspaceManager {
      * Restores a trashed project back to the projects directory.
      * If a project with the same name already exists, appends _restored suffix.
      * Returns the restored File on success, null on failure.
+     *
+     * V1 FIX (2026-08-10): Also re-adds the project to the SharedPreferences "list" so
+     * HomeScreen's loadProjectsLocal() picks it up. Previously, restore only moved
+     * the directory back but never updated the project list, so the project was
+     * invisible after leaving Settings.
      */
     fun restoreTrashedProject(context: Context, entry: TrashedProject): File? {
         val projectsRoot = File(context.filesDir, "projects")
@@ -317,7 +322,33 @@ object WorkspaceManager {
         var dest = File(projectsRoot, entry.name)
         if (dest.exists()) dest = File(projectsRoot, "${entry.name}_restored")
         val ok = entry.trashedDir.renameTo(dest)
-        return if (ok) dest else null
+        if (!ok) return null
+
+        // V1 FIX: Re-register the restored project in SharedPreferences
+        val restoredName = dest.name
+        val prefs = context.getSharedPreferences("projects", Context.MODE_PRIVATE)
+        val existing = prefs.getString("list", null)
+        val arr = try {
+            if (existing != null) org.json.JSONArray(existing) else org.json.JSONArray()
+        } catch (_: Exception) { org.json.JSONArray() }
+
+        // Avoid duplicates — check if already in list
+        val alreadyExists = (0 until arr.length()).any { i ->
+            arr.optJSONObject(i)?.optString("name") == restoredName
+        }
+        if (!alreadyExists) {
+            arr.put(
+                org.json.JSONObject()
+                    .put("id", restoredName)
+                    .put("name", restoredName)
+                    .put("kind", "LOCAL")
+                    .put("pathOrUrl", "local")
+                    .put("defaultBranch", "")
+            )
+            prefs.edit().putString("list", arr.toString()).apply()
+            Log.d("WorkspaceManager", "Project restored and re-registered: $restoredName")
+        }
+        return dest
     }
 
     /** Permanently deletes a trashed project. Cannot be undone. */

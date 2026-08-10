@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SubdirectoryArrowLeft
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -99,6 +100,7 @@ fun ShellHistorySearchOverlay(
 ) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     val filtered = remember(query, historyLines) {
         if (query.isBlank()) historyLines
@@ -229,7 +231,10 @@ fun ShellHistorySearchOverlay(
         }
     }
 
+    // N11 FIX (2026-08-10): delayed focus + explicit keyboard show
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        kotlinx.coroutines.delay(150)
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
+        keyboardController?.show()
     }
 }
