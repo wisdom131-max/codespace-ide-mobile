@@ -16,16 +16,16 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-08-09. Read this FIRST before touching any code.
+> Last updated: 2026-08-10. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-08-09)
+## CURRENT STATE (2026-08-10)
 
 | | |
 |-|-|
 | Latest green build | **78d3c918** — C13 stdlib completions + CloudBackupManager retry (build #2028 GREEN) |
-| Active phase | **Phase 50-4** — Output panel all channels + copy/save + ctags-lsp logs wired (226e767). 23 items fixed, 5 need device testing, 8 still unfixed. Next: feature toggles → Settings panel. |
+| Active phase | **Phase P-TOPBAR** — Top bar restructured to VS Code layout (commit e721df5). In-Project Settings UI shipped. Notification restructure complete. Next: Phase R (Formatter Selection), Phase S (LSP Spec Compliance), P41 IntelliSense. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -12182,5 +12182,54 @@ User provided 10 VS Code screenshots showing:
 | 5 | `ProjectShellScreen.kt` — `StatusBarContent` | Keep bell in status bar (bottom), this is the primary entry point now |
 | 6 | Compile + push | Build test |
 
-**Status:** 🔄 IN PROGRESS
+**Status:** ✅ COMPLETE — Notification bell removed from top bar, toast/drawer redesigned as bottom-right floating cards (commit ca733e5).
 
+
+---
+
+## P-TOPBAR-RESTRUCTURE: VS Code Top Bar Layout Overhaul (2026-08-10)
+
+**Goal:** Replace the old top-right icon row and text menu bar with VS Code-style layout controls — compact single-row top bar with layout toggle icons, a Customize Layout dropdown, and a 3-dot overflow menu replacing the File/Edit/View/Go/Run/Terminal/Help text menu bar.
+
+### What changed
+
+**Removed from top bar:**
+- Individual quick-action icons: terminal (Computer), Run (PlayArrow), Build (wrench), Split (VerticalSplit)
+- Entire text menu bar row (File, Edit, Selection, View, Go, Run, Terminal, Help) — was a second 26dp row below the 28dp top bar
+- Run (▶) standalone icon — now accessible via 3-dot menu → Run → Run Program
+
+**Added to top bar (in order, left to right):**
+1. Back arrow (unchanged)
+2. Search pill / project name (unchanged)
+3. **ViewSidebar** icon — Toggle Primary Side Bar (left panel: explorer/search/git)
+4. **VerticalAlignBottom** icon — Toggle Bottom Panel (terminal/build/output)
+5. **AnimatedBotIcon** — Toggle Secondary Side Bar (AI chat panel)
+6. **DashboardCustomize** icon — Customize Layout dropdown:
+   - Toggle Primary Side Bar
+   - Toggle Panel
+   - Toggle Secondary Side Bar
+   - Layout Modes: Zen Mode, Centered Layout
+   - Preferences shortcut
+7. **MoreVert** (⋮) — 3-dot overflow menu with two-level cascading dropdown:
+   - First level: category names (File, Edit, Selection, View, Go, Run, Terminal, Help) with right-arrow indicator
+   - Second level: menu items with back button + shortcuts
+   - Theme display at bottom of first level
+
+**Net result:** Top bar is now a single 28dp row (was 28dp + 26dp = 54px). All menu items still accessible via 3-dot overflow.
+
+### Commits
+- `eee5633` — P-TOPBAR-RESTRUCTURE: replace icons with VS Code layout boxes + 3-dot overflow menu
+- `e378139` — Remove split view (Editor Layout) from top bar quick actions
+- `e721df5` — Add VS Code-style Customize Layout dropdown to top bar
+
+### Files changed
+| File | Change |
+|------|--------|
+| `ui/screens/ProjectShellScreen.kt` — `PssTopBar` | Full rewrite: removed old icons + menu bar row, added layout icons + Customize Layout dropdown + 3-dot overflow |
+| `ui/screens/ProjectShellScreen.kt` — call site | Updated PssTopBar params: onToggleSidebar, onToggleBottomPanel, onToggleSecondarySidebar, onToggleZenMode, onMenuAction |
+| `ui/screens/ProjectShellScreen.kt` — `handleMenuAction` | Added "Toggle Centered Layout" case |
+
+**Status:** ✅ COMPLETE — pushed (e721df5). Needs device testing for:
+- 3-dot dropdown two-level navigation on touch
+- Customize Layout dropdown menu item behavior
+- Top bar icon spacing on small screen (Samsung Android 14, 3GB RAM)
