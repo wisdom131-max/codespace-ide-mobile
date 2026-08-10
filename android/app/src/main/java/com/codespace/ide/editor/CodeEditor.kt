@@ -1,11 +1,4 @@
 package com.codespace.ide.editor
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.animation.core.infiniteTransition
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 
 import androidx.compose.foundation.background
 import org.json.JSONObject
@@ -5151,36 +5144,33 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
 
 
 // P-CURSOR: Animated cursor brush composable — handles different blink styles
-@androidx.compose.runtime.Composable
-private fun animatedCursorBrush(baseColor: androidx.compose.ui.graphics.Color): androidx.compose.ui.graphics.Brush {
+// Uses LaunchedEffect + kotlinx.delay to avoid animation-core dependency issues
+@Composable
+private fun animatedCursorBrush(baseColor: Color): Brush {
     val style = ProjectSettingsStore.cursorBlinkStyle.value
     return when (style) {
-        com.codespace.ide.editor.CursorBlinkStyle.BLINK -> SolidColor(baseColor)
-        com.codespace.ide.editor.CursorBlinkStyle.SOLID -> SolidColor(baseColor)
-        com.codespace.ide.editor.CursorBlinkStyle.PHASE -> {
-            val transition = androidx.compose.animation.core.infiniteTransition(label = "cursorPhase")
-            val alpha by transition.animateFloat(
-                initialValue = 0.3f, targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    androidx.compose.animation.core.tween(1200, easing = androidx.compose.animation.core.LinearEasing),
-                    androidx.compose.animation.core.RepeatMode.Reverse,
-                ),
-                label = "phaseAlpha"
-            )
-            SolidColor(baseColor.copy(alpha = alpha))
+        CursorBlinkStyle.BLINK -> androidx.compose.ui.graphics.SolidColor(baseColor)
+        CursorBlinkStyle.SOLID -> androidx.compose.ui.graphics.SolidColor(baseColor)
+        CursorBlinkStyle.PHASE -> {
+            var alpha by remember { mutableStateOf(1f) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(600)
+                    alpha = if (alpha > 0.6f) 0.3f else 1f
+                }
+            }
+            androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = alpha))
         }
-        com.codespace.ide.editor.CursorBlinkStyle.SMOOTH -> {
-            val transition = androidx.compose.animation.core.infiniteTransition(label = "cursorSmooth")
-            val alpha by transition.animateFloat(
-                initialValue = 0.5f, targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.LinearEasing),
-                    androidx.compose.animation.core.RepeatMode.Reverse,
-                ),
-                label = "smoothAlpha"
-            )
-            SolidColor(baseColor.copy(alpha = alpha))
+        CursorBlinkStyle.SMOOTH -> {
+            var alpha by remember { mutableStateOf(1f) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(400)
+                    alpha = if (alpha > 0.7f) 0.5f else 1f
+                }
+            }
+            androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = alpha))
         }
-        com.codespace.ide.editor.CursorBlinkStyle.EXPAND -> SolidColor(baseColor)
+        CursorBlinkStyle.EXPAND -> androidx.compose.ui.graphics.SolidColor(baseColor)
     }
 }
