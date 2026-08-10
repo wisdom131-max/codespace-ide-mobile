@@ -11718,6 +11718,81 @@ The other AI (author: wisdom131-max / CodeSpace Agent) did extensive work across
 
 **Next planned:** Feature toggles → Settings panel → D1/D3 completion dropdown
 
+---
+
+## VS Code.dev Import Completion Parity Audit (2026-08-10)
+
+**Source:** Christie tested `import o`, `import m`, `import sy`, and `self.r` in vscode.dev
+(browser VS Code) side-by-side with our app to check completion parity. Screenshots showed:
+
+- `import o` → oauthlib, objgraph, odbc, olefile, opcode, openpyxl, opentracing,
+  operator, optparse, os, _operator, _osx_support (mix of real stdlib + actual
+  installed pip packages in vscode.dev's sandbox)
+- `import m` → mmapfile, mmsystem, m3u8, mailbox, management, markdown, marshal,
+  math, matplotlib, mimetypes, mmap, mock, modulefinder, msvcrt, multiprocessing,
+  mypy_extensions, _markupbase, _multibytecodec (18+ items, scrollable dropdown)
+- `import sy` → symtable, sys, sysconfig, syslog (sys shown with a wrench icon —
+  already-imported/resolved differently than the rest)
+- `self.r` (member access on Calculator instance) → raise, return, range, repr,
+  reversed, round, RecursionError — a MIX of keywords/builtins matching prefix "r",
+  not just Calculator's own members (add, reset, result). This suggests VS Code's
+  pylsp/jedi falls back to global scope suggestions when member resolution is
+  weak, rather than showing an empty dropdown.
+- **Cool feature spotted:** vscode.dev's completion popup has a **drag handle to
+  resize** — Christie expanded it to show more items in the screenshots.
+
+### Root cause analysis
+Our `StdlibCompletions.kt` fallback list only had ~50 hardcoded Python stdlib
+modules and ZERO third-party packages — nowhere near what vscode.dev showed.
+Our completion pipeline also capped results at **15 items** (`take(15)` in
+`CodeEditor.kt`), truncating lists that VS Code shows 18+ deep. The popup had
+no resize capability — fixed max height only.
+
+**Important distinction:** vscode.dev's list includes real pip-installed
+packages (matplotlib, mock, openpyxl, oauthlib, opentracing) because its
+jedi/pylsp backend introspects the ACTUAL Python environment's site-packages.
+A hardcoded list can never truly match this — it can only guess at common
+packages. True parity requires our own pylsp (already configured with
+`jedi_completion.include_imports = true`) to actually respond with the real
+installed package list from the proot Python environment.
+
+### Fixes shipped (commit 22aff40, build pending)
+1. **StdlibCompletions.kt** — Expanded `PYTHON_MODULES` from ~50 to the full
+   Python 3.x stdlib list (~200 real modules: symtable, sysconfig, syslog,
+   mailbox, marshal, modulefinder, msvcrt, opcode, optparse, m3u8-adjacent
+   codecs, etc.) PLUS a best-effort list of ~70 common third-party packages
+   (matplotlib, requests, mock, openpyxl, oauthlib, opentracing, mypy_extensions,
+   pandas, numpy, flask, django, pytest, etc.) so the fallback dropdown looks
+   much closer to VS Code's even before/without LSP.
+2. **CodeEditor.kt** — Raised the completion cap from `take(15)` to `take(60)`
+   in both the local `completionsFor()` function and the ranked/merged
+   `allCompletions` pipeline. Long import lists (like `import m` → 18+ items)
+   are no longer truncated.
+3. **CodeEditor.kt** — Added a **drag-to-resize handle** at the bottom of the
+   completion popup (14dp tall grab bar, drag down to grow up to +400dp, drag
+   up to shrink back to the default size). Matches the VS Code behavior
+   Christie found in vscode.dev.
+
+### Still TODO (needs on-device testing + possible follow-up)
+1. **Verify pylsp/jedi returns real installed packages** — On-device, open a
+   Python file, type `import ma` and check if the dropdown shows packages
+   ACTUALLY pip-installed in the proot environment (not just our hardcoded
+   guesses). If pylsp is running but jedi's import completion isn't firing,
+   investigate `LspManager.kt` `getCompletion()` timeout for import-heavy
+   requests (first module-scan can be slow) — may need a longer timeout
+   specifically for `IMPORT_CONTEXT`.
+2. **Test the resize handle** — drag the bottom edge of the completion popup
+   up/down and confirm it grows/shrinks smoothly without lag, and doesn't
+   overlap the keyboard.
+3. **D1 fallback (self.r style)** — Confirm our new D1 fallback (buffer/stdlib
+   completions when LSP member-access returns nothing) produces a similar
+   mixed keyword+buffer list to what vscode.dev showed for `self.r`.
+4. Consider: should our hardcoded third-party guess list be replaced entirely
+   by a `pip list`-based dynamic scan of the proot environment at LSP startup,
+   feeding into `preload.modules` in `sendDidChangeConfiguration()`? This would
+   give TRUE parity (showing exactly what's installed) instead of guessing.
+
+
 
 ---
 
