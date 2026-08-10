@@ -11945,4 +11945,64 @@ AgentApiServer.start() was only called when a terminal session was created (Term
 
 **Next planned:** Debug panel step buttons + variables → D1/D3 device testing → Full login + connectors end-to-end
 
+---
+
+## Superagent Fixes — Aug 10 Session Part 3 (2026-08-10)
+
+### Commits
+| Commit | Fix | Files |
+|--------|-----|-------|
+| 8e9fda9 | E14 | CodeEditor.kt |
+
+### Fixes
+
+**E14 — Cross-file Go to Definition** (`CodeEditor.kt`)
+The GotoDefinitionDialog checked `if (results.isEmpty())` and immediately showed "No declaration found in current file or project." — even when `crossFileResults` had valid results from FileIndexer. The dialog returned early and never rendered the cross-file matches. Fixed: the empty check now also verifies crossFileResults is empty. Added "In this file" section header to match the existing "In project" header.
+
+### Investigation Results
+
+**Debug panel step buttons + variables** — Code is fully implemented:
+- Step buttons (continue, pause, step over/into/out) wired in PSS:2612+
+- Variable inspector with watch expressions + call stack in VariableInspectorPanel.kt
+- UDM singleton manages sessions, providers (PythonDebugProvider via pdb, NodeJsDebugProvider via node inspect)
+- Q5 (UDM injection) already verified wired: PSS → PssEditorColumn → EditorPane
+- This is a **device-testing item only** — no code fix needed
+
+**MCP status indicator (X7)** — Fixed in Part 2 (ce34ab9): AgentApiServer now starts on app launch
+
+**GitHub features (E15-E18)** — CLIENT_ID is set ("Ov23liEA2inOMzi7bYrJ"), isConfigured() returns true. Was confirmed working via on-device screenshots (AGENTS.md line 11328). Device-testing item only.
+
+**SCM panel (E4-E13)** — All functions implemented (stage, unstage, commit, branch, log, graph, stash, tags, conflicts, blame). Was confirmed working (AGENTS.md line 11328). Device-testing item only.
+
+### Updated Remaining Items
+
+**Needs on-device testing (11 items):**
+1. ⏳ V1: Recycle bin restore
+2. ⏳ N11: Find in File / Shell history keyboard focus
+3. ⏳ N5: Find in Files keyword transfer
+4. ⏳ O1: Zen Mode keyboard
+5. ⏳ S1: Light theme readability
+6. ⏳ Feature toggles / Settings panel (build #2039)
+7. ⏳ H5: Quick command palette (ce34ab9)
+8. ⏳ X7: MCP status indicator (ce34ab9)
+9. ⏳ E14: Cross-file Go to Definition (8e9fda9)
+10. ⏳ Debug panel step buttons + variables (code complete, needs device test)
+11. Completion resize handle + stdlib list (22aff40)
+
+**Still unfixed (1 item):**
+1. D1/D3: Completion dropdown issues (import context + member-access fixes applied — needs device test to confirm)
+
+**Items resolved this session (2026-08-10):**
+- ⏳ V1: Recycle bin restore (e6d51b8)
+- ⏳ N11: Find in File keyboard focus (e6d51b8)
+- ⏳ N5: Find in Files keyword transfer (fc1bc21)
+- ⏳ O1: Zen Mode keyboard (fc1bc21)
+- ⏳ S1: Light theme white-on-white (d83cf32)
+- ⏳ H5: Quick command palette (ce34ab9)
+- ⏳ X7: MCP status indicator (ce34ab9)
+- ⏳ E14: Cross-file Go to Definition (8e9fda9)
+
+**Next planned:** D1/D3 device testing → Full login + connectors end-to-end (Phase 39 verification) → SCM panel layout restructure
+
+
 
