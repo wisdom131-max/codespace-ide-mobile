@@ -377,7 +377,6 @@ private fun PssTopBar(
     onToggleSidebar: () -> Unit,
     onToggleBottomPanel: () -> Unit,
     onToggleSecondarySidebar: () -> Unit,
-    onEditorLayout: () -> Unit,
     onMenuAction: (String) -> Unit,
 ) {
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -409,13 +408,6 @@ private fun PssTopBar(
             }
         }
         // ── VS Code-style layout box icons (top-right) ──
-        // Editor Layout (split view)
-        Icon(
-            Icons.Default.GridView, null,
-            tint = tabTextInactive,
-            modifier = Modifier.size(20.dp).clickable { onEditorLayout() },
-        )
-        Spacer(Modifier.width(10.dp))
         // Toggle Sidebar (left panel)
         Icon(
             Icons.Default.ViewSidebar, null,
@@ -957,7 +949,6 @@ fun ProjectShellScreen(
                 onToggleSidebar = { activePanel = if (activePanel == null) SidePanel.EXPLORER else null },
                 onToggleBottomPanel = { showBottomPanel = !showBottomPanel },
                 onToggleSecondarySidebar = { showChatPanel = !showChatPanel },
-                onEditorLayout = { showBottomPanel = true; activeBottomTab = BottomTab.SPLIT },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
             ) }
 
