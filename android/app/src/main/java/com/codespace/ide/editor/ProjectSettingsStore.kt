@@ -43,7 +43,7 @@ object ProjectSettingsStore {
     /** Task completion notification threshold in ms. -1 = never, 0 = always. */
     val taskNotifyThresholdMs: MutableState<Int> = mutableStateOf(8000)
     /** Enable terminal foreground-service notifications. */
-    terminalNotifications: MutableState<Boolean> = mutableStateOf(true)
+    val terminalNotifications: MutableState<Boolean> = mutableStateOf(true)
     /** Show verbose download/install notifications for LSP servers. */
     val verboseDownloadNotify: MutableState<Boolean> = mutableStateOf(false)
 
