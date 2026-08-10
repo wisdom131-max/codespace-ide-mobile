@@ -12115,3 +12115,46 @@ direction on which pieces to actually build.
   Editor (cursor style), or Python/LSP settings?
 
 **Status:** ⏳ AWAITING SCOPE — do not implement until user confirms which of the above.
+
+---
+
+## Phase: In-Project Settings Expansion (2026-08-10)
+
+**Goal:** Expand In-Project Settings to match VS Code's settings UI — search bar, categorized sidebar, and real settings for Notifications, Text Editor (cursor blink), and Python/LSP (Pyright support).
+
+### What was built (commit 12780b6)
+
+**UI Shell (InProjectSettingsDialog.kt):**
+- Search bar at top with live filtering across all settings (label, description, category)
+- Categorized left sidebar: AI Agent Flow, Editor Features, Notifications, Text Editor, Python/LSP
+- When searching: shows result count ("14 Settings Found") + category headers above results
+- When not searching: shows only the selected category's settings
+
+**New Settings (ProjectSettingsStore.kt):**
+- `CursorBlinkStyle` enum: BLINK, PHASE, SOLID, EXPAND, SMOOTH
+- `DiagnosticsSource` enum: PYLSP (default), PYRIGHT (Microsoft)
+- Notifications: taskNotifyThresholdMs (-1/0/N), terminalNotifications, verboseDownloadNotify
+- Python/LSP: diagnosticsSource, pyrightVersion (path or empty=auto), pyrightNodeArgs
+
+**Wiring:**
+- `TerminalService.kt`: When `terminalNotifications` is false, uses IMPORTANCE_MIN + silent notification (Android requires SOME notification for FGS)
+- `LspManager.kt`: When `diagnosticsSource == PYRIGHT`, uses Pyright ServerConfig (npm install -g pyright, node-based). Node args from settings injected into command. `installServer` also respects the override.
+- `LspManager.kt`: `notifyTaskComplete()` fires system notification when LSP install finishes (respects threshold). `verboseDownloadNotify` logs full install command.
+- `CodeEditor.kt`: `animatedCursorBrush()` composable — PHASE style fades alpha 0.3→1.0 over 1.2s, SMOOTH fades 0.5→1.0 over 0.8s. SOLID/BLINK/EXPAND use solid color (Compose handles default blink).
+- `Theme.kt`: Added `cursor: Color` field to EditorColors with per-palette cursor colors (12 palettes updated).
+
+**Files changed:**
+| File | Change |
+|------|--------|
+| `editor/ProjectSettingsStore.kt` | +90 lines — 6 new settings, CursorBlinkStyle + DiagnosticsSource enums |
+| `ui/screens/InProjectSettingsDialog.kt` | Full rewrite — search bar, sidebar, 5 categories, 10+ row types |
+| `lsp/LspManager.kt` | +96 lines — Pyright config, node args injection, task/verbose notifications |
+| `terminal/TerminalService.kt` | +20 lines — respect terminalNotifications setting |
+| `editor/CodeEditor.kt` | +38 lines — animatedCursorBrush composable |
+| `ui/Theme.kt` | +13 lines — cursor color field on EditorColors |
+
+**Status:** ✅ PUSHED — build triggered by GitHub Actions. Needs device testing for:
+- Search bar filtering on touch
+- Pyright install (npm install -g pyright) in proot
+- Cursor blink animation smoothness on 3GB device
+- Terminal notification toggle actually suppressing notification text
