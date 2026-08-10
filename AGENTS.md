@@ -12677,3 +12677,837 @@ User provided 10 VS Code screenshots showing:
 | 27 | Terminal Notification Toggle | |
 | 28 | Pyright LSP Selection | |
 
+
+---
+
+## COMPREHENSIVE RETEST PLAN — All Recent Fixes (2026-08-10)
+
+> This plan covers every feature that was changed or fixed across all recent
+> work sessions. Test each item in order. After each test, write PASS,
+> PARTIAL, or FAIL. All instructions assume a project is already open.
+> No technical knowledge needed — just follow each step exactly.
+
+---
+
+### TEST 1 — Zen Mode: Tap to Type (Keyboard Opens)
+
+**What happened before:** In Zen Mode, tapping the editor did nothing — the keyboard never appeared. You had to exit Zen Mode just to type.
+
+**What to do:**
+1. Open any code file in the editor (tap a `.py` or `.kt` file in the file tree on the left).
+2. Tap the **DashboardCustomize** icon in the top bar (it looks like a grid of small squares, positioned near the middle-right of the top bar row).
+3. A dropdown menu appears. Tap **"Zen Mode"**.
+4. The screen changes — the sidebars and bottom panel disappear, leaving only the code editor in a clean, distraction-free view.
+5. Tap anywhere in the code text area (the main editing region).
+
+**What to expect:**
+- The soft keyboard pops up immediately after tapping the code.
+- You can start typing right away — text appears in the editor.
+- The editor cursor is visible and blinking where you tapped.
+
+**After typing:** Tap the floating exit button (a small circular button, usually at the top-right corner) to exit Zen Mode. The full IDE UI should return.
+
+---
+
+### TEST 2 — Zen Mode: Double-Tap to Exit
+
+**What to do:**
+1. Enter Zen Mode again (same steps as Test 1: DashboardCustomize → Zen Mode).
+2. Double-tap anywhere on the screen (two quick taps in the same spot).
+
+**What to expect:**
+- Zen Mode exits and the full IDE returns (sidebars, panels, top bar all visible again).
+- A small notification appears at the bottom saying "Zen Mode off".
+
+**Note:** A single tap should NOT exit Zen Mode — only a double-tap should. If a single tap exits, that's a bug.
+
+---
+
+### TEST 3 — Lightbulb Quick-Fix: Correct Line Position
+
+**What happened before:** The lightbulb icon (quick-fix indicator) appeared on the wrong line — e.g., on line 16 when the actual issue was on line 28.
+
+**What to do:**
+1. Open a **Python file** (`.py`) in the editor.
+2. Type the following code, pressing Enter after each line:
+   ```
+   x = 1
+   y = 2
+   z = 3
+   a = 4
+   b = 5
+   c = 6
+   d = 7
+   e = 8
+   f = 9
+   g = 10
+   undefined_variable_name
+   ```
+3. The line `undefined_variable_name` should be roughly line 11.
+4. Move your cursor to that line by tapping on it.
+5. Wait about 1 second.
+
+**What to expect:**
+- A small **💡 lightbulb icon** appears in the left margin, **on the same line** as `undefined_variable_name` (line 11), not several lines above or below.
+- If the lightbulb appears on a different line (e.g., line 5 or line 8), that's a bug.
+- Tap the lightbulb — a small menu appears with suggested fixes.
+
+---
+
+### TEST 4 — Problems Panel: Dark Theme Colors
+
+**What happened before:** The Problems panel had a light gray/white header and light-colored text, making it look like a different app from the rest of the dark IDE.
+
+**What to do:**
+1. Open any code file with a deliberate error (e.g., type `xyz123 = undefined_thing` in a Python file).
+2. Open the bottom panel by tapping the **VerticalAlignBottom** icon in the top bar (looks like a rectangle with a darker bottom strip).
+3. Tap the **"Problems"** tab at the bottom of the screen (text label "PROBLEMS" in the tab bar).
+
+**What to expect:**
+- The Problems panel header is **dark** (dark gray, matching the rest of the IDE — NOT light gray or white).
+- The header text "PROBLEMS (1)" or similar is in a medium gray color, readable against the dark background.
+- Each problem row shows the error message in a light gray/white text color (readable on dark background).
+- The line number on the right side of each row is in a dimmer gray.
+- If any text is white-on-white or light-on-light (invisible), that's a bug.
+
+---
+
+### TEST 5 — Snippet Tab Expansion
+
+**What happened before:** Pressing Tab did not expand snippets like `fun` or `def` — it just inserted spaces.
+
+**What to do:**
+1. Open a **Kotlin file** (`.kt`) in the editor. If you don't have one, create one: tap the Explorer, tap the **"+"** button or long-press a folder → "New File", name it `test.kt`.
+2. On a blank line, type the word: `fun`
+3. Do NOT tap the autocomplete popup. Instead, press the **Tab** key on your keyboard.
+
+**What to expect:**
+- The word `fun` expands into a full function template. You should see something like:
+  ```
+  fun name() {
+      
+  }
+  ```
+- The cursor lands inside the function name or body, ready for you to type the name.
+- If Tab just inserts spaces and the word stays as `fun`, that's a bug.
+
+**Also try:** Open a **Python file** (`.py`), type `def`, press Tab. It should expand to `def name():` with the cursor on the function name.
+
+---
+
+### TEST 6 — Select Next Occurrence
+
+**What happened before:** Tapping "Select Next Occurrence" only worked the first time — the second tap did nothing.
+
+**What to do:**
+1. Open a code file that has a word repeated several times. If you don't have one, create a Python file with this content:
+   ```
+   value = 10
+   print(value)
+   value = value + 1
+   print(value)
+   ```
+2. Long-press on the word `value` on the first line to select it.
+3. A context menu appears. Tap **"Select Next Occurrence"**.
+4. Tap **"Select Next Occurrence"** again from the same menu (or use the keyboard shortcut if available).
+
+**What to expect:**
+- First tap: the first `value` is selected, and the second `value` (on line 2) also gets selected — two cursors appear.
+- Second tap: the third `value` (on line 3) also gets selected — three cursors.
+- Third tap: the fourth `value` (also line 3 or line 4) gets selected.
+- You can now type in all selected positions at once.
+- If the second tap does nothing (only one occurrence stays selected), that's a bug.
+
+---
+
+### TEST 7 — Cross-File Go to Definition
+
+**What happened before:** When you tried to go to a function defined in another file, it always said "No declaration found" even when the function existed in the project.
+
+**What to do:**
+1. In your project, create two Python files:
+   - File 1: `utils.py` with this content:
+     ```
+     def helper_function():
+         return 42
+     ```
+   - File 2: `main.py` with this content:
+     ```
+     from utils import helper_function
+     result = helper_function()
+     ```
+2. Open `main.py` in the editor.
+3. Place your cursor on the word `helper_function` on line 2 (the one inside `result = helper_function()`).
+4. Long-press the word, then tap **"Go to Definition"** in the context menu. (Or look for a lightbulb/quick action that offers this.)
+
+**What to expect:**
+- A small popup appears showing the definition location. It should show:
+  - "In this file" section (empty, since the function is in another file).
+  - "In project" section showing `utils.py` with the function definition.
+- Tapping the `utils.py` result opens that file and jumps to the `def helper_function():` line.
+- If it says "No declaration found" and the function clearly exists in `utils.py`, that's a bug.
+
+---
+
+### TEST 8 — Find in Files: Keyword Transfer
+
+**What happened before:** When you searched for something in the editor's Find bar, then used "Find in Files", the search term was lost — the project search opened with a blank query.
+
+**What to do:**
+1. Open any code file in the editor.
+2. Tap the **3-dot overflow menu** (⋮) at the far right of the top bar.
+3. Tap **"Edit"** → then tap **"Find"**.
+4. The Find bar appears at the bottom of the editor. Type a search word (e.g., `import` or `fun` or `def` — pick a word you know exists in your project).
+5. Now, WITHOUT closing the Find bar, tap the 3-dot menu (⋮) again → **"Go"** → **"Find in Files"**.
+
+**What to expect:**
+- The project-wide search panel opens (full-screen overlay with a search bar at the top).
+- The search bar already contains the word you typed in the Find bar (e.g., `import`) — it should NOT be empty.
+- The search is in **text mode** (searching file contents, not just filenames).
+- Results appear below showing files and lines containing that word.
+- If the search bar is blank or the panel opens in filename mode instead of text mode, that's a bug.
+
+---
+
+### TEST 9 — Find in File: Keyboard Auto-Focus
+
+**What happened before:** When you opened the Find bar, the keyboard didn't appear — you had to tap the search field manually first.
+
+**What to do:**
+1. Open any code file in the editor.
+2. Tap the **3-dot overflow menu** (⋮) at the far right.
+3. Tap **"Edit"** → tap **"Find"**.
+4. Watch what happens immediately.
+
+**What to expect:**
+- The Find bar appears at the bottom of the editor (a dark bar with a text input field and toggle buttons for regex, case-sensitive, whole word).
+- The keyboard **automatically appears** within about half a second.
+- The cursor is blinking inside the search field — you can start typing immediately without tapping the field.
+- If you have to tap the field to bring up the keyboard, that's a bug.
+
+---
+
+### TEST 10 — Recycle Bin: Delete and Restore
+
+**What happened before:** After deleting a file and restoring it from trash, the file didn't reappear in the project list on the home screen — you had to close and reopen the project.
+
+**What to do:**
+1. In the Explorer file tree, long-press any file (e.g., a `.py` or `.kt` file you don't mind temporarily deleting).
+2. Tap **"Delete"** in the context menu.
+3. The file disappears from the file tree.
+4. Now long-press on the **project folder name** at the top of the file tree.
+5. In the context menu, look for **"Trash"** or **"Restore"** or **"Recycle Bin"**. Tap it.
+6. A trash list dialog appears showing the deleted file(s).
+7. Tap **"Restore"** next to the file you deleted.
+8. Go back to the home screen (press the back button or tap the app's home navigation).
+
+**What to expect:**
+- After restoring, the file reappears in the Explorer file tree immediately.
+- On the home screen (project list), the project is still listed (it should not have disappeared).
+- The restored file's content is intact — open it to verify.
+- If the project disappears from the home screen after restoring, or if the file doesn't reappear in the tree without reopening the project, that's a bug.
+
+---
+
+### TEST 11 — Quick Command Palette (Terminal)
+
+**What happened before:** The quick command palette (recent commands) required a long-press to open, which didn't work reliably.
+
+**What to do:**
+1. Open the bottom panel and switch to the **Terminal** tab.
+2. Type a few commands in the terminal so there's history (e.g., type `ls`, press Enter, type `pwd`, press Enter, type `echo hello`, press Enter).
+3. Look at the terminal toolbar (the row of icons above the terminal text area).
+4. Find a button labeled **"⚡ Cmds"** (a lightning bolt icon — it should be near the search/history button which looks like 🔍).
+5. Tap it once (just a normal tap, NOT a long-press).
+
+**What to expect:**
+- A strip or small popup appears showing your last 5 terminal commands (e.g., `ls`, `pwd`, `echo hello`, etc.).
+- Tapping one of the commands inserts it into the terminal input line (you can press Enter to run it).
+- Tap the ⚡ Cmds button again to close the strip.
+- If the button requires a long-press to work, or if nothing happens on a single tap, that's a bug.
+
+---
+
+### TEST 12 — MCP Status Indicator (App Launch)
+
+**What happened before:** The MCP/Agent status indicator stayed red (not running) until you opened a terminal tab. It should be green from app launch.
+
+**What to do:**
+1. Close the app completely (swipe it away from your recent apps list).
+2. Open the app again.
+3. Open a project (tap any project on the home screen).
+4. Do NOT open the terminal yet.
+5. Look at the **status bar** at the very bottom of the screen.
+6. Look for a small **colored dot** (green or red) near the right side, possibly with a label like "MCP" or "Agent" or a tool count.
+
+**What to expect:**
+- The dot is **green** (or shows "running" / a tool count like "32 tools") immediately after opening a project — without needing to open the terminal first.
+- If the dot is red and only turns green after you open the terminal tab, that's a bug.
+
+---
+
+### TEST 13 — Problems Panel: LSP Diagnostics Show Up
+
+**What to do:**
+1. Open a **Python file** (`.py`) in the editor.
+2. Type a line with an error, e.g., `x = undefined_variable_xyz`
+3. Wait about 3 seconds (the panel refreshes every 2 seconds).
+4. Open the bottom panel and tap the **"Problems"** tab.
+
+**What to expect:**
+- The Problems panel shows the error from your Python file.
+- The error message mentions the undefined variable or a similar diagnostic.
+- The line number matches where the error is in your file.
+- The severity icon (red X for error) is shown next to the message.
+- If the panel is empty even though there's clearly an error in your code, that's a bug (though this may happen if no LSP server is running — in that case, the built-in linter should still catch some issues).
+
+---
+
+### TEST 14 — Bracket Auto-Close
+
+**What to do:**
+1. Open any code file in the editor.
+2. On a blank line, type an open parenthesis: `(`
+3. Type an open curly brace: `{`
+4. Type an open square bracket: `[`
+5. Type a double quote: `"`
+
+**What to expect:**
+- After typing `(`, a `)` is automatically inserted right after your cursor. Your cursor is between them: `(|)`
+- After typing `{`, a `}` is inserted: `({|})`
+- After typing `[`, a `]` is inserted: `({[|]}`
+- After typing `"`, another `"` is inserted: `({[|""]}`
+- If you type the closing bracket yourself, it should "skip over" the auto-inserted one (not duplicate it) — this is the ideal behavior, but at minimum, the auto-close should work.
+- If no closing brackets are inserted, that's a bug.
+
+---
+
+### TEST 15 — Light Theme Readability (Editor Popups)
+
+**What happened before:** Several editor popups (hover info, rename dialog, completion popup) used white text on a white/light background when the light theme was active, making text invisible.
+
+**What to do:**
+1. Go to Settings (3-dot menu → File → Preferences, or DashboardCustomize → Preferences).
+2. Find the **Theme** setting and change it to a **light theme** (e.g., "Light" or "Light+").
+3. Go back to your project and open a code file.
+4. Type a few characters to trigger the autocomplete popup (e.g., type `val` in a `.kt` file).
+5. Look at the popup that appears.
+
+**What to expect:**
+- The completion popup has a readable background and text color — you can see the completion items clearly.
+- If there's a hover popup (long-press on a variable), its text is also readable.
+- If the rename dialog appears (long-press → "Rename Symbol"), the dialog text is readable.
+- If any popup has white text on a white/light background (invisible text), that's a bug.
+- After testing, switch back to your preferred dark theme.
+
+---
+
+### TEST 16 — Extract Here (Zip/Jar)
+
+**What to do:**
+1. In the Explorer file tree, find a `.zip` or `.jar` file. If you don't have one:
+   - Open the terminal and run: `cd /data/data/com.codespace.ide/files/projects/YOUR_PROJECT && zip test.zip test.py` (replace YOUR_PROJECT with your project name).
+   - Or create a .zip file any way you prefer.
+2. Long-press the `.zip` file in the file tree.
+3. In the context menu, find and tap **"Extract Here"**.
+
+**What to expect:**
+- A new folder appears in the file tree, named after the archive (e.g., `test` for `test.zip`).
+- Inside the folder, the contents of the zip file are extracted.
+- A success notification appears briefly.
+- If the menu item doesn't appear, or extraction fails silently, that's a bug.
+
+---
+
+### TEST 17 — Open as Text (Binary File)
+
+**What to do:**
+1. In the Explorer file tree, find a binary file (e.g., a `.so`, `.dex`, `.bin` file, or any file that normally shows "too small to be ELF" or opens in a hex viewer).
+2. Long-press the file.
+3. In the context menu, find and tap **"Open as Text"**.
+
+**What to expect:**
+- The file opens in the text editor (not a hex viewer, not an error message).
+- You see raw text content — it may look like garbled characters (this is normal for binary files viewed as text).
+- The editor does not crash or freeze.
+- If the option doesn't appear in the menu, or the editor crashes, that's a bug.
+
+---
+
+### TEST 18 — Completion Popup: Expanded List (60 items)
+
+**What to do:**
+1. Open a **Python file** (`.py`) in the editor.
+2. On a new line, type: `import m`
+3. Wait for the autocomplete popup.
+
+**What to expect:**
+- The dropdown shows many items (not just 15) — you should see: mailbox, markdown, marshal, math, matplotlib, mimetypes, mmap, mock, modulefinder, multiprocessing, mypy_extensions, and more.
+- Scroll down through the list — there should be 18+ items visible as you scroll.
+- The list should NOT cut off after 15 items.
+- At the very bottom of the popup, there's a small drag bar (about 14dp tall, slightly different color from the popup background).
+
+---
+
+### TEST 19 — Completion Popup: Drag to Resize
+
+**What to do:**
+1. Continue from Test 18 (the completion popup should still be open with the `import m` results).
+2. Find the **drag handle** at the bottom edge of the completion popup (a thin bar, slightly lighter or different shade than the popup background).
+3. Press and hold the drag handle.
+4. Drag **downward** slowly.
+
+**What to expect:**
+- The popup grows taller, showing more items at once.
+- Drag **upward** — the popup shrinks back to its original size.
+- The resize feels smooth, not laggy or jumpy.
+- The popup should NOT extend below the keyboard area.
+- If the drag handle doesn't exist or dragging does nothing, that's a bug.
+
+---
+
+### TEST 20 — Markdown Live Preview (Split View)
+
+**What to do:**
+1. Create or open a **Markdown file** (`.md`) in the editor. If creating one, name it `README.md` and type:
+   ```
+   # Hello World
+
+   This is **bold text** and this is *italic*.
+
+   - Item 1
+   - Item 2
+   ```
+2. Look at the editor toolbar (the row of small icons at the top of the editor area).
+3. Find an icon that looks like an **eye** (Visibility icon). Tap it.
+
+**What to expect:**
+- The editor splits into two panes: code on the left, rendered preview on the right.
+- The preview shows formatted text: a large "Hello World" heading, bold text, italic text, and a bullet list.
+- A draggable divider line exists between the two panes — drag it left or right to adjust the split ratio.
+- An **X** close button appears in the preview header — tap it to close the preview and return to full editor.
+
+---
+
+### TEST 21 — Preview Panel: Close Button
+
+**What to do:**
+1. Open the bottom panel (tap the VerticalAlignBottom icon in the top bar).
+2. Switch to the **Preview** tab.
+3. Look for a close button — an **X** icon in the Preview panel header.
+
+**What to expect:**
+- Tapping the X closes the preview panel.
+- The bottom panel either switches to the next available tab or collapses entirely.
+
+---
+
+### TEST 22 — Source Control: 3-Dot Overflow Menu
+
+**What to do:**
+1. Tap the **Source Control** icon in the activity bar (left side — it looks like a branch/git icon).
+2. The Source Control panel opens.
+3. Look for a **⋮ (three vertical dots)** button in the Source Control panel header (near the top-right of the panel).
+4. Tap it.
+
+**What to expect:**
+- A menu appears with items: View as Tree, Pull, Fetch, Push, Commit, Branch, Stash, Tags, Gitignore, Publish to GitHub, Open Remote Repository.
+- Tapping "Pull" attempts a git pull.
+- Tapping "Branch" opens a branch management dialog.
+- If the 3-dot button doesn't exist or the menu is empty, that's a bug.
+
+---
+
+### TEST 23 — Peek Definition Overlay
+
+**What to do:**
+1. Open a code file that has a function or class defined in the same file.
+2. Place your cursor on a call to that function (where it's used, not where it's defined).
+3. Long-press and look for **"Peek Definition"** in the context menu. Tap it.
+
+**What to expect:**
+- An **overlay panel** appears inside the editor (NOT navigating to another file/tab) — it shows the function's definition code inline.
+- The panel has a title showing the file name and line number.
+- There's a close button (X) to dismiss the overlay.
+- If it just jumps to the definition (navigates away) without showing an overlay, that's a bug.
+
+---
+
+### TEST 24 — Fix with AI (Lightbulb Action)
+
+**What to do:**
+1. Open a Python file with a deliberate error (e.g., type `x = undefined_variable_xyz`).
+2. Tap on the error line and wait for the **💡 lightbulb** to appear.
+3. Tap the lightbulb.
+4. A menu appears with suggested actions. Look for an item like **"Fix with AI"** or **"AI Fix"**.
+5. Tap it.
+
+**What to expect:**
+- The AI Copilot chat panel opens on the right side.
+- The chat panel contains a message describing the error and asking for a fix.
+- The AI begins generating a response or suggestion.
+- If nothing happens when you tap "Fix with AI", or the chat panel doesn't open, that's a bug.
+
+---
+
+### TEST 25 — .MD File Icon in Explorer
+
+**What to do:**
+1. In the Explorer file tree, look at any file with a `.md` extension.
+2. If you don't have one, create a file named `notes.md` (long-press a folder → "New File" → type `notes.md`).
+
+**What to expect:**
+- The file shows a **document/article icon** (looks like a page with lines of text — the Material Design "Article" icon), NOT a generic blue document.
+- The icon color is a blue tone (approximately `#4A90D9`).
+- If the file shows a plain generic file icon (blue rectangle with no lines), that's a partial issue.
+
+---
+
+### TEST 26 — Bookmark Icon Visibility (Theme-Aware)
+
+**What happened before:** The bookmark icon in the gutter was invisible until you switched themes, and then it was clipped.
+
+**What to do:**
+1. Open a code file in the editor.
+2. Tap in the left margin (gutter area) next to any line number — this should toggle a bookmark.
+3. Look for a bookmark indicator in the gutter (a small colored icon or marker next to the line number).
+
+**What to expect:**
+- The bookmark icon is **visible immediately** after tapping — you don't need to switch themes to see it.
+- The icon color matches the current theme (it should be readable against both dark and light themes).
+- The icon is not clipped or cut off.
+- Tap the gutter again to remove the bookmark.
+- If the bookmark is invisible or clipped, that's a bug.
+
+---
+
+### TEST 27 — Top Bar Layout Icons
+
+**What to do:**
+1. Look at the top bar (the single row at the very top of the screen).
+2. Find these icons from left to right:
+   - A **back arrow** (left-pointing arrow).
+   - A **search pill / project name** (text showing your project name).
+   - A **sidebar panel icon** (rectangle with darker left strip) — this is the Primary Sidebar toggle.
+   - A **bottom panel icon** (rectangle with darker bottom strip) — this is the Bottom Panel toggle.
+   - A **robot/bot icon** — this is the AI Chat panel toggle.
+   - A **grid icon** (DashboardCustomize) — this is the Layout dropdown.
+   - A **⋮ three dots** — this is the overflow menu.
+3. Tap the sidebar panel icon.
+
+**What to expect:**
+- Tapping the sidebar icon hides the left panel. Tap again to show it.
+- Tapping the bottom panel icon shows/hides the bottom panel.
+- Tapping the bot icon shows/hides the AI chat panel on the right.
+- Tapping the grid icon opens a dropdown with layout options.
+- If any icon is missing or doesn't toggle its panel, that's a bug.
+
+---
+
+### TEST 28 — 3-Dot Overflow Menu: Two-Level Navigation
+
+**What to do:**
+1. Tap the **⋮ (three dots)** at the far right of the top bar.
+2. A menu appears with categories: File, Edit, Selection, View, Go, Run, Terminal, Help — each with a **›** arrow.
+3. Tap **"File"**.
+4. The menu slides to show: New File, New Folder, Save, Auto Save, Exit.
+5. Tap the **‹ back arrow** at the top to return to the category list.
+6. Tap **"View"** — verify it shows: Explorer, Search, Source Control, Run, Extensions, Terminal, Problems, Output, Zoom In, Zoom Out.
+7. Tap outside the menu to dismiss.
+
+**What to expect:**
+- Each category opens its own submenu with a back arrow.
+- Navigation between levels is smooth.
+- Tapping a menu item performs the action (e.g., "Terminal" opens the bottom panel with Terminal tab).
+- If a category doesn't open a submenu, or the back button doesn't work, that's a bug.
+
+---
+
+### TEST 29 — In-Project Settings: Flow Mode + Verbose Toggle
+
+**What to do:**
+1. Tap the **3-dot menu** (⋮) → **"File"** → look for **"In-Project Settings"** (or it may be under a gear/Preferences entry).
+2. The settings dialog opens (dark themed, scrollable).
+3. Find the **"AI Agent Flow"** section.
+4. Look for a **"Flow Mode"** dropdown — it should show "Auto" by default.
+5. Tap the dropdown and select **"Manual"**.
+6. Find the **"Verbose Tool Output"** checkbox — tap to toggle it ON.
+
+**What to expect:**
+- The Flow Mode dropdown changes to "Manual".
+- The Verbose toggle shows as checked/enabled.
+- These settings persist if you close and reopen the dialog.
+- When Flow Mode is "Manual" and you trigger an AI tool action (e.g., "Fix with AI"), an Approve/Reject card should appear before the action runs.
+- When Flow Mode is "Auto", tool actions run immediately without an approval step.
+- If the settings dialog doesn't open or the Flow Mode dropdown is missing, that's a bug.
+
+---
+
+### TEST 30 — In-Project Settings: Search Bar
+
+**What to do:**
+1. Open the In-Project Settings dialog (same as Test 29).
+2. Find the **search bar** at the top of the settings dialog.
+3. Type: `cursor`
+
+**What to expect:**
+- The settings list filters to show only settings matching "cursor" (e.g., "Cursor Blink Style").
+- A result count appears (e.g., "1 Setting Found" or similar).
+- Clear the search bar — all settings reappear, organized by category.
+
+---
+
+### TEST 31 — In-Project Settings: Editor Feature Toggles
+
+**What to do:**
+1. Open the In-Project Settings dialog.
+2. Find the **"Editor Features"** section.
+3. You should see checkboxes for: Word Wrap, Inlay Hints, Minimap, CodeLens, Sticky Scroll, Error Lens, Color Swatches, Document Links, Ghost Text, Merge Conflicts, LSP Highlights.
+4. Toggle **"Minimap"** OFF.
+5. Close the dialog and look at the editor.
+
+**What to expect:**
+- The minimap (the small text overview on the right side of the editor) disappears.
+- Toggle it back ON and the minimap reappears.
+- Each toggle should immediately affect the editor — no restart needed.
+- If toggles don't affect the editor, that's a bug.
+
+---
+
+### TEST 32 — Cursor Blink Style
+
+**What to do:**
+1. Open In-Project Settings → **"Text Editor"** section.
+2. Find **"Cursor Blink Style"** dropdown.
+3. Change it to **"Smooth"**.
+3. Go back to the editor and tap to place the cursor in the code.
+
+**What to expect:**
+- The cursor fades in and out smoothly (instead of the usual sharp blink).
+- Try other styles: "Phase" (gradual fade), "Solid" (no blink, steady line), "Expand" (cursor expands/widens on blink), "Blink" (standard on/off blink).
+- Each style should visibly change how the cursor looks.
+- If changing the style has no effect on the cursor, that's a bug.
+
+---
+
+### TEST 33 — Terminal Notification Toggle
+
+**What to do:**
+1. Open In-Project Settings → **"Notifications"** section.
+2. Find **"Terminal Notifications"** toggle.
+3. Toggle it **OFF**.
+4. Go to the terminal and run a command (e.g., type `ls` and press Enter).
+5. Watch the notification area.
+
+**What to expect:**
+- With the toggle OFF, running a terminal command does NOT trigger a notification toast.
+- Toggle it back ON, run another command — a notification appears.
+- The toggle setting persists after closing and reopening the app.
+- If the toggle has no effect on notifications, that's a bug.
+
+---
+
+### TEST 34 — Pyright LSP Selection
+
+**What to do:**
+1. Open In-Project Settings → **"Python / LSP"** section.
+2. Find **"Diagnostics Source"** dropdown.
+3. Select **"Pyright"**.
+4. Open a Python file and type: `x = undefined_var_123`
+5. Wait a few seconds.
+
+**What to expect:**
+- If Pyright is installed (you may need to run `npm install -g pyright` in the terminal first), error squiggles appear under `undefined_var_123`.
+- If Pyright is NOT installed, the setting saves but no diagnostics appear until it's installed. You should see a notification or message indicating the server needs installation.
+- Switch back to "Pylsp" — the original Python LSP should resume working.
+- If the dropdown doesn't exist or selecting Pyright does nothing, that's a bug.
+
+---
+
+### TEST 35 — Cloud Backup Retry
+
+**What to do:**
+1. This test is automatic — it triggers only when a backup fails. To test:
+2. Open Settings (3-dot menu → Preferences).
+3. Look for a **Backup** section or button.
+4. Tap **"Backup Now"** or **"Create Backup"**.
+5. If your network is working, the backup should succeed. To test the retry, temporarily disable your internet (turn off WiFi and mobile data), then tap "Backup Now".
+
+**What to expect:**
+- On failure, the backup automatically retries up to 3 times.
+- There's a brief pause between retries: about 1 second, then 3 seconds, then 7 seconds.
+- A notification appears showing the final result (either "Backup succeeded after retry" or "Backup failed after 3 attempts").
+- If it fails immediately without retrying, that's a bug.
+
+---
+
+### TEST 36 — YouTube Video in Preview Browser
+
+**What to do:**
+1. Open the bottom panel and switch to the **Preview** tab.
+2. In the address bar at the top of the preview, type: `https://www.youtube.com/watch?v=dQw4w9WgXcQ`
+3. Press Go or Enter.
+
+**What to expect:**
+- The YouTube page loads.
+- The video player is visible (not a black box).
+- Tap the play button — the video plays with both audio and video.
+- If the video shows audio only (black screen with sound), that's a bug.
+- If you try to log in to Google/YouTube and the page says "browser not secure" or freezes, note this as a known limitation (Google blocks embedded WebViews — the fixes attempt to disguise the WebView but Google may still detect it).
+
+---
+
+### TEST 37 — Fullscreen Preview Mirror (No Page Reload)
+
+**What happened before:** Tapping the fullscreen/zoom button in the preview reloaded the entire page — losing scroll position, video state, and login sessions.
+
+**What to do:**
+1. Open the Preview tab and load any webpage (e.g., `https://example.com`).
+2. Scroll down a bit on the page.
+3. Tap the **fullscreen/zoom button** (an icon that looks like a rectangle expanding or arrows pointing outward — usually in the preview toolbar).
+4. Watch the transition.
+
+**What to expect:**
+- The page goes fullscreen WITHOUT reloading — your scroll position, any text you typed, and page state are preserved.
+- Tap the fullscreen button again (or a close/exit button) — the page returns to the inline preview WITHOUT reloading.
+- If the page flashes white and reloads when entering/exiting fullscreen, that's a bug.
+
+---
+
+### TEST 38 — Notification: No Duplicate Key Crash
+
+**What happened before:** The app could crash when multiple notifications arrived with the same ID/timestamp, causing a LazyColumn key collision.
+
+**What to do:**
+1. Open the app and trigger several actions that produce notifications in rapid succession:
+   - Tap the 3-dot menu → "View" → "Problems" (notification 1).
+   - Quickly tap "View" → "Terminal" (notification 2).
+   - Quickly tap "View" → "Output" (notification 3).
+2. Open the notification drawer (tap the bell icon in the status bar).
+
+**What to expect:**
+- The app does NOT crash.
+- The notification drawer shows all 3 notifications without error.
+- Each notification has a unique entry (no duplicates).
+- If the app crashes when opening the notification drawer, that's a bug.
+
+---
+
+### TEST 39 — Large File: No Crash/Lag
+
+**What happened before:** Opening a large code file (1000+ lines) caused the app to crash or become extremely laggy.
+
+**What to do:**
+1. In the terminal, create a large file:
+   ```
+   cd /data/data/com.codespace.ide/files/projects/YOUR_PROJECT
+   python3 -c "print('\\n'.join(['line %d' % i for i in range(2000)]))" > bigfile.py
+   ```
+   (Replace YOUR_PROJECT with your project name.)
+2. Open `bigfile.py` in the editor from the file tree.
+
+**What to expect:**
+- The file opens without crashing.
+- Scrolling through the file is smooth (not janky or frozen).
+- Line numbers display correctly on the left.
+- Typing in the file works without significant lag.
+
+---
+
+### TEST 40 — Terminal Notification Channel Name
+
+**What happened before:** The Android system notification settings showed "Termux App" as the notification channel name instead of the actual app name.
+
+**What to do:**
+1. Open the terminal (bottom panel → Terminal tab).
+2. Long-press the terminal notification in your Android notification shade (pull down from the top of your screen to see notifications).
+3. Tap the **"info"** or **"settings"** icon on the notification.
+4. This opens Android's notification settings for the app. Look at the **channel name** displayed.
+
+**What to expect:**
+- The channel name shows **"VN Code"** (or the app name), NOT "Termux App".
+- If it still says "Termux App", that's a bug. (Note: you may need to clear the app's notification channel cache or reinstall for the change to take effect on some Android versions.)
+
+---
+
+### TEST 41 — Recent Search History (Find in Files)
+
+**What to do:**
+1. Tap the activity bar icon for **Search** (magnifying glass on the left).
+2. The project search panel opens.
+3. Type a search term (e.g., `import`) and press Enter.
+4. Close the search panel (tap outside or press back).
+5. Reopen the search panel (tap the Search icon again).
+6. Look for a **"Recent Searches"** section or a **history icon** (looks like a clock or "History").
+
+**What to expect:**
+- Your previous search term (`import`) appears in the recent search history.
+- Tapping it re-runs the search.
+- If there's no recent history section, or it's always empty, that's a bug.
+
+---
+
+### TEST 42 — Debug Panel: Breakpoints and Step Buttons
+
+**What to do:**
+1. Open a Python file in the editor (e.g., a simple script with a few lines).
+2. Tap in the left margin (gutter) next to a line number to set a **breakpoint** — a red dot should appear.
+3. Open the bottom panel and switch to the **Debug** tab (or look for a "Run and Debug" option in the 3-dot menu → "Run").
+4. Start a debug session (tap a green Play button or "Start Debugging").
+
+**What to expect:**
+- The debug session starts and execution pauses at your breakpoint.
+- The **variable inspector** shows current variable values.
+- **Step buttons** are visible: Step Over, Step Into, Step Out, Continue/Resume.
+- Tapping "Step Over" advances to the next line.
+- Variable values update as you step through the code.
+- If the debug session doesn't start, step buttons don't work, or variables don't show, that's a bug (note: this may be PARTIAL if the Python debugger has issues in the proot environment).
+
+---
+
+## Summary Checklist
+
+| # | Feature | Result |
+|---|---------|--------|
+| 1 | Zen Mode: Tap to Type (Keyboard Opens) | |
+| 2 | Zen Mode: Double-Tap to Exit | |
+| 3 | Lightbulb Quick-Fix: Correct Line Position | |
+| 4 | Problems Panel: Dark Theme Colors | |
+| 5 | Snippet Tab Expansion | |
+| 6 | Select Next Occurrence | |
+| 7 | Cross-File Go to Definition | |
+| 8 | Find in Files: Keyword Transfer | |
+| 9 | Find in File: Keyboard Auto-Focus | |
+| 10 | Recycle Bin: Delete and Restore | |
+| 11 | Quick Command Palette (Terminal) | |
+| 12 | MCP Status Indicator (App Launch) | |
+| 13 | Problems Panel: LSP Diagnostics Show Up | |
+| 14 | Bracket Auto-Close | |
+| 15 | Light Theme Readability (Editor Popups) | |
+| 16 | Extract Here (Zip/Jar) | |
+| 17 | Open as Text (Binary File) | |
+| 18 | Completion Popup: Expanded List (60 items) | |
+| 19 | Completion Popup: Drag to Resize | |
+| 20 | Markdown Live Preview (Split View) | |
+| 21 | Preview Panel: Close Button | |
+| 22 | Source Control: 3-Dot Overflow Menu | |
+| 23 | Peek Definition Overlay | |
+| 24 | Fix with AI (Lightbulb Action) | |
+| 25 | .MD File Icon in Explorer | |
+| 26 | Bookmark Icon Visibility (Theme-Aware) | |
+| 27 | Top Bar Layout Icons | |
+| 28 | 3-Dot Overflow Menu: Two-Level Navigation | |
+| 29 | In-Project Settings: Flow Mode + Verbose Toggle | |
+| 30 | In-Project Settings: Search Bar | |
+| 31 | In-Project Settings: Editor Feature Toggles | |
+| 32 | Cursor Blink Style | |
+| 33 | Terminal Notification Toggle | |
+| 34 | Pyright LSP Selection | |
+| 35 | Cloud Backup Retry | |
+| 36 | YouTube Video in Preview Browser | |
+| 37 | Fullscreen Preview Mirror (No Page Reload) | |
+| 38 | Notification: No Duplicate Key Crash | |
+| 39 | Large File: No Crash/Lag | |
+| 40 | Terminal Notification Channel Name | |
+| 41 | Recent Search History (Find in Files) | |
+| 42 | Debug Panel: Breakpoints and Step Buttons | |
