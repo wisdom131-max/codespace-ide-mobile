@@ -1285,6 +1285,10 @@ fun ProjectShellScreen(
                 showFileSearch = false
             },
             onDismiss = { showFileSearch = false },
+            // N5 FIX: "Find in Files" opens in text mode and carries over the
+            // editor's current search term so the user doesn't retype it.
+            initialTextMode = true,
+            initialQuery = _findQuery,
         )
     }
 
@@ -1302,32 +1306,29 @@ fun ProjectShellScreen(
 
         // P45-G2: Floating Zen Mode exit button
         if (zenMode) {
-            // P46-O1: Transparent overlay that ONLY catches double-tap to exit.
-            // Must NOT consume single taps — otherwise the editor underneath can't
-            // receive focus and the soft keyboard won't open in Zen Mode.
-            Box(
-                Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            zenMode = false
-                            showNotification("Zen Mode off", "info")
-                        },
-                        onTap = { /* intentionally empty — let the tap fall through to the editor */ }
-                    )
-                }
-            )
+            // O1 FIX (2026-08-10): The previous detectTapGestures overlay with
+            // empty onTap STILL consumed single taps, preventing the editor from
+            // receiving focus → keyboard never opened in Zen Mode. Removed the
+            // overlay entirely; double-tap-to-exit now lives on the FAB itself
+            // via combinedClickable(onDoubleClick=...), which does NOT block
+            // single taps from reaching the editor underneath.
             Box(
                 Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.BottomEnd,
             ) {
                 FloatingActionButton(
-                    onClick = {
-                        zenMode = false
-                        showNotification("Zen Mode off", "info")
-                    },
+                    onClick = {},
                     containerColor = Color(0xFF007ACC),
                     contentColor = Color.White,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .combinedClickable(
+                            onClick = {},
+                            onDoubleClick = {
+                                zenMode = false
+                                showNotification("Zen Mode off", "info")
+                            },
+                        ),
                 ) {
                     Icon(Icons.Default.FullscreenExit, null, modifier = Modifier.size(20.dp))
                 }

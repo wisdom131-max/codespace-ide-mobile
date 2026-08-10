@@ -78,9 +78,11 @@ fun ProjectFileSearchPanel(
     onDismiss: () -> Unit,
     onOpenFile: (String) -> Unit,
     onOpenFileAtLine: (path: String, line: Int) -> Unit = { path, _ -> onOpenFile(path) },
+    initialTextMode: Boolean = false,
+    initialQuery: String = "",
 ) {
-    var query by remember { mutableStateOf("") }
-    var textMode by remember { mutableStateOf(false) }   // false = filename, true = full-text
+    var query by remember { mutableStateOf(initialQuery) }
+    var textMode by remember { mutableStateOf(initialTextMode) }   // false = filename, true = full-text
     var fileResults by remember { mutableStateOf<List<FileResult>>(emptyList()) }
     var textResults by remember { mutableStateOf<List<TextResult>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
