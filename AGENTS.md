@@ -11901,3 +11901,48 @@ Replaced 11 hardcoded dark-only color constants with theme-aware `EditorColors` 
 
 **Next planned:** Feature toggles → Settings panel → D1/D3 device testing
 
+---
+
+## Superagent Fixes — Aug 10 Session Part 2 (2026-08-10)
+
+### Commits
+| Commit | Fix | Files |
+|--------|-----|-------|
+| ce34ab9 | H5 + X7 | TerminalPane.kt, CodeSpaceApplication.kt |
+
+### Fixes
+
+**H5 — Quick command palette** (`TerminalPane.kt`)
+The quick command palette (recent-5 commands strip) required a long-press on the 🔍 Hist button. Long-press is unreliable on many Android devices — it either fires the tap first or doesn't register at all. Added a dedicated "⚡ Cmds" button with single-tap toggle next to 🔍 Hist. Both buttons are now tap-only (no long-press needed).
+
+**X7 — MCP status indicator** (`CodeSpaceApplication.kt`)
+AgentApiServer.start() was only called when a terminal session was created (TerminalService.kt:300), so the MCP indicator stayed red until you opened a terminal. Now starts on app launch in CodeSpaceApplication.onCreate(). The start() function no-ops if already running, so terminal creation is unaffected.
+
+### Updated Remaining Items
+
+**Needs on-device testing (9 items):**
+1. ⏳ V1: Recycle bin restore
+2. ⏳ N11: Find in File / Shell history keyboard focus
+3. ⏳ N5: Find in Files keyword transfer
+4. ⏳ O1: Zen Mode keyboard
+5. ⏳ S1: Light theme readability
+6. ⏳ Feature toggles / Settings panel (build #2039)
+7. ⏳ H5: Quick command palette (ce34ab9)
+8. ⏳ X7: MCP status indicator (ce34ab9)
+9. Completion resize handle + stdlib list (22aff40)
+
+**Still unfixed (1 item):**
+1. D1/D3: Completion dropdown issues (import context + member-access fixes applied — needs device test to confirm)
+
+**Items resolved this session (2026-08-10):**
+- ⏳ V1: Recycle bin restore (e6d51b8)
+- ⏳ N11: Find in File keyboard focus (e6d51b8)
+- ⏳ N5: Find in Files keyword transfer (fc1bc21)
+- ⏳ O1: Zen Mode keyboard (fc1bc21)
+- ⏳ S1: Light theme white-on-white (d83cf32)
+- ⏳ H5: Quick command palette (ce34ab9)
+- ⏳ X7: MCP status indicator (ce34ab9)
+
+**Next planned:** Debug panel step buttons + variables → D1/D3 device testing → Full login + connectors end-to-end
+
+
