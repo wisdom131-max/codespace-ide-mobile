@@ -2077,7 +2077,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         fontFamily = FontFamily.Monospace,
                         maxLines = 1,
                         modifier = Modifier
-                            .background(Color(0xFF1E1E1E).copy(alpha = 0.8f), RoundedCornerShape(2.dp))
+                            .background(colors.background.copy(alpha = 0.8f), RoundedCornerShape(2.dp))
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                             .then(
                                 if (onCodeLensClick != null && command != null) {
@@ -2185,7 +2185,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .padding(horizontal = 8.dp, vertical = 3.dp)
                     .zIndex(10f),
             ) {
-                Text("${extraCursors.size}× cursors ✕", color = Color(0xFFFFFFFF), fontSize = 10.sp)
+                Text("${extraCursors.size}× cursors ✕", color = colors.text, fontSize = 10.sp)
             }
         }
 
@@ -2451,7 +2451,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         if (longPressTrigger > 0) showLspMenu = true
                     }
                     androidx.compose.material3.Surface(
-                        color = Color(0xFF2D2D30),
+                        color = colors.background,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                         shadowElevation = 8.dp,
                         modifier = Modifier.size(36.dp)
@@ -2472,7 +2472,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         androidx.compose.material3.DropdownMenu(
                             expanded = showLspMenu,
                             onDismissRequest = { showLspMenu = false },
-                            modifier = Modifier.background(Color(0xFF252526))
+                            modifier = Modifier.background(colors.background)
                         ) {
                             // ── LSP Actions (compact scrollable dropdown) ──
                             androidx.compose.foundation.layout.Column(
@@ -3222,7 +3222,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val wordToRename = renameDialogWord!!
             AlertDialog(
                 onDismissRequest = { renameDialogWord = null },
-                containerColor = Color(0xFF252526),
+                containerColor = colors.background,
                 title = {
                     Text(
                         "Rename Symbol",
@@ -3249,7 +3249,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             ) {
                                 Text(
                                     if (renameUsedLsp) "LSP" else "Fallback",
-                                    color = Color(0xFF1E1E1E),
+                                    color = colors.background,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -3272,7 +3272,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color(0xFF007ACC),
-                                unfocusedBorderColor = Color(0xFF3C3C3C),
+                                unfocusedBorderColor = colors.gutter.copy(alpha = 0.3f),
                                 cursorColor = Color(0xFF007ACC),
                             ),
                         )
@@ -3425,7 +3425,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         enabled = renameNewName.trim().isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)),
                     ) {
-                        Text("Rename", color = Color(0xFFFFFFFF), fontSize = 12.sp)
+                        Text("Rename", color = colors.text, fontSize = 12.sp)
                     }
                     }  // close Row
                 },
@@ -3441,13 +3441,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if (renamePreviewEdit != null) {
             AlertDialog(
                 onDismissRequest = { renamePreviewEdit = null; renamePreviewFiles = emptyList() },
-                containerColor = Color(0xFF252526),
+                containerColor = colors.background,
                 title = { Text("Rename Preview", color = Color(0xFFD4D4D4), fontSize = 14.sp, fontFamily = FontFamily.Monospace) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${renamePreviewFiles.size} file${if (renamePreviewFiles.size != 1) "s" else ""} affected",
                             color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                        HorizontalDivider(color = Color(0xFF3C3C3C), modifier = Modifier.padding(vertical = 4.dp))
+                        HorizontalDivider(color = colors.gutter.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
                         renamePreviewFiles.forEach { (fileName, editCount) ->
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("📄", fontSize = 10.sp)
@@ -3730,8 +3730,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .padding(start = GUTTER_WIDTH.dp, top = popupTopDp.dp)
                     .widthIn(max = 320.dp)
                     .zIndex(10f)
-                    .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
-                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp)),
+                    .background(colors.background, RoundedCornerShape(6.dp))
+                    .border(1.dp, colors.function.copy(alpha = 0.6f), RoundedCornerShape(6.dp)),
             ) {
                 Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -3902,8 +3902,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     modifier = Modifier
                         .widthIn(min = 160.dp, max = 280.dp)
                         .heightIn(max = popupMaxDp.dp)
-                        .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
-                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp))
+                        .background(colors.background, RoundedCornerShape(6.dp))
+                        .border(1.dp, colors.function.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
                         .clickable { } // consume touches to prevent touch-through to editor
                 ) {
                     // P41-J: Filter chips row
@@ -4467,7 +4467,7 @@ private fun GotoDefinitionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF252526),
+        containerColor = colors.background,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -4483,7 +4483,7 @@ private fun GotoDefinitionDialog(
                             .background(Color(0xFFCC7832))
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
-                        Text("Fallback", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("Fallback", color = colors.background, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -4575,7 +4575,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
                             .background(if (findRefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
-                        Text(if (findRefUsedLsp) "LSP" else "Fallback", color = Color(0xFF1E1E1E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text(if (findRefUsedLsp) "LSP" else "Fallback", color = colors.background, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.weight(1f))
                     if (findRefLoading) {
@@ -5038,8 +5038,8 @@ private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
                     .padding(start = GUTTER_WIDTH.dp, top = hoverTopDp.dp)
                     .widthIn(max = 300.dp)
                     .zIndex(12f)
-                    .background(Color(0xFF2D2D2D), RoundedCornerShape(6.dp))
-                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(6.dp)),
+                    .background(colors.background, RoundedCornerShape(6.dp))
+                    .border(1.dp, colors.function.copy(alpha = 0.6f), RoundedCornerShape(6.dp)),
             ) {
                 Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
                     Row(
