@@ -161,6 +161,56 @@ Modified files in Phase 9:
 ### ⚠️ ARCHITECTURAL RISK: ProjectShellScreen.kt method size
 
 **ProjectShellScreen.kt is 3967 lines.** It hit the JVM 64KB method-too-large limit during Phase 9 (#1126–#1128 failed).
+
+## ⚠️ JVM 64KB BYTECODE LIMIT — CRITICAL REFERENCE FOR ALL AI AGENTS
+
+### What is it?
+The JVM enforces a hard 64KB (65535 bytes) bytecode limit per method. Kotlin Composable functions that are too large hit "Method too large" compilation errors and break ALL CI builds.
+
+### Files at risk (as of 2026-08-11, build #2121 GREEN):
+
+| File | Total Lines | Composable Body | Status | Extracted Files |
+|------|------------|-----------------|--------|-----------------|
+| `CodeEditor.kt` | 5305 | ~3976 (lines 480-4456) | ⚠️ NEAR LIMIT | `CursorOverlay.kt`, `EditorOverlays.kt`, `PeekWidget.kt`, `GotoDefinitionDialog.kt`, `FindReplaceBar.kt`, `HoverPopup.kt`, `LightbulbIndicator.kt`, `BottomPanels.kt` |
+| `ProjectShellScreen.kt` | 4073 | ~3500+ | ⚠️ NEAR LIMIT | `PssOverlays.kt`, `PssActivityBar.kt`, `SymbolSearchOverlay.kt`, `StatusBarContent.kt`, `PssEditorColumn.kt`, `PssTopBar.kt` |
+| `ExplorerPane.kt` | 3162 | ~2800+ | ⚠️ WATCH | (no extractions yet) |
+
+### RULES FOR ALL AI AGENTS:
+1. **NEVER add inline code to `CodeEditor.kt`'s `CodeEditor()` composable body (lines 480-4456).** If you need to add rendering code, create a new `@Composable` function in a separate file (e.g., `NewFeatureOverlay.kt`) and call it from CodeEditor with a single function call line.
+2. **NEVER add inline code to `ProjectShellScreen.kt`'s main composable body.** Same pattern — extract to a separate file.
+3. **If a build fails with "Method too large"**, the fix is ALWAYS to extract inline code into a separate `@Composable` function in a new file. Do NOT try to reduce code by removing features.
+4. **Each extracted function should be `internal` (not `private`) if called from another file.**
+5. **When extracting, pay attention to:**
+   - Type names (e.g., `BlameLine` not `GitBlame`)
+   - Parameter types (e.g., `GUTTER_WIDTH` is `Float` not `Int`, `extraCursors` is `List<Int>` not `Set<Int>`)
+   - Import paths (e.g., `EditorColors` is in `com.codespace.ide.ui`, not `com.codespace.ide.ui.Theme`)
+   - Local function references (use `{ lineFromOffset(it) }` not `::lineFromOffset` for local functions)
+6. **Line count is a proxy, not a guarantee.** The actual bytecode depends on Compose compiler group generation, lambda captures, and control flow. A 4000-line composable might be fine, or it might not. When in doubt, extract.
+
+### Extraction pattern (proven to work):
+```kotlin
+// In new file: NewFeatureOverlay.kt
+@Composable
+internal fun androidx.compose.foundation.layout.BoxScope.NewFeatureOverlay(
+    param1: Type1,
+    param2: Type2,
+) {
+    if (condition) {
+        Box(modifier = Modifier.align(Alignment.TopStart)...) { ... }
+    }
+}
+
+// In CodeEditor.kt (single line call):
+NewFeatureOverlay(param1, param2)
+```
+
+### History of 64KB failures and fixes:
+- #1128: ProjectShellScreen — fixed by extracting PssOverlays, PssActivityBar, etc.
+- #1819: CodeEditor — fixed by extracting FindReplaceBar, HoverPopup, LightbulbIndicator
+- #1916-1919: CodeEditor — fixed by extracting GotoDefinitionDialog, BottomPanels
+- #2108-2118: CodeEditor — fixed by extracting EditorOverlays (BlameLineOverlay, ExtraCursorOverlay, SearchMatchOverlay, MergeConflictOverlay) + CursorOverlay
+- #2121: GREEN after all extractions confirmed working
+
 The fix was extracting `SymbolSearchOverlay()` and `StatusBarContent()` into separate @Composable functions (#1129 green).
 
 **RULE FOR FUTURE PHASES:** Any new UI added to ProjectShellScreen MUST be extracted into a separate
@@ -14188,6 +14238,22 @@ code is written.
 
 ## CHANGE LOG (Read this FIRST before starting any work)
 
+### [2026-08-11 18:15 WAT] -- AI Agent: Claude (Superagent)
+**Commit:** `9a42552` | **CI Build:** #2121 ✅ GREEN
+**What was fixed:**
+1. **Fixed EditorOverlays.kt compilation errors** that broke builds #2119-#2120:
+   - Changed `private`→`internal` for all overlay composables (cross-file access)
+   - Renamed `GitBlameOverlay`→`BlameLineOverlay` (matches `BlameLine` data class name)
+   - Fixed import: `com.codespace.ide.ui.Theme.EditorColors`→`com.codespace.ide.ui.EditorColors`
+   - Fixed `GUTTER_WIDTH` param type: `Int`→`Float` (actual: `72f`)
+   - Fixed `extraCursors` param type: `Set<Int>`→`List<Int>` (actual type in CodeEditor)
+   - Fixed `::lineFromOffset`→`{ lineFromOffset(it) }` (Kotlin local function refs need lambdas)
+   - Removed redundant same-package imports
+2. **Documented 64KB bytecode limit** in AGENTS.md with full reference table of at-risk files, extraction pattern, and rules for all AI agents
+3. **Added TypeScript 7 plan** in AGENTS.md: TS 7 as default with vtsls LSP, TS 5.6.3 and 4.9.5 as backups, version toggle in In-Project Settings
+
+**Files touched:** `CodeEditor.kt` (call site fixes), `EditorOverlays.kt` (visibility/types/imports), `AGENTS.md`
+
 ### [2026-08-11 17:25 WAT] -- AI Agent: Claude (Superagent)
 **Commit:** `9e82443` | **CI Build:** #2119 (in progress)
 **What was done:**
@@ -14257,6 +14323,64 @@ VS Code-style multi-cursor support with a floating quick-actions menu triggered 
 - "Exit Multi-Cursor" clears extraCursors and returns to single-cursor mode
 
 ### Status: PLANNED (not yet implemented)
+## TYPESCRIPT 7 PLAN (User-specified, 2026-08-11)
+
+### Overview
+Make TypeScript 7 the DEFAULT TypeScript version in the app, with older versions as backup options. Add a toggle in In-Project Settings to switch between TS versions.
+
+### Current State (as of 2026-08-11)
+- TypeScript is PINNED to 5.6.3 in `LspManager.kt` (lines 63-98)
+- Reason: TypeScript 7.x ships ONLY `tsc.js` (compiler CLI) and no longer includes `tsserver.js` / `tsserverlibrary.js`
+- `typescript-language-server` requires `tsserver.js` at runtime and fails with TS 7.x
+- Current install command: `npm install -g typescript-language-server typescript@5.6.3`
+
+### The Problem with TypeScript 7
+TS 7 removed `tsserver.js` and `tsserverlibrary.js` from its npm package. Only `tsc.js` (the CLI compiler) is shipped. The `typescript-language-server` npm package (the LSP wrapper) depends on `tsserver.js` being present.
+
+### Proposed Solution
+Use **`vtsls`** (Very TypeScript Language Server) as the LSP for TS 7, which works with TS 7's new API structure. For older TS versions, keep `typescript-language-server` as fallback.
+
+#### Architecture:
+1. **Default:** TS 7 + `vtsls` LSP server
+   - Install: `npm install -g typescript@7 vtsls`
+   - `vtsls` uses the TypeScript JIT API (not tsserver.js) and supports TS 7
+   - LSP command: `vtsls --stdio`
+2. **Backup Option 1:** TS 5.6.3 + `typescript-language-server` (current setup)
+   - Install: `npm install -g typescript-language-server typescript@5.6.3`
+   - LSP command: `typescript-language-server --stdio`
+3. **Backup Option 2:** TS 4.9.5 + `typescript-language-server` (legacy)
+   - For maximum compatibility with older projects
+
+#### In-Project Settings UI:
+- **TypeScript Version** dropdown (in LSP Servers category):
+  - "TypeScript 7 (Latest)" — default, uses vtsls
+  - "TypeScript 5.6.3 (Stable)" — uses typescript-language-server
+  - "TypeScript 4.9.5 (Legacy)" — uses typescript-language-server
+- When user selects a version, the app:
+  1. Installs the selected TS version + matching LSP server
+  2. Restarts the TS/JS LSP with the new server binary
+  3. Persists the choice in SharedPreferences
+
+#### Implementation Steps:
+1. **`ProjectSettingsStore.kt`**: Add `TypeScriptVersion` enum + `typescriptVersion` state
+2. **`LspManager.kt`**:
+   - Add `vtsls` as alternative LSP server for TS 7
+   - Change `startServer()` to select LSP binary based on TS version setting
+   - Update install commands per version
+   - Update `checkCommand()` validation (vtsls check vs tsserver.js check)
+3. **`InProjectSettingsDialog.kt`**: Add `TypeScriptVersionRow` composable dropdown
+4. **`ProjectShellScreen.kt`**: Wire the setting to LspManager restart on change
+
+### Research Notes
+- `vtsls` is an npm package: `npm install -g @vtsls/ts-lsp` or `npm install -g vtsls`
+- `vtsls` is a pure-JS LSP server that uses TypeScript's compiler API directly (no tsserver.js dependency)
+- It's actively maintained and supports TS 7.x's module structure
+- Alternative: `typescript-language-server` might eventually add TS 7 support — monitor their releases
+- Another option: ship `tsserver.js` from TS 5.6.3 alongside TS 7's `tsc.js` (hybrid approach) — but this is fragile
+
+### Status: PLANNED (not yet implemented)
+
+
 
 
 **Next on roadmap:** Await CI #2116 result. If green, implement the vscode.dev cursor behaviors above (word highlight on cursor placement, bracket matching highlight, popup menu restructuring).
