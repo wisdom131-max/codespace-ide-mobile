@@ -1908,7 +1908,8 @@ fun ExplorerSidePanel(
                                             onShowNotification?.invoke("Cannot write to this folder. Grant 'All files access' permission in Settings.", "error")
                                         }
                                         showNewFile = false
-                                        nameInput = 
+                                        nameInput = ""
+                                        return@onClick
                                     }
                                 }
                                 newFile.parentFile?.mkdirs()
