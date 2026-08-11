@@ -4180,8 +4180,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }  // P50-FIX: density-corrected, convert to px
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
             // Fix: position popup at cursor column (like VS Code), with flip-above + right-edge clamp
-            val cursorCol = value.selection.end - value.text.lastIndexOf('
-', (value.selection.end - 1).coerceAtLeast(0)) - 1
+            val cursorCol = value.selection.end - value.text.lastIndexOf('\n', (value.selection.end - 1).coerceAtLeast(0)) - 1
             val charWidthPx = fontSize * 0.6f
             val screenDensity = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
