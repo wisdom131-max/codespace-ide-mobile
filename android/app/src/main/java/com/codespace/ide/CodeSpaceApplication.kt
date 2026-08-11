@@ -187,10 +187,23 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             put("version_code", BuildConfig.VERSION_CODE)
             put("git_hash", BuildConfig.GIT_HASH)
             put("device_timestamp", stamp)
-            // P32: If this is the Compose concurrent change crash, flag it
+            // P32: If this is the Compose concurrent change crash, flag it with state-object context
             if (stackTrace.contains("Unsupported concurrent change during composition")) {
                 put("crash_type", "COMPOSE_CONCURRENT_CHANGE")
                 put("active_threads", Thread.getAllStackTraces().keys.joinToString(", ") { it.name })
+                // P32-CRASH-CONTEXT: Log sizes of all known global Compose state objects
+                // so the exact state object involved in the next crash is directly identifiable
+                try {
+                    val appLog = com.codespace.ide.diagnostics.AppOutputLog
+                    put("state_appoutputlog_lines_size", appLog.lines.size.toString())
+                    put("state_appoutputlog_internal_size", appLog.internalLines.size.toString())
+                    val notif = com.codespace.ide.data.NotificationStore
+                    put("state_notificationstore_items_size", notif.items.size.toString())
+                    put("state_appoutputlog_max", "500")
+                    put("state_notificationstore_max", "50")
+                } catch (e: Throwable) {
+                    put("state_context_error", e.message ?: "unknown")
+                }
             }
         }
 
