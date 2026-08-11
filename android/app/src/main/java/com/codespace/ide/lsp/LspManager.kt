@@ -471,7 +471,7 @@ object LspManager {
             "which R && R -e 'cat(system.file(package=languageserver, mustWork=TRUE))' 2>/dev/null && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends r-base r-base-dev; " +
-                "R -e 'install.packages("languageserver", repos="https://cloud.r-project.org")'",
+                "R -e 'install.packages(\"languageserver\", repos=\"https://cloud.r-project.org\")'",
             300,
         ),
         // ── Swift ─────────────────────────────────────────────────────────
