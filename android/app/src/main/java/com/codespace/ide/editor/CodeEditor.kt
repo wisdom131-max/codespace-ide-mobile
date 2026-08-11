@@ -475,6 +475,44 @@ private suspend fun doFormatSelection(
     return null
 }
 
+@Composable
+private fun cursorOverlayModifier(
+    textLayoutResult: androidx.compose.ui.text.TextLayoutResult?,
+    selection: androidx.compose.ui.text.TextRange,
+    cursorColor: androidx.compose.ui.graphics.Color,
+): Modifier {
+    val cursorStyle = ProjectSettingsStore.cursorBlinkStyle.value
+    if (cursorStyle != CursorBlinkStyle.SOLID && cursorStyle != CursorBlinkStyle.EXPAND) {
+        return Modifier
+    }
+    var expandW by remember(cursorStyle) { mutableStateOf(2f) }
+    if (cursorStyle == CursorBlinkStyle.EXPAND) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                expandW = 5f
+                kotlinx.coroutines.delay(350)
+                expandW = 1.5f
+                kotlinx.coroutines.delay(350)
+            }
+        }
+    }
+    return Modifier.drawWithContent {
+        drawContent()
+        val layout = textLayoutResult ?: return@drawWithContent
+        val cursor = selection.end
+        val lineIdx = layout.getLineForOffset(cursor)
+        val cx = layout.getHorizontalPosition(cursor, true)
+        val cy = layout.getLineTop(lineIdx)
+        val ch = layout.getLineBottom(lineIdx) - cy
+        val w = if (cursorStyle == CursorBlinkStyle.EXPAND) expandW else 2.dp.toPx()
+        drawRect(
+            color = cursorColor,
+            topLeft = Offset(cx - w / 2f, cy),
+            size = Size(w, ch),
+        )
+    }
+}
+
 
 @Composable
 fun CodeEditor(
@@ -1964,44 +2002,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 false // let BasicTextField handle normally
                             }
                         }
-                        // P-CURSOR: For SOLID/EXPAND modes, draw a custom cursor overlay
-                        // (BasicTextField always blinks its built-in cursor, so we make it
-                        // transparent and draw our own non-blinking / expanding cursor here)
-                        .then(
-                            if (ProjectSettingsStore.cursorBlinkStyle.value == CursorBlinkStyle.SOLID ||
-                                ProjectSettingsStore.cursorBlinkStyle.value == CursorBlinkStyle.EXPAND
-                            ) {
-                                val cursorStyle = ProjectSettingsStore.cursorBlinkStyle.value
-                                var expandW by remember(cursorStyle) { mutableStateOf(2f) }
-                                if (cursorStyle == CursorBlinkStyle.EXPAND) {
-                                    LaunchedEffect(Unit) {
-                                        while (true) {
-                                            expandW = 5f
-                                            kotlinx.coroutines.delay(350)
-                                            expandW = 1.5f
-                                            kotlinx.coroutines.delay(350)
-                                        }
-                                    }
-                                }
-                                Modifier.drawWithContent {
-                                    drawContent()
-                                    val layout = textLayoutResult ?: return@drawWithContent
-                                    val cursor = value.selection.end
-                                    val lineIdx = layout.getLineForOffset(cursor)
-                                    val cx = layout.getHorizontalPosition(cursor, true)
-                                    val cy = layout.getLineTop(lineIdx)
-                                    val ch = layout.getLineBottom(lineIdx) - cy
-                                    val w = if (cursorStyle == CursorBlinkStyle.EXPAND) expandW else 2.dp.toPx()
-                                    drawRect(
-                                        color = colors.cursor,
-                                        topLeft = Offset(cx - w / 2f, cy),
-                                        size = Size(w, ch),
-                                    )
-                                }
-                            } else {
-                                Modifier
-                            }
-                        ),
+                        // P-CURSOR: Custom cursor overlay extracted to separate function
+                        .then(cursorOverlayModifier(
+                            textLayoutResult = textLayoutResult,
+                            selection = value.selection,
+                            cursorColor = colors.cursor,
+                        )),
                 )
 
             }
