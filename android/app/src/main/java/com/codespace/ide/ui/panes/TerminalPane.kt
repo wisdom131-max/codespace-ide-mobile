@@ -10,6 +10,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
@@ -1612,21 +1613,22 @@ internal fun TerminalPane(
         // second line (which would steal vertical space the terminal output needs) and must never
         // silently clip buttons off the right edge either — scrolling keeps every action reachable
         // while staying a single compact row no matter how narrow the screen is.
-        // P14-F: Quick command palette — recent 5 commands strip
+        // P14-F: Quick command palette — ALL command history (scrollable)
         if (showCmdPalette) {
-            val recentCmds = remember(showCmdPalette) {
-                TerminalHistoryStore.load(context).takeLast(5).reversed()
+            val allCmds = remember(showCmdPalette) {
+                TerminalHistoryStore.load(context).reversed() // newest first
             }
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 200.dp)
                     .background(Color(0xFF1A1A2E))
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Recent commands", color = Color(0xFF569CD6), fontSize = 10.sp,
+                    Text("Command history (${allCmds.size})", color = Color(0xFF569CD6), fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Box(
                         Modifier
@@ -1636,31 +1638,33 @@ internal fun TerminalPane(
                             .padding(horizontal = 8.dp, vertical = 2.dp),
                     ) { Text("✕", color = Color(0xFF808080), fontSize = 10.sp) }
                 }
-                if (recentCmds.isEmpty()) {
+                if (allCmds.isEmpty()) {
                     Text("No history yet",
                         color = Color(0xFF555555), fontSize = 11.sp,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                 } else {
-                    recentCmds.forEach { cmd ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    active?.session?.write(cmd)
-                                    TerminalHistoryStore.append(context, cmd)
-                                    showCmdPalette = false
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("›", color = Color(0xFF569CD6), fontSize = 13.sp,
-                                modifier = Modifier.padding(end = 6.dp))
-                            Text(cmd, color = Color(0xFFCCCCCC), fontSize = 12.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    LazyColumn(Modifier.weight(1f, fill = false)) {
+                        items(allCmds) { cmd ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        active?.session?.write(cmd)
+                                        TerminalHistoryStore.append(context, cmd)
+                                        showCmdPalette = false
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("›", color = Color(0xFF569CD6), fontSize = 13.sp,
+                                    modifier = Modifier.padding(end = 6.dp))
+                                Text(cmd, color = Color(0xFFCCCCCC), fontSize = 12.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                            HorizontalDivider(color = Color(0xFF2A2A2A), thickness = 0.5.dp)
                         }
-                        HorizontalDivider(color = Color(0xFF2A2A2A), thickness = 0.5.dp)
                     }
                     // Full search footer
                     Box(
@@ -1669,7 +1673,7 @@ internal fun TerminalPane(
                             .clickable { showCmdPalette = false; showHistorySearch = true }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
-                        Text("Search all history →", color = Color(0xFF569CD6), fontSize = 11.sp)
+                        Text("Search history →", color = Color(0xFF569CD6), fontSize = 11.sp)
                     }
                 }
             }

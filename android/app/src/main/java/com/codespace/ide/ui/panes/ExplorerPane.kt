@@ -1264,10 +1264,10 @@ fun ExplorerSidePanel(
     }
 
     // ── Context menu (long press) ─────────────────────────────────────────
-    // P17-A: version history autosave — snapshot recently modified files every 30s
+    // P17-A: version history autosave — snapshot recently modified files every 20s
     LaunchedEffect(Unit) {
         while (true) {
-            delay(30_000L)
+            delay(20_000L)
             withContext(Dispatchers.IO) {
                 val wsPath = loadWorkspacePath(context, projectId) ?: return@withContext
                 val projectDir = File(wsPath)

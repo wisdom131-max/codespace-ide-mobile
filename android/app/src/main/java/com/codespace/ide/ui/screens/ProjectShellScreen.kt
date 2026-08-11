@@ -96,6 +96,7 @@ import org.json.JSONArray
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.lspDiagnosticsToProblems
 import com.codespace.ide.domain.Language
+import androidx.compose.runtime.snapshotFlow
 
 // ── Theme-aware colors (read from MaterialTheme + currentTheme name) ──────────
 private data class IdeColors(
@@ -2511,10 +2512,16 @@ private fun buildRunCommand(path: String): String? {
         }
     }
     // P31-CRASH-FIX: Read size in a snapshot so it matches the items() count.
-    val logCount = logs.size
-    LaunchedEffect(logCount, selectedChannel) {
-        val filteredSize = if (selectedChannel == "all") logCount else logs.count { it.contains("[$selectedChannel]") }
-        if (filteredSize > 0) listState.animateScrollToItem((filteredSize - 1).coerceAtLeast(0))
+    // P-OUTPUT-SPEED: Use snapshotFlow to properly batch rapid log changes and auto-scroll.
+    // Fix: "all" channel wasn't updating because animateScrollToItem was cancelled by
+    // rapid recompositions. snapshotFlow batches and ensures scroll fires after settle.
+    LaunchedEffect(selectedChannel) {
+        snapshotFlow {
+            if (selectedChannel == "all") logs.size
+            else logs.count { it.contains("[$selectedChannel]") }
+        }.collect { size ->
+            if (size > 0) listState.animateScrollToItem(size - 1)
+        }
     }
     // Theme-aware colors (passed from parent)
     val headerBg = panelBg

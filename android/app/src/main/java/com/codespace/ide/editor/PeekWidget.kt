@@ -62,7 +62,7 @@ fun BoxScope.PeekCodeWidget(
         shape = RoundedCornerShape(8.dp),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header
+            // Header — X button always visible (even in narrow portrait)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -70,31 +70,39 @@ fun BoxScope.PeekCodeWidget(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    result.title,
-                    color = Color(0xFF4EC9B0),
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-                Box(
-                    Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        .background(if (result.usedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                // Left: title + badge — shrinks to fit (weight 1f)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        if (result.usedLsp) "LSP" else "Fallback",
-                        color = Color(0xFF1E1E1E),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
+                        result.title,
+                        color = Color(0xFF4EC9B0),
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
                     )
+                    Box(
+                        Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            .background(if (result.usedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            if (result.usedLsp) "LSP" else "Fallback",
+                            color = Color(0xFF1E1E1E),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
-                Spacer(Modifier.weight(1f))
+                // Right: filename + X — always visible, never clipped
                 val fileName = result.filePath.substringAfterLast('/')
                 Text(
                     "$fileName:${result.line + 1}",
                     color = Color(0xFF888888),
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = onClose, contentPadding = PaddingValues(4.dp)) {

@@ -4179,8 +4179,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val cursorLine = lineFromOffset(value.selection.end)
             val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }  // P50-FIX: density-corrected, convert to px
             // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
-            val popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
-            val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
+            // Fix: position popup at cursor column (like VS Code), with flip-above + right-edge clamp
+            val cursorCol = value.selection.end - value.text.lastIndexOf('
+', (value.selection.end - 1).coerceAtLeast(0)) - 1
+            val charWidthPx = fontSize * 0.6f
+            val screenDensity = androidx.compose.ui.platform.LocalDensity.current
+            val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
+            val popupWidthPx = with(screenDensity) { 280.dp.toPx() } // max popup width
+            var popupOffsetX = (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
+            // Clamp X so popup doesn't go off the right edge
+            if (popupOffsetX + popupWidthPx > screenWidthPx) {
+                popupOffsetX = (screenWidthPx - popupWidthPx).roundToInt().coerceAtLeast(0)
+            }
+            // Flip popup above cursor if not enough space below (VS Code behavior)
+            val screenHeightPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
+            val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
+            var popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            if (popupOffsetY + popupMaxHeightPx > screenHeightPx) {
+                // Flip above: place popup above the cursor line
+                popupOffsetY = ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+            }
             
             // P41-J: Apply filter if active
             val filteredCompletions = if (completionFilter != null) {
@@ -4277,7 +4295,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val text = value.text
                                     val end = cursor.coerceAtMost(text.length)
                                     var start = end
-                                    while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_' || text[start - 1] == ' ')) start--
+                                    // Fix: don't cross spaces — "import o" should only replace "o", not "import o"
+                                    while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
                                     
                                     // P41-D: Check for LSP additionalTextEdits (auto-import) attached to this completion
                                     val hasAdditionalEdits = !comp.additionalTextEditsJson.isNullOrBlank()
@@ -5415,21 +5434,20 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
     onShowLightbulbMenu: (Boolean) -> Unit,
 ) {
     if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
-        // P46-D5 FIX: vScrollValue is in PIXELS, but lightbulbLine * fontSize * 1.25f is in DP.
-        // On devices with density != 1.0 (every real phone), this mismatch caused the lightbulb
-        // to drift to the wrong line. Convert scroll px to dp before subtracting.
+        // P46-D5 FIX v2: Stay in pixel space throughout to avoid px→dp→px rounding
+        // that accumulates over hundreds of lines and causes drift after extended use.
         val density = LocalDensity.current
-        val vScrollDp = with(density) { vScrollValue.toDp() }.value
-        val lineHeightDpBulb = with(density) { (fontSize * 1.25f).sp.toDp() }.value
-        val bulbTopDp = ((lightbulbLine * lineHeightDpBulb) - vScrollDp).coerceAtLeast(0f)
-        val bulbHeight = lineHeightDpBulb
-        if (bulbTopDp >= 0 && bulbTopDp < (displayLinesSize + 5) * bulbHeight) {
+        val lineHeightPx = with(density) { (fontSize * 1.25f).sp.toPx() }
+        val bulbTopPx = ((lightbulbLine * lineHeightPx) - vScrollValue).coerceAtLeast(0f)
+        val bulbHeightPx = lineHeightPx
+        val viewportEndPx = (displayLinesSize + 5) * lineHeightPx
+        if (bulbTopPx >= 0f && bulbTopPx < viewportEndPx) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 6.dp, top = bulbTopDp.dp)
+                    .padding(start = 6.dp, top = with(density) { bulbTopPx.toDp() })
                     .width(20.dp)
-                    .height(bulbHeight.dp)
+                    .height(with(density) { bulbHeightPx.toDp() })
                     .clickable { onShowLightbulbMenu(true) }
                     .zIndex(9f),
                 contentAlignment = Alignment.Center,

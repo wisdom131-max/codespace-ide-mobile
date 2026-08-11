@@ -10,6 +10,9 @@ import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * P24: LSP Code Action — a quick fix or refactoring suggestion returned by the language server.
@@ -497,6 +500,12 @@ object LspManager {
     // Running servers: language -> LspServer
     private val servers = ConcurrentHashMap<Language, LspServer>()
 
+    // Auto-close: track last activity per server, shut down after 10s idle
+    private val lastActivity = ConcurrentHashMap<Language, AtomicLong>()
+    private val autoCloseExecutor = Executors.newSingleThreadScheduledExecutor()
+    @Volatile var autoCloseEnabled = true
+    private var autoCloseScheduled = false
+
     // P50-3: ctags-lsp as secondary server for workspace/symbol fallback.
     // Runs alongside primary servers. When a primary server doesn't support
     // workspace/symbol, we route the request to ctags-lsp instead.
@@ -523,6 +532,31 @@ object LspManager {
 
     fun isServerRunning(language: Language): Boolean =
         servers[language]?.let { it.process.isAlive } ?: false
+
+    /** Touch activity timestamp — called on any editor interaction. */
+    private fun touchActivity(language: Language) {
+        lastActivity[language]?.set(System.currentTimeMillis())
+    }
+
+    /** Start the 10s idle auto-close checker (called once on first server start). */
+    private fun ensureAutoCloseStarted() {
+        if (autoCloseScheduled) return
+        autoCloseScheduled = true
+        autoCloseExecutor.scheduleAtFixedRate({
+            if (!autoCloseEnabled) return@scheduleAtFixedRate
+            val now = System.currentTimeMillis()
+            lastActivity.entries.forEach { (lang, ts) ->
+                if (now - ts.get() > 10_000L) {
+                    val server = servers[lang]
+                    if (server != null && server.process.isAlive) {
+                        AppOutputLog.log("[LSP] Auto-closing idle server for ${lang.displayName} (10s idle)", "lsp")
+                        stopServer(lang)
+                        lastActivity.remove(lang)
+                    }
+                }
+            }
+        }, 1, 1, TimeUnit.SECONDS)
+    }
 
     /**
      * Check if the LSP server has completed the initialize handshake.
@@ -566,7 +600,11 @@ object LspManager {
      * Check if the LSP server binary is installed in the proot rootfs.
      */
     fun isServerInstalled(context: Context, language: Language): Boolean {
-        val config = configs[language] ?: return false
+        var config = configs[language] ?: return false
+        // P-PYRIGHT: Use Pyright config if Python + diagnostics source is PYRIGHT
+        if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
+            config = pyrightConfig
+        }
         AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${config.checkCommand}", "lsp")
         // FIX: increased timeout from 10→20s — proot bash login can take >10s on cold start.
         val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 20)
@@ -1305,6 +1343,7 @@ object LspManager {
         }
         val params = JSONObject().apply { put("textDocument", td) }
         server.client.notify("textDocument/didOpen", params)
+        touchActivity(language)
         AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId)", "lsp")
         return true
     }
@@ -1329,6 +1368,7 @@ object LspManager {
             put("contentChanges", changes)
         }
         server.client.notify("textDocument/didChange", params)
+        touchActivity(language)
         return true
     }
 
@@ -2059,6 +2099,8 @@ object LspManager {
             if (response is JSONObject) {
                 server.capabilities = response.optJSONObject("result")
                 server.initialized = true
+            lastActivity[language] = AtomicLong(System.currentTimeMillis())
+            ensureAutoCloseStarted()
                 client.notify("initialized", JSONObject())
                 ctagsServer = server
                 AppOutputLog.log("[LSP] ctags-lsp started successfully — workspace/symbol fallback ready", "lsp")
