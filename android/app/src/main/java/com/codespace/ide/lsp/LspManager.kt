@@ -2099,7 +2099,7 @@ object LspManager {
             if (response is JSONObject) {
                 server.capabilities = response.optJSONObject("result")
                 server.initialized = true
-            lastActivity[language] = AtomicLong(System.currentTimeMillis())
+            lastActivity[Language.PLAINTEXT] = AtomicLong(System.currentTimeMillis())
             ensureAutoCloseStarted()
                 client.notify("initialized", JSONObject())
                 ctagsServer = server
