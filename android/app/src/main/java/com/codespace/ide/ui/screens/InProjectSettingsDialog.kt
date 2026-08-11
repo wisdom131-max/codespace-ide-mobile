@@ -350,7 +350,7 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         RowType.LSP_SERVER_LIST))
     add(SettingsRow("ts_version", SettingsCategory.LSP_SERVERS,
         "TypeScript Version",
-        "TypeScript 7 uses vtsls LSP. Older versions use typescript-language-server.",
+        "TypeScript 7 uses native LSP (tsc --lsp --stdio). Older versions use typescript-language-server.",
         RowType.TS_VERSION_DROPDOWN))
 }
 

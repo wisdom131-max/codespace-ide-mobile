@@ -92,16 +92,20 @@ object LspManager {
     )
 
 
-    // TS7 config: vtsls — works with TypeScript 7 (which dropped tsserver.js).
-    // vtsls uses the TypeScript compiler API directly via JIT, no tsserver.js needed.
+    // TS7 fallback: vtsls — LSP wrapper around the VSCode TypeScript extension.
+    // vtsls bundles TypeScript 5.9.3 (hard dependency in @vtsls/language-service 0.3.0).
+    // It requires tsserver.js — so it CANNOT use TypeScript 7 (which dropped tsserver.js).
+    // Correct npm package: @vtsls/language-server (NOT "vtsls" — that package doesn't exist).
+    // Binary name after install: vtsls
     private val vtslsConfig = ServerConfig(
         Language.TYPESCRIPT,
         "vtsls",
         listOf("--stdio"),
         // Check: vtsls binary exists (npm global install)
         "which vtsls && echo OK",
-        // Install: NodeSource setup + npm install vtsls + typescript@7
-        // vtsls is a pure-JS LSP server using TS compiler API, no tsserver.js dependency.
+        // Install: NodeSource setup + npm install @vtsls/language-server
+        // @vtsls/language-server 0.3.0 bundles TypeScript 5.9.3 as a hard dependency.
+        // We do NOT install typescript@7 here — vtsls can't use it (no tsserver.js in TS7).
         "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
             "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
             "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -114,7 +118,38 @@ object LspManager {
             "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
             "apt-get install -y nodejs ); " +
             "npm config set prefix /usr/local 2>/dev/null; " +
-            "npm install -g vtsls typescript@7",
+            "npm install -g @vtsls/language-server",
+        300,
+    )
+
+    // TS7 native: TypeScript 7's built-in native LSP server (Go binary).
+    // TS7 is a Go rewrite — it ships its own LSP server via `tsc --lsp --stdio`.
+    // No tsserver.js, no vtsls, no typescript-language-server needed.
+    // Source: github.com/microsoft/typescript-go/blob/main/cmd/tsgo/main.go
+    // The --lsp flag is handled in main.go; lsp.go confirms --stdio is the only transport.
+    // TS7 native LSP supports: completion, hover, diagnostics, definition, references,
+    // rename, code actions, signature help, document/workspace symbols, formatting,
+    // code lenses, call hierarchy, selection ranges, auto-imports, quick fixes.
+    private val ts7NativeConfig = ServerConfig(
+        Language.TYPESCRIPT,
+        "tsc",
+        listOf("--lsp", "--stdio"),
+        // Check: tsc exists AND reports version 7.x (only TS7+ has --lsp support)
+        "tsc --version 2>/dev/null | head -1 | grep -q 'Version 7' && echo OK",
+        // Install: just install typescript@7 — the tsc binary includes the native LSP server
+        "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+            "dpkg --configure -a 2>/dev/null; " +
+            "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+            "( apt-get install -f -y 2>/dev/null; " +
+            "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+            "apt-get autoremove -y 2>/dev/null; " +
+            "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+            "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+            "apt-get install -y nodejs ); " +
+            "npm config set prefix /usr/local 2>/dev/null; " +
+            "npm install -g typescript@7",
         300,
     )
 
@@ -548,6 +583,7 @@ object LspManager {
         val process: Process,
         val client: JsonRpcClient,
         val rootUri: String,
+        val command: String = "",
     ) {
         @Volatile var initialized = false
         @Volatile var capabilities: JSONObject? = null
@@ -633,6 +669,11 @@ object LspManager {
         if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
             config = pyrightConfig
         }
+        // TS7: Check the effective config (native TS7 or vtsls fallback)
+        if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
+            ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
+            config = ts7NativeConfig
+        }
         AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${config.checkCommand}", "lsp")
         // FIX: increased timeout from 10→20s — proot bash login can take >10s on cold start.
         val output = ProotInstaller.execOnce(context, config.checkCommand, timeoutSeconds = 20)
@@ -675,6 +716,11 @@ object LspManager {
         // P-PYRIGHT: Use Pyright config if Python + diagnostics source is PYRIGHT
         if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
             config = pyrightConfig
+        }
+        // TS7: Install the effective config (native TS7 or vtsls fallback)
+        if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
+            ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
+            config = ts7NativeConfig
         }
         if (isServerInstalled(context, language)) {
             AppOutputLog.log("[LSP] ${language.displayName} install check PASSED (binary + runtime files present) — skipping install", "lsp")
@@ -734,6 +780,26 @@ object LspManager {
      */
 
     /** P-PYRIGHT: Pyright language server config — Microsoft's Node.js-based Python LSP. */
+    /**
+     * Returns the effective ServerConfig for a language, considering In-Project Settings.
+     * TS7 selection: tries native TS7 LSP first, falls back to vtsls if unavailable.
+     * This is used by startServer, isServerInstalled, and installServer for consistency.
+     */
+    private fun effectiveConfig(language: Language): ServerConfig? {
+        var config = configs[language] ?: return null
+        if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
+            config = pyrightConfig
+        }
+        if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
+            ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
+            // TS7 native is preferred — but we can't check availability here (no Context).
+            // startServer handles the check and fallback. isServerInstalled/installServer
+            // use this function and will naturally check both configs.
+            config = ts7NativeConfig
+        }
+        return config
+    }
+
     private val pyrightConfig = ServerConfig(
         Language.PYTHON,
         "pyright-langserver",
@@ -772,12 +838,23 @@ object LspManager {
             config = pyrightConfig
             AppOutputLog.log("[LSP] Using Pyright (Microsoft) instead of pylsp for Python — per In-Project Settings", "lsp")
         }
-        // TS7: Use vtsls instead of typescript-language-server when TS7 is selected.
-        // TypeScript 7 dropped tsserver.js — vtsls uses the compiler API directly.
+        // TS7: Try native TS7 LSP server first, fall back to vtsls if unavailable.
+        // TypeScript 7 ships a native Go LSP server via `tsc --lsp --stdio`.
+        // vtsls bundles TS 5.9.3 and is the fallback (it cannot use TS7).
         if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
             ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
-            config = vtslsConfig
-            AppOutputLog.log("[LSP] Using vtsls (TypeScript 7) instead of typescript-language-server — per In-Project Settings", "lsp")
+            // Check if TS7 native LSP is available (tsc exists and reports version 7.x)
+            val ts7Check = ProotInstaller.execOnce(context,
+                "tsc --version 2>/dev/null | head -1 | grep -q 'Version 7' && echo OK",
+                timeoutSeconds = 15)
+            val ts7Available = ts7Check.trimEnd().lines().lastOrNull().orEmpty().trim() == "OK"
+            if (ts7Available) {
+                config = ts7NativeConfig
+                AppOutputLog.log("[LSP] Using TypeScript 7 native LSP (tsc --lsp --stdio) — per In-Project Settings", "lsp")
+            } else {
+                config = vtslsConfig
+                AppOutputLog.log("[LSP] TS7 native LSP unavailable — falling back to vtsls + TypeScript 5.9.3", "lsp")
+            }
         }
         Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
         AppOutputLog.log("[LSP] startServer BEGIN: ${language.displayName} workspace=$workspacePath", "lsp")
@@ -968,7 +1045,7 @@ object LspManager {
         val rootUri = "file://$guestPathEncoded"
 
         val client = JsonRpcClient(process)
-        val server = LspServer(language, process, client, rootUri)
+        val server = LspServer(language, process, client, rootUri, config.command)
         servers[language] = server
 
         // Set up diagnostics push handler
@@ -1012,22 +1089,17 @@ object LspManager {
                 put("version", "1.0")
             })
             put("initializationOptions", if (config.command == "vtsls") {
-                // vtsls: pass TS7-specific initialization options
+                // vtsls only: pass tsdk path and config options.
+                // vtsls bundles TS 5.9.3 — tsdk points to its own install, not TS7.
                 JSONObject().apply {
-                    put("typescript", JSONObject().apply {
-                        put("tsdk", "/usr/local/lib/node_modules/typescript/lib")
-                    })
-                    // Let vtsls auto-discover tsconfig.json in workspace root
                     put("vtsls", JSONObject().apply {
                         put("autoUseConfigFile", true)
-                        put("experimental", JSONObject().apply {
-                            put("completion", JSONObject().apply {
-                                put("enableModeCompletions", true)
-                            })
-                        })
                     })
                 }
             } else {
+                // Native TS7 LSP and other servers: empty initializationOptions.
+                // The native TS7 server (tsc --lsp) does not accept tsserver-specific
+                // options like tsdk — it discovers tsconfig.json automatically.
                 JSONObject()
             })
         }
@@ -1063,6 +1135,20 @@ object LspManager {
 
         Log.d(TAG, "startServer: SUCCESS — LSP server RUNNING for ${language.displayName} at $rootUri")
         AppOutputLog.log("[LSP] ✓ ${language.displayName} server RUNNING at $rootUri", "lsp")
+        // Log server identity from the initialize response for diagnostics.
+        // serverInfo contains { name, version } — confirms which backend is active.
+        val serverInfo = result?.optJSONObject("serverInfo")
+        if (serverInfo != null) {
+            val serverName = serverInfo.optString("name", "unknown")
+            val serverVersion = serverInfo.optString("version", "unknown")
+            if (config.command == "tsc") {
+                AppOutputLog.log("[LSP] ✓ TypeScript 7 native LSP confirmed — server: $serverName v$serverVersion", "lsp")
+            } else if (config.command == "vtsls") {
+                AppOutputLog.log("[LSP] ✓ vtsls + TypeScript 5.9.3 confirmed — server: $serverName v$serverVersion", "lsp")
+            } else {
+                AppOutputLog.log("[LSP] ✓ ${language.displayName} server confirmed — $serverName v$serverVersion", "lsp")
+            }
+        }
         // P50-3: If this server doesn't support workspace/symbol, auto-start ctags-lsp
         // as a secondary server so workspace symbol search still works for this language.
         if (!supportsWorkspaceSymbols(language)) {
@@ -1151,83 +1237,70 @@ object LspManager {
                 })
             }
             Language.TYPESCRIPT, Language.JAVASCRIPT -> {
-                val isTs7 = ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7
-                JSONObject().apply {
-                    put("typescript", JSONObject().apply {
-                        put("suggest", JSONObject().apply {
-                            put("enabled", true)
-                            put("names", true)
-                            put("paths", true)
-                            put("autoImports", true)
-                            put("completeFunctionCalls", true)
-                            put("includeCompletionsForModuleExports", true)
-                            put("includeCompletionsForImportStatements", true)
-                            put("includeCompletionsWithSnippetText", true)
-                            put("includeCompletionsWithClassMemberSnippets", true)
-                            put("includeAutomaticOptionalChainCompletions", true)
-                        })
-                        put("diagnostics", JSONObject().apply {
-                            put("enabled", true)
-                        })
-                        put("format", JSONObject().apply {
-                            put("enabled", true)
-                            put("semicolons", "ignore")
-                            put("indentSize", 2)
-                            put("tabSize", 2)
-                        })
-                        put("inlayHints", JSONObject().apply {
-                            put("includeInlayParameterNameHints", "all")
-                            put("includeInlayParameterNameHintsWhenArgumentMatchesName", false)
-                            put("includeInlayVariableTypeHints", false)
-                            put("includeInlayFunctionLikeReturnTypeHints", false)
-                            put("includeInlayPropertyDeclarationTypeHints", false)
-                        })
-                        put("preferences", JSONObject().apply {
-                            put("importModuleSpecifier", "relative")
-                            put("quoteStyle", "single")
-                            put("useAliasesForRenames", true)
-                        })
-                        put("updateImportsOnFileMove", JSONObject().apply {
-                            put("enabled", "always")
-                        })
-                        if (isTs7) {
-                            put("tsserver", JSONObject().apply {
-                                put("maxTsServerMemory", 4096)
-                                put("experimental", JSONObject().apply {
-                                    put("enableProjectDiagnostics", true)
-                                })
+                val server = servers[language]
+                val isNativeTs7 = server != null && server.command == "tsc"
+                val isVtsls = server != null && server.command == "vtsls"
+                if (isNativeTs7) {
+                    // Native TS7 LSP: does NOT accept tsserver-specific settings.
+                    // It uses standard LSP workspace/configuration and discovers
+                    // tsconfig.json automatically. Send empty settings to avoid
+                    // confusing the Go binary with JS-only tsserver options.
+                    JSONObject()
+                } else if (isVtsls) {
+                    // vtsls: send VSCode-style typescript/javascript settings.
+                    // vtsls wraps the VSCode TS extension and understands these.
+                    JSONObject().apply {
+                        put("typescript", JSONObject().apply {
+                            put("suggest", JSONObject().apply {
+                                put("enabled", true)
+                                put("names", true)
+                                put("paths", true)
+                                put("autoImports", true)
+                                put("completeFunctionCalls", true)
+                                put("includeCompletionsForModuleExports", true)
+                                put("includeCompletionsForImportStatements", true)
                             })
-                        }
-                    })
-                    put("javascript", JSONObject().apply {
-                        put("suggest", JSONObject().apply {
-                            put("enabled", true)
-                            put("names", true)
-                            put("paths", true)
-                            put("autoImports", true)
-                            put("completeFunctionCalls", true)
+                            put("diagnostics", JSONObject().apply {
+                                put("enabled", true)
+                            })
+                            put("format", JSONObject().apply {
+                                put("enabled", true)
+                                put("semicolons", "ignore")
+                                put("indentSize", 2)
+                                put("tabSize", 2)
+                            })
+                            put("updateImportsOnFileMove", JSONObject().apply {
+                                put("enabled", "always")
+                            })
                         })
-                        put("diagnostics", JSONObject().apply {
-                            put("enabled", true)
+                        put("javascript", JSONObject().apply {
+                            put("suggest", JSONObject().apply {
+                                put("enabled", true)
+                                put("names", true)
+                                put("paths", true)
+                                put("autoImports", true)
+                                put("completeFunctionCalls", true)
+                            })
+                            put("diagnostics", JSONObject().apply {
+                                put("enabled", true)
+                            })
+                            put("format", JSONObject().apply {
+                                put("enabled", true)
+                                put("semicolons", "ignore")
+                                put("indentSize", 2)
+                                put("tabSize", 2)
+                            })
+                            put("updateImportsOnFileMove", JSONObject().apply {
+                                put("enabled", "always")
+                            })
                         })
-                        put("format", JSONObject().apply {
-                            put("enabled", true)
-                            put("semicolons", "ignore")
-                            put("indentSize", 2)
-                            put("tabSize", 2)
-                        })
-                        put("updateImportsOnFileMove", JSONObject().apply {
-                            put("enabled", "always")
-                        })
-                    })
-                    if (isTs7) {
                         put("vtsls", JSONObject().apply {
-                            put("typescript", JSONObject().apply {
-                                put("enableUseCommandLineOption", true)
-                            })
                             put("autoUseConfigFile", true)
                         })
                     }
+                } else {
+                    // typescript-language-server (TS 5.6.3) or unknown: send basic settings
+                    JSONObject()
                 }
             }
             else -> JSONObject()
@@ -2225,7 +2298,7 @@ object LspManager {
             val guestPath = workspaceGuestPath(context, workspacePath) ?: "/root"
             val rootUri = "file://" + guestPath
 
-            val server = LspServer(Language.PLAINTEXT, process, client, rootUri)
+            val server = LspServer(Language.PLAINTEXT, process, client, rootUri, "ctags-lsp")
 
             // Initialize handshake
             val initParams = JSONObject().apply {

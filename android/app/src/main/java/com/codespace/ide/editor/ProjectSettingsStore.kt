@@ -41,7 +41,7 @@ enum class DiagnosticsSource {
  *  TS 7 ships only tsc.js (no tsserver.js), so it uses vtsls instead of typescript-language-server.
  *  Older versions use typescript-language-server which requires tsserver.js. */
 enum class TypeScriptVersion(val displayName: String, val lspServer: String, val npmPackage: String) {
-    TS7("TypeScript 7 (Latest)", "vtsls", "typescript@7 vtsls"),
+    TS7("TypeScript 7 (Latest)", "tsc --lsp", "typescript@7"),
     TS5("TypeScript 5.6.3 (Stable)", "typescript-language-server", "typescript-language-server typescript@5.6.3"),
     TS4("TypeScript 4.9.5 (Legacy)", "typescript-language-server", "typescript-language-server typescript@4.9.5"),
 }

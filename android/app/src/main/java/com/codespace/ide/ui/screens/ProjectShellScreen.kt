@@ -474,7 +474,6 @@ private fun PssTopBar(
                     text = { Text("Toggle Status Bar", fontSize = 12.sp, color = menuText) },
                     onClick = { onMenuAction("Toggle Status Bar"); showCustomizeLayout = false },
                 )
-                )
                 HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
                 // Layout modes
                 Text(
@@ -485,10 +484,10 @@ private fun PssTopBar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
                 androidx.compose.material3.DropdownMenuItem(
-                androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Full Screen", fontSize = 12.sp, color = menuText) },
                     onClick = { onMenuAction("Toggle Full Screen"); showCustomizeLayout = false },
                 )
+                androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Zen Mode", fontSize = 12.sp, color = menuText) },
                     onClick = { onToggleZenMode(); showCustomizeLayout = false },
                 )

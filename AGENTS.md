@@ -6149,6 +6149,17 @@ LSP was fully working at the protocol level (screenshots confirmed: install chec
 - **Fix:** commit `11ebc554` — Added `isDotTriggered` flag: detects when char immediately before cursor is `.`. All completion LaunchedEffects now check `prefix.length >= 2 || isDotTriggered`. Reduced dot-trigger delay to 150ms (vs 300ms for word trigger).
 - **Lesson:** LSP completion triggers should check for both word-prefix AND trigger characters (`.`, `(`, `:` etc.). The LSP protocol has a `triggerCharacters` capability for this reason.
 
+
+### [2026-08-11 20:30 WAT] Error: ProjectShellScreen.kt syntax corruption — builds #2127-#2129
+- **File:** `ProjectShellScreen.kt` lines 473-492
+- **Symptom:** CI builds #2127, #2128, #2129 all failed with "Expecting an element" and "Expecting ')'" compilation errors at lines 473-477 and 492
+- **Root cause:** The Customize Layout dropdown commit (8b899f5) introduced two syntax errors:
+  1. A stray closing `)` on line 477 after the "Toggle Status Bar" DropdownMenuItem
+  2. A duplicate `androidx.compose.material3.DropdownMenuItem(` on line 492 — the "Full Screen" and "Zen Mode" items were merged into one broken call with two `text =` and two `onClick =` parameters
+- **Fix:** Removed the stray `)`, split the duplicated DropdownMenuItem back into two separate items (Full Screen and Zen Mode)
+- **Lesson:** When copy-pasting DropdownMenuItem blocks, always verify each item has exactly one `text =`, one `onClick =`, and one closing `)`. No duplicate declarations.
+
+
 ---
 
 ## Phase 33 — IntelliSense UI Fix (Hover + Completions + Diagnostic Squiggles)
@@ -14478,3 +14489,9 @@ Signature help on `(` already confirmed working (Test #20, no changes needed).
 2. **vtsls TS7 configuration gap fixed** — `sendDidChangeConfiguration` now sends `typescript.*` and `javascript.*` settings to vtsls (was empty before). Also passes `initializationOptions` with `tsdk` path and `autoUseConfigFile` in the LSP initialize request. TS7-specific options only sent when `typescriptVersion == TS7`. Non-breaking: vtsls ignores unknown settings.
 **Files touched:** `ProjectShellScreen.kt` (Customize Layout), `LspManager.kt` (vtsls config)
 **Next on roadmap:** Await CI #2126. Continue with remaining cursor behaviors or multi-cursor.
+
+### [2026-08-11 20:33 WAT] — AI Agent: Claude (Superagent)
+**Commit:** (pending) | **CI Build:** (pending)
+**What was fixed:** Fixing broken builds #2127-#2129 — root cause was syntax corruption in ProjectShellScreen.kt Customize Layout dropdown (stray `)`, duplicate DropdownMenuItem). Also implementing TS7 native LSP backend: added `ts7NativeConfig` using `tsc --lsp --stdio` (confirmed from TypeScript 7 source code at github.com/microsoft/typescript-go). Fixed vtsls config: corrected npm package name (`vtsls` → `@vtsls/language-server`), removed `typescript@7` from vtsls install (vtsls bundles TS 5.9.3, cannot use TS7). Added TS7 availability detection with automatic vtsls fallback. Added server version diagnostics after LSP initialize. Updated TypeScriptVersion enum and settings dialog text.
+**Files touched:** `ProjectShellScreen.kt` (syntax fix), `LspManager.kt` (TS7 native + vtsls fix + version diagnostics), `ProjectSettingsStore.kt` (enum update), `InProjectSettingsDialog.kt` (description update), `AGENTS.md` (error trace + change log)
+**Next on roadmap:** Await CI build. If green, update AGENTS.md with green build number. Then continue with TS7 native LSP on-device testing or remaining cursor behaviors.
