@@ -16,16 +16,16 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-08-10. Read this FIRST before touching any code.
+> Last updated: 2026-08-11 10:08 WAT. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-08-10)
+## CURRENT STATE (2026-08-11 10:08 WAT)
 
 | | |
 |-|-|
-| Latest green build | **78d3c918** — C13 stdlib completions + CloudBackupManager retry (build #2028 GREEN) |
-| Active phase | **Phase P-TOPBAR** — Top bar restructured to VS Code layout (commit e721df5). In-Project Settings UI shipped. Notification restructure complete. Next: Phase R (Formatter Selection), Phase S (LSP Spec Compliance), P41 IntelliSense. |
+| Latest green build | **5340be4** — P-CURSOR custom cursor overlay + bracket auto-close + output color fix + draggable Zen Mode FAB + Zen Mode toggle (needs device test) |
+| Active phase | **Phase P-CURSOR** — Custom cursor styles (SOLID/EXPAND overlay), bracket auto-close fix, terminal output color fix, draggable Zen Mode exit FAB, Zen Mode toggle in settings. Needs on-device testing. Next: Phase R (Formatter Selection), Phase S (LSP Spec Compliance), P41 IntelliSense. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
