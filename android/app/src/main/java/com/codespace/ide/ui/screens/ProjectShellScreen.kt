@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
@@ -1402,31 +1403,43 @@ fun ProjectShellScreen(
             ) }
     } // end Editor Column
 
-        // P45-G2: Floating Zen Mode exit button
-        if (zenMode) {
-            // O1 FIX (2026-08-10): The previous detectTapGestures overlay with
-            // empty onTap STILL consumed single taps, preventing the editor from
-            // receiving focus → keyboard never opened in Zen Mode. Removed the
-            // overlay entirely; double-tap-to-exit now lives on the FAB itself
-            // via combinedClickable(onDoubleClick=...), which does NOT block
-            // single taps from reaching the editor underneath.
+        // P45-G2: Floating draggable Zen Mode exit button
+        // P-ZEN: Single tap exits Zen Mode. Button is draggable — user can position it anywhere.
+        // Can be disabled in In-Project Settings > Text Editor > Zen Mode Exit Button.
+        if (zenMode && ProjectSettingsStore.zenModeExitButtonEnabled.value) {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val fabSize = 40.dp
+            val fabSizePx = with(density) { fabSize.toPx() }
+            val displayMetrics = androidx.compose.ui.platform.LocalContext.current.resources.displayMetrics
+            val screenW = displayMetrics.widthPixels
+            val screenH = displayMetrics.heightPixels
+            var fabX by remember { mutableStateOf(screenW - with(density) { (fabSize + 16.dp).toPx() }.toInt()) }
+            var fabY by remember { mutableStateOf(screenH - with(density) { (fabSize + 80.dp).toPx() }.toInt()) }
             Box(
-                Modifier.fillMaxSize().padding(16.dp),
-                contentAlignment = Alignment.BottomEnd,
+                Modifier.fillMaxSize(),
             ) {
                 FloatingActionButton(
-                    onClick = {},
+                    onClick = {
+                        zenMode = false
+                        showNotification("Zen Mode off", "info")
+                    },
                     containerColor = Color(0xFF007ACC),
                     contentColor = Color.White,
                     modifier = Modifier
-                        .size(40.dp)
-                        .combinedClickable(
-                            onClick = {},
-                            onDoubleClick = {
-                                zenMode = false
-                                showNotification("Zen Mode off", "info")
-                            },
-                        ),
+                        .offset { androidx.compose.ui.unit.IntOffset(fabX, fabY) }
+                        .size(fabSize)
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    fabX = (fabX + dragAmount.x.toInt())
+                                        .coerceIn(0, (screenW - fabSizePx).toInt())
+                                    fabY = (fabY + dragAmount.y.toInt())
+                                        .coerceIn(0, (screenH - fabSizePx).toInt())
+                                },
+                            )
+                        },
                 ) {
                     Icon(Icons.Default.FullscreenExit, null, modifier = Modifier.size(20.dp))
                 }
@@ -2507,11 +2520,16 @@ private fun buildRunCommand(path: String): String? {
     val headerBg = panelBg
     val headerText = tabTextInactive
     val dividerClr = dividerColor
-    val logText = tabTextInactive
+    // P-OUTPUT: On light themes, tabTextInactive is a medium gray (0xFF717171) which is
+    // hard to read on a light panel background. Use near-black for log text on light themes.
+    val isLightTheme = panelBg.red > 0.5f
+    val logText = if (isLightTheme) Color(0xFF1A1A1A) else tabTextInactive
 
     // FIX: was remember(logs, ...) but logs is a SnapshotStateList that never changes
     // reference, so the cached list never updated. Compute directly so it stays live.
-    val filteredLogs = if (selectedChannel == "all") logs.toList() else logs.filter { it.contains("[$selectedChannel]") }
+    // P-OUTPUT-SPEED: For "all" channel, index directly into logs (avoid toList() copy of 500 items).
+    // For filtered channels, filter is needed but we still read logs reactively.
+    val filteredLogs = if (selectedChannel == "all") logs else logs.filter { it.contains("[$selectedChannel]") }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

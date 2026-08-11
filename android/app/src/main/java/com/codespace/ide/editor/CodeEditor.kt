@@ -79,6 +79,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.SpanStyle
@@ -1222,9 +1225,24 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
                 else -> {
                     val cursor = value.selection.end
-                    val newText = value.text.substring(0, cursor) + text + value.text.substring(cursor)
-                    value = TextFieldValue(text = newText, selection = TextRange(cursor + text.length))
-                    onContentChange(newText)
+                    // P-BRACKET: Auto-close brackets/quotes from extra keys toolbar
+                    // (Keyboard input goes through onValueChange which already auto-closes,
+                    // but extra keys toolbar inserts directly here — add the closing pair)
+                    val closingMap = mapOf(
+                        "(" to ")", "[" to "]", "{" to "}",
+                        "\"" to "\"", "'" to "'", "`" to "`",
+                    )
+                    val closing = closingMap[text]
+                    if (closing != null) {
+                        val newText = value.text.substring(0, cursor) + text + closing + value.text.substring(cursor)
+                        // Place cursor between the pair (e.g. between ( and ))
+                        value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                        onContentChange(newText)
+                    } else {
+                        val newText = value.text.substring(0, cursor) + text + value.text.substring(cursor)
+                        value = TextFieldValue(text = newText, selection = TextRange(cursor + text.length))
+                        onContentChange(newText)
+                    }
                 }
             }
         }
@@ -1833,7 +1851,45 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             } else {
                                 false // let BasicTextField handle normally
                             }
-                        },
+                        }
+                        // P-CURSOR: For SOLID/EXPAND modes, draw a custom cursor overlay
+                        // (BasicTextField always blinks its built-in cursor, so we make it
+                        // transparent and draw our own non-blinking / expanding cursor here)
+                        .then(
+                            if (ProjectSettingsStore.cursorBlinkStyle.value == CursorBlinkStyle.SOLID ||
+                                ProjectSettingsStore.cursorBlinkStyle.value == CursorBlinkStyle.EXPAND
+                            ) {
+                                val cursorStyle = ProjectSettingsStore.cursorBlinkStyle.value
+                                var expandW by remember(cursorStyle) { mutableStateOf(2f) }
+                                if (cursorStyle == CursorBlinkStyle.EXPAND) {
+                                    LaunchedEffect(Unit) {
+                                        while (true) {
+                                            expandW = 5f
+                                            kotlinx.coroutines.delay(350)
+                                            expandW = 1.5f
+                                            kotlinx.coroutines.delay(350)
+                                        }
+                                    }
+                                }
+                                Modifier.drawWithContent {
+                                    drawContent()
+                                    val layout = textLayoutResult ?: return@drawWithContent
+                                    val cursor = value.selection.end
+                                    val lineIdx = layout.getLineForOffset(cursor)
+                                    val cx = layout.getHorizontalPosition(cursor, true)
+                                    val cy = layout.getLineTop(lineIdx)
+                                    val ch = layout.getLineBottom(lineIdx) - cy
+                                    val w = if (cursorStyle == CursorBlinkStyle.EXPAND) expandW else 2.dp.toPx()
+                                    drawRect(
+                                        color = colors.cursor,
+                                        topLeft = Offset(cx - w / 2f, cy),
+                                        size = Size(w, ch),
+                                    )
+                                }
+                            } else {
+                                Modifier
+                            }
+                        ),
                 )
 
             }
@@ -5271,13 +5327,16 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
 
 
 // P-CURSOR: Animated cursor brush composable — handles different blink styles
+// SOLID + EXPAND use transparent built-in cursor; custom cursor drawn via drawWithContent
+// on the BasicTextField (BasicTextField always blinks its built-in cursor, so we hide it
+// and draw our own for non-blinking styles).
 // Uses LaunchedEffect + kotlinx.delay to avoid animation-core dependency issues
 @Composable
 private fun animatedCursorBrush(baseColor: Color): Brush {
     val style = ProjectSettingsStore.cursorBlinkStyle.value
     return when (style) {
         CursorBlinkStyle.BLINK -> androidx.compose.ui.graphics.SolidColor(baseColor)
-        CursorBlinkStyle.SOLID -> androidx.compose.ui.graphics.SolidColor(baseColor)
+        CursorBlinkStyle.SOLID -> androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = 0f))
         CursorBlinkStyle.PHASE -> {
             var alpha by remember { mutableStateOf(1f) }
             LaunchedEffect(Unit) {
@@ -5298,6 +5357,6 @@ private fun animatedCursorBrush(baseColor: Color): Brush {
             }
             androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = alpha))
         }
-        CursorBlinkStyle.EXPAND -> androidx.compose.ui.graphics.SolidColor(baseColor)
+        CursorBlinkStyle.EXPAND -> androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = 0f))
     }
 }

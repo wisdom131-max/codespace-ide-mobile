@@ -217,6 +217,7 @@ enum class RowType {
     VERBOSE_DOWNLOAD_CHECKBOX,
     EXTRA_KEYS_CHECKBOX,
     CURSOR_BLINK_DROPDOWN,
+    ZEN_MODE_EXIT_CHECKBOX,
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
     PYRIGHT_NODE_ARGS_INPUT,
@@ -259,6 +260,11 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Cursor Blinking",
         "Controls cursor animation style",
         RowType.CURSOR_BLINK_DROPDOWN))
+
+    add(SettingsRow("zen_mode_exit", SettingsCategory.TEXT_EDITOR,
+        "Zen Mode Exit Button",
+        "Show a draggable floating button to exit Zen Mode (disable to use menu only)",
+        RowType.ZEN_MODE_EXIT_CHECKBOX))
 
     add(SettingsRow("diag_source", SettingsCategory.PYTHON_LSP,
         "Diagnostics Source",
@@ -307,11 +313,32 @@ private fun SettingsRowRenderer(
         RowType.VERBOSE_DOWNLOAD_CHECKBOX -> VerboseDownloadRow(textPri, textSec, divider)
         RowType.EXTRA_KEYS_CHECKBOX -> ExtraKeysRow(textPri, textSec, divider)
         RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
+        RowType.ZEN_MODE_EXIT_CHECKBOX -> ZenModeExitRow(textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
         RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
     }
+}
+
+@Composable
+private fun ZenModeExitRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.zenModeExitButtonEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Zen Mode Exit Button", color = textPri, fontSize = 13.sp)
+            Text("Show a draggable floating button to exit Zen Mode (disable to use menu only)",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setZenModeExitButtonEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
