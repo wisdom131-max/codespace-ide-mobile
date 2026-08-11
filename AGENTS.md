@@ -13814,3 +13814,55 @@ is NOT a string literal. When typing ` ```kotlin ` in a .md or .txt file:
 
 ### Status: ✅ COMPLETE — committed (15a16d4), pushed to main
 ### Commit: `fix(critical): SyntaxHighlighter.scanString ANR — backtick no longer treated as string delimiter for Markdown/Plaintext`
+
+---
+
+## FIX: Keyboard Toolbar Inserts at Cursor Position (2026-08-11, COMPLETE)
+
+### Root Cause
+
+The coding toolbar (the row of extra keys above the soft keyboard with Tab, Esc, {, }, [, ], etc.)
+had **two critical bugs**:
+
+1. **Appended to END of file** — `EditorPane`'s `onInsertRequest` callback did `active.content + text`
+   instead of inserting at the cursor position. Typing in the middle of a file then tapping `{`
+   would put the bracket at the very end of the file.
+
+2. **Literal text "Tab"/"Esc"** — The "Tab" key inserted the literal string `"Tab"` as text
+   instead of a tab character (`\t`) and bypassed all snippet expansion logic. The "Esc" key
+   inserted the literal string `"Esc"` instead of dismissing popups.
+
+### The Fix
+
+**`CodeEditor.kt` — New `onInsertHandler` parameter:**
+- Added `onInsertHandler: (((String) -> Unit) -> Unit)? = null` parameter
+- Registers a `LaunchedEffect` that exposes an insert function to external callers
+- The insert function handles three cases:
+  - `"Tab"` → If a snippet session is active, advances to the next tab-stop. Otherwise,
+    tries snippet expansion (same logic as `onPreviewKeyEvent` — checks single-word and
+    two-word triggers against the snippet registry). If no snippet matches, inserts `\t`.
+  - `"Esc"` → Dismisses all popups: completions, snippet sessions, call/type hierarchy,
+    find references, peek definition, and resets overload index.
+  - Any other string → Inserts at cursor position (like typing it on a real keyboard).
+
+**`EditorPane.kt` — Pass-through wiring:**
+- Removed the old broken `LaunchedEffect(onInsertRequest)` that did `active.content + text`
+- Wired `onInsertHandler = onInsertRequest` to all 4 `CodeEditor` call sites:
+  main editor, split editor, markdown split editor, diff editor
+
+**`ProjectShellScreen.kt` — Toggle support:**
+- Coding toolbar rendering now checks `ProjectSettingsStore.extraKeysEnabled.value`
+
+### New Feature: Extra Coding Keys Toggle
+
+Added a toggle in **In-Project Settings → Text Editor → Extra Coding Keys**:
+- When ON (default): Shows the coding toolbar with Tab, Esc, brackets, symbols above keyboard
+- When OFF: Hides the toolbar entirely, giving more screen space for the editor
+
+**Files modified:**
+- `ProjectSettingsStore.kt` — Added `extraKeysEnabled` state, init loading, setter
+- `InProjectSettingsDialog.kt` — Added `EXTRA_KEYS_CHECKBOX` row type, `ExtraKeysRow` composable
+- `ProjectShellScreen.kt` — Added `ProjectSettingsStore.extraKeysEnabled.value` check
+
+### Status: ✅ COMPLETE — committed (907d19f), pushed to main
+### Commit: `fix(editor): keyboard toolbar inserts at cursor position + extra keys toggle`
