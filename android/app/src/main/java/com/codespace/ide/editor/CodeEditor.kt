@@ -383,6 +383,56 @@ data class BlameLine(val author: String, val date: String, val shortSha: String)
 data class DefResult(val line: Int, val lineText: String)
 data class CrossFileDefResult(val name: String, val kind: String, val filePath: String, val line: Int, val fileName: String)
 
+/** Phase R: Convert a character offset to (line, column) for LSP range formatting. */
+private fun offsetToLineChar(text: String, offset: Int): Pair<Int, Int> {
+    val safeOffset = offset.coerceIn(0, text.length)
+    val before = text.substring(0, safeOffset)
+    val line = before.count { it == '\n' }
+    val char = before.substringAfterLast('\n').length
+    return Pair(line, char)
+}
+
+/** Phase R: Apply LSP TextEdit[] to document content. */
+private fun applyLspEdits(text: String, edits: org.json.JSONArray): String {
+    var result = text
+    // Apply edits in reverse order to preserve offsets
+    val editList = (0 until edits.length()).map { i ->
+        edits.getJSONObject(i)
+    }.sortedByDescending { edit ->
+        val range = edit.getJSONObject("range")
+        range.getJSONObject("start").getInt("line")
+    }
+    for (edit in editList) {
+        try {
+            val range = edit.getJSONObject("range")
+            val startLine = range.getJSONObject("start").getInt("line")
+            val startChar = range.getJSONObject("start").getInt("character")
+            val endLine = range.getJSONObject("end").getInt("line")
+            val endChar = range.getJSONObject("end").getInt("character")
+            val newText = edit.optString("newText", "")
+            // Convert line/char to offsets
+            var startOffset = 0
+            var currentLine = 0
+            var currentChar = 0
+            for (i in result.indices) {
+                if (currentLine == startLine && currentChar == startChar) { startOffset = i; break }
+                if (result[i] == '\n') { currentLine++; currentChar = 0 } else { currentChar++ }
+                startOffset = i + 1
+            }
+            var endOffset = startOffset
+            currentLine = startLine; currentChar = startChar
+            for (i in startOffset until result.length) {
+                if (currentLine == endLine && currentChar == endChar) { endOffset = i; break }
+                if (result[i] == '\n') { currentLine++; currentChar = 0 } else { currentChar++ }
+                endOffset = i + 1
+            }
+            result = result.substring(0, startOffset) + newText + result.substring(endOffset)
+        } catch (_: Exception) { }
+    }
+    return result
+}
+
+
 @Composable
 fun CodeEditor(
     content: String,
@@ -506,6 +556,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
      *  - "Esc" → dismisses completions, snippet sessions, and popups
      *  - Any other string → inserts at cursor position (like typing it on a real keyboard) */
     onInsertHandler: (((String) -> Unit) -> Unit)? = null,
+    /** Phase R: Format Selection trigger — when incremented, formats the selected text range. */
+    formatSelectionTrigger: Int = 0,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
@@ -525,6 +577,51 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(content) {
         if (value.text != content) {
             value = TextFieldValue(content, TextRange(content.length))
+        }
+    }
+    // Phase R: Format Selection — format the selected text range when triggered
+    LaunchedEffect(formatSelectionTrigger) {
+        if (formatSelectionTrigger > 0 && value.selection.start != value.selection.end) {
+            val selStart = value.selection.start.coerceIn(0, value.text.length)
+            val selEnd = value.selection.end.coerceIn(0, value.text.length)
+            val selectedText = value.text.substring(selStart, selEnd)
+
+            // Try LSP range formatting first
+            var formattedText: String? = null
+            if (LspManager.isServerRunning(language) && currentFilePath != null) {
+                try {
+                    val uri = LspManager.fileUriFromHostPath(context, currentFilePath)
+                    if (uri != null) {
+                        val startPair = offsetToLineChar(value.text, minOf(selStart, selEnd))
+                        val endPair = offsetToLineChar(value.text, maxOf(selStart, selEnd))
+                        val edits = LspManager.getRangeFormatting(
+                            language, uri,
+                            startPair.first, startPair.second,
+                            endPair.first, endPair.second,
+                        )
+                        if (edits != null && edits.length() > 0) {
+                            // Apply LSP text edits to the full document
+                            val newContent = applyLspEdits(value.text, edits)
+                            if (newContent != value.text) {
+                                value = TextFieldValue(newContent, TextRange(selStart, selEnd))
+                                onContentChange(newContent)
+                                formattedText = newContent
+                            }
+                        }
+                    }
+                } catch (_: Exception) { }
+            }
+
+            // Fall back to built-in indent normalization on the selected text
+            if (formattedText == null) {
+                val formatted = FormatterConfig.fallbackFormat(selectedText)
+                if (formatted != selectedText) {
+                    val newText = value.text.substring(0, selStart) + formatted + value.text.substring(selEnd)
+                    val newSelEnd = selStart + formatted.length
+                    value = TextFieldValue(newText, TextRange(selStart, newSelEnd))
+                    onContentChange(newText)
+                }
+            }
         }
     }
     val vScroll = rememberScrollState()

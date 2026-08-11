@@ -759,6 +759,21 @@ fun EditorPane(
                         )
                     }
                 }
+                // Phase R: Format Selection — formats the selected text range
+                IconButton(
+                    onClick = { formatSelectionTrigger++ },
+                    modifier = Modifier.size(35.dp)
+                ) {
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        Text(
+                            text = "[|]",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TabTextInactive,
+                        )
+                        Text("sel", fontSize = 6.sp, color = Color(0xFF858585))
+                    }
+                }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
@@ -1256,6 +1271,7 @@ fun EditorPane(
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
                         toggles = toggles,
+                        formatSelectionTrigger = formatSelectionTrigger,
                         scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
@@ -1284,6 +1300,7 @@ fun EditorPane(
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
                         toggles = toggles,
+                        formatSelectionTrigger = formatSelectionTrigger,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
                         goToLineOpen = goToLineOpen,
@@ -1449,6 +1466,7 @@ fun EditorPane(
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
                         toggles = toggles,
+                        formatSelectionTrigger = formatSelectionTrigger,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
                         goToLineOpen = goToLineOpen,
