@@ -493,7 +493,9 @@ fun ExplorerSidePanel(
                     val statusMap = mutableMapOf<String, Char>()
                     val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, wsSnap)
                     val output = if (guestPath != null)
-                        com.codespace.ide.terminal.ProotInstaller.execOnce(context, "cd '$guestPath' && git status --porcelain 2>/dev/null", timeoutSeconds = 15L)
+                        // safe.directory=* avoids "detected dubious ownership" for
+                        // /sdcard-hosted repos (UID mismatch with proot guest root).
+                        com.codespace.ide.terminal.ProotInstaller.execOnce(context, "cd '$guestPath' && git -c safe.directory='*' status --porcelain 2>/dev/null", timeoutSeconds = 15L)
                     else ""
                     for (line in output.lines()) {
                         if (line.length < 4) continue

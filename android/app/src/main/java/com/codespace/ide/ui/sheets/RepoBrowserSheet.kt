@@ -171,7 +171,9 @@ fun RepoBrowserSheet(
                                         Base64.NO_WRAP,
                                     )
                                     // Same auth-header pattern as SourceControlPane.runGit()
-                                    val cmd = "git -c http.extraheader=\"Authorization: Basic $basic\" " +
+                                    // safe.directory=* avoids "detected dubious ownership" on
+                                    // /sdcard-hosted repos once opened (UID mismatch with proot root).
+                                    val cmd = "git -c safe.directory='*' -c http.extraheader=\"Authorization: Basic $basic\" " +
                                               "clone '${repo.cloneUrl.replace("'", "'\\''")}' '$dest'"
                                     ProotInstaller.execOnce(context, cmd, null, 180L)
                                 } catch (e: Exception) {

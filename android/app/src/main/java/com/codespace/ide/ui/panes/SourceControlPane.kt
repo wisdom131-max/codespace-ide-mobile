@@ -84,7 +84,14 @@ private fun runGit(context: Context, dir: File, vararg args: String): String {
             "x-access-token:$githubToken".toByteArray(), android.util.Base64.NO_WRAP)
         "-c 'http.extraheader=Authorization: Basic $basic' "
     } else ""
-    val raw = ProotInstaller.execOnce(context, "git $authFlag$quoted", guestPath)
+    // FIX: files under /sdcard (SAF-mounted external storage) are owned by a
+    // different UID than the proot guest root, so git 2.35.2+'s ownership check
+    // rejects every command with "detected dubious ownership in repository at ...".
+    // Since every invocation is already scoped to one explicit `dir`, it's safe to
+    // blanket-trust here rather than rely on a one-time global config that a
+    // rootfs reinstall could wipe.
+    val safeDirFlag = "-c safe.directory='*' "
+    val raw = ProotInstaller.execOnce(context, "git $safeDirFlag$authFlag$quoted", guestPath)
     // P25-1: Normalize "Exit code NNN" (proot/git error) into "Error:" prefix that callers check.
     // "Exit code 128" = not a git repo or auth failure. "Exit code 129" = bad args.
     // stripProotNoise already removed proot/locale lines; this catches remaining git exit errors.
@@ -960,6 +967,11 @@ fun SourceControlPane(projectId: String) {
         HorizontalDivider(color = if (activeTab != ScmTab.CHANGES) IconColor() else DividerColor(), thickness = if (activeTab != ScmTab.CHANGES) 1.dp else 0.5.dp)
 
         // ── Tab content ──────────────────────────────────────────────────────
+        // FIX: wrap in a weighted Box so this content receives BOUNDED height from
+        // the parent Column (remaining space after header/branch/commit rows) instead
+        // of the Column's full incoming maxHeight. Without this, LazyColumn.fillMaxSize()
+        // below thinks it has more room than actually visible, breaking scroll/clipping.
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         when (activeTab) {
 
             // ────────────────────────── CHANGES ──────────────────────────────
@@ -1148,6 +1160,7 @@ fun SourceControlPane(projectId: String) {
                     }
                 }
             }
+        }
         }
     }
 

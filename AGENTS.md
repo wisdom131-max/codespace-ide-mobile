@@ -13873,3 +13873,38 @@ Two compilation errors in commit 907d19f:
 2. `ProjectSettingsStore` import was missing from ProjectShellScreen.kt — added after `FeatureToggleStore` import
 
 Build #2030 GREEN at e8009f3.
+
+### Session 2026-08-11 — Git Ownership Fix + Source Control Scrolling + LSP Servers
+
+#### Fix 1: Git "detected dubious ownership in repository" Error
+**Problem:** Every git command in the Source Control panel failed with "detected dubious ownership in repository at ..." because files under /sdcard (SAF-mounted external storage) are owned by a different UID than the proot guest root. Git 2.35.2+ introduced this ownership check as a security measure.
+
+**Fix:** Added `-c safe.directory='*'` flag to every git invocation:
+- `SourceControlPane.kt` → `runGit()` — added `safeDirFlag` before auth flag
+- `RepoBrowserSheet.kt` — added to clone command
+- `ExplorerPane.kt` — added to git status --porcelain call
+
+This blanket-trusts all repos at the invocation scope, which is safe since every git command already targets one explicit `dir`. No need for a one-time global config that could get wiped by rootfs reinstalls.
+
+#### Fix 2: Source Control Panel Scrolling
+**Problem:** The `when(activeTab)` block containing all the LazyColumns (Changes, Log, Graph, Stash, Tags) was a direct child of the root `Column(fillMaxSize)` without a `weight(1f)` modifier. This meant the LazyColumns received the Column's full incoming maxHeight instead of the remaining space after the header/branch/commit rows, breaking scroll behavior and clipping content.
+
+**Fix:** Wrapped the entire `when(activeTab) { ... }` block in `Box(Modifier.weight(1f).fillMaxWidth())` so it receives bounded height from the parent Column's remaining space.
+
+#### Fix 3: LSP Server Auto-Install on File Detection (in progress)
+**Problem:** Only ~9 of 30+ supported languages have LSP server configs. User requested pyright (replacing pylsp) and a complete list of auto-installable servers.
+
+**Languages with LSP servers (current):**
+- TypeScript → typescript-language-server
+- JavaScript → typescript-language-server
+- Python → pylsp (to be replaced with pyright)
+- Kotlin → kotlin-language-server
+- Go → gopls
+- Java → jdtls (eclipse.jdt.ls)
+- C → clangd
+- C++ → clangd
+- Rust → rust-analyzer
+- Universal → ctags-lsp (100+ languages, symbol search)
+
+**Languages missing LSP servers:**
+- PHP, Ruby, C#, Swift, Dart, Lua, SQL, PowerShell, Scala, R, and more
