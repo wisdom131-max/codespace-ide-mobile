@@ -1480,6 +1480,12 @@ fun ProjectShellScreen(
             onSnapshotMessageChange = { snapshotMessage = it },
             editorFontSize = editorFontSize,
             onEditorFontSizeChange = { editorFontSize = it },
+            activeFilePath = activeEditorTab,
+            onSymbolNavigate = { line ->
+                scrollTargetLine = line
+                showCommandPalette = false
+                commandQuery = ""
+            },
             BgColor = BgColor,  // P34-NOTIF: notifList removed
             ActivityBarIconActive = ActivityBarIconActive,
             TabActiveIndicator = TabActiveIndicator,
@@ -1547,6 +1553,9 @@ private fun PssOverlays(
     onSnapshotMessageChange: (String?) -> Unit,
     editorFontSize: Int,
     onEditorFontSizeChange: (Int) -> Unit,
+    // vscode.dev Test #18: active file path for @ symbol search in command palette
+    activeFilePath: String?,
+    onSymbolNavigate: (Int) -> Unit,
     // P34-NOTIF: notifList param removed
     // Colors
     BgColor: Color,
@@ -1627,7 +1636,7 @@ private fun PssOverlays(
                                 .focusRequester(cmdFocusRequester),
                             decorationBox = { inner ->
                                 Box {
-                                    if (commandQuery.isEmpty()) Text("> Type a command or file name…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
+                                    if (commandQuery.isEmpty()) Text("> Type a command or @ for symbols…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
                                     inner()
                                 }
                             },
@@ -1635,34 +1644,89 @@ private fun PssOverlays(
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(MenuText),
                         )
                         HorizontalDivider(color = DividerColor)
-                        val filtered = listOf(
-                            "New File", "New Folder", "Save File", "Open File",
-                            "Toggle Sidebar", "Toggle Terminal", "Toggle Zen Mode", "Select Color Theme",
-                            "Go to File", "Find in Files", "Run Program", "Split Terminal",
-                            "Explorer", "Search", "Source Control", "Run & Debug", "Extensions",
-                            "Git: Commit", "Git: Push", "Git: Pull", "Git: Stage All",
-                            "Format Document", "Command Palette",
-                            "Notifications: Toggle Do Not Disturb",
-                            "Notifications: Bell to Title Bar",
-                            "Notifications: Bell to Status Bar",
-                            "Notifications: Clear All",
-                            "Notifications: Show Center",
-                            "Close All Editors", "Close Editor",
-                            "Open Folder", "Refresh Explorer", "Collapse All in Explorer",
-                            "Toggle Word Wrap", "Go to Line",
-                        ).filter { commandQuery.isEmpty() || it.contains(commandQuery, ignoreCase = true) }
-                        // LazyColumn so the list scrolls properly (incl. after rotation, when
-                        // available height shrinks and more items overflow the visible area)
-                        LazyColumn(Modifier.heightIn(max = 260.dp)) {
-                            items(filtered) { item ->
-                                Row(
-                                    Modifier.fillMaxWidth()
-                                        .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
-                                        .clickable { handleMenuAction(item); onShowCommandPaletteChange(false); onCommandQueryChange("") }
-                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                        // vscode.dev Test #18: @ prefix shows file-scoped symbol outline
+                        if (commandQuery.startsWith("@")) {
+                            val symbolQuery = commandQuery.removePrefix("@").lowercase()
+                            val fileSymbols = remember(activeFilePath, commandQuery) {
+                                if (activeFilePath.isNullOrBlank()) emptyList()
+                                else {
+                                    try {
+                                        val text = java.io.File(activeFilePath).readText()
+                                        val lang = com.codespace.ide.domain.Language.fromPath(activeFilePath)
+                                        val patterns = when (lang) {
+                                            com.codespace.ide.domain.Language.KOTLIN, com.codespace.ide.domain.Language.JAVA -> listOf(
+                                                Pair("^\\s*(?:public|private|protected|internal|static|final|open|abstract|override|companion|data|sealed|enum)\\s+.*?\\s+class\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Class"),
+                                                Pair("^\\s*(?:public|private|protected|internal|static|final|open|abstract|override|suspend|inline)\\s+.*?\\s+fun\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Function"),
+                                                Pair("^\\s*interface\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Interface"),
+                                            )
+                                            com.codespace.ide.domain.Language.PYTHON -> listOf(
+                                                Pair("^\\s*class\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Class"),
+                                                Pair("^\\s*def\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Function"),
+                                            )
+                                            com.codespace.ide.domain.Language.JAVASCRIPT, com.codespace.ide.domain.Language.TYPESCRIPT -> listOf(
+                                                Pair("^\\s*(?:export\\s+)?(?:default\\s+)?class\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Class"),
+                                                Pair("^\\s*(?:export\\s+)?(?:async\\s+)?function\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Function"),
+                                            )
+                                            else -> listOf(
+                                                Pair("^\\s*function\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Function"),
+                                                Pair("^\\s*class\\s+(\\w+)".toRegex(RegexOption.MULTILINE), "Class"),
+                                            )
+                                        }
+                                        val syms = mutableListOf<Triple<String, String, Int>>()
+                                        for ((pattern, kind) in patterns) {
+                                            pattern.findAll(text).forEach { match ->
+                                                val name = match.groupValues.getOrNull(1) ?: return@forEach
+                                                val line = text.take(match.range.first).count { it == '\\n' }
+                                                syms.add(Triple(name, kind, line))
+                                            }
+                                        }
+                                        syms.sortedBy { it.third }
+                                    } catch (_: Exception) { emptyList() }
+                                }
+                            }
+                            val filteredSymbols = if (symbolQuery.isEmpty()) fileSymbols else fileSymbols.filter { it.first.contains(symbolQuery, ignoreCase = true) }
+                            LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                                items(filteredSymbols) { sym ->
+                                    Row(
+                                        Modifier.fillMaxWidth()
+                                            .background(if (sym == filteredSymbols.firstOrNull() && symbolQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
+                                            .clickable { onSymbolNavigate(sym.third); onShowCommandPaletteChange(false); onCommandQueryChange("") }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text("${'$'}{sym.second}: ${'$'}{sym.first}", fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                                        Text("Line ${'$'}{sym.third + 1}", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f))
+                                    }
+                                }
+                            }
+                        } else {
+                            val filtered = listOf(
+                                "New File", "New Folder", "Save File", "Open File",
+                                "Toggle Sidebar", "Toggle Terminal", "Toggle Zen Mode", "Select Color Theme",
+                                "Go to File", "Find in Files", "Run Program", "Split Terminal",
+                                "Explorer", "Search", "Source Control", "Run & Debug", "Extensions",
+                                "Git: Commit", "Git: Push", "Git: Pull", "Git: Stage All",
+                                "Format Document", "Command Palette",
+                                "Notifications: Toggle Do Not Disturb",
+                                "Notifications: Bell to Title Bar",
+                                "Notifications: Bell to Status Bar",
+                                "Notifications: Clear All",
+                                "Notifications: Show Center",
+                                "Close All Editors", "Close Editor",
+                                "Open Folder", "Refresh Explorer", "Collapse All in Explorer",
+                                "Toggle Word Wrap", "Go to Line",
+                            ).filter { commandQuery.isEmpty() || it.contains(commandQuery, ignoreCase = true) }
+                            LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                                items(filtered) { item ->
+                                    Row(
+                                        Modifier.fillMaxWidth()
+                                            .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
+                                            .clickable { handleMenuAction(item); onShowCommandPaletteChange(false); onCommandQueryChange("") }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }

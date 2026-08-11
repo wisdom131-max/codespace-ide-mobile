@@ -15,6 +15,41 @@
 
 ---
 
+## ⚠️ MANDATORY RULE: AI AGENT CHANGE LOGGING (ALL AI AGENTS MUST FOLLOW)
+
+**Any AI agent working on this repo MUST log every change they make.** This is not optional.
+Different AI agents (Claude, GPT, Copilot, etc.) work on this repo across sessions. Without
+a shared log, we go in circles — re-doing completed work, re-fixing fixed bugs, and wasting
+tokens. Follow this protocol for EVERY commit:
+
+### Required Change Log Entry Format
+After every commit you push, add an entry to the **CHANGE LOG** section at the END of AGENTS.md:
+
+```
+### [YYYY-MM-DD HH:MM TZ] — AI Agent: <model name, e.g. Claude Sonnet / GPT-4>
+**Commit:** <commit SHA> | **CI Build:** <build number + pass/fail>
+**What was fixed:** <1-3 sentences explaining exactly what was changed and why>
+**Files touched:** <list of files modified>
+**Next on roadmap:** <what the NEXT AI agent should work on after this commit>
+```
+
+### Rules
+1. **ALWAYS include the timestamp** — date, time, timezone, month, year. No exceptions.
+2. **ALWAYS include the CI build number** and whether it passed or failed.
+3. **Explain exactly what was fixed** — not vague ("improved completions") but specific
+   ("added keyword prefix-matching to fallback completions so typing 'i' shows 'if, import, in, is'").
+4. **State what's next** — so the next AI agent knows where to pick up without reading the whole file.
+5. **If you're fixing a broken build**, say so explicitly: "Fixing broken build #XXXX — root cause was Y".
+6. **If you're starting new work**, check the CHANGE LOG first to see what was last completed.
+7. **NEVER re-do work that's already marked as done** in the CHANGE LOG or phase tables above.
+8. **Update the "Current State" table at the top** with the latest green build number and commit SHA.
+
+### Quick reference — last 5 changes (read this FIRST before starting work):
+See the **CHANGE LOG** section at the bottom of this file. If the last entry says "Next: do X",
+then do X. Don't go searching for random work — follow the roadmap.
+
+---
+
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
 > Last updated: 2026-08-11 12:10 WAT. Read this FIRST before touching any code.
 
@@ -14148,3 +14183,27 @@ code is written.
 4. Christie to continue remaining checks (#8 `os.path`, #21 `def` snippet) on
    GitHub Codespace since vscode.dev's mobile browser didn't cooperate for those
 5. Once direction is confirmed, resume implementation
+
+---
+
+## CHANGE LOG (Read this FIRST before starting any work)
+
+### [2026-08-11 15:47 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `a749b34` | **CI Build:** #2112 ✅ GREEN
+**What was fixed:** Two compilation errors that caused builds #2108-2111 to fail:
+1. CodeEditor.kt:4183 — broken `\n` char literal (actual newline instead of escape sequence in `lastIndexOf('\n', ...)` call)
+2. LspManager.kt:2102 — unresolved reference to `language` variable in ctags-lsp startup (changed to `Language.PLAINTEXT`)
+**Files touched:** `CodeEditor.kt`, `LspManager.kt`
+**Next on roadmap:** Start easy vscode.dev study action items (keyword prefix-matching, signature help trigger verification, command palette `@` symbol search), then continue with remaining items.
+
+### [2026-08-11 15:11 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `01a6b3a` | **CI Build:** #2110 ❌ FAIL (broken \n literal)
+**What was fixed:** Documented vscode.dev screenshot study findings (23 tests) with action plan. Updated AGENTS.md with Christie's exact words for remaining restructuring items.
+**Files touched:** `AGENTS.md` (docs only)
+**Next on roadmap:** Fix broken builds, then start vscode.dev study action items.
+
+### [2026-08-11 12:10 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `6f4ff5a` | **CI Build:** #2105 ✅ GREEN
+**What was fixed:** Extracted `cursorOverlayModifier` from CodeEditor composable to fix Method too large (JVM 64KB limit). Phase R (Formatter Selection) complete.
+**Files touched:** `CodeEditor.kt`, `cursorOverlay.kt`
+**Next on roadmap:** vscode.dev popup study, then Phase S.

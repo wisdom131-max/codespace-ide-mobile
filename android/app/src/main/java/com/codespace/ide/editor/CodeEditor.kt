@@ -1064,6 +1064,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 item.copy(score = item.score + kindBoost + kindPenalty)
             }.sortedByDescending { it.score }
         }
+        // vscode.dev Test #6: Keywords ranked ABOVE variables/imports when matching prefix
+        // (matches VS Code behavior where keywords appear first in general context)
+        if (!completionContext.lspOnly && !isDotTriggered) {
+            ranked = ranked.map { item ->
+                if (item.kind == CompletionItemKind.KEYWORD) item.copy(score = item.score + 8f) else item
+            }.sortedByDescending { it.score }
+        }
         // P41-V: In lspOnly context (member access, after keyword), suppress non-LSP items
         if (completionContext.lspOnly) {
             ranked = ranked.filter { it.source == com.codespace.ide.lsp.CompletionSource.LSP || it.source == com.codespace.ide.lsp.CompletionSource.AI }
@@ -1096,7 +1103,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // P41-G: Path completions show even with 1-char prefix
             showCompletions = allCompletions.isNotEmpty()
         } else {
-            showCompletions = (prefix.length >= 2 || isDotTriggered || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT) && allCompletions.isNotEmpty()
+            showCompletions = (prefix.length >= 1 || isDotTriggered || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT) && allCompletions.isNotEmpty()
         }
         if (!showCompletions) { completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null }
     }
