@@ -13812,4 +13812,5 @@ is NOT a string literal. When typing ` ```kotlin ` in a .md or .txt file:
 - Test 25 (.MD File Icon) — should no longer crash
 - Test 39 (Large File: No Crash) — should no longer crash
 
-### Status: IN PROGRESS — code changes applied, pending compile verification and commit
+### Status: ✅ COMPLETE — committed (15a16d4), pushed to main
+### Commit: `fix(critical): SyntaxHighlighter.scanString ANR — backtick no longer treated as string delimiter for Markdown/Plaintext`
