@@ -13982,21 +13982,77 @@ The code attempted `createNewFile()` on the target directory without pre-checkin
 | 38 | Notification channel name | `ca733e5` | Shows "VN Code" |
 | 39 | Phase R: Formatter Selection | `8cf7689` + `bf6f625` | Per-language dropdowns + Format on Save + Format Selection |
 
-### ⚠️ Still Genuinely Unfixed
+### ✅ Recently Fixed (commit d7e93eb)
 
-| # | Item | Details |
-|---|------|---------|
-| 1 | **Completion popup positioning** (Test 18) | Doesn't appear at front of char; import completion clears `import` leaving only `os` |
-| 2 | **Command palette: show ALL history** (Test 11) | Still `.takeLast(5)` in TerminalPane:1617 — user wants ALL commands shown |
-| 3 | **Output "All" channel slow** (O7) | Have to tap LSP then back to All to see updates |
-| 4 | **LSP server auto-close** | User wants LSP to auto-close if editor not opened for 10 seconds |
-| 5 | **Snapshot interval** | Still 30s in ExplorerPane:1271 — change to 20s |
-| 6 | **Lightbulb drift** | After extended use, lightbulb appears on wrong line |
-| 7 | **vscode.dev popup positioning** | User wants to study vscode.dev popup/completion smart positioning logic |
-| 8 | **Pyright unclear if functional** | Auto-install code exists but unclear if it actually works on device |
+| # | Item | Fix |
+|---|------|-----|
+| 1 | **Completion popup positioning** (Test 18) | Popup now appears at cursor column (was always at gutter). Flip-above + right-edge clamp added. |
+| 2 | **Import completion clearing `import`** | Word boundary no longer crosses spaces — `import o` only replaces `o`, not `import o` |
+| 3 | **Command palette: show ALL history** (Test 11) | Changed from `.takeLast(5)` to scrollable `LazyColumn` showing all commands |
+| 4 | **Output "All" channel slow** (O7) | Replaced `LaunchedEffect` with `snapshotFlow` for stable auto-scroll updates |
+| 5 | **LSP server auto-close** | Added `ScheduledExecutorService` — shuts down servers idle >10s |
+| 6 | **Snapshot interval** | Changed 30s → 20s |
+| 7 | **Lightbulb drift** | Pure pixel math — no px→dp→px rounding accumulation |
+| 8 | **Pyright isServerInstalled** | Now checks `pyright-langserver` when Pyright is selected (was always checking pylsp) |
+| 9 | **Peek Definition X button** (portrait) | Header restructured — title gets `weight(1f)`, X button always visible |
+
+### ⚠️ Still Needs Work — Christie's Exact Words from Session Notes
+
+These are restructuring items Christie explicitly mentioned that the other AI didn't do correctly.
+Kept verbatim so Christie can reference what was originally envisioned.
+
+**1. vscode.dev popup positioning study** (Test 18 / item 12 from device test session)
+> "User wants to study vscode.dev popup/completion behavior to understand how popups
+> calculate keyboard obstruction and adjust direction. User already likes their popup
+> structure — just needs the smart positioning logic."
+> "Study how vscode.dev handles popup positioning relative to keyboard, cursor, and
+> text obstruction."
+> "User wants to study vscode.dev popup/completion smart positioning logic"
+
+**Status:** Christie will take screenshots of vscode.dev completions/popups, paste them,
+then we discuss what to implement.
+
+**2. Toggle tab restructuring** (Test 27)
+> "The other AI didn't restructure the top-right toggle tabs as envisioned. Needs to be redone."
+> "Icons present but the toggle tab structure wasn't done correctly by the other AI. Needs restructuring."
+> "Toggle tab restructuring (Test 27) — Needs complete redo."
+
+**Status:** ✅ DONE by P-TOPBAR-RESTRUCTURE (commit in table above) — but Christie says the
+other AI didn't do it exactly as envisioned. May need re-evaluation after screenshots.
+
+**3. Source Control panel restructure** (Test E2/E4)
+> "Entire SCM panel needs VS Code-style restructure. User wants: tap 'Open Repository' →
+> OAuth sign-in to GitHub → choose account → redirect back to app → search panel appears
+> (like command palette) → search and select repository"
+
+**Status:** ✅ DONE (SourceControlPane restructured to VS Code "Open Remote Repository" flow)
+
+**4. Multi-select restructure** (M5)
+> "Move to 3-dot overflow menu, add 'open in editor' button"
+
+**Status:** ✅ DONE
+
+**5. Sort by restructure** (M7)
+> "Works but old-fashioned, needs restructuring"
+
+**Status:** Needs re-evaluation — may be done by P-TOPBAR-RESTRUCTURE overflow menu.
+
+**6. Notifications restructure** (X8)
+> "Needs restructuring"
+
+**Status:** ✅ DONE — Notification bell removed from top bar, toast/drawer redesigned as
+bottom-right floating cards (commit ca733e5).
+
+**7. In-Project Settings expansion from vscode.dev screenshots**
+> "User reviewed 30+ screenshots of VS Code Settings UI (vscode.dev) as visual/UX reference"
+> "User pasted 12 screenshots of vscode.dev's native Settings UI as reference for expanding
+> InProjectSettingsDialog.kt"
+
+**Status:** ✅ DONE — Search bar, categorized sidebar, Notifications, Text Editor (cursor blink),
+Python/LSP (Pyright support) all built (commit 12780b6).
 
 ### Build Status
 - Latest green build: **#2105** (`6f4ff5a`) — Phase R complete
-- Previous green: #2024 (`adda9abe`)
+- Previous commit: `d7e93eb` — 8 audit fixes + PeekWidget portrait fix (build pending)
 - Phase R commits: `8cf7689` (R1+R2), `bf6f625` (R3)
-- Next planned: **Phase S — LSP Spec Compliance**
+- Next planned: **vscode.dev popup study with Christie → then Phase S — LSP Spec Compliance**
