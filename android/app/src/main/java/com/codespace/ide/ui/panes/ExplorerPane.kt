@@ -1889,12 +1889,30 @@ fun ExplorerSidePanel(
                             val newFile = java.io.File(targetDir, nameInput)
                             try {
                                 newFile.parentFile?.mkdirs()
-                                newFile.createNewFile()
-                                refresh++
-                                onShowNotification?.invoke("Created: ${newFile.name}", "success")
-                                onOpenFile(newFile.absolutePath)
+                                if (!newFile.createNewFile()) {
+                                    // createNewFile returned false (already exists) or failed
+                                    if (!newFile.exists()) {
+                                        // Try writing empty content as fallback
+                                        newFile.writeText("")
+                                    }
+                                }
+                                if (newFile.exists()) {
+                                    refresh++
+                                    onShowNotification?.invoke("Created: ${newFile.name}", "success")
+                                    onOpenFile(newFile.absolutePath)
+                                } else {
+                                    onShowNotification?.invoke("Failed to create file: permission denied. Check storage access in Settings.", "error")
+                                }
                             } catch (e: Exception) {
-                                onShowNotification?.invoke("Failed to create file: ${e.message}", "error")
+                                // Fallback: try writing empty content
+                                try {
+                                    newFile.writeText("")
+                                    refresh++
+                                    onShowNotification?.invoke("Created: ${newFile.name}", "success")
+                                    onOpenFile(newFile.absolutePath)
+                                } catch (e2: Exception) {
+                                    onShowNotification?.invoke("Failed to create file: ${e2.message}. Try selecting a different folder.", "error")
+                                }
                             }
                         }
                         showNewFile = false

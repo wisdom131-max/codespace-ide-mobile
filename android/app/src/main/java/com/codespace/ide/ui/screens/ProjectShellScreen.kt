@@ -2185,8 +2185,15 @@ private fun PssBottomPanelContent(
                 activeFilePath = activeEditorTab,
                 buildProblems = buildProblems,
                 onJumpToSource = { line -> onJumpToSource(line) },
+                panelBg = panelBg,
+                dividerColor = dividerColor,
+                tabTextInactive = tabTextInactive,
             )
-            BottomTab.OUTPUT   -> OutputPanel()
+            BottomTab.OUTPUT   -> OutputPanel(
+                panelBg = panelBg,
+                dividerColor = dividerColor,
+                tabTextInactive = tabTextInactive,
+            )
             BottomTab.DEBUG    -> DebugConsolePanel(
                 context = context,
                 activeFilePath = activeEditorTab,
@@ -2409,7 +2416,7 @@ private fun buildRunCommand(path: String): String? {
     }
 }
 
-@Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, buildProblems: List<Problem> = emptyList(), onJumpToSource: (Int) -> Unit) {
+@Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, buildProblems: List<Problem> = emptyList(), onJumpToSource: (Int) -> Unit, panelBg: Color = Color(0xFF1E1E1E), dividerColor: Color = Color(0xFF2D2D30), tabTextInactive: Color = Color(0xFF858585)) {
     // P22-A: live-update — re-run lint every 2 s so edits are reflected without switching tabs
     // P22-G: Also fetch LSP diagnostics if server is running for this language
     // P41-FIX: Added buildProblems as key so panel refreshes when build completes too
@@ -2435,14 +2442,14 @@ private fun buildRunCommand(path: String): String? {
     }
     Column(Modifier.fillMaxSize()) {
         // P46-S1: Dark theme colors — was light (0xFFF5F5F5)
-        Row(Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("PROBLEMS" + if (problems.isNotEmpty()) " (${problems.size})" else "", fontSize = 11.sp, color = Color(0xFF858585), modifier = Modifier.weight(1f))
-            Icon(Icons.Default.FilterList, null, tint = Color(0xFF858585), modifier = Modifier.size(16.dp))
+        Row(Modifier.fillMaxWidth().background(panelBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("PROBLEMS" + if (problems.isNotEmpty()) " (${problems.size})" else "", fontSize = 11.sp, color = tabTextInactive, modifier = Modifier.weight(1f))
+            Icon(Icons.Default.FilterList, null, tint = tabTextInactive, modifier = Modifier.size(16.dp))
         }
-        HorizontalDivider(color = Color(0xFF2D2D30))
+        HorizontalDivider(color = dividerColor)
         if (activeFilePath.isNullOrBlank()) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("Open a file to see problems detected in it.", fontSize = 13.sp, color = Color(0xFF858585))
+                Text("Open a file to see problems detected in it.", fontSize = 13.sp, color = tabTextInactive)
             }
         } else if (problems.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
@@ -2462,8 +2469,8 @@ private fun buildRunCommand(path: String): String? {
                     ) {
                         Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(p.message, fontSize = 12.sp, color = Color(0xFFD4D4D4), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${'$'}{activeFilePath.substringAfterLast('/')}:${'$'}{p.line}", fontSize = 11.sp, color = Color(0xFF858585))
+                        Text(p.message, fontSize = 12.sp, color = tabTextInactive, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${'$'}{activeFilePath.substringAfterLast('/')}:${'$'}{p.line}", fontSize = 11.sp, color = tabTextInactive)
                     }
                 }
             }
@@ -2471,7 +2478,7 @@ private fun buildRunCommand(path: String): String? {
     }
 }
 
-@Composable private fun OutputPanel() {
+@Composable private fun OutputPanel(panelBg: Color = Color(0xFF1E1E1E), dividerColor: Color = Color(0xFF2D2D30), tabTextInactive: Color = Color(0xFF858585)) {
     val logs = AppOutputLog.lines
     val listState = rememberLazyListState()
     var selectedChannel by remember { mutableStateOf("all") }
@@ -2496,16 +2503,15 @@ private fun buildRunCommand(path: String): String? {
         val filteredSize = if (selectedChannel == "all") logCount else logs.count { it.contains("[$selectedChannel]") }
         if (filteredSize > 0) listState.animateScrollToItem((filteredSize - 1).coerceAtLeast(0))
     }
-    // P44-5: Dark theme colors
-    val headerBg = Color(0xFF1E1E1E)
-    val headerText = Color(0xFF858585)
-    val dividerClr = Color(0xFF2D2D30)
-    val logText = Color(0xFFD4D4D4)
+    // Theme-aware colors (passed from parent)
+    val headerBg = panelBg
+    val headerText = tabTextInactive
+    val dividerClr = dividerColor
+    val logText = tabTextInactive
 
-    // P50-4: Get filtered logs for copy/save operations
-    val filteredLogs = remember(logs, selectedChannel) {
-        if (selectedChannel == "all") logs.toList() else logs.filter { it.contains("[$selectedChannel]") }
-    }
+    // FIX: was remember(logs, ...) but logs is a SnapshotStateList that never changes
+    // reference, so the cached list never updated. Compute directly so it stays live.
+    val filteredLogs = if (selectedChannel == "all") logs.toList() else logs.filter { it.contains("[$selectedChannel]") }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2518,7 +2524,7 @@ private fun buildRunCommand(path: String): String? {
                 Text(
                     text = ch.replaceFirstChar { it.uppercase() },
                     fontSize = 9.sp,
-                    color = if (isActive) Color(0xFF4EC9B0) else Color(0xFF858585),
+                    color = if (isActive) Color(0xFF4EC9B0) else tabTextInactive,
                     modifier = Modifier
                         .clickable { selectedChannel = ch }
                         .padding(horizontal = 4.dp),
@@ -2533,11 +2539,11 @@ private fun buildRunCommand(path: String): String? {
                     val text = filteredLogs.joinToString("\n")
                     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Output", text))
-                    AppOutputLog.log("Output copied to clipboard (${'$'}{filteredLogs.size} lines)", "info")
+                    AppOutputLog.log("Output copied to clipboard (${filteredLogs.size} lines)", "info")
                 }
             )
             Spacer(Modifier.width(6.dp))
-            // P50-4: Save logs to file button
+            // Save logs to Downloads (shareable location)
             Icon(
                 Icons.Default.Save, null,
                 tint = headerText,
@@ -2545,14 +2551,24 @@ private fun buildRunCommand(path: String): String? {
                     scope.launch {
                         try {
                             val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-                            val fileName = "output_${'$'}ts.log"
-                            val dir = java.io.File(context.filesDir, "exports")
+                            val fileName = "output_${ts}.log"
+                            // Try Downloads dir first (shareable), fall back to filesDir
+                            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                            val dir = if (android.os.Environment.getExternalStorageState() == android.os.Environment.MEDIA_MOUNTED) downloadsDir else java.io.File(context.filesDir, "exports")
                             if (!dir.exists()) dir.mkdirs()
                             val file = java.io.File(dir, fileName)
                             file.writeText(filteredLogs.joinToString("\n"))
-                            AppOutputLog.log("Output saved to ${'$'}{file.absolutePath}", "info")
+                            AppOutputLog.log("Output saved to ${file.absolutePath}", "info")
                         } catch (e: Exception) {
-                            AppOutputLog.log("Failed to save output: ${'$'}{e.message}", "info")
+                            // Fallback to internal storage
+                            try {
+                                val ts2 = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                                val file = java.io.File(java.io.File(context.filesDir, "exports").also { it.mkdirs() }, "output_${ts2}.log")
+                                file.writeText(filteredLogs.joinToString("\n"))
+                                AppOutputLog.log("Output saved to ${file.absolutePath}", "info")
+                            } catch (e2: Exception) {
+                                AppOutputLog.log("Failed to save output: ${e2.message}", "info")
+                            }
                         }
                     }
                 }
