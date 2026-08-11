@@ -1346,6 +1346,7 @@ fun ProjectShellScreen(
                     buildProblemsMs = buildProblemsMs,
                     formatOnSaveTrigger = formatOnSaveTrigger,
                     udm = com.codespace.ide.debug.UniversalDebugManager,
+                    fullScreen = fullScreen,
                 )
             } // end main Row (editor + optional chat panel)
 
@@ -2209,6 +2210,7 @@ private fun PssBottomPanelContent(
     onBuildProblemsChange: (List<Problem>) -> Unit = {},
     onJumpToSource: (Int) -> Unit = {},
     onOpenFile: (String) -> Unit = {},
+    fullScreen: Boolean = false,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -3282,6 +3284,7 @@ private fun PssEditorColumn(
     buildProblemsMs: MutableState<List<Problem>>,
     formatOnSaveTrigger: Int,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
+    fullScreen: Boolean = false,
 ) {
     val density = LocalDensity.current
     // Color param aliases — body code uses PascalCase originals, params are camelCase
@@ -3683,6 +3686,7 @@ private fun PssEditorColumn(
             buildProblems = buildProblems,
             onBuildProblemsChange = { problems -> buildProblems = problems },
             onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
+            fullScreen = fullScreen,
         )
 
     } // end editor Column
