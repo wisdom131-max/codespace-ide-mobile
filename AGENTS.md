@@ -59,7 +59,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 | | |
 |-|-|
-| Latest green build | **6f4ff5a** — Phase R (Formatter Selection) + cursorOverlayModifier extraction fix (build #2105 GREEN) |
+| Latest green build | **3805fb8** — vscode.dev study fixes (1-char trigger, keyword ranking, @ symbol search) — build #2113 pending |
 | Active phase | **Phase R** ✅ COMPLETE — Formatter Selection (R1: per-language formatter dropdowns, R2: Format on Save toggle, R3: Format Selection button). CodeEditor method-too-large fix (cursorOverlayModifier extraction). Next: Phase S (LSP Spec Compliance), P41 IntelliSense. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -14187,6 +14187,16 @@ code is written.
 ---
 
 ## CHANGE LOG (Read this FIRST before starting any work)
+
+### [2026-08-11 16:05 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `3805fb8` | **CI Build:** #2113 ⏳ PENDING
+**What was fixed:** Three vscode.dev study action items implemented:
+1. Lowered completion trigger from 2 chars to 1 — typing a single character now shows completions immediately (matches vscode.dev Test #3: typing 'i' shows if/import/in/is/id/input/int)
+2. Added keyword ranking boost (+8 score) — keywords now rank above variables/imports in general context (matches vscode.dev Test #6: case/class/continue appear before calc/collections)
+3. Added `@` prefix to command palette — typing `@` shows the current file's symbol outline (classes, functions) with line numbers, tap to navigate (matches vscode.dev Test #18)
+Signature help on `(` already confirmed working (Test #20, no changes needed).
+**Files touched:** `CodeEditor.kt` (prefix trigger + keyword boost), `ProjectShellScreen.kt` (@ symbol search in command palette), `AGENTS.md` (change log rule + entries)
+**Next on roadmap:** Await CI #2113 result. If green, continue with remaining vscode.dev items: Pylance/Pyright decision (real package introspection), Custom Cursor Overlay proposal (needs Christie's go-ahead), popup positioning on-device verification.
 
 ### [2026-08-11 15:47 WAT] — AI Agent: Claude (Superagent)
 **Commit:** `a749b34` | **CI Build:** #2112 ✅ GREEN
