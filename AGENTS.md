@@ -59,7 +59,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 | | |
 |-|-|
-| Latest green build | **3805fb8** — vscode.dev study fixes (1-char trigger, keyword ranking, @ symbol search) — build #2113 pending |
+| Latest green build | **1226979** (pending CI #2116) | — vscode.dev study fixes (1-char trigger, keyword ranking, @ symbol search) — build #2113 pending |
 | Active phase | **Phase R** ✅ COMPLETE — Formatter Selection (R1: per-language formatter dropdowns, R2: Format on Save toggle, R3: Format Selection button). CodeEditor method-too-large fix (cursorOverlayModifier extraction). Next: Phase S (LSP Spec Compliance), P41 IntelliSense. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -14187,6 +14187,27 @@ code is written.
 ---
 
 ## CHANGE LOG (Read this FIRST before starting any work)
+
+### [2026-08-11 16:25 WAT] -- AI Agent: Claude (Superagent)
+**Commit:** `1226979` | **CI Build:** #2116 (in progress)
+**What was added:**
+1. **Pyright as default LSP** -- Changed default Python diagnostics source from PYLSP to PYRIGHT (Microsoft's Node.js-based LSP). Pylsp still exists as a selectable option via the In-Project Settings dropdown. Other fallbacks (clangd for C/C++, etc.) remain unchanged.
+2. **Master LSP toggle** -- Added "Enable LSP Servers" toggle in In-Project Settings (LSP Servers category). When disabled, all LSP servers are skipped and only fallback completions are used. Persisted via SharedPreferences.
+3. **Custom cursor overlay toggle** -- Added "Custom Cursor Overlay" toggle in In-Project Settings (Text Editor category). When enabled, shows a wider 3dp touch-friendly cursor with tap-to-focus and drag-to-position interaction.
+4. **Cursor mode toggle (in-app vs system)** -- Added "Cursor Type" dropdown in In-Project Settings (Text Editor category) with two options:
+   - **In-App (Custom Overlay):** the custom 3dp cursor with tap/drag interaction
+   - **System (Phone Built-in):** the phone's native thin text caret -- disables all overlay drawing and interaction modifiers
+5. **Bug fix:** Fixed illegal escape `\\n` in ProjectShellScreen.kt @ symbol search (was breaking CI builds #2113, #2114, #2115).
+
+**Files touched:** `ProjectSettingsStore.kt` (CursorMode enum, cursorMode state, lspEnabled, customCursorOverlayEnabled), `CodeEditor.kt` (SYSTEM mode guards in cursorOverlayModifier + customCursorInteractionModifier), `InProjectSettingsDialog.kt` (CursorModeRow, LspEnabledRow, CustomCursorOverlayRow composables), `LspManager.kt` (lspEnabled guard in startServer + getServerCapabilities), `ProjectShellScreen.kt` (escape fix)
+
+**vscode.dev cursor study findings (user-reported, to be implemented):**
+- [PENDING-CURSOR-1] When cursor is placed at the front of any word, vscode.dev highlights that word with a glossy grey background. Appears to select the word for quick operations. NOT yet implemented in our app.
+- [PENDING-CURSOR-2] Long press on a word shows a popup context menu. Our app has a similar popup but it needs restructuring -- everything doesn't fit the way vscode.dev's does. Layout needs to be compacted.
+- [PENDING-CURSOR-3] When cursor is inside a word that is inside brackets, e.g. `[(]right[)]`, vscode.dev highlights both the opening and closing bracket with glossy grey boxes. This is bracket matching visualization. NOT yet implemented in our app.
+- [PENDING-CURSOR-MORE] User is still researching more cursor behaviors from vscode.dev and will report additional findings. This section will be updated as more are discovered.
+
+**Next on roadmap:** Await CI #2116 result. If green, implement the vscode.dev cursor behaviors above (word highlight on cursor placement, bracket matching highlight, popup menu restructuring).
 
 ### [2026-08-11 16:05 WAT] — AI Agent: Claude (Superagent)
 **Commit:** `3805fb8` | **CI Build:** #2113 ⏳ PENDING
