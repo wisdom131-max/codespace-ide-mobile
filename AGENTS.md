@@ -13936,35 +13936,67 @@ The code attempted `createNewFile()` on the target directory without pre-checkin
 
 ---
 
-## AUDIT SUMMARY: Fix Priority List Status (2026-08-11)
+## AUDIT SUMMARY: Fix Priority List Status (2026-08-11 12:25 WAT)
 
-### CRITICAL — App Stability
-1. **MD file crash** — Partially addressed by SyntaxHighlighter backtick fix (commit 15a16d4). Needs device retest.
-2. **File creation permission error** — ✅ FIXED (commit b29b1e2). Needs device test.
+### ✅ FIXED IN CODE — Awaiting Device Retest
 
-### HIGH — Core Editor Features
-3. **Zen Mode exit broken** — Needs investigation
-4. **Snippet Tab expansion** — Needs investigation
-5. **Bracket auto-close incomplete** — Needs investigation (only `()` works)
-6. **Completion popup positioning** — Needs investigation
-7. **Fix with AI** — Needs investigation
-8. **Cursor blink styles** — Needs investigation (Phase/Smooth/Expand do nothing)
+| # | Item | Fix Commit | What Was Fixed |
+|---|------|------------|----------------|
+| 1 | MD file crash (Tests 20, 25, 39) | `15a16d4` | Backtick no longer treated as string delimiter for MD/Plaintext + 50K scan cap |
+| 2 | File creation permission | `b29b1e2` | `canWrite()` pre-check + SecurityException catch + app-private storage fallback |
+| 3 | Zen Mode exit (Tests 1, 2) | `5340be4` | Draggable floating exit button + Zen Mode toggle in settings |
+| 4 | Zen Mode keyboard (O1) | `50fdf59` | Empty `onTap` lets taps pass through to editor for keyboard focus |
+| 5 | Snippet Tab expansion (Tests 5, 5b) | P49 | Tab now checks for local snippet triggers before falling through |
+| 6 | Bracket auto-close (Test 14) | `5340be4` | Extra keys toolbar now auto-closes `()`, `[]`, `{}`, `""`, `''`, backticks |
+| 7 | Fix with AI (B1/Test 24) | Phase 46 | `onAiFixRequest` wired at PSS:3303, opens chat panel with fix prompt |
+| 8 | Cursor blink styles (Test 32) | `5340be4` + `12780b6` | SOLID/EXPAND custom overlay + PHASE/SMOOTH animated brushes |
+| 9 | Output Clear button | `3c19688` | Fixed stale `remember()` caching on SnapshotStateList |
+| 10 | Output Save to ZIP | `3c19688` | Saves to Downloads with proper timestamp (was inaccessible filesDir) |
+| 11 | Output light theme (S1) | `3c19688` + `5340be4` | Theme-aware colors, near-black log text on light themes |
+| 12 | Toggle tab restructuring (Test 27) | `P-TOPBAR-RESTRUCTURE` | VS Code layout icons + Customize Layout dropdown + 3-dot overflow |
+| 13 | Cross-file Go to Def (Test 7) | `8e9fda9` | Dialog now checks crossFileResults, not just results.isEmpty() |
+| 14 | Quick command palette (Test 11) | `ce34ab9` | Dedicated ⚡ Cmds button with single-tap toggle |
+| 15 | Problems → editor jump (Test 13) | Wired | `onJumpToSource` → `scrollTargetLine` → `scrollToLineParam` → editor scrolls |
+| 16 | Extract Here (Test 16) | `ExplorerPane` | Context menu item at line 1331 + handler at 1466 |
+| 17 | Open as Text (Test 17) | `ExplorerPane` | Context menu item at 1332 + handler at 1502 |
+| 18 | Feature toggles (Test 31) | `7915b27` | Minimap + ghost text + word wrap + inlay hints now reactive and persist |
+| 19 | Select All/Next Occurrences (Test 6) | `7915b27` | Popup dismisses first, then scrolls to match |
+| 20 | Cloud backup retry (Test 35) | `8c5967f4` | 3 attempts with exponential backoff, catches IOException + SocketTimeout |
+| 21 | Git dubious ownership | `420e023` | `safe.directory='*'` flag on every git invocation |
+| 22 | Source Control scrolling | `420e023` | `weight(1f)` wrapper around tab content |
+| 23 | Keyboard toolbar cursor | `907d19f` | Inserts at cursor position + Tab/Esc/snippet expansion |
+| 24 | Completion cap (Test 18) | `22aff40` | Raised from 15 to 60 items |
+| 25 | Completion resize handle (Test 19) | `22aff40` | Drag-to-resize handle added |
+| 26 | YouTube Shorts (Test 36) | P48 | 11 measures (desktop UA, 3rd-party cookies, playsinline, etc.) |
+| 27 | LSP servers (Test 34) | `6963322` | 9 new LSP servers added, all 21 visible in In-Project Settings |
+| 28 | Pyright auto-install | `LspManager:690` | Auto-installs via `npm install -g pyright` when not present |
+| 29 | Peek Definition X button (Test 23) | `PeekWidget.kt` | X button at line 100 + Close button at 139, both wired to onClose |
+| 30 | Debug panel step buttons (Test 42) | P26-4b | Continue/Pause/StepOver/Into/Out all wired to UDM |
+| 31 | N5: Find in Files keyword | `fc1bc21` | Fixed |
+| 32 | N11: Find in File keyboard | `e6d51b8` | `focusRequester.requestFocus()` added |
+| 33 | V1: Recycle bin restore | `e6d51b8` | Re-registers project in SharedPreferences after restore |
+| 34 | N8/N9: Recent search history | Code verified | SharedPreferences persistence already implemented |
+| 35 | Q5: UDM injection | Code verified | PSS → PssEditorColumn → EditorPane already wired |
+| 36 | SyntaxHighlighter ANR | `15a16d4` | Backtick no longer string delimiter for MD/Plaintext |
+| 37 | MCP on app launch (X7) | `ce34ab9` | AgentApiServer starts in CodeSpaceApplication.onCreate() |
+| 38 | Notification channel name | `ca733e5` | Shows "VN Code" |
+| 39 | Phase R: Formatter Selection | `8cf7689` + `bf6f625` | Per-language dropdowns + Format on Save + Format Selection |
 
-### MEDIUM — UX/Polish
-9. **LSP server auto-close** — User wants LSP to auto-close if editor not opened for 10 seconds
-10. **Snapshot interval** — Change from 30s to 20s
-11. **Output tab Clear button** — Doesn't work
-12. **Output tab Save to ZIP** — Doesn't work
-13. **Output tab "All" channel** — Slow to update
-14. **Output tab light theme** — White-on-white text
-15. **Toggle tab restructuring** — Needs redo
-16. **vscode.dev popup** — Spurious popup
-17. **Lightbulb drift** — Lightbulb code action marker drifts
+### ⚠️ Still Genuinely Unfixed
 
-### Already Fixed (in code, need device verification)
-- Git "dubious ownership" — ✅ (commit 420e023)
-- Source Control scrolling — ✅ (commit 420e023)
-- SyntaxHighlighter ANR/crash — ✅ (commit 15a16d4)
-- Keyboard toolbar cursor insertion — ✅ (commit 907d19f)
-- File creation permission — ✅ (commit b29b1e2)
-- In-Project Settings dialog with feature toggles + flow mode — ✅
+| # | Item | Details |
+|---|------|---------|
+| 1 | **Completion popup positioning** (Test 18) | Doesn't appear at front of char; import completion clears `import` leaving only `os` |
+| 2 | **Command palette: show ALL history** (Test 11) | Still `.takeLast(5)` in TerminalPane:1617 — user wants ALL commands shown |
+| 3 | **Output "All" channel slow** (O7) | Have to tap LSP then back to All to see updates |
+| 4 | **LSP server auto-close** | User wants LSP to auto-close if editor not opened for 10 seconds |
+| 5 | **Snapshot interval** | Still 30s in ExplorerPane:1271 — change to 20s |
+| 6 | **Lightbulb drift** | After extended use, lightbulb appears on wrong line |
+| 7 | **vscode.dev popup positioning** | User wants to study vscode.dev popup/completion smart positioning logic |
+| 8 | **Pyright unclear if functional** | Auto-install code exists but unclear if it actually works on device |
+
+### Build Status
+- Latest green build: **#2105** (`6f4ff5a`) — Phase R complete
+- Previous green: #2024 (`adda9abe`)
+- Phase R commits: `8cf7689` (R1+R2), `bf6f625` (R3)
+- Next planned: **Phase S — LSP Spec Compliance**
