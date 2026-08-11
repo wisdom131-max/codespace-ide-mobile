@@ -1890,20 +1890,62 @@ fun ExplorerSidePanel(
                         if (targetDir != null) {
                             val newFile = java.io.File(targetDir, nameInput)
                             try {
-                                newFile.parentFile?.mkdirs()
-                                if (!newFile.createNewFile()) {
-                                    // createNewFile returned false (already exists) or failed
-                                    if (!newFile.exists()) {
-                                        // Try writing empty content as fallback
-                                        newFile.writeText("")
+                                // P-FC1: Pre-check write permission before attempting creation
+                                if (!targetDir.canWrite()) {
+                                    // Directory not writable — try to fix permissions or use app-private storage
+                                    if (!targetDir.exists()) targetDir.mkdirs()
+                                    if (!targetDir.canWrite()) {
+                                        // Fall back to app-private external storage
+                                        val fallbackDir = context.getExternalFilesDir(null)
+                                        if (fallbackDir != null && fallbackDir.canWrite()) {
+                                            val fallbackFile = java.io.File(fallbackDir, nameInput)
+                                            fallbackFile.parentFile?.mkdirs()
+                                            fallbackFile.createNewFile()
+                                            refresh++
+                                            onShowNotification?.invoke("Created in app storage: ${fallbackFile.name} (original location was read-only)", "info")
+                                            onOpenFile(fallbackFile.absolutePath)
+                                        } else {
+                                            onShowNotification?.invoke("Cannot write to this folder. Grant 'All files access' permission in Settings.", "error")
+                                        }
+                                        showNewFile = false
+                                        nameInput = 
                                     }
                                 }
-                                if (newFile.exists()) {
+                                newFile.parentFile?.mkdirs()
+                                // P-FC1: Try createNewFile first, then writeText as fallback
+                                var created = false
+                                try {
+                                    created = newFile.createNewFile()
+                                    if (!created && !newFile.exists()) {
+                                        newFile.writeText("")
+                                        created = newFile.exists()
+                                    }
+                                } catch (secEx: SecurityException) {
+                                    // Android security exception — try writeText
+                                    newFile.writeText("")
+                                    created = newFile.exists()
+                                }
+                                if (created && newFile.exists()) {
                                     refresh++
                                     onShowNotification?.invoke("Created: ${newFile.name}", "success")
                                     onOpenFile(newFile.absolutePath)
+                                } else if (newFile.exists()) {
+                                    // File already existed — just open it
+                                    refresh++
+                                    onShowNotification?.invoke("Opened existing file: ${newFile.name}", "info")
+                                    onOpenFile(newFile.absolutePath)
                                 } else {
-                                    onShowNotification?.invoke("Failed to create file: permission denied. Check storage access in Settings.", "error")
+                                    // Last resort: use app-private storage
+                                    val fallbackDir = context.getExternalFilesDir(null)
+                                    if (fallbackDir != null) {
+                                        val fallbackFile = java.io.File(fallbackDir, nameInput)
+                                        fallbackFile.createNewFile()
+                                        refresh++
+                                        onShowNotification?.invoke("Created in app storage: ${fallbackFile.name} (original location was read-only)", "info")
+                                        onOpenFile(fallbackFile.absolutePath)
+                                    } else {
+                                        onShowNotification?.invoke("Failed to create file: permission denied. Grant 'All files access' in Settings.", "error")
+                                    }
                                 }
                             } catch (e: Exception) {
                                 // Fallback: try writing empty content
@@ -1913,7 +1955,17 @@ fun ExplorerSidePanel(
                                     onShowNotification?.invoke("Created: ${newFile.name}", "success")
                                     onOpenFile(newFile.absolutePath)
                                 } catch (e2: Exception) {
-                                    onShowNotification?.invoke("Failed to create file: ${e2.message}. Try selecting a different folder.", "error")
+                                    // Final fallback: app-private storage
+                                    val fallbackDir = context.getExternalFilesDir(null)
+                                    if (fallbackDir != null) {
+                                        val fallbackFile = java.io.File(fallbackDir, nameInput)
+                                        fallbackFile.createNewFile()
+                                        refresh++
+                                        onShowNotification?.invoke("Created in app storage: ${fallbackFile.name} (original location was read-only)", "info")
+                                        onOpenFile(fallbackFile.absolutePath)
+                                    } else {
+                                        onShowNotification?.invoke("Failed to create file: ${e2.message}. Grant 'All files access' in Settings.", "error")
+                                    }
                                 }
                             }
                         }
@@ -1949,11 +2001,16 @@ fun ExplorerSidePanel(
                             if (it.isDirectory) it else it.parentFile
                         } ?: workspaceRoot ?: return@Button
                         try {
+                            // P-FC1: Pre-check write permission
+                            if (!dir.canWrite() && !dir.mkdirs()) {
+                                onShowNotification?.invoke("Cannot write to this folder. Grant 'All files access' in Settings.", "error")
+                                showNewFolder = false; nameInput = "" 
+                            }
                             File(dir, nameInput).mkdirs()
                             refresh++
                             onShowNotification?.invoke("Created folder: ${nameInput}/", "success")
                         } catch (e: Exception) {
-                            onShowNotification?.invoke("Failed to create folder: ${e.message}", "error")
+                            onShowNotification?.invoke("Failed to create folder: ${e.message}. Grant 'All files access' in Settings.", "error")
                         }
                     }
                     showNewFolder = false; nameInput = ""
