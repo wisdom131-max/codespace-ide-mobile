@@ -3478,8 +3478,8 @@ private fun PssEditorColumn(
             }
         }
 
-        // Coding toolbar
-        if (activeEditorTab != null) {
+        // Coding toolbar — can be toggled in In-Project Settings
+        if (activeEditorTab != null && ProjectSettingsStore.extraKeysEnabled.value) {
             Row(
                 Modifier.fillMaxWidth().height(40.dp).background(KeyboardToolbarBg)
                     .horizontalScroll(rememberScrollState()),

@@ -497,6 +497,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     /** P41-I: Source Actions — Organize Imports, Remove Unused, Fix All. Called with the CodeActionKind string. */
     onSourceAction: ((kind: String) -> Unit)? = null,
     onLspDeclaration: (() -> Boolean)? = null,
+    /** Keyboard toolbar insert handler — registers a function that inserts text at cursor position.
+     *  Called once during composition. The registered function handles:
+     *  - "Tab" → triggers snippet expansion or inserts \t at cursor
+     *  - "Esc" → dismisses completions, snippet sessions, and popups
+     *  - Any other string → inserts at cursor position (like typing it on a real keyboard) */
+    onInsertHandler: (((String) -> Unit) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
@@ -1118,6 +1124,111 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var gotoResults by remember { mutableStateOf<List<DefResult>?>(null) }
     // P22-L: Peek Definition result — inline code preview (class moved to top-level)
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
+
+    // ── Keyboard toolbar insert handler ──────────────────────────────────────
+    // Registers a function that the coding toolbar (Tab, Esc, {, }, etc.) can call
+    // to insert text at the cursor position, as if the user typed it on a real keyboard.
+    LaunchedEffect(onInsertHandler) {
+        onInsertHandler?.invoke { text ->
+            when (text) {
+                "Esc" -> {
+                    snippetSession = null
+                    showSnippetChoices = false
+                    showCompletions = false
+                    showCallHierarchy = false
+                    showTypeHierarchy = false
+                    overloadIndex = 0
+                    findRefWord = null
+                    peekDefResult = null
+                }
+                "Tab" -> {
+                    if (snippetSession != null) {
+                        val session = snippetSession!!
+                        val next = session.advance()
+                        if (next != null) {
+                            snippetSession = next
+                            showSnippetChoices = next.activeStop()?.choices?.isNotEmpty() == true
+                            val stopRange = next.activeStopRange()
+                            if (stopRange != null) {
+                                value = value.copy(selection = TextRange(stopRange.first, stopRange.last + 1))
+                            }
+                        } else {
+                            value = value.copy(selection = TextRange(session.finalCursorOffset))
+                            snippetSession = null
+                        }
+                    } else if (!showCompletions) {
+                        val cursor = value.selection.end
+                        var wordStart = cursor
+                        while (wordStart > 0 && (value.text[wordStart - 1].isLetterOrDigit() || value.text[wordStart - 1] == '_')) {
+                            wordStart--
+                        }
+                        val singleWord = value.text.substring(wordStart, cursor)
+                        var twoWordStart = wordStart
+                        if (wordStart > 0 && value.text[wordStart - 1] == ' ') {
+                            var ws = wordStart - 1
+                            while (ws > 0 && value.text[ws - 1] == ' ') ws--
+                            val prevWordEnd = ws
+                            if (prevWordEnd > 0 && (value.text[prevWordEnd - 1].isLetterOrDigit() || value.text[prevWordEnd - 1] == '_')) {
+                                var prevWordStart = prevWordEnd
+                                while (prevWordStart > 0 && (value.text[prevWordStart - 1].isLetterOrDigit() || value.text[prevWordStart - 1] == '_')) prevWordStart--
+                                twoWordStart = prevWordStart
+                            }
+                        }
+                        val twoWord = if (twoWordStart < wordStart) value.text.substring(twoWordStart, cursor) else singleWord
+                        if (singleWord.isNotEmpty()) {
+                            val localSnippets = snippetsFor(language)
+                            val matched = localSnippets.firstOrNull { it.label == twoWord }
+                                ?: localSnippets.firstOrNull { it.label == singleWord }
+                                ?: localSnippets.firstOrNull { it.label.startsWith(singleWord) && singleWord.length >= 3 }
+                            if (matched != null) {
+                                val expandStart = if (matched.label == twoWord) twoWordStart else wordStart
+                                val snippetText = matched.insertText
+                                if (matched.insertTextFormat == 2) {
+                                    val parsed = parseSnippet(snippetText, SnippetContext(
+                                        lineNumber = lineFromOffset(expandStart) + 1,
+                                        lineIndex = lineFromOffset(expandStart),
+                                        currentLine = value.text.split('\n').getOrNull(lineFromOffset(expandStart)) ?: "",
+                                        selectedText = "",
+                                    ))
+                                    val cleanedText = parsed.cleanedText
+                                    val finalText = value.text.substring(0, expandStart) + cleanedText + value.text.substring(cursor)
+                                    val session = createSnippetSession(expandStart, parsed)
+                                    snippetSession = session
+                                    showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
+                                    val firstStop = session.tabStops.firstOrNull()
+                                    val selRange = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                        TextRange(firstStop.startOffset, firstStop.endOffset)
+                                    } else {
+                                        TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                    }
+                                    value = TextFieldValue(text = finalText, selection = selRange)
+                                    onContentChange(finalText)
+                                } else {
+                                    val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
+                                    value = TextFieldValue(text = newText, selection = TextRange(expandStart + snippetText.length))
+                                    onContentChange(newText)
+                                }
+                            } else {
+                                val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
+                                value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                                onContentChange(newText)
+                            }
+                        } else {
+                            val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
+                            value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                            onContentChange(newText)
+                        }
+                    }
+                }
+                else -> {
+                    val cursor = value.selection.end
+                    val newText = value.text.substring(0, cursor) + text + value.text.substring(cursor)
+                    value = TextFieldValue(text = newText, selection = TextRange(cursor + text.length))
+                    onContentChange(newText)
+                }
+            }
+        }
+    }
     // P38-FIX: Long-press trigger for auto-opening LSP menu
     var longPressTrigger by remember { mutableStateOf(0) }
     var peekUsedLsp by remember { mutableStateOf(false) }  // P37-3: track LSP vs fallback for peek

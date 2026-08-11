@@ -39,6 +39,10 @@ object ProjectSettingsStore {
     val flowMode: MutableState<FlowMode> = mutableStateOf(FlowMode.AUTO)
     val verboseToolOutput: MutableState<Boolean> = mutableStateOf(false)
 
+    // ── Editor Keyboard ───────────────────────────────────────────────
+    /** Show the extra coding keys toolbar above the soft keyboard. */
+    val extraKeysEnabled: MutableState<Boolean> = mutableStateOf(true)
+
     // ── Notifications ──────────────────────────────────────────────────
     /** Task completion notification threshold in ms. -1 = never, 0 = always. */
     val taskNotifyThresholdMs: MutableState<Int> = mutableStateOf(8000)
@@ -74,6 +78,7 @@ object ProjectSettingsStore {
         } catch (_: Exception) { DiagnosticsSource.PYLSP }
         pyrightVersion.value = prefs.getString("pyright_version", "") ?: ""
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
+        extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
     }
 
     // ── Setters ────────────────────────────────────────────────────────
@@ -84,6 +89,10 @@ object ProjectSettingsStore {
     fun setVerboseToolOutput(value: Boolean) {
         verboseToolOutput.value = value
         prefs.edit().putBoolean("verbose_tool_output", value).apply()
+    }
+    fun setExtraKeysEnabled(value: Boolean) {
+        extraKeysEnabled.value = value
+        prefs.edit().putBoolean("extra_keys_enabled", value).apply()
     }
     fun setTaskNotifyThresholdMs(value: Int) {
         taskNotifyThresholdMs.value = value

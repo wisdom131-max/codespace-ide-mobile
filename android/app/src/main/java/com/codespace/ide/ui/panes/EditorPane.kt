@@ -367,18 +367,8 @@ fun EditorPane(
         }
     }
 
-    // Wire up keyboard toolbar insert callback
-    LaunchedEffect(onInsertRequest) {
-        onInsertRequest?.invoke { text ->
-            val active = tabs.firstOrNull { it.id == activeId } ?: return@invoke
-            val idx = tabs.indexOfFirst { it.id == activeId }
-            val newContent = active.content + text
-            if (idx >= 0) tabs[idx] = active.copy(content = newContent, isDirty = true)
-            if (active.path.startsWith("/")) {
-                try { File(active.path).writeText(newContent); FileCache.invalidate(active.path) } catch (_: Exception) {}
-            }
-        }
-    }
+    // Keyboard toolbar insert is now handled by CodeEditor via onInsertHandler.
+    // The old code here appended text to END of file; CodeEditor inserts at cursor.
 
     // Open a new tab when the explorer requests a file
     LaunchedEffect(openFilePath) {
@@ -1254,6 +1244,7 @@ fun EditorPane(
                                 try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
                             }
                         },
+                        onInsertHandler = onInsertRequest,
                         modifier = Modifier.weight(1f),
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
@@ -1281,6 +1272,7 @@ fun EditorPane(
                         language = splitTab.language,
                         fontSize = fontSize,
                         onContentChange = {},
+                        onInsertHandler = onInsertRequest,
                         modifier = Modifier.weight(1f),
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
@@ -1318,6 +1310,7 @@ fun EditorPane(
                                     try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
                                 }
                             },
+                            onInsertHandler = onInsertRequest,
                             modifier = Modifier
                                 .weight(1f - mdPreviewWeight)
                                 .fillMaxWidth(),
@@ -1398,7 +1391,8 @@ fun EditorPane(
                                         wv.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
-                                modifier = Modifier.fillMaxSize(),
+                                onInsertHandler = onInsertRequest,
+                        modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }

@@ -214,6 +214,7 @@ enum class RowType {
     TASK_NOTIFY_THRESHOLD,
     TERMINAL_NOTIFY_CHECKBOX,
     VERBOSE_DOWNLOAD_CHECKBOX,
+    EXTRA_KEYS_CHECKBOX,
     CURSOR_BLINK_DROPDOWN,
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
@@ -246,6 +247,11 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "LSP: Verbose Download Notification",
         "Show detailed progress for LSP server downloads and installs",
         RowType.VERBOSE_DOWNLOAD_CHECKBOX))
+
+    add(SettingsRow("extra_keys", SettingsCategory.TEXT_EDITOR,
+        "Extra Coding Keys",
+        "Show the toolbar with Tab, Esc, brackets and symbols above the keyboard",
+        RowType.EXTRA_KEYS_CHECKBOX))
 
     add(SettingsRow("cursor_blink", SettingsCategory.TEXT_EDITOR,
         "Cursor Blinking",
@@ -291,6 +297,7 @@ private fun SettingsRowRenderer(
         RowType.TASK_NOTIFY_THRESHOLD -> TaskNotifyThresholdRow(textPri, textSec, divider)
         RowType.TERMINAL_NOTIFY_CHECKBOX -> TerminalNotifyRow(textPri, textSec, divider)
         RowType.VERBOSE_DOWNLOAD_CHECKBOX -> VerboseDownloadRow(textPri, textSec, divider)
+        RowType.EXTRA_KEYS_CHECKBOX -> ExtraKeysRow(textPri, textSec, divider)
         RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
@@ -447,6 +454,26 @@ private fun VerboseDownloadRow(textPri: Color, textSec: Color, divider: Color) {
         Checkbox(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setVerboseDownloadNotify(it) },
+            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun ExtraKeysRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.extraKeysEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Extra Coding Keys", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Show the toolbar with Tab, Esc, brackets and symbols above the keyboard", color = textSec, fontSize = 11.sp)
+        }
+        Checkbox(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setExtraKeysEnabled(it) },
             colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
         )
     }
