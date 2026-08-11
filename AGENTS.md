@@ -55,17 +55,17 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-11 12:10 WAT)
+## CURRENT STATE (2026-08-11 20:46 WAT)
 
 | | |
 |-|-|
-| Latest green build | **1226979** (pending CI #2116) | — vscode.dev study fixes (1-char trigger, keyword ranking, @ symbol search) — build #2113 pending |
+| Latest commit | **17abf32** — Fix build #2130 + PENDING-CURSOR behaviors (word highlight, bracket match, popup compaction) — build #2131 pending |
 | Active phase | **Phase R** ✅ COMPLETE — Formatter Selection (R1: per-language formatter dropdowns, R2: Format on Save toggle, R3: Format Selection button). CodeEditor method-too-large fix (cursorOverlayModifier extraction). Next: Phase S (LSP Spec Compliance), P41 IntelliSense. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2105 — Phase R + cursorOverlayModifier extraction (6f4ff5a) |
+| Last green | #2126 — Customize Layout dropdown + vtsls config (8b899f5) |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -11775,6 +11775,7 @@ color = if (bookmarkedLines.contains(lineNum))
 |------|---------|------------|-----|--------|
 | CodeEditor.kt:1385 | 9 consecutive CI failures (#2011-#2019) — "Expecting an element" at 3 positions | Comma separator placed inside `//` line comment → argument never terminated → parser chokes on next named argument | `07ecf98e` — moved comma before comment | A `//` comment swallows everything to end of line including trailing commas. Always place `,` separators BEFORE `//` comments in multi-line function calls |
 
+| ProjectShellScreen.kt:471 | Build #2130 FAILED — kspProdDebugKotlin: "Expecting an element" at 3 positions on line 473 | Missing closing `)` for "Toggle Secondary Side Bar" DropdownMenuItem — the onClick closing `}` was followed directly by the next item without the DropdownMenuItem closing `)` | `17abf32` — added missing `)` after onClick line | When copying DropdownMenuItem patterns, always count opening `(` and closing `)` — the onClick lambda closing `}` is NOT the DropdownMenuItem closing `)` |
 ### Known Kotlin/Compose CI Failure Patterns — UPDATED
 
 Previous patterns (from USER.md):
@@ -14495,3 +14496,13 @@ Signature help on `(` already confirmed working (Test #20, no changes needed).
 **What was fixed:** Fixing broken builds #2127-#2129 — root cause was syntax corruption in ProjectShellScreen.kt Customize Layout dropdown (stray `)`, duplicate DropdownMenuItem). Also implementing TS7 native LSP backend: added `ts7NativeConfig` using `tsc --lsp --stdio` (confirmed from TypeScript 7 source code at github.com/microsoft/typescript-go). Fixed vtsls config: corrected npm package name (`vtsls` → `@vtsls/language-server`), removed `typescript@7` from vtsls install (vtsls bundles TS 5.9.3, cannot use TS7). Added TS7 availability detection with automatic vtsls fallback. Added server version diagnostics after LSP initialize. Updated TypeScriptVersion enum and settings dialog text.
 **Files touched:** `ProjectShellScreen.kt` (syntax fix), `LspManager.kt` (TS7 native + vtsls fix + version diagnostics), `ProjectSettingsStore.kt` (enum update), `InProjectSettingsDialog.kt` (description update), `AGENTS.md` (error trace + change log)
 **Next on roadmap:** Await CI build. If green, update AGENTS.md with green build number. Then continue with TS7 native LSP on-device testing or remaining cursor behaviors.
+
+### [2026-08-11 20:46 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `17abf32` | **CI Build:** #2131 ⏳ PENDING
+**What was fixed:**
+1. **Build #2130 fix** — ProjectShellScreen.kt:471 missing closing `)` for "Toggle Secondary Side Bar" DropdownMenuItem (syntax error causing `kspProdDebugKotlin FAILED`). This was the root cause of builds #2127-#2130 all failing.
+2. **PENDING-CURSOR-1 (word highlight)** — New `wordHighlightModifier` in `CursorBehaviors.kt` highlights all occurrences of the word at cursor with translucent grey overlay (vscode.dev parity). Wired into CodeEditor.kt overlay chain after `cursorOverlayModifier`.
+3. **PENDING-CURSOR-2 (popup compaction)** — LSP popup menu width constrained to 220dp (was unbounded), max scroll height reduced from 360dp to 300dp, font sizes reduced from 13sp to 12sp and icon sizes from 14sp to 13sp. Menu now fits more items in less screen space.
+4. **PENDING-CURSOR-3 (bracket match)** — New `bracketMatchModifier` in `CursorBehaviors.kt` renders `_bracketMatch` positions as translucent grey highlight boxes on both bracket locations. Wired into CodeEditor.kt overlay chain.
+**Files touched:** `ProjectShellScreen.kt` (build fix), `CodeEditor.kt` (overlay wiring + popup compaction), `CursorBehaviors.kt` (new file — wordHighlightModifier + bracketMatchModifier)
+**Next on roadmap:** Await CI #2131. If green, all 3 PENDING-CURSOR items are done. Next: on-device testing of TS7 LSP + cursor behaviors, or start multi-cursor feature implementation.
