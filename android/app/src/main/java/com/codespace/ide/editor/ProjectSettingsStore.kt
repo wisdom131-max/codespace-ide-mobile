@@ -25,6 +25,12 @@ enum class CursorBlinkStyle {
     SMOOTH,     // Smooth pulse
 }
 
+/** Cursor mode - in-app custom cursor overlay vs system/phone default cursor. */
+enum class CursorMode {
+    IN_APP,    // Custom cursor overlay - wider, tap-to-type, drag-to-move
+    SYSTEM,    // Built-in phone/Android system cursor - thin native text caret
+}
+
 /** Python diagnostics source — which LSP server provides completions + diagnostics. */
 enum class DiagnosticsSource {
     PYLSP,      // python-lsp-server (jedi-based) — default
@@ -71,6 +77,9 @@ object ProjectSettingsStore {
      *  Replaces the default thin text cursor with a visible, touch-friendly overlay. */
     val customCursorOverlayEnabled: MutableState<Boolean> = mutableStateOf(false)
 
+    // -- Cursor Mode --
+    val cursorMode: MutableState<CursorMode> = mutableStateOf(CursorMode.IN_APP)
+
     // ── Python / LSP ────────────────────────────────────────────────────
     val diagnosticsSource: MutableState<DiagnosticsSource> = mutableStateOf(DiagnosticsSource.PYRIGHT)
     /** Pyright version string or path to local pyright-langserver.js (empty = auto-install latest). */
@@ -100,6 +109,9 @@ object ProjectSettingsStore {
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
         customCursorOverlayEnabled.value = prefs.getBoolean("custom_cursor_overlay", false)
+        cursorMode.value = try {
+            CursorMode.valueOf(prefs.getString("cursor_mode", CursorMode.IN_APP.name) ?: CursorMode.IN_APP.name)
+        } catch (_: Exception) { CursorMode.IN_APP }
     }
 
     // ── Setters ────────────────────────────────────────────────────────
@@ -130,6 +142,10 @@ object ProjectSettingsStore {
     fun setCustomCursorOverlayEnabled(value: Boolean) {
         customCursorOverlayEnabled.value = value
         prefs.edit().putBoolean("custom_cursor_overlay", value).apply()
+    }
+    fun setCursorMode(mode: CursorMode) {
+        cursorMode.value = mode
+        prefs.edit().putString("cursor_mode", mode.name).apply()
     }
     fun setTaskNotifyThresholdMs(value: Int) {
         taskNotifyThresholdMs.value = value

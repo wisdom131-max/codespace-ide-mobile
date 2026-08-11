@@ -483,6 +483,9 @@ private fun cursorOverlayModifier(
 ): Modifier {
     val cursorStyle = ProjectSettingsStore.cursorBlinkStyle.value
     val customEnabled = ProjectSettingsStore.customCursorOverlayEnabled.value
+    val cursorMode = ProjectSettingsStore.cursorMode.value
+    // SYSTEM mode = use phone's built-in cursor, skip all overlay drawing
+    if (cursorMode == CursorMode.SYSTEM) return Modifier
     if (cursorStyle != CursorBlinkStyle.SOLID && cursorStyle != CursorBlinkStyle.EXPAND && !customEnabled) {
         return Modifier
     }
@@ -529,7 +532,8 @@ private fun customCursorInteractionModifier(
     onCursorMoved: (Int) -> Unit,
     onTap: () -> Unit,
 ): Modifier {
-    if (!ProjectSettingsStore.customCursorOverlayEnabled.value) return Modifier
+    val cursorMode = ProjectSettingsStore.cursorMode.value
+    if (!ProjectSettingsStore.customCursorOverlayEnabled.value || cursorMode == CursorMode.SYSTEM) return Modifier
     return Modifier.pointerInput(textLayoutResult) {
         detectTapGestures(
             onTap = { offset ->

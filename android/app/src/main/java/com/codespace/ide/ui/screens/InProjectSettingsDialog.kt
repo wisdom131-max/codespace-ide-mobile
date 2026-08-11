@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.codespace.ide.editor.CursorBlinkStyle
+import com.codespace.ide.editor.CursorMode
 import com.codespace.ide.editor.FormatterConfig
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.DiagnosticsSource
@@ -229,6 +230,7 @@ enum class RowType {
     LSP_SERVER_LIST,
     LSP_ENABLED_CHECKBOX,
     CUSTOM_CURSOR_CHECKBOX,
+    CURSOR_MODE_DROPDOWN,
 }
 
 private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
@@ -263,6 +265,10 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Show the toolbar with Tab, Esc, brackets and symbols above the keyboard",
         RowType.EXTRA_KEYS_CHECKBOX))
 
+    add(SettingsRow("cursor_mode", SettingsCategory.TEXT_EDITOR,
+        "Cursor Type",
+        "In-App: custom touch-friendly overlay cursor. System: phone's built-in native cursor.",
+        RowType.CURSOR_MODE_DROPDOWN))
     add(SettingsRow("cursor_blink", SettingsCategory.TEXT_EDITOR,
         "Cursor Blinking",
         "Controls cursor animation style",
@@ -377,6 +383,7 @@ private fun SettingsRowRenderer(
         RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
         RowType.LSP_ENABLED_CHECKBOX -> LspEnabledRow(textPri, textSec, divider)
         RowType.CUSTOM_CURSOR_CHECKBOX -> CustomCursorOverlayRow(textPri, textSec, divider)
+        RowType.CURSOR_MODE_DROPDOWN -> CursorModeRow(accent, textPri, textSec, divider)
     }
 }
 
@@ -416,6 +423,45 @@ private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setLspEnabled(it) },
         )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun CursorModeRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    val cursorMode = ProjectSettingsStore.cursorMode
+    var expanded by remember { mutableStateOf(false) }
+    val options = CursorMode.entries.toList()
+    val labels = mapOf(
+        CursorMode.IN_APP to "In-App (Custom Overlay)",
+        CursorMode.SYSTEM to "System (Phone Built-in)",
+    )
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Cursor Type", color = textPri, fontSize = 13.sp)
+            Text("In-App: custom touch-friendly overlay. System: phone's built-in cursor.",
+                color = textSec, fontSize = 11.sp)
+        }
+        Box {
+            TextButton(onClick = { expanded = true }) {
+                Text(labels[cursorMode.value] ?: cursorMode.value.name,
+                    color = accent, fontSize = 12.sp)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { mode ->
+                    DropdownMenuItem(
+                        text = { Text(labels[mode] ?: mode.name, fontSize = 12.sp) },
+                        onClick = {
+                            ProjectSettingsStore.setCursorMode(mode)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
     }
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
 }

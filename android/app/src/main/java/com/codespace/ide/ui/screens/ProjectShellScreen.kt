@@ -1676,7 +1676,7 @@ private fun PssOverlays(
                                         for ((pattern, kind) in patterns) {
                                             pattern.findAll(text).forEach { match ->
                                                 val name = match.groupValues.getOrNull(1) ?: return@forEach
-                                                val line = text.take(match.range.first).count { it == '\\n' }
+                                                val line = text.take(match.range.first).count { it == '\n' }
                                                 syms.add(Triple(name, kind, line))
                                             }
                                         }
