@@ -464,6 +464,16 @@ private fun PssTopBar(
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Toggle Secondary Side Bar", fontSize = 12.sp, color = menuText) },
                     onClick = { onToggleSecondarySidebar(); showCustomizeLayout = false },
+                // Toggle Activity Bar
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Toggle Activity Bar", fontSize = 12.sp, color = menuText) },
+                    onClick = { onMenuAction("Toggle Activity Bar"); showCustomizeLayout = false },
+                )
+                // Toggle Status Bar
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Toggle Status Bar", fontSize = 12.sp, color = menuText) },
+                    onClick = { onMenuAction("Toggle Status Bar"); showCustomizeLayout = false },
+                )
                 )
                 HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
                 // Layout modes
@@ -475,6 +485,10 @@ private fun PssTopBar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
                 androidx.compose.material3.DropdownMenuItem(
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Full Screen", fontSize = 12.sp, color = menuText) },
+                    onClick = { onMenuAction("Toggle Full Screen"); showCustomizeLayout = false },
+                )
                     text = { Text("Zen Mode", fontSize = 12.sp, color = menuText) },
                     onClick = { onToggleZenMode(); showCustomizeLayout = false },
                 )
@@ -615,6 +629,10 @@ fun ProjectShellScreen(
     var activePanel        by remember(projectId, restoredState) { mutableStateOf<SidePanel?>(restoredState?.activePanel?.let { SidePanel.valueOf(it) }) }
     val showBottomPanelMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.showBottomPanel ?: true) }; var showBottomPanel by showBottomPanelMs
     var zenMode by remember { mutableStateOf(false) }
+    var showStatusBar by remember { mutableStateOf(true) }
+    var showActivityBar by remember { mutableStateOf(true) }
+    var fullScreen by remember { mutableStateOf(false) }
+    var centeredLayout by remember { mutableStateOf(false) }
     val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
     val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var _splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
@@ -870,6 +888,25 @@ fun ProjectShellScreen(
                 showNotification(if (zenMode) "Zen Mode — tap floating button to exit" else "Zen Mode off", "info")
             }
             "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
+            "Toggle Full Screen" -> {
+                fullScreen = !fullScreen
+                if (fullScreen) {
+                    activePanel = null
+                    showBottomPanel = false
+                    showChatPanel = false
+                }
+                showNotification(if (fullScreen) "Full Screen — tap floating button to exit" else "Full Screen off", "info")
+            }
+            "Toggle Centered Layout" -> {
+                centeredLayout = !centeredLayout
+                showNotification(if (centeredLayout) "Centered Layout on" else "Centered Layout off", "info")
+            }
+            "Toggle Activity Bar" -> {
+                showActivityBar = !showActivityBar
+            }
+            "Toggle Status Bar" -> {
+                showStatusBar = !showStatusBar
+            }
             "Create Snapshot" -> {
                 scope.launch {
                     try {
@@ -999,7 +1036,7 @@ fun ProjectShellScreen(
         Column(Modifier.fillMaxSize()) {
 
             // ── Top Bar + Menu Bar (hidden in Zen Mode)
-            if (!zenMode) {
+            if (!zenMode && !fullScreen) {
             PssTopBar(
                 projectName = projectName,
                 currentTheme = currentTheme,
@@ -1023,7 +1060,7 @@ fun ProjectShellScreen(
             Row(Modifier.weight(1f).fillMaxWidth()) {
 
                 // Activity Bar — hidden in Zen Mode
-                if (!zenMode) {
+                if (!zenMode && showActivityBar && !fullScreen) {
                 PssActivityBar(
                     projectId = projectId,
                     activeEditorTab = activeEditorTab,
@@ -1038,7 +1075,7 @@ fun ProjectShellScreen(
                 ) }
 
                 // Side Panel — hidden in Zen Mode
-                if (!zenMode && activePanel != null) {
+                if (!zenMode && activePanel != null && !fullScreen) {
                     val spWidth = with(density) { sidePanelWidth.toDp() }.coerceIn(150.dp, 500.dp)
                     Column(Modifier.width(spWidth).fillMaxHeight().background(BgColor)) {
                         when (activePanel) {
@@ -1394,7 +1431,7 @@ fun ProjectShellScreen(
 
 
             // ── VS Code status bar (hidden in Zen Mode) ──
-            if (!zenMode) {
+            if (!zenMode && showStatusBar && !fullScreen) {
             StatusBarContent(
                 statusBarBg = StatusBarBg,
                 activeEditorTab = activeEditorTab,
@@ -2175,7 +2212,7 @@ private fun PssBottomPanelContent(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    if (!showBottomPanel) return
+    if (!showBottomPanel || fullScreen) return
 
     Box(
         Modifier.fillMaxWidth().height(8.dp).background(dividerColor.copy(alpha = 0.6f))
@@ -3689,7 +3726,7 @@ private fun PssEditorColumn(
 
 
     // ── AI Chat Panel (right side, draggable, own region — not shared with Explorer) ──
-    if (showChatPanel) {
+    if (showChatPanel && !fullScreen) {
         val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
         // Drag handle on left edge of chat panel — mirrors Explorer's mechanics but
         // flipped: drag right→left widens (handle moves left, panel gets wider),
