@@ -2585,7 +2585,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onDismissRequest = { showLspMenu = false },
                             modifier = Modifier.background(colors.background)
                         ) {
-                            // PENDING-CURSOR-2: Compacted popup menu — constrained width + denser layout
+                            // DONE-CURSOR-2: Compacted popup menu — constrained width + denser layout
                             androidx.compose.foundation.layout.Column(
                                 modifier = Modifier
                                     .widthIn(max = 220.dp)

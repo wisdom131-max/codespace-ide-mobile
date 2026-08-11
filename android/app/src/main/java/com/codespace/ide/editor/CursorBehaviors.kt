@@ -9,7 +9,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 
 /**
- * PENDING-CURSOR-1: Word highlight overlay
+ * DONE-CURSOR-1: Word highlight overlay
  *
  * When the cursor is placed at the front of any word, vscode.dev highlights
  * all occurrences of that word with a glossy grey background. This modifier
@@ -63,7 +63,7 @@ internal fun wordHighlightModifier(
 }
 
 /**
- * PENDING-CURSOR-3: Bracket match overlay
+ * DONE-CURSOR-3: Bracket match overlay
  *
  * When the cursor is inside or next to a bracket pair, vscode.dev highlights
  * both the opening and closing bracket with glossy grey boxes. The bracket
