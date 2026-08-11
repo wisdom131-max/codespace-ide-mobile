@@ -582,45 +582,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Phase R: Format Selection — format the selected text range when triggered
     LaunchedEffect(formatSelectionTrigger) {
         if (formatSelectionTrigger > 0 && value.selection.start != value.selection.end) {
-            val selStart = value.selection.start.coerceIn(0, value.text.length)
-            val selEnd = value.selection.end.coerceIn(0, value.text.length)
-            val selectedText = value.text.substring(selStart, selEnd)
-
-            // Try LSP range formatting first
-            var formattedText: String? = null
-            if (LspManager.isServerRunning(language) && currentFilePath != null) {
-                try {
-                    val uri = LspManager.fileUriFromHostPath(context, currentFilePath)
-                    if (uri != null) {
-                        val startPair = offsetToLineChar(value.text, minOf(selStart, selEnd))
-                        val endPair = offsetToLineChar(value.text, maxOf(selStart, selEnd))
-                        val edits = LspManager.getRangeFormatting(
-                            language, uri,
-                            startPair.first, startPair.second,
-                            endPair.first, endPair.second,
-                        )
-                        if (edits != null && edits.length() > 0) {
-                            // Apply LSP text edits to the full document
-                            val newContent = applyLspEdits(value.text, edits)
-                            if (newContent != value.text) {
-                                value = TextFieldValue(newContent, TextRange(selStart, selEnd))
-                                onContentChange(newContent)
-                                formattedText = newContent
-                            }
-                        }
-                    }
-                } catch (_: Exception) { }
-            }
-
-            // Fall back to built-in indent normalization on the selected text
-            if (formattedText == null) {
-                val formatted = FormatterConfig.fallbackFormat(selectedText)
-                if (formatted != selectedText) {
-                    val newText = value.text.substring(0, selStart) + formatted + value.text.substring(selEnd)
-                    val newSelEnd = selStart + formatted.length
-                    value = TextFieldValue(newText, TextRange(selStart, newSelEnd))
-                    onContentChange(newText)
-                }
+            val result = doFormatSelection(
+                fullText = value.text,
+                selStart = value.selection.start.coerceIn(0, value.text.length),
+                selEnd = value.selection.end.coerceIn(0, value.text.length),
+                language = language,
+                filePath = currentFilePath,
+                context = context,
+            )
+            if (result != null) {
+                value = TextFieldValue(result.first, TextRange(result.second, result.third))
+                onContentChange(result.first)
             }
         }
     }
