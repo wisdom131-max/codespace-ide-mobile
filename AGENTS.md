@@ -14188,6 +14188,16 @@ code is written.
 
 ## CHANGE LOG (Read this FIRST before starting any work)
 
+### [2026-08-11 17:25 WAT] -- AI Agent: Claude (Superagent)
+**Commit:** `9e82443` | **CI Build:** #2119 (in progress)
+**What was done:**
+1. **Extracted overlay composables** from CodeEditor.kt into EditorOverlays.kt to fix the recurring "Method too large" (64KB bytecode limit) error that broke CI builds #2116-#2118. Extracted: GitBlameOverlay, ExtraCursorOverlay, SearchMatchOverlay, MergeConflictOverlay. CodeEditor function body reduced by ~176 lines.
+2. **Also extracted cursorOverlayModifier + customCursorInteractionModifier** into CursorOverlay.kt (from previous commit 00502b5, though these were already separate functions, not inline).
+3. **Documented multi-cursor feature plan** in AGENTS.md based on user's vscode.dev research: double-tap trigger, 3-dot floating menu (5s timeout), select next/all occurrences, rename all, column-aware selection ("straight line"), exit cursor toggle, and multi-cursor settings in In-Project Settings.
+4. **Documented additional vscode.dev cursor findings**: word highlight on cursor placement (glossy grey), bracket matching highlight [(]word[)], popup menu restructuring needed.
+
+**Files touched:** `CodeEditor.kt` (176 lines removed), `EditorOverlays.kt` (new, 249 lines), `CursorOverlay.kt` (new, from prev commit), `AGENTS.md`
+
 ### [2026-08-11 16:25 WAT] -- AI Agent: Claude (Superagent)
 **Commit:** `1226979` | **CI Build:** #2116 (in progress)
 **What was added:**
@@ -14206,6 +14216,48 @@ code is written.
 - [PENDING-CURSOR-2] Long press on a word shows a popup context menu. Our app has a similar popup but it needs restructuring -- everything doesn't fit the way vscode.dev's does. Layout needs to be compacted.
 - [PENDING-CURSOR-3] When cursor is inside a word that is inside brackets, e.g. `[(]right[)]`, vscode.dev highlights both the opening and closing bracket with glossy grey boxes. This is bracket matching visualization. NOT yet implemented in our app.
 - [PENDING-CURSOR-MORE] User is still researching more cursor behaviors from vscode.dev and will report additional findings. This section will be updated as more are discovered.
+
+## MULTI-CURSOR FEATURE PLAN (User-specified, 2026-08-11)
+
+### Overview
+VS Code-style multi-cursor support with a floating quick-actions menu triggered by double-tap.
+
+### Trigger Mechanism
+- **Double-tap on a line** shows the cursor + a floating 3-dot menu button (appears for 5 seconds only, then auto-hides)
+- Tap the 3-dot button to open the quick-actions popup menu
+
+### Quick-Actions Menu Items
+1. **Select Next Occurrence** (fancy name: "Add Next Match") — selects the next occurrence of the word the cursor is in front of, adds another cursor at that position
+2. **Select All Occurrences** (fancy name: "Select All Matches") — auto-selects the word the cursor is in front of and selects ALL occurrences of that word, placing a cursor at each
+3. **Rename All Occurrences** — renames the word under the cursor across all occurrences (LSP-powered if available, fallback to find-replace-all)
+4. **Select All on Current Line** (fancy name: "Select Line") — selects all text on the current line
+5. **Copy Line Down** — duplicates the current line below with cursor (cool-to-have)
+6. **Add Cursor Above/Below** — adds a cursor on the line above or below (cool-to-have, common VS Code feature)
+7. **Exit Multi-Cursor Mode** — toggle/button to exit multi-cursor mode and return to single cursor
+
+### Additional Cool Features (suggested)
+- **Select Next Straight Line** — user's term for selecting the next occurrence in the same column position (column-aware multi-cursor). Fancy name: "Add Cursor in Column"
+- **Select All Straight Lines** — selects all lines at the same column position. Fancy name: "Select All in Column"
+- **Undo Last Cursor** — removes the most recently added cursor (cool-to-have)
+- **Selection to Multi-Cursor** — splits current selection into cursors at end of each line (cool-to-have)
+
+### Settings (In-Project Settings > Multi-Cursor)
+- **Enable Multi-Cursor** (toggle, default ON)
+- **Double-Tap to Activate** (toggle, default ON — if off, multi-cursor activated via menu only)
+- **3-Dot Menu Auto-Hide Timeout** (slider, 3-10 seconds, default 5)
+- **Show Column-Aware Cursors** (toggle, default OFF — the "straight line" selection feature)
+
+### Implementation Notes
+- The 3-dot floating button should appear near the cursor position (similar to the existing floating LSP action button)
+- The 5-second auto-hide uses a LaunchedEffect timer
+- "Select All Occurrences" finds all matches of the current word (using the existing `currentWord()` function) and creates a cursor at each
+- Multi-cursor state is already partially implemented (extraCursors: Set<Int>) — extend it
+- The floating menu should be compact and scrollable (like the existing LSP actions dropdown)
+- Column-aware selection ("straight line") requires calculating column position across multiple lines
+- "Exit Multi-Cursor" clears extraCursors and returns to single-cursor mode
+
+### Status: PLANNED (not yet implemented)
+
 
 **Next on roadmap:** Await CI #2116 result. If green, implement the vscode.dev cursor behaviors above (word highlight on cursor placement, bracket matching highlight, popup menu restructuring).
 
