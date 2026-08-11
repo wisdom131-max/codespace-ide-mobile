@@ -13741,3 +13741,15 @@ Below is the status of each BEFORE the fix and what was done:
 2. EXPECT: Popup closes, the next occurrence of that word is selected and scrolled into view
 3. Tap again from the menu to cycle to the next one
 4. EXPECT: Each time, popup closes first and selection jumps to the next match
+
+### HOTFIX (2026-08-11, commit 420e023)
+
+**Issue:** Select All/Next Occurrences onClick handlers had `'\\n'` (two characters
+in a Char literal — invalid Kotlin) instead of `'\n'` (the newline character).
+This was caused by the Python replacement script double-escaping the backslash.
+
+**Fix:** Changed `'\\n'` → `'\n'` on lines 2843 and 2868 of CodeEditor.kt.
+
+**Result:** All code in the commit 7915b27 should now compile. The feature toggle
+fixes and Select All/Next Occurrences fixes should work as documented in the test
+section above.
