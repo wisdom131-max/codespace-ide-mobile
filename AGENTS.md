@@ -14470,3 +14470,11 @@ Signature help on `(` already confirmed working (Test #20, no changes needed).
 **What was fixed:** Restored missing `@Composable` annotation on `LspEnabledRow` that was accidentally stripped by the TS7 commit (aed4c0a), causing CI build #2124 to fail with 3 compilation errors. Also cleaned up 4 redundant explicit material3 imports (already covered by `import androidx.compose.material3.*` wildcard).
 **Files touched:** `InProjectSettingsDialog.kt`
 **Next on roadmap:** Await CI #2125. If green, continue with vscode.dev cursor behaviors (PENDING-CURSOR items) or multi-cursor feature.
+
+### [2026-08-11 20:10 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `8b899f5` + `ca8dcfb` | **CI Build:** #2126 ⏳ PENDING
+**What was done:**
+1. **Customize Layout dropdown completed** — Added Full Screen, Toggle Activity Bar, Toggle Status Bar, and Toggle Centered Layout to match VS Code. All state vars default to current behavior (no visual change until toggled). Wired conditions into Top Bar, Activity Bar, Side Panel, Status Bar, Bottom Panel, and Chat Panel rendering.
+2. **vtsls TS7 configuration gap fixed** — `sendDidChangeConfiguration` now sends `typescript.*` and `javascript.*` settings to vtsls (was empty before). Also passes `initializationOptions` with `tsdk` path and `autoUseConfigFile` in the LSP initialize request. TS7-specific options only sent when `typescriptVersion == TS7`. Non-breaking: vtsls ignores unknown settings.
+**Files touched:** `ProjectShellScreen.kt` (Customize Layout), `LspManager.kt` (vtsls config)
+**Next on roadmap:** Await CI #2126. Continue with remaining cursor behaviors or multi-cursor.

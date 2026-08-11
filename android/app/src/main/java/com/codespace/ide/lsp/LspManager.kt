@@ -1011,7 +1011,25 @@ object LspManager {
                 put("name", "CodeSpace IDE")
                 put("version", "1.0")
             })
-            put("initializationOptions", JSONObject())
+            put("initializationOptions", if (config.command == "vtsls") {
+                // vtsls: pass TS7-specific initialization options
+                JSONObject().apply {
+                    put("typescript", JSONObject().apply {
+                        put("tsdk", "/usr/local/lib/node_modules/typescript/lib")
+                    })
+                    // Let vtsls auto-discover tsconfig.json in workspace root
+                    put("vtsls", JSONObject().apply {
+                        put("autoUseConfigFile", true)
+                        put("experimental", JSONObject().apply {
+                            put("completion", JSONObject().apply {
+                                put("enableModeCompletions", true)
+                            })
+                        })
+                    })
+                }
+            } else {
+                JSONObject()
+            })
         }
 
         Log.d(TAG, "startServer: sending initialize to ${language.displayName} (30s timeout)...")
@@ -1131,6 +1149,86 @@ object LspManager {
                         put("completion", JSONObject().apply { put("enabled", true) })
                     })
                 })
+            }
+            Language.TYPESCRIPT, Language.JAVASCRIPT -> {
+                val isTs7 = ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7
+                JSONObject().apply {
+                    put("typescript", JSONObject().apply {
+                        put("suggest", JSONObject().apply {
+                            put("enabled", true)
+                            put("names", true)
+                            put("paths", true)
+                            put("autoImports", true)
+                            put("completeFunctionCalls", true)
+                            put("includeCompletionsForModuleExports", true)
+                            put("includeCompletionsForImportStatements", true)
+                            put("includeCompletionsWithSnippetText", true)
+                            put("includeCompletionsWithClassMemberSnippets", true)
+                            put("includeAutomaticOptionalChainCompletions", true)
+                        })
+                        put("diagnostics", JSONObject().apply {
+                            put("enabled", true)
+                        })
+                        put("format", JSONObject().apply {
+                            put("enabled", true)
+                            put("semicolons", "ignore")
+                            put("indentSize", 2)
+                            put("tabSize", 2)
+                        })
+                        put("inlayHints", JSONObject().apply {
+                            put("includeInlayParameterNameHints", "all")
+                            put("includeInlayParameterNameHintsWhenArgumentMatchesName", false)
+                            put("includeInlayVariableTypeHints", false)
+                            put("includeInlayFunctionLikeReturnTypeHints", false)
+                            put("includeInlayPropertyDeclarationTypeHints", false)
+                        })
+                        put("preferences", JSONObject().apply {
+                            put("importModuleSpecifier", "relative")
+                            put("quoteStyle", "single")
+                            put("useAliasesForRenames", true)
+                        })
+                        put("updateImportsOnFileMove", JSONObject().apply {
+                            put("enabled", "always")
+                        })
+                        if (isTs7) {
+                            put("tsserver", JSONObject().apply {
+                                put("maxTsServerMemory", 4096)
+                                put("experimental", JSONObject().apply {
+                                    put("enableProjectDiagnostics", true)
+                                })
+                            })
+                        }
+                    })
+                    put("javascript", JSONObject().apply {
+                        put("suggest", JSONObject().apply {
+                            put("enabled", true)
+                            put("names", true)
+                            put("paths", true)
+                            put("autoImports", true)
+                            put("completeFunctionCalls", true)
+                        })
+                        put("diagnostics", JSONObject().apply {
+                            put("enabled", true)
+                        })
+                        put("format", JSONObject().apply {
+                            put("enabled", true)
+                            put("semicolons", "ignore")
+                            put("indentSize", 2)
+                            put("tabSize", 2)
+                        })
+                        put("updateImportsOnFileMove", JSONObject().apply {
+                            put("enabled", "always")
+                        })
+                    })
+                    if (isTs7) {
+                        put("vtsls", JSONObject().apply {
+                            put("typescript", JSONObject().apply {
+                                put("enableUseCommandLineOption", true)
+                            })
+                            put("autoUseConfigFile", true)
+                        })
+                    }
+                }
             }
             else -> JSONObject()
         }
