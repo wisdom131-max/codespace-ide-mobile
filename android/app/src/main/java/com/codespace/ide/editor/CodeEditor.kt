@@ -482,7 +482,8 @@ private fun cursorOverlayModifier(
     cursorColor: androidx.compose.ui.graphics.Color,
 ): Modifier {
     val cursorStyle = ProjectSettingsStore.cursorBlinkStyle.value
-    if (cursorStyle != CursorBlinkStyle.SOLID && cursorStyle != CursorBlinkStyle.EXPAND) {
+    val customEnabled = ProjectSettingsStore.customCursorOverlayEnabled.value
+    if (cursorStyle != CursorBlinkStyle.SOLID && cursorStyle != CursorBlinkStyle.EXPAND && !customEnabled) {
         return Modifier
     }
     var expandW by remember(cursorStyle) { mutableStateOf(2f) }
@@ -504,11 +505,45 @@ private fun cursorOverlayModifier(
         val cx = layout.getHorizontalPosition(cursor, true)
         val cy = layout.getLineTop(lineIdx)
         val ch = layout.getLineBottom(lineIdx) - cy
-        val w = if (cursorStyle == CursorBlinkStyle.EXPAND) expandW else 2.dp.toPx()
+        val w = if (cursorStyle == CursorBlinkStyle.EXPAND) expandW
+                else if (customEnabled) 3.dp.toPx()
+                else 2.dp.toPx()
         drawRect(
             color = cursorColor,
             topLeft = Offset(cx - w / 2f, cy),
             size = Size(w, ch),
+        )
+    }
+}
+
+/**
+ * Custom cursor overlay interaction modifier — adds tap-to-type and drag-to-move
+ * when the custom cursor overlay is enabled in In-Project Settings.
+ *
+ * Tap: requests focus and shows the software keyboard.
+ * Drag: moves the cursor to the touched character position.
+ */
+@Composable
+private fun customCursorInteractionModifier(
+    textLayoutResult: androidx.compose.ui.text.TextLayoutResult?,
+    onCursorMoved: (Int) -> Unit,
+    onTap: () -> Unit,
+): Modifier {
+    if (!ProjectSettingsStore.customCursorOverlayEnabled.value) return Modifier
+    return Modifier.pointerInput(textLayoutResult) {
+        detectTapGestures(
+            onTap = { offset ->
+                onTap()
+                // Also position cursor at tap location
+                val layout = textLayoutResult ?: return@detectTapGestures
+                val pos = layout.getOffsetForPosition(offset)
+                onCursorMoved(pos)
+            },
+            onLongPress = { offset ->
+                val layout = textLayoutResult ?: return@detectTapGestures
+                val pos = layout.getOffsetForPosition(offset)
+                onCursorMoved(pos)
+            },
         )
     }
 }
@@ -2014,6 +2049,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             textLayoutResult = textLayoutResult,
                             selection = value.selection,
                             cursorColor = colors.cursor,
+                        ))
+                        .then(customCursorInteractionModifier(
+                            textLayoutResult = textLayoutResult,
+                            onCursorMoved = { pos ->
+                                value = value.copy(selection = TextRange(pos))
+                            },
+                            onTap = {
+                                focusRequester.requestFocus()
+                            },
                         )),
                 )
 

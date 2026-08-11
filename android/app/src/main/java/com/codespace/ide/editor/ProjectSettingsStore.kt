@@ -62,8 +62,17 @@ object ProjectSettingsStore {
     /** Format on Save — when enabled, formatting runs before saving the file. */
     val formatOnSaveEnabled: MutableState<Boolean> = mutableStateOf(true)
 
+    // ── LSP Server Toggle ───────────────────────────────────────────────
+    /** Master switch for all LSP servers. When disabled, only fallback completions are used. */
+    val lspEnabled: MutableState<Boolean> = mutableStateOf(true)
+
+    // ── Custom Cursor Overlay ────────────────────────────────────────────
+    /** Custom cursor overlay — a draggable, tap-to-type cursor that summons the keyboard on tap.
+     *  Replaces the default thin text cursor with a visible, touch-friendly overlay. */
+    val customCursorOverlayEnabled: MutableState<Boolean> = mutableStateOf(false)
+
     // ── Python / LSP ────────────────────────────────────────────────────
-    val diagnosticsSource: MutableState<DiagnosticsSource> = mutableStateOf(DiagnosticsSource.PYLSP)
+    val diagnosticsSource: MutableState<DiagnosticsSource> = mutableStateOf(DiagnosticsSource.PYRIGHT)
     /** Pyright version string or path to local pyright-langserver.js (empty = auto-install latest). */
     val pyrightVersion: MutableState<String> = mutableStateOf("")
     /** Node.js CLI args for pyright (e.g. --max-old-space-size=8192). */
@@ -82,13 +91,15 @@ object ProjectSettingsStore {
             CursorBlinkStyle.valueOf(prefs.getString("cursor_blink_style", CursorBlinkStyle.BLINK.name) ?: CursorBlinkStyle.BLINK.name)
         } catch (_: Exception) { CursorBlinkStyle.BLINK }
         diagnosticsSource.value = try {
-            DiagnosticsSource.valueOf(prefs.getString("diagnostics_source", DiagnosticsSource.PYLSP.name) ?: DiagnosticsSource.PYLSP.name)
-        } catch (_: Exception) { DiagnosticsSource.PYLSP }
+            DiagnosticsSource.valueOf(prefs.getString("diagnostics_source", DiagnosticsSource.PYRIGHT.name) ?: DiagnosticsSource.PYRIGHT.name)
+        } catch (_: Exception) { DiagnosticsSource.PYRIGHT }
         pyrightVersion.value = prefs.getString("pyright_version", "") ?: ""
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
         extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
+        lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
+        customCursorOverlayEnabled.value = prefs.getBoolean("custom_cursor_overlay", false)
     }
 
     // ── Setters ────────────────────────────────────────────────────────
@@ -111,6 +122,14 @@ object ProjectSettingsStore {
     fun setFormatOnSaveEnabled(value: Boolean) {
         formatOnSaveEnabled.value = value
         prefs.edit().putBoolean("format_on_save", value).apply()
+    }
+    fun setLspEnabled(value: Boolean) {
+        lspEnabled.value = value
+        prefs.edit().putBoolean("lsp_enabled", value).apply()
+    }
+    fun setCustomCursorOverlayEnabled(value: Boolean) {
+        customCursorOverlayEnabled.value = value
+        prefs.edit().putBoolean("custom_cursor_overlay", value).apply()
     }
     fun setTaskNotifyThresholdMs(value: Int) {
         taskNotifyThresholdMs.value = value

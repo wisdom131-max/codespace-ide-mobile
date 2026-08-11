@@ -730,6 +730,11 @@ object LspManager {
     )
 
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
+        // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
+        if (!ProjectSettingsStore.lspEnabled.value) {
+            AppOutputLog.log("[LSP] LSP servers disabled in In-Project Settings — skipping startServer for ${'$'}{language.displayName}", "lsp")
+            return false
+        }
         // P-PYRIGHT: If Python and diagnostics source is set to Pyright, use that config
         var config = configs[language] ?: run {
             AppOutputLog.log("[LSP] No server config for ${language.displayName} — language not supported", "lsp")

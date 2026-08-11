@@ -227,6 +227,8 @@ enum class RowType {
     PYRIGHT_VERSION_INPUT,
     PYRIGHT_NODE_ARGS_INPUT,
     LSP_SERVER_LIST,
+    LSP_ENABLED_CHECKBOX,
+    CUSTOM_CURSOR_CHECKBOX,
 }
 
 private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
@@ -265,6 +267,10 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Cursor Blinking",
         "Controls cursor animation style",
         RowType.CURSOR_BLINK_DROPDOWN))
+    add(SettingsRow("custom_cursor", SettingsCategory.TEXT_EDITOR,
+        "Custom Cursor Overlay",
+        "A draggable, touch-friendly cursor overlay that summons the keyboard on tap. Replaces the thin default text cursor.",
+        RowType.CUSTOM_CURSOR_CHECKBOX))
 
     add(SettingsRow("zen_mode_exit", SettingsCategory.TEXT_EDITOR,
         "Zen Mode Exit Button",
@@ -324,7 +330,11 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "CLI arguments passed to Node.js when running Pyright (e.g. --max-old-space-size=8192)",
         RowType.PYRIGHT_NODE_ARGS_INPUT))
 
-    // LSP Servers — shows all auto-installable servers with their install method
+    // LSP Servers — master toggle + server list
+    add(SettingsRow("lsp_enabled", SettingsCategory.LSP_SERVERS,
+        "Enable LSP Servers",
+        "Master switch for all language servers. When off, only fallback completions are used.",
+        RowType.LSP_ENABLED_CHECKBOX))
     add(SettingsRow("lsp_server_list", SettingsCategory.LSP_SERVERS,
         "Available Language Servers",
         "These servers auto-install when you open a file of the matching language",
@@ -365,6 +375,8 @@ private fun SettingsRowRenderer(
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
         RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
+        RowType.LSP_ENABLED_CHECKBOX -> LspEnabledRow(textPri, textSec, divider)
+        RowType.CUSTOM_CURSOR_CHECKBOX -> CustomCursorOverlayRow(textPri, textSec, divider)
     }
 }
 
@@ -383,6 +395,46 @@ private fun ZenModeExitRow(textPri: Color, textSec: Color, divider: Color) {
         Switch(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setZenModeExitButtonEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.lspEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Enable LSP Servers", color = textPri, fontSize = 13.sp)
+            Text("Master switch for all language servers. When off, only fallback completions are used.",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setLspEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun CustomCursorOverlayRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.customCursorOverlayEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Custom Cursor Overlay", color = textPri, fontSize = 13.sp)
+            Text("A draggable, touch-friendly cursor overlay that summons the keyboard on tap",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setCustomCursorOverlayEnabled(it) },
         )
     }
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
