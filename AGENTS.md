@@ -16,21 +16,21 @@
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-08-11 10:08 WAT. Read this FIRST before touching any code.
+> Last updated: 2026-08-11 12:10 WAT. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-08-11 10:08 WAT)
+## CURRENT STATE (2026-08-11 12:10 WAT)
 
 | | |
 |-|-|
-| Latest green build | **5340be4** — P-CURSOR custom cursor overlay + bracket auto-close + output color fix + draggable Zen Mode FAB + Zen Mode toggle (needs device test) |
-| Active phase | **Phase P-CURSOR** — Custom cursor styles (SOLID/EXPAND overlay), bracket auto-close fix, terminal output color fix, draggable Zen Mode exit FAB, Zen Mode toggle in settings. Needs on-device testing. Next: Phase R (Formatter Selection), Phase S (LSP Spec Compliance), P41 IntelliSense. |
+| Latest green build | **6f4ff5a** — Phase R (Formatter Selection) + cursorOverlayModifier extraction fix (build #2105 GREEN) |
+| Active phase | **Phase R** ✅ COMPLETE — Formatter Selection (R1: per-language formatter dropdowns, R2: Format on Save toggle, R3: Format Selection button). CodeEditor method-too-large fix (cursorOverlayModifier extraction). Next: Phase S (LSP Spec Compliance), P41 IntelliSense. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2008+ — P49 Snippet Tab + Select Next Occurrence (6869688d) |
+| Last green | #2105 — Phase R + cursorOverlayModifier extraction (6f4ff5a) |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
