@@ -1909,7 +1909,7 @@ fun ExplorerSidePanel(
                                         }
                                         showNewFile = false
                                         nameInput = ""
-                                        return@onClick
+                                        return@Button
                                     }
                                 }
                                 newFile.parentFile?.mkdirs()

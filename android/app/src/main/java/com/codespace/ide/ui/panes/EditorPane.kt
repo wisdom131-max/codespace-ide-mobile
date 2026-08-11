@@ -153,6 +153,8 @@ fun EditorPane(
     var conflictHunks by remember { mutableStateOf<List<ConflictHunk>?>(null) }
     // P22-E: Format Document
     var formatting by remember { mutableStateOf(false) }
+    // Phase R: Format Selection trigger
+    var formatSelectionTrigger by remember { mutableStateOf(0) }
     // P41-O2: Format on Save — when trigger fires, format active tab then save
     // Phase R: Gated behind ProjectSettingsStore.formatOnSaveEnabled
     LaunchedEffect(formatOnSaveTrigger) {
