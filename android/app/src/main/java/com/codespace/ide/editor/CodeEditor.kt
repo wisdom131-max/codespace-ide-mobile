@@ -475,83 +475,6 @@ private suspend fun doFormatSelection(
     return null
 }
 
-@Composable
-private fun cursorOverlayModifier(
-    textLayoutResult: androidx.compose.ui.text.TextLayoutResult?,
-    selection: androidx.compose.ui.text.TextRange,
-    cursorColor: androidx.compose.ui.graphics.Color,
-): Modifier {
-    val cursorStyle = ProjectSettingsStore.cursorBlinkStyle.value
-    val customEnabled = ProjectSettingsStore.customCursorOverlayEnabled.value
-    val cursorMode = ProjectSettingsStore.cursorMode.value
-    // SYSTEM mode = use phone's built-in cursor, skip all overlay drawing
-    if (cursorMode == CursorMode.SYSTEM) return Modifier
-    if (cursorStyle != CursorBlinkStyle.SOLID && cursorStyle != CursorBlinkStyle.EXPAND && !customEnabled) {
-        return Modifier
-    }
-    var expandW by remember(cursorStyle) { mutableStateOf(2f) }
-    if (cursorStyle == CursorBlinkStyle.EXPAND) {
-        LaunchedEffect(Unit) {
-            while (true) {
-                expandW = 5f
-                kotlinx.coroutines.delay(350)
-                expandW = 1.5f
-                kotlinx.coroutines.delay(350)
-            }
-        }
-    }
-    return Modifier.drawWithContent {
-        drawContent()
-        val layout = textLayoutResult ?: return@drawWithContent
-        val cursor = selection.end
-        val lineIdx = layout.getLineForOffset(cursor)
-        val cx = layout.getHorizontalPosition(cursor, true)
-        val cy = layout.getLineTop(lineIdx)
-        val ch = layout.getLineBottom(lineIdx) - cy
-        val w = if (cursorStyle == CursorBlinkStyle.EXPAND) expandW
-                else if (customEnabled) 3.dp.toPx()
-                else 2.dp.toPx()
-        drawRect(
-            color = cursorColor,
-            topLeft = Offset(cx - w / 2f, cy),
-            size = Size(w, ch),
-        )
-    }
-}
-
-/**
- * Custom cursor overlay interaction modifier — adds tap-to-type and drag-to-move
- * when the custom cursor overlay is enabled in In-Project Settings.
- *
- * Tap: requests focus and shows the software keyboard.
- * Drag: moves the cursor to the touched character position.
- */
-@Composable
-private fun customCursorInteractionModifier(
-    textLayoutResult: androidx.compose.ui.text.TextLayoutResult?,
-    onCursorMoved: (Int) -> Unit,
-    onTap: () -> Unit,
-): Modifier {
-    val cursorMode = ProjectSettingsStore.cursorMode.value
-    if (!ProjectSettingsStore.customCursorOverlayEnabled.value || cursorMode == CursorMode.SYSTEM) return Modifier
-    return Modifier.pointerInput(textLayoutResult) {
-        detectTapGestures(
-            onTap = { offset ->
-                onTap()
-                // Also position cursor at tap location
-                val layout = textLayoutResult ?: return@detectTapGestures
-                val pos = layout.getOffsetForPosition(offset)
-                onCursorMoved(pos)
-            },
-            onLongPress = { offset ->
-                val layout = textLayoutResult ?: return@detectTapGestures
-                val pos = layout.getOffsetForPosition(offset)
-                onCursorMoved(pos)
-            },
-        )
-    }
-}
-
 
 @Composable
 fun CodeEditor(
@@ -2772,7 +2695,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // ── Rename Symbol Dialog ──────────────────────────────────────────────
         // ── P2-4 Context Action Sheet ──────────────────────────────────────────────────────
-
 
 
         // ── Floating LSP action button ──────────────────────────────────────────────────────
@@ -5064,7 +4986,6 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
         }
     }
 }
-
 
 
 @Composable
