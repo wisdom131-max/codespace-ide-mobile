@@ -262,6 +262,56 @@ extract new UI into separate @Composable functions from the START.
 
 ---
 
+
+## 📍 ROADMAP — CURRENT STATUS (Updated 2026-08-11 18:49 WAT)
+
+> **ALL AI AGENTS: Read this section FIRST before looking at any "PENDING", "PLANNED", "TODO", or "Next on roadmap" markers elsewhere in this file.**
+> Many older sections below contain stale status markers that were never updated when features shipped. This section is the authoritative current status.
+
+### ✅ DONE (recently shipped, CI green as of #2121):
+- Editor overlay extraction (BlameLineOverlay, ExtraCursorOverlay, SearchMatchOverlay, MergeConflictOverlay) — #2121 GREEN
+- Cursor mode toggle (in-app vs system) — commit 1226979
+- Pyright as default Python LSP + master LSP toggle — commit b15ec05
+- Custom cursor overlay toggle — commit b15ec05
+- 1-char completion trigger + keyword ranking boost — commit 3805fb8
+- Command palette `@` symbol search — commit 3805fb8
+- Feature toggles (minimap, inlay hints, etc.) — shipped
+- Color themes (Dracula, Monokai, Nord, TokyoNight, OneDark, AMOLED, Light) — shipped
+- In-Project Settings UI (search bar, categorized sidebar, all toggle rows) — shipped
+- AI chat panel with BYOK keys (OpenAI/Claude/Gemini/DeepSeek/OpenRouter) — shipped
+- GitHub OAuth Device Flow login — shipped, working
+- Terminal session isolation (project-keyed) — shipped
+- Ubuntu proot dpkg/apt fixes — shipped, CI green
+- File upload chooser, file-type viewer routing — shipped
+- Image picker + folder copy — shipped
+- Native PDF viewer — shipped
+- Peek Definition overlay — shipped
+- Find & Replace — shipped
+- Hover popup + lightbulb indicator — shipped
+- Source control pane (GitHub operations) — shipped
+- Power user analyzers (TODO explorer, complexity metrics, etc.) — shipped
+- Formatter selection — shipped (Phase R)
+
+### 🔧 ACTIVELY PLANNED (not yet implemented):
+1. **TypeScript 7 as default** — TS7 + `vtsls` LSP, TS 5.6.3/4.9.5 as backup options, version toggle in In-Project Settings. Auto-install on selection (no manual npm install). See full plan in TYPESCRIPT 7 PLAN section below.
+2. **Multi-Cursor feature** — Double-tap trigger, 3-dot floating menu, Select Next/All Occurrences, column-aware selection. See MULTI-CURSOR FEATURE PLAN section below.
+3. **vscode.dev cursor behaviors** — Word highlight on cursor placement, bracket matching highlight, popup menu compaction. See PENDING-CURSOR items below.
+
+### ⛔ BLOCKED (need user input or device testing):
+- **Google OAuth Client Secret** — Need GCP console access (ijeziewisdom131@gmail.com) to get the Web Client secret for Gmail/Calendar/Drive connectors
+- **Flow Mode** — Can't test, no mobile data for AI model download
+- **API_BASE_URL** — App may still point to old Railway URL, needs updating to Render
+- **Device testing** — All shipped features need on-device validation (user's TECNO KL4)
+
+### ❌ DO NOT REFERENCE these old items — they are DONE or STALE:
+- Phase 9-42 phases: ALL COMPLETE. Do not re-implement.
+- "Next on roadmap" lines in older change log entries: Those were written at that time. Check THIS section instead.
+- Terminal cross-project bleeding: FIXED (commit 9096f1d)
+- Ash terminal tab: REMOVED. App is Ubuntu-proot only.
+- Theme switching data loss: FIXED (ThemeViewModel + DataStore)
+- Rotation safety (dialogs): FIXED (key(orientation) wrappers)
+- AI agent path guessing: FIXED (WORKSPACE_PATH injection)
+
 ## KNOWN KOTLIN/COMPOSE CI FAILURE PATTERNS (memorise these)
 
 Do NOT repeat any of these — they have each caused 5+ failed builds:
