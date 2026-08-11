@@ -6,6 +6,7 @@ import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.ProjectSettingsStore
+import com.codespace.ide.editor.TypeScriptVersion
 import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
 import org.json.JSONObject
@@ -88,6 +89,33 @@ object LspManager {
         val checkCommand: String,
         val installCommand: String,
         val installTimeout: Long = 120,
+    )
+
+
+    // TS7 config: vtsls — works with TypeScript 7 (which dropped tsserver.js).
+    // vtsls uses the TypeScript compiler API directly via JIT, no tsserver.js needed.
+    private val vtslsConfig = ServerConfig(
+        Language.TYPESCRIPT,
+        "vtsls",
+        listOf("--stdio"),
+        // Check: vtsls binary exists (npm global install)
+        "which vtsls && echo OK",
+        // Install: NodeSource setup + npm install vtsls + typescript@7
+        // vtsls is a pure-JS LSP server using TS compiler API, no tsserver.js dependency.
+        "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+            "dpkg --configure -a 2>/dev/null; " +
+            "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+            "( apt-get install -f -y 2>/dev/null; " +
+            "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+            "apt-get autoremove -y 2>/dev/null; " +
+            "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+            "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+            "apt-get install -y nodejs ); " +
+            "npm config set prefix /usr/local 2>/dev/null; " +
+            "npm install -g vtsls typescript@7",
+        300,
     )
 
     private val configs: Map<Language, ServerConfig> = mapOf(
@@ -743,6 +771,13 @@ object LspManager {
         if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
             config = pyrightConfig
             AppOutputLog.log("[LSP] Using Pyright (Microsoft) instead of pylsp for Python — per In-Project Settings", "lsp")
+        }
+        // TS7: Use vtsls instead of typescript-language-server when TS7 is selected.
+        // TypeScript 7 dropped tsserver.js — vtsls uses the compiler API directly.
+        if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
+            ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
+            config = vtslsConfig
+            AppOutputLog.log("[LSP] Using vtsls (TypeScript 7) instead of typescript-language-server — per In-Project Settings", "lsp")
         }
         Log.d(TAG, "startServer: BEGIN for ${language.displayName} workspace=$workspacePath")
         AppOutputLog.log("[LSP] startServer BEGIN: ${language.displayName} workspace=$workspacePath", "lsp")

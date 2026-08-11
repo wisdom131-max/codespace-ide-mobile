@@ -37,6 +37,15 @@ enum class DiagnosticsSource {
     PYRIGHT,    // pyright-langserver (Node.js-based, Microsoft)
 }
 
+/** TypeScript version — controls which TS LSP server is used.
+ *  TS 7 ships only tsc.js (no tsserver.js), so it uses vtsls instead of typescript-language-server.
+ *  Older versions use typescript-language-server which requires tsserver.js. */
+enum class TypeScriptVersion(val displayName: String, val lspServer: String, val npmPackage: String) {
+    TS7("TypeScript 7 (Latest)", "vtsls", "typescript@7 vtsls"),
+    TS5("TypeScript 5.6.3 (Stable)", "typescript-language-server", "typescript-language-server typescript@5.6.3"),
+    TS4("TypeScript 4.9.5 (Legacy)", "typescript-language-server", "typescript-language-server typescript@4.9.5"),
+}
+
 object ProjectSettingsStore {
     private const val PREFS = "project_settings"
     private lateinit var prefs: android.content.SharedPreferences
@@ -82,6 +91,9 @@ object ProjectSettingsStore {
 
     // ── Python / LSP ────────────────────────────────────────────────────
     val diagnosticsSource: MutableState<DiagnosticsSource> = mutableStateOf(DiagnosticsSource.PYRIGHT)
+    // ── TypeScript Version ──────────────────────────────────────────────
+    /** Which TypeScript version + LSP server to use. Default: TS 7 (vtsls). */
+    val typescriptVersion: MutableState<TypeScriptVersion> = mutableStateOf(TypeScriptVersion.TS7)
     /** Pyright version string or path to local pyright-langserver.js (empty = auto-install latest). */
     val pyrightVersion: MutableState<String> = mutableStateOf("")
     /** Node.js CLI args for pyright (e.g. --max-old-space-size=8192). */
@@ -102,6 +114,9 @@ object ProjectSettingsStore {
         diagnosticsSource.value = try {
             DiagnosticsSource.valueOf(prefs.getString("diagnostics_source", DiagnosticsSource.PYRIGHT.name) ?: DiagnosticsSource.PYRIGHT.name)
         } catch (_: Exception) { DiagnosticsSource.PYRIGHT }
+        typescriptVersion.value = try {
+            TypeScriptVersion.valueOf(prefs.getString("typescript_version", TypeScriptVersion.TS7.name) ?: TypeScriptVersion.TS7.name)
+        } catch (_: Exception) { TypeScriptVersion.TS7 }
         pyrightVersion.value = prefs.getString("pyright_version", "") ?: ""
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
         extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
@@ -166,6 +181,10 @@ object ProjectSettingsStore {
     fun setDiagnosticsSource(source: DiagnosticsSource) {
         diagnosticsSource.value = source
         prefs.edit().putString("diagnostics_source", source.name).apply()
+    }
+    fun setTypeScriptVersion(version: TypeScriptVersion) {
+        typescriptVersion.value = version
+        prefs.edit().putString("typescript_version", version.name).apply()
     }
     fun setPyrightVersion(version: String) {
         pyrightVersion.value = version

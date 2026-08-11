@@ -35,6 +35,12 @@ import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FlowMode
 import com.codespace.ide.editor.ProjectSettingsStore
+import com.codespace.ide.editor.TypeScriptVersion
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 
 /**
  * In-Project Settings — VS Code-style settings dialog with search bar,
@@ -229,6 +235,7 @@ enum class RowType {
     PYRIGHT_NODE_ARGS_INPUT,
     LSP_SERVER_LIST,
     LSP_ENABLED_CHECKBOX,
+    TS_VERSION_DROPDOWN,
     CUSTOM_CURSOR_CHECKBOX,
     CURSOR_MODE_DROPDOWN,
 }
@@ -345,6 +352,10 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Available Language Servers",
         "These servers auto-install when you open a file of the matching language",
         RowType.LSP_SERVER_LIST))
+    add(SettingsRow("ts_version", SettingsCategory.LSP_SERVERS,
+        "TypeScript Version",
+        "TypeScript 7 uses vtsls LSP. Older versions use typescript-language-server.",
+        RowType.TS_VERSION_DROPDOWN))
 }
 
 // ── Row renderer ─────────────────────────────────────────────────────
@@ -382,6 +393,7 @@ private fun SettingsRowRenderer(
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
         RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
         RowType.LSP_ENABLED_CHECKBOX -> LspEnabledRow(textPri, textSec, divider)
+        RowType.TS_VERSION_DROPDOWN -> TypeScriptVersionRow(accent, textPri, textSec, divider)
         RowType.CUSTOM_CURSOR_CHECKBOX -> CustomCursorOverlayRow(textPri, textSec, divider)
         RowType.CURSOR_MODE_DROPDOWN -> CursorModeRow(accent, textPri, textSec, divider)
     }
@@ -408,6 +420,41 @@ private fun ZenModeExitRow(textPri: Color, textSec: Color, divider: Color) {
 }
 
 @Composable
+private fun TypeScriptVersionRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = ProjectSettingsStore.typescriptVersion.value
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().clickable { expanded = true }.padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("TypeScript Version", color = textPri, fontSize = 13.sp)
+                Text(current.displayName, color = accent, fontSize = 11.sp)
+            }
+            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select", tint = textSec, modifier = Modifier.size(20.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            TypeScriptVersion.entries.forEach { version ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(version.displayName, fontSize = 13.sp)
+                            Text("LSP: ${version.lspServer}", fontSize = 10.sp, color = textSec)
+                        }
+                    },
+                    onClick = {
+                        ProjectSettingsStore.setTypeScriptVersion(version)
+                        expanded = false
+                    },
+                )
+            }
+        }
+        HorizontalDivider(Modifier.padding(top = 4.dp), thickness = 0.5.dp, color = divider)
+    }
+}
+
 private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
     val enabled = ProjectSettingsStore.lspEnabled
     Row(
