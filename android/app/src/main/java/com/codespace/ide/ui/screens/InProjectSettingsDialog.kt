@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.codespace.ide.editor.CursorBlinkStyle
+import com.codespace.ide.editor.FormatterConfig
+import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FlowMode
@@ -196,6 +198,7 @@ enum class SettingsCategory(val label: String) {
     EDITOR("Editor Features"),
     NOTIFICATIONS("Notifications"),
     TEXT_EDITOR("Text Editor"),
+    FORMATTING("Formatting"),
     PYTHON_LSP("Python / LSP"),
     LSP_SERVERS("LSP Servers"),
 }
@@ -218,6 +221,8 @@ enum class RowType {
     EXTRA_KEYS_CHECKBOX,
     CURSOR_BLINK_DROPDOWN,
     ZEN_MODE_EXIT_CHECKBOX,
+    FORMAT_ON_SAVE_CHECKBOX,
+    FORMATTER_DROPDOWN,      // Phase R — per-language formatter selection
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
     PYRIGHT_NODE_ARGS_INPUT,
@@ -265,6 +270,46 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Zen Mode Exit Button",
         "Show a draggable floating button to exit Zen Mode (disable to use menu only)",
         RowType.ZEN_MODE_EXIT_CHECKBOX))
+
+    // Phase R: Formatting settings
+    add(SettingsRow("format_on_save", SettingsCategory.FORMATTING,
+        "Format on Save",
+        "Run the language formatter before saving files",
+        RowType.FORMAT_ON_SAVE_CHECKBOX))
+
+    // Phase R: Per-language formatter dropdowns — only for languages with multiple formatters
+    add(SettingsRow("fmt_kotlin", SettingsCategory.FORMATTING,
+        "Kotlin Formatter",
+        "Select the formatter for .kt and .kts files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_js", SettingsCategory.FORMATTING,
+        "JavaScript Formatter",
+        "Select the formatter for .js and .jsx files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_ts", SettingsCategory.FORMATTING,
+        "TypeScript Formatter",
+        "Select the formatter for .ts and .tsx files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_python", SettingsCategory.FORMATTING,
+        "Python Formatter",
+        "Select the formatter for .py files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_go", SettingsCategory.FORMATTING,
+        "Go Formatter",
+        "Select the formatter for .go files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_java", SettingsCategory.FORMATTING,
+        "Java Formatter",
+        "Select the formatter for .java files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_json", SettingsCategory.FORMATTING,
+        "JSON Formatter",
+        "Select the formatter for .json files",
+        RowType.FORMATTER_DROPDOWN))
+    add(SettingsRow("fmt_c_cpp", SettingsCategory.FORMATTING,
+        "C/C++ Formatter",
+        "Select the formatter for C and C++ files",
+        RowType.FORMATTER_DROPDOWN))
 
     add(SettingsRow("diag_source", SettingsCategory.PYTHON_LSP,
         "Diagnostics Source",
@@ -314,6 +359,8 @@ private fun SettingsRowRenderer(
         RowType.EXTRA_KEYS_CHECKBOX -> ExtraKeysRow(textPri, textSec, divider)
         RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
         RowType.ZEN_MODE_EXIT_CHECKBOX -> ZenModeExitRow(textPri, textSec, divider)
+        RowType.FORMAT_ON_SAVE_CHECKBOX -> FormatOnSaveRow(textPri, textSec, divider)
+        RowType.FORMATTER_DROPDOWN -> FormatterDropdownRow(row, accent, textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
@@ -339,6 +386,81 @@ private fun ZenModeExitRow(textPri: Color, textSec: Color, divider: Color) {
         )
     }
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun FormatOnSaveRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.formatOnSaveEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Format on Save", color = textPri, fontSize = 13.sp)
+            Text("Run the language formatter before saving files",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setFormatOnSaveEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun FormatterDropdownRow(
+    row: SettingsRow,
+    accent: Color,
+    textPri: Color,
+    textSec: Color,
+    divider: Color,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+
+    // Map row ID to Language
+    val language = when (row.id) {
+        "fmt_kotlin" -> Language.KOTLIN
+        "fmt_js" -> Language.JAVASCRIPT
+        "fmt_ts" -> Language.TYPESCRIPT
+        "fmt_python" -> Language.PYTHON
+        "fmt_go" -> Language.GO
+        "fmt_java" -> Language.JAVA
+        "fmt_json" -> Language.JSON
+        "fmt_c_cpp" -> Language.CPP
+        else -> return
+    }
+
+    val formatters = FormatterConfig.availableFormatters[language] ?: return
+    val selected = FormatterConfig.getSelectedFormatter(context, language)
+
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(row.label, color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(row.description, color = textSec, fontSize = 11.sp)
+        }
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(selected.name, fontSize = 12.sp, color = accent)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                formatters.forEach { fmt ->
+                    DropdownMenuItem(
+                        text = { Text(fmt.name) },
+                        onClick = {
+                            FormatterConfig.setSelectedFormatter(context, language, fmt.name)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = divider)
 }
 
 @Composable

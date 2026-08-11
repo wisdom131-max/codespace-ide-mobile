@@ -58,6 +58,10 @@ object ProjectSettingsStore {
     /** Show the floating exit button in Zen Mode. If false, use menu to exit. */
     val zenModeExitButtonEnabled: MutableState<Boolean> = mutableStateOf(true)
 
+    // ── Formatting (Phase R) ─────────────────────────────────────────────
+    /** Format on Save — when enabled, formatting runs before saving the file. */
+    val formatOnSaveEnabled: MutableState<Boolean> = mutableStateOf(true)
+
     // ── Python / LSP ────────────────────────────────────────────────────
     val diagnosticsSource: MutableState<DiagnosticsSource> = mutableStateOf(DiagnosticsSource.PYLSP)
     /** Pyright version string or path to local pyright-langserver.js (empty = auto-install latest). */
@@ -84,6 +88,7 @@ object ProjectSettingsStore {
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
         extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
+        formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
     }
 
     // ── Setters ────────────────────────────────────────────────────────
@@ -102,6 +107,10 @@ object ProjectSettingsStore {
     fun setZenModeExitButtonEnabled(value: Boolean) {
         zenModeExitButtonEnabled.value = value
         prefs.edit().putBoolean("zen_mode_exit_button", value).apply()
+    }
+    fun setFormatOnSaveEnabled(value: Boolean) {
+        formatOnSaveEnabled.value = value
+        prefs.edit().putBoolean("format_on_save", value).apply()
     }
     fun setTaskNotifyThresholdMs(value: Int) {
         taskNotifyThresholdMs.value = value

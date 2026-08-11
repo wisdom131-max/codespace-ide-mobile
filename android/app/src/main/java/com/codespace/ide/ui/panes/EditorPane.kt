@@ -40,6 +40,7 @@ import com.codespace.ide.editor.MergeConflictParser
 import com.codespace.ide.editor.ConflictHunk
 import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
+import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.DocumentSymbolCache
@@ -153,31 +154,37 @@ fun EditorPane(
     // P22-E: Format Document
     var formatting by remember { mutableStateOf(false) }
     // P41-O2: Format on Save — when trigger fires, format active tab then save
+    // Phase R: Gated behind ProjectSettingsStore.formatOnSaveEnabled
     LaunchedEffect(formatOnSaveTrigger) {
         if (formatOnSaveTrigger > 0) {
             val activeTab = tabs.firstOrNull { it.id == activeId }
             if (activeTab != null && activeTab.path.startsWith("/")) {
-                formatting = true
-                try {
-                    val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
-                    if (result.success && result.formattedContent != null && result.formattedContent != activeTab.content) {
-                        val idx = tabs.indexOfFirst { it.id == activeId }
-                        if (idx >= 0) {
-                            tabs[idx] = activeTab.copy(content = result.formattedContent, isDirty = false)
-                            try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+                if (ProjectSettingsStore.formatOnSaveEnabled.value) {
+                    formatting = true
+                    try {
+                        val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
+                        if (result.success && result.formattedContent != null && result.formattedContent != activeTab.content) {
+                            val idx = tabs.indexOfFirst { it.id == activeId }
+                            if (idx >= 0) {
+                                tabs[idx] = activeTab.copy(content = result.formattedContent, isDirty = false)
+                                try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+                            }
+                        } else {
+                            val idx = tabs.indexOfFirst { it.id == activeId }
+                            if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                         }
-                    } else {
-                        // Even if no formatting needed, mark as saved
+                    } catch (_: Exception) {
+                        try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
                         val idx = tabs.indexOfFirst { it.id == activeId }
                         if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                     }
-                } catch (_: Exception) {
-                    // On format failure, still save the file
+                    formatting = false
+                } else {
+                    // Format on Save disabled — just save the file
                     try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
                     val idx = tabs.indexOfFirst { it.id == activeId }
                     if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                 }
-                formatting = false
             }
         }
     }
