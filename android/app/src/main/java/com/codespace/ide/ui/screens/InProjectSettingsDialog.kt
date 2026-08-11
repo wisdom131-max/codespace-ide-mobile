@@ -197,6 +197,7 @@ enum class SettingsCategory(val label: String) {
     NOTIFICATIONS("Notifications"),
     TEXT_EDITOR("Text Editor"),
     PYTHON_LSP("Python / LSP"),
+    LSP_SERVERS("LSP Servers"),
 }
 
 data class SettingsRow(
@@ -219,6 +220,7 @@ enum class RowType {
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
     PYRIGHT_NODE_ARGS_INPUT,
+    LSP_SERVER_LIST,
 }
 
 private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
@@ -270,6 +272,12 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Node Arguments",
         "CLI arguments passed to Node.js when running Pyright (e.g. --max-old-space-size=8192)",
         RowType.PYRIGHT_NODE_ARGS_INPUT))
+
+    // LSP Servers — shows all auto-installable servers with their install method
+    add(SettingsRow("lsp_server_list", SettingsCategory.LSP_SERVERS,
+        "Available Language Servers",
+        "These servers auto-install when you open a file of the matching language",
+        RowType.LSP_SERVER_LIST))
 }
 
 // ── Row renderer ─────────────────────────────────────────────────────
@@ -302,6 +310,7 @@ private fun SettingsRowRenderer(
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
+        RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
     }
 }
 
@@ -589,6 +598,62 @@ private fun PyrightNodeArgsRow(textPri: Color, textSec: Color, surface: Color, d
             textStyle = TextStyle(color = textPri, fontSize = 12.sp),
             placeholder = { Text("--max-old-space-size=8192", color = textSec, fontSize = 12.sp) },
         )
+    }
+    HorizontalDivider(color = divider)
+}
+
+// ── LSP Server List Row ──────────────────────────────────────────────
+
+private data class LspServerInfo(
+    val language: String,
+    val serverName: String,
+    val installMethod: String,
+)
+
+private val lspServerList = listOf(
+    LspServerInfo("TypeScript", "typescript-language-server", "npm"),
+    LspServerInfo("JavaScript", "typescript-language-server", "npm"),
+    LspServerInfo("Python", "pylsp (default) / pyright", "pip3 / npm"),
+    LspServerInfo("Kotlin", "kotlin-language-server", "GitHub release"),
+    LspServerInfo("Go", "gopls", "go install"),
+    LspServerInfo("Java", "jdtls (eclipse.jdt.ls)", "curl + tar"),
+    LspServerInfo("C", "clangd", "apt"),
+    LspServerInfo("C++", "clangd", "apt"),
+    LspServerInfo("Rust", "rust-analyzer", "rustup"),
+    LspServerInfo("PHP", "intelephense", "npm"),
+    LspServerInfo("HTML", "vscode-html-language-server", "npm"),
+    LspServerInfo("CSS", "vscode-css-language-server", "npm"),
+    LspServerInfo("JSON", "vscode-json-language-server", "npm"),
+    LspServerInfo("Ruby", "solargraph", "gem"),
+    LspServerInfo("C#", "OmniSharp", "curl + tar"),
+    LspServerInfo("Lua", "lua-language-server", "curl + tar"),
+    LspServerInfo("Dart", "dart language-server", "curl + unzip"),
+    LspServerInfo("SQL", "sql-language-server", "npm"),
+    LspServerInfo("PowerShell", "PowerShellEditorServices", "curl + tar"),
+    LspServerInfo("Scala", "metals", "curl"),
+    LspServerInfo("R", "languageserver", "apt + R"),
+    LspServerInfo("Swift", "sourcekit-lsp", "curl + tar"),
+    LspServerInfo("Universal", "ctags-lsp (fallback)", "go install"),
+)
+
+@Composable
+private fun LspServerListRow(accent: Color, textPri: Color, textSec: Color, surface: Color, divider: Color) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Text("Available Language Servers", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text("Auto-install when you open a matching file type", color = textSec, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        lspServerList.forEach { server ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(server.language, color = textPri, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.width(90.dp))
+                Text(server.serverName, color = textSec, fontSize = 11.sp,
+                    modifier = Modifier.weight(1f))
+                Text(server.installMethod, color = accent, fontSize = 10.sp)
+            }
+        }
     }
     HorizontalDivider(color = divider)
 }

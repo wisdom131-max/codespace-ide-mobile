@@ -353,6 +353,141 @@ object LspManager {
                 "npm install -g vscode-langservers-extracted",
             240,
         ),
+        // ── Ruby ──────────────────────────────────────────────────────────
+        // solargraph — Ruby language server (completion, diagnostics, formatting).
+        Language.RUBY to ServerConfig(
+            Language.RUBY,
+            "solargraph",
+            listOf("stdio"),
+            "which solargraph && echo OK",
+            "dpkg --configure -a 2>/dev/null; " +
+                "( command -v ruby >/dev/null 2>&1 && command -v gem >/dev/null 2>&1 ) || " +
+                "( apt-get update -qq && apt-get install -y --no-install-recommends ruby ruby-dev ); " +
+                "gem install solargraph",
+            240,
+        ),
+        // ── C# ────────────────────────────────────────────────────────────
+        // OmniSharp-Roslyn — C# language server.
+        Language.CSHARP to ServerConfig(
+            Language.CSHARP,
+            "OmniSharp",
+            listOf("-stdio", "-loglevel", "warning"),
+            "which OmniSharp && echo OK || test -f /opt/omnisharp/OmniSharp && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends unzip curl ca-certificates; " +
+                "mkdir -p /opt/omnisharp && " +
+                "curl -fsSL 'https://github.com/OmniSharp/omnisharp-roslyn/releases/download/v1.39.11/omnisharp-linux-arm64.tar.gz' | tar -xz -C /opt/omnisharp && " +
+                "chmod +x /opt/omnisharp/OmniSharp && ln -sf /opt/omnisharp/OmniSharp /usr/local/bin/OmniSharp && " +
+                "echo 'OmniSharp-installed'",
+            300,
+        ),
+        // ── Lua ───────────────────────────────────────────────────────────
+        // lua-language-server (sumneko) — completion, diagnostics, formatting.
+        Language.LUA to ServerConfig(
+            Language.LUA,
+            "lua-language-server",
+            listOf("--stdio"),
+            "which lua-language-server && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends unzip curl ca-certificates; " +
+                "curl -fsSL 'https://github.com/LuaLS/lua-language-server/releases/download/3.13.5/lua-language-server-3.13.5-linux-arm64.tar.gz' | tar -xz -C /opt && " +
+                "ln -sf /opt/lua-language-server/bin/lua-language-server /usr/local/bin/lua-language-server && " +
+                "echo 'lua-ls-installed'",
+            180,
+        ),
+        // ── Dart ──────────────────────────────────────────────────────────
+        // dart language-server — ships with the Dart SDK.
+        Language.DART to ServerConfig(
+            Language.DART,
+            "dart",
+            listOf("language-server", "--stdio"),
+            "which dart && dart --version 2>/dev/null && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends curl unzip; " +
+                "curl -fsSL 'https://storage.googleapis.com/dart-archive/channels/stable/release/3.5.0/sdk/dartsdk-linux-arm64-release.zip' -o /tmp/dart-sdk.zip && " +
+                "unzip -q -o /tmp/dart-sdk.zip -d /opt && " +
+                "ln -sf /opt/dart-sdk/bin/dart /usr/local/bin/dart && " +
+                "rm -f /tmp/dart-sdk.zip && echo 'dart-sdk-installed'",
+            300,
+        ),
+        // ── SQL ───────────────────────────────────────────────────────────
+        // sql-language-server — npm-based SQL completion + diagnostics.
+        Language.SQL to ServerConfig(
+            Language.SQL,
+            "sql-language-server",
+            listOf("up", "--method", "stdio"),
+            "which sql-language-server && echo OK",
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+                "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+                "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+                "dpkg --configure -a 2>/dev/null; " +
+                "( command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 ) || " +
+                "( apt-get install -f -y 2>/dev/null; " +
+                "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                "apt-get autoremove -y 2>/dev/null; " +
+                "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                "apt-get install -y nodejs ); " +
+                "npm config set prefix /usr/local 2>/dev/null; " +
+                "npm install -g sql-language-server",
+            240,
+        ),
+        // ── PowerShell ─────────────────────────────────────────────────────
+        // PowerShell Editor Services — Microsoft's LSP for PowerShell.
+        Language.POWERSHELL to ServerConfig(
+            Language.POWERSHELL,
+            "pwsh",
+            listOf("-NoLogo", "-NoProfile", "-Command",
+                "/opt/powershell-editor-services/PowerShellEditorServices/Start-EditorServices.ps1 -Stdio"),
+            "which pwsh && test -d /opt/powershell-editor-services && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends curl unzip libssl-dev; " +
+                "curl -fsSL 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.6/powershell-7.4.6-linux-arm64.tar.gz' | tar -xz -C /opt/pwsh && " +
+                "ln -sf /opt/pwsh/pwsh /usr/local/bin/pwsh && " +
+                "curl -fsSL 'https://github.com/PowerShell/PowerShellEditorServices/releases/download/v4.0.0/PowerShellEditorServices.zip' -o /tmp/pes.zip && " +
+                "unzip -q -o /tmp/pes.zip -d /opt/powershell-editor-services && " +
+                "rm -f /tmp/pes.zip && echo 'powershell-ls-installed'",
+            300,
+        ),
+        // ── Scala ─────────────────────────────────────────────────────────
+        // metals — Scala language server (requires Java).
+        Language.SCALA to ServerConfig(
+            Language.SCALA,
+            "metals",
+            listOf("-Dmetals.client=emacs", "-XX:+UseG1GC", "-XX:+UseStringDeduplication"),
+            "which metals && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends default-jre-headless curl; " +
+                "curl -fsSL -o /usr/local/bin/metals 'https://github.com/scalameta/metals/releases/download/v1.4.0/metals-linux-arm64' && " +
+                "chmod +x /usr/local/bin/metals && echo 'metals-installed'",
+            300,
+        ),
+        // ── R ──────────────────────────────────────────────────────────────
+        // languageserver — R LSP package.
+        Language.R to ServerConfig(
+            Language.R,
+            "R",
+            listOf("--slave", "-e", "languageserver::run()"),
+            "which R && R -e 'cat(system.file(package=languageserver, mustWork=TRUE))' 2>/dev/null && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends r-base r-base-dev; " +
+                "R -e 'install.packages("languageserver", repos="https://cloud.r-project.org")'",
+            300,
+        ),
+        // ── Swift ─────────────────────────────────────────────────────────
+        // sourcekit-lsp — Swift language server (ships with Swift toolchain).
+        Language.SWIFT to ServerConfig(
+            Language.SWIFT,
+            "sourcekit-lsp",
+            listOf("--stdio"),
+            "which sourcekit-lsp && echo OK",
+            "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
+                "apt-get install -y --no-install-recommends curl tar ca-certificates; " +
+                "curl -fsSL 'https://download.swift.org/swift-5.10.1-release/ubuntu2404/swift-5.10.1-RELEASE/swift-5.10.1-RELEASE-ubuntu24.04-aarch64.tar.gz' | tar -xz -C /opt && " +
+                "ln -sf /opt/swift-5.10.1-RELEASE-ubuntu24.04-aarch64/usr/bin/sourcekit-lsp /usr/local/bin/sourcekit-lsp && " +
+                "echo 'sourcekit-lsp-installed'",
+            300,
+        ),
         // P50-3: ctags-lsp — universal symbol search + go-to-definition for 100+ languages.
         // Uses universal-ctags as backend. Installed via go install (Go already present for gopls).
         // Needs universal-ctags runtime dependency (apt-get install universal-ctags).
