@@ -432,6 +432,49 @@ private fun applyLspEdits(text: String, edits: org.json.JSONArray): String {
     return result
 }
 
+private suspend fun doFormatSelection(
+    fullText: String,
+    selStart: Int,
+    selEnd: Int,
+    language: com.codespace.ide.domain.Language,
+    filePath: String?,
+    context: android.content.Context,
+): Triple<String, Int, Int>? {
+    val selectedText = fullText.substring(selStart, selEnd)
+
+    // Try LSP range formatting first
+    if (LspManager.isServerRunning(language) && filePath != null) {
+        try {
+            val uri = LspManager.fileUriFromHostPath(context, filePath)
+            if (uri != null) {
+                val startPair = offsetToLineChar(fullText, minOf(selStart, selEnd))
+                val endPair = offsetToLineChar(fullText, maxOf(selStart, selEnd))
+                val edits = LspManager.getRangeFormatting(
+                    language, uri,
+                    startPair.first, startPair.second,
+                    endPair.first, endPair.second,
+                )
+                if (edits != null && edits.length() > 0) {
+                    val newContent = applyLspEdits(fullText, edits)
+                    if (newContent != fullText) {
+                        return Triple(newContent, selStart, selEnd)
+                    }
+                }
+            }
+        } catch (_: Exception) { }
+    }
+
+    // Fall back to built-in indent normalization
+    val formatted = FormatterConfig.fallbackFormat(selectedText)
+    if (formatted != selectedText) {
+        val newText = fullText.substring(0, selStart) + formatted + fullText.substring(selEnd)
+        val newSelEnd = selStart + formatted.length
+        return Triple(newText, selStart, newSelEnd)
+    }
+
+    return null
+}
+
 
 @Composable
 fun CodeEditor(
