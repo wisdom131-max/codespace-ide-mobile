@@ -36,11 +36,7 @@ import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FlowMode
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.TypeScriptVersion
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 
 /**
  * In-Project Settings — VS Code-style settings dialog with search bar,
@@ -455,6 +451,7 @@ private fun TypeScriptVersionRow(accent: Color, textPri: Color, textSec: Color, 
     }
 }
 
+@Composable
 private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
     val enabled = ProjectSettingsStore.lspEnabled
     Row(

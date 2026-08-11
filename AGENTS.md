@@ -14464,3 +14464,9 @@ Signature help on `(` already confirmed working (Test #20, no changes needed).
 **What was fixed:** Extracted `cursorOverlayModifier` from CodeEditor composable to fix Method too large (JVM 64KB limit). Phase R (Formatter Selection) complete.
 **Files touched:** `CodeEditor.kt`, `cursorOverlay.kt`
 **Next on roadmap:** vscode.dev popup study, then Phase S.
+
+### [2026-08-11 19:55 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `842b650` | **CI Build:** #2125 ⏳ PENDING
+**What was fixed:** Restored missing `@Composable` annotation on `LspEnabledRow` that was accidentally stripped by the TS7 commit (aed4c0a), causing CI build #2124 to fail with 3 compilation errors. Also cleaned up 4 redundant explicit material3 imports (already covered by `import androidx.compose.material3.*` wildcard).
+**Files touched:** `InProjectSettingsDialog.kt`
+**Next on roadmap:** Await CI #2125. If green, continue with vscode.dev cursor behaviors (PENDING-CURSOR items) or multi-cursor feature.
