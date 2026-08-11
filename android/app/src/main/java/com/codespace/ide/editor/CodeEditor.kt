@@ -2027,13 +2027,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
-        GitBlameOverlay(blameData, lineHeightDp, colors, vScroll)
+        BlameLineOverlay(blameData, lineHeightDp, colors, vScroll)
 
         MergeConflictOverlay(toggles, conflictData, lineHeightDp, onResolveConflict)
 
-        SearchMatchOverlay(findReplaceOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, ::lineFromOffset)
+        SearchMatchOverlay(findReplaceOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) })
 
-        ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, ::lineFromOffset, colors)
+        ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) }, colors)
 
         // PROBLEMS-TAB FIX: Gold highlight on the problem target line (fades after 2.5s)
         if (highlightTargetLine > 0) {

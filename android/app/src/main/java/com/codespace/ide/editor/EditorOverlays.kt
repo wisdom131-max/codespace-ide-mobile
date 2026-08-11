@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.zIndex
+import com.codespace.ide.ui.EditorColors
 
 /**
  * Extracted overlay composables from CodeEditor.kt to keep the main
@@ -34,8 +35,8 @@ import androidx.compose.ui.zIndex
  */
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.GitBlameOverlay(
-    blameData: Map<Int, GitBlame>?,
+internal fun androidx.compose.foundation.layout.BoxScope.BlameLineOverlay(
+    blameData: Map<Int, BlameLine>?,
     lineHeightDp: androidx.compose.ui.unit.Dp,
     colors: EditorColors,
     vScroll: androidx.compose.foundation.ScrollState,
@@ -70,11 +71,11 @@ private fun androidx.compose.foundation.layout.BoxScope.GitBlameOverlay(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
-    extraCursors: Set<Int>,
+internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
+    extraCursors: List<Int>,
     lineHeightDp: androidx.compose.ui.unit.Dp,
     fontSize: Int,
-    GUTTER_WIDTH: Int,
+    GUTTER_WIDTH: Float,
     vScrollDp: Float,
     value: androidx.compose.ui.text.input.TextFieldValue,
     lineFromOffset: (Int) -> Int,
@@ -125,13 +126,13 @@ private fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
+internal fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
     findReplaceOpen: Boolean,
     matches: List<IntRange>,
     matchIndex: Int,
     lineHeightDp: androidx.compose.ui.unit.Dp,
     fontSize: Int,
-    GUTTER_WIDTH: Int,
+    GUTTER_WIDTH: Float,
     vScrollDp: Float,
     value: androidx.compose.ui.text.input.TextFieldValue,
     lineFromOffset: (Int) -> Int,
@@ -169,7 +170,7 @@ private fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.MergeConflictOverlay(
+internal fun androidx.compose.foundation.layout.BoxScope.MergeConflictOverlay(
     toggles: EditorFeatureToggles,
     conflictData: List<ConflictHunk>?,
     lineHeightDp: androidx.compose.ui.unit.Dp,
