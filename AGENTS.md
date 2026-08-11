@@ -14056,3 +14056,95 @@ Python/LSP (Pyright support) all built (commit 12780b6).
 - Previous commit: `d7e93eb` — 8 audit fixes + PeekWidget portrait fix (build pending)
 - Phase R commits: `8cf7689` (R1+R2), `bf6f625` (R3)
 - Next planned: **vscode.dev popup study with Christie → then Phase S — LSP Spec Compliance**
+
+---
+
+## vscode.dev Screenshot Study — Findings + Action Plan (2026-08-11, 15:11 WAT)
+
+Christie ran 23 numbered tests against vscode.dev on her phone (Python file with a
+`Calculator` class), screenshotting each result, to reverse-engineer exactly how
+VS Code's completions/IntelliSense/popups behave before we port the behavior into
+our app. Her exact notes are quoted verbatim below each test so the intent isn't lost.
+
+**Her framing note (verbatim):**
+> "some of these test didn't work in the dev page so I'll go to my GitHub codespace
+> to continue but you'll guide me in what to do as before"
+
+### Test-by-test findings (Christie's exact words in quotes)
+
+| # | What was tested | Result / Christie's words | Action for us |
+|---|---|---|---|
+| 1 | `import o` | Popup shows `objgraph, odbc, olefile, opcode, openpyxl, opentracing, operator, optparse, os, OrderedDict, _operator, _osx_support` — real pip-installed packages, not just stdlib | We already expanded our hardcoded list; TRUE parity needs our own LSP (pyright/pylsp with `jedi_completion.include_imports=true`) reporting real installed packages, not a guess-list |
+| 2 | `import m` | Same real-package behavior — `matplotlib`, `mock`, `mypy_extensions`, etc. mixed with stdlib | Same as above |
+| 3 | Typing bare `i` (not after import) | Popup shows `if, import, in, is, id, input, int, isinstance, issubclass, iter, ImportError` — keywords + builtins + top-level statement completions mixed | Already partially supported by our fallback; verify prefix-matching includes keywords when NOT in an import/dot context |
+| 4 | `import s` | Real packages again: `s2clientprotocol, sched, scp, seaborn, secrets, select, selectors, send2trash, serial, servicemanager, setuptools` | Same as #1 |
+| 5 | Bare `c` at top level (after `calc = Calculator()`) | Shows `calc` (local var), `collections` (import), `Calculator` (class), plus builtin exceptions (`ConnectionError` etc.) and dunders (`__class__`) — everything matching prefix `c`, mixed source types with distinct icons | Confirms VS Code doesn't scope-limit fallback suggestions — shows local vars + imports + globals all merged, sorted roughly alpha with local var/class ranked near top |
+| 6 | Bare `c` inside a method body (new line after `self.result = 0`) | Shows keywords first (`case, class, continue`), then builtins (`callable, chr, classmethod, compile, complex`), then module-level constants (`copyright, credits`), then local `calc` (wrench icon = variable) and `collections` (import) | Same mixed-source ranking, keywords ranked ABOVE variables/imports when matching prefix |
+| 7 | `calc.r` (member access, filtered) | Shows ONLY `reset, result` — clean member-only filter once you type a specific instance + dot + prefix | This is the ideal case — dot-completion after a known variable correctly scopes to just that object's members |
+| 8 | `os.path` — typing after already-resolved dot-path | **"nothing popped up"** | Note: this may be expected (no completions needed after a fully-typed member) rather than a bug — flag for re-test on codespace |
+| 9 | `import m` retest | Same list as #2 (`m3u8, mailbox, management, ... math, matplotlib, ...`) | Consistent — confirms real Pylance package introspection, not caching artifact |
+| — | `calc.` immediately followed by nothing shown | **"didnt show completion because in vs code .dev you can't install any server apart form pylance which is built in. I would like to get this pylance latest version and find a way to make it work on my app properly"** | ⚠️ See "Open question — Pylance" below. This explains an earlier failed member-completion attempt: vscode.dev's browser sandbox restricts you to the built-in Pylance extension only (can't install pyright-langserver separately there), so some completion paths that need extension-specific machinery didn't fire in the browser test. Not necessarily a bug in our app. |
+| 10 | Completion popup drag-to-resize handle | **"there is a drag handle ✅"** | Confirms our existing drag-to-resize (commit 22aff40) matches vscode.dev behavior — no action needed |
+| 11 | Drag-to-resize actually works | **"it works ✅"** | No action needed |
+| 12 | (hover tooltip or similar — unspecified which gesture) | **"i don't know how"** | Christie couldn't figure out the gesture to trigger this on mobile — needs us to identify + document the exact mobile trigger before she can retest |
+| 13 | (another IntelliSense feature — unspecified which) | **"i don't know how"** | Same as #12 — needs a documented mobile-friendly trigger |
+| 14 | Long-press / right-click equivalent on `Calculator` | Word got selected+highlighted blue via double-tap (screenshot shows this) | Confirms vscode.dev's mobile "right-click" = double-tap on their CUSTOM cursor/selection layer, not the native Android text-selection handles |
+| 15 | Long-press context menu appears | **"i don't have right click because on phone but it shows on long press like my app logic ,but it works too fast for screenshot but the cursor went to the back of calculator"** | Two notes: (a) our app's long-press already mirrors this pattern — good; (b) cursor jumping to end of the word after long-press is a positioning quirk seen in BOTH vscode.dev and (implied) our app — low priority unless Christie flags it as a bug for us specifically |
+| 16 | Find All References | **"all references works and works on my app too ✅"** | No action needed — confirmed parity |
+| 17 | Rename Symbol shortcut | **"it said Ctrl+enter to rename but I don't have that in my Android keyboard but it works fine here is how the menu is when I long press a word"** | No action — F2/long-press path works fine, Ctrl+Enter is just a desktop-only shortcut hint that doesn't apply to mobile |
+| 18 | Command Palette `@` prefix | Shows file-scoped symbol outline: `Calculator symbols(11)`, then nested `__init__`, `add`, `a`, `b`, `reset`, `result`, `history` grouped under parent | New feature idea: our Quick Command Palette could support an `@` prefix that shows the current file's symbol outline (like "Go to Symbol in File") — not yet in our app |
+| 19 | Cursor/selection architecture insight | **"i think I found out something interesting the cursor in the .dev page isn't my phone's built-in cursor so when I double tap that is right-click if you look at the screenshot the word got selected and highlighted blue so I think this is what we'll do in my app we'll build my own cursor that can call my keyboard we'll add a toggle to disable and enable it in the in-project settings"** | ⚠️ MAJOR ARCHITECTURE PROPOSAL — see "Custom Cursor Overlay" plan below |
+| 20 | `calc.add(` — signature help | Screenshot shows `add` highlighted/hinted right after typing `(` | Confirms signature help triggers on `(` — need to verify ours does the same |
+| 21 | `def` snippet expansion | **"didnt show will need to check codespace"** then **"will need to check in codedpace"** | Deferred — Christie will retest this specific one on GitHub Codespace (not vscode.dev mobile browser) since Tab-key/snippet behavior may differ in mobile Chrome |
+| 22 | (unspecified — likely peek/hover retest) | **"already works fine on my app"** | No action needed |
+| 23 | (unspecified — likely another retest) | **"works on my app"** | No action needed |
+
+### Christie's explicit improvement request (Step 6, verbatim)
+> "as you can see in all the screenshot they you can tell the position but I want my
+> app improved to: Popup FLIPS ABOVE the cursor when no space below"
+
+**Status: ✅ ALREADY BUILT** — commit `d7e93eb` (pushed earlier today) added exactly
+this: the completion popup now flips above the cursor line when there isn't enough
+room below, plus right-edge clamping so it never runs off-screen. This needs
+on-device confirmation once Christie is back in the app (not vscode.dev).
+
+### Open question — Pylance (needs Christie's decision before implementing)
+Pylance is a closed-source Microsoft extension only distributed through the VS
+Code/vscode.dev marketplace — it **cannot be extracted or embedded into a
+third-party Android app**, there is no public binary or license path for that.
+What we CAN do to get equivalent power:
+1. **Pyright** (already wired via `P-PYRIGHT`, open-source, ~90% of what Pylance's
+   engine does — Pylance is itself built on a fork of pyright) — needs on-device
+   verification that it's actually being used/working (flagged as item 8 in the
+   "Still Needs Work" list above, now partially fixed by the `isServerInstalled`
+   patch in commit `d7e93eb`).
+2. **Real package introspection** — configure our LSP (pylsp/pyright) to scan the
+   proot Python environment's actual `site-packages` so `import m` etc. shows
+   REAL installed packages (matplotlib, etc.) instead of our hardcoded guess-list,
+   matching what vscode.dev showed via Pylance.
+**Needs Christie's confirmation:** proceed with (1)+(2) as the "get as close to
+Pylance as legally/technically possible" path? Or is there something else meant
+by "get this pylance latest version"?
+
+### Proposal — Custom Cursor Overlay (from test #19, needs Christie's go-ahead)
+Christie's insight: build our own on-screen text cursor/selection overlay (instead
+of relying on the native Android `EditText` cursor + native text-selection
+handles), so we can:
+- Make double-tap open our long-press context menu directly (matching vscode.dev's
+  double-tap = right-click behavior) instead of needing a slower long-press
+- Programmatically show/hide the keyboard exactly when we want (our cursor "calls"
+  the keyboard)
+- Add a toggle in In-Project Settings to enable/disable this custom cursor and fall
+  back to the native one
+This is a bigger architecture change (touches `CodeEditor.kt`'s core text input
+handling) — **not started yet, awaiting Christie's go-ahead on scope** before any
+code is written.
+
+### Next steps (awaiting Christie's direction)
+1. Confirm scope for the Pylance/Pyright question above
+2. Confirm scope + priority for the Custom Cursor Overlay proposal
+3. Christie to identify the mobile gesture for test items #12/#13 (unclear which
+   IntelliSense features those were) so we can document + verify
+4. Christie to continue remaining checks (#8 `os.path`, #21 `def` snippet) on
+   GitHub Codespace since vscode.dev's mobile browser didn't cooperate for those
+5. Once direction is confirmed, resume implementation
