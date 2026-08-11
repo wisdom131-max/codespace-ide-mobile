@@ -89,6 +89,7 @@ import com.codespace.ide.ui.panes.OutlinePanel
 import com.codespace.ide.ui.panes.ProjectFileSearchPanel
 import com.codespace.ide.ui.panes.BuildPanel
 import com.codespace.ide.editor.FeatureToggleStore
+import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.FileIndexer
 import org.json.JSONArray
 import com.codespace.ide.lsp.LspManager

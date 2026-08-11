@@ -1391,8 +1391,7 @@ fun EditorPane(
                                         wv.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
-                                onInsertHandler = onInsertRequest,
-                        modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }
