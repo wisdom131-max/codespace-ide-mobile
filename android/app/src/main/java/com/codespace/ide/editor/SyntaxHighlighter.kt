@@ -42,8 +42,11 @@ object SyntaxHighlighter {
                     i = end
                     continue
                 }
-                // Strings
-                if (c == '"' || c == '\'' || c == '`') {
+                // Strings — only languages that use backtick as a string delimiter
+                // (JS/TS template literals, Shell command substitution) treat it as one.
+                // Markdown uses backtick for inline code, NOT strings — treating it as a
+                // multiline string caused ANR when typing ``` (no closing backtick = scan to EOF).
+                if (c in spec.stringDelimiters) {
                     val end = scanString(text, i, c)
                     appendStyled(text.substring(i, end), colors.string)
                     i = end
@@ -106,7 +109,10 @@ object SyntaxHighlighter {
 
     private fun scanString(text: String, start: Int, quote: Char): Int {
         var i = start + 1
-        while (i < text.length) {
+        // Safety cap: never scan more than 50K chars — prevents ANR on
+        // unterminated strings in large files (especially backtick/template literals).
+        val maxScan = minOf(i + 50_000, text.length)
+        while (i < maxScan) {
             when (text[i]) {
                 '\\' -> i += 2
                 quote -> return i + 1
@@ -114,6 +120,6 @@ object SyntaxHighlighter {
                 else -> i++
             }
         }
-        return text.length
+        return if (i < text.length) i else text.length
     }
 }

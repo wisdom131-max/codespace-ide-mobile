@@ -8,12 +8,14 @@ data class LanguageSpec(
     val lineComment: String?,
     val blockCommentStart: String?,
     val blockCommentEnd: String?,
+    val stringDelimiters: Set<Char> = setOf('"', '\''),
 )
 
 /** Keyword/type tables for the built-in highlighter fallback. */
 object LanguageSpecs {
 
     private val C_LIKE_COMMENTS = Triple("//", "/*", "*/")
+    private val BACKTICK_STRING_DELIMS = setOf('"', '\'', '`')
 
     private fun spec(
         keywords: Set<String>,
@@ -22,7 +24,7 @@ object LanguageSpecs {
     ) = LanguageSpec(keywords, types, comments?.first, comments?.second, comments?.third)
 
     fun forLanguage(lang: Language): LanguageSpec = when (lang) {
-        Language.JAVASCRIPT, Language.TYPESCRIPT -> spec(
+        Language.JAVASCRIPT, Language.TYPESCRIPT -> LanguageSpec(
             keywords = setOf(
                 "const", "let", "var", "function", "return", "if", "else", "for", "while",
                 "do", "switch", "case", "break", "continue", "class", "extends", "new",
@@ -32,6 +34,10 @@ object LanguageSpecs {
                 "static", "as", "in", "of", "null", "undefined", "true", "false", "void",
             ),
             types = setOf("string", "number", "boolean", "any", "unknown", "never", "object", "Promise", "Array"),
+            lineComment = "//",
+            blockCommentStart = "/*",
+            blockCommentEnd = "*/",
+            stringDelimiters = BACKTICK_STRING_DELIMS,
         )
         Language.PYTHON -> spec(
             keywords = setOf(
@@ -100,7 +106,7 @@ object LanguageSpecs {
             ),
             types = setOf("i32", "i64", "u32", "u64", "usize", "f64", "bool", "str", "String", "Vec", "Option", "Result"),
         )
-        Language.PHP -> spec(
+        Language.PHP -> LanguageSpec(
             keywords = setOf(
                 "function", "class", "public", "private", "protected", "static", "return",
                 "if", "else", "elseif", "for", "foreach", "while", "do", "switch", "case",
@@ -108,6 +114,11 @@ object LanguageSpecs {
                 "catch", "finally", "throw", "extends", "implements", "interface", "trait",
                 "this", "null", "true", "false", "const", "var", "as",
             ),
+            types = emptySet(),
+            lineComment = "//",
+            blockCommentStart = "/*",
+            blockCommentEnd = "*/",
+            stringDelimiters = BACKTICK_STRING_DELIMS,
         )
         Language.SHELL -> LanguageSpec(
             keywords = setOf(
@@ -120,6 +131,7 @@ object LanguageSpecs {
             lineComment = "#",
             blockCommentStart = null,
             blockCommentEnd = null,
+            stringDelimiters = BACKTICK_STRING_DELIMS,
         )
         Language.XML -> LanguageSpec(
             keywords = emptySet(),

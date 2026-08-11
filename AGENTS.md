@@ -13753,3 +13753,63 @@ This was caused by the Python replacement script double-escaping the backslash.
 **Result:** All code in the commit 7915b27 should now compile. The feature toggle
 fixes and Select All/Next Occurrences fixes should work as documented in the test
 section above.
+
+
+## CRASH FIX: SyntaxHighlighter.scanString ANR (2026-08-11, IN PROGRESS)
+
+### Root Cause — CONFIRMED via Android Bug Reports
+
+**Crash type:** ANR (Application Not Responding) — main thread blocked >5 seconds at 99-100% CPU.
+**NOT** a native SIGSEGV or OOM. Confirmed by two Android bug reports uploaded to Google Drive:
+- `bugreport-KL4-OP-S2-UP1A.231005.007-2026-08-11-06-45-29.zip` (06:45 ANR)
+- `bugreport-KL4-OP-S2-UP1A.231005.007-2026-08-11-06-53-45.zip` (06:53 ANR)
+
+**Native stack trace (from both bug reports):**
+```
+"main" prio=5 tid=1 Runnable (state=R, 99-100% CPU)
+  com.codespace.ide.editor.SyntaxHighlighter.scanString
+  com.codespace.ide.editor.SyntaxHighlighter.highlight
+  com.codespace.ide.editor.SyntaxTransformation.applyHighlightAndLint
+  com.codespace.ide.editor.SyntaxTransformation.filter
+```
+
+The JIT triggered On-Stack Replacement (OSR) inside `scanString`, confirming the loop
+ran long enough to be JIT-compiled mid-execution.
+
+### The Bug
+
+`SyntaxHighlighter.scanString()` treats backtick (`` ` ``) as a multiline string
+delimiter for **ALL languages** — including Markdown and Plaintext where backtick
+is NOT a string literal. When typing ` ```kotlin ` in a .md or .txt file:
+- The third backtick starts a "string" that scans to EOF with no closing backtick
+- `scanString()` scans the entire remaining file (multiline — backtick doesn't break on `\n`)
+- For large files, this blocks the main thread >5s → ANR
+
+### The Fix (3 changes across 2 files)
+
+**1. `SyntaxHighlighter.kt` — Language-specific string delimiters:**
+- Added `stringDelimiters: Set<Char>` field to `LanguageSpec` (default: `"`, `'` — no backtick)
+- `highlight()` now checks `c in spec.stringDelimiters` instead of hardcoded `c == '"' || c == ''' || c == '`'`
+- Only JS/TS, Shell, and PHP get backtick as a string delimiter
+
+**2. `SyntaxHighlighter.kt` — Safety cap on scanString:**
+- Added `maxScan = minOf(i + 50_000, text.length)` to prevent scanning >50K chars
+- Even for languages with backtick strings, an unterminated literal won't block the main thread
+
+**3. `LanguageSpecs.kt` — Backtick delimiters only for languages that use them:**
+- `BACKTICK_STRING_DELIMS` constant: `setOf('"', "'", "`")`
+- JS/TS: uses `BACKTICK_STRING_DELIMS` (template literals)
+- Shell: uses `BACKTICK_STRING_DELIMS` (command substitution)
+- PHP: uses `BACKTICK_STRING_DELIMS` (shell exec)
+- All other languages (including Markdown, Plaintext): default `setOf('"', "'")` — no backtick
+
+### Files Modified
+- `android/app/src/main/java/com/codespace/ide/editor/SyntaxHighlighter.kt`
+- `android/app/src/main/java/com/codespace/ide/editor/LanguageSpecs.kt`
+
+### Tests Affected
+- Test 20 (Markdown Live Preview) — should no longer crash
+- Test 25 (.MD File Icon) — should no longer crash
+- Test 39 (Large File: No Crash) — should no longer crash
+
+### Status: IN PROGRESS — code changes applied, pending compile verification and commit
