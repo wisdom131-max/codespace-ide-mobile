@@ -2840,7 +2840,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val last = matches.last().range.last + 1
                                         value = value.copy(selection = TextRange(first, last))
                                         // Scroll to make the first match visible
-                                        val matchLine = value.text.substring(0, first).count { it == '\\n' }
+                                        val matchLine = value.text.substring(0, first).count { it == '\n' }
                                         coroutineScope.launch {
                                             val lhPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                                             vScroll.animateScrollTo((matchLine * lhPx).toInt())
@@ -2865,7 +2865,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     if (nextMatch != null) {
                                         value = value.copy(selection = TextRange(nextMatch.range.first, nextMatch.range.last + 1))
                                         // Scroll to make the next occurrence visible
-                                        val matchLine = value.text.substring(0, nextMatch.range.first).count { it == '\\n' }
+                                        val matchLine = value.text.substring(0, nextMatch.range.first).count { it == '\n' }
                                         coroutineScope.launch {
                                             val lhPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                                             vScroll.animateScrollTo((matchLine * lhPx).toInt())
