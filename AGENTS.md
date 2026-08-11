@@ -13908,3 +13908,63 @@ This blanket-trusts all repos at the invocation scope, which is safe since every
 
 **Languages missing LSP servers:**
 - PHP, Ruby, C#, Swift, Dart, Lua, SQL, PowerShell, Scala, R, and more
+
+---
+
+## FIX: File Creation Permission Error (2026-08-11, COMMIT b29b1e2)
+
+### Problem
+Creating files (e.g. `peek_test.py`) via the Explorer "New File" dialog returned "failed to create file: operation not permitted". Both `createNewFile()` and the `writeText("")` fallback threw EACCES on the user's TECNO KL4.
+
+### Root Cause
+The code attempted `createNewFile()` on the target directory without pre-checking `canWrite()`. On Android 11+ with scoped storage, if `MANAGE_EXTERNAL_STORAGE` isn't granted (or the path is SAF-mounted), both `createNewFile()` and `writeText()` fail with "operation not permitted".
+
+### Fix (P-FC1)
+1. **Pre-check `canWrite()`** on `targetDir` before attempting file creation
+2. If directory isn't writable, try `mkdirs()` to create it, then re-check
+3. If still not writable, fall back to **app-private external storage** (`context.getExternalFilesDir(null)`) — accessible via phone file manager under `Android/data/com.codespace.ide/files/`
+4. Catch `SecurityException` separately for `createNewFile()`
+5. If file already exists, open it instead of showing error
+6. Same `canWrite()` pre-check added to New Folder dialog
+7. Clearer error messages directing user to grant "All files access" permission
+
+### Files Modified
+- `ExplorerPane.kt` — New File dialog (confirmButton) + New Folder dialog (confirmButton)
+
+### Status: ✅ COMPLETE — committed (b29b1e2), pushed to main
+### Test: Device test needed — create a .py file in a project folder
+
+---
+
+## AUDIT SUMMARY: Fix Priority List Status (2026-08-11)
+
+### CRITICAL — App Stability
+1. **MD file crash** — Partially addressed by SyntaxHighlighter backtick fix (commit 15a16d4). Needs device retest.
+2. **File creation permission error** — ✅ FIXED (commit b29b1e2). Needs device test.
+
+### HIGH — Core Editor Features
+3. **Zen Mode exit broken** — Needs investigation
+4. **Snippet Tab expansion** — Needs investigation
+5. **Bracket auto-close incomplete** — Needs investigation (only `()` works)
+6. **Completion popup positioning** — Needs investigation
+7. **Fix with AI** — Needs investigation
+8. **Cursor blink styles** — Needs investigation (Phase/Smooth/Expand do nothing)
+
+### MEDIUM — UX/Polish
+9. **LSP server auto-close** — User wants LSP to auto-close if editor not opened for 10 seconds
+10. **Snapshot interval** — Change from 30s to 20s
+11. **Output tab Clear button** — Doesn't work
+12. **Output tab Save to ZIP** — Doesn't work
+13. **Output tab "All" channel** — Slow to update
+14. **Output tab light theme** — White-on-white text
+15. **Toggle tab restructuring** — Needs redo
+16. **vscode.dev popup** — Spurious popup
+17. **Lightbulb drift** — Lightbulb code action marker drifts
+
+### Already Fixed (in code, need device verification)
+- Git "dubious ownership" — ✅ (commit 420e023)
+- Source Control scrolling — ✅ (commit 420e023)
+- SyntaxHighlighter ANR/crash — ✅ (commit 15a16d4)
+- Keyboard toolbar cursor insertion — ✅ (commit 907d19f)
+- File creation permission — ✅ (commit b29b1e2)
+- In-Project Settings dialog with feature toggles + flow mode — ✅
