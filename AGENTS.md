@@ -13866,3 +13866,10 @@ Added a toggle in **In-Project Settings → Text Editor → Extra Coding Keys**:
 
 ### Status: ✅ COMPLETE — committed (907d19f), pushed to main
 ### Commit: `fix(editor): keyboard toolbar inserts at cursor position + extra keys toggle`
+
+### Build Fix (e8009f3)
+Two compilation errors in commit 907d19f:
+1. `onInsertHandler` was accidentally added to an `AndroidView` (WebView) composable in EditorPane.kt instead of only to `CodeEditor` calls — removed from the AndroidView
+2. `ProjectSettingsStore` import was missing from ProjectShellScreen.kt — added after `FeatureToggleStore` import
+
+Build #2030 GREEN at e8009f3.
