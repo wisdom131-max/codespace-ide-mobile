@@ -464,6 +464,7 @@ private fun PssTopBar(
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Toggle Secondary Side Bar", fontSize = 12.sp, color = menuText) },
                     onClick = { onToggleSecondarySidebar(); showCustomizeLayout = false },
+                )
                 // Toggle Activity Bar
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Toggle Activity Bar", fontSize = 12.sp, color = menuText) },

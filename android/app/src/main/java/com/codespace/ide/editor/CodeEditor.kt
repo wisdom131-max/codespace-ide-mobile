@@ -1977,6 +1977,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             selection = value.selection,
                             cursorColor = colors.cursor,
                         ))
+                        .then(wordHighlightModifier(
+                            textLayoutResult = textLayoutResult,
+                            text = value.text,
+                            selection = value.selection,
+                            highlightColor = colors.selection.copy(alpha = 0.3f),
+                        ))
+                        .then(bracketMatchModifier(
+                            textLayoutResult = textLayoutResult,
+                            bracketMatch = _bracketMatch,
+                            highlightColor = colors.selection.copy(alpha = 0.4f),
+                        ))
                         .then(customCursorInteractionModifier(
                             textLayoutResult = textLayoutResult,
                             onCursorMoved = { pos ->
@@ -2574,10 +2585,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onDismissRequest = { showLspMenu = false },
                             modifier = Modifier.background(colors.background)
                         ) {
-                            // ── LSP Actions (compact scrollable dropdown) ──
+                            // PENDING-CURSOR-2: Compacted popup menu — constrained width + denser layout
                             androidx.compose.foundation.layout.Column(
                                 modifier = Modifier
-                                    .heightIn(max = 360.dp)
+                                    .widthIn(max = 220.dp)
+                                    .heightIn(max = 300.dp)
                                     .verticalScroll(rememberScrollState())
                             ) {
                             val selectedText = value.text.substring(
@@ -2730,7 +2742,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("⤢", color = if (onLspSelectionRange != null) Color(0xFF4EC9B0) else Color(0xFF808080), fontSize = 14.sp)
-                                        Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Expand Selection", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         if (onLspSelectionRange != null && expandSelectionDepth >= 0) {
                                             Text("L${expandSelectionDepth + 1}", color = Color(0xFF4EC9B0), fontSize = 10.sp)
                                         }
@@ -2779,8 +2791,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("⇒", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("⇒", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Go to Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2811,8 +2823,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("⇒", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Go to Declaration", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("⇒", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Go to Declaration", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2826,8 +2838,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("👁", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("👁", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Peek Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2862,8 +2874,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("T", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("T", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("Go to Type Definition", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         }
                                     },
                                     onClick = {
@@ -2878,8 +2890,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("I", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("I", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("Find Implementations", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         }
                                     },
                                     onClick = {
@@ -2893,8 +2905,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("✎", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("✎", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Rename Symbol", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2921,8 +2933,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("■", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("■", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Select All Occurrences", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2947,8 +2959,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("▸", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("▸", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Select Next Occurrence", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2972,8 +2984,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("⊛", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Find References", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("⊛", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Find References", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -2995,8 +3007,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("⊞", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Peek References", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("⊞", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("Peek References", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         }
                                     },
                                     onClick = {
@@ -3011,8 +3023,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("⊞", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Peek Declaration", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("⊞", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("Peek Declaration", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         }
                                     },
                                     onClick = {
@@ -3039,8 +3051,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("→", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Call Hierarchy", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("→", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("Call Hierarchy", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         }
                                     },
                                     onClick = {
@@ -3072,8 +3084,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("≡", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                            Text("Type Hierarchy", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("≡", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                            Text("Type Hierarchy", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                         }
                                     },
                                     onClick = {
@@ -3104,8 +3116,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("↑", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("↑", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Add Cursor Above", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -3122,8 +3134,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("↓", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                                        Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("↓", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Add Cursor Below", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
@@ -3139,8 +3151,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("⟐", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                            Text("Organize Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("⟐", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Organize Imports", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = {
@@ -3160,8 +3172,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("⟇", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                            Text("Remove Unused Imports", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("⟇", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Remove Unused Imports", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = {
@@ -3182,8 +3194,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("⊘", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                            Text("Remove Unused Code", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("⊘", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Remove Unused Code", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = {
@@ -3199,8 +3211,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             DropdownMenuItem(
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("✦", color = Color(0xFFD4D4D4), fontSize = 14.sp)
-                            Text("Fix All", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("✦", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Fix All", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = { onSourceAction!!.invoke("source.fixAll"); showLspMenu = false }
@@ -3220,7 +3232,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("G", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Generate Constructor", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Generate Constructor", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = { onSourceAction!!.invoke("source.generate.constructor"); showLspMenu = false }
@@ -3229,7 +3241,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("G", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Generate Getters/Setters", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Generate Getters/Setters", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = { onSourceAction!!.invoke("source.generate.accessors"); showLspMenu = false }
@@ -3238,7 +3250,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("G", color = Color(0xFF4EC9B0), fontSize = 14.sp)
-                            Text("Implement Interface", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                            Text("Implement Interface", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
                             onClick = { onSourceAction!!.invoke("source.generate.implement"); showLspMenu = false }
