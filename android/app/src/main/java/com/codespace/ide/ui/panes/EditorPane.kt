@@ -261,6 +261,14 @@ fun EditorPane(
             scrollToLine = 0
         }
     }
+    // P54: Track current debug line for gutter indicator
+    var debugCurrentLine by remember { mutableStateOf(0) }
+    LaunchedEffect(udm) {
+        udm?.addOnPausedListener { stack, _ ->
+            val activeFrame = stack.firstOrNull { it.active }
+            debugCurrentLine = (activeFrame?.line ?: stack.firstOrNull()?.line ?: -1) + 1
+        }
+    }
     // P26-1: LSP Document Highlight — auto-highlight all occurrences of symbol under cursor
     var lspHighlightLines by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
     // P26-1: LSP Completion Resolve — richer completion info
@@ -1284,6 +1292,7 @@ fun EditorPane(
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
                         breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
+                        debugCurrentLine = debugCurrentLine,
                         onBreakpointToggle = { line ->
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
