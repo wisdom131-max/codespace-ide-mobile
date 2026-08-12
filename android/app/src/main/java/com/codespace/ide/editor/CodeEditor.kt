@@ -921,12 +921,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // P22-H: LSP-backed completion (P41-K: parallel fetch + request cancellation)
     var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
+    // Smart completion: track whether LSP has successfully responded for this session
+    var lspHasResponded by remember { mutableStateOf(false) }
+    // Smart completion: track whether the current LSP request timed out
+    var lspTimedOut by remember { mutableStateOf(false) }
     // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
     var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
     // P41-Q: Completion caching — cache LSP results to avoid redundant requests when prefix extends
     var cachedLspPrefix by remember { mutableStateOf("") }
     var cachedLspResults by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
     var cachedLspCursorLine by remember { mutableStateOf(-1) }
+    val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
     LaunchedEffect(prefix, isDotTriggered, value.selection.end, pathContext) {
         // P41-G: Skip LSP completions when path context is active
         if (pathContext != null) { lspCompletions = emptyList(); workspaceCompletions = emptyList(); return@LaunchedEffect }
@@ -950,29 +955,55 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 try { lspRequestId = lspRequestIdProvider.invoke() } catch (_: Exception) {}
             }
 
-            // P41-K: Fetch LSP + workspace sources (sequential — 2 LSP calls, negligible on mobile)
-            val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
-                val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
-                    try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
-                } else emptyList()
-                Pair(lsp, ws)
+            // Smart completion: LSP first with 5s timeout, then regex fallback
+            if (smartCompletion) {
+                lspTimedOut = false
+                val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                        val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                        val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
+                            try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                        } else emptyList()
+                        Pair(lsp, ws)
+                    }
+                }
+                if (results != null) {
+                    lspHasResponded = true
+                    lspCompletions = results.first
+                    workspaceCompletions = results.second
+                } else {
+                    // LSP timed out — keep showing local completions as fallback
+                    lspTimedOut = true
+                    lspCompletions = emptyList()
+                    workspaceCompletions = emptyList()
+                }
+            } else {
+                // Legacy behavior: fetch LSP without timeout, show alongside local
+                val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                    val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
+                        try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                    } else emptyList()
+                    Pair(lsp, ws)
+                }
+                lspCompletions = results.first
+                workspaceCompletions = results.second
             }
-
-            lspCompletions = results.first
-            workspaceCompletions = results.second
         } else {
             lspCompletions = emptyList()
             workspaceCompletions = emptyList()
         }
     }
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
-    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext) {
+    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext, smartCompletion, lspHasResponded, lspTimedOut) {
         // P41-V: Context-aware filtering
         // In member-access or after-keyword context, suppress keyword/buffer completions
         val suppressKeywords = completionContext.lspOnly
+        // Smart completion: when LSP has responded, suppress local/regex completions
+        // But if LSP timed out or hasn't responded yet, show local as fallback
+        val suppressLocalSmart = smartCompletion && lspHasResponded && lspCompletions.isNotEmpty()
         // Convert local completions to RankedCompletionItem (filtered by context)
-        val localRanked = (if (suppressKeywords) emptyList() else completions).map { c ->
+        val localRanked = (if (suppressKeywords || suppressLocalSmart) emptyList() else completions).map { c ->
             val kind = when (c.kind) {
                 CompletionKind.SNIPPET -> CompletionItemKind.SNIPPET
                 CompletionKind.TYPE -> CompletionItemKind.CLASS
