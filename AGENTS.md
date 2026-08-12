@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 17:50 WAT)
+## CURRENT STATE (2026-08-12 18:00 WAT)
 
 | | |
 |-|-|
-| Latest commit | **40e2f090** — feat(completions): Smart LSP/regex priority with 5s timeout fallback + multi-cursor double-tap fix (46bc40bc) + column-aware Add Cursor Above/Below — build pending |
-| Active phase | **Post-Phase R Stability Fixes** — Multi-cursor double-tap + column-aware cursors done. Smart LSP/regex completion toggle done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: Find bar text visibility (Test 12), Problems panel jump (Test 19), UI restructuring (Tests 36, 38, 41, 42). |
+| Latest commit | **61e68d18** — fix(Test 12): Find bar text visibility (Material3 TextField + cursor + auto-focus) + smart completion toggle (40e2f090) + multi-cursor double-tap fix (46bc40bc) — build pending |
+| Active phase | **Post-Phase R Stability Fixes** — Find bar text visibility fixed. Multi-cursor double-tap + column-aware cursors done. Smart LSP/regex completion toggle done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: Problems panel jump (Test 19), UI restructuring (Tests 36, 38, 41, 42), debug gutter (Test 54), .md icon (Test 55). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14923,3 +14923,9 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 **What was implemented:** Smart LSP/regex completion priority with toggle in in-project settings. When enabled (default): LSP completions are tried first with a 5s timeout (withTimeoutOrNull). If LSP responds, local/regex completions are suppressed (LSP-only mode for the session). If LSP times out, local completions serve as fallback. When disabled: both LSP and local completions show simultaneously (legacy behavior). Toggle is in In-Project Settings > LSP Servers > Smart Completion Priority. Also includes the multi-cursor fixes from commit 46bc40bc (double-tap + column-aware Add Cursor Above/Below + Cursors on All Lines Below/Above).
 **Files touched:** ProjectSettingsStore.kt, InProjectSettingsDialog.kt, CodeEditor.kt
 **Next on roadmap:** P0: Rebuild APK and retest all fixes on device (crash fix, double-tap, column cursors, smart completion). P1: Find bar text visibility (Test 12), Problems panel jump (Test 19). P2: UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54), .md file icon (Test 55).
+
+### [2026-08-12 18:00 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 61e68d18 | **CI Build:** pending
+**What was fixed:** Fixed Find bar text visibility (Test 12) — replaced foundation BasicTextField with Material3 TextField for both Find and Replace inputs. Root cause: missing cursorBrush made cursor invisible on dark background, and no auto-focus when bar opened. Added explicit cursorColor (0xFFAEAFAD), FocusRequester + LaunchedEffect for auto-focus on open (100ms delay), heightIn(min=36dp) for proper touch target, brightened text color to 0xFFCCCCCC, font size 12sp→13sp. Uses TextFieldDefaults.colors with red indicator for no-match and blue for active.
+**Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt
+**Next on roadmap:** P1: Problems panel → editor jump (Test 19) — tap error should scroll editor to error line + highlight. P2: UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54), .md file icon (Test 55).
