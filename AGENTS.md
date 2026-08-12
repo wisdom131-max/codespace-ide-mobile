@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 21:15 WAT)
+## CURRENT STATE (2026-08-12 21:20 WAT)
 
 | | |
 |-|-|
 | Latest commit | **40232a11** — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **Phase U — Completion Pipeline Upgrade** (8 features: isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit) | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
+| Active phase | **TESTING STAGE** — Test 2.2 complete (57 tests). Fixing P0-P3 bugs from test results. Phase U (Completion Pipeline Upgrade) planned — not yet started. | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -15341,3 +15341,9 @@ After all 8 features are implemented, audit the full pipeline:
 **What was fixed:** Added Phase U — Completion Pipeline Upgrade plan to AGENTS.md. Documents 8 features to upgrade the existing completion pipeline: (1) isIncomplete, (2) sortText, (3) filterText, (4) command, (5) commitCharacters, (6) fuzzy matching, (7) better deduplication, (8) textEdit support on selection. Each feature has specific files, rules, implementation approach, and compatibility constraints. Updated Current State table to reflect Phase U as active phase.
 **Files touched:** AGENTS.md (documentation only)
 **Next on roadmap:** Implement Phase U features U-1 through U-8 in order. Start with U-3 (filterText) and U-2 (sortText) first since they're the simplest parsing additions. Then U-7 (dedup) and U-6 (fuzzy matching) for ranking quality. Then U-8 (textEdit) for selection correctness. Then U-5 (commitCharacters) and U-4 (command) for commit behavior. Finally U-1 (isIncomplete) for refresh logic.
+
+### [2026-08-12 21:20 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A | **CI Build:** N/A (documentation fix)
+**What was fixed:** Corrected Active phase in Current State table — project is in TESTING STAGE (Test 2.2 complete with 57 tests), not Phase U. Phase U plan remains in AGENTS.md as the NEXT phase after test fixes are done. All development phases through Phase R are complete.
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:** P0: Fix CursorBehaviors.kt crash (15 crashes from stale layout offsets). P1: LSP/regex smart logic, Find bar fix, Problems panel jump. P2: UI restructuring, debug gutter. P3: Remaining test fails. THEN Phase U (completion pipeline upgrade).
