@@ -5103,7 +5103,7 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                     matches.isEmpty() -> "No results"
                     else -> "${matchIndex + 1}/${matches.size}"
                 }
-                androidx.compose.material3.TextField(
+                androidx.compose.foundation.text.BasicTextField(
                     value = findQuery,
                     onValueChange = { onFindQueryChange(it) },
                     singleLine = true,
@@ -5112,26 +5112,28 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
-                    placeholder = {
-                        Text(
-                            "Find",
-                            color = Color(0xFF666666),
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFFAEAFAD)),
+                    decorationBox = { inner ->
+                        Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            if (findQuery.isEmpty()) Text(
+                                "Find",
+                                color = Color(0xFF666666),
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            inner()
+                        }
                     },
-                    colors = androidx.compose.material3.TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF1E1E1E),
-                        unfocusedContainerColor = Color(0xFF1E1E1E),
-                        focusedIndicatorColor = if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400) else Color(0xFF007ACC),
-                        unfocusedIndicatorColor = if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400) else Color(0xFF3C3C3C),
-                        cursorColor = Color(0xFFAEAFAD),
-                        focusedTextColor = Color(0xFFCCCCCC),
-                        unfocusedTextColor = Color(0xFFCCCCCC),
-                    ),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 36.dp)
+                        .heightIn(min = 28.dp)
+                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                        .border(
+                            1.dp,
+                            if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400)
+                            else Color(0xFF3C3C3C),
+                            RoundedCornerShape(3.dp),
+                        )
                         .focusRequester(findFocusRequester),
                 )
                 Text(
@@ -5226,7 +5228,7 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                androidx.compose.material3.TextField(
+                androidx.compose.foundation.text.BasicTextField(
                     value = replaceQuery,
                     onValueChange = { onReplaceQueryChange(it) },
                     singleLine = true,
@@ -5235,26 +5237,23 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
-                    placeholder = {
-                        Text(
-                            "Replace",
-                            color = Color(0xFF666666),
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFFAEAFAD)),
+                    decorationBox = { inner ->
+                        Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            if (replaceQuery.isEmpty()) Text(
+                                "Replace",
+                                color = Color(0xFF666666),
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            inner()
+                        }
                     },
-                    colors = androidx.compose.material3.TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF1E1E1E),
-                        unfocusedContainerColor = Color(0xFF1E1E1E),
-                        focusedIndicatorColor = Color(0xFF007ACC),
-                        unfocusedIndicatorColor = Color(0xFF3C3C3C),
-                        cursorColor = Color(0xFFAEAFAD),
-                        focusedTextColor = Color(0xFFCCCCCC),
-                        unfocusedTextColor = Color(0xFFCCCCCC),
-                    ),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 36.dp),
+                        .heightIn(min = 28.dp)
+                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
+                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
                 )
                 TextButton(
                     onClick = {
