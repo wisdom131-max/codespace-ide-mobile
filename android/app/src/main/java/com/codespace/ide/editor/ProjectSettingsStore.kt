@@ -81,6 +81,12 @@ object ProjectSettingsStore {
     /** Master switch for all LSP servers. When disabled, only fallback completions are used. */
     val lspEnabled: MutableState<Boolean> = mutableStateOf(true)
 
+    // ── Smart Completion Toggle ─────────────────────────────────────────
+    /** When enabled, LSP completions take priority. If LSP doesn't respond within 5s,
+     *  falls back to regex/local completions. Once LSP responds, local completions are suppressed.
+     *  When disabled, both LSP and local completions show simultaneously (legacy behavior). */
+    val smartCompletionEnabled: MutableState<Boolean> = mutableStateOf(true)
+
     // ── Custom Cursor Overlay ────────────────────────────────────────────
     /** Custom cursor overlay — a draggable, tap-to-type cursor that summons the keyboard on tap.
      *  Replaces the default thin text cursor with a visible, touch-friendly overlay. */
@@ -123,6 +129,7 @@ object ProjectSettingsStore {
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
+        smartCompletionEnabled.value = prefs.getBoolean("smart_completion_enabled", true)
         customCursorOverlayEnabled.value = prefs.getBoolean("custom_cursor_overlay", false)
         cursorMode.value = try {
             CursorMode.valueOf(prefs.getString("cursor_mode", CursorMode.IN_APP.name) ?: CursorMode.IN_APP.name)
@@ -153,6 +160,10 @@ object ProjectSettingsStore {
     fun setLspEnabled(value: Boolean) {
         lspEnabled.value = value
         prefs.edit().putBoolean("lsp_enabled", value).apply()
+    }
+    fun setSmartCompletionEnabled(value: Boolean) {
+        smartCompletionEnabled.value = value
+        prefs.edit().putBoolean("smart_completion_enabled", value).apply()
     }
     fun setCustomCursorOverlayEnabled(value: Boolean) {
         customCursorOverlayEnabled.value = value
