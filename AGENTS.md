@@ -14565,40 +14565,40 @@ User ran through stdlib import completions (`import o/m/s` → objgraph, odbc, m
 | 30 | Format on Save | **PARTIAL** | User notes: "I need them to automatically install" — formatter needs auto-install support |
 | 31 | LSP auto-close 10s idle | **PASS** | Works |
 | 32 | TypeScript 7 vtsls LSP | **FAIL** | TypeScript didn't install. (This is the vtsls install detection bug — fixed in commit 35e4e319, LSP-FIX tag) |
-| 33 | Master LSP toggle | **PENDING** | Awaiting text results |
-| 34 | Cursor mode In-App vs System | **PENDING** | Awaiting text results |
-| 35 | Top bar layout icons | **PENDING** | Awaiting text results |
-| 36 | Customize Layout dropdown | **PENDING** | Awaiting text results |
-| 37 | Three-dot overflow two-level nav | **PENDING** | Awaiting text results |
-| 38 | Notification floating card bottom-right | **PENDING** | Awaiting text results |
-| 39 | Notification drawer bell icon | **PENDING** | Awaiting text results |
-| 40 | Peek Definition X button portrait | **PENDING** | Awaiting text results |
-| 41 | Source Control scrolling + menu | **PENDING** | Awaiting text results |
-| 42 | Source Control no dubious ownership | **PENDING** | Awaiting text results |
-| 43 | Extract Here zip | **PENDING** | Awaiting text results |
-| 44 | Open as Text binary | **PENDING** | Awaiting text results |
-| 45 | Quick command palette single tap | **PENDING** | Awaiting text results |
-| 46 | MCP status green on launch | **PENDING** | Awaiting text results |
-| 47 | Recycle bin restore immediate | **PENDING** | Awaiting text results |
-| 48 | Recent search history persists | **PENDING** | Awaiting text results |
-| 49 | Terminal notification channel VN Code | **PENDING** | Awaiting text results |
-| 50 | Terminal notification toggle | **PENDING** | Awaiting text results |
-| 51 | YouTube video in preview | **PENDING** | Awaiting text results |
-| 52 | Fullscreen preview no reload | **PENDING** | Awaiting text results |
-| 53 | Cloud backup retry | **PENDING** | Awaiting text results |
-| 54 | Debug panel breakpoints + steps | **PENDING** | Awaiting text results |
-| 55 | MD file icon in explorer | **PENDING** | Awaiting text results |
-| 56 | Bookmark icon theme-aware | **PENDING** | Awaiting text results |
-| 57 | Snapshot interval 20 seconds | **PENDING** | Awaiting text results |
+| 33 | Master LSP toggle | **PASS** | Works |
+| 34 | Cursor mode In-App vs System | **PASS** | Works |
+| 35 | Top bar layout icons | **PASS** | Works |
+| 36 | Customize Layout dropdown | **FAIL** | Needs restructuring |
+| 37 | Three-dot overflow two-level nav | **PASS** | Works |
+| 38 | Notification floating card bottom-right | **PARTIAL** | Works but needs restructuring |
+| 39 | Notification drawer bell icon | **FAIL** | Needs restructuring |
+| 40 | Peek Definition X button portrait | **PASS** | Works (shows fallback) |
+| 41 | Source Control scrolling + menu | **PARTIAL** | Doesn't scroll when rotating screen, needs restructuring |
+| 42 | Source Control no dubious ownership | **PARTIAL** | Git init works but shows errors, needs restructuring |
+| 43 | Extract Here zip | **FAIL** | User unsure if done correctly, didn't work |
+| 44 | Open as Text binary | **PASS** | Works |
+| 45 | Quick command palette single tap | **FAIL** | Doesn't work |
+| 46 | MCP status green on launch | **PASS** | Works |
+| 47 | Recycle bin restore immediate | **PASS** | Works |
+| 48 | Recent search history persists | **FAIL** | No recent search history |
+| 49 | Terminal notification channel VN Code | **PASS** | Works |
+| 50 | Terminal notification toggle | **FAIL** | Doesn't work |
+| 51 | YouTube video in preview | **PARTIAL** | Works but shorts show video only audio; settings page shows black; sign-in shows insecure browser warning |
+| 52 | Fullscreen preview no reload | **PASS** | Works |
+| 53 | Cloud backup retry | **FAIL** | Shows error |
+| 54 | Debug panel breakpoints + steps | **FAIL** | Shows session started but doesn't work. No breakpoint in gutter (only bookmark shows). Needs fixing to accommodate both bookmark and breakpoint. |
+| 55 | MD file icon in explorer | **FAIL** | Icon is generic blue document rectangle — didn't work |
+| 56 | Bookmark icon theme-aware | **PASS** | Works |
+| 57 | Snapshot interval 20 seconds | **PASS** | Works |
 
-### Summary (tests 1-32 only)
+### Summary (ALL 57 tests — complete results)
 
 | Status | Count | Tests |
 |--------|-------|-------|
-| PASS | 18 | 1, 2, 3, 4, 5, 6, 15, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31 |
-| PARTIAL | 3 | 10, 12, 13, 30 |
-| FAIL | 7 | 7, 8, 9, 11, 14, 16, 19, 32 |
-| PENDING | 25 | 33-57 |
+| PASS | 32 | 1, 2, 3, 4, 5, 6, 15, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 33, 34, 35, 37, 40, 44, 46, 47, 49, 52, 56, 57 |
+| PARTIAL | 7 | 10, 12, 13, 30, 38, 41, 42 |
+| FAIL | 18 | 7, 8, 9, 11, 14, 16, 19, 32, 36, 39, 43, 45, 48, 50, 53, 54, 55 |
+| PENDING | 0 | — |
 
 ### FAIL/PARTIAL Items — Work Needed
 
@@ -14619,6 +14619,26 @@ User ran through stdlib import completions (`import o/m/s` → objgraph, odbc, m
 - Test 32 — TypeScript 7 vtsls: Didn't install. LSP-FIX applied in `35e4e319` but NOT yet retested.
 
 **Note:** The crash bugs (Tests 7, 8, 9, 16) should be fixed by the STABILITY-FIX in commit `35e4e319` (TextLayoutResult race condition fix). Need to rebuild APK and retest.
+
+**NEW FAILS from tests 33-57:**
+- Test 36 — Customize Layout dropdown: Needs restructuring.
+- Test 39 — Notification drawer bell icon: Needs restructuring.
+- Test 43 — Extract Here (zip): User unsure if done correctly, didn't work.
+- Test 45 — Quick command palette: Doesn't work.
+- Test 48 — Recent search history: No recent search history persisted.
+- Test 50 — Terminal notification toggle: Doesn't work.
+- Test 51 — YouTube preview: Shorts show audio only (no video), settings page black, sign-in shows "insecure browser" warning.
+- Test 53 — Cloud backup retry: Shows error.
+- Test 54 — Debug panel breakpoints: Shows "session started" but doesn't work. No breakpoint in gutter (only bookmark shows). Needs to accommodate both bookmark and breakpoint.
+- Test 55 — Markdown file icon: Shows generic blue document rectangle instead of document icon.
+
+**NEW PARTIALS from tests 33-57:**
+- Test 38 — Notification floating card: Works but needs restructuring.
+- Test 41 — Source Control: Doesn't scroll when rotating screen, needs restructuring.
+- Test 42 — Source Control: Git init works but shows errors, needs restructuring.
+
+**USER NOTE (from test report):**
+> "We need to add a toggle to on and off regex features and add a smart logic for it to check if LSP doesn't work for a particular feature after 3-5 seconds before activating and when LSP is ready regex switches back off."
 
 ---
 
@@ -14814,7 +14834,74 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 ---
 
 **Next on roadmap:**
-1. Rebuild APK with STABILITY-FIX + LSP-FIX commits, retest crash bugs (Tests 7, 8, 9, 16)
-2. Fix remaining FAIL items: Test 10 (LSP/regex dual display), Test 11 (Go to Def), Test 12 (Find text not showing), Test 14 (completion count), Test 19 (Problems → editor jump), Test 32 (vtsls install — fix already applied, needs retest)
-3. Receive text results for tests 33-57 from Franklin, add to AGENTS.md
-4. Then: Phase S (LSP Spec Compliance) or multi-cursor feature
+1. **CRASH FIX (P0)** — Fix `CursorBehaviors.kt` bounds-check in `wordHighlightModifier` (line 52) and `bracketMatchModifier` (line 84): add `offset.coerceIn(0, textLayoutResult.layoutInput.text.length)` before calling `getHorizontalPosition()`. Also fix focus race crash (`ActiveParent with no focused child`) in CoreTextField tap. This fixes Tests 7, 8, 9, 16.
+2. **LSP/REGEX SMART LOGIC (P1)** — Add toggle for regex features. Smart logic: LSP takes priority, regex waits 3-5s before activating, auto-off when LSP is ready. Fixes Test 10.
+3. **FIND BAR FIX (P1)** — Fix invisible text in Find bar input + broken Aa/\b/.* buttons. Fixes Tests 12, 13.
+4. **PROBLEMS PANEL JUMP (P1)** — Tap error → editor must scroll to error line and highlight it. Fixes Test 19.
+5. **MULTI-CURSOR (P2)** — Continue multi-cursor work: Copy Line Down, column-aware selection. Keep existing ✕ chip for exit.
+6. **UI RESTRUCTURING (P2)** — Tests 36, 38, 41, 42 need layout restructuring.
+7. **DEBUG BREAKPOINT GUTTER (P2)** — Test 54: breakpoint marker in gutter (not just bookmark), needs to accommodate both.
+8. **REMAINING FAILS (P3)** — Test 11 (Go to Def), Test 14 (completion count), Test 32 (vtsls install), Test 43 (Extract Here), Test 45 (cmd palette), Test 48 (search history), Test 50 (notif toggle), Test 53 (cloud backup), Test 55 (.md icon).
+9. **USER NOTE:** Add toggle to on/off regex features with smart logic — check if LSP doesn't work for a particular feature after 3-5 seconds before activating, and when LSP is ready, regex switches back off.
+
+---
+
+## CRASH LOG ANALYSIS — Test 2.2 Results (2026-08-12)
+
+> Source: Google Drive folder "AI AGENTS HERE IS THE TEST2.2 REPORT RESULTS AND PLAN AND OBSERVATIONS"
+> 5 crash logs (Crash log 2, 2b, 2c, 2d, 2e) + 1 text report (REPORT 1.works.txt) + 1 PDF (18 screenshot pages)
+
+### Crash Root Causes (all 5 logs)
+
+**Crash 1 — `CursorBehaviorsKt$wordHighlightModifier$1.invoke` (line 52)**
+- Exception: `IllegalArgumentException: offset(N) is out of bounds [0, M]` where N > M
+- Occurs in: `TextLayoutResult.getHorizontalPosition()` called from `wordHighlightModifier`
+- Trigger: Text changes (typing, pasting) cause layout to be stale — offset from old text is used against new (shorter) layout
+- Crashes: 2d (offset 2, bounds [0,1]), 2e (offset 2, bounds [0,1]), 2b (offset 34, bounds [0,0]), 2b (offset 59, bounds [0,0]), 2c (offset 131, bounds [0,0])
+- **Fix:** Add `offset.coerceIn(0, textLayoutResult.layoutInput.text.length - 1)` before `getHorizontalPosition()` call, OR skip drawing if offset >= text length.
+
+**Crash 2 — `CursorBehaviorsKt$bracketMatchModifier$1.invoke` (line 84)**
+- Exception: `IllegalArgumentException: offset(N) is out of bounds [0, M]` where N > M
+- Occurs in: `TextLayoutResult.getHorizontalPosition()` called from `bracketMatchModifier`
+- Trigger: Same race condition — bracket match offset calculated from stale text
+- Crashes: 2 (offsets 53, 57, 58, 62, 64 — all out of bounds), 2b (offset 65), 2c (offset 62, 6)
+- **Fix:** Same bounds check as Crash 1.
+
+**Crash 3 — `FocusTransactionsKt.requireActiveChild` (focus race)**
+- Exception: `IllegalArgumentException: ActiveParent with no focused child`
+- Occurs in: `FocusRequester.requestFocus()` → `tapToFocus` in CoreTextField
+- Trigger: Tapping editor while text is being updated causes focus race
+- Crash: 2c (22:54:41)
+- **Fix:** Wrap `focusRequester.requestFocus()` in try-catch, or defer focus request until after text composition completes.
+
+### Crash Timeline (all from 2026-08-11/12)
+
+| Log | Time | Crash Type | Offset | Bounds |
+|-----|------|-----------|--------|-------|
+| 2 | 22:29:15 | bracketMatch | 53 | [0, 0] |
+| 2 | 22:33:49 | bracketMatch | 57 | [0, 56] |
+| 2 | 22:34:34 | bracketMatch | 58 | [0, 57] |
+| 2 | 22:35:14 | bracketMatch | 62 | [0, 58] |
+| 2 | 22:36:04 | bracketMatch | 64 | [0, 63] |
+| 2b | 22:36:30 | bracketMatch | 65 | [0, 64] |
+| 2b | 22:41:44 | wordHighlight | 34 | [0, 0] |
+| 2b | 22:44:45 | wordHighlight | 59 | [0, 0] |
+| 2b | 22:51:46 | bracketMatch | 62 | [0, 61] |
+| 2c | 22:51:46 | bracketMatch | 62 | [0, 61] |
+| 2c | 22:54:41 | focus race | — | — |
+| 2c | 23:02:42 | wordHighlight | 131 | [0, 0] |
+| 2c | 23:20:49 | bracketMatch | 6 | [0, 5] |
+| 2d | 23:17:18 | wordHighlight | 2 | [0, 1] |
+| 2e | 06:58:54 | wordHighlight | 2 | [0, 1] |
+
+**Total: 15 crashes across 5 logs. All from 2 root causes in `CursorBehaviors.kt` + 1 focus race.**
+
+---
+
+## CHANGE LOG ENTRY
+
+### [2026-08-12 16:14 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A (no code pushed — this is a documentation update)
+**What was fixed:** Updated AGENTS.md with complete Test 2.2 results (all 57 tests now have results). Added crash log analysis from 5 crash logs showing 15 crashes all from 2 root causes in `CursorBehaviors.kt` (wordHighlightModifier + bracketMatchModifier offset bounds) + 1 focus race. Updated test results table to replace PENDING rows with actual device results. Updated roadmap with prioritized fix plan.
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:** P0: Fix CursorBehaviors.kt offset bounds checks (fixes crash on typing — Tests 7, 8, 9, 16). P1: LSP/regex smart logic (Test 10), Find bar fix (Test 12), Problems panel jump (Test 19). P2: Multi-cursor continuation (Copy Line Down, column selection), UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54).
