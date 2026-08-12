@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 18:00 WAT)
+## CURRENT STATE (2026-08-12 18:06 WAT)
 
 | | |
 |-|-|
-| Latest commit | **61e68d18** — fix(Test 12): Find bar text visibility (Material3 TextField + cursor + auto-focus) + smart completion toggle (40e2f090) + multi-cursor double-tap fix (46bc40bc) — build pending |
-| Active phase | **Post-Phase R Stability Fixes** — Find bar text visibility fixed. Multi-cursor double-tap + column-aware cursors done. Smart LSP/regex completion toggle done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: Problems panel jump (Test 19), UI restructuring (Tests 36, 38, 41, 42), debug gutter (Test 54), .md icon (Test 55). |
+| Latest commit | **d8f16ddb** — fix(Test 12): Find bar text visibility (BasicTextField + cursorBrush + auto-focus) + smart completion toggle (40e2f090) + multi-cursor double-tap fix (46bc40bc) — build pending |
+| Active phase | **Post-Phase R Stability Fixes** — Find bar text visibility fixed (cursorBrush + auto-focus). Multi-cursor double-tap + column-aware cursors done. Smart LSP/regex completion toggle done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: Problems panel jump (Test 19), UI restructuring (Tests 36, 38, 41, 42), debug gutter (Test 54), .md icon (Test 55). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14929,3 +14929,9 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 **What was fixed:** Fixed Find bar text visibility (Test 12) — replaced foundation BasicTextField with Material3 TextField for both Find and Replace inputs. Root cause: missing cursorBrush made cursor invisible on dark background, and no auto-focus when bar opened. Added explicit cursorColor (0xFFAEAFAD), FocusRequester + LaunchedEffect for auto-focus on open (100ms delay), heightIn(min=36dp) for proper touch target, brightened text color to 0xFFCCCCCC, font size 12sp→13sp. Uses TextFieldDefaults.colors with red indicator for no-match and blue for active.
 **Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt
 **Next on roadmap:** P1: Problems panel → editor jump (Test 19) — tap error should scroll editor to error line + highlight. P2: UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54), .md file icon (Test 55).
+
+### [2026-08-12 18:06 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** d8f16ddb | **CI Build:** pending (build #2152 failed due to transient Gradle download network error — rerun queued)
+**What was fixed:** Reverted Find bar fix from Material3 TextField back to foundation BasicTextField for codebase consistency (no other file uses Material3 TextField). Kept the actual fixes: added cursorBrush = SolidColor(0xFFAEAFAD) for visible cursor on dark background, FocusRequester + LaunchedEffect for auto-focus when Find bar opens, heightIn(min=28dp) for touch target, brightened text color to 0xFFCCCCCC, font 12sp→13sp. Build #2152 failure was a transient GitHub CI network error (SocketException during Gradle download), not a code issue — rerun queued.
+**Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt
+**Next on roadmap:** P1: Problems panel → editor jump (Test 19). P2: UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54), .md file icon (Test 55).
