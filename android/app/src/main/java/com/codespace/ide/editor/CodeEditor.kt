@@ -189,6 +189,10 @@ private data class Completion(
     val lspKind: Int = 0,
     // P41-I: LSP insertTextFormat (1=PlainText, 2=Snippet). When 2, insertText has $1/$0 syntax.
     val insertTextFormat: Int = 1,
+    // Phase U-4: LSP command to execute after applying completion (JSON string)
+    val command: String? = null,
+    // Phase U-5: LSP commitCharacters — chars that commit the selected completion when typed
+    val commitCharacters: List<Char> = emptyList(),
 )
 private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
@@ -369,6 +373,20 @@ private fun currentWord(text: String, cursor: Int): String {
     var end = pos
     while (end < text.length && (text[end].isLetterOrDigit() || text[end] == '_')) end++
     return text.substring(start, end)
+}
+
+// Phase U-8: Convert LSP Position (line, character) to text offset
+private fun lspPositionToOffset(pos: org.json.JSONObject?, text: String): Int {
+    if (pos == null) return 0
+    val line = pos.optInt("line", 0)
+    val char = pos.optInt("character", 0)
+    var offset = 0
+    var currentLine = 0
+    while (currentLine < line && offset < text.length) {
+        if (text[offset] == '\n') currentLine++
+        offset++
+    }
+    return (offset + char).coerceIn(0, text.length)
 }
 
 
@@ -1041,6 +1059,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 additionalTextEditsJson = item.additionalTextEditsJson,
                 textEditJson = item.textEditJson,
                 insertTextFormat = item.insertTextFormat,
+                sortTextFromServer = item.sortText,
+                filterText = item.filterText,
+                command = item.command,
+                commitCharacters = item.commitCharacters,
             )
         }
         // P41-F: Convert workspace symbol completions to RankedCompletionItem
@@ -1050,9 +1072,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 insertText = item.insertText, source = CompletionSource.WORKSPACE,
             )
         }
-        // Merge, deduplicate by label, rank with fuzzy matching
+        // Merge, deduplicate by (label, kind, detail) — Phase U-7
+        // Don't drop two semantically different items that happen to share the same label
         // LSP first (highest priority), then local, then workspace (lower priority, cross-file)
-        val merged = (lspRanked + localRanked + workspaceRanked).distinctBy { it.label }
+        val seen = mutableSetOf<Triple<String, Int, String?>>()
+        val merged = (lspRanked + localRanked + workspaceRanked).filter { item ->
+            val key = Triple(item.label, item.kind, item.detail)
+            if (key in seen) false else { seen.add(key); true }
+        }
         var ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(), CompletionHistoryStore.usageMap())
         // P41-V: Context-aware kind boosting
         if (completionContext.boostKind > 0 || completionContext.nonMatchKindPenalty > 0f) {
@@ -1083,11 +1110,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 else -> CompletionKind.KEYWORD
             }
             // P41-D: Pass through auto-import edits + textEdit for apply-on-accept
+            // Phase U-4/U-5: Pass through command + commitCharacters
             Completion(rc.label, kind, rc.insertText, rc.detail,
                 additionalTextEditsJson = rc.additionalTextEditsJson,
                 textEditJson = rc.textEditJson,
                 source = rc.source,
-                isDeprecated = rc.isDeprecated)
+                isDeprecated = rc.isDeprecated,
+                lspKind = rc.kind,
+                insertTextFormat = rc.insertTextFormat,
+                command = rc.command,
+                commitCharacters = rc.commitCharacters)
         }
     }
     // P41 Phase B: Load completion history once per file open
@@ -1715,6 +1747,31 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     value = value,
                     onValueChange = { newValue ->
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
+                        // Phase U-5: Check if typed char should commit the selected completion
+                        if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
+                            val typedChar = newValue.text.getOrNull(newValue.selection.end - 1)
+                            val selectedComp = allCompletions.getOrNull(
+                                allCompletions.indexOfFirst { it.label == selectedLabel }
+                            )
+                            if (typedChar != null && selectedComp != null && selectedComp.commitCharacters.contains(typedChar)) {
+                                // Commit the selected completion, then insert the typed char
+                                val cursor = value.selection.end
+                                val text = value.text
+                                val end = cursor.coerceAtMost(text.length)
+                                var start = end
+                                while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
+                                val insertText = selectedComp.insertText
+                                val committedText = text.substring(0, start) + insertText + typedChar.toString() + text.substring(end)
+                                val committedCursor = start + insertText.length + 1
+                                value = TextFieldValue(text = committedText, selection = TextRange(committedCursor))
+                                onContentChange(committedText)
+                                CompletionHistoryStore.recordAccepted(selectedComp.label, language.name, context)
+                                showCompletions = false
+                                selectedLabel = null
+                                completionFilter = null
+                                return@onValueChange
+                            }
+                        }
                         var updatedValue = newValue
                         // 1. Auto-close brackets & quotes
                         if (newValue.text.length == value.text.length + 1) {
