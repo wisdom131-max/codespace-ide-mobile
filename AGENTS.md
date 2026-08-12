@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 18:06 WAT)
+## CURRENT STATE (2026-08-12 18:15 WAT)
 
 | | |
 |-|-|
-| Latest commit | **d8f16ddb** — fix(Test 12): Find bar text visibility (BasicTextField + cursorBrush + auto-focus) + smart completion toggle (40e2f090) + multi-cursor double-tap fix (46bc40bc) — build pending |
-| Active phase | **Post-Phase R Stability Fixes** — Find bar text visibility fixed (cursorBrush + auto-focus). Multi-cursor double-tap + column-aware cursors done. Smart LSP/regex completion toggle done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: Problems panel jump (Test 19), UI restructuring (Tests 36, 38, 41, 42), debug gutter (Test 54), .md icon (Test 55). |
+| Latest commit | **ea0336b3** — fix(Test 19): Problems panel → editor jump (off-by-one scroll + stale state fix) + Find bar fix (d8f16ddb) + smart completion (40e2f090) — build pending |
+| Active phase | **Post-Phase R Stability Fixes** — Problems panel jump fixed (off-by-one + stale state). Find bar text visibility fixed. Multi-cursor double-tap done. Smart LSP/regex completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42), debug gutter (Test 54), .md icon (Test 55). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14935,3 +14935,9 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 **What was fixed:** Reverted Find bar fix from Material3 TextField back to foundation BasicTextField for codebase consistency (no other file uses Material3 TextField). Kept the actual fixes: added cursorBrush = SolidColor(0xFFAEAFAD) for visible cursor on dark background, FocusRequester + LaunchedEffect for auto-focus when Find bar opens, heightIn(min=28dp) for touch target, brightened text color to 0xFFCCCCCC, font 12sp→13sp. Build #2152 failure was a transient GitHub CI network error (SocketException during Gradle download), not a code issue — rerun queued.
 **Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt
 **Next on roadmap:** P1: Problems panel → editor jump (Test 19). P2: UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54), .md file icon (Test 55).
+
+### [2026-08-12 18:15 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** ea0336b3 (EditorPane) + 31475d28 (CodeEditor) | **CI Build:** pending
+**What was fixed:** Fixed Problems panel → editor jump (Test 19). Two bugs: (1) Off-by-one scroll — scrollToLine is 1-based (LSP adds +1, go-to-def adds +1) but vScroll.animateScrollTo used scrollToLine * lineHeightPx without -1 offset, scrolling one line too far. Fixed to (scrollToLine - 1) * lineHeightPx, matching the highlight rendering which already uses (highlightTargetLine - 1). (2) Stale state — clicking the same error twice didn't re-trigger scroll because scrollToLineParam didn't change. Fixed by resetting scrollToLine to 0 after 50ms in EditorPane. (3) Highlight cleanup moved from LaunchedEffect delay to coroutineScope.launch so the 2.5s timer survives the scrollToLine reset to 0.
+**Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt, android/app/src/main/java/com/codespace/ide/ui/panes/EditorPane.kt
+**Next on roadmap:** P1: UI restructuring (Tests 36, 38, 41, 42). P2: Debug breakpoint gutter markers (Test 54), .md file icon (Test 55).
