@@ -15335,3 +15335,9 @@ After all 8 features are implemented, audit the full pipeline:
 **What was fixed:** Fixed .md file icon (Test 55) and gutter spacing (Test 54 follow-up). .md files now use Icons.Default.Description (document with lines) instead of the generic Article icon shared with .txt/.rst — makes markdown files visually distinct in explorer and tabs. Gutter: added 2dp spacer between bookmark ◆ section and breakpoint dot section — ensures no visual conflict when both are active on the same line. Total gutter usage: [fold ~15dp] [◆ 13dp] [2dp spacer] [dot 8dp + number ~12dp] = ~50dp within 72dp gutter width.
 **Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt, android/app/src/main/java/com/codespace/ide/ui/panes/ExplorerPane.kt
 **Next on roadmap:** P1: UI restructuring (Tests 36, 38, 41, 42).
+
+### [2026-08-12 21:15 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 9a9dcc4 | **CI Build:** N/A (documentation only — no code changes)
+**What was fixed:** Added Phase U — Completion Pipeline Upgrade plan to AGENTS.md. Documents 8 features to upgrade the existing completion pipeline: (1) isIncomplete, (2) sortText, (3) filterText, (4) command, (5) commitCharacters, (6) fuzzy matching, (7) better deduplication, (8) textEdit support on selection. Each feature has specific files, rules, implementation approach, and compatibility constraints. Updated Current State table to reflect Phase U as active phase.
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:** Implement Phase U features U-1 through U-8 in order. Start with U-3 (filterText) and U-2 (sortText) first since they're the simplest parsing additions. Then U-7 (dedup) and U-6 (fuzzy matching) for ranking quality. Then U-8 (textEdit) for selection correctness. Then U-5 (commitCharacters) and U-4 (command) for commit behavior. Finally U-1 (isIncomplete) for refresh logic.
