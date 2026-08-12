@@ -255,7 +255,11 @@ fun EditorPane(
     // the Problems tab, Go-to-Definition, and debug call stack all work.
     var scrollToLine by remember { mutableStateOf(0) }
     LaunchedEffect(scrollToLineParam) {
-        if (scrollToLineParam > 0) scrollToLine = scrollToLineParam
+        if (scrollToLineParam > 0) {
+            scrollToLine = scrollToLineParam
+            kotlinx.coroutines.delay(50)
+            scrollToLine = 0
+        }
     }
     // P26-1: LSP Document Highlight — auto-highlight all occurrences of symbol under cursor
     var lspHighlightLines by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
@@ -2350,3 +2354,4 @@ private data class TextEdit(
     val endChar: Int,
     val newText: String,
 )
+
