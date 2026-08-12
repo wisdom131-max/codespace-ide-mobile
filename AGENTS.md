@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 18:25 WAT)
+## CURRENT STATE (2026-08-12 18:31 WAT)
 
 | | |
 |-|-|
-| Latest commit | **83091c60** — fix(Test 54): Debug gutter markers (breakpoint dot + line number, debug current-line indicator) + fix build #2156-2158 (coroutineScope order) + Test 19 (ea0336b3) — build pending |
-| Active phase | **Post-Phase R Stability Fixes** — Debug gutter fixed (Test 54). Problems panel jump fixed (Test 19). Build #2156-2158 fixed (coroutineScope). Find bar text visibility fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42), .md icon (Test 55). |
+| Latest commit | **40232a11** — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
+| Active phase | **Post-Phase R Stability Fixes** — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14947,3 +14947,9 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 **What was fixed:** Fixed debug gutter markers (Test 54) and build failures #2156-2158. Build fix: coroutineScope was declared AFTER LaunchedEffect that uses it — moved before. Debug gutter: (1) Breakpoint dot was REPLACING line number — only red dot showed, number vanished. Fixed to Row layout showing BOTH dot and number (VS Code style). (2) Changed breakpoint dot color from #FF5F5F to #E51400 (VS Code red). (3) Added debugCurrentLine parameter: yellow arrow (→) in gutter, yellow line number, yellow background tint on current debug line. (4) Wired UDM's addOnPausedListener in EditorPane to track current debug line and pass to CodeEditor.
 **Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt, android/app/src/main/java/com/codespace/ide/ui/panes/EditorPane.kt
 **Next on roadmap:** P1: UI restructuring (Tests 36, 38, 41, 42). P2: .md file icon (Test 55).
+
+### [2026-08-12 18:31 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 92a3dc04 (CodeEditor) + 40232a11 (ExplorerPane) | **CI Build:** pending
+**What was fixed:** Fixed .md file icon (Test 55) and gutter spacing (Test 54 follow-up). .md files now use Icons.Default.Description (document with lines) instead of the generic Article icon shared with .txt/.rst — makes markdown files visually distinct in explorer and tabs. Gutter: added 2dp spacer between bookmark ◆ section and breakpoint dot section — ensures no visual conflict when both are active on the same line. Total gutter usage: [fold ~15dp] [◆ 13dp] [2dp spacer] [dot 8dp + number ~12dp] = ~50dp within 72dp gutter width.
+**Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt, android/app/src/main/java/com/codespace/ide/ui/panes/ExplorerPane.kt
+**Next on roadmap:** P1: UI restructuring (Tests 36, 38, 41, 42).
