@@ -51,16 +51,16 @@ then do X. Don't go searching for random work — follow the roadmap.
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
-> Last updated: 2026-08-11 12:10 WAT. Read this FIRST before touching any code.
+> Last updated: 2026-08-12 10:41 WAT. Read this FIRST before touching any code.
 
 ---
 
-## CURRENT STATE (2026-08-11 20:46 WAT)
+## CURRENT STATE (2026-08-12 10:41 WAT)
 
 | | |
 |-|-|
-| Latest commit | **6b64168** — Build #2132 fullScreen fix + AGENTS.md cleanup (cursor behaviors DONE, custom cursor overlay DROPPED) — build #2133 pending |
-| Active phase | **Phase R** ✅ COMPLETE — Formatter Selection (R1: per-language formatter dropdowns, R2: Format on Save toggle, R3: Format Selection button). CodeEditor method-too-large fix (cursorOverlayModifier extraction). Next: Phase S (LSP Spec Compliance), P41 IntelliSense. |
+| Latest commit | **35e4e319** — P32 crash fixes: Compose cursor crash, focus race, vtsls install detection, Kotlin LSP path — build pending |
+| Active phase | **Phase 32** — P32 Stability & LSP Fix Pass: Compose cursor crash (TextLayoutResult race), focus-system race, vtsls install detection, Kotlin LSP path. Next: On-device testing of all P32 fixes, then Phase S (LSP Spec Compliance). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14508,3 +14508,53 @@ User ran through stdlib import completions (`import o/m/s` → objgraph, odbc, m
 **Confirmed already implemented (no action needed):** Popup flip-above-cursor when no space below (done via d7e93eb), Command Palette `@` symbol search (done, matches screenshot item 18 exactly — Calculator symbols(11) with nested members).
 **Still needs code verification (not yet audited against source):** Full long-press menu parity (Peek Call/Type Hierarchy, Change All Occurrences Ctrl+F2, Show Call/Type Hierarchy) — need to check `CodeEditor.kt` LSP menu against this exact list.
 **Next:** On CI green, verify long-press menu items against screenshot list; then continue with remaining unfixed bugs or multi-cursor feature.
+
+### [2026-08-12 10:41 WAT] — AI Agent: Claude (Superagent)
+**Commit:** `35e4e319` | **CI Build:** (pending)
+**What was fixed:** Five bugs found from on-device crash logs and test reports (7 PDFs / 208 screenshots from Franklin's phone):
+
+#### BUG 1 — Compose cursor crash (IllegalArgumentException: offset out of bounds)
+**Root cause:** `TextLayoutResult` from `onTextLayout` callback fires ASYNCHRONOUSLY — one frame behind live `text`/`selection` state. During every keystroke, paste, or snippet expansion, `wordHighlightModifier` and `bracketMatchModifier` in `CursorBehaviors.kt` called `getHorizontalPosition()`/`getLineForOffset()` with offsets beyond what `textLayoutResult` actually covered, throwing `IllegalArgumentException: offset(X) is out of bounds [0, Y]` via `MultiParagraph.requireIndexInRangeInclusive`. Confirmed by three independent on-device crash logs, all triggered the instant the user finished typing a word or pasted text.
+**Fix:** Bail if layout is stale (`text.length != layoutInput.text.length`), clamp all offsets to `0..layoutLen`, and wrap the draw block in try/catch as a last-resort safety net. The highlight just appears ~16ms later (imperceptible) once `onTextLayout` catches up.
+**Files:** `CursorBehaviors.kt`
+
+#### BUG 2 — Focus race condition (IllegalArgumentException: ActiveParent with no focused child)
+**Root cause:** `requestFocus()` can throw "ActiveParent with no focused child" when another dialog/field released focus in the same Compose frame. Known Compose Foundation focus-system race. Four call sites were unguarded; two others already had try/catch.
+**Fix:** Wrapped all four unguarded `requestFocus()` calls with `try/catch(IllegalArgumentException)`.
+**Files:** `CodeEditor.kt`, `ExplorerPane.kt`, `SymbolSearchPanel.kt`, `ProjectShellScreen.kt`
+
+#### BUG 3 — vtsls install detection (vtsls: not found after "successful" install)
+**Root cause:** `startServer()` correctly detected TS7-native LSP unavailable and picked `vtslsConfig`. But `isServerInstalled()` and `installServer()` independently re-derived the config from `typescriptVersion` alone — always picking `ts7NativeConfig` whenever the TS7 setting was on. So they checked/installed `typescript@7` (native) while `startServer` spawned `vtsls --stdio` — a binary that was never installed. The install log reported success (because `typescript@7` install succeeded), but the actual server binary (`vtsls`) was missing.
+**Fix:** Added optional `resolvedConfig: ServerConfig? = null` parameter to `isServerInstalled()` and `installServer()`. `startServer()` now passes its already-resolved `config` through, ensuring check/install/spawn all use the SAME server config.
+**Files:** `LspManager.kt`
+
+#### BUG 4 — Kotlin LSP binary path (install succeeds but `which kotlin-language-server` fails)
+**Root cause:** The fwcd kotlin-language-server `server.zip` release extracts under a top-level `server/` folder — `server/bin/kotlin-language-server` — NOT at `bin/kotlin-language-server` as the symlink command assumed. The old command ran `ln -sf /opt/kotlin-language-server/bin/kotlin-language-server` (pointing to non-existent path). `ln -sf` doesn't verify its target exists, and `echo Kotlin-LSP-installed` always ran, so the install log reported success — but the symlink was dangling.
+**Fix:** Corrected path to `/opt/kotlin-language-server/server/bin/kotlin-language-server`. Added `test -f` guard before symlinking and `chmod +x` so a bad extract fails loudly instead of silently linking to nothing.
+**Files:** `LspManager.kt`
+
+#### BUG 5 — Cloud Backup "Project directory not found" (path mismatch)
+**Root cause:** `CloudBackupManager.backupProject()` looks up the project folder by `projectId` in `File(context.filesDir, "projects/$projectId")`. But project folders are created by name, not ID — the `projectId` passed from `ProjectShellScreen` is a numeric/sanitized ID, not the actual folder name. So the path resolves to e.g. `projects/1234567890` while the real folder is `projects/MyProject`.
+**Status:** Fix identified but not yet patched in this commit — requires tracing how `projectId` flows from `HomeScreen` → `ProjectShellScreen` → `CloudBackupPanel` to determine whether to pass the project name instead.
+**Files:** (pending)
+
+**Test report source:** 7 PDFs from Franklin's phone (208 screenshots total):
+- `df23e8f85` (18 pages) — Editor UI tests: cursor behavior, typing, completions
+- `e7714796b` (51 pages) — LSP install + completion tests (vtsls, Kotlin LSP failures)
+- `774ffd994` (7 pages) — Crash log screenshots (IllegalArgumentException stack traces)
+- `1bfe584ce` (10 pages) — Git/UI panel tests
+- `d906ff9e3` (10 pages) — Terminal/proot/LD_PRELOAD tests
+- `00f00e576` (56 pages) — Full app test session
+- `22f079f10` (56 pages) — Full app test session (duplicate/different run)
+
+**Tags used:** `P32-CRASH-FIX` (code comments on all crash fixes), `P32-LSP-FIX` (code comments on LSP install fixes)
+
+**Files touched:** `CursorBehaviors.kt`, `CodeEditor.kt`, `ExplorerPane.kt`, `SymbolSearchPanel.kt`, `ProjectShellScreen.kt`, `LspManager.kt`
+
+**Next on roadmap:**
+1. On-device testing of all 5 P32 fixes (especially cursor crash — type fast, paste, expand snippets)
+2. Verify vtsls actually installs and starts when TS7 setting is ON and TS7-native is unavailable
+3. Verify Kotlin LSP installs and `which kotlin-language-server` succeeds
+4. Patch Cloud Backup path (Bug 5 — needs `projectId` → project name flow trace)
+5. Long-press context menu parity audit (from vscode.dev test session #2 notes above)
+6. Then: Phase S (LSP Spec Compliance) or multi-cursor feature
