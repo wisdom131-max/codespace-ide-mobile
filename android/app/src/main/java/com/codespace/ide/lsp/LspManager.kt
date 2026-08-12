@@ -175,7 +175,7 @@ object LspManager {
                 // npm install -g may go to either depending on npm config.
                 "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
-            // P32-LSP-FIX: Replace broken Ubuntu apt nodejs/npm with NodeSource.
+            // LSP-FIX: Replace broken Ubuntu apt nodejs/npm with NodeSource.
             // Root cause: Ubuntu apt's nodejs has libnode115 dependency conflict —
             // a previous failed apt install leaves broken packages that block ALL
             // future npm installs. NodeSource provides clean Node 20.x with npm
@@ -210,7 +210,7 @@ object LspManager {
                 // npm install -g may go to either depending on npm config.
                 "( test -f /usr/local/lib/node_modules/typescript/lib/tsserver.js || " +
                 "  test -f /usr/lib/node_modules/typescript/lib/tsserver.js ) && echo OK",
-            // P32-LSP-FIX: Same NodeSource install + 300s timeout as TS.
+            // LSP-FIX: Same NodeSource install + 300s timeout as TS.
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -251,7 +251,7 @@ object LspManager {
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
-        // P32-LSP-FIX (2026-08-12): server.zip's actual layout puts the binary under a
+        // LSP-FIX (2026-08-12): server.zip's actual layout puts the binary under a
         // top-level `server/` folder — server/bin/kotlin-language-server — NOT directly
         // at bin/kotlin-language-server as the symlink previously assumed (confirmed by
         // extracting the real release archive: `unzip -l` lists server/bin/kotlin-language-server).
@@ -342,7 +342,7 @@ object LspManager {
             "intelephense",
             listOf("--stdio"),
             "which intelephense && echo OK",
-            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
+            // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -367,7 +367,7 @@ object LspManager {
             "vscode-html-language-server",
             listOf("--stdio"),
             "which vscode-html-language-server && echo OK",
-            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
+            // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -390,7 +390,7 @@ object LspManager {
             "vscode-css-language-server",
             listOf("--stdio"),
             "which vscode-css-language-server && echo OK",
-            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
+            // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -414,7 +414,7 @@ object LspManager {
             "vscode-json-language-server",
             listOf("--stdio"),
             "which vscode-json-language-server && echo OK",
-            // P32-LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
+            // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -675,7 +675,7 @@ object LspManager {
      * Check if the LSP server binary is installed in the proot rootfs.
      */
     fun isServerInstalled(context: Context, language: Language, resolvedConfig: ServerConfig? = null): Boolean {
-        // P32-LSP-FIX (2026-08-12): [resolvedConfig] lets a caller that already
+        // LSP-FIX (2026-08-12): [resolvedConfig] lets a caller that already
         // determined the EFFECTIVE config (e.g. startServer's TS7-native-vs-vtsls
         // runtime check) force this function to check that exact config, instead
         // of re-deriving it here from typescriptVersion alone. Without this, this
@@ -949,7 +949,7 @@ object LspManager {
         }
 
         // Check if installed, install if needed
-        // P32-LSP-FIX: pass the ALREADY-RESOLVED `config` (which may be vtslsConfig,
+        // LSP-FIX: pass the ALREADY-RESOLVED `config` (which may be vtslsConfig,
         // the TS7-native-vs-vtsls decision made above) through explicitly — otherwise
         // isServerInstalled/installServer independently re-derive config from
         // typescriptVersion alone and always assume TS7 native, checking/installing

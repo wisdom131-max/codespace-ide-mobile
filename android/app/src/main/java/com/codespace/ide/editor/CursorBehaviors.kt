@@ -18,7 +18,7 @@ import androidx.compose.ui.text.TextRange
  * Only activates when there is no active selection (just a cursor) to match
  * vscode.dev behavior — selecting text uses the normal selection highlight.
  *
- * P32-CRASH-FIX (2026-08-12): [textLayoutResult] is produced by BasicTextField's
+ * STABILITY-FIX (2026-08-12): [textLayoutResult] is produced by BasicTextField's
  * onTextLayout callback, which fires ASYNCHRONOUSLY — one frame behind the live
  * [text]/[selection] state. During that window (every keystroke, every paste,
  * every snippet expansion) this modifier can be invoked with a [text]/[selection]
@@ -48,7 +48,7 @@ internal fun wordHighlightModifier(
     // Only highlight when there's no active selection (cursor only)
     if (selection.start != selection.end) return Modifier
 
-    // P32-CRASH-FIX: bail if the layout is stale relative to the live text.
+    // STABILITY-FIX: bail if the layout is stale relative to the live text.
     val layoutLen = textLayoutResult.layoutInput.text.length
     if (text.length != layoutLen) return Modifier
 
@@ -103,7 +103,7 @@ internal fun wordHighlightModifier(
  * matching logic is already computed in CodeEditor (_bracketMatch); this modifier
  * renders the result as visible highlight boxes.
  *
- * P32-CRASH-FIX (2026-08-12): same textLayoutResult staleness hazard as
+ * STABILITY-FIX (2026-08-12): same textLayoutResult staleness hazard as
  * [wordHighlightModifier] above — [bracketMatch] positions can be computed
  * against text one frame newer than what [textLayoutResult] describes.
  * Guarded the same way: bail if there's no reliable length to check against,

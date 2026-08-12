@@ -2567,7 +2567,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     LaunchedEffect(Unit) {
-        // P32-CRASH-FIX: requestFocus() can throw "ActiveParent with no focused
+        // STABILITY-FIX: requestFocus() can throw "ActiveParent with no focused
         // child" — known Compose Foundation focus-system race when another
         // field/dialog released focus in the same frame this one requests it.
         try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}

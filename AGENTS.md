@@ -60,7 +60,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 | | |
 |-|-|
 | Latest commit | **35e4e319** — P32 crash fixes: Compose cursor crash, focus race, vtsls install detection, Kotlin LSP path — build pending |
-| Active phase | **Phase 32** — P32 Stability & LSP Fix Pass: Compose cursor crash (TextLayoutResult race), focus-system race, vtsls install detection, Kotlin LSP path. Next: On-device testing of all P32 fixes, then Phase S (LSP Spec Compliance). |
+| Active phase | **Post-Phase R Stability Fixes** — Compose cursor crash, focus race, vtsls install detection, Kotlin LSP path (from on-device test reports). Next: Phase S (LSP Spec Compliance), multi-cursor feature. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14547,7 +14547,7 @@ User ran through stdlib import completions (`import o/m/s` → objgraph, odbc, m
 - `00f00e576` (56 pages) — Full app test session
 - `22f079f10` (56 pages) — Full app test session (duplicate/different run)
 
-**Tags used:** `P32-CRASH-FIX` (code comments on all crash fixes), `P32-LSP-FIX` (code comments on LSP install fixes)
+**Tags used:** `STABILITY-FIX` (code comments on all crash fixes), `LSP-FIX` (code comments on LSP install fixes)
 
 **Files touched:** `CursorBehaviors.kt`, `CodeEditor.kt`, `ExplorerPane.kt`, `SymbolSearchPanel.kt`, `ProjectShellScreen.kt`, `LspManager.kt`
 
