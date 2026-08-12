@@ -14905,3 +14905,9 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 **What was fixed:** Updated AGENTS.md with complete Test 2.2 results (all 57 tests now have results). Added crash log analysis from 5 crash logs showing 15 crashes all from 2 root causes in `CursorBehaviors.kt` (wordHighlightModifier + bracketMatchModifier offset bounds) + 1 focus race. Updated test results table to replace PENDING rows with actual device results. Updated roadmap with prioritized fix plan.
 **Files touched:** AGENTS.md (documentation only)
 **Next on roadmap:** P0: Fix CursorBehaviors.kt offset bounds checks (fixes crash on typing — Tests 7, 8, 9, 16). P1: LSP/regex smart logic (Test 10), Find bar fix (Test 12), Problems panel jump (Test 19). P2: Multi-cursor continuation (Copy Line Down, column selection), UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54).
+
+### [2026-08-12 16:30 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** d8b14ba3 | **CI Build:** pending
+**What was fixed:** Fixed multi-cursor Select Next Occurrence to add cursor at current match before moving to next match (VSCode Ctrl+D behavior). Fixed Select All Occurrences to add cursor at every match instead of selecting first-to-last range (VSCode Ctrl+Shift+L). Added Copy Line Down and Copy Line Up menu items (VSCode Shift+Alt+Down/Up). Extra cursor positions are shifted correctly when duplicating lines. Existing ✕ chip retained for exiting multi-cursor mode.
+**Files touched:** android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt
+**Next on roadmap:** P0: Rebuild APK and retest crash fixes (CursorBehaviors.kt bounds checks already in code from commit 35e4e319 — device still running old APK). P1: LSP/regex smart toggle logic (Test 10), Find bar text visibility fix (Test 12), Problems panel → editor jump (Test 19). P2: UI restructuring (Tests 36, 38, 41, 42), debug breakpoint gutter (Test 54), .md file icon (Test 55).
