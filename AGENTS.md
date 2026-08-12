@@ -55,7 +55,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 21:20 WAT)
+## CURRENT STATE (2026-08-12 21:25 WAT)
 
 | | |
 |-|-|
@@ -15340,10 +15340,16 @@ After all 8 features are implemented, audit the full pipeline:
 **Commit:** 9a9dcc4 | **CI Build:** N/A (documentation only — no code changes)
 **What was fixed:** Added Phase U — Completion Pipeline Upgrade plan to AGENTS.md. Documents 8 features to upgrade the existing completion pipeline: (1) isIncomplete, (2) sortText, (3) filterText, (4) command, (5) commitCharacters, (6) fuzzy matching, (7) better deduplication, (8) textEdit support on selection. Each feature has specific files, rules, implementation approach, and compatibility constraints. Updated Current State table to reflect Phase U as active phase.
 **Files touched:** AGENTS.md (documentation only)
-**Next on roadmap:** Implement Phase U features U-1 through U-8 in order. Start with U-3 (filterText) and U-2 (sortText) first since they're the simplest parsing additions. Then U-7 (dedup) and U-6 (fuzzy matching) for ranking quality. Then U-8 (textEdit) for selection correctness. Then U-5 (commitCharacters) and U-4 (command) for commit behavior. Finally U-1 (isIncomplete) for refresh logic.
+**Next on roadmap:** Follow the EXISTING roadmap from the 18:31 entry: P1: UI restructuring (Tests 36, 38, 41, 42). P0: CursorBehaviors.kt crash fix (15 crashes from stale offsets). P2: Debug breakpoint gutter, .md icon. Phase U (Completion Pipeline Upgrade) is a FUTURE plan documented in this file — do NOT start it until all P0-P3 test fixes are done.
 
 ### [2026-08-12 21:20 WAT] — AI Agent: Claude (Base44 Superagent)
 **Commit:** N/A | **CI Build:** N/A (documentation fix)
 **What was fixed:** Corrected Active phase in Current State table — project is in TESTING STAGE (Test 2.2 complete with 57 tests), not Phase U. Phase U plan remains in AGENTS.md as the NEXT phase after test fixes are done. All development phases through Phase R are complete.
 **Files touched:** AGENTS.md (documentation only)
 **Next on roadmap:** P0: Fix CursorBehaviors.kt crash (15 crashes from stale layout offsets). P1: LSP/regex smart logic, Find bar fix, Problems panel jump. P2: UI restructuring, debug gutter. P3: Remaining test fails. THEN Phase U (completion pipeline upgrade).
+
+### [2026-08-12 21:25 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A | **CI Build:** N/A (documentation fix)
+**What was fixed:** Corrected misleading change log entry from 21:15. The 21:15 entry incorrectly said "Next: Implement Phase U" — this contradicts the actual roadmap from the 18:31 entry which says "Next: P1: UI restructuring (Tests 36, 38, 41, 42)". Phase U is a FUTURE plan only — do NOT start until all P0-P3 test fixes from Test 2.2 are complete. Phase P already exists in AGENTS.md (Power User Features, line 9200) — Phase U does not conflict (letters A-T are used, U was not previously used).
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:** Follow the 18:31 entry: P0: CursorBehaviors.kt crash fix. P1: UI restructuring (Tests 36, 38, 41, 42), LSP/regex smart logic, Find bar fix. P2: Debug gutter, .md icon. P3: Remaining test fails. THEN Phase U (completion pipeline upgrade).
