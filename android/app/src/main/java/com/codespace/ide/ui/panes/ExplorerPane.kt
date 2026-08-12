@@ -2269,8 +2269,9 @@ fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {
                 // Build / Gradle
                 "gradle", "gradlew"               -> Icons.Default.Build
                 "pro"                             -> Icons.Default.Build
-                // Markdown / Docs
-                "md", "markdown", "mdx"           -> Icons.AutoMirrored.Filled.Article
+                // Markdown — distinctive document icon (VS Code style)
+                "md", "markdown", "mdx"           -> Icons.Default.Description
+                // Docs / Text
                 "rst", "adoc", "asciidoc"         -> Icons.AutoMirrored.Filled.Article
                 "txt", "log", "out"               -> Icons.AutoMirrored.Filled.Article
                 // Images
@@ -2454,7 +2455,7 @@ fun fileIconColor(name: String): Color {
         "proto"                                     -> Color(0xFF4285F4)
         // Gradle
         "gradle", "gradlew"                         -> Color(0xFF02303A)
-        // Markdown
+        // Markdown — markdown brand blue
         "md", "markdown", "mdx"                     -> Color(0xFF4A90D9)
         "rst", "adoc"                               -> Color(0xFF6C9EF8)
         // Text
