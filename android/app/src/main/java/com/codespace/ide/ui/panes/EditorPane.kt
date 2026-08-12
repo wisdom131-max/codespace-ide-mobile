@@ -1572,6 +1572,13 @@ fun EditorPane(
                                 } else emptyList()
                             }
                         } else null,
+                        lspCommandExecutor = if (LspManager.isServerRunning(active.language)) {
+                            { command, arguments ->
+                                try {
+                                    LspManager.executeCommand(active.language, command, arguments)
+                                } catch (_: Exception) { /* safe failure */ }
+                            }
+                        } else null,
                         lspImportProvider = if (LspManager.isServerRunning(active.language)) {
                             { line, col ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
