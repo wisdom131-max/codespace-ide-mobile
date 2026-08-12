@@ -654,10 +654,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
             val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
-            vScroll.animateScrollTo((scrollToLine * lineHeightPx).toInt())
+            vScroll.animateScrollTo(((scrollToLine - 1) * lineHeightPx).toInt())
             highlightTargetLine = scrollToLine
-            kotlinx.coroutines.delay(2500)
-            highlightTargetLine = 0
+            // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(2500)
+                highlightTargetLine = 0
+            }
         }
     }
     val hScroll = rememberScrollState()
