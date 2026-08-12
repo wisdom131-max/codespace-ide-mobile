@@ -2933,7 +2933,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
 
-                            // Select All Occurrences
+                            // Select All Occurrences — add cursor at every match (VSCode Ctrl+Shift+L)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2946,9 +2946,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val pat = Regex("\\b" + Regex.escape(word) + "\\b", RegexOption.IGNORE_CASE)
                                     val matches = pat.findAll(value.text).toList()
                                     if (matches.isNotEmpty()) {
+                                        // Primary cursor goes to first match
                                         val first = matches.first().range.first
-                                        val last = matches.last().range.last + 1
-                                        value = value.copy(selection = TextRange(first, last))
+                                        val firstEnd = matches.first().range.last + 1
+                                        value = value.copy(selection = TextRange(first, firstEnd))
+                                        // Extra cursors at all subsequent matches
+                                        extraCursors = matches.drop(1).map { it.range.first }.distinct().sorted()
                                         // Scroll to make the first match visible
                                         val matchLine = value.text.substring(0, first).count { it == '\n' }
                                         coroutineScope.launch {
@@ -2959,7 +2962,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
 
-                            // Select Next Occurrence
+                            // Select Next Occurrence — add cursor at current match, move to next (VSCode Ctrl+D)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2973,6 +2976,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val currentPos = value.selection.end
                                     val nextMatch = pat.find(value.text, currentPos) ?: pat.find(value.text)
                                     if (nextMatch != null) {
+                                        // Add cursor at current selection start before moving
+                                        val currentStart = value.selection.start
+                                        if (currentStart !in extraCursors) {
+                                            extraCursors = (extraCursors + currentStart).distinct().sorted()
+                                        }
                                         value = value.copy(selection = TextRange(nextMatch.range.first, nextMatch.range.last + 1))
                                         // Scroll to make the next occurrence visible
                                         val matchLine = value.text.substring(0, nextMatch.range.first).count { it == '\n' }
@@ -3149,6 +3157,52 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         extraCursors = (extraCursors + nextNewline + 1).distinct().sorted()
                                     }
                                     showLspMenu = false
+                                }
+                            )
+
+                            // Copy Line Down — duplicate current line below (VSCode Shift+Alt+Down)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⤓", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Copy Line Down", color = Color(0xFFD4D4D4), fontSize = 12.sp)
+                                    }
+                                },
+                                onClick = {
+                                    showLspMenu = false
+                                    val text = value.text
+                                    val cursorPos = value.selection.end
+                                    val lineStart = if (cursorPos == 0) 0 else text.lastIndexOf('\n', cursorPos - 1) + 1
+                                    val lineEnd = text.indexOf('\n', cursorPos)
+                                    val currentLine = if (lineEnd >= 0) text.substring(lineStart, lineEnd) else text.substring(lineStart)
+                                    val insertText = currentLine + "\n"
+                                    val newText = text.substring(0, lineStart) + insertText + text.substring(lineStart)
+                                    value = value.copy(text = newText, selection = TextRange(lineStart, lineStart + currentLine.length))
+                                    // Shift extra cursors that are at or below the insertion point
+                                    extraCursors = extraCursors.map { if (it >= lineStart) it + currentLine.length + 1 else it }
+                                }
+                            )
+
+                            // Copy Line Up — duplicate current line above (VSCode Shift+Alt+Up)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⤒", color = Color(0xFFD4D4D4), fontSize = 13.sp)
+                                        Text("Copy Line Up", color = Color(0xFFD4D4D4), fontSize = 12.sp)
+                                    }
+                                },
+                                onClick = {
+                                    showLspMenu = false
+                                    val text = value.text
+                                    val cursorPos = value.selection.end
+                                    val lineStart = if (cursorPos == 0) 0 else text.lastIndexOf('\n', cursorPos - 1) + 1
+                                    val lineEnd = text.indexOf('\n', cursorPos)
+                                    val currentLine = if (lineEnd >= 0) text.substring(lineStart, lineEnd) else text.substring(lineStart)
+                                    val insertText = currentLine + "\n"
+                                    val newText = text.substring(0, lineStart) + insertText + text.substring(lineStart)
+                                    value = value.copy(text = newText, selection = TextRange(lineStart + currentLine.length + 1, lineStart + currentLine.length + 1))
+                                    // Shift extra cursors that are at or below the insertion point
+                                    extraCursors = extraCursors.map { if (it >= lineStart) it + currentLine.length + 1 else it }
                                 }
                             )
                             // P41-I/U: Source Actions — with built-in fallback (no LSP needed)
