@@ -1642,9 +1642,6 @@ object LspManager {
         if (!server.initialized) return null
 
         val params = positionParams(uri, line, character)
-        // BUG-1 FIX (restored): pass completion context per LSP spec so servers that branch on
-        // triggerKind (e.g. member completion after ".") behave correctly instead of
-        // falling back to generic/invoked-style completion.
         val completionContext = JSONObject()
         if (triggerCharacter != null) {
             completionContext.put("triggerKind", 2) // TriggerCharacter
@@ -1653,7 +1650,6 @@ object LspManager {
             completionContext.put("triggerKind", 1) // Invoked
         }
         params.put("context", completionContext)
-        // C-5 FIX: Scale timeout for large files
         val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
         return when (response) {
@@ -1661,6 +1657,40 @@ object LspManager {
             is JSONArray -> response
             is JSONObject -> response.optJSONArray("items")
             else -> null
+        }
+    }
+
+    /**
+     * Phase U-1: Returns completion items + isIncomplete flag.
+     * When isIncomplete=true, the server signals more items may be available on re-request.
+     * Callers should re-request completions on the next keystroke instead of caching.
+     */
+    fun getCompletionWithMeta(
+        language: Language,
+        uri: String,
+        line: Int,
+        character: Int,
+        triggerCharacter: String? = null,
+    ): Pair<JSONArray?, Boolean> {
+        val server = servers[language] ?: return Pair(null, false)
+        if (!server.initialized) return Pair(null, false)
+
+        val params = positionParams(uri, line, character)
+        val completionContext = JSONObject()
+        if (triggerCharacter != null) {
+            completionContext.put("triggerKind", 2)
+            completionContext.put("triggerCharacter", triggerCharacter)
+        } else {
+            completionContext.put("triggerKind", 1)
+        }
+        params.put("context", completionContext)
+        val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
+        val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
+        return when (response) {
+            null -> Pair(null, false)
+            is JSONArray -> Pair(response, false) // CompletionItem[] format: isIncomplete defaults to false
+            is JSONObject -> Pair(response.optJSONArray("items"), response.optBoolean("isIncomplete", false))
+            else -> Pair(null, false)
         }
     }
 
