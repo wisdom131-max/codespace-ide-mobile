@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 11:03 WAT)
+## CURRENT STATE (2026-08-12 17:50 WAT)
 
 | | |
 |-|-|
-| Latest commit | **1b1f49af** — STABILITY-FIX + LSP-FIX tag rename (crash fixes in commit 35e4e319) — build pending |
-| Active phase | **Post-Phase R Stability Fixes** — Compose cursor crash, focus race, vtsls install detection, Kotlin LSP path (from 57-test device retest). Next: Fix remaining FAIL/PARTIAL tests from 57-test results. |
+| Latest commit | **40e2f090** — feat(completions): Smart LSP/regex priority with 5s timeout fallback + multi-cursor double-tap fix (46bc40bc) + column-aware Add Cursor Above/Below — build pending |
+| Active phase | **Post-Phase R Stability Fixes** — Multi-cursor double-tap + column-aware cursors done. Smart LSP/regex completion toggle done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: Find bar text visibility (Test 12), Problems panel jump (Test 19), UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
