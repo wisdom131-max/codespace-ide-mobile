@@ -51,6 +51,10 @@ data class RankedCompletionItem(
     val matchIndices: List<Int> = emptyList(),
     /** P41-I: LSP insertTextFormat (1=PlainText, 2=Snippet). When 2, insertText has $1/$0 syntax. */
     val insertTextFormat: Int = 1,
+    /** Phase U-3: LSP filterText — used for matching instead of label when present */
+    val filterText: String? = null,
+    /** Phase U-4: LSP command — JSON string, executed after applying completion */
+    val command: String? = null,
 )
 
 // ── Fuzzy Matching ──────────────────────────────────────────────────────────
@@ -74,17 +78,29 @@ fun fuzzyScore(query: String, candidate: String): Float {
     if (query.isEmpty()) return 0f
     if (candidate.isEmpty()) return -1f
 
-    // Fast path: exact prefix match
-    if (candidate.lowercase().startsWith(query.lowercase())) {
-        return 100f + (1f / candidate.length) * 50f  // prefix match + shorter-is-better
+    val q = query.lowercase()
+    val c = candidate.lowercase()
+
+    // Phase U-6: Tiered scoring — exact > prefix > word-boundary > subsequence
+    // Tier 1: Exact match (query == candidate)
+    if (c == q) return 200f
+
+    // Tier 2: Prefix match (candidate starts with query)
+    if (c.startsWith(q)) {
+        return 100f + (1f / candidate.length) * 50f  // prefix + shorter-is-better
     }
 
-    // Subsequence match with scoring
+    // Tier 3: Word-boundary match (query appears after a non-alphanumeric char)
+    val wordStart = c.indexOf(q)
+    if (wordStart > 0 && !c[wordStart - 1].isLetterOrDigit()) {
+        return 75f + (1f / candidate.length) * 30f  // word-boundary + shorter-is-better
+    }
+
+    // Tier 4: Subsequence match with scoring (existing logic)
     val matchIndices = mutableListOf<Int>()
     var qi = 0
     var bestScore = -1f
 
-    // Try matching starting from each candidate position (greedy first match)
     for (startCi in candidate.indices) {
         if (candidate[startCi].lowercaseChar() != query[0].lowercaseChar()) continue
         matchIndices.clear()
@@ -101,7 +117,6 @@ fun fuzzyScore(query: String, candidate: String): Float {
         }
 
         if (qi == query.length) {
-            // Full subsequence match — score it
             val score = scoreMatch(matchIndices, candidate)
             if (score > bestScore) bestScore = score
         }
@@ -222,8 +237,10 @@ fun rank(
     val q = query.trim()
 
     return items.map { item ->
-        val fuzzy = fuzzyScore(q, item.label)
-        val indices = fuzzyMatchIndices(q, item.label)
+        // Phase U-3: Use filterText for matching when present, fall back to label
+        val matchText = item.filterText ?: item.label
+        val fuzzy = fuzzyScore(q, matchText)
+        val indices = fuzzyMatchIndices(q, item.label) // highlight indices always map to label
 
         // MRU boost: more recent = higher boost (exponential decay over 7 days)
         val mruBoost = mruMap[item.label]?.let { lastUsed ->
@@ -246,10 +263,13 @@ fun rank(
             CompletionSource.PATH -> -20f
         }
 
-        // sortText from server (lower string = higher priority in LSP spec)
+        // Phase U-2: sortText from server — when present, use as PRIMARY sort key
+        // LSP spec: lower sortText string = higher priority. Convert to a strong boost.
         val sortTextScore = item.sortTextFromServer?.let { st ->
-            // Convert sortText to a penalty: "a" = 0, "z" = 25, etc.
-            -(st.firstOrNull()?.code?.minus(97)?.toFloat() ?: 0f)
+            // Map first char to a penalty range: "a" = 50f boost, "z" = -25f penalty
+            // This ensures server sortText dominates fuzzy score differences
+            val charScore = -(st.firstOrNull()?.code?.minus(97)?.toFloat() ?: 50f)
+            charScore * 2f  // Scale to dominate fuzzy score tier differences
         } ?: 0f
 
         val totalScore = fuzzy + mruBoost + usageBoost + sourcePenalty + sortTextScore
@@ -257,7 +277,16 @@ fun rank(
         item.copy(score = totalScore, matchIndices = indices)
     }
     .filter { it.score >= 0f || q.isBlank() }
-    .sortedByDescending { it.score }
+    // Phase U-2: When any items have sortText, sort by (sortText, score) for server priority
+    .let { ranked ->
+        val hasSortText = ranked.any { !it.sortTextFromServer.isNullOrBlank() }
+        if (hasSortText) {
+            ranked.sortedWith(compareByDescending<RankedCompletionItem> { it.score }
+                .thenBy { it.sortTextFromServer ?: "z" })
+        } else {
+            ranked.sortedByDescending { it.score }
+        }
+    }
 }
 
 // ── Conversion Helpers ─────────────────────────────────────────────────────
@@ -274,6 +303,15 @@ fun lspToRanked(items: List<LspCompletionItem>): List<RankedCompletionItem> {
             // P41-D: Pass through auto-import edits and range-based textEdit
             additionalTextEditsJson = item.additionalTextEditsJson,
             textEditJson = item.textEditJson,
+            insertTextFormat = item.insertTextFormat,
+            // Phase U-2: Pass through sortText
+            sortTextFromServer = item.sortText,
+            // Phase U-3: Pass through filterText
+            filterText = item.filterText,
+            // Phase U-4: Pass through command
+            command = item.command,
+            // Phase U-5: Pass through commitCharacters
+            commitCharacters = item.commitCharacters,
         )
     }
 }
