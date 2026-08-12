@@ -651,6 +651,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
     var highlightTargetLine by remember { mutableStateOf(0) }
+    val coroutineScope = rememberCoroutineScope()
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
             val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
@@ -664,7 +665,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
     val hScroll = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
     // Reactive minimap visibility from FeatureToggleStore — toggling in Settings updates immediately
     var showMinimapState by FeatureToggleStore.state("minimap")
 
