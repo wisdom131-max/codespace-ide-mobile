@@ -231,6 +231,7 @@ enum class RowType {
     PYRIGHT_NODE_ARGS_INPUT,
     LSP_SERVER_LIST,
     LSP_ENABLED_CHECKBOX,
+    SMART_COMPLETION_CHECKBOX,
     TS_VERSION_DROPDOWN,
     CUSTOM_CURSOR_CHECKBOX,
     CURSOR_MODE_DROPDOWN,
@@ -344,6 +345,10 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Enable LSP Servers",
         "Master switch for all language servers. When off, only fallback completions are used.",
         RowType.LSP_ENABLED_CHECKBOX))
+    add(SettingsRow("smart_completion", SettingsCategory.LSP_SERVERS,
+        "Smart Completion Priority",
+        "LSP first, regex fallback after 5s. Auto-disables local completions when LSP is active.",
+        RowType.SMART_COMPLETION_CHECKBOX))
     add(SettingsRow("lsp_server_list", SettingsCategory.LSP_SERVERS,
         "Available Language Servers",
         "These servers auto-install when you open a file of the matching language",
@@ -389,6 +394,7 @@ private fun SettingsRowRenderer(
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
         RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
         RowType.LSP_ENABLED_CHECKBOX -> LspEnabledRow(textPri, textSec, divider)
+        RowType.SMART_COMPLETION_CHECKBOX -> SmartCompletionRow(textPri, textSec, divider)
         RowType.TS_VERSION_DROPDOWN -> TypeScriptVersionRow(accent, textPri, textSec, divider)
         RowType.CUSTOM_CURSOR_CHECKBOX -> CustomCursorOverlayRow(textPri, textSec, divider)
         RowType.CURSOR_MODE_DROPDOWN -> CursorModeRow(accent, textPri, textSec, divider)
@@ -466,6 +472,26 @@ private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
         Switch(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setLspEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun SmartCompletionRow(textPri: Color, textSec: Color, divider: Color) {
+    val smartEnabled = ProjectSettingsStore.smartCompletionEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Smart Completion Priority", color = textPri, fontSize = 13.sp)
+            Text("LSP first, regex fallback after 5s. Auto-disables local completions when LSP is active.",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = smartEnabled.value,
+            onCheckedChange = { ProjectSettingsStore.setSmartCompletionEnabled(it) },
         )
     }
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
