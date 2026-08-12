@@ -570,6 +570,8 @@ fun CodeEditor(
     lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)? = null,
     /** P22-J: LSP-backed auto-import provider — returns ImportEdits for current cursor position */
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
+    // Phase U-4: Executor for LSP workspace/executeCommand (called after completion accept)
+    lspCommandExecutor: ((command: String, arguments: org.json.JSONArray?) -> Unit)? = null,
     /** P41-F: Workspace symbol provider — returns workspace/symbol results for cross-file completion */
     lspWorkspaceSymbolProvider: ((query: String) -> List<LspCompletionItem>)? = null,
     /** P41-K: LSP completion resolver — lazily resolves documentation/detail for a highlighted item */
