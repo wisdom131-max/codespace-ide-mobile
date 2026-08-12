@@ -500,6 +500,8 @@ fun CodeEditor(
     breakpointLines: Set<Int> = emptySet(),
     /** P8-1 Breakpoints: called when user taps a line number to toggle a breakpoint. */
     onBreakpointToggle: (Int) -> Unit = {},
+    /** P54: Current debug line (1-based) for yellow arrow indicator in gutter. 0 = none. */
+    debugCurrentLine: Int = 0,
     /** P41-W: LSP semantic token ranges — overlaid on regex highlighting */
     semanticTokens: List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange> = emptyList(),
     /** P26-1: LSP document highlight — lines to highlight (0-based startLine, endLine pairs). */
@@ -1657,32 +1659,44 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     )
                                 }
                             }
-                            // P8-1 Breakpoint dot + tappable line number
-                            Box(
+                            // P8-1 Breakpoint dot + tappable line number (VS Code style: show both)
+                            Row(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(lineHeightDp)
                                     .clickable { onBreakpointToggle(lineNum) },
-                                contentAlignment = Alignment.CenterEnd,
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End,
                             ) {
+                                // P54: Debug current-line indicator — yellow arrow (▶) in gutter
+                                if (debugCurrentLine > 0 && lineNum == debugCurrentLine - 1) {
+                                    Text(
+                                        text = "→",
+                                        color = Color(0xFFCCA700),
+                                        fontSize = (fontSize * 0.8f).sp,
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                }
                                 if (breakpointLines.contains(lineNum)) {
                                     Box(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0xFFFF5F5F))
+                                            .background(Color(0xFFE51400))
                                     )
-                                } else {
-                                    Text(
-                                        text = (lineNum + 1).toString(),
-                                        color = if (bookmarkedLines.contains(lineNum))
-                                            colors.keyword else colors.gutter,  // P50-FIX: theme-aware bookmark color
-                                        fontSize = fontSize.sp,
-                                        lineHeight = (fontSize * 1.25f).sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                                    )
+                                    Spacer(Modifier.width(4.dp))
                                 }
+                                Text(
+                                    text = (lineNum + 1).toString(),
+                                    color = if (debugCurrentLine > 0 && lineNum == debugCurrentLine - 1)
+                                        Color(0xFFCCA700)  // P54: yellow highlight on current debug line
+                                    else if (bookmarkedLines.contains(lineNum))
+                                        colors.keyword else colors.gutter,  // P50-FIX: theme-aware bookmark color
+                                    fontSize = fontSize.sp,
+                                    lineHeight = (fontSize * 1.25f).sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                                )
                             }
                         }
                     }
@@ -2099,6 +2113,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) }, colors)
 
+        // P54: Debug current-line background highlight (yellow tint, like VS Code)
+        if (debugCurrentLine > 0) {
+            val topDbg = ((debugCurrentLine - 1) * lineHeightDp.value - vScrollDp).coerceAtLeast(0f)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .padding(start = GUTTER_WIDTH.dp, top = topDbg.dp)
+                    .height(lineHeightDp)
+                    .background(Color(0xFFCCA700).copy(alpha = 0.12f))
+                    .zIndex(2.5f),
+            )
+        }
         // PROBLEMS-TAB FIX: Gold highlight on the problem target line (fades after 2.5s)
         if (highlightTargetLine > 0) {
             val lineHeightPxHl = lineHeightDp.value  // P50-FIX: density-corrected line height
