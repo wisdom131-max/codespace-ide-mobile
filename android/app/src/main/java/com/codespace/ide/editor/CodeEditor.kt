@@ -1659,6 +1659,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     )
                                 }
                             }
+                            Spacer(Modifier.width(2.dp))
                             // P8-1 Breakpoint dot + tappable line number (VS Code style: show both)
                             Row(
                                 modifier = Modifier
