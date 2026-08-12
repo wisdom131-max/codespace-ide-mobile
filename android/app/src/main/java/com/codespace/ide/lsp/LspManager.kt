@@ -251,6 +251,15 @@ object LspManager {
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────
+        // P32-LSP-FIX (2026-08-12): server.zip's actual layout puts the binary under a
+        // top-level `server/` folder — server/bin/kotlin-language-server — NOT directly
+        // at bin/kotlin-language-server as the symlink previously assumed (confirmed by
+        // extracting the real release archive: `unzip -l` lists server/bin/kotlin-language-server).
+        // The old command created a dangling symlink: curl/unzip/ln/rm/echo all reported
+        // success (ln -sf doesn't verify its target exists), so the install looked green
+        // in the log, but `which kotlin-language-server` correctly failed afterward because
+        // the symlink pointed nowhere. Fixed path + added an explicit `test -f` guard so a
+        // bad extract fails loudly instead of silently linking to nothing.
         Language.KOTLIN to ServerConfig(
             Language.KOTLIN,
             "kotlin-language-server",
@@ -259,7 +268,9 @@ object LspManager {
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless unzip curl; " +
                 "curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && " +
                 "unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && " +
-                "ln -sf /opt/kotlin-language-server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && " +
+                "test -f /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
+                "chmod +x /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
+                "ln -sf /opt/kotlin-language-server/server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && " +
                 "rm -f /tmp/kls.zip && echo Kotlin-LSP-installed",
             300,
         ),
@@ -663,7 +674,25 @@ object LspManager {
     /**
      * Check if the LSP server binary is installed in the proot rootfs.
      */
-    fun isServerInstalled(context: Context, language: Language): Boolean {
+    fun isServerInstalled(context: Context, language: Language, resolvedConfig: ServerConfig? = null): Boolean {
+        // P32-LSP-FIX (2026-08-12): [resolvedConfig] lets a caller that already
+        // determined the EFFECTIVE config (e.g. startServer's TS7-native-vs-vtsls
+        // runtime check) force this function to check that exact config, instead
+        // of re-deriving it here from typescriptVersion alone. Without this, this
+        // function always assumed ts7NativeConfig whenever the TS7 setting was on
+        // even when startServer had already decided to fall back to vtsls — so it
+        // checked/installed the WRONG server (typescript@7 native) while startServer
+        // went on to spawn a DIFFERENT one (vtsls) that was never installed, causing
+        // "exec: vtsls: not found".
+        if (resolvedConfig != null) {
+            AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${resolvedConfig.checkCommand}", "lsp")
+            val output = ProotInstaller.execOnce(context, resolvedConfig.checkCommand, timeoutSeconds = 20)
+            val lastLine = output.trimEnd().lines().lastOrNull().orEmpty().trim()
+            val installed = lastLine == "OK" || lastLine == "found" ||
+                (lastLine.startsWith("/") && !lastLine.contains("not found") && !lastLine.contains("no "))
+            AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (lastLine='$lastLine')", "lsp")
+            return installed
+        }
         var config = configs[language] ?: return false
         // P-PYRIGHT: Use Pyright config if Python + diagnostics source is PYRIGHT
         if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
@@ -711,18 +740,20 @@ object LspManager {
      * (typescript@7.x: binary present, tsserver.js absent) correctly falls through
      * to the install command here and runs `npm install -g typescript@5.6.3` to repair.
      */
-    fun installServer(context: Context, language: Language): String {
-        var config = configs[language] ?: return "No LSP server configured for ${language.displayName}"
-        // P-PYRIGHT: Use Pyright config if Python + diagnostics source is PYRIGHT
-        if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
-            config = pyrightConfig
+    fun installServer(context: Context, language: Language, resolvedConfig: ServerConfig? = null): String {
+        var config = resolvedConfig ?: (configs[language] ?: return "No LSP server configured for ${language.displayName}")
+        if (resolvedConfig == null) {
+            // P-PYRIGHT: Use Pyright config if Python + diagnostics source is PYRIGHT
+            if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
+                config = pyrightConfig
+            }
+            // TS7: Install the effective config (native TS7 or vtsls fallback)
+            if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
+                ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
+                config = ts7NativeConfig
+            }
         }
-        // TS7: Install the effective config (native TS7 or vtsls fallback)
-        if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
-            ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
-            config = ts7NativeConfig
-        }
-        if (isServerInstalled(context, language)) {
+        if (isServerInstalled(context, language, resolvedConfig = config)) {
             AppOutputLog.log("[LSP] ${language.displayName} install check PASSED (binary + runtime files present) — skipping install", "lsp")
             return "${language.displayName} LSP server already installed"
         }
@@ -918,13 +949,18 @@ object LspManager {
         }
 
         // Check if installed, install if needed
+        // P32-LSP-FIX: pass the ALREADY-RESOLVED `config` (which may be vtslsConfig,
+        // the TS7-native-vs-vtsls decision made above) through explicitly — otherwise
+        // isServerInstalled/installServer independently re-derive config from
+        // typescriptVersion alone and always assume TS7 native, checking/installing
+        // a DIFFERENT server than the one about to be spawned below.
         Log.d(TAG, "startServer: checking isServerInstalled for ${language.displayName} via: ${config.checkCommand}")
-        if (!isServerInstalled(context, language)) {
+        if (!isServerInstalled(context, language, resolvedConfig = config)) {
             Log.d(TAG, "startServer: NOT installed — running installServer for ${language.displayName}")
             AppOutputLog.log("[LSP] ${language.displayName} server not installed — starting install…", "lsp")
-            val installResult = installServer(context, language)
+            val installResult = installServer(context, language, resolvedConfig = config)
             Log.d(TAG, "Install result: $installResult")
-            if (!isServerInstalled(context, language)) {
+            if (!isServerInstalled(context, language, resolvedConfig = config)) {
                 // P38-CHECK-FIX: The install may have succeeded but the check command
                 // itself may be broken (false negative). As a last resort, check if the
                 // binary exists at common locations before giving up.

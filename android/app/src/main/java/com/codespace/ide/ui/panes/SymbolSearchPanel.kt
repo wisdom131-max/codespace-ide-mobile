@@ -49,7 +49,10 @@ fun SymbolSearchPanel(
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        // P32-CRASH-FIX: requestFocus() can throw "ActiveParent with no focused
+        // child" — known Compose Foundation focus-system race when another
+        // field/dialog released focus in the same frame this one requests it.
+        try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
         keyboardController?.show()
     }
 

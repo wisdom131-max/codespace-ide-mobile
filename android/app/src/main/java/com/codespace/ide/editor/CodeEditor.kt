@@ -1994,7 +1994,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 value = value.copy(selection = TextRange(pos))
                             },
                             onTap = {
-                                focusRequester.requestFocus()
+                                // P32-CRASH-FIX: requestFocus() can throw
+                                // "ActiveParent with no focused child" if another
+                                // dialog/field released focus in the same frame —
+                                // known Compose Foundation focus-system race.
+                                try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                             },
                         )),
                 )

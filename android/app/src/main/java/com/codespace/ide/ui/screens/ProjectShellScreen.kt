@@ -1639,7 +1639,9 @@ private fun PssOverlays(
             LaunchedEffect(showCommandPalette) {
                 if (showCommandPalette) {
                     kotlinx.coroutines.delay(80) // let the dialog compose before requesting focus
-                    cmdFocusRequester.requestFocus()
+                    // P32-CRASH-FIX: requestFocus() can throw "ActiveParent with no
+                    // focused child" — known Compose Foundation focus-system race.
+                    try { cmdFocusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                 }
             }
             Box(
