@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 18:31 WAT)
+## CURRENT STATE (2026-08-12 21:15 WAT)
 
 | | |
 |-|-|
 | Latest commit | **40232a11** — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **Post-Phase R Stability Fixes** — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
+| Active phase | **Phase U — Completion Pipeline Upgrade** (8 features: isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit) | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -14897,6 +14897,388 @@ Type, don't save, wait. Expected: autosave at ~20s, not 30s.
 **Total: 15 crashes across 5 logs. All from 2 root causes in `CursorBehaviors.kt` + 1 focus race.**
 
 ---
+
+
+## Phase U — Completion Pipeline Upgrade (2026-08-12)
+
+### Prerequisite — CONFIRMED
+The core completion pipeline is already complete and must NOT be rebuilt:
+
+Language Server → CompletionList → multiple CompletionItems → LspCompletionItem list → local filtering/ranking → completion popup → item selection → insertion
+
+**DO NOT rebuild this pipeline.** Upgrade it in-place.
+
+### Audit Baseline (from source code audit, 2026-08-12)
+
+| Stage | Status | File(s) |
+|-------|--------|---------|
+| getCompletion() request | ✅ Working | LspManager.kt:1634 |
+| JSON-RPC response handler | ✅ Working | JsonRpcClient.kt:93, :184 |
+| CompletionList { "items": [...] } support | ✅ Working | LspManager.kt:1659-1664 |
+| parseLspCompletions() iterates ALL items | ✅ Working | LspIntegration.kt:131 |
+| LspCompletionItem data class | ✅ Working | LspIntegration.kt:112 |
+| label, kind, detail, insertText preserved | ✅ Working | LspIntegration.kt:135-145 |
+| additionalTextEdits (auto-import) | ✅ Working | LspIntegration.kt:147, CodeEditor.kt:4282-4349 |
+| insertTextFormat (snippet) | ✅ Working | LspIntegration.kt:138-142, CodeEditor.kt:4299-4309 |
+| textEdit parsed & stored | ✅ Stored | LspIntegration.kt:148 |
+| textEdit applied on selection | ❌ NOT APPLIED | CodeEditor.kt:4273-4363 (uses insertText instead) |
+| filterText | ❌ NOT PARSED | No field in LspCompletionItem |
+| sortText | ❌ NOT PARSED | RankedCompletionItem has field but never populated |
+| isIncomplete | ❌ NOT PARSED | No handling |
+| command | ❌ NOT PARSED | No field or handling |
+| commitCharacters | ❌ NOT PARSED | RankedCompletionItem has field but never populated |
+| distinctBy(label) dedup | ⚠️ PARTIAL | CodeEditor.kt:1055 — can drop semantically different items with same label |
+| Fuzzy matching | ⚠️ PARTIAL | CompletionEngine.kt:58 — fuzzyScore exists but may hide valid LSP results |
+
+### Files Involved (DO NOT create new files for this phase)
+
+| File | Role |
+|------|------|
+| `lsp/LspIntegration.kt` | LspCompletionItem data class, parseLspCompletions() |
+| `lsp/LspManager.kt` | getCompletion() — request + response unwrap |
+| `lsp/CompletionEngine.kt` | RankedCompletionItem data class, lspToRanked(), rank(), fuzzyScore() |
+| `editor/CodeEditor.kt` | allCompletions merge, popup rendering, selection/insertion handler |
+| `ui/panes/EditorPane.kt` | lspCompletionProvider lambda — calls getCompletion + parseLspCompletions |
+
+### Feature Upgrade Plan (8 features, in order)
+
+---
+
+#### U-1: isIncomplete
+
+**Goal:** Parse and preserve CompletionList.isIncomplete. Allow subsequent completion requests to refresh results when the server signals more items are available.
+
+**Files:**
+- `LspManager.kt` — getCompletion(): return isIncomplete flag alongside items
+- `LspIntegration.kt` — LspCompletionItem or new wrapper: carry isIncomplete
+- `CodeEditor.kt` — track isIncomplete state; on next keystroke, re-request (not cancel-and-refetch loop)
+
+**Rules:**
+- Parse `isIncomplete` from CompletionList JSONObject (not present on CompletionItem[] format — default false)
+- When isIncomplete=true and user types another character, send a fresh completion request (the server has more items)
+- When isIncomplete=false, cache the results for subsequent keystrokes (current behavior)
+- DO NOT cause request loops — only re-request on actual keystroke, not on timer
+- DO NOT re-request if prefix hasn't changed
+
+**Implementation approach:**
+- Change getCompletion() return type from `JSONArray?` to a small data class: `CompletionResponse(items: JSONArray?, isIncomplete: Boolean)`
+- Parse `isIncomplete` from JSONObject response: `response.optBoolean("isIncomplete", false)`
+- For JSONArray response (CompletionItem[] format), isIncomplete defaults to false
+- In CodeEditor's LaunchedEffect, store `lspIsIncomplete` state
+- On next keystroke: if `lspIsIncomplete == true`, re-fetch (don't reuse cached lspCompletions)
+- If `lspIsIncomplete == false`, reuse cached lspCompletions and filter locally (current behavior)
+
+---
+
+#### U-2: sortText
+
+**Goal:** Parse and preserve sortText. Incorporate server-provided sortText into ranking without blindly overriding it with local ranking.
+
+**Files:**
+- `LspIntegration.kt` — LspCompletionItem: add `sortText: String? = null` field
+- `LspIntegration.kt` — parseLspCompletions(): parse `item.optString("sortText", "")`
+- `CompletionEngine.kt` — lspToRanked(): populate `sortTextFromServer` (field already exists, line 41)
+- `CodeEditor.kt` — allCompletions inline conversion (line 1037): populate `sortTextFromServer`
+- `CompletionEngine.kt` — rank(): sortText scoring logic already exists (line 250-253) — verify it works once populated
+
+**Rules:**
+- Parse `sortText` from each CompletionItem (optional field)
+- When sortText is present, use it as the PRIMARY sort key (server knows best)
+- Local fuzzy score is SECONDARY (breaks ties when sortText is equal or absent)
+- When sortText is absent, fall back to current behavior (fuzzy score + MRU + usage)
+- DO NOT blindly override server sortText with local ranking
+
+**Implementation approach:**
+- Add `sortText: String? = null` to LspCompletionItem
+- In parseLspCompletions(): `val sortText = item.optString("sortText", "").ifBlank { null }`
+- In lspToRanked() and inline allCompletions conversion: pass `sortTextFromServer = item.sortText`
+- In rank(): when sortTextFromServer is non-null, use it as primary sort. The existing code (line 250-253) converts sortText to a penalty score — verify the conversion is correct (lower string = higher priority per LSP spec)
+- Change sort: when any items have sortText, sort by (sortText, -score) instead of just (-score)
+
+---
+
+#### U-3: filterText
+
+**Goal:** Parse and preserve filterText. Use filterText for matching when supplied. Fall back to label when filterText is absent.
+
+**Files:**
+- `LspIntegration.kt` — LspCompletionItem: add `filterText: String? = null` field
+- `LspIntegration.kt` — parseLspCompletions(): parse `item.optString("filterText", "")`
+- `CompletionEngine.kt` — RankedCompletionItem: add `filterText: String? = null` field
+- `CompletionEngine.kt` — lspToRanked(): populate filterText
+- `CompletionEngine.kt` — rank() and fuzzyScore(): use filterText for matching when present, label as fallback
+- `CodeEditor.kt` — inline allCompletions conversion: pass filterText through
+
+**Rules:**
+- Parse `filterText` from each CompletionItem (optional field)
+- When filterText is present, use it for fuzzy matching instead of label
+- When filterText is absent, use label (current behavior)
+- The popup still displays label (filterText is for matching only, not display)
+- DO NOT hide valid LSP results — if filterText matches, the item should appear even if label doesn't match the prefix
+
+**Implementation approach:**
+- Add `filterText: String? = null` to LspCompletionItem and RankedCompletionItem
+- In parseLspCompletions(): `val filterText = item.optString("filterText", "").ifBlank { null }`
+- In rank(): `val matchText = item.filterText ?: item.label`
+- Use `fuzzyScore(q, matchText)` instead of `fuzzyScore(q, item.label)`
+- Use `fuzzyMatchIndices(q, matchText)` for highlight indices
+- Note: highlight indices should still map to the LABEL for display, not filterText
+
+---
+
+#### U-4: command
+
+**Goal:** Parse completion commands. Apply the completion edit first, then execute the associated command when appropriate. Handle command failure safely.
+
+**Files:**
+- `LspIntegration.kt` — LspCompletionItem: add `command: String? = null` field (JSON string of command object)
+- `LspIntegration.kt` — parseLspCompletions(): parse `item.optJSONObject("command")?.toString()`
+- `CodeEditor.kt` — Completion data class: add `command: String? = null`
+- `CodeEditor.kt` — selection handler: after applying insertText/textEdit/additionalTextEdits, execute command if present
+- `LspManager.kt` — add executeCommand() method: send `workspace/executeCommand` JSON-RPC
+
+**Rules:**
+- Parse `command` from each CompletionItem (optional field, contains `title` + `command` string + optional `arguments`)
+- Apply the completion edit FIRST (insertText or textEdit + additionalTextEdits)
+- Then execute the command via `workspace/executeCommand`
+- Handle command failure safely — if the command fails, the completion edit should still be applied
+- DO NOT block the UI thread on command execution — run in coroutine
+- DO NOT execute commands that require user interaction
+
+**Implementation approach:**
+- Add `command: String? = null` to LspCompletionItem
+- In parseLspCompletions(): `val command = item.optJSONObject("command")?.toString()`
+- Pass through RankedCompletionItem → Completion
+- In selection handler (CodeEditor.kt ~4273): after text is applied:
+  ```kotlin
+  if (!comp.command.isNullOrBlank()) {
+      coroutineScope.launch(Dispatchers.IO) {
+          try {
+              val cmd = JSONObject(comp.command)
+              LspManager.executeCommand(language, cmd.optString("command"), cmd.optJSONArray("arguments"))
+          } catch (_: Exception) { /* safe failure */ }
+      }
+  }
+  ```
+- Add `fun executeCommand(language, command, arguments)` to LspManager — sends workspace/executeCommand via JSON-RPC
+
+---
+
+#### U-5: commitCharacters
+
+**Goal:** Parse commitCharacters. Detect when a typed character should commit the selected item. Apply the completion correctly. Avoid committing when there is no valid selected completion.
+
+**Files:**
+- `LspIntegration.kt` — LspCompletionItem: add `commitCharacters: String? = null` field (raw string of commit chars)
+- `LspIntegration.kt` — parseLspCompletions(): parse `item.optString("commitCharacters", "")` (it's a JSON string array, join to chars)
+- `CompletionEngine.kt` — RankedCompletionItem: field already exists `commitCharacters: List<Char>` (line 45) — populate it
+- `CodeEditor.kt` — Completion data class: add `commitCharacters: List<Char> = emptyList()`
+- `CodeEditor.kt` — in the onValueChange / keystroke handler: if popup is showing and selectedLabel is non-null and typed char is in selected item's commitCharacters → commit the selection
+
+**Rules:**
+- Parse `commitCharacters` from CompletionItem (optional, JSON array of single-char strings)
+- Also check CompletionList-level `commitCharacters` (some servers set it at the list level)
+- When popup is showing and user types a character that is in the selected item's commitCharacters:
+  1. Apply the selected completion (insertText/textEdit)
+  2. Then insert the typed character after the completion
+- If no item is selected (selectedLabel == null), DO NOT commit — just type normally
+- If the typed character is NOT in commitCharacters, continue filtering (current behavior)
+- DO NOT commit on trigger characters like "." (those re-trigger completion, not commit)
+
+**Implementation approach:**
+- In parseLspCompletions(): `val commitChars = item.optJSONArray("commitCharacters")?.let { arr -> (0 until arr.length()).map { arr.optString(it) } }?.joinToString("")`
+- Pass through to RankedCompletionItem.commitCharacters (field exists at line 45)
+- Pass through to Completion data class
+- In CodeEditor onValueChange handler, when `showCompletions && selectedLabel != null`:
+  ```kotlin
+  val selectedComp = filteredCompletions.getOrNull(initialIndex)
+  if (selectedComp != null && selectedComp.commitCharacters.isNotEmpty()) {
+      val typedChar = /* the new character the user just typed */
+      if (selectedComp.commitCharacters.contains(typedChar)) {
+          // Apply completion, then insert the typed char
+          applyCompletion(selectedComp)
+          // Re-process the typed char as new input
+      }
+  }
+  ```
+- This needs to hook into the existing onValueChange flow — be careful not to break normal typing
+
+---
+
+#### U-6: Fuzzy Matching
+
+**Goal:** Add proper fuzzy matching/ranking. Preserve exact/prefix matches as higher-priority results. Don't hide valid LSP results. Keep performance suitable for a mobile IDE.
+
+**Files:**
+- `CompletionEngine.kt` — fuzzyScore() (line 58), fuzzyMatchIndices() — improve algorithm
+- `CompletionEngine.kt` — rank() (line 215) — adjust scoring tiers
+
+**Rules:**
+- Exact match (query == label) → highest priority (score +100)
+- Prefix match (label.startsWith(query)) → second priority (score +50)
+- Word-boundary match (query appears after a non-alphanumeric char in label) → third priority (score +25)
+- Subsequence match (current fuzzyScore) → fourth priority (existing score)
+- No match (fuzzyScore == 0 and query is not blank) → filtered out (current behavior, BUT only if filterText also doesn't match)
+- When query is blank (empty prefix after "."), ALL LSP items pass (current behavior — must preserve)
+- Performance: must handle 60 items in <16ms (one frame on 60fps)
+- DO NOT hide valid LSP results — if the server returned it, it should only be filtered out if it genuinely doesn't match
+
+**Implementation approach:**
+- Rewrite fuzzyScore to return a tiered score:
+  ```kotlin
+  fun fuzzyScore(query: String, candidate: String): Float {
+      if (query.isBlank()) return 1f  // empty query — all pass
+      val q = query.lowercase()
+      val c = candidate.lowercase()
+      if (c == q) return 100f  // exact
+      if (c.startsWith(q)) return 50f + (c.length - q.length) * 0.1f  // prefix
+      // word boundary check
+      val wordStart = c.indexOf(q)
+      if (wordStart > 0 && !c[wordStart - 1].isLetterOrDigit()) return 25f + (c.length - q.length) * 0.05f
+      // subsequence (existing logic)
+      return subsequenceScore(q, c)  // current fuzzyScore logic
+  }
+  ```
+- In rank(): filter threshold stays `score >= 0f || q.isBlank()` but now exact/prefix matches are guaranteed to pass
+- Use filterText (from U-3) for matching, label as fallback
+
+---
+
+#### U-7: Better Deduplication
+
+**Goal:** Improve the existing distinctBy(label) logic. Don't incorrectly remove two semantically different items that happen to share the same label. Use appropriate completion metadata when determining duplicates.
+
+**Files:**
+- `CodeEditor.kt` — line 1055: `val merged = (lspRanked + localRanked + workspaceRanked).distinctBy { it.label }`
+
+**Rules:**
+- Two items are duplicates ONLY if they have the same label AND the same kind AND the same detail
+- Two items with the same label but different kinds (e.g., a variable named "os" and a module named "os") are NOT duplicates
+- Two items with the same label and kind but different detail (e.g., overloaded methods with different signatures) are NOT duplicates
+- Prefer LSP-sourced items over local/workspace items when deduplicating (LSP is more authoritative)
+- Preserve the merge order: LSP first, then local, then workspace
+
+**Implementation approach:**
+- Replace `distinctBy { it.label }` with a custom dedup:
+  ```kotlin
+  val seen = mutableSetOf<Triple<String, Int, String?>>()
+  val merged = (lspRanked + localRanked + workspaceRanked).filter { item ->
+      val key = Triple(item.label, item.kind, item.detail)
+      if (key in seen) false else { seen.add(key); true }
+  }
+  ```
+- This keeps items with same label but different kind or detail
+- LSP items come first in the merged list, so they take priority over local/workspace duplicates
+
+---
+
+#### U-8: textEdit Support on Selection
+
+**Goal:** If a CompletionItem provides textEdit, apply the textEdit. If textEdit is absent, fall back to insertText. Correctly apply the textEdit range. Preserve cursor position after the edit. Support InsertReplaceEdit if applicable. Preserve additionalTextEdits.
+
+**Files:**
+- `CodeEditor.kt` — selection handler (lines 4273-4363): add textEdit application before insertText fallback
+- `CodeEditor.kt` — add helper: `applyLspTextEdit(text, textEditJson): Pair<String, Int>` — parses range + newText, returns (newText, newCursor)
+
+**Rules:**
+- If `comp.textEditJson` is non-null, parse it and apply the server-provided range + newText
+- If `comp.textEditJson` is null, fall back to current behavior (insertText at word boundary)
+- textEdit range is in LSP format: `{ "start": { "line": L, "character": C }, "end": { "line": L, "character": C } }`
+- Convert LSP line/character to text offsets: `offset = lineStarts[line] + character`
+- After applying textEdit, place cursor at end of the inserted newText
+- Support InsertReplaceEdit: `{ "insert": range, "replace": range, "newText": text }` — use the `replace` range for replacement
+- additionalTextEdits are applied FIRST (before textEdit), same as current behavior for insertText
+- DO NOT break simple member completion: `user.` → selecting `display_name` → `user.display_name`
+  - When the server provides textEdit for member completion, the range typically starts at the cursor (after the dot) — applying it produces the same result as insertText
+- DO NOT break import completion (additionalTextEdits flow must remain intact)
+
+**Implementation approach:**
+- In the selection handler, BEFORE the `hasAdditionalEdits` check:
+  ```kotlin
+  if (!comp.textEditJson.isNullOrBlank()) {
+      // Apply textEdit path
+      val edit = JSONObject(comp.textEditJson)
+      val newText = edit.optString("newText", comp.insertText)
+      // Check for InsertReplaceEdit (has both "insert" and "replace")
+      val range = if (edit.has("replace")) edit.optJSONObject("replace") else edit.optJSONObject("range")
+      val start = lspPositionToOffset(range?.optJSONObject("start"), text)
+      val end = lspPositionToOffset(range?.optJSONObject("end"), text)
+      // Apply additionalTextEdits first if present
+      val (textToEdit, offsetAdjust) = if (hasAdditionalEdits) {
+          applyAdditionalEdits(text, comp.additionalTextEditsJson, start, end)
+      } else {
+          Pair(text, 0)
+      }
+      val finalText = textToEdit.substring(0, start + offsetAdjust) + newText + textToEdit.substring(end + offsetAdjust)
+      val finalCursor = start + offsetAdjust + newText.length
+      // Handle snippet if insertTextFormat == 2
+      value = TextFieldValue(text = finalText, selection = TextRange(finalCursor))
+      onContentChange(finalText)
+      // Execute command if present (from U-4)
+      return@clickable
+  }
+  // Fall through to existing insertText path
+  ```
+- Add `lspPositionToOffset(pos: JSONObject?, text: String): Int` helper:
+  ```kotlin
+  fun lspPositionToOffset(pos: JSONObject?, text: String): Int {
+      if (pos == null) return 0
+      val line = pos.optInt("line", 0)
+      val char = pos.optInt("character", 0)
+      var offset = 0
+      var currentLine = 0
+      while (currentLine < line && offset < text.length) {
+          if (text[offset] == '\n') currentLine++
+          offset++
+      }
+      return offset + char
+  }
+  ```
+
+---
+
+### Post-Implementation Audit Checklist
+
+After all 8 features are implemented, audit the full pipeline:
+
+| Stage | What to verify |
+|-------|---------------|
+| Language Server → CompletionList | getCompletion() sends request, receives response |
+| CompletionList → CompletionItems | Both JSONArray and JSONObject formats handled |
+| metadata preservation | filterText, sortText, isIncomplete, command, commitCharacters, textEdit ALL preserved |
+| filtering | filterText used for matching, label as fallback, fuzzy tiers working |
+| sorting | sortText primary when present, fuzzy score secondary |
+| deduplication | Triple(label, kind, detail) key, not just label |
+| ranking | Combined score: sortText + fuzzy + MRU + usage |
+| popup | All items rendered, no truncation beyond take(60) |
+| selection | textEdit applied when present, insertText fallback, command executed, cursor correct |
+| additionalTextEdits | Auto-import still works (applied first, before textEdit) |
+| snippet (insertTextFormat=2) | Still parsed and applied correctly |
+
+### Compatibility Tests (MUST NOT BREAK)
+
+| # | Test | Expected behavior |
+|---|------|-------------------|
+| 1 | `import ma` | Shows: mailbox, markdown, marshal, math, matplotlib, mimetypes, mmap, mock, modulefinder, multiprocessing, mypy, etc. |
+| 2 | `user.` | Shows member completions (display_name, etc.) |
+| 3 | `user.na` | Filters to name-related members |
+| 4 | `user.dis` | Filters to display_name |
+| 5 | `numbers.` | Shows Number methods (toFixed, toString, toPrecision, etc.) |
+| 6 | Selecting a completion | Text inserted at cursor, cursor placed after insertion |
+| 7 | Typing after completion | Normal editing continues, no stuck state |
+| 8 | Repeated completion requests | No loops, no stale results, no crashes |
+
+### Rules for Implementation
+
+1. **Inspect existing implementation FIRST** — read the exact code before changing it.
+2. **Preserve the existing architecture** — do NOT replace the pipeline, upgrade it.
+3. **Use the LSP completion model correctly** — follow the LSP spec for each field.
+4. **Do not break import completion** — additionalTextEdits must remain intact.
+5. **Do not break member completion after "."** — empty prefix must still return all items.
+6. **Do not replace the completion system** — upgrade in-place, file by file.
+7. **Follow the 64KB extraction rule** — any new CodeEditor.kt code goes in extracted files, NOT inline.
+8. **Log every commit** in the CHANGE LOG with timestamp, build number, and next steps.
+
 
 ## CHANGE LOG ENTRY
 
