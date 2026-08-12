@@ -1805,15 +1805,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .padding(end = 24.dp)
                         .focusRequester(focusRequester)
                         .pointerInput(Unit) {
+                            // Multi-cursor: manual double-tap detection (tap within 300ms = add cursor)
+                            var lastTapTimeMs = 0L
                             detectTapGestures(
-                                onDoubleTap = { offset ->
-                                    textLayoutResult?.let { layout ->
-                                        val charOffset = layout.getOffsetForPosition(offset)
-                                        extraCursors = if (charOffset in extraCursors)
-                                            extraCursors.filter { it != charOffset }
-                                        else
-                                            (extraCursors + charOffset).distinct().sorted()
+                                onTap = { offset ->
+                                    val now = System.currentTimeMillis()
+                                    val isDoubleTap = now - lastTapTimeMs < 300
+                                    if (isDoubleTap) {
+                                        // Double tap — add/remove extra cursor at this position
+                                        textLayoutResult?.let { layout ->
+                                            val charOffset = layout.getOffsetForPosition(offset)
+                                            extraCursors = if (charOffset in extraCursors)
+                                                extraCursors.filter { it != charOffset }
+                                            else
+                                                (extraCursors + charOffset).distinct().sorted()
+                                        }
+                                    } else {
+                                        // Single tap — place cursor at tap position + request focus
+                                        textLayoutResult?.let { layout ->
+                                            val pos = layout.getOffsetForPosition(offset)
+                                            value = value.copy(selection = TextRange(pos))
+                                        }
+                                        try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                                     }
+                                    lastTapTimeMs = now
                                 },
                                 onLongPress = { offset ->
                                     // P38-FIX: Long-press selects the word and opens LSP menu
@@ -3124,7 +3139,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 )
                             }
 
-                            // Add Cursor Above
+                            // Add Cursor Above — same column on previous line (VSCode Ctrl+Alt+Up)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3133,16 +3148,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    val currentLine = lineFromOffset(value.selection.start)
-                                    if (currentLine > 0) {
-                                        val prevLineStart = value.text.lastIndexOf('\n', value.text.lastIndexOf('\n', value.selection.start - 1) - 1) + 1
-                                        extraCursors = (extraCursors + prevLineStart).distinct().sorted()
+                                    val text = value.text
+                                    val cursorPos = value.selection.end
+                                    val currentLineStart = text.lastIndexOf('\n', (cursorPos - 1).coerceAtLeast(0)) + 1
+                                    val column = cursorPos - currentLineStart
+                                    if (currentLineStart > 0) {
+                                        val prevLineEnd = currentLineStart - 1
+                                        val prevLineStart = text.lastIndexOf('\n', (prevLineEnd - 1).coerceAtLeast(0)) + 1
+                                        val prevLineLen = prevLineEnd - prevLineStart
+                                        val prevCursor = (prevLineStart + column).coerceIn(prevLineStart, prevLineStart + prevLineLen)
+                                        extraCursors = (extraCursors + prevCursor).distinct().sorted()
                                     }
                                     showLspMenu = false
                                 }
                             )
 
-                            // Add Cursor Below
+                            // Add Cursor Below — same column on next line (VSCode Ctrl+Alt+Down)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3151,58 +3172,77 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    val nextNewline = value.text.indexOf('\n', value.selection.end)
+                                    val text = value.text
+                                    val cursorPos = value.selection.end
+                                    val currentLineStart = text.lastIndexOf('\n', (cursorPos - 1).coerceAtLeast(0)) + 1
+                                    val column = cursorPos - currentLineStart
+                                    val nextNewline = text.indexOf('\n', cursorPos)
                                     if (nextNewline >= 0) {
-
-                                        extraCursors = (extraCursors + nextNewline + 1).distinct().sorted()
+                                        val nextLineStart = nextNewline + 1
+                                        val nextLineEnd = text.indexOf('\n', nextLineStart)
+                                        val nextLineLen = if (nextLineEnd >= 0) nextLineEnd - nextLineStart else text.length - nextLineStart
+                                        val nextCursor = (nextLineStart + column).coerceIn(nextLineStart, nextLineStart + nextLineLen)
+                                        extraCursors = (extraCursors + nextCursor).distinct().sorted()
                                     }
                                     showLspMenu = false
                                 }
                             )
 
-                            // Copy Line Down — duplicate current line below (VSCode Shift+Alt+Down)
+                            // Cursors on All Lines Below — add cursor at same column on every line below (VSCode Ctrl+Alt+Shift+Down)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("⤓", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                                        Text("Copy Line Down", color = Color(0xFFD4D4D4), fontSize = 12.sp)
+                                        Text("Cursors on All Lines Below", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
-                                    showLspMenu = false
                                     val text = value.text
                                     val cursorPos = value.selection.end
-                                    val lineStart = if (cursorPos == 0) 0 else text.lastIndexOf('\n', cursorPos - 1) + 1
-                                    val lineEnd = text.indexOf('\n', cursorPos)
-                                    val currentLine = if (lineEnd >= 0) text.substring(lineStart, lineEnd) else text.substring(lineStart)
-                                    val insertText = currentLine + "\n"
-                                    val newText = text.substring(0, lineStart) + insertText + text.substring(lineStart)
-                                    value = value.copy(text = newText, selection = TextRange(lineStart, lineStart + currentLine.length))
-                                    // Shift extra cursors that are at or below the insertion point
-                                    extraCursors = extraCursors.map { if (it >= lineStart) it + currentLine.length + 1 else it }
+                                    val currentLineStart = text.lastIndexOf('\n', (cursorPos - 1).coerceAtLeast(0)) + 1
+                                    val column = cursorPos - currentLineStart
+                                    val newCursors = mutableListOf<Int>()
+                                    var searchFrom = cursorPos
+                                    while (true) {
+                                        val nextNewline = text.indexOf('\n', searchFrom)
+                                        if (nextNewline < 0) break
+                                        val nextLineStart = nextNewline + 1
+                                        val nextLineEnd = text.indexOf('\n', nextLineStart)
+                                        val nextLineLen = if (nextLineEnd >= 0) nextLineEnd - nextLineStart else text.length - nextLineStart
+                                        val nextCursor = (nextLineStart + column).coerceIn(nextLineStart, nextLineStart + nextLineLen)
+                                        newCursors.add(nextCursor)
+                                        searchFrom = nextLineStart
+                                    }
+                                    extraCursors = (extraCursors + newCursors).distinct().sorted()
+                                    showLspMenu = false
                                 }
                             )
 
-                            // Copy Line Up — duplicate current line above (VSCode Shift+Alt+Up)
+                            // Cursors on All Lines Above — add cursor at same column on every line above
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("⤒", color = Color(0xFFD4D4D4), fontSize = 13.sp)
-                                        Text("Copy Line Up", color = Color(0xFFD4D4D4), fontSize = 12.sp)
+                                        Text("Cursors on All Lines Above", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                                     }
                                 },
                                 onClick = {
-                                    showLspMenu = false
                                     val text = value.text
                                     val cursorPos = value.selection.end
-                                    val lineStart = if (cursorPos == 0) 0 else text.lastIndexOf('\n', cursorPos - 1) + 1
-                                    val lineEnd = text.indexOf('\n', cursorPos)
-                                    val currentLine = if (lineEnd >= 0) text.substring(lineStart, lineEnd) else text.substring(lineStart)
-                                    val insertText = currentLine + "\n"
-                                    val newText = text.substring(0, lineStart) + insertText + text.substring(lineStart)
-                                    value = value.copy(text = newText, selection = TextRange(lineStart + currentLine.length + 1, lineStart + currentLine.length + 1))
-                                    // Shift extra cursors that are at or below the insertion point
-                                    extraCursors = extraCursors.map { if (it >= lineStart) it + currentLine.length + 1 else it }
+                                    val currentLineStart = text.lastIndexOf('\n', (cursorPos - 1).coerceAtLeast(0)) + 1
+                                    val column = cursorPos - currentLineStart
+                                    val newCursors = mutableListOf<Int>()
+                                    var lineEnd = currentLineStart - 1
+                                    while (lineEnd > 0) {
+                                        val prevLineStart = text.lastIndexOf('\n', (lineEnd - 1).coerceAtLeast(0)) + 1
+                                        val prevLineLen = lineEnd - prevLineStart
+                                        val prevCursor = (prevLineStart + column).coerceIn(prevLineStart, prevLineStart + prevLineLen)
+                                        newCursors.add(prevCursor)
+                                        lineEnd = prevLineStart - 1
+                                        if (prevLineStart == 0) break
+                                    }
+                                    extraCursors = (extraCursors + newCursors).distinct().sorted()
+                                    showLspMenu = false
                                 }
                             )
                             // P41-I/U: Source Actions — with built-in fallback (no LSP needed)
