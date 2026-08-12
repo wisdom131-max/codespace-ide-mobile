@@ -122,6 +122,23 @@ data class LspCompletionItem(
     val insertTextFormat: Int = 1,
     // P41-K: Resolved documentation (lazily filled by completionItem/resolve)
     val documentation: String? = null,
+    // Phase U-2: LSP sortText — server-provided sort priority (lower string = higher priority)
+    val sortText: String? = null,
+    // Phase U-3: LSP filterText — server-provided text for matching (falls back to label)
+    val filterText: String? = null,
+    // Phase U-4: LSP command — JSON string of command to execute after applying completion
+    val command: String? = null,
+    // Phase U-5: LSP commitCharacters — chars that commit the selected completion when typed
+    val commitCharacters: List<Char> = emptyList(),
+)
+
+/**
+ * Phase U-1: Completion response wrapper carrying isIncomplete flag.
+ * When isIncomplete=true, the server signals more items may be available on re-request.
+ */
+data class CompletionResponse(
+    val items: List<LspCompletionItem>,
+    val isIncomplete: Boolean = false,
 )
 
 /**
@@ -146,7 +163,21 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
         // P41-D: Capture additionalTextEdits (auto-import) and textEdit (range replace)
         val additionalTextEditsJson = item.optJSONArray("additionalTextEdits")?.toString()
         val textEditJson = item.optJSONObject("textEdit")?.toString()
-        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind, additionalTextEditsJson, textEditJson, insertTextFormat))
+        // Phase U-2: Parse sortText (optional, server-provided sort priority)
+        val sortText = item.optString("sortText", "").ifBlank { null }
+        // Phase U-3: Parse filterText (optional, used for matching instead of label)
+        val filterText = item.optString("filterText", "").ifBlank { null }
+        // Phase U-4: Parse command (optional, executed after applying completion)
+        val command = item.optJSONObject("command")?.toString()
+        // Phase U-5: Parse commitCharacters (optional, JSON array of single-char strings)
+        val commitChars = item.optJSONArray("commitCharacters")?.let { arr ->
+            (0 until arr.length()).mapNotNull { idx ->
+                arr.optString(idx, "").takeIf { it.isNotEmpty() }?.firstOrNull()
+            }
+        } ?: emptyList()
+        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind,
+            additionalTextEditsJson, textEditJson, insertTextFormat, null,
+            sortText, filterText, command, commitChars))
     }
     return result
 }
