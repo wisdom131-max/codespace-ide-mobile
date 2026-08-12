@@ -55,12 +55,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
-## CURRENT STATE (2026-08-12 21:25 WAT)
+## CURRENT STATE (2026-08-12 21:30 WAT)
 
 | | |
 |-|-|
 | Latest commit | **40232a11** — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **TESTING STAGE** — Test 2.2 complete (57 tests). Fixing P0-P3 bugs from test results. Phase U (Completion Pipeline Upgrade) planned — not yet started. | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
+| Active phase | **Phase U — Completion Pipeline Upgrade** IN PROGRESS — implementing 8 features (isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit). 9 test fixes need device retest, 9 tests still unfixed. | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -15353,3 +15353,9 @@ After all 8 features are implemented, audit the full pipeline:
 **What was fixed:** Corrected misleading change log entry from 21:15. The 21:15 entry incorrectly said "Next: Implement Phase U" — this contradicts the actual roadmap from the 18:31 entry which says "Next: P1: UI restructuring (Tests 36, 38, 41, 42)". Phase U is a FUTURE plan only — do NOT start until all P0-P3 test fixes from Test 2.2 are complete. Phase P already exists in AGENTS.md (Power User Features, line 9200) — Phase U does not conflict (letters A-T are used, U was not previously used).
 **Files touched:** AGENTS.md (documentation only)
 **Next on roadmap:** Follow the 18:31 entry: P0: CursorBehaviors.kt crash fix. P1: UI restructuring (Tests 36, 38, 41, 42), LSP/regex smart logic, Find bar fix. P2: Debug gutter, .md icon. P3: Remaining test fails. THEN Phase U (completion pipeline upgrade).
+
+### [2026-08-12 21:30 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A | **CI Build:** N/A (documentation update)
+**What was fixed:** Updated AGENTS.md with accurate test status from change log audit. Test 2.2 had 18 fails. 9 have code fixes but need device retest (Tests 7, 8, 9, 12, 16, 19, 32, 54, 55 — device was running old APK). 9 are completely unfixed (Tests 11, 14, 36, 39, 43, 45, 48, 50, 53). Now starting Phase U — Completion Pipeline Upgrade (8 features: isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit).
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:** Implement Phase U features U-1 through U-8. Then device retest of Tests 7,8,9,12,16,19,32,54,55. Then fix remaining unfixed Tests 11,14,36,39,43,45,48,50,53.
