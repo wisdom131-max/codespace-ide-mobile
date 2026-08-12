@@ -5076,6 +5076,13 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
     onFindReplaceClose: () -> Unit,
 ) {
     if (findReplaceOpen) {
+        val findFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+        androidx.compose.runtime.LaunchedEffect(findReplaceOpen) {
+            if (findReplaceOpen) {
+                kotlinx.coroutines.delay(100)
+                try { findFocusRequester.requestFocus() } catch (_: Exception) {}
+            }
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -5096,35 +5103,36 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                     matches.isEmpty() -> "No results"
                     else -> "${matchIndex + 1}/${matches.size}"
                 }
-                androidx.compose.foundation.text.BasicTextField(
+                androidx.compose.material3.TextField(
                     value = findQuery,
                     onValueChange = { onFindQueryChange(it) },
                     singleLine = true,
                     textStyle = TextStyle(
-                        color = Color(0xFFD4D4D4),
-                        fontSize = 12.sp,
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
-                    decorationBox = { inner ->
-                        Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                            if (findQuery.isEmpty()) Text(
-                                "Find",
-                                color = Color(0xFF666666),
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                            inner()
-                        }
+                    placeholder = {
+                        Text(
+                            "Find",
+                            color = Color(0xFF666666),
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
                     },
+                    colors = androidx.compose.material3.TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF1E1E1E),
+                        unfocusedContainerColor = Color(0xFF1E1E1E),
+                        focusedIndicatorColor = if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400) else Color(0xFF007ACC),
+                        unfocusedIndicatorColor = if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400) else Color(0xFF3C3C3C),
+                        cursorColor = Color(0xFFAEAFAD),
+                        focusedTextColor = Color(0xFFCCCCCC),
+                        unfocusedTextColor = Color(0xFFCCCCCC),
+                    ),
                     modifier = Modifier
                         .weight(1f)
-                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
-                        .border(
-                            1.dp,
-                            if (findQuery.isNotEmpty() && matches.isEmpty()) Color(0xFFE51400)
-                            else Color(0xFF3C3C3C),
-                            RoundedCornerShape(3.dp),
-                        ),
+                        .heightIn(min = 36.dp)
+                        .focusRequester(findFocusRequester),
                 )
                 Text(
                     matchLabel,
@@ -5218,30 +5226,35 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                androidx.compose.foundation.text.BasicTextField(
+                androidx.compose.material3.TextField(
                     value = replaceQuery,
                     onValueChange = { onReplaceQueryChange(it) },
                     singleLine = true,
                     textStyle = TextStyle(
-                        color = Color(0xFFD4D4D4),
-                        fontSize = 12.sp,
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
-                    decorationBox = { inner ->
-                        Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                            if (replaceQuery.isEmpty()) Text(
-                                "Replace",
-                                color = Color(0xFF666666),
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                            inner()
-                        }
+                    placeholder = {
+                        Text(
+                            "Replace",
+                            color = Color(0xFF666666),
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
                     },
+                    colors = androidx.compose.material3.TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF1E1E1E),
+                        unfocusedContainerColor = Color(0xFF1E1E1E),
+                        focusedIndicatorColor = Color(0xFF007ACC),
+                        unfocusedIndicatorColor = Color(0xFF3C3C3C),
+                        cursorColor = Color(0xFFAEAFAD),
+                        focusedTextColor = Color(0xFFCCCCCC),
+                        unfocusedTextColor = Color(0xFFCCCCCC),
+                    ),
                     modifier = Modifier
                         .weight(1f)
-                        .background(Color(0xFF1E1E1E), RoundedCornerShape(3.dp))
-                        .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(3.dp)),
+                        .heightIn(min = 36.dp),
                 )
                 TextButton(
                     onClick = {
