@@ -1,33 +1,685 @@
 package com.codespace.ide.ui.panes
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.scm.ScmState
+import com.codespace.ide.scm.ScmRepoState
+import com.codespace.ide.scm.ScmFileStatus
+import com.codespace.ide.scm.FileChange
+import com.codespace.ide.scm.ScmOperation
+import com.codespace.ide.scm.GitError
+import kotlinx.coroutines.launch
 
-/**
- * SourceControlPane — SCM panel for CodeSpace IDE Mobile.
- *
- * CLEARED on 2026-08-13 for full restructure per Wisdom's plan.
- * The previous implementation had:
- *   - Duplicate pull/fetch/push logic (header icons + overflow menu)
- *   - Broken string interpolation in overflow menu (${'$'}{result.take(60)} printed literally)
- *   - False-positive merge conflict detection (ProotInstaller's "(command completed, no output)"
- *     placeholder was treated as a conflicted file name)
- *   - No rotation-safe scroll handling (Test 41)
- *   - No upstream tracking fix for push (Test 42 — "No configured push destination")
- *
- * Awaiting Wisdom's restructuring spec before rebuilding.
- */
+// ── Palette (matches ExplorerPane/ProjectShellScreen dark theme) ─────────────
+private val BgColor      = Color(0xFF1E1E1E)
+private val HeaderBg     = Color(0xFF252526)
+private val TextColor    = Color(0xFFD4D4D4)
+private val MutedColor   = Color(0xFF858585)
+private val DividerColor = Color(0xFF2D2D30)
+private val IconColor    = Color(0xFF007ACC)
+private val ModifiedColor = Color(0xFFE2C08D)
+private val UntrackedColor = Color(0xFF73C991)
+private val DeletedColor   = Color(0xFFF48771)
+private val AddedColor    = Color(0xFF73C991)
+private val ConflictColor = Color(0xFFE51400)
+private val StagedBg      = Color(0xFF2D2D30)
+
+private const val PREFS_WORKSPACE = "workspace_prefs"
+private const val KEY_WORKSPACE = "workspace_path"
+
+private fun loadWorkspacePath(context: Context, projectId: String): String? =
+    context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+        .getString("${KEY_WORKSPACE}_$projectId", null)
+
+private fun resolveHostPath(context: Context, projectId: String): String {
+    return loadWorkspacePath(context, projectId)
+        ?: java.io.File(context.filesDir, "projects/$projectId").absolutePath
+}
+
+// ── Status letter colors (VS Code style) ─────────────────────────────────────
+private fun statusColor(change: FileChange): Color = when (change) {
+    FileChange.MODIFIED  -> ModifiedColor
+    FileChange.ADDED     -> AddedColor
+    FileChange.DELETED   -> DeletedColor
+    FileChange.RENAMED   -> ModifiedColor
+    FileChange.COPIED    -> AddedColor
+    FileChange.UPDATED   -> ConflictColor
+    FileChange.UNTRACKED -> UntrackedColor
+    FileChange.IGNORED   -> MutedColor
+    FileChange.UNMODIFIED -> MutedColor
+}
+
+private fun statusLetter(change: FileChange): String = when (change) {
+    FileChange.MODIFIED  -> "M"
+    FileChange.ADDED     -> "A"
+    FileChange.DELETED   -> "D"
+    FileChange.RENAMED   -> "R"
+    FileChange.COPIED    -> "C"
+    FileChange.UPDATED   -> "U"
+    FileChange.UNTRACKED -> "U"  // U for untracked (VS Code uses italic U)
+    FileChange.IGNORED   -> "!"
+    FileChange.UNMODIFIED -> " "
+}
+
+// ── Main Composable ──────────────────────────────────────────────────────────
 @Composable
 fun SourceControlPane(projectId: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Source Control — restructuring in progress", fontSize = 13.sp)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scmState = remember { ScmState(context) }
+    val hostPath = remember(projectId) { resolveHostPath(context, projectId) }
+
+    // ── State ──
+    var repoState by remember { mutableStateOf<ScmRepoState?>(null) }
+    var operation by remember { mutableStateOf<ScmOperation>(ScmOperation.Idle) }
+    var commitMessage by remember { mutableStateOf("") }
+    var showBranchDialog by remember { mutableStateOf(false) }
+    var snackbarMsg by remember { mutableStateOf<String?>(null) }
+    var isRepo by remember { mutableStateOf<Boolean?>(null) }
+
+    // ── Load status ──
+    fun refresh() {
+        scope.launch {
+            operation = ScmOperation.Loading("Loading...")
+            val state = scmState.loadStatus(hostPath)
+            repoState = state
+            isRepo = state != null
+            operation = ScmOperation.Idle
+        }
     }
+
+    // Initial load
+    LaunchedEffect(projectId) { refresh() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgColor)
+    ) {
+        // ── Header: branch + sync buttons ──
+        ScmHeader(
+            repoState = repoState,
+            operation = operation,
+            isRepo = isRepo,
+            onRefresh = { refresh() },
+            onPush = {
+                scope.launch {
+                    operation = ScmOperation.Pushing(repoState?.upstream ?: "origin")
+                    val (ok, msg) = scmState.push(hostPath)
+                    snackbarMsg = msg
+                    operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
+                    if (ok) refresh()
+                }
+            },
+            onPull = {
+                scope.launch {
+                    operation = ScmOperation.Pulling(repoState?.upstream ?: "origin")
+                    val (ok, msg) = scmState.pull(hostPath)
+                    snackbarMsg = msg
+                    operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
+                    if (ok) refresh()
+                }
+            },
+            onBranchClick = { showBranchDialog = true },
+        )
+
+        HorizontalDivider(color = DividerColor, thickness = 1.dp)
+
+        if (isRepo == false) {
+            // Not a git repo
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Not a git repository",
+                        color = MutedColor,
+                        fontSize = 13.sp,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val (ok, msg) = scmState.initRepo(hostPath)
+                                snackbarMsg = msg
+                                if (ok) refresh()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = IconColor)
+                    ) {
+                        Text("Initialize Repository", fontSize = 12.sp)
+                    }
+                }
+            }
+            return@Column
+        }
+
+        // ── Commit message input ──
+        CommitInputSection(
+            commitMessage = commitMessage,
+            onMessageChange = { commitMessage = it },
+            stagedCount = repoState?.staged?.size ?: 0,
+            isBusy = operation !is ScmOperation.Idle,
+            onCommit = {
+                if (commitMessage.isNotBlank()) {
+                    scope.launch {
+                        operation = ScmOperation.Committing(commitMessage)
+                        val (ok, msg) = scmState.stageAllAndCommit(hostPath, commitMessage)
+                        snackbarMsg = msg
+                        operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
+                        if (ok) {
+                            commitMessage = ""
+                            refresh()
+                        }
+                    }
+                }
+            },
+        )
+
+        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+
+        // ── File changes list ──
+        if (operation is ScmOperation.Loading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = IconColor
+                )
+            }
+        } else {
+            FileChangesList(
+                repoState = repoState,
+                onStage = { file ->
+                    scope.launch {
+                        operation = ScmOperation.Staging(listOf(file))
+                        val (ok, msg) = scmState.stageFiles(hostPath, listOf(file))
+                        snackbarMsg = msg
+                        operation = ScmOperation.Idle
+                        if (ok) refresh()
+                    }
+                },
+                onStageAll = {
+                    scope.launch {
+                        operation = ScmOperation.Staging(emptyList())
+                        val (ok, msg) = scmState.stageAll(hostPath)
+                        snackbarMsg = msg
+                        operation = ScmOperation.Idle
+                        if (ok) refresh()
+                    }
+                },
+                onUnstage = { file ->
+                    scope.launch {
+                        operation = ScmOperation.Unstaging(listOf(file))
+                        val (ok, msg) = scmState.unstageFiles(hostPath, listOf(file))
+                        snackbarMsg = msg
+                        operation = ScmOperation.Idle
+                        if (ok) refresh()
+                    }
+                },
+            )
+        }
+
+        // ── Snackbar ──
+        snackbarMsg?.let { msg ->
+            LaunchedEffect(msg) {
+                kotlinx.coroutines.delay(3000)
+                snackbarMsg = null
+            }
+            Surface(
+                color = if (msg.startsWith("Error") || msg.contains("failed")) Color(0xFFCC3333) else Color(0xFF2D4A22),
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+            ) {
+                Text(
+                    msg,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(8.dp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+
+    // ── Branch dialog ──
+    if (showBranchDialog) {
+        BranchSelectionDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            onDismiss = { showBranchDialog = false },
+            onCheckout = { branch ->
+                scope.launch {
+                    val (ok, msg) = scmState.checkout(hostPath, branch)
+                    snackbarMsg = msg
+                    if (ok) refresh()
+                }
+                showBranchDialog = false
+            },
+            onCreateBranch = { name ->
+                scope.launch {
+                    val (ok, msg) = scmState.createBranch(hostPath, name)
+                    snackbarMsg = msg
+                    if (ok) refresh()
+                }
+                showBranchDialog = false
+            },
+        )
+    }
+}
+
+// ── Header ───────────────────────────────────────────────────────────────────
+@Composable
+private fun ScmHeader(
+    repoState: ScmRepoState?,
+    operation: ScmOperation,
+    isRepo: Boolean?,
+    onRefresh: () -> Unit,
+    onPush: () -> Unit,
+    onPull: () -> Unit,
+    onBranchClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(HeaderBg)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Branch name (clickable to open branch dialog)
+        if (repoState != null) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onBranchClick() },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.CallSplit,
+                    contentDescription = "Branch",
+                    tint = IconColor,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    repoState.branch,
+                    color = TextColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Ahead/behind indicators
+                if (repoState.ahead > 0) {
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "↑${repoState.ahead}",
+                        color = UntrackedColor,
+                        fontSize = 10.sp,
+                    )
+                }
+                if (repoState.behind > 0) {
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        "↓${repoState.behind}",
+                        color = ModifiedColor,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+        } else {
+            Text(
+                if (isRepo == false) "No repository" else "Loading...",
+                color = MutedColor,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        // Sync buttons
+        val isBusy = operation !is ScmOperation.Idle && operation !is ScmOperation.Loading
+
+        IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = MutedColor, modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onPull, enabled = !isBusy && repoState != null, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.ArrowDownward, contentDescription = "Pull", tint = MutedColor, modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onPush, enabled = !isBusy && repoState != null, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.ArrowUpward, contentDescription = "Push", tint = MutedColor, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+// ── Commit Input ─────────────────────────────────────────────────────────────
+@Composable
+private fun CommitInputSection(
+    commitMessage: String,
+    onMessageChange: (String) -> Unit,
+    stagedCount: Int,
+    isBusy: Boolean,
+    onCommit: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        OutlinedTextField(
+            value = commitMessage,
+            onValueChange = onMessageChange,
+            placeholder = { Text("Message (Ctrl+Enter to commit)", color = MutedColor, fontSize = 11.sp) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+            maxLines = 4,
+            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = TextColor),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = IconColor,
+                unfocusedBorderColor = DividerColor,
+                cursorColor = IconColor,
+            ),
+            shape = RoundedCornerShape(4.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        Button(
+            onClick = onCommit,
+            enabled = !isBusy && commitMessage.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = IconColor),
+            contentPadding = PaddingValues(vertical = 6.dp),
+        ) {
+            Text(
+                if (stagedCount > 0) "Commit ($stagedCount staged)" else "Stage All & Commit",
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+// ── File Changes List ────────────────────────────────────────────────────────
+@Composable
+private fun FileChangesList(
+    repoState: ScmRepoState?,
+    onStage: (String) -> Unit,
+    onStageAll: () -> Unit,
+    onUnstage: (String) -> Unit,
+) {
+    val scrollState = rememberScrollState()
+
+    if (repoState == null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Loading...", color = MutedColor, fontSize = 12.sp)
+        }
+        return
+    }
+
+    val hasStaged = repoState.staged.isNotEmpty() || repoState.conflicted.isNotEmpty()
+    val hasUnstaged = repoState.unstaged.isNotEmpty() || repoState.untracked.isNotEmpty()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+    ) {
+        // ── Conflicted files (if any) ──
+        if (repoState.conflicted.isNotEmpty()) {
+            SectionHeader("Conflicts (${repoState.conflicted.size})", ConflictColor)
+            repoState.conflicted.forEach { file ->
+                FileRow(file, isStaged = false, isConflicted = true, onStage = {}, onUnstage = {})
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        // ── Staged changes ──
+        if (repoState.staged.isNotEmpty()) {
+            SectionHeader("Staged Changes (${repoState.staged.size})", IconColor)
+            repoState.staged.forEach { file ->
+                FileRow(file, isStaged = true, isConflicted = false, onStage = {}, onUnstage = { onUnstage(file.path) })
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        // ── Unstaged changes ──
+        if (repoState.unstaged.isNotEmpty() || repoState.untracked.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Changes (${repoState.unstaged.size + repoState.untracked.size})",
+                    color = MutedColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (repoState.unstaged.isNotEmpty()) {
+                    Text(
+                        "+ Stage All",
+                        color = IconColor,
+                        fontSize = 10.sp,
+                        modifier = Modifier.clickable { onStageAll() },
+                    )
+                }
+            }
+            repoState.unstaged.forEach { file ->
+                FileRow(file, isStaged = false, isConflicted = false, onStage = { onStage(file.path) }, onUnstage = {})
+            }
+            repoState.untracked.forEach { file ->
+                FileRow(file, isStaged = false, isConflicted = false, onStage = { onStage(file.path) }, onUnstage = {})
+            }
+        }
+
+        // ── Empty state ──
+        if (!hasStaged && !hasUnstaged && repoState.conflicted.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = UntrackedColor, modifier = Modifier.size(32.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text("No changes", color = MutedColor, fontSize = 12.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, color: Color) {
+    Text(
+        title,
+        color = color,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun FileRow(
+    file: ScmFileStatus,
+    isStaged: Boolean,
+    isConflicted: Boolean,
+    onStage: () -> Unit,
+    onUnstage: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (isStaged) StagedBg else Color.Transparent)
+            .clickable { if (isStaged) onUnstage() else onStage() }
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Status letter
+        val letter = when {
+            isConflicted -> "C"
+            file.isUntracked -> "U"
+            isStaged -> statusLetter(file.stagedChange)
+            else -> statusLetter(file.workingChange)
+        }
+        val letterColor = when {
+            isConflicted -> ConflictColor
+            file.isUntracked -> UntrackedColor
+            isStaged -> statusColor(file.stagedChange)
+            else -> statusColor(file.workingChange)
+        }
+        Text(
+            letter,
+            color = letterColor,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(16.dp),
+        )
+        // File path
+        Text(
+            file.path,
+            color = TextColor,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        // Action icon
+        if (isStaged) {
+            Icon(
+                Icons.Filled.Remove,
+                contentDescription = "Unstage",
+                tint = MutedColor,
+                modifier = Modifier.size(14.dp).clickable { onUnstage() },
+            )
+        } else if (!isConflicted) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "Stage",
+                tint = MutedColor,
+                modifier = Modifier.size(14.dp).clickable { onStage() },
+            )
+        }
+    }
+}
+
+// ── Branch Selection Dialog ──────────────────────────────────────────────────
+@Composable
+private fun BranchSelectionDialog(
+    scmState: ScmState,
+    hostPath: String,
+    onDismiss: () -> Unit,
+    onCheckout: (String) -> Unit,
+    onCreateBranch: (String) -> Unit,
+) {
+    var branches by remember { mutableStateOf<List<com.codespace.ide.scm.ScmBranch>>(emptyList()) }
+    var newBranchName by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            branches = scmState.branches(hostPath)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Branches", fontSize = 14.sp) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Create new branch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = newBranchName,
+                        onValueChange = { newBranchName = it },
+                        placeholder = { Text("New branch name", fontSize = 11.sp) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = {
+                        if (newBranchName.isNotBlank()) onCreateBranch(newBranchName.trim())
+                    }) {
+                        Text("Create", fontSize = 11.sp, color = IconColor)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = DividerColor)
+                Spacer(Modifier.height(8.dp))
+
+                // Branch list
+                branches.forEach { branch ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onCheckout(branch.name) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (branch.isCurrent) {
+                            Icon(Icons.Filled.Check, contentDescription = null, tint = IconColor, modifier = Modifier.size(14.dp))
+                        } else {
+                            Spacer(Modifier.width(14.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            branch.name,
+                            color = if (branch.isCurrent) IconColor else TextColor,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
+        },
+    )
 }
