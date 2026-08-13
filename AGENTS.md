@@ -55,12 +55,28 @@ then do X. Don't go searching for random work — follow the roadmap.
 
 ---
 
+### [2026-08-13 02:40 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 3c0f153 | **CI Build:** #2179 PASS ✅
+**What was fixed:** Phase U — Completion Pipeline Upgrade: ALL 8 features implemented and compiling.
+- U-1: isIncomplete — Added getCompletionWithMeta() to LspManager + CompletionResponse data class
+- U-2: sortText — Parsed from LSP items, used as primary sort key in rank(), scaled to dominate fuzzy score
+- U-3: filterText — Parsed from LSP items, used for fuzzy matching instead of label when present
+- U-4: command — Parsed from LSP items, lspCommandExecutor lambda wired from EditorPane to CodeEditor, executes workspace/executeCommand after completion accept
+- U-5: commitCharacters — Parsed from LSP items, commit-on-type detection in onValueChange handler (commits selected completion + inserts typed char)
+- U-6: Fuzzy matching — Tiered scoring: exact (200) > prefix (100+) > word-boundary (75+) > subsequence (existing logic)
+- U-7: Deduplication — Changed from distinctBy{label} to filter by Triple(label, kind, detail) — preserves semantically different items sharing same label
+- U-8: textEdit — Full textEdit/InsertReplaceEdit application with lspPositionToOffset helper, snippet support, additionalTextEdits applied first, command execution after
+**Build fixes:** return@onValueChange → if/else wrapper (#2178→#2179), updatedValue scoping fix (#2179), lspCommandExecutor param name mismatch, dead else-if-false block removed
+**Files touched:** LspIntegration.kt, CompletionEngine.kt, CodeEditor.kt, EditorPane.kt, LspManager.kt
+**Commits:** 047efc1 (LspIntegration), 3c23e63 (CompletionEngine), 8db51b9→a9ce91f→216ee76 (CodeEditor), e3729a3 (EditorPane), 054003c (LspManager)
+**Next on roadmap:** Device retest of 9 fixed tests (7,8,9,12,16,19,32,54,55). Then fix 9 unfixed tests (11,14,36,39,43,45,48,50,53).
+
 ## CURRENT STATE (2026-08-12 21:30 WAT)
 
 | | |
 |-|-|
 | Latest commit | **40232a11** — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **Phase U — Completion Pipeline Upgrade** IN PROGRESS — implementing 8 features (isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit). 9 test fixes need device retest, 9 tests still unfixed. | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
+| Active phase | **Phase U — Completion Pipeline Upgrade** COMPLETE ✅ — All 8 features implemented (Build #2179 GREEN). 9 test fixes need device retest, 9 tests still unfixed. | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
