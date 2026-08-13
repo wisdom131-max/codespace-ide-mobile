@@ -382,6 +382,12 @@ private fun PssTopBar(
     onToggleSecondarySidebar: () -> Unit,
     onToggleZenMode: () -> Unit,
     onMenuAction: (String) -> Unit,
+    // Test 36: VS Code parity — active-state flags drive the highlight background
+    // behind each toggle icon (Primary Side Bar / Panel / Secondary Side Bar).
+    // The Customize Layout icon never highlights — it's a stateless menu trigger.
+    isSidebarActive: Boolean = false,
+    isBottomPanelActive: Boolean = false,
+    isSecondarySidebarActive: Boolean = false,
 ) {
     var showOverflowMenu by remember { mutableStateOf(false) }
     var openSubmenu by remember { mutableStateOf<String?>(null) }
@@ -413,24 +419,11 @@ private fun PssTopBar(
             }
         }
         // ── VS Code-style layout box icons (top-right) ──
-        // Toggle Sidebar (left panel)
-        Icon(
-            Icons.Default.ViewSidebar, null,
-            tint = tabTextInactive,
-            modifier = Modifier.size(20.dp).clickable { onToggleSidebar() },
-        )
-        Spacer(Modifier.width(10.dp))
-        // Toggle Bottom Panel (terminal/build/output)
-        Icon(
-            Icons.Default.VerticalAlignBottom, null,
-            tint = tabTextInactive,
-            modifier = Modifier.size(20.dp).clickable { onToggleBottomPanel() },
-        )
-        Spacer(Modifier.width(10.dp))
-        // Toggle Secondary Sidebar (AI chat — right panel)
-        AnimatedBotIcon(modifier = Modifier.size(20.dp).clickable { onToggleSecondarySidebar() })
-        Spacer(Modifier.width(10.dp))
-        // ── Customize Layout (VS Code rightmost button) ──
+        // Test 36: Reordered to match real VS Code — Customize Layout (Editor Layout)
+        // icon comes FIRST, followed by Primary Side Bar / Panel / Secondary Side Bar
+        // toggles. Only the three toggle icons show an active-state highlight; the
+        // Customize Layout icon is a stateless menu trigger and never highlights.
+        // ── Customize Layout (VS Code leftmost of the 4 — never highlighted) ──
         Box {
             Icon(
                 Icons.Default.DashboardCustomize, null,
@@ -505,7 +498,46 @@ private fun PssTopBar(
             }
         }
         Spacer(Modifier.width(10.dp))
-        // ── 3-dot overflow menu (replaces File/Edit/View/Go/Run/Terminal/Help bar) ──
+        // Toggle Primary Side Bar (Explorer/Search/Git/Run/Extensions host) — highlighted when open
+        Box(
+            Modifier.size(24.dp)
+                .background(
+                    if (isSidebarActive) tabTextInactive.copy(alpha = 0.15f) else Color.Transparent,
+                    RoundedCornerShape(4.dp),
+                )
+                .clickable { onToggleSidebar() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.ViewSidebar, null, tint = tabTextInactive, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(6.dp))
+        // Toggle Bottom Panel (terminal/build/output) — highlighted when open
+        Box(
+            Modifier.size(24.dp)
+                .background(
+                    if (isBottomPanelActive) tabTextInactive.copy(alpha = 0.15f) else Color.Transparent,
+                    RoundedCornerShape(4.dp),
+                )
+                .clickable { onToggleBottomPanel() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.VerticalAlignBottom, null, tint = tabTextInactive, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(6.dp))
+        // Toggle Secondary Sidebar (AI chat — right panel) — highlighted when open
+        Box(
+            Modifier.size(24.dp)
+                .background(
+                    if (isSecondarySidebarActive) tabTextInactive.copy(alpha = 0.15f) else Color.Transparent,
+                    RoundedCornerShape(4.dp),
+                )
+                .clickable { onToggleSecondarySidebar() },
+            contentAlignment = Alignment.Center,
+        ) {
+            AnimatedBotIcon(modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        // ── 3-dot overflow menu (kept exactly as-is, rightmost — user explicitly wants this preserved) ──
         Box {
             Icon(
                 Icons.Default.MoreVert, null,
@@ -1054,6 +1086,11 @@ fun ProjectShellScreen(
                 onToggleSecondarySidebar = { showChatPanel = !showChatPanel },
                 onToggleZenMode = { handleMenuAction("Toggle Zen Mode") },
                 onMenuAction = { handleMenuAction(it); openMenuBar = null },
+                // Test 36: drive icon highlight state from the same source of truth
+                // the click handlers above mutate — no separate state needed.
+                isSidebarActive = activePanel != null,
+                isBottomPanelActive = showBottomPanel,
+                isSecondarySidebarActive = showChatPanel,
             ) }
 
             // ── Main body
