@@ -245,12 +245,8 @@ object DiagnosticManager {
 
     // ── Queries (read-only, any thread) ───────────────────────────────────
 
-    fun getDiagnosticsForFile(uri: String): List<Diagnostic> {
-        return _diagnostics.filter { it.uri == uri }
-    }
-
-    fun getDiagnosticsForFile(filePath: String): List<Diagnostic> {
-        return _diagnostics.filter { it.filePath == filePath }
+    fun getDiagnosticsForFile(fileRef: String): List<Diagnostic> {
+        return _diagnostics.filter { it.uri == fileRef || it.filePath == fileRef }
     }
 
     fun getDiagnosticsBySource(source: DiagnosticSource, sourceId: String): List<Diagnostic> {
