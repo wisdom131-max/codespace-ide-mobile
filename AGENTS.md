@@ -16077,3 +16077,393 @@ cleanly from errors. PLAN FIRST — no coding until approved.
 1. SCM Rebuild (Phase 1-16 above) — awaiting Wisdom's approval to begin
 2. Phase V LSP Reliability Upgrade — also registered, awaiting start
 3. Pre-implementation audit required before coding either phase
+
+---
+
+# Phase N — Advanced Notification System (PLAN REGISTERED — NOT YET IMPLEMENTED)
+
+> **Status:** ⬜ PLAN ONLY — awaiting approval. Do NOT implement until Wisdom approves.
+> **Registered:** 2026-08-13 16:52 WAT
+> **Rule:** PLAN FIRST. No coding until approved. Inspect existing infrastructure before designing.
+
+## Core Principle
+
+```
+Subsystem → Internal Event → Notification Policy → Notification Manager → Notification Store → Notification Router → Presentation
+```
+
+NOT: `Subsystem → Toast.makeText() → random UI`
+
+The Notification Manager is the central authority. The Store is the source of truth. The Router decides presentation. No scattered Toast/Snackbar calls throughout the app.
+
+## 1. Architecture
+
+```
+Feature → Notification Manager → Notification State/Store → Notification Router → Presentation
+  ├── Toast / Snackbar
+  ├── Banner
+  ├── Progress notification
+  ├── Persistent notification
+  └── Notification Center
+```
+
+**Suggested components:**
+NotificationManager, NotificationStore, NotificationRouter, NotificationPolicy, NotificationPresenter, NotificationCenter, NotificationHistory, NotificationPreferences, NotificationQueue, NotificationDeduplicator, NotificationActionHandler
+
+Use existing project architecture where suitable. Do not duplicate state-management or event infrastructure.
+
+## 2. Notification Model
+
+```kotlin
+Notification {
+    id              // stable unique ID
+    source          // SYSTEM, LSP, SCM, BUILD, DEBUGGER, TERMINAL, EDITOR, EXTENSION, AI, NETWORK, SECURITY, PROJECT, DEVICE
+    type            // INFO, SUCCESS, WARNING, ERROR, PROGRESS
+    priority        // LOW, NORMAL, HIGH, CRITICAL
+    title
+    message
+    timestamp
+    state           // ACTIVE, READ, DISMISSED, COMPLETED, FAILED
+    progress        // nullable — for PROGRESS type
+    actions         // list of NotificationAction with stable action IDs
+    category
+    groupKey        // for grouping related notifications
+    deduplicationKey // prevent identical event flooding
+    persistent      // survives app restart?
+    autoDismiss
+    duration
+    errorDetails    // two-level: user message + technical details (command, exit code, stderr, etc.)
+    metadata
+}
+```
+
+## 3. Sources
+
+Every notification identifies its source for filtering and debugging:
+SYSTEM, LSP, SCM, BUILD, DEBUGGER, TERMINAL, EDITOR, EXTENSION, AI, NETWORK, SECURITY, PROJECT, DEVICE
+
+## 4. Priority
+
+LOW, NORMAL, HIGH, CRITICAL
+
+Priority determines: presentation style, persistence, sound/vibration eligibility, auto-dismiss behavior, ordering in notification center. Do not overuse HIGH or CRITICAL.
+
+## 5. Presentation Router
+
+| Type | Presentation | Duration |
+|------|-------------|----------|
+| SUCCESS | Snackbar/toast | short auto-dismiss |
+| INFO | Snackbar | auto-dismiss |
+| WARNING | Snackbar or banner | longer duration |
+| ERROR | Persistent notification or center entry | action buttons where useful |
+| CRITICAL | Persistent prominent notification | requires user attention |
+| PROGRESS | Persistent progress UI | until completed/cancelled/failed |
+
+## 6. Toast / Snackbar
+
+Short-lived notifications for: "Saved", "Copied", "Commit created", "Push completed"
+
+Requirements: queue safely, no overlapping, action buttons, undo support, configurable duration, manual dismiss, accessible text. Do NOT use for critical errors requiring investigation.
+
+## 7. Banners
+
+In-app banner for important temporary states: "LSP server restarting…", "Git repository has unresolved conflicts", "Build failed", "Offline mode"
+
+Banners should not constantly interrupt. Allow dismissal where appropriate.
+
+## 8. Notification Center
+
+Central notification center with:
+- All (N), Unread (N) counts
+- Source filters: LSP, SCM, Build, Debugger, System, etc.
+- Each item shows: icon/type, title, message, source, timestamp, read/unread state, actions, error details
+- Operations: mark read, mark unread, dismiss, dismiss all, clear history, open, execute action
+
+## 9. Grouping
+
+Group related notifications: "LSP server disconnected (4)" instead of 4 separate entries. Allow expanding grouped notifications to inspect individual events.
+
+## 10. Deduplication
+
+Prevent identical events from flooding UI. Use deduplication key (e.g. `"LSP:python:connection-lost"`). If same event recurs: update existing notification, increment count, update timestamp, preserve actions. Do not create dozens of identical notifications.
+
+## 11. Notification Queue
+
+Thread-safe, bounded, priority-aware, no UI-thread blocking, prevents notification storms. Critical notifications must not be buried behind dozens of low-priority ones.
+
+## 12. Progress Notifications
+
+Long-running operations: "Building APK…", "Downloading language server…", "Cloning repository…"
+
+Progress model: STARTED → RUNNING → COMPLETED / FAILED / CANCELLED
+
+Support: determinate progress when real, indeterminate otherwise, current status message, cancellation when supported. NEVER invent fake progress percentages.
+
+## 13. Update Existing Progress
+
+ONE notification per operation, updated in place. 10% → 25% → 50% → 75% → 100% is ONE notification. After completion: "APK build completed."
+
+## 14. Actions
+
+Notifications can contain actions with stable action IDs:
+- Build failed: [View Logs] [Retry]
+- LSP crashed: [Restart] [View Logs]
+- Git conflict: [Resolve Conflicts]
+- Save failure: [Retry] [View File]
+
+Actions must be safe and must not execute unexpectedly.
+
+## 15. Undo
+
+Support undoable operations: file deleted [Undo], stage [Undo], config change [Undo]. Do NOT offer undo when operation cannot actually be reversed.
+
+## 16. Error Details
+
+Two-level errors:
+- **User message**: "Git push failed — Push was rejected by the remote."
+- **Technical details**: command, exit code, stderr, repository, branch, timestamp
+- Actions: [View Details] [Retry]
+- NEVER expose secrets in notifications or logs.
+
+## 17. Log Integration
+
+Notifications reference relevant log/context instead of dumping technical logs into notification text. Action [View Logs] opens the relevant log section.
+
+## 18. Lifecycle Events
+
+Update notifications for lifecycle transitions instead of producing separate notifications:
+LSP: START → INITIALIZING → READY, or CRASHED → RESTARTING → RESTORED
+
+## 19. LSP Integration
+
+| Type | Example |
+|------|---------|
+| INFO | "Python language server started." |
+| PROGRESS | "Python language server initializing…" |
+| WARNING | "Python language server is using high memory." |
+| ERROR | "Python language server crashed." |
+| RECOVERY | "Python language server restarted." |
+| CRITICAL | "Python language server repeatedly failed to start." |
+
+Do NOT notify for every normal LSP request.
+
+## 20. SCM Integration
+
+| Type | Example | Actions |
+|------|---------|---------|
+| SUCCESS | "Committed 4 files." | — |
+| SUCCESS | "Pushed to origin/main." | — |
+| INFO/PROGRESS | "Fetching origin…" | — |
+| WARNING | "Working tree contains uncommitted changes." | — |
+| ERROR | "Push failed." | [Retry] [View Changes] |
+| ERROR | "Merge conflict detected." | [Resolve Conflicts] [View Logs] |
+
+## 21. Build Integration
+
+"Build started", "Building APK…", "Build completed", "Build failed", "Build cancelled"
+Actions: [View Logs] [Retry] [Install] [Open Output]
+Only notify for meaningful build lifecycle events. Do NOT produce notifications for every compiler line.
+
+## 22. Debugger Integration
+
+"Debugger attached.", "Breakpoint hit.", "Debug session ended.", "Debugger failed to start."
+Actions: [Open Debugger] [View Logs] [Restart]
+Breakpoint-hit notifications should be configurable to avoid annoyance during normal debugging.
+
+## 23. Terminal Integration
+
+Do NOT notify for ordinary terminal output. Notify when: process unexpectedly exits, long-running background task completes, command fails when explicitly configured, task requires attention.
+
+## 24. Editor Integration
+
+"File saved.", "File could not be saved.", "External changes detected.", "File reverted."
+Avoid noisy notifications for normal typing/editing.
+
+## 25. AI Integration
+
+"AI task completed.", "AI task failed.", "AI operation cancelled.", "Model unavailable."
+Support progress for long-running AI operations.
+
+## 26. Persistence
+
+**Persistent (survives restart):** important errors, critical warnings, unresolved project problems, failed builds, important SCM/LSP failures
+**Transient:** copied, saved, simple success messages
+Do NOT persist every snackbar. Use bounded history.
+
+## 27. Read / Unread
+
+States: UNREAD, READ, DISMISSED. Bell/icon shows unread count. Do not let thousands of old notifications create enormous unread counter.
+
+## 28. History
+
+Maintain bounded notification history. Support: recent, filtering, search, source filtering, severity filtering, clear history.
+
+## 29. User Preferences
+
+Configurable: enable/disable notifications, duration, source-specific, sound, vibration, progress notifications, error persistence, history, badge/unread count, breakpoint notifications, background task notifications. Do not hard-code behavior users expect to configure.
+
+## 30. Accessibility
+
+Semantic labels, readable text, sufficient contrast, keyboard/focus navigation, action labels, no information conveyed only through color, progress state announced.
+
+## 31. Theme / UI
+
+Follow IDE's existing theme. No hard-coded colors. Support light/dark mode, existing accent color, compact mobile layout. UI should feel like part of the IDE.
+
+## 32. Anti-Spam / Rate Limiting
+
+If subsystem generates 100 identical errors in 1s: show "100 similar errors occurred." with details/log access. Rate limiting must NOT suppress CRITICAL events incorrectly.
+
+## 33. Thread Safety
+
+Notifications may originate from: UI thread, coroutine, background worker, Git process, LSP process, debugger, build process, terminal process. Manager must be thread-safe. Never mutate UI state directly from background threads. Use existing coroutine/state mechanisms.
+
+## 34. Lifecycle Safety
+
+Handle: app backgrounding, foregrounding, screen recreation, configuration changes, process recreation. Do not leak: coroutine scopes, listeners, activity references, context references, process callbacks.
+
+## 35. Notification Routing Rules
+
+| Priority | Routing |
+|----------|---------|
+| LOW | Notification center only or subtle snackbar |
+| NORMAL | Snackbar |
+| HIGH | Banner + notification center |
+| CRITICAL | Persistent banner + notification center |
+| PROGRESS | Persistent progress notification |
+
+Allow source-specific overrides.
+
+## 36. Multiple Notifications
+
+If several unrelated events occur: prioritize, queue, group when appropriate, avoid blocking the user. Build finished + LSP restarted + Git fetch completed should not visually fight for attention.
+
+## 37. Notification IDs
+
+Every notification has a stable unique ID. NEVER use message text alone as identity. Support: notification ID, group ID, deduplication key, source, timestamp.
+
+## 38. Event vs Notification
+
+Internal events separate from user notifications. LSP request failed → internal event → notification policy decides whether user sees "Python language server request failed." Not every internal event becomes a notification. Critical for preventing spam.
+
+## 39. Security
+
+NEVER put in notifications or logs: passwords, auth tokens, private keys, API secrets, cookies, sensitive credentials. Sanitize technical error messages.
+
+## 40. Performance
+
+Mobile IDE — avoid: blocking UI thread, excessive recomposition, unlimited history, unlimited queues, notification creation in tight loops, expensive persistence on every event. Use bounded collections and efficient state updates.
+
+## 41. Testing
+
+Tests for: creation, IDs, priority, routing, auto-dismiss, persistence, grouping, deduplication, queue behavior, priority ordering, progress updates, completion/failure transitions, actions, undo, read/unread, history, filtering, rate limiting, thread safety, lifecycle recreation, critical notification behavior, notification storms, simultaneous notifications from multiple subsystems.
+
+## 42. Failure Recovery
+
+If notification presentation fails: do not crash app, preserve important notifications in store, allow center to recover. If persistence fails: continue with in-memory notifications, log failure, do not crash.
+
+## 43. UI Structure
+
+```
+IDE Top Bar
+   └── Notification Bell
+          ├── unread badge
+          └── Notification Center
+                 ├── All
+                 ├── Unread
+                 ├── Errors
+                 ├── Warnings
+                 ├── LSP
+                 ├── SCM
+                 ├── Builds
+                 └── Other
+                        └── Notification Details
+
+Notification item:
+[icon] Title
+       Message
+       Source • Time
+       [Action] [Action]
+```
+
+## 44. Mobile UX
+
+Optimize for touch: swipe to dismiss, tap to open details, expandable technical details, large enough action buttons, small-screen notification center. Do NOT make critical actions too easy to trigger accidentally.
+
+## 45. Implementation Phases (16 phases — adjust after audit)
+
+| Phase | Description |
+|-------|-------------|
+| 1 | Audit existing notification/toast/snackbar infrastructure |
+| 2 | Notification model and source/priority enums |
+| 3 | Central NotificationManager and NotificationStore |
+| 4 | Routing and presentation layer |
+| 5 | Snackbar/banner/progress notifications |
+| 6 | Notification Center |
+| 7 | Grouping and deduplication |
+| 8 | Actions and undo |
+| 9 | Persistence/history/read-unread |
+| 10 | Preferences |
+| 11 | LSP integration |
+| 12 | SCM integration |
+| 13 | Build/debugger/terminal/editor integration |
+| 14 | Accessibility and mobile UX |
+| 15 | Rate limiting, concurrency, lifecycle, and failure recovery |
+| 16 | Full testing and audit |
+
+## 46. Before Coding — Required Audit
+
+Inspect the project first. Report:
+1. Existing Toast/Snackbar implementation
+2. Existing notification classes (NotificationStore, NotificationDrawerOverlay, etc.)
+3. Existing global event system
+4. Existing ViewModel/state system
+5. Existing coroutine infrastructure
+6. Existing logging system (AppOutputLog, etc.)
+7. Existing dialog system
+8. Existing top-bar/bell UI
+9. Existing persistence/database/preferences
+10. Existing LSP notification hooks
+11. Existing SCM notification hooks
+12. Existing build notification hooks
+13. Existing debugger notification hooks
+14. Existing terminal/task notification hooks
+15. Files that can be reused
+16. Files that should be replaced
+17. Files that should be created
+18. Potential conflicts with existing architecture
+
+Do not invent duplicate systems if suitable infrastructure already exists.
+
+## 47. Plan-First Requirement
+
+Before implementation, produce a complete plan covering:
+1. Architecture, 2. Component tree, 3. Notification model, 4. State model, 5. Notification lifecycle, 6. Routing rules, 7. Priority rules, 8. Presentation strategy, 9. Queue strategy, 10. Deduplication strategy, 11. Grouping strategy, 12. Progress strategy, 13. Persistence strategy, 14. History strategy, 15. Preferences, 16. Accessibility, 17. Thread-safety strategy, 18. Lifecycle strategy, 19. Rate-limiting strategy, 20. Security strategy, 21. Testing strategy, 22-28. Integration with LSP/SCM/builds/debugger/terminal/editor/AI, 29. Files to create, 30. Files to modify, 31. Existing infrastructure to reuse, 32. Risks, 33. Anti-spam design, 34. Anti-stale design, 35. Anti-crash design
+
+**WAIT FOR APPROVAL BEFORE IMPLEMENTING.**
+
+## 48. Core Principle (Restated)
+
+- Notification Manager = central authority
+- Notification Store = source of truth
+- Notification Router = decides presentation
+- Notification Center = history and control
+- Progress notifications update, don't multiply
+- Repeated events grouped/deduplicated
+- Critical errors remain visible
+- Normal operations remain unobtrusive
+- Safe under concurrency and mobile lifecycle
+
+**DO NOT CODE YET. PLAN FIRST.**
+
+---
+
+### [2026-08-13 16:52 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A (no code pushed — documentation only) | **CI Build:** N/A
+**What was done:** Saved changelog rules and standing rules to agent memory. Registered the Advanced Notification System plan (48 sections, 16 implementation phases) in AGENTS.md as Phase N. Plan covers: centralized notification architecture, notification model with sources/priorities/types, presentation router (snackbar/banner/center/progress), grouping, deduplication, queue, actions, undo, persistence, history, preferences, accessibility, anti-spam/rate-limiting, thread safety, lifecycle safety, integration with LSP/SCM/build/debugger/terminal/editor/AI, mobile UX, testing, failure recovery, and 16-phase implementation roadmap. Plan explicitly states DO NOT IMPLEMENT YET — awaiting Wisdom's approval.
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:**
+1. YouTube Test 51 fix — only remaining unfixed item from 57-test audit (Shorts audio-only, settings black screen, sign-in "insecure browser" warning)
+2. SCM Rebuild (16 phases) — awaiting Wisdom's approval
+3. Phase V LSP Reliability Upgrade — awaiting start
+4. Phase N Advanced Notification System — awaiting approval, pre-implementation audit required
