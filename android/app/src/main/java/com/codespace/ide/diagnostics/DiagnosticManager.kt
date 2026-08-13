@@ -300,6 +300,7 @@ object DiagnosticManager {
         message: String,
     ): String {
         val normalizedMessage = message.trim().lowercase()
-        return "${'$'}{source}/${'$'}sourceId|${'$'}uri|${'$'}{range.startLine}:${'$'}{range.startColumn}-${'$'}{range.endLine}:${'$'}{range.endColumn}|${'$'}severity|${'$'}{code ?: ""}|${'$'}normalizedMessage"
+        val codePart = code ?: ""
+        return "$source/$sourceId|$uri|${range.startLine}:${range.startColumn}-${range.endLine}:${range.endColumn}|$severity|$codePart|$normalizedMessage"
     }
 }

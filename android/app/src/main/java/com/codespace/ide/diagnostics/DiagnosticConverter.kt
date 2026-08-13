@@ -188,7 +188,7 @@ object DiagnosticConverter {
                 com.codespace.ide.build.GradleErrorParser.Severity.WARNING -> DiagnosticManager.Severity.WARNING
                 com.codespace.ide.build.GradleErrorParser.Severity.INFO -> DiagnosticManager.Severity.INFO
             }
-            val uri = "file://${'$'}{p.file}"
+            val uri = "file://${p.file}"
             val range = DiagnosticManager.DiagnosticRange(p.line, p.column, p.line, p.column)
             val id = DiagnosticManager.computeId(
                 DiagnosticManager.DiagnosticSource.BUILD, "gradle", uri, range, severity, null, p.message
