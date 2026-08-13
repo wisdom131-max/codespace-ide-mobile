@@ -961,7 +961,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // P41-G: Skip LSP completions when path context is active
         if (pathContext != null) { lspCompletions = emptyList(); workspaceCompletions = emptyList(); return@LaunchedEffect }
 
-        if ((prefix.length >= 2 || isDotTriggered) && lspCompletionProvider != null) {
+        if ((prefix.length >= 2 || isDotTriggered || (completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT && prefix.length >= 1)) && lspCompletionProvider != null) {  // TEST-14-FIX: also trigger LSP for 1-char import context
             kotlinx.coroutines.delay(150)  // debounce
 
             // P41-K: Cancel any previous in-flight completion request before sending new one

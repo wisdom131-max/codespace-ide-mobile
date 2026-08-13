@@ -69,7 +69,7 @@ object StdlibCompletions {
         // real detection requires jedi/pylsp introspecting the live environment)
         "requests", "numpy", "pandas", "matplotlib", "flask", "django",
         "pytest", "setuptools", "pip", "wheel", "yaml", "attr", "attrs",
-        "click", "jinja2", "markupsafe", "certifi", "urllib3", "idna",
+        "click", "jinja2", "markupsafe", "markdown", "certifi"  // TEST-14-FIX: add markdown module, "urllib3", "idna",
         "charset_normalizer", "six", "dateutil", "pytz", "cryptography",
         "cffi", "pycparser", "packaging", "pyparsing", "mock", "coverage",
         "tox", "black", "flake8", "pylint", "mypy", "mypy_extensions",
@@ -226,7 +226,7 @@ object StdlibCompletions {
                     members.filter { memberPrefix.isEmpty() || it.lowercase().startsWith(memberPrefix) }
                         .sorted()
                         .forEach { results.add(it to "$module.$it") }
-                    return results.take(10)
+                    return results.take(50)  // TEST-14-FIX: raised from 10 to 50
                 }
                 // Regular prefix completions
                 PYTHON_BUILTINS.filter { it.lowercase().startsWith(p) }
@@ -251,7 +251,7 @@ object StdlibCompletions {
                     members.filter { memberPrefix.isEmpty() || it.lowercase().startsWith(memberPrefix) }
                         .sorted()
                         .forEach { results.add(it to "$obj.$it") }
-                    return results.take(10)
+                    return results.take(50)  // TEST-14-FIX: raised from 10 to 50
                 }
                 // Regular prefix completions
                 JS_GLOBALS.filter { it.lowercase().startsWith(p) }
@@ -263,6 +263,6 @@ object StdlibCompletions {
             }
             else -> {}
         }
-        return results.take(10)
+        return results.take(60)  // TEST-14-FIX: raised from 10 to 60 so import completions show all matching stdlib modules
     }
 }
