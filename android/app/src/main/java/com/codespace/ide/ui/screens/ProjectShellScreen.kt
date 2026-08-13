@@ -2151,6 +2151,7 @@ private fun PssActivityBar(
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // P-SCM-7: Use GitCommandExecutor for badge count (replaces raw execOnce)
         val gitBadgeCount by produceState(0, projectId, activeEditorTab) {
             withContext(Dispatchers.IO) {
                 try {
@@ -2161,8 +2162,12 @@ private fun PssActivityBar(
                     if (java.io.File(repoDir, ".git").exists()) {
                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir.absolutePath)
                         if (guestPath != null) {
-                            val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git -C '$guestPath' status --porcelain", timeoutSeconds = 10L)
-                            value = out.lines().count { it.isNotBlank() && !it.startsWith("Exit") && !it.startsWith("Error") }
+                            val result = com.codespace.ide.scm.GitCommandExecutor.run(
+                                context, listOf("status", "--porcelain"), guestPath, timeoutSeconds = 10L
+                            )
+                            if (result is com.codespace.ide.scm.GitResult.Ok) {
+                                value = result.lines.size
+                            }
                         }
                     }
                 } catch (_: Exception) {}
