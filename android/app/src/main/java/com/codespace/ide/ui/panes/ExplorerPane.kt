@@ -1500,7 +1500,7 @@ fun ExplorerSidePanel(
                                                     NotificationStore.add("${f.name} extracted", "Extracted to ${outDir.name}/")
                                                 } catch (e: Exception) {
                                                     AppOutputLog.log("[Extract] Error: ${e.message}", "terminal")
-                                                    NotificationStore.show("Extract failed", e.message ?: "Unknown error")
+                                                    NotificationStore.add("Extract failed", e.message ?: "Unknown error", NotificationStore.Severity.ERROR, NotificationStore.Source.SYSTEM)
                                                 }
                                             }
                                         }
