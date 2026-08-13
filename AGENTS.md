@@ -71,17 +71,30 @@ then do X. Don't go searching for random work — follow the roadmap.
 **Commits:** 047efc1 (LspIntegration), 3c23e63 (CompletionEngine), 8db51b9→a9ce91f→216ee76 (CodeEditor), e3729a3 (EditorPane), 054003c (LspManager)
 **Next on roadmap:** Device retest of 9 fixed tests (7,8,9,12,16,19,32,54,55). Then fix 9 unfixed tests (11,14,36,39,43,45,48,50,53).
 
+## STANDING RULES (All AI Agents Must Follow)
+
+1. **NEVER use sub-agents (sub_agent tool).** They consume too many tokens. All work must be done directly.
+2. Every commit must include a CHANGE LOG entry with full timestamp, CI build number + pass/fail, what was fixed, files touched, and next on roadmap.
+3. Use @Suppress("UNUSED_PARAMETER") instead of renaming to `_` to prevent breaking named-argument call sites.
+4. Do not babysit builds unless explicitly asked.
+5. Maintain the separation between the Activity Bar Debugger and the Terminal Panel Debugger.
+6. Both debuggers must share a common backend via a UniversalDebugManager.
+7. Do not display 'Unsupported' for unsupported file types; offer relevant tools instead.
+8. Prioritize the migration to DAP (Debug Adapter Protocol) as defined in the Phase 26 plan, while maintaining the current DebugProvider architecture until Phase 26-1 is fully validated.
+9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
+10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
+
 ## CURRENT STATE (2026-08-12 21:30 WAT)
 
 | | |
 |-|-|
-| Latest commit | **40232a11** — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **Phase U — Completion Pipeline Upgrade** COMPLETE ✅ — All 8 features implemented (Build #2179 GREEN). 9 test fixes need device retest, 9 tests still unfixed. | — .md icon fixed (Test 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
+| Latest commit | **a76819f** — fix(build #2184): TerminalService cancel import + ExplorerPane NotificationStore.show() → .add() (#2186 GREEN) — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
+| Active phase | **TESTING STAGE** — Phase U COMPLETE ✅ (Build #2179). Previous AI's Test 11/14/43/45/48/50/51/53 fixes now compiling (#2186 GREEN). Test 53 Cloud Backup root cause still unfixed. 9 tests need device retest. | 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2126 — Customize Layout dropdown + vtsls config (8b899f5) |
+| Last green | #2186 (a76819f) ✅ — Customize Layout dropdown + vtsls config (8b899f5) |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -4445,7 +4458,20 @@ Editor
 
 with breakpoints, stepping, variable inspection, watches, call stack, debug console, problems panel, output panel, and terminal integration all properly wired together.
 
-### CURRENT STATE (as of Phase 25)
+### STANDING RULES (All AI Agents Must Follow)
+
+1. **NEVER use sub-agents (sub_agent tool).** They consume too many tokens. All work must be done directly.
+2. Every commit must include a CHANGE LOG entry with full timestamp, CI build number + pass/fail, what was fixed, files touched, and next on roadmap.
+3. Use @Suppress("UNUSED_PARAMETER") instead of renaming to `_` to prevent breaking named-argument call sites.
+4. Do not babysit builds unless explicitly asked.
+5. Maintain the separation between the Activity Bar Debugger and the Terminal Panel Debugger.
+6. Both debuggers must share a common backend via a UniversalDebugManager.
+7. Do not display 'Unsupported' for unsupported file types; offer relevant tools instead.
+8. Prioritize the migration to DAP (Debug Adapter Protocol) as defined in the Phase 26 plan, while maintaining the current DebugProvider architecture until Phase 26-1 is fully validated.
+9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
+10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
+
+## CURRENT STATE (as of Phase 25)
 
 **Architecture:** Editor → DebugProvider interface → ProcessBuilder → Native Debugger (pdb, node inspect, bash -x)
 - 7 providers: Terminal, Python (pdb), NodeJs (inspect), Shell (bash -x), PHP, Android, APK
@@ -11806,6 +11832,19 @@ Previous patterns (from USER.md):
 
 ---
 
+## STANDING RULES (All AI Agents Must Follow)
+
+1. **NEVER use sub-agents (sub_agent tool).** They consume too many tokens. All work must be done directly.
+2. Every commit must include a CHANGE LOG entry with full timestamp, CI build number + pass/fail, what was fixed, files touched, and next on roadmap.
+3. Use @Suppress("UNUSED_PARAMETER") instead of renaming to `_` to prevent breaking named-argument call sites.
+4. Do not babysit builds unless explicitly asked.
+5. Maintain the separation between the Activity Bar Debugger and the Terminal Panel Debugger.
+6. Both debuggers must share a common backend via a UniversalDebugManager.
+7. Do not display 'Unsupported' for unsupported file types; offer relevant tools instead.
+8. Prioritize the migration to DAP (Debug Adapter Protocol) as defined in the Phase 26 plan, while maintaining the current DebugProvider architecture until Phase 26-1 is fully validated.
+9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
+10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
+
 ## CURRENT STATE UPDATE (2026-08-09 18:15, by Superagent)
 
 | | |
@@ -15375,6 +15414,16 @@ After all 8 features are implemented, audit the full pipeline:
 **What was fixed:** Updated AGENTS.md with accurate test status from change log audit. Test 2.2 had 18 fails. 9 have code fixes but need device retest (Tests 7, 8, 9, 12, 16, 19, 32, 54, 55 — device was running old APK). 9 are completely unfixed (Tests 11, 14, 36, 39, 43, 45, 48, 50, 53). Now starting Phase U — Completion Pipeline Upgrade (8 features: isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit).
 **Files touched:** AGENTS.md (documentation only)
 **Next on roadmap:** Implement Phase U features U-1 through U-8. Then device retest of Tests 7,8,9,12,16,19,32,54,55. Then fix remaining unfixed Tests 11,14,36,39,43,45,48,50,53.
+### [2026-08-13 08:00 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** a76819f | **CI Build:** #2186 PASS ✅
+**What was fixed:** Two compile errors from the previous AI's Test 43/50 commits (builds #2182-#2184 all failed):
+- TerminalService.kt:173 — `serviceScope.cancel()` had no import for `kotlinx.coroutines.cancel` → added import
+- ExplorerPane.kt:1503 — `NotificationStore.show()` doesn't exist as a method → replaced with `NotificationStore.add(title, body, Severity.ERROR, Source.SYSTEM)`
+**Previous AI's work (builds #2182-#2184):** Tests 11, 14, 43, 45, 48, 50, 51, 53 code fixes were committed but ALL FAILED to compile due to these two errors. The fixes are now compiling but need device verification.
+**Files touched:** TerminalService.kt, ExplorerPane.kt
+**Next on roadmap:** Fix Test 53 (Cloud Backup) root cause — CloudBackupManager.backupProject() uses `projectId` (a timestamp ID from navigation) as the folder name under `projects/`, but the actual project directory is named after the project name. Need to resolve the real project directory the same way Explorer/Editor do (line 756 of ProjectShellScreen.kt: `File(context.filesDir, "projects/$projectId")`). Then device retest all 9 previously-fixed tests (7,8,9,12,16,19,32,54,55) and all newly-fixed tests (11,14,43,45,48,50,51,53).
+
+
 
 ### [2026-08-13 07:00 WAT] — AI Agent: Claude (Base44 Superagent)
 **Commits:** (pending — batch commit after Test 53) | **CI Build:** pending
