@@ -950,6 +950,25 @@ private const val USER_AGENT_DATA_OVERRIDE_JS = """
       configurable: true
     });
   } catch(e) {}
+  // TEST-51-FIX: Add window.chrome object — Google checks for this to detect real Chrome.
+  // Without it, Google shows "insecure browser" and blocks sign-in.
+  try {
+    if (!window.chrome) {
+      window.chrome = {
+        runtime: { id: undefined, onConnect: {}, onMessage: {}, connect: function(){}, sendMessage: function(){} },
+        app: { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } },
+        csi: function() { return { onloadT: Date.now(), pageT: 0, startE: Date.now(), tran: 15 }; },
+        loadTimes: function() { return { commitLoadTime: Date.now()/1000, connectionInfo: 'h2', finishDocumentLoadTime: Date.now()/1000, finishLoadTime: Date.now()/1000, firstPaintAfterLoadTime: Date.now()/1000, firstPaintTime: Date.now()/1000, navigationType: 'Other', npnNegotiatedProtocol: 'h2', requestTime: Date.now()/1000, startDnsLoopTime: Date.now()/1000, startLoadTime: Date.now()/1000, timeToFirstByte: 0 }; }
+      };
+    }
+  } catch(e) {}
+  // TEST-51-FIX: Override navigator.webdriver — Google detects automation
+  try {
+    Object.defineProperty(navigator, 'webdriver', {
+      get: function() { return false; },
+      configurable: true
+    });
+  } catch(e) {}
 })();
 """
 
@@ -961,6 +980,10 @@ video { playsinline: true; -webkit-playsinline: true; }
 ytd-app { min-width: 1280px !important; }
 /* Ensure video elements have a visible background */
 video, .html5-video-player, #movie_player { background-color: #000 !important; }
+/* TEST-51-FIX: Fix YouTube settings page black screen — ensure visible backgrounds */
+ytd-app, ytd-settings, .settings-page, tp-yt-paper-dialog, #settings { background-color: #fff !important; color: #0f0f0f !important; display: block !important; visibility: visible !important; opacity: 1 !important; }
+/* TEST-51-FIX: Force video to render inline (not just audio) */
+video source, video { width: 100% !important; height: auto !important; display: block !important; }
 """
 
 // P48: CSS to force desktop layout on all sites
