@@ -702,7 +702,7 @@ object LspManager {
         if (oldState != newState) {
             val server = servers[language]
             val gen = server?.generation ?: 0
-            val pid = server?.process?.pid()?.toString() ?: "N/A"
+            val pid = server?.let { getProcessPid(it.process) }?.toString() ?: "N/A"
             val restartCount = restartBackoffs[language]?.consecutiveRestarts ?: 0
             val memInfo = server?.memorySnapshot?.let { "VmRSS=${it.vmRssKb}kB" } ?: ""
             val extraStr = if (extra.isNotEmpty()) " $extra" else ""
@@ -715,6 +715,25 @@ object LspManager {
         val msg = "$LSP_LOG_TAG $event"
         Log.d(TAG, msg)
         AppOutputLog.log(msg, "lsp")
+    }
+
+    // Phase V: Get PID of a child Process on Android (Process.pid() is Java 9, not available on Android)
+    private fun getProcessPid(process: Process): Long {
+        return try {
+            var cls: Class<*>? = process.javaClass
+            while (cls != null) {
+                try {
+                    val f = cls.getDeclaredField("pid")
+                    f.isAccessible = true
+                    return (f.get(process) as? Int)?.toLong() ?: -1L
+                } catch (_: NoSuchFieldException) {
+                    cls = cls.superclass
+                }
+            }
+            -1L
+        } catch (e: Exception) {
+            -1L
+        }
     }
 
     // P50-3: ctags-lsp as secondary server for workspace/symbol fallback.
@@ -1282,12 +1301,12 @@ object LspManager {
         // mark the server as not initialized so the next startServer call
         // can restart it.
         // Phase V-B/V-K: On disconnect, mark server dead and trigger auto-restart
-        client.onDisconnect = {
+        client.onDisconnect = disconnectHandler@ {
             val gen = server.generation
             val currentGen = generationCounters[language] ?: 0
             if (gen != currentGen) {
                 lifecycleLog("DISCONNECT lang=${language.displayName} gen=$gen STALE (current=$currentGen) — ignoring")
-                return@onDisconnect
+                return@disconnectHandler
             }
             val wasIntentional = getServerState(language) == LspState.STOPPING
             if (!wasIntentional) {
@@ -1364,7 +1383,7 @@ object LspManager {
         setServerState(language, LspState.READY, "initialized")
         // Phase V-C: Reset restart backoff on successful init
         restartBackoffs[language]?.reset()?.let { restartBackoffs[language] = it }
-        lifecycleLog("READY lang=${language.displayName} gen=${server.generation} pid=${process.pid()}")
+        lifecycleLog("READY lang=${language.displayName} gen=${server.generation} pid=${getProcessPid(process)}")
         AppOutputLog.log("[LSP] Server capabilities: ${caps.toString().take(300)}", "lsp")
 
         client.notify("initialized")
@@ -1907,7 +1926,7 @@ object LspManager {
             for ((language, server) in servers) {
                 if (!server.process.isAlive) continue
                 try {
-                    val pid = server.process.pid()
+                    val pid = getProcessPid(server.process)
                     val snap = readMemorySnapshot(pid)
                     if (snap != null) {
                         server.memorySnapshot = snap

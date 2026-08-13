@@ -2315,7 +2315,7 @@ interface User {
 }
 
 async function greet(user: User): Promise<string> {
-  const message = `Hello, \${user.name}!`;
+  const message = `Hello, ${'$'}{user.name}!`;
   return message;
 }
 

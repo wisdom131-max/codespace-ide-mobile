@@ -119,7 +119,7 @@ object DocumentFormatter {
             Language.SHELL -> {
                 // shfmt via GitHub binary
                 dpkgFix + "( uname -m | grep -q aarch64 && arch=arm64 || arch=amd64 ) && " +
-                    "curl -fsSL \"https://github.com/mvdan/sh/releases/download/v3.9.1/shfmt_3.9.1_linux_${arch}\" " +
+                    "curl -fsSL \"https://github.com/mvdan/sh/releases/download/v3.9.1/shfmt_3.9.1_linux_${'$'}{arch}\" " +
                     "-o /usr/local/bin/shfmt && chmod +x /usr/local/bin/shfmt"
             }
             Language.GO -> null  // gofmt ships with golang-go, no separate install
