@@ -493,17 +493,34 @@ fun ExplorerSidePanel(
                 if (gitDir.exists()) {
                     val statusMap = mutableMapOf<String, Char>()
                     val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, wsSnap)
-                    val output = if (guestPath != null)
-                        // safe.directory=* avoids "detected dubious ownership" for
-                        // /sdcard-hosted repos (UID mismatch with proot guest root).
-                        com.codespace.ide.terminal.ProotInstaller.execOnce(context, "cd '$guestPath' && git -c safe.directory='*' status --porcelain 2>/dev/null", timeoutSeconds = 15L)
-                    else ""
-                    for (line in output.lines()) {
-                        if (line.length < 4) continue
-                        val status = line[0]
-                        val filePath = line.substring(3).trim()
-                        val absPath = File(wsSnap, filePath).absolutePath
-                        statusMap[absPath] = status
+                    if (guestPath != null) {
+                        // P-SCM-8: Use GitCommandExecutor (centralized safe.directory + structured result)
+                        val result = com.codespace.ide.scm.GitCommandExecutor.run(
+                            context, listOf("status", "--porcelain"), guestPath, timeoutSeconds = 15L
+                        )
+                        if (result is com.codespace.ide.scm.GitResult.Ok) {
+                            for (line in result.lines) {
+                                val fs = com.codespace.ide.scm.ScmFileStatus.parse(line) ?: continue
+                                val absPath = File(wsSnap, fs.path).absolutePath
+                                // Use the first non-space change code for the badge (staged takes priority)
+                                val code = if (fs.stagedChange != com.codespace.ide.scm.FileChange.UNMODIFIED
+                                    && fs.stagedChange != com.codespace.ide.scm.FileChange.UNTRACKED) {
+                                    fs.stagedChange
+                                } else {
+                                    fs.workingChange
+                                }
+                                statusMap[absPath] = when (code) {
+                                    com.codespace.ide.scm.FileChange.MODIFIED -> 'M'
+                                    com.codespace.ide.scm.FileChange.ADDED -> 'A'
+                                    com.codespace.ide.scm.FileChange.DELETED -> 'D'
+                                    com.codespace.ide.scm.FileChange.RENAMED -> 'R'
+                                    com.codespace.ide.scm.FileChange.COPIED -> 'C'
+                                    com.codespace.ide.scm.FileChange.UPDATED -> 'U'
+                                    com.codespace.ide.scm.FileChange.UNTRACKED -> 'U'
+                                    else -> ' '
+                                }
+                            }
+                        }
                     }
                     gitStatus = statusMap
 
