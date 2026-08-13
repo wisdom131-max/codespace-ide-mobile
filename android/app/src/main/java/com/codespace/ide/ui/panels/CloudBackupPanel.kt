@@ -71,16 +71,27 @@ fun CloudBackupPanel(
             loading = true
             actionMsg = "Backing up..."
             SyncStatusMonitor.setSyncing("Backing up $projectId")
-            val result = CloudBackupManager.backupProject(context, projectId, backendUrl, authToken)
+            // TEST-53-FIX: surface retry attempts to the user in real time instead of
+            // silently retrying for up to ~11s (1s+3s+7s backoff) with no feedback.
+            val result = CloudBackupManager.backupProject(
+                context, projectId, backendUrl, authToken,
+                onRetry = { attempt, max ->
+                    actionMsg = "Network issue — retrying ($attempt/$max)..."
+                    SyncStatusMonitor.setSyncing("Retrying backup ($attempt/$max)")
+                },
+            )
             result.onSuccess {
                 actionMsg = "Backup complete (ID: ${it.take(8)})"
                 isError = false
                 SyncStatusMonitor.setSuccess("Backup complete")
                 loadBackups()
             }.onFailure {
+                // TEST-53-FIX: retryNetwork's exception message already states
+                // "failed after 3 attempts", so this now clearly shows the retry
+                // happened instead of reading like a single immediate failure.
                 actionMsg = "Backup failed: ${it.message}"
                 isError = true
-                SyncStatusMonitor.setError("Backup failed")
+                SyncStatusMonitor.setError("Backup failed after 3 attempts")
             }
             loading = false
         }

@@ -29,9 +29,19 @@ object CloudBackupManager {
     private const val MAX_RETRIES = 3
     private val backoffDelayMs = longArrayOf(1000, 3000, 7000)
 
-    private suspend fun <T> retryNetwork(tag: String, block: suspend () -> T): T {
+    // TEST-53-FIX: onAttempt reports retry progress ("Retrying (2/3)...") so the caller
+    // can surface it to the user via SyncStatusMonitor/actionMsg instead of silently
+    // retrying with no visible feedback. Final error message now states how many
+    // attempts were made, so a network failure clearly reads as "retried 3x" not
+    // just a generic single failure.
+    private suspend fun <T> retryNetwork(
+        tag: String,
+        onAttempt: ((attempt: Int, max: Int) -> Unit)? = null,
+        block: suspend () -> T,
+    ): T {
         var lastError: Exception? = null
         for (attempt in 0 until MAX_RETRIES) {
+            if (attempt > 0) onAttempt?.invoke(attempt + 1, MAX_RETRIES)
             try {
                 return block()
             } catch (e: java.io.IOException) {
@@ -46,7 +56,10 @@ object CloudBackupManager {
                 }
             }
         }
-        throw lastError ?: java.io.IOException("$tag failed after $MAX_RETRIES attempts")
+        throw java.io.IOException(
+            "$tag failed after $MAX_RETRIES attempts: ${lastError?.message ?: "network error"}",
+            lastError,
+        )
     }
 
     data class BackupEntry(
@@ -63,6 +76,7 @@ object CloudBackupManager {
         projectId: String,
         backendUrl: String,
         authToken: String,
+        onRetry: ((attempt: Int, max: Int) -> Unit)? = null,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val projectDir = File(context.filesDir, "projects/$projectId")
@@ -72,7 +86,7 @@ object CloudBackupManager {
             try {
                 createTarGz(projectDir, archiveFile)
 
-                retryNetwork("backup") {
+                retryNetwork("backup", onAttempt = onRetry) {
                     val boundary = "----Boundary${System.currentTimeMillis()}"
                     val url = URL("$backendUrl/api/backup/upload")
                     val conn = (url.openConnection() as HttpURLConnection).apply {
