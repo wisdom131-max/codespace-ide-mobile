@@ -223,7 +223,7 @@ fun SourceControlPane(projectId: String) {
                     },
                 )
             }
-        )
+        }
 
         HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
