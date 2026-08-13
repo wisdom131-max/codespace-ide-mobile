@@ -1750,6 +1750,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     onValueChange = { newValue ->
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
                         // Phase U-5: Check if typed char should commit the selected completion
+                        var updatedValue = newValue
                         val commitCharMatch = if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
                             val typedChar = newValue.text.getOrNull(newValue.selection.end - 1)
                             val selectedComp = allCompletions.getOrNull(
@@ -1774,11 +1775,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 true
                             } else false
                         } else false
-                        if (commitCharMatch) {
-                            // Already committed — skip the rest of onValueChange
-                            updatedValue = newValue
-                        } else {
-                        var updatedValue = newValue
+                        if (!commitCharMatch) {
                         // 1. Auto-close brackets & quotes
                         if (newValue.text.length == value.text.length + 1) {
                             val cursor = newValue.selection.end
