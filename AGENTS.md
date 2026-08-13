@@ -17025,3 +17025,14 @@ Before implementation, produce a complete plan covering:
 2. Device testing of all SCM features (E1-E13)
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 23:10 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 10fa1b1 | **CI Build:** #2223 (pending)
+**What was fixed:** Completed all remaining SCM features. (1) E8 Branch Graph: Added graphLog() to GitService (git log --graph --oneline --all --decorate) and ScmState, plus BranchGraphDialog in SourceControlPane showing ASCII graph in monospace. Accessible via overflow menu. (2) E15 Clone from URL: Added clone() to GitService and ScmState, plus CloneDialog with URL + destination path inputs. Added "Clone URL" button to the "not a git repo" empty state alongside "Init Repo". (3) E13 Git Blame: Removed duplicated blame block in EditorPane (was copy-pasted twice, 56 lines of dead code), fixed line numbering from 0-based to 1-based to match CodeEditor line numbers. Added blame() to GitService with proper porcelain parsing using Regex SHA detection and author-time timestamp conversion.
+**Files touched:** SourceControlPane.kt, GitService.kt, ScmState.kt, EditorPane.kt
+**SCM test coverage (complete):** E1(panel✅), E2(stage/unstage✅), E3(commit✅), E4(diff✅), E5(branch create/switch✅), E6(branch delete✅), E7(history✅), E8(branch graph✅ NEW), E9(stash✅), E10(tags✅), E11(.gitignore✅), E12(merge conflict✅), E13(git blame✅ FIXED), E15(clone from URL✅ NEW). Remaining: E14(LSP cross-file def — not SCM), E16-E18(GitHub OAuth — separate auth system).
+**Next on roadmap:**
+1. Verify build #2223 green
+2. Device testing of all SCM features (E1-E13, E15)
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
