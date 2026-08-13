@@ -17047,3 +17047,13 @@ Before implementation, produce a complete plan covering:
 2. Device testing of all SCM features (E1-E18)
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 21:12 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 03424b1 | **CI Build:** #2229 (pending)
+**What was fixed:** Build failures #2224-2226. Root cause: ScmState.deleteBranch() and renameBranch() used `gitService` instead of `service` field, and used old `result.success`/`result.stderr` pattern instead of `GitResult.Ok`/`GitResult.Err` sealed class matching. Also fixed PublishDialog calling `addAllAndCommit` (doesn't exist) instead of `stageAllAndCommit`.
+**Files touched:** ScmState.kt, SourceControlPane.kt
+**Next on roadmap:**
+1. Verify build #2229 green
+2. Device testing of all SCM features
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
