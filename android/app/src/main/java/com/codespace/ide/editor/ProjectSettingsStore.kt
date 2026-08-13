@@ -105,6 +105,45 @@ object ProjectSettingsStore {
     /** Node.js CLI args for pyright (e.g. --max-old-space-size=8192). */
     val pyrightNodeArgs: MutableState<String> = mutableStateOf("--max-old-space-size=8192")
 
+    // ── Item 4: TS/JS + Accessibility settings (from vscode.dev screenshots) ──
+
+    // Accessibility Signals
+    val accSignalPositionWarning: MutableState<Boolean> = mutableStateOf(true)
+    val accSignalProgress: MutableState<Boolean> = mutableStateOf(true)
+
+    // JS/TS Format
+    val tsFormatEnabled: MutableState<Boolean> = mutableStateOf(true)
+    val tsFormatIndentSwitchCase: MutableState<Boolean> = mutableStateOf(true)
+    val tsFormatSpaceAfterComma: MutableState<Boolean> = mutableStateOf(true)
+    val tsFormatSpaceAfterConstructor: MutableState<Boolean> = mutableStateOf(false)
+    val tsFormatSpaceAfterFunctionKeyword: MutableState<Boolean> = mutableStateOf(false)
+    val tsFormatSpaceAfterControlFlow: MutableState<Boolean> = mutableStateOf(false)
+
+    // JS/TS Tsserver
+    val tsServerLog: MutableState<Boolean> = mutableStateOf(false)
+    val tsUseSyntaxServer: MutableState<Boolean> = mutableStateOf(true)
+
+    // JS/TS Inlay Hints
+    val tsInlayHintSuppressMatchName: MutableState<Boolean> = mutableStateOf(true)
+    val tsInlayHintParamTypes: MutableState<Boolean> = mutableStateOf(false)
+
+    // JS/TS Workspace Symbols
+    val tsWsSymbolsExcludeLib: MutableState<Boolean> = mutableStateOf(false)
+    val tsWsSymbolsScope: MutableState<String> = mutableStateOf("allOpenProjects")
+
+    // Window
+    val windowTitle: MutableState<String> = mutableStateOf("\${activeEditorShort}\${separator}\${rootName}")
+
+    // Terminal
+    val terminalIntegratedNotifications: MutableState<Boolean> = mutableStateOf(true)
+    val terminalCommandsToSkipShell: MutableState<String> = mutableStateOf("")
+
+    // Extensions
+    val extensionsIgnoreRecommendations: MutableState<Boolean> = mutableStateOf(false)
+
+    // Task
+    val taskNotifyWindowOnCompletion: MutableState<Boolean> = mutableStateOf(true)
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         flowMode.value = try {
@@ -134,6 +173,27 @@ object ProjectSettingsStore {
         cursorMode.value = try {
             CursorMode.valueOf(prefs.getString("cursor_mode", CursorMode.IN_APP.name) ?: CursorMode.IN_APP.name)
         } catch (_: Exception) { CursorMode.IN_APP }
+
+        // ── Item 4: TS/JS + Accessibility prefs ──
+        accSignalPositionWarning.value = prefs.getBoolean("acc_signal_position_warning", true)
+        accSignalProgress.value = prefs.getBoolean("acc_signal_progress", true)
+        tsFormatEnabled.value = prefs.getBoolean("ts_format_enabled", true)
+        tsFormatIndentSwitchCase.value = prefs.getBoolean("ts_format_indent_switch_case", true)
+        tsFormatSpaceAfterComma.value = prefs.getBoolean("ts_format_space_after_comma", true)
+        tsFormatSpaceAfterConstructor.value = prefs.getBoolean("ts_format_space_after_constructor", false)
+        tsFormatSpaceAfterFunctionKeyword.value = prefs.getBoolean("ts_format_space_after_function_keyword", false)
+        tsFormatSpaceAfterControlFlow.value = prefs.getBoolean("ts_format_space_after_control_flow", false)
+        tsServerLog.value = prefs.getBoolean("ts_server_log", false)
+        tsUseSyntaxServer.value = prefs.getBoolean("ts_use_syntax_server", true)
+        tsInlayHintSuppressMatchName.value = prefs.getBoolean("ts_inlay_hint_suppress_match_name", true)
+        tsInlayHintParamTypes.value = prefs.getBoolean("ts_inlay_hint_param_types", false)
+        tsWsSymbolsExcludeLib.value = prefs.getBoolean("ts_ws_symbols_exclude_lib", false)
+        tsWsSymbolsScope.value = prefs.getString("ts_ws_symbols_scope", "allOpenProjects") ?: "allOpenProjects"
+        windowTitle.value = prefs.getString("window_title", "\${activeEditorShort}\${separator}\${rootName}") ?: "\${activeEditorShort}\${separator}\${rootName}"
+        terminalIntegratedNotifications.value = prefs.getBoolean("terminal_integrated_notifications", true)
+        terminalCommandsToSkipShell.value = prefs.getString("terminal_commands_to_skip_shell", "") ?: ""
+        extensionsIgnoreRecommendations.value = prefs.getBoolean("extensions_ignore_recommendations", false)
+        taskNotifyWindowOnCompletion.value = prefs.getBoolean("task_notify_window_on_completion", true)
     }
 
     // ── Setters ────────────────────────────────────────────────────────
@@ -205,4 +265,25 @@ object ProjectSettingsStore {
         pyrightNodeArgs.value = args
         prefs.edit().putString("pyright_node_args", args).apply()
     }
+
+    // ── Item 4 setters ──────────────────────────────────────────────────
+    fun setAccSignalPositionWarning(v: Boolean) { accSignalPositionWarning.value = v; prefs.edit().putBoolean("acc_signal_position_warning", v).apply() }
+    fun setAccSignalProgress(v: Boolean) { accSignalProgress.value = v; prefs.edit().putBoolean("acc_signal_progress", v).apply() }
+    fun setTsFormatEnabled(v: Boolean) { tsFormatEnabled.value = v; prefs.edit().putBoolean("ts_format_enabled", v).apply() }
+    fun setTsFormatIndentSwitchCase(v: Boolean) { tsFormatIndentSwitchCase.value = v; prefs.edit().putBoolean("ts_format_indent_switch_case", v).apply() }
+    fun setTsFormatSpaceAfterComma(v: Boolean) { tsFormatSpaceAfterComma.value = v; prefs.edit().putBoolean("ts_format_space_after_comma", v).apply() }
+    fun setTsFormatSpaceAfterConstructor(v: Boolean) { tsFormatSpaceAfterConstructor.value = v; prefs.edit().putBoolean("ts_format_space_after_constructor", v).apply() }
+    fun setTsFormatSpaceAfterFunctionKeyword(v: Boolean) { tsFormatSpaceAfterFunctionKeyword.value = v; prefs.edit().putBoolean("ts_format_space_after_function_keyword", v).apply() }
+    fun setTsFormatSpaceAfterControlFlow(v: Boolean) { tsFormatSpaceAfterControlFlow.value = v; prefs.edit().putBoolean("ts_format_space_after_control_flow", v).apply() }
+    fun setTsServerLog(v: Boolean) { tsServerLog.value = v; prefs.edit().putBoolean("ts_server_log", v).apply() }
+    fun setTsUseSyntaxServer(v: Boolean) { tsUseSyntaxServer.value = v; prefs.edit().putBoolean("ts_use_syntax_server", v).apply() }
+    fun setTsInlayHintSuppressMatchName(v: Boolean) { tsInlayHintSuppressMatchName.value = v; prefs.edit().putBoolean("ts_inlay_hint_suppress_match_name", v).apply() }
+    fun setTsInlayHintParamTypes(v: Boolean) { tsInlayHintParamTypes.value = v; prefs.edit().putBoolean("ts_inlay_hint_param_types", v).apply() }
+    fun setTsWsSymbolsExcludeLib(v: Boolean) { tsWsSymbolsExcludeLib.value = v; prefs.edit().putBoolean("ts_ws_symbols_exclude_lib", v).apply() }
+    fun setTsWsSymbolsScope(v: String) { tsWsSymbolsScope.value = v; prefs.edit().putString("ts_ws_symbols_scope", v).apply() }
+    fun setWindowTitle(v: String) { windowTitle.value = v; prefs.edit().putString("window_title", v).apply() }
+    fun setTerminalIntegratedNotifications(v: Boolean) { terminalIntegratedNotifications.value = v; prefs.edit().putBoolean("terminal_integrated_notifications", v).apply() }
+    fun setTerminalCommandsToSkipShell(v: String) { terminalCommandsToSkipShell.value = v; prefs.edit().putString("terminal_commands_to_skip_shell", v).apply() }
+    fun setExtensionsIgnoreRecommendations(v: Boolean) { extensionsIgnoreRecommendations.value = v; prefs.edit().putBoolean("extensions_ignore_recommendations", v).apply() }
+    fun setTaskNotifyWindowOnCompletion(v: Boolean) { taskNotifyWindowOnCompletion.value = v; prefs.edit().putBoolean("task_notify_window_on_completion", v).apply() }
 }

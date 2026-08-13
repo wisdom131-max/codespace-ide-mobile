@@ -262,6 +262,15 @@ enum class SettingsCategory(val label: String) {
     FORMATTING("Formatting"),
     PYTHON_LSP("Python / LSP"),
     LSP_SERVERS("LSP Servers"),
+    ACCESSIBILITY("Accessibility"),
+    TS_JS_FORMAT("JS / TS Format"),
+    TS_JS_TSSERVER("JS / TS Tsserver"),
+    TS_JS_INLAY_HINTS("JS / TS Inlay Hints"),
+    TS_JS_WORKSPACE_SYMBOLS("JS / TS Workspace Symbols"),
+    WINDOW("Window"),
+    TERMINAL("Terminal"),
+    EXTENSIONS("Extensions"),
+    TASK("Task"),
 }
 
 data class SettingsRow(
@@ -293,6 +302,26 @@ enum class RowType {
     TS_VERSION_DROPDOWN,
     CUSTOM_CURSOR_CHECKBOX,
     CURSOR_MODE_DROPDOWN,
+    // ── Item 4: TS/JS + Accessibility row types ──
+    ACC_SIGNAL_POSITION_WARNING_CHECKBOX,
+    ACC_SIGNAL_PROGRESS_CHECKBOX,
+    TS_FORMAT_ENABLED_CHECKBOX,
+    TS_FORMAT_INDENT_SWITCH_CASE_CHECKBOX,
+    TS_FORMAT_SPACE_AFTER_COMMA_CHECKBOX,
+    TS_FORMAT_SPACE_AFTER_CONSTRUCTOR_CHECKBOX,
+    TS_FORMAT_SPACE_AFTER_FUNCTION_KEYWORD_CHECKBOX,
+    TS_FORMAT_SPACE_AFTER_CONTROL_FLOW_CHECKBOX,
+    TS_SERVER_LOG_CHECKBOX,
+    TS_USE_SYNTAX_SERVER_CHECKBOX,
+    TS_INLAY_HINT_SUPPRESS_MATCH_NAME_CHECKBOX,
+    TS_INLAY_HINT_PARAM_TYPES_CHECKBOX,
+    TS_WS_SYMBOLS_EXCLUDE_LIB_CHECKBOX,
+    TS_WS_SYMBOLS_SCOPE_DROPDOWN,
+    WINDOW_TITLE_INPUT,
+    TERMINAL_INTEGRATED_NOTIFICATIONS_CHECKBOX,
+    TERMINAL_COMMANDS_TO_SKIP_SHELL_INPUT,
+    EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX,
+    TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
 }
 
 // ── Usage tracking for "Commonly Used" ranking ───────────────────────
@@ -449,6 +478,100 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "TypeScript Version",
         "TypeScript 7 uses native LSP (tsc --lsp --stdio). Older versions use typescript-language-server.",
         RowType.TS_VERSION_DROPDOWN))
+
+    // ── Item 4: Accessibility settings ──────────────────────────────────
+    add(SettingsRow("acc_signal_position_warning", SettingsCategory.ACCESSIBILITY,
+        "Position Has Warning",
+        "Play a sound/announcement when the cursor moves to a line with a warning",
+        RowType.ACC_SIGNAL_POSITION_WARNING_CHECKBOX))
+    add(SettingsRow("acc_signal_progress", SettingsCategory.ACCESSIBILITY,
+        "Progress",
+        "Play a sound/announcement for long-running task progress",
+        RowType.ACC_SIGNAL_PROGRESS_CHECKBOX))
+
+    // ── Item 4: JS/TS Format settings ──────────────────────────────────
+    add(SettingsRow("ts_format_enabled", SettingsCategory.TS_JS_FORMAT,
+        "Enabled",
+        "Enable JavaScript and TypeScript formatting",
+        RowType.TS_FORMAT_ENABLED_CHECKBOX))
+    add(SettingsRow("ts_format_indent_switch_case", SettingsCategory.TS_JS_FORMAT,
+        "Indent Switch Case",
+        "Indent case statements inside switch blocks",
+        RowType.TS_FORMAT_INDENT_SWITCH_CASE_CHECKBOX))
+    add(SettingsRow("ts_format_space_after_comma", SettingsCategory.TS_JS_FORMAT,
+        "Insert Space After Comma",
+        "Insert a space after commas in JS/TS code",
+        RowType.TS_FORMAT_SPACE_AFTER_COMMA_CHECKBOX))
+    add(SettingsRow("ts_format_space_after_constructor", SettingsCategory.TS_JS_FORMAT,
+        "Insert Space After Constructor Keyword",
+        "Insert a space after the constructor keyword",
+        RowType.TS_FORMAT_SPACE_AFTER_CONSTRUCTOR_CHECKBOX))
+    add(SettingsRow("ts_format_space_after_function_keyword", SettingsCategory.TS_JS_FORMAT,
+        "Insert Space After Function Keyword",
+        "Insert a space after the function keyword for anonymous functions",
+        RowType.TS_FORMAT_SPACE_AFTER_FUNCTION_KEYWORD_CHECKBOX))
+    add(SettingsRow("ts_format_space_after_control_flow", SettingsCategory.TS_JS_FORMAT,
+        "Insert Space After Control Flow Keywords",
+        "Insert a space after if, for, while, switch, catch keywords",
+        RowType.TS_FORMAT_SPACE_AFTER_CONTROL_FLOW_CHECKBOX))
+
+    // ── Item 4: JS/TS Tsserver settings ────────────────────────────────
+    add(SettingsRow("ts_server_log", SettingsCategory.TS_JS_TSSERVER,
+        "Log",
+        "Enable tsserver log output for debugging TypeScript server issues",
+        RowType.TS_SERVER_LOG_CHECKBOX))
+    add(SettingsRow("ts_use_syntax_server", SettingsCategory.TS_JS_TSSERVER,
+        "Use Syntax Server",
+        "Use a lightweight syntax-only server for faster initial loading (full server starts in background)",
+        RowType.TS_USE_SYNTAX_SERVER_CHECKBOX))
+
+    // ── Item 4: JS/TS Inlay Hints settings ─────────────────────────────
+    add(SettingsRow("ts_inlay_hint_suppress_match_name", SettingsCategory.TS_JS_INLAY_HINTS,
+        "Suppress When Argument/Type Matches Name",
+        "Hide inlay hints when the parameter name matches the argument text",
+        RowType.TS_INLAY_HINT_SUPPRESS_MATCH_NAME_CHECKBOX))
+    add(SettingsRow("ts_inlay_hint_param_types", SettingsCategory.TS_JS_INLAY_HINTS,
+        "Parameter Types Enabled",
+        "Show parameter type inlay hints in TypeScript files",
+        RowType.TS_INLAY_HINT_PARAM_TYPES_CHECKBOX))
+
+    // ── Item 4: JS/TS Workspace Symbols settings ───────────────────────
+    add(SettingsRow("ts_ws_symbols_exclude_lib", SettingsCategory.TS_JS_WORKSPACE_SYMBOLS,
+        "Exclude Library Symbols",
+        "Exclude symbols from node_modules and external libraries from workspace symbol search",
+        RowType.TS_WS_SYMBOLS_EXCLUDE_LIB_CHECKBOX))
+    add(SettingsRow("ts_ws_symbols_scope", SettingsCategory.TS_JS_WORKSPACE_SYMBOLS,
+        "Scope",
+        "allOpenProjects = search all open projects, currentProject = search only the current project",
+        RowType.TS_WS_SYMBOLS_SCOPE_DROPDOWN))
+
+    // ── Item 4: Window settings ───────────────────────────────────────
+    add(SettingsRow("window_title", SettingsCategory.WINDOW,
+        "Window Title",
+        "Template for the window/app title. Variables: \${activeEditorShort}, \${rootName}, \${separator}",
+        RowType.WINDOW_TITLE_INPUT))
+
+    // ── Item 4: Terminal settings ──────────────────────────────────────
+    add(SettingsRow("terminal_integrated_notifications", SettingsCategory.TERMINAL,
+        "Enable Notifications",
+        "Show notifications for terminal events (process exit, output triggers)",
+        RowType.TERMINAL_INTEGRATED_NOTIFICATIONS_CHECKBOX))
+    add(SettingsRow("terminal_commands_to_skip_shell", SettingsCategory.TERMINAL,
+        "Commands To Skip Shell",
+        "Comma-separated list of commands that run in the terminal instead of being sent to the shell",
+        RowType.TERMINAL_COMMANDS_TO_SKIP_SHELL_INPUT))
+
+    // ── Item 4: Extensions settings ────────────────────────────────────
+    add(SettingsRow("extensions_ignore_recommendations", SettingsCategory.EXTENSIONS,
+        "Ignore Recommendations",
+        "Suppress extension recommendation notifications",
+        RowType.EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX))
+
+    // ── Item 4: Task settings ──────────────────────────────────────────
+    add(SettingsRow("task_notify_window_on_completion", SettingsCategory.TASK,
+        "Notify Window On Task Completion",
+        "Show a window notification when a long-running task finishes",
+        RowType.TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX))
 }
 
 // ── Row renderer ─────────────────────────────────────────────────────
@@ -494,6 +617,74 @@ private fun SettingsRowRenderer(
         RowType.TS_VERSION_DROPDOWN -> TypeScriptVersionRow(accent, textPri, textSec, divider)
         RowType.CUSTOM_CURSOR_CHECKBOX -> CustomCursorOverlayRow(textPri, textSec, divider)
         RowType.CURSOR_MODE_DROPDOWN -> CursorModeRow(accent, textPri, textSec, divider)
+        // ── Item 4 renderers ──
+        RowType.ACC_SIGNAL_POSITION_WARNING_CHECKBOX -> SimpleCheckboxRow("Position Has Warning",
+            "Play a sound/announcement when the cursor moves to a line with a warning",
+            ProjectSettingsStore.accSignalPositionWarning, { ProjectSettingsStore.setAccSignalPositionWarning(it) },
+            textPri, textSec, divider)
+        RowType.ACC_SIGNAL_PROGRESS_CHECKBOX -> SimpleCheckboxRow("Progress",
+            "Play a sound/announcement for long-running task progress",
+            ProjectSettingsStore.accSignalProgress, { ProjectSettingsStore.setAccSignalProgress(it) },
+            textPri, textSec, divider)
+        RowType.TS_FORMAT_ENABLED_CHECKBOX -> SimpleCheckboxRow("Enabled",
+            "Enable JavaScript and TypeScript formatting",
+            ProjectSettingsStore.tsFormatEnabled, { ProjectSettingsStore.setTsFormatEnabled(it) },
+            textPri, textSec, divider)
+        RowType.TS_FORMAT_INDENT_SWITCH_CASE_CHECKBOX -> SimpleCheckboxRow("Indent Switch Case",
+            "Indent case statements inside switch blocks",
+            ProjectSettingsStore.tsFormatIndentSwitchCase, { ProjectSettingsStore.setTsFormatIndentSwitchCase(it) },
+            textPri, textSec, divider)
+        RowType.TS_FORMAT_SPACE_AFTER_COMMA_CHECKBOX -> SimpleCheckboxRow("Insert Space After Comma",
+            "Insert a space after commas in JS/TS code",
+            ProjectSettingsStore.tsFormatSpaceAfterComma, { ProjectSettingsStore.setTsFormatSpaceAfterComma(it) },
+            textPri, textSec, divider)
+        RowType.TS_FORMAT_SPACE_AFTER_CONSTRUCTOR_CHECKBOX -> SimpleCheckboxRow("Insert Space After Constructor Keyword",
+            "Insert a space after the constructor keyword",
+            ProjectSettingsStore.tsFormatSpaceAfterConstructor, { ProjectSettingsStore.setTsFormatSpaceAfterConstructor(it) },
+            textPri, textSec, divider)
+        RowType.TS_FORMAT_SPACE_AFTER_FUNCTION_KEYWORD_CHECKBOX -> SimpleCheckboxRow("Insert Space After Function Keyword",
+            "Insert a space after the function keyword for anonymous functions",
+            ProjectSettingsStore.tsFormatSpaceAfterFunctionKeyword, { ProjectSettingsStore.setTsFormatSpaceAfterFunctionKeyword(it) },
+            textPri, textSec, divider)
+        RowType.TS_FORMAT_SPACE_AFTER_CONTROL_FLOW_CHECKBOX -> SimpleCheckboxRow("Insert Space After Control Flow Keywords",
+            "Insert a space after if, for, while, switch, catch keywords",
+            ProjectSettingsStore.tsFormatSpaceAfterControlFlow, { ProjectSettingsStore.setTsFormatSpaceAfterControlFlow(it) },
+            textPri, textSec, divider)
+        RowType.TS_SERVER_LOG_CHECKBOX -> SimpleCheckboxRow("Log",
+            "Enable tsserver log output for debugging TypeScript server issues",
+            ProjectSettingsStore.tsServerLog, { ProjectSettingsStore.setTsServerLog(it) },
+            textPri, textSec, divider)
+        RowType.TS_USE_SYNTAX_SERVER_CHECKBOX -> SimpleCheckboxRow("Use Syntax Server",
+            "Use a lightweight syntax-only server for faster initial loading",
+            ProjectSettingsStore.tsUseSyntaxServer, { ProjectSettingsStore.setTsUseSyntaxServer(it) },
+            textPri, textSec, divider)
+        RowType.TS_INLAY_HINT_SUPPRESS_MATCH_NAME_CHECKBOX -> SimpleCheckboxRow("Suppress When Argument/Type Matches Name",
+            "Hide inlay hints when the parameter name matches the argument text",
+            ProjectSettingsStore.tsInlayHintSuppressMatchName, { ProjectSettingsStore.setTsInlayHintSuppressMatchName(it) },
+            textPri, textSec, divider)
+        RowType.TS_INLAY_HINT_PARAM_TYPES_CHECKBOX -> SimpleCheckboxRow("Parameter Types Enabled",
+            "Show parameter type inlay hints in TypeScript files",
+            ProjectSettingsStore.tsInlayHintParamTypes, { ProjectSettingsStore.setTsInlayHintParamTypes(it) },
+            textPri, textSec, divider)
+        RowType.TS_WS_SYMBOLS_EXCLUDE_LIB_CHECKBOX -> SimpleCheckboxRow("Exclude Library Symbols",
+            "Exclude symbols from node_modules and external libraries from workspace symbol search",
+            ProjectSettingsStore.tsWsSymbolsExcludeLib, { ProjectSettingsStore.setTsWsSymbolsExcludeLib(it) },
+            textPri, textSec, divider)
+        RowType.TS_WS_SYMBOLS_SCOPE_DROPDOWN -> WsSymbolsScopeRow(accent, textPri, textSec, divider)
+        RowType.WINDOW_TITLE_INPUT -> WindowTitleRow(textPri, textSec, divider)
+        RowType.TERMINAL_INTEGRATED_NOTIFICATIONS_CHECKBOX -> SimpleCheckboxRow("Enable Notifications",
+            "Show notifications for terminal events (process exit, output triggers)",
+            ProjectSettingsStore.terminalIntegratedNotifications, { ProjectSettingsStore.setTerminalIntegratedNotifications(it) },
+            textPri, textSec, divider)
+        RowType.TERMINAL_COMMANDS_TO_SKIP_SHELL_INPUT -> CommandsToSkipShellRow(textPri, textSec, divider)
+        RowType.EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX -> SimpleCheckboxRow("Ignore Recommendations",
+            "Suppress extension recommendation notifications",
+            ProjectSettingsStore.extensionsIgnoreRecommendations, { ProjectSettingsStore.setExtensionsIgnoreRecommendations(it) },
+            textPri, textSec, divider)
+        RowType.TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX -> SimpleCheckboxRow("Notify Window On Task Completion",
+            "Show a window notification when a long-running task finishes",
+            ProjectSettingsStore.taskNotifyWindowOnCompletion, { ProjectSettingsStore.setTaskNotifyWindowOnCompletion(it) },
+            textPri, textSec, divider)
     }
 }
 
@@ -1069,4 +1260,119 @@ private fun LspServerListRow(accent: Color, textPri: Color, textSec: Color, surf
         }
     }
     HorizontalDivider(color = divider)
+}
+
+// ── Item 4: Reusable checkbox row for simple boolean settings ─────────────────
+@Composable
+private fun SimpleCheckboxRow(
+    label: String,
+    description: String,
+    state: androidx.compose.runtime.MutableState<Boolean>,
+    onCheckedChange: (Boolean) -> Unit,
+    textPri: Color,
+    textSec: Color,
+    divider: Color,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = textPri, fontSize = 13.sp)
+            Text(description, color = textSec, fontSize = 11.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Checkbox(
+            checked = state.value,
+            onCheckedChange = onCheckedChange,
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = divider,
+                uncheckedColor = textSec.copy(alpha = 0.5f),
+            ),
+        )
+    }
+}
+
+// ── Item 4: Workspace Symbols Scope dropdown ───────────────────────────────────
+@Composable
+private fun WsSymbolsScopeRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = ProjectSettingsStore.tsWsSymbolsScope.value
+    val options = listOf("allOpenProjects", "currentProject")
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text("Scope", color = textPri, fontSize = 13.sp)
+        Text("allOpenProjects = search all open projects, currentProject = current only",
+            color = textSec, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                Modifier.fillMaxWidth().clickable { expanded = true }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(current, color = accent, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text(if (expanded) "▲" else "▼", color = textSec, fontSize = 10.sp)
+            }
+            androidx.compose.material3.DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                options.forEach { opt ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(opt, fontSize = 12.sp) },
+                        onClick = {
+                            ProjectSettingsStore.setTsWsSymbolsScope(opt)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Item 4: Window Title text input ───────────────────────────────────────────
+@Composable
+private fun WindowTitleRow(textPri: Color, textSec: Color, divider: Color) {
+    var text by remember { mutableStateOf(ProjectSettingsStore.windowTitle.value) }
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text("Window Title", color = textPri, fontSize = 13.sp)
+        Text("Template for the window/app title. Variables: \${activeEditorShort}, \${rootName}, \${separator}",
+            color = textSec, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        androidx.compose.material3.OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                ProjectSettingsStore.setWindowTitle(it)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = textPri),
+        )
+    }
+}
+
+// ── Item 4: Commands To Skip Shell text input ─────────────────────────────────
+@Composable
+private fun CommandsToSkipShellRow(textPri: Color, textSec: Color, divider: Color) {
+    var text by remember { mutableStateOf(ProjectSettingsStore.terminalCommandsToSkipShell.value) }
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text("Commands To Skip Shell", color = textPri, fontSize = 13.sp)
+        Text("Comma-separated list of commands that run in the terminal instead of being sent to the shell",
+            color = textSec, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        androidx.compose.material3.OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                ProjectSettingsStore.setTerminalCommandsToSkipShell(it)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = textPri),
+        )
+    }
 }

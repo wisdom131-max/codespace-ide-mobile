@@ -84,12 +84,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-13 14:03 WAT)
+## CURRENT STATE (2026-08-13 14:27 WAT)
 
 | | |
 |-|-|
-| Latest commit | Settings Items 1+2+4: "Commonly Used" ranking + search match counts + text padding fixes (this commit) — pending push. Previous: Test 39 notification restructure (`c6e22cc`) — build pending. |
-| Active phase | **TESTING STAGE** — Test 39 notification restructure pushed. Settings Items 1/2/4 code done (needs device retest). Remaining: Item 3 (TS/JS + Accessibility settings additions), Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown. |
+| Latest commit | Settings Item 4: Full TS/JS + Accessibility + Window + Terminal + Extensions + Task settings added (this commit) — pending push. Previous: `2f60b41` (Items 1+2+5: ranking + search counts + padding). |
+| Active phase | **TESTING STAGE** — All 5 settings restructuring items code-complete. Remaining: Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown (Item 1), device retests. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -15614,3 +15614,50 @@ sidebar badges + ranking logic + padding fixes), `CodeSpaceApplication.kt` (adde
 vscode.dev screenshots (Accessibility Signals, JS/TS Format, Inlay Hints, Workspace
 Symbols, Window Title, Terminal settings, Extensions ignore recommendations, Task
 notify on completion). Then device retest of Test 39 (notification bell) + items 1/2/4.
+
+### [2026-08-13 14:27 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** pending
+**Tags:** UI-FIX, SETTINGS-FIX
+
+**What was fixed:** Full implementation of Item 4 — added 19 new settings across 9 new
+categories mirroring vscode.dev's Settings UI, all with SharedPreferences persistence:
+
+**Accessibility (2 settings):**
+- Position Has Warning (sound/announcement when cursor moves to warning line)
+- Progress (sound/announcement for task progress)
+
+**JS/TS Format (6 settings):**
+- Enabled, Indent Switch Case, Insert Space After Comma/Constructor/Function Keyword/Control Flow Keywords
+
+**JS/TS Tsserver (2 settings):**
+- Log (tsserver debug logging), Use Syntax Server (lightweight syntax-only server for faster load)
+
+**JS/TS Inlay Hints (2 settings):**
+- Suppress When Argument/Type Matches Name, Parameter Types Enabled
+
+**JS/TS Workspace Symbols (2 settings):**
+- Exclude Library Symbols, Scope dropdown (allOpenProjects / currentProject)
+
+**Window (1 setting):**
+- Window Title template (with ${activeEditorShort}, ${rootName}, ${separator} variables)
+
+**Terminal (2 settings):**
+- Enable Notifications, Commands To Skip Shell (comma-separated text input)
+
+**Extensions (1 setting):**
+- Ignore Recommendations
+
+**Task (1 setting):**
+- Notify Window On Task Completion
+
+Also added a reusable `SimpleCheckboxRow` composable to avoid duplicating checkbox
+row boilerplate for each new setting. Text input settings use `OutlinedTextField`.
+
+**Files touched:** `ProjectSettingsStore.kt` (19 new MutableState fields + init reads +
+setters), `InProjectSettingsDialog.kt` (9 new categories, 19 new RowType entries, 19 new
+SettingsRow definitions, renderer branches, 4 new composables: SimpleCheckboxRow,
+WsSymbolsScopeRow, WindowTitleRow, CommandsToSkipShellRow), `AGENTS.md` (this entry).
+
+**Next on roadmap:** Device retest of all settings items (1-5). Then Problems panel
+dropdown (Item 1 from restructuring list). Then Test 41 (SCM scroll) + Test 42 (SCM
+git error). Then Phase S: LSP Spec Compliance.
