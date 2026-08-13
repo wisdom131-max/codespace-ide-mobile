@@ -42,6 +42,7 @@ import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.diagnostics.DiagnosticPublisher
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.DocumentSymbolCache
 import com.codespace.ide.lsp.parseHoverContent
@@ -413,6 +414,8 @@ fun EditorPane(
                 )
                 tabs.add(tab)
                 activeId = tab.id
+                // Phase P: Publish initial lint diagnostics for newly opened file
+                DiagnosticPublisher.publishLintDiagnostics(openFilePath, content)
             }
             onFileOpened?.invoke()
         }
@@ -1014,6 +1017,10 @@ fun EditorPane(
             lastHoverCol = -1
             lastHighlightLine = -1
             lastHighlightCol = -1
+            // Phase P: Publish lint diagnostics when switching to a tab
+            if (active != null && active.path.isNotEmpty()) {
+                DiagnosticPublisher.publishLintDiagnostics(active.path, active.content)
+            }
         }
 
         // P26-1: LSP Document Symbol — fetch outline structure on file open (debounced)
@@ -1249,6 +1256,8 @@ fun EditorPane(
                             if (active.path.startsWith("/")) {
                                 try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
                             }
+                            // Phase P: Publish lint diagnostics to central store (debounced)
+                            DiagnosticPublisher.publishLintDiagnostics(active.path, newText)
                         },
                         onInsertHandler = onInsertRequest,
                         modifier = Modifier.weight(1f),
@@ -1446,6 +1455,8 @@ fun EditorPane(
                             if (active.path.startsWith("/")) {
                                 try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
                             }
+                            // Phase P: Publish lint diagnostics to central store (debounced)
+                            DiagnosticPublisher.publishLintDiagnostics(active.path, newText)
                         },
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,

@@ -3,6 +3,8 @@ package com.codespace.ide.lsp
 import android.content.Context
 import android.util.Log
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.diagnostics.DiagnosticManager
+import com.codespace.ide.diagnostics.DiagnosticConverter
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.ProjectSettingsStore
@@ -1090,6 +1092,14 @@ object LspManager {
             val diags = params.optJSONArray("diagnostics") ?: JSONArray()
             server.diagnostics[uri] = diags
             diagnosticsHandlers[language]?.invoke(uri, diags)
+            // Phase P: Feed into central DiagnosticManager
+            val filePath = uri.removePrefix("file://")
+            val converted = DiagnosticConverter.fromLsp(diags, uri, filePath, language.name.lowercase())
+            if (converted.isEmpty()) {
+                DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.LSP, language.name.lowercase(), uri)
+            } else {
+                DiagnosticManager.publishDiagnostics(DiagnosticManager.DiagnosticSource.LSP, language.name.lowercase(), uri, filePath, converted)
+            }
             AppOutputLog.log("[LSP] publishDiagnostics for ${language.displayName}: ${diags.length()} diagnostic(s) in ${uri.substringAfterLast('/')}", "lsp")
         }
 
@@ -1541,6 +1551,8 @@ object LspManager {
 
     fun stopServer(language: Language) {
         val server = servers.remove(language) ?: return
+        // Phase P: Mark diagnostics from this LSP server as stale
+        DiagnosticManager.markSourceStale(DiagnosticManager.DiagnosticSource.LSP, language.name.lowercase())
         try {
             if (server.initialized) {
                 server.client.request("shutdown", timeoutSeconds = 5)

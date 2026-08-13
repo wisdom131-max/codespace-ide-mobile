@@ -67,6 +67,7 @@ import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.ui.panes.TerminalState
+import com.codespace.ide.ui.panes.AdvancedProblemsPanel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +80,7 @@ import com.codespace.ide.diagnostics.SyncState
 import com.codespace.ide.diagnostics.SyncStatusMonitor
 import com.codespace.ide.diagnostics.CodeMetrics
 import com.codespace.ide.diagnostics.LintChecker
+import com.codespace.ide.diagnostics.DiagnosticPublisher
 import com.codespace.ide.diagnostics.Problem
 import com.codespace.ide.build.GradleErrorParser
 import com.codespace.ide.diagnostics.PortsScanner
@@ -2350,11 +2352,8 @@ private fun PssBottomPanelContent(
                 externalState = sharedTerminalState,
                 projectId = projectId,
             )
-            BottomTab.PROBLEMS -> ProblemsPanel(
-                context = context,
-                activeFilePath = activeEditorTab,
-                buildProblems = buildProblems,
-                onJumpToSource = { line -> onJumpToSource(line) },
+            BottomTab.PROBLEMS -> AdvancedProblemsPanel(
+                onJumpToSource = { filePath, line, _ -> onJumpToSource(line) },
                 panelBg = panelBg,
                 dividerColor = dividerColor,
                 tabTextInactive = tabTextInactive,
@@ -2583,68 +2582,6 @@ private fun buildRunCommand(path: String): String? {
         path.endsWith(".cpp") || path.endsWith(".cc") -> "g++ $quoted -o /tmp/cpp_out && /tmp/cpp_out"
         path.endsWith(".php")              -> "php $quoted"
         else -> null
-    }
-}
-
-@Composable private fun ProblemsPanel(context: android.content.Context, activeFilePath: String?, buildProblems: List<Problem> = emptyList(), onJumpToSource: (Int) -> Unit, panelBg: Color = Color(0xFF1E1E1E), dividerColor: Color = Color(0xFF2D2D30), tabTextInactive: Color = Color(0xFF858585)) {
-    // P22-A: live-update — re-run lint every 2 s so edits are reflected without switching tabs
-    // P22-G: Also fetch LSP diagnostics if server is running for this language
-    // P41-FIX: Added buildProblems as key so panel refreshes when build completes too
-    val problems by produceState<List<Problem>>(emptyList(), activeFilePath, buildProblems) {
-        while (true) {
-            value = if (activeFilePath.isNullOrBlank()) emptyList()
-                    else {
-                        val lintProblems = try { LintChecker.check(activeFilePath, loadFileContent(activeFilePath)) } catch (_: Exception) { emptyList() }
-                        val lspProblems = try {
-                            val lang = Language.fromPath(activeFilePath)
-                            if (LspManager.isServerRunning(lang)) {
-                                val uri = LspManager.fileUriFromHostPath(context, activeFilePath)
-                                if (uri != null) {
-                                    LspManager.getDiagnostics(lang, uri)?.let { diags -> lspDiagnosticsToProblems(diags) } ?: emptyList()
-                                } else emptyList()
-                            } else emptyList()
-                        } catch (_: Exception) { emptyList() }
-                        val seen = mutableSetOf<Pair<Int, String>>()
-                        (lintProblems + lspProblems + buildProblems).filter { seen.add(it.line to it.message) }.sortedBy { it.line }
-                    }
-            kotlinx.coroutines.delay(2_000)
-        }
-    }
-    Column(Modifier.fillMaxSize()) {
-        // P46-S1: Dark theme colors — was light (0xFFF5F5F5)
-        Row(Modifier.fillMaxWidth().background(panelBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("PROBLEMS" + if (problems.isNotEmpty()) " (${problems.size})" else "", fontSize = 11.sp, color = tabTextInactive, modifier = Modifier.weight(1f))
-            Icon(Icons.Default.FilterList, null, tint = tabTextInactive, modifier = Modifier.size(16.dp))
-        }
-        HorizontalDivider(color = dividerColor)
-        if (activeFilePath.isNullOrBlank()) {
-            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("Open a file to see problems detected in it.", fontSize = 13.sp, color = tabTextInactive)
-            }
-        } else if (problems.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("✓  No problems detected in ${activeFilePath.substringAfterLast('/')}.", fontSize = 13.sp, color = Color(0xFF717171))
-            }
-        } else {
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(problems) { p ->
-                    val (icon, tint) = when (p.severity) {
-                        Problem.Severity.ERROR   -> Icons.Default.Cancel to Color(0xFFE51400)
-                        Problem.Severity.WARNING -> Icons.Default.Warning to Color(0xFFCCA700)
-                        Problem.Severity.INFO    -> Icons.Default.Info to Color(0xFF007ACC)
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onJumpToSource(p.line) }.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(p.message, fontSize = 12.sp, color = tabTextInactive, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${'$'}{activeFilePath.substringAfterLast('/')}:${'$'}{p.line}", fontSize = 11.sp, color = tabTextInactive)
-                    }
-                }
-            }
-        }
     }
 }
 
