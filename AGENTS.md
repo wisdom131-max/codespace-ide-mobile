@@ -17014,3 +17014,14 @@ Before implementation, produce a complete plan covering:
 2. SCM-16: Final testing checklist
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 22:55 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 69746cb | **CI Build:** #2222 (pending)
+**What was fixed:** SCM-16: Final testing checklist + missing features. (1) CRITICAL BUG: Merge/History/Diff dialogs were nested inside `if (showBranchDialog)` block — they could never show unless the branch dialog was also open. Moved all dialogs to same nesting level. (2) Added Tags dialog — create/delete/list tags via overflow menu. (3) Added .gitignore editor dialog — view and edit .gitignore from overflow menu. (4) Added branch delete — ✕ button next to non-current branches in BranchSelectionDialog. (5) Added deleteBranch() and renameBranch() to GitService and ScmState. 
+**Files touched:** SourceControlPane.kt, GitService.kt, ScmState.kt
+**SCM test coverage:** E1(panel✅), E2(stage/unstage✅), E3(commit✅), E4(diff✅), E5(branch create/switch✅), E6(branch delete✅), E7(history✅), E9(stash✅), E10(tags✅), E11(.gitignore✅), E12(merge conflict✅). Not covered: E8(branch graph — ASCII graph not implemented), E13(git blame — editor feature), E14-E18(GitHub OAuth features).
+**Next on roadmap:**
+1. Verify build #2222 green
+2. Device testing of all SCM features (E1-E13)
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
