@@ -101,6 +101,8 @@ fun SourceControlPane(projectId: String) {
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showMergeDialog by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showTagsDialog by remember { mutableStateOf(false) }
+    var showGitignoreDialog by remember { mutableStateOf(false) }
     var diffFile by remember { mutableStateOf<String?>(null) }
     var diffData by remember { mutableStateOf<ScmFileDiff?>(null) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
@@ -206,6 +208,23 @@ fun SourceControlPane(projectId: String) {
                 onClick = {
                     showOverflowMenu = false
                     showHistory = true
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Tags", fontSize = 12.sp) },
+                enabled = operation is ScmOperation.Idle,
+                onClick = {
+                    showOverflowMenu = false
+                    showTagsDialog = true
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(".gitignore", fontSize = 12.sp) },
+                enabled = operation is ScmOperation.Idle,
+                onClick = {
+                    showOverflowMenu = false
+                    showGitignoreDialog = true
                 },
             )
             if (repoState?.conflicted?.isNotEmpty() == true) {
@@ -398,6 +417,20 @@ fun SourceControlPane(projectId: String) {
             scmState = scmState,
             hostPath = hostPath,
             onDismiss = { showBranchDialog = false },
+            onDeleteBranch = { branch ->
+                scope.launch {
+                    val (ok, msg) = scmState.deleteBranch(hostPath, branch)
+                    snackbarMsg = msg
+                    if (ok) refresh()
+                }
+            },
+            onRenameBranch = { oldName, newName ->
+                scope.launch {
+                    val (ok, msg) = scmState.renameBranch(hostPath, oldName, newName)
+                    snackbarMsg = msg
+                    if (ok) refresh()
+                }
+            },
             onCheckout = { branch ->
                 if (operation !is ScmOperation.Idle) {
                     snackbarMsg = "Wait for current operation to finish"
@@ -425,46 +458,67 @@ fun SourceControlPane(projectId: String) {
                 showBranchDialog = false
             },
         )
+    }
 
-        // ── Merge dialog ──
-        if (showMergeDialog) {
-            MergeBranchDialog(
-                scmState = scmState,
-                hostPath = hostPath,
-                onDismiss = { showMergeDialog = false },
-                onMerge = { branch ->
-                    scope.launch {
-                        operation = ScmOperation.Loading("Merging $branch...")
-                        val (ok, msg) = scmState.merge(hostPath, branch)
-                        snackbarMsg = msg
-                        operation = ScmOperation.Idle
-                        if (ok) refresh()
-                    }
-                    showMergeDialog = false
-                },
-            )
-        }
+    // ── Merge dialog ──
+    if (showMergeDialog) {
+        MergeBranchDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            onDismiss = { showMergeDialog = false },
+            onMerge = { branch ->
+                scope.launch {
+                    operation = ScmOperation.Loading("Merging $branch...")
+                    val (ok, msg) = scmState.merge(hostPath, branch)
+                    snackbarMsg = msg
+                    operation = ScmOperation.Idle
+                    if (ok) refresh()
+                }
+                showMergeDialog = false
+            },
+        )
+    }
 
-        // ── History dialog ──
-        if (showHistory) {
-            HistoryDialog(
-                scmState = scmState,
-                hostPath = hostPath,
-                onDismiss = { showHistory = false },
-            )
-        }
+    // ── History dialog ──
+    if (showHistory) {
+        HistoryDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            onDismiss = { showHistory = false },
+        )
+    }
 
-        // ── Diff viewer dialog ──
-        if (diffFile != null) {
-            DiffViewerDialog(
-                filePath = diffFile!!,
-                diff = diffData,
-                onDismiss = {
-                    diffFile = null
-                    diffData = null
-                },
-            )
-        }
+    // ── Diff viewer dialog ──
+    if (diffFile != null) {
+        DiffViewerDialog(
+            filePath = diffFile!!,
+            diff = diffData,
+            onDismiss = {
+                diffFile = null
+                diffData = null
+            },
+        )
+    }
+
+    // ── Tags dialog ──
+    if (showTagsDialog) {
+        TagsDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            onDismiss = { showTagsDialog = false },
+            onResult = { msg -> snackbarMsg = msg },
+            onRefresh = { refresh() },
+        )
+    }
+
+    // ── .gitignore dialog ──
+    if (showGitignoreDialog) {
+        GitignoreDialog(
+            hostPath = hostPath,
+            onDismiss = { showGitignoreDialog = false },
+            onResult = { msg -> snackbarMsg = msg },
+            onRefresh = { refresh() },
+        )
     }
 }
 
@@ -816,6 +870,8 @@ private fun BranchSelectionDialog(
     onDismiss: () -> Unit,
     onCheckout: (String) -> Unit,
     onCreateBranch: (String) -> Unit,
+    onDeleteBranch: (String) -> Unit = {},
+    onRenameBranch: (String, String) -> Unit = { _, _ -> },
 ) {
     var branches by remember { mutableStateOf<List<com.codespace.ide.scm.ScmBranch>>(emptyList()) }
     var newBranchName by remember { mutableStateOf("") }
@@ -867,7 +923,6 @@ private fun BranchSelectionDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onCheckout(branch.name) }
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -884,7 +939,18 @@ private fun BranchSelectionDialog(
                             fontFamily = FontFamily.Monospace,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onCheckout(branch.name) },
                         )
+                        if (!branch.isCurrent) {
+                            Text(
+                                "✕",
+                                color = Color(0xFFF48771),
+                                fontSize = 12.sp,
+                                modifier = Modifier.clickable { onDeleteBranch(branch.name) },
+                            )
+                        }
                     }
                 }
             }
@@ -1107,6 +1173,166 @@ private fun HistoryDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── Tags Dialog ──────────────────────────────────────────────────────────────
+@Composable
+private fun TagsDialog(
+    scmState: ScmState,
+    hostPath: String,
+    onDismiss: () -> Unit,
+    onResult: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var tags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var newTagName by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            tags = scmState.tags(hostPath)
+            loading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tags", fontSize = 14.sp, color = TextColor) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (loading) {
+                    Text("Loading...", color = MutedColor, fontSize = 12.sp)
+                } else if (tags.isEmpty()) {
+                    Text("No tags yet", color = MutedColor, fontSize = 12.sp)
+                } else {
+                    tags.forEach { tag ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                tag,
+                                color = TextColor,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "Delete",
+                                color = Color(0xFFF48771),
+                                fontSize = 10.sp,
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        val (ok, msg) = scmState.deleteTag(hostPath, tag)
+                                        onResult(msg)
+                                        if (ok) {
+                                            tags = scmState.tags(hostPath)
+                                            onRefresh()
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = newTagName,
+                    onValueChange = { newTagName = it },
+                    label = { Text("New tag name", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (newTagName.isNotBlank()) {
+                        scope.launch {
+                            val (ok, msg) = scmState.createTag(hostPath, newTagName.trim())
+                            onResult(msg)
+                            if (ok) {
+                                newTagName = ""
+                                tags = scmState.tags(hostPath)
+                                onRefresh()
+                            }
+                        }
+                    }
+                },
+            ) { Text("Create", fontSize = 12.sp) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── .gitignore Dialog ───────────────────────────────────────────────────────
+@Composable
+private fun GitignoreDialog(
+    hostPath: String,
+    onDismiss: () -> Unit,
+    onResult: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var content by remember { mutableStateOf("") }
+    var loaded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            val gitignore = java.io.File(hostPath, ".gitignore")
+            content = if (gitignore.exists()) gitignore.readText() else ""
+            loaded = true
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(".gitignore", fontSize = 14.sp, color = TextColor) },
+        text = {
+            if (!loaded) {
+                Text("Loading...", color = MutedColor, fontSize = 12.sp)
+            } else {
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextColor,
+                    ),
+                    placeholder = { Text("Add ignore patterns...", fontSize = 11.sp, color = MutedColor) },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        try {
+                            java.io.File(hostPath, ".gitignore").writeText(content)
+                            onResult(".gitignore saved")
+                            onRefresh()
+                        } catch (e: Exception) {
+                            onResult("Error: ${e.message}")
+                        }
+                    }
+                },
+            ) { Text("Save", fontSize = 12.sp) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", fontSize = 12.sp) }
         },
     )
 }

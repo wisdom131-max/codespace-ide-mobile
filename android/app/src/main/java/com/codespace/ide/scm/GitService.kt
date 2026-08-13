@@ -281,6 +281,14 @@ class GitService(private val context: Context) {
         return GitCommandExecutor.run(context, listOf("checkout", "-b", name), workdir, timeoutSeconds = 30)
     }
 
+    fun deleteBranch(name: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("branch", "-d", name), workdir, timeoutSeconds = 15)
+    }
+
+    fun renameBranch(oldName: String, newName: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("branch", "-m", oldName, newName), workdir, timeoutSeconds = 15)
+    }
+
     // ── Log / History ─────────────────────────────────────────────────────
 
     /**
