@@ -1494,8 +1494,12 @@ fun ExplorerSidePanel(
                                                         }
                                                     }
                                                     refresh++
+                                                    // TEST-43-FIX: Show success notification so user knows extraction worked
+                                                    AppOutputLog.log("[Extract] Successfully extracted to ${outDir.absolutePath}", "terminal")
+                                                    NotificationStore.show("${f.name} extracted", "Extracted to ${outDir.name}/")
                                                 } catch (e: Exception) {
-                                                    AppOutputLog.log("Extract error: ${e.message}", "terminal")
+                                                    AppOutputLog.log("[Extract] Error: ${e.message}", "terminal")
+                                                    NotificationStore.show("Extract failed", e.message ?: "Unknown error")
                                                 }
                                             }
                                         }
