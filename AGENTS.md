@@ -15736,3 +15736,83 @@ text. All buttons, logic, and bugs removed.
 
 **Next on roadmap:** Rebuild SourceControlPane.kt from scratch per Wisdom's restructuring
 plan. Then Phase S: LSP Spec Compliance.
+
+### [2026-08-13 16:00 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (none — planning only) | **CI Build:** N/A
+**Tags:** LSP-RELIABILITY, PLANNING
+
+**What was done:** Full LSP Server Manager audit completed against 12 lifecycle
+features. Results: 3 YES, 5 PARTIAL, 3 NO. Documented the Phase V plan
+(LSP Server Manager Reliability Upgrade) as the next major phase.
+
+**Audit results (LspManager.kt + JsonRpcClient.kt + EditorPane.kt):**
+
+| # | Feature | Status | Key Gap |
+|---|---------|--------|---------|
+| 1 | Start | YES | — |
+| 2 | Initialize | YES | — |
+| 3 | Health check | PARTIAL | No Process.waitFor(), no exit code capture, polling-only detection |
+| 4 | Keep-alive/persistent | PARTIAL | No heartbeat; hung-but-alive server invisible |
+| 5 | Reactive crash detection | PARTIAL | onDisconnect only sets initialized=false; no removal from servers map, no restart trigger |
+| 6 | OOM detection | PARTIAL | "Possibly OOM" is a blind guess; no /proc/pid/status reading, no exit code 137 check |
+| 7 | Automatic restart | NO | No auto-restart on crash; user must manually reopen files |
+| 8 | Workspace reinit after restart | NO | lspOpenedFiles not cleared on death; stale entries block didOpen on new server |
+| 9 | Memory usage tracking | NO | No /proc/pid/status, VmRSS/VmSize/VmPeak tracking absent |
+| 10 | Request tracking | YES | — |
+| 11 | Graceful shutdown | PARTIAL | destroyForcibly() (SIGKILL) immediately after shutdown+exit; no grace period, no waitFor() |
+| 12 | Idle/auto-close | YES | 10s timeout too aggressive (VS Code never auto-closes) |
+
+**Phase V plan registered (16 sections A–P):**
+
+A. Explicit LSP server state machine — STOPPED/STARTING/INITIALIZING/READY/
+   UNHEALTHY/RESTARTING/STOPPING. Authoritative lifecycle state, not booleans.
+B. Process lifecycle / crash detection — dedicated process-exit monitor, capture
+   exit status, detect SIGKILL/SIGTERM, fail pending requests.
+C. Automatic restart — auto-restart on crash, re-run initialize, restore workspace,
+   re-open documents, re-send contents. Restart backoff (short → longer → longer →
+   circuit breaker). Prevent infinite loops and duplicate restarts.
+D. Workspace / document recovery — maintain open document URIs, language, contents,
+   version, unsaved changes. Fix stale lspOpenedFiles problem. Treat restarted
+   server as new session. Restore unsaved editor contents.
+E. Memory usage monitoring — /proc/<pid>/status, track VmRSS/VmSize/VmPeak.
+   NORMAL/WARNING/CRITICAL states. Configurable thresholds. Off-UI-thread.
+F. OOM / process-kill detection — combine exit status + memory state. "Possible
+   OOM/SIGKILL" wording, not definitive. Distinguish normal shutdown from crash.
+G. Health check / responsiveness — alive+responsive vs alive+unresponsive vs dead.
+   Safe, rate-limited, non-disruptive probe. No invented LSP ping.
+H. Keep-alive — no aggressive heartbeat. Live process sufficient for normal operation.
+I. Auto-close idle — configurable timeout (30s/1m/5m/10m/30m/Never). Replace 10s
+   hard-coded timeout. Idle shutdown ≠ crash (no restart, no backoff, no OOM log).
+J. Graceful shutdown — STOPPING → shutdown request → exit notification → wait →
+   destroy() → wait → destroyForcibly() → waitFor() → cleanup. No immediate SIGKILL.
+K. Request tracking and recovery — pending requests fail on death, stale responses
+   don't affect new server, old-server requests not treated as new-server responses.
+L. Thread safety / race protection — safe under simultaneous open/crash/restart/
+   completion/tab-switch/close/idle/manual-shutdown/health-check. Prevent duplicate
+   starts, restarts, idle-vs-restart races, old-callback corruption.
+M. Server generation / stale process protection — generation/session ID per server
+   instance. Generation N callbacks cannot affect generation N+1 state.
+N. Lifecycle logging — structured logs: [LSP] START/INITIALIZING/READY/HEALTH_CHECK/
+   UNHEALTHY/PROCESS_EXIT/CRASH/POSSIBLE_OOM/RESTART/REINITIALIZE/RESTORE_DOCUMENT/
+   SHUTDOWN/IDLE_CLOSE/FORCE_KILL. Include language, PID, generation, state, exit
+   status, memory, restart count.
+O. Preserve existing functionality — do NOT break completion, diagnostics, hover,
+   definition, references, rename, signature help, code actions, formatting,
+   semantic tokens, workspace symbols, server installation, proot architecture.
+P. Final audit — source-code audit after implementation. Report files changed,
+   state model, transition table, all 18 implementation areas, remaining gaps.
+
+**Files to be modified (when work begins):**
+- `LspManager.kt` — state machine, crash detection, auto-restart, workspace recovery,
+  memory monitoring, OOM detection, health check, graceful shutdown, idle timeout
+  config, thread safety, server generation, lifecycle logging
+- `JsonRpcClient.kt` — stale process protection, request recovery integration
+- `EditorPane.kt` — clear lspOpenedFiles on server death, document re-synchronization
+  after restart
+- `ProjectSettingsStore.kt` — configurable idle timeout setting
+- `InProjectSettingsDialog.kt` — idle timeout dropdown UI (30s/1m/5m/10m/30m/Never)
+
+**No code changes made. Plan registered for future implementation.**
+
+**Next on roadmap:** Phase V implementation (LSP Server Manager Reliability Upgrade).
+SCM restructuring plan still pending from Wisdom.
