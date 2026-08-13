@@ -16994,3 +16994,13 @@ Before implementation, produce a complete plan covering:
 2. SCM-16: Final testing checklist
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 22:50 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 0bcaae3 | **CI Build:** #2219 (pending)
+**What was fixed:** Fixed DropdownMenu trailing lambda closing brace — `)` was used instead of `}`, causing compilation errors in builds #2215, #2216, #2217. Root cause: when replacing the `end` keyword (from a Python code-gen template), it was incorrectly replaced with `)` instead of `}`. The DropdownMenu composable uses a trailing lambda `{ ... }` which must be closed with `}`. Also includes SCM-15 race-condition audit changes (isBusy guards on overflow items, branch ops, diff/conflict resolution, lock-error snackbar).
+**Files touched:** android/app/src/main/java/com/codespace/ide/ui/panes/SourceControlPane.kt
+**Next on roadmap:**
+1. Verify build #2219 green
+2. SCM-16: Final testing checklist
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
