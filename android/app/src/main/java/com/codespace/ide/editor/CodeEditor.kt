@@ -610,11 +610,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     /** P38: LSP hover content — raw text from LSP hover, rendered as compact popup */
     lspHoverContent: String? = null,
     /** P38: LSP Go-to-Definition — returns true if LSP succeeded (falls back to regex if false/null) */
-    onLspDefinition: (() -> Boolean)? = null,
+    onLspDefinition: ((Int, Int) -> Boolean)? = null,  // TEST-11-FIX: now passes (line, col) so LSP gets current cursor, not stale state
     /** P41-O5: LSP Go to Declaration — semantic navigation to declaration (e.g. header file) */
     /** P41-I: Source Actions — Organize Imports, Remove Unused, Fix All. Called with the CodeActionKind string. */
     onSourceAction: ((kind: String) -> Unit)? = null,
-    onLspDeclaration: (() -> Boolean)? = null,
+    onLspDeclaration: ((Int, Int) -> Boolean)? = null,  // TEST-11-FIX: same fix for declaration
     /** Keyboard toolbar insert handler — registers a function that inserts text at cursor position.
      *  Called once during composition. The registered function handles:
      *  - "Tab" → triggers snippet expansion or inserts \t at cursor
@@ -2940,9 +2940,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onClick = {
                                     // BUG-4 FIX: Try LSP definition first (real semantic navigation),
                                     // fall back to regex pattern matching only if LSP fails/unavailable.
+                                    // TEST-11-FIX: Pass current cursor position from selection, not stale lspCursorLine/Col
                                     var lspDefSucceeded = false
                                     if (onLspDefinition != null) {
-                                        lspDefSucceeded = onLspDefinition!!.invoke()
+                                        val cOff = value.selection.start
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        lspDefSucceeded = onLspDefinition!!.invoke(cLine, cCol)
                                     }
                                     if (!lspDefSucceeded) {
                                     val lines = value.text.split("\n")
@@ -2971,7 +2976,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 },
                                 onClick = {
                                     if (onLspDeclaration != null) {
-                                        onLspDeclaration!!.invoke()
+                                        val cOff = value.selection.start
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        onLspDeclaration!!.invoke(cLine, cCol)
                                     }
                                     showLspMenu = false
                                 }
@@ -2986,9 +2995,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 },
                                 onClick = {
                                     // BUG-4 FIX: Try LSP definition first for peek, fall back to regex
+                                    // TEST-11-FIX: Pass current cursor position from selection
                                     var lspPeekSucceeded = false
                                     if (onLspDefinition != null) {
-                                        lspPeekSucceeded = onLspDefinition!!.invoke()
+                                        val cOff = value.selection.start
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        lspPeekSucceeded = onLspDefinition!!.invoke(cLine, cCol)
                                     }
                                     if (!lspPeekSucceeded) {
                                     val lines = value.text.split("\n")
@@ -3179,7 +3193,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     },
                                     onClick = {
                                         // Use declaration LSP call — reuses the peek definition overlay
-                                        val declSucceeded = onLspDeclaration!!.invoke()
+                                        // TEST-11-FIX: Pass current cursor position
+                                        val cOff = value.selection.start
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        val declSucceeded = onLspDeclaration!!.invoke(cLine, cCol)
                                         if (!declSucceeded) {
                                             // Fallback: show message
                                             peekDeclResult = PeekResult(

@@ -1490,7 +1490,7 @@ fun EditorPane(
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
-                        onOpenFileAtLine = { filePath, line ->
+                        onOpenFileAtLine = { filePath, line ->  // TEST-11-FIX: now scrolls to the line after opening
                             val file = java.io.File(filePath)
                             if (tabs.none { it.path == filePath }) {
                                 tabs.add(EditorTab(
@@ -1504,6 +1504,14 @@ fun EditorPane(
                                 ))
                             }
                             activeId = filePath
+                            // TEST-11-FIX: Schedule scroll-to-line after the new tab is active
+                            if (line > 0) {
+                                scrollToLine = line
+                                kotlinx.coroutines.MainScope().launch {
+                                    kotlinx.coroutines.delay(100)
+                                    scrollToLine = 0
+                                }
+                            }
                         },
                         blameData = if (showBlame) blameData else null,
                         conflictData = conflictHunks,
@@ -1853,11 +1861,11 @@ fun EditorPane(
                         lspHoverContent = if (showLspHover) lspHoverContent else null,
                         // P38: LSP Go-to-Definition — real semantic navigation (BUG-4)
                         onLspDefinition = if (LspManager.isServerRunning(active.language)) {
-                            {
+                            { cursorLine, cursorCol ->  // TEST-11-FIX: use passed cursor position, not stale lspCursorLine/Col
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 var succeeded = false
                                 if (uri != null) {
-                                    val defs = try { LspManager.getDefinition(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    val defs = try { LspManager.getDefinition(active.language, uri, cursorLine, cursorCol) } catch (_: Exception) { null }
                                     if (defs != null && defs.length() > 0) {
                                         val loc = defs.optJSONObject(0)
                                         if (loc != null) {
@@ -1883,11 +1891,11 @@ fun EditorPane(
                         } else null,
                         // P41-O5: LSP Go-to-Declaration
                         onLspDeclaration = if (LspManager.isServerRunning(active.language)) {
-                            {
+                            { cursorLine, cursorCol ->  // TEST-11-FIX: use passed cursor position
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 var succeeded = false
                                 if (uri != null) {
-                                    val decls = try { LspManager.getDeclaration(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    val decls = try { LspManager.getDeclaration(active.language, uri, cursorLine, cursorCol) } catch (_: Exception) { null }
                                     if (decls != null && decls.length() > 0) {
                                         val loc = decls.optJSONObject(0)
                                         if (loc != null) {
