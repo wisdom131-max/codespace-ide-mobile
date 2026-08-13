@@ -15686,3 +15686,53 @@ Toast, verticalScroll), `AGENTS.md` (this entry).
 **Next on roadmap:** Device retest of all settings items (1-5) + Problems panel dropdown.
 Then Test 41 (SCM scroll) + Test 42 (SCM git dubious ownership). Then Phase S: LSP
 Spec Compliance.
+
+### [2026-08-13 15:33 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 0ad78a8 | **CI Build:** pending
+**Tags:** SCM-RESTRUCTURE
+
+**What was done:** Full audit of SourceControlPane.kt against device screenshots
+(Tests 41 + 42). Found 5 confirmed bugs in the SCM panel:
+
+1. **Duplicate pull/fetch/push logic** — the header icons (lines ~456-476) and the
+   3-dot overflow menu (lines ~496-522) had identical but separately-maintained copies
+   of the pull/fetch/push commands, causing divergent behavior.
+2. **Broken string interpolation** — the overflow menu copy used `${'$'}{result.take(60)}`
+   which prints the literal text `${result.take(60)}` instead of interpolating the
+   error message. This is what showed as "No configure" and "no tracking" on device
+   (screenshot evidence: 3 screenshots from 2026-08-13 15:20).
+3. **False-positive merge conflict banner** — `runGit()` calls
+   `ProotInstaller.execOnce()` which returns `"(command completed, no output)"` as a
+   placeholder when a command exits 0 with empty output. `SourceControlPane` used
+   this same function for `git diff --name-only --diff-filter=U` (conflict detection)
+   and did `.lines().filter { it.isNotBlank() }` on the result. So when there were
+   genuinely zero conflicts, the placeholder string became a fake "conflicted file"
+   named literally `(command completed, no output)` — which is the red banner visible
+   in all 3 device screenshots.
+4. **No rotation-safe scroll handling (Test 41)** — tabs used LazyColumn but no
+   configuration-change or rotation-specific scroll state preservation was implemented.
+   Listed in every "Next on roadmap" entry since Aug 12 but never addressed.
+5. **No upstream tracking fix for push (Test 42)** — `git push` called without
+   `--set-upstream` when no tracking branch exists, causing "No configured push
+   destination" error. The Publish flow had `push -u origin` but the quick-push
+   buttons did not.
+
+**Action taken:** User directed full clear of SourceControlPane.kt. Wiped the entire
+file (1682 lines → 33-line skeleton). Kept only the `SourceControlPane(projectId: String)`
+function signature for ExplorerPane.kt compatibility. Skeleton shows a placeholder
+text. All buttons, logic, and bugs removed.
+
+**Files touched:** `SourceControlPane.kt` (1682 lines → 33 lines), `AGENTS.md` (this entry).
+
+**Error Trace Log:**
+
+| # | File | Line(s) | Symptom | Root Cause | Fix Commit | Lesson |
+|---|------|---------|---------|------------|-----------|--------|
+| 1 | SourceControlPane.kt | ~456-522 | Duplicate pull/fetch/push logic — header icons and overflow menu had separate copies | Copy-paste without shared function | 0ad78a8 (cleared) | Extract shared git operation functions — never duplicate command logic across UI components |
+| 2 | SourceControlPane.kt | ~496-522 | Error messages displayed as literal `${result.take(60)}` text on device | `${'$'}{result.take(60)}` in Kotlin string — the `'$'` trick prints literal dollar+braces instead of interpolating | 0ad78a8 (cleared) | Never use `${'$'}` inside string templates for interpolation — it only prints the literal `${}` syntax |
+| 3 | SourceControlPane.kt | ~255 | False "1 merge conflict(s)" banner always visible | ProotInstaller.execOnce() returns "(command completed, no output)" placeholder for empty stdout — this was treated as a conflicted filename by .lines().filter{isNotBlank} | 0ad78a8 (cleared) | Never reuse terminal-display functions for data parsing — execOnce's placeholder string is for UI display, not programmatic consumption. Filter out known placeholder strings or use a separate function for status checks |
+| 4 | SourceControlPane.kt | N/A | SCM panel doesn't preserve scroll on rotation (Test 41) | No scrollState preservation or rememberSaveable used for scroll position | 0ad78a8 (cleared) | Use rememberScrollState() + saveable for any scrollable panel that must survive configuration changes |
+| 5 | SourceControlPane.kt | ~474 | "No configured push destination" error on push (Test 42) | Quick push called bare `git push` without `--set-upstream` for branches with no tracking | 0ad78a8 (cleared) | Always check for upstream tracking before push — use `git push -u origin <branch>` or prompt to set upstream |
+
+**Next on roadmap:** Rebuild SourceControlPane.kt from scratch per Wisdom's restructuring
+plan. Then Phase S: LSP Spec Compliance.
