@@ -642,13 +642,7 @@ private fun FileChangesList(
                     file = file,
                     isStaged = false,
                     isConflicted = true,
-                    onStage = {
-                        scope.launch {
-                            val (ok, msg) = scmState.resolveConflict(hostPath, file.path)
-                            snackbarMsg = msg
-                            if (ok) refresh()
-                        }
-                    },
+                    onStage = { onResolveConflict(file.path) },
                     onUnstage = {},
                 )
             }
