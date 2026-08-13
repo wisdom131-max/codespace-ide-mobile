@@ -1712,7 +1712,7 @@ private fun PublishDialog(
                                 // 4. Stage and commit if there are changes
                                 val st = scmState.loadStatus(hostPath)
                                 if (st != null && (st.staged.isNotEmpty() || st.unstaged.isNotEmpty())) {
-                                    scmState.addAllAndCommit(hostPath, "Initial commit")
+                                    scmState.stageAllAndCommit(hostPath, "Initial commit")
                                 }
                                 // 5. Push
                                 val (pushOk, pushMsg) = scmState.push(hostPath)

@@ -207,17 +207,19 @@ class ScmState(private val context: Context) {
     suspend fun deleteBranch(hostPath: String, name: String): Pair<Boolean, String> =
         withContext(Dispatchers.IO) {
             val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Not a git repository"
-            val result = gitService.deleteBranch(name, workdir)
-            if (result.success) true to "Branch '$name' deleted"
-            else false to (result.stderr.ifBlank { "Failed to delete branch" })
+            when (val r = service.deleteBranch(name, workdir)) {
+                is GitResult.Ok -> true to "Branch '$name' deleted"
+                is GitResult.Err -> false to r.error.message
+            }
         }
 
     suspend fun renameBranch(hostPath: String, oldName: String, newName: String): Pair<Boolean, String> =
         withContext(Dispatchers.IO) {
             val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Not a git repository"
-            val result = gitService.renameBranch(oldName, newName, workdir)
-            if (result.success) true to "Branch renamed to '$newName'"
-            else false to (result.stderr.ifBlank { "Failed to rename branch" })
+            when (val r = service.renameBranch(oldName, newName, workdir)) {
+                is GitResult.Ok -> true to "Branch renamed to '$newName'"
+                is GitResult.Err -> false to r.error.message
+            }
         }
 
     suspend fun createBranch(hostPath: String, name: String): Pair<Boolean, String> =
