@@ -169,6 +169,7 @@ fun SourceControlPane(projectId: String) {
         ) {
             DropdownMenuItem(
                 text = { Text("Stash Changes", fontSize = 12.sp) },
+                enabled = operation is ScmOperation.Idle,
                 onClick = {
                     showOverflowMenu = false
                     scope.launch {
@@ -180,6 +181,7 @@ fun SourceControlPane(projectId: String) {
             )
             DropdownMenuItem(
                 text = { Text("Pop Stash", fontSize = 12.sp) },
+                enabled = operation is ScmOperation.Idle,
                 onClick = {
                     showOverflowMenu = false
                     scope.launch {
@@ -192,6 +194,7 @@ fun SourceControlPane(projectId: String) {
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Merge...", fontSize = 12.sp) },
+                enabled = operation is ScmOperation.Idle,
                 onClick = {
                     showOverflowMenu = false
                     showMergeDialog = true
@@ -209,6 +212,7 @@ fun SourceControlPane(projectId: String) {
                 HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text("Abort Merge", fontSize = 12.sp, color = ConflictColor) },
+                    enabled = operation is ScmOperation.Idle,
                     onClick = {
                         showOverflowMenu = false
                         scope.launch {
@@ -293,16 +297,24 @@ fun SourceControlPane(projectId: String) {
             FileChangesList(
                 repoState = repoState,
                 onResolveConflict = { file ->
-                    scope.launch {
-                        val (ok, msg) = scmState.resolveConflict(hostPath, file)
-                        snackbarMsg = msg
-                        if (ok) refresh()
+                    if (operation !is ScmOperation.Idle) {
+                        snackbarMsg = "Wait for current operation to finish"
+                    } else {
+                        scope.launch {
+                            val (ok, msg) = scmState.resolveConflict(hostPath, file)
+                            snackbarMsg = msg
+                            if (ok) refresh()
+                        }
                     }
                 },
                 onShowDiff = { file ->
-                    scope.launch {
-                        diffData = scmState.diffFile(hostPath, file)
-                        diffFile = file
+                    if (operation !is ScmOperation.Idle && operation !is ScmOperation.Loading) {
+                        snackbarMsg = "Wait for current operation to finish"
+                    } else {
+                        scope.launch {
+                            diffData = scmState.diffFile(hostPath, file)
+                            diffFile = file
+                        }
                     }
                 },
                 onStage = { file ->
@@ -339,16 +351,18 @@ fun SourceControlPane(projectId: String) {
         snackbarMsg?.let { msg ->
             // Classify error type for better UX
             val isAuthError = msg.contains("Authentication failed") || msg.contains("could not read Username")
-            val isNetworkError = msg.contains("Network error") || msg.contains("Could not resolve host")
+            val isNetworkError = msg.contains("Network error") || msg.contains("Could not resolve host") || msg.contains("Network is unreachable")
             val isConflictError = msg.contains("Merge conflicts") || msg.contains("CONFLICT")
             val isNotRepoError = msg.contains("Not a git repository")
+            val isLockError = msg.contains("Another git process") || msg.contains(".lock")
             val isError = isAuthError || isNetworkError || isConflictError || isNotRepoError ||
-                msg.startsWith("Error") || msg.contains("failed")
+                isLockError || msg.startsWith("Error") || msg.contains("failed")
 
             val displayMsg = when {
                 isAuthError -> "$msg\n\nTip: Check your GitHub token in Settings → AI Keys."
                 isNetworkError -> "$msg\n\nTip: Check your network connection."
                 isConflictError -> "$msg\n\nResolve conflicts in the Conflicts section, then commit."
+                isLockError -> "$msg\n\nAnother git operation is running. Wait a moment and retry."
                 else -> msg
             }
 
@@ -385,18 +399,28 @@ fun SourceControlPane(projectId: String) {
             hostPath = hostPath,
             onDismiss = { showBranchDialog = false },
             onCheckout = { branch ->
-                scope.launch {
-                    val (ok, msg) = scmState.checkout(hostPath, branch)
-                    snackbarMsg = msg
-                    if (ok) refresh()
+                if (operation !is ScmOperation.Idle) {
+                    snackbarMsg = "Wait for current operation to finish"
+                } else {
+                    scope.launch {
+                        operation = ScmOperation.Loading("Checking out $branch...")
+                        val (ok, msg) = scmState.checkout(hostPath, branch)
+                        snackbarMsg = msg
+                        operation = ScmOperation.Idle
+                        if (ok) refresh()
+                    }
                 }
                 showBranchDialog = false
             },
             onCreateBranch = { name ->
-                scope.launch {
-                    val (ok, msg) = scmState.createBranch(hostPath, name)
-                    snackbarMsg = msg
-                    if (ok) refresh()
+                if (operation !is ScmOperation.Idle) {
+                    snackbarMsg = "Wait for current operation to finish"
+                } else {
+                    scope.launch {
+                        val (ok, msg) = scmState.createBranch(hostPath, name)
+                        snackbarMsg = msg
+                        if (ok) refresh()
+                    }
                 }
                 showBranchDialog = false
             },

@@ -16984,3 +16984,13 @@ Before implementation, produce a complete plan covering:
 2. SCM-15-16: Testing and race-condition audit
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 22:40 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** (pending)
+**What was fixed:** SCM-15: Race-condition audit. Added isBusy guards to all overflow menu items (Stash, Pop Stash, Merge, Abort Merge — all disabled while operation != Idle). Added isBusy guards to branch checkout/create callbacks. Added isBusy guards to onShowDiff and onResolveConflict callbacks. Added lock-error detection to snackbar ("Another git operation is running. Wait a moment and retry."). Error snackbars stay 5s, success 3s. Note: Build #2215 failed due to stray 'end' keyword that was already fixed in SCM-13 commit (build #2216+). Note: ScmState is stateless — no shared mutable state, all operations are independent Dispatchers.IO coroutines. The UI's isBusy guard is the primary defense against concurrent git operations.
+**Files touched:** android/app/src/main/java/com/codespace/ide/ui/panes/SourceControlPane.kt
+**Next on roadmap:**
+1. Verify builds #2216, #2217, #2218 green
+2. SCM-16: Final testing checklist
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
