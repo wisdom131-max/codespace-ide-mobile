@@ -439,19 +439,19 @@ class GitService(private val context: Context) {
             }
 
             // Diff header lines
-            if (line.startsWith("diff --git")) return@let  // skip
+            if (line.startsWith("diff --git")) continue  // skip
             if (line.startsWith("--- ")) {
-                if (line != "--- /dev/null") oldPath = line.removePrefix("--- ").trim("b/")
-                return@let
+                if (line != "--- /dev/null") oldPath = line.removePrefix("--- ").removePrefix("b/")
+                continue
             }
-            if (line.startsWith("+++ ")) return@let
+            if (line.startsWith("+++ ")) continue
             if (line.startsWith("rename from") || line.startsWith("rename to")) {
                 isRenamed = true
-                return@let
+                continue
             }
-            if (line.startsWith("old mode") || line.startsWith("new mode")) return@let
-            if (line.startsWith("index ")) return@let
-            if (line.startsWith("Binary files")) return@let
+            if (line.startsWith("old mode") || line.startsWith("new mode")) continue
+            if (line.startsWith("index ")) continue
+            if (line.startsWith("Binary files")) continue
 
             // Diff content
             when {
