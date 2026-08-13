@@ -20,6 +20,7 @@ import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
 import com.termux.terminal.TerminalSession
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import java.io.File
 
 /**
