@@ -1497,7 +1497,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         else try {
             val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
             val rawPattern = if (useRegex) findQuery else Regex.escape(findQuery)
-            val finalPattern = if (wholeWord && !useRegex) "\\b${'$'}rawPattern\\b" else rawPattern
+            val finalPattern = if (wholeWord && !useRegex) "\\b${rawPattern}\\b" else rawPattern
             Regex(finalPattern, opts).findAll(value.text).map { it.range }.toList()
         } catch (e: Exception) { emptyList() }
     }
@@ -4885,7 +4885,7 @@ private fun GotoDefinitionDialog(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                Text("Line ${'$'}{def.line + 1}", color = Color(0xFF007ACC), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                Text("Line ${def.line + 1}", color = Color(0xFF007ACC), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                                 Text(def.lineText.take(60), color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                             }
                         }
@@ -4903,7 +4903,7 @@ private fun GotoDefinitionDialog(
                                         Text(cf.kind, color = Color(0xFF569CD6), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(60.dp))
                                         Text(cf.name, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
                                     }
-                                    Text("${'$'}{cf.fileName}:${'$'}{cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                    Text("${cf.fileName}:${cf.line}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                 }
                             }
                         }
@@ -4956,7 +4956,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("References: ${'$'}{findRefWord}", color = Color(0xFF9CDCFE), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Text("References: ${findRefWord}", color = Color(0xFF9CDCFE), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                     Box(
                         Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             .background(if (findRefUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
@@ -4976,7 +4976,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
                 Divider(color = Color(0xFF333333))
                 if (!findRefLoading && findRefResults.isEmpty()) {
                     Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                        Text("No references found for '${'$'}{findRefWord}'.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        Text("No references found for '${findRefWord}'.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
@@ -4993,7 +4993,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
                                 Column(Modifier.fillMaxWidth()) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(fileName, color = Color(0xFF4EC9B0), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                                        Text(":${'$'}{refLine + 1}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        Text(":${refLine + 1}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                     }
                                     Text(snippet.trim().take(100), color = Color(0xFFAAAAAA), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
@@ -5391,7 +5391,7 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                             val newText = try {
                                 val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
                                 val rawPat = if (useRegex) findQuery else Regex.escape(findQuery)
-                                val finalPat = if (wholeWord && !useRegex) "\\b${'$'}rawPat\\b" else rawPat
+                                val finalPat = if (wholeWord && !useRegex) "\\b${rawPat}\\b" else rawPat
                                 Regex(finalPat, opts).replace(text, replaceQuery)
                             } catch (e: Exception) { text }
                             onTextChange(newText, 0)

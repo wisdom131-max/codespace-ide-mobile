@@ -216,9 +216,9 @@ object FileIndexer {
                 if (idx > 0) sb.append(",")
                 sb.append("{\"name\":\"")
                 sb.append(sym.name.replace("\"\\", "\\\\").replace("\"", "\\\""))
-                sb.append("\",\"kind\":\"${'$'}{sym.kind}\",\"filePath\":\"")
+                sb.append("\",\"kind\":\"${sym.kind}\",\"filePath\":\"")
                 sb.append(sym.filePath.replace("\"", "\\\""))
-                sb.append("\",\"line\":${'$'}{sym.line},\"fileName\":\"${'$'}{sym.fileName}\"}")
+                sb.append("\",\"line\":${sym.line},\"fileName\":\"${sym.fileName}\"}")
             }
             sb.append("]")
             file.writeText(sb.toString())

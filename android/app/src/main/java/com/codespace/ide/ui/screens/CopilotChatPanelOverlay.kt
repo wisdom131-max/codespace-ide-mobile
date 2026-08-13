@@ -1288,7 +1288,7 @@ internal fun CopilotChatPanelInline(
                             Spacer(Modifier.height(4.dp))
                             Text("Mode: Manual Flow", fontSize = 11.sp, color = Color(0xFF888888))
                             Spacer(Modifier.height(12.dp))
-                            Text("Tool: ${'$'}{ap.toolName}",
+                            Text("Tool: ${ap.toolName}",
                                 color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                             Spacer(Modifier.height(6.dp))
                             Text(ap.argsSummary,

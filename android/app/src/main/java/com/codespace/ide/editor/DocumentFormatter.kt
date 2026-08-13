@@ -119,7 +119,7 @@ object DocumentFormatter {
             Language.SHELL -> {
                 // shfmt via GitHub binary
                 dpkgFix + "( uname -m | grep -q aarch64 && arch=arm64 || arch=amd64 ) && " +
-                    "curl -fsSL \"https://github.com/mvdan/sh/releases/download/v3.9.1/shfmt_3.9.1_linux_${'$'}{arch}\" " +
+                    "curl -fsSL \"https://github.com/mvdan/sh/releases/download/v3.9.1/shfmt_3.9.1_linux_${arch}\" " +
                     "-o /usr/local/bin/shfmt && chmod +x /usr/local/bin/shfmt"
             }
             Language.GO -> null  // gofmt ships with golang-go, no separate install
@@ -202,7 +202,7 @@ object DocumentFormatter {
                     val recheck = ProotInstaller.execOnce(context, checkCmd, null, timeoutSeconds = 10)
                     if (recheck.contains("not found") || recheck.contains("No such file") || recheck.trim().isEmpty()) {
                         return FormatResult(false, null,
-                            "Formatter install failed for ${language.displayName}. Install output: ${'$'}{installResult.take(200)}")
+                            "Formatter install failed for ${language.displayName}. Install output: ${installResult.take(200)}")
                     }
                 }
             }
@@ -215,11 +215,11 @@ object DocumentFormatter {
         val formattedContent = if (file.exists()) file.readText() else originalContent
 
         return if (formattedContent != originalContent) {
-            FormatResult(true, formattedContent, "Formatted with ${'$'}{language.displayName} formatter")
+            FormatResult(true, formattedContent, "Formatted with ${language.displayName} formatter")
         } else {
             // Check if formatter was available
             val noChange = if (output.contains("not found") || output.contains("command not found") || output.contains("No such file")) {
-                "Formatter not installed for ${'$'}{language.displayName}"
+                "Formatter not installed for ${language.displayName}"
             } else {
                 "No formatting changes needed"
             }

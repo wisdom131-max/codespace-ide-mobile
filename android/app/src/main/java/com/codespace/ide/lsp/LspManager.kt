@@ -1017,7 +1017,7 @@ object LspManager {
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
         // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
         if (!ProjectSettingsStore.lspEnabled.value) {
-            AppOutputLog.log("[LSP] LSP servers disabled in In-Project Settings — skipping startServer for ${'$'}{language.displayName}", "lsp")
+            AppOutputLog.log("[LSP] LSP servers disabled in In-Project Settings — skipping startServer for ${language.displayName}", "lsp")
             return false
         }
         // P-PYRIGHT: If Python and diagnostics source is set to Pyright, use that config
@@ -1790,7 +1790,7 @@ object LspManager {
             }
         }.apply {
             isDaemon = true
-            name = "LSP-Monitor-${'$'}{language.displayName}-gen${'$'}gen"
+            name = "LSP-Monitor-${language.displayName}-gen${gen}"
             start()
         }
         processMonitors[language] = monitorThread
@@ -1806,14 +1806,14 @@ object LspManager {
         val backoff = restartBackoffs.getOrPut(language) { RestartBackoff(language) }
 
         if (!backoff.canRestart()) {
-            lifecycleLog("RESTART lang=${language.displayName} — CIRCUIT BREAKER (max ${'$'}{RestartBackoff.MAX_RESTARTS} restarts exceeded)")
+            lifecycleLog("RESTART lang=${language.displayName} — CIRCUIT BREAKER (max ${RestartBackoff.MAX_RESTARTS} restarts exceeded)")
             setServerState(language, LspState.STOPPED, "circuit breaker")
             return
         }
 
         val delayMs = backoff.nextDelayMs()
         val nextRestartCount = backoff.consecutiveRestarts + 1
-        lifecycleLog("RESTART lang=${language.displayName} attempt=$nextRestartCount/${'$'}{RestartBackoff.MAX_RESTARTS} delay=${delayMs}ms")
+        lifecycleLog("RESTART lang=${language.displayName} attempt=$nextRestartCount/${RestartBackoff.MAX_RESTARTS} delay=${delayMs}ms")
 
         setServerState(language, LspState.RESTARTING, "attempt $nextRestartCount")
 
@@ -1854,7 +1854,7 @@ object LspManager {
             }
         }.apply {
             isDaemon = true
-            name = "LSP-Restart-${'$'}{language.displayName}"
+            name = "LSP-Restart-${language.displayName}"
             start()
         }
     }
@@ -1912,7 +1912,7 @@ object LspManager {
                     if (snap != null) {
                         server.memorySnapshot = snap
                         if (snap.state != MemoryState.NORMAL) {
-                            lifecycleLog("MEMORY lang=${language.displayName} gen=${server.generation} ${'$'}{snap.state} VmRSS=${'$'}{snap.vmRssKb}kB VmPeak=${'$'}{snap.vmPeakKb}kB")
+                            lifecycleLog("MEMORY lang=${language.displayName} gen=${server.generation} ${snap.state} VmRSS=${snap.vmRssKb}kB VmPeak=${snap.vmPeakKb}kB")
                         }
                     }
                 } catch (_: Exception) {}
@@ -1926,7 +1926,7 @@ object LspManager {
      */
     private fun readMemorySnapshot(pid: Long): MemorySnapshot? {
         return try {
-            val statusFile = java.io.File("/proc/${'$'}pid/status")
+            val statusFile = java.io.File("/proc/${pid}/status")
             if (!statusFile.exists()) return null
             var vmRss = 0L
             var vmSize = 0L
@@ -1988,7 +1988,7 @@ object LspManager {
      */
     fun setIdleTimeout(seconds: Long) {
         idleTimeoutSeconds = if (seconds > 0) seconds * 1000 else 0L
-        lifecycleLog("IDLE_TIMEOUT set to ${'$'}{if (seconds == 0L) "Never" else "${'$'}seconds s"}")
+        lifecycleLog("IDLE_TIMEOUT set to " + if (seconds == 0L) "Never" else "${seconds}s")
     }
 
     /**
@@ -2808,7 +2808,7 @@ object LspManager {
             }
             return true
         } catch (e: Exception) {
-            AppOutputLog.log("[LSP] ctags-lsp install failed: ${'$'}{e.message}", "lsp")
+            AppOutputLog.log("[LSP] ctags-lsp install failed: ${e.message}", "lsp")
             return false
         }
     }
@@ -2880,7 +2880,7 @@ object LspManager {
                 return true
             }
         } catch (e: Exception) {
-            AppOutputLog.log("[LSP] ctags-lsp start failed: ${'$'}{e.message}", "lsp")
+            AppOutputLog.log("[LSP] ctags-lsp start failed: ${e.message}", "lsp")
         }
         return false
     }
@@ -2922,7 +2922,7 @@ object LspManager {
 
         // P50-3: Primary server doesn't support workspace/symbol — try ctags-lsp
         if (server != null && server.initialized && !supportsWorkspaceSymbols(language)) {
-            AppOutputLog.log("[LSP] ${'$'}{language.displayName} does not support workspace/symbol — trying ctags-lsp fallback", "lsp")
+            AppOutputLog.log("[LSP] ${language.displayName} does not support workspace/symbol — trying ctags-lsp fallback", "lsp")
             // Auto-start ctags-lsp if not running
             if (ctagsServer == null || ctagsServer?.process?.isAlive != true) {
                 // Need context + workspacePath to start — we get these from the active server

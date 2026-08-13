@@ -1782,8 +1782,8 @@ private fun PssOverlays(
                                             .padding(horizontal = 16.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Text("${'$'}{sym.second}: ${'$'}{sym.first}", fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
-                                        Text("Line ${'$'}{sym.third + 1}", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f))
+                                        Text("${sym.second}: ${sym.first}", fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                                        Text("Line ${sym.third + 1}", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f))
                                     }
                                 }
                             }
@@ -3446,7 +3446,7 @@ private fun PssEditorColumn(
                 Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize - 1).coerceAtLeast(8) }, contentAlignment = Alignment.Center) {
                     Text("−", fontSize = 16.sp, color = TabTextInactive)
                 }
-                Text("${'$'}editorFontSize", fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 2.dp))
+                Text("\$editorFontSize", fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 2.dp))
                 // Zoom in
                 Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize + 1).coerceAtMost(32) }, contentAlignment = Alignment.Center) {
                     Text("+", fontSize = 16.sp, color = TabTextInactive)
@@ -3463,7 +3463,7 @@ private fun PssEditorColumn(
                 }
                 // Go to line
                 Box(Modifier.size(28.dp).clickable { showGoToLine = true }, contentAlignment = Alignment.Center) {
-                    Text(":${'$'}", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
+                    Text(":\$", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
                 }
                 Spacer(Modifier.width(4.dp))
                 Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
@@ -3551,7 +3551,7 @@ private fun PssEditorColumn(
                                         showNotification("Replaced 1 occurrence", "info")
                                     }
                                 } catch (e: Exception) {
-                                    showNotification("Replace failed: ${'$'}{e.message}", "error")
+                                    showNotification("Replace failed: ${e.message}", "error")
                                 }
                             }
                         }, modifier = Modifier.height(36.dp)) { Text("Replace", fontSize = 11.sp) }
@@ -3563,9 +3563,9 @@ private fun PssEditorColumn(
                                     val content = java.io.File(active).readText()
                                     val newContent = content.replace(findQuery, replaceQuery)
                                     java.io.File(active).writeText(newContent)
-                                    showNotification("Replaced ${'$'}{content.split(findQuery).size - 1} occurrences", "info")
+                                    showNotification("Replaced ${content.split(findQuery).size - 1} occurrences", "info")
                                 } catch (e: Exception) {
-                                    showNotification("Replace failed: ${'$'}{e.message}", "error")
+                                    showNotification("Replace failed: ${e.message}", "error")
                                 }
                             }
                         }, modifier = Modifier.height(36.dp)) { Text("All", fontSize = 11.sp) }

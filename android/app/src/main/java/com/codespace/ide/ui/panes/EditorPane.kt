@@ -260,8 +260,8 @@ fun EditorPane(
                 val wasAlive = lspLastKnownAlive[active.language] ?: false
                 if (wasAlive && !alive) {
                     // Server died after being alive — likely OOM-kill
-                    lspStatusMessage = "${'$'}{active.language.displayName} language server was terminated (possibly out of memory). Save and reopen the file to restart it."
-                    AppOutputLog.log("[LSP] ${'$'}{active.language.displayName} server died (OOM-kill suspected) — was alive, now dead", "lsp")
+                    lspStatusMessage = "${active.language.displayName} language server was terminated (possibly out of memory). Save and reopen the file to restart it."
+                    AppOutputLog.log("[LSP] ${active.language.displayName} server died (OOM-kill suspected) — was alive, now dead", "lsp")
                 }
                 if (alive && !wasAlive) {
                     // Server came back (e.g., after restart)
@@ -2315,7 +2315,7 @@ interface User {
 }
 
 async function greet(user: User): Promise<string> {
-  const message = `Hello, ${'$'}{user.name}!`;
+  const message = `Hello, \${user.name}!`;
   return message;
 }
 

@@ -114,7 +114,7 @@ object DiagnosticManager {
         newDiagnostics: List<Diagnostic>,
         documentVersion: Int? = null,
     ) {
-        val sourceKey = "${'$'}{source}/${'$'}sourceId"
+        val sourceKey = "${source}/${sourceId}"
 
         mainHandler.post {
             // Remove old diagnostics from this source for this URI
@@ -142,7 +142,7 @@ object DiagnosticManager {
             if (!exists) {
                 _diagnostics.add(diagnostic)
             }
-            sourceHealth["${'$'}{diagnostic.source}/${'$'}{diagnostic.sourceId}"] = SourceHealth.READY
+            sourceHealth["${diagnostic.source}/${diagnostic.sourceId}"] = SourceHealth.READY
         }
     }
 
@@ -159,7 +159,7 @@ object DiagnosticManager {
                 }
             }
             val first = diagnostics.first()
-            sourceHealth["${'$'}{first.source}/${'$'}{first.sourceId}"] = SourceHealth.READY
+            sourceHealth["${first.source}/${first.sourceId}"] = SourceHealth.READY
         }
     }
 
@@ -174,7 +174,7 @@ object DiagnosticManager {
 
     /** Clear all diagnostics from a specific source+sourceId (all URIs). E.g. LSP crash. */
     fun clearSource(source: DiagnosticSource, sourceId: String) {
-        val sourceKey = "${'$'}{source}/${'$'}sourceId"
+        val sourceKey = "${source}/${sourceId}"
         mainHandler.post {
             _diagnostics.removeAll { it.source == source && it.sourceId == sourceId }
             sourceHealth[sourceKey] = SourceHealth.UNAVAILABLE
@@ -183,7 +183,7 @@ object DiagnosticManager {
 
     /** Mark all diagnostics from a source as stale (don't remove yet). */
     fun markSourceStale(source: DiagnosticSource, sourceId: String) {
-        val sourceKey = "${'$'}{source}/${'$'}sourceId"
+        val sourceKey = "${source}/${sourceId}"
         mainHandler.post {
             _diagnostics.forEachIndexed { i, d ->
                 if (d.source == source && d.sourceId == sourceId && !d.isStale) {
@@ -223,16 +223,16 @@ object DiagnosticManager {
     // ── Source Health ────────────────────────────────────────────────────
 
     fun setSourceHealth(source: DiagnosticSource, sourceId: String, health: SourceHealth) {
-        sourceHealth["${'$'}{source}/${'$'}sourceId"] = health
+        sourceHealth["${source}/${sourceId}"] = health
     }
 
     fun getSourceHealth(source: DiagnosticSource, sourceId: String): SourceHealth {
-        return sourceHealth["${'$'}{source}/${'$'}sourceId"] ?: SourceHealth.UNAVAILABLE
+        return sourceHealth["${source}/${sourceId}"] ?: SourceHealth.UNAVAILABLE
     }
 
     /** Mark a source as failed (e.g. LSP crashed and couldn't restart). */
     fun markSourceFailed(source: DiagnosticSource, sourceId: String) {
-        val sourceKey = "${'$'}{source}/${'$'}sourceId"
+        val sourceKey = "${source}/${sourceId}"
         mainHandler.post {
             _diagnostics.forEachIndexed { i, d ->
                 if (d.source == source && d.sourceId == sourceId && !d.isStale) {

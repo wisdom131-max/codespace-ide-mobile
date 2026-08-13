@@ -118,7 +118,7 @@ fun TimelinePanel(
             )
         } else if (entries.isEmpty()) {
             Text(
-                "No commits for ${'$'}{filePath.substringAfterLast('/')}.",
+                "No commits for ${filePath.substringAfterLast('/')}.",
                 fontSize = 11.sp, color = TlMuted,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
@@ -146,7 +146,7 @@ fun TimelinePanel(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "${'$'}{entry.author} • ${'$'}{entry.relativeDate}",
+                                "${entry.author} • ${entry.relativeDate}",
                                 fontSize = 9.sp,
                                 color = TlMuted,
                                 maxLines = 1,
