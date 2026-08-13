@@ -76,12 +76,15 @@ fun TimelinePanel(
             } catch (_: Exception) {
                 filePath.substringAfterLast("/")
             }
-            val cmd = "git log --follow --format='%H|%an|%ar|%s' -- '$relPath' 2>/dev/null | head -50"
-            val raw = ProotInstaller.execOnce(context, cmd, guestPath, timeoutSeconds = 15)
-            entries = if (raw.startsWith("Exit code") || raw.isBlank()) {
+            // P-SCM-10: Use GitCommandExecutor for git log (centralized safe.directory)
+            val result = com.codespace.ide.scm.GitCommandExecutor.run(
+                context, listOf("log", "--follow", "--format=%H|%an|%ar|%s", "-50", "--", relPath),
+                guestPath, timeoutSeconds = 15L
+            )
+            entries = if (result is com.codespace.ide.scm.GitResult.Err) {
                 emptyList()
             } else {
-                raw.lines().filter { it.isNotBlank() }.mapNotNull { line ->
+                (result as com.codespace.ide.scm.GitResult.Ok).lines.mapNotNull { line ->
                     val parts = line.split("|", limit = 4)
                     if (parts.size < 4) return@mapNotNull null
                     TimelineEntry(
