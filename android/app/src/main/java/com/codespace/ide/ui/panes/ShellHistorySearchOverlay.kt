@@ -51,8 +51,22 @@ object TerminalHistoryStore {
 
     fun load(ctx: Context): List<String> {
         val raw = prefs(ctx).getString(PREF_KEY, "") ?: ""
-        return if (raw.isEmpty()) emptyList()
-        else raw.split("\u0000").filter { it.isNotBlank() }
+        val prefList = if (raw.isEmpty()) emptyList() else raw.split("\u0000").filter { it.isNotBlank() }
+        // TEST-45-FIX: Also read .bash_history from proot rootfs so the command palette
+        // shows real terminal history, not just commands run through the palette itself.
+        val bashHistFile = java.io.File(ctx.filesDir, "ubuntu-rootfs/root/.bash_history")
+        val bashHist = if (bashHistFile.exists()) {
+            try {
+                bashHistFile.readLines()
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() && !it.startsWith("#") }
+            } catch (_: Exception) { emptyList() }
+        } else emptyList()
+        // Merge: bash_history first (oldest), then SharedPreferences (which has dedup), 
+        // then deduplicate keeping the last occurrence (most recent position)
+        val merged = (bashHist + prefList)
+        val seen = mutableSetOf<String>()
+        return merged.reversed().filter { seen.add(it) }.reversed()  // dedup keeping last
     }
 
     /**
