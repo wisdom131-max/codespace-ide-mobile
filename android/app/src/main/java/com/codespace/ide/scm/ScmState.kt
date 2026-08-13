@@ -390,4 +390,34 @@ class ScmState(private val context: Context) {
                 is GitResult.Err -> false to r.error.message
             }
         }
+
+    /**
+     * Get ASCII branch graph.
+     */
+    suspend fun graphLog(hostPath: String, maxCount: Int = 100): String =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext ""
+            service.graphLog(workdir, maxCount)
+        }
+
+    /**
+     * Clone a repository from URL.
+     */
+    suspend fun cloneRepo(hostPath: String, url: String, destDir: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: hostPath
+            when (val r = service.clone(url, destDir, workdir)) {
+                is GitResult.Ok -> true to "Cloned $url"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Get git blame data for a file.
+     */
+    suspend fun blame(hostPath: String, filePath: String): Map<Int, com.codespace.ide.scm.BlameLine> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext emptyMap()
+            service.blame(filePath, workdir)
+        }
 }

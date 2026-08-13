@@ -596,4 +596,92 @@ class GitService(private val context: Context) {
             oldPath = oldPath,
         )
     }
+
+    // ── Branch Graph ───────────────────────────────────────────────────────
+
+    /**
+     * Get ASCII branch graph (git log --graph --oneline).
+     * @param workdir guest-side path to repository
+     * @param maxCount max commits to show (default 100)
+     */
+    fun graphLog(workdir: String, maxCount: Int = 100): String {
+        val result = GitCommandExecutor.run(
+            context,
+            listOf("log", "--graph", "--oneline", "--all", "--decorate", "-n", maxCount.toString()),
+            workdir,
+            timeoutSeconds = 15
+        )
+        return if (result is GitResult.Ok) result.output else ""
+    }
+
+    // ── Clone ──────────────────────────────────────────────────────────────
+
+    /**
+     * Clone a repository from URL into a destination directory.
+     * @param url repository URL (https:// or git@)
+     * @param destDir destination directory (guest-side path)
+     * @param workdir working directory for running the command (parent of dest)
+     */
+    fun clone(url: String, destDir: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(
+            context,
+            listOf("clone", url, destDir),
+            workdir,
+            timeoutSeconds = 120
+        )
+    }
+
+    // ── Blame ───────────────────────────────────────────────────────────────
+
+    /**
+     * Get git blame data for a file (porcelain format).
+     * @param filePath relative file path within the repo
+     * @param workdir guest-side path to repository
+     * @return Map of line number (1-based) to BlameLine(author, date, shortSha)
+     */
+    fun blame(filePath: String, workdir: String): Map<Int, BlameLine> {
+        val result = GitCommandExecutor.run(
+            context,
+            listOf("blame", "--line-porcelain", filePath),
+            workdir,
+            timeoutSeconds = 30
+        )
+        if (result !is GitResult.Ok) return emptyMap()
+        val map = mutableMapOf<Int, BlameLine>()
+        var lineNum = 0
+        var currentSha = ""
+        var currentAuthor = ""
+        var currentDate = ""
+        for (line in result.lines) {
+            // SHA header: <40-hex-sha> <orig-line> <final-line> [groups...]
+            val shaMatch = Regex("^[0-9a-f]{40}\\s+\\d+\\s+\\d+").find(line)
+            if (shaMatch != null) {
+                val parts = line.split("\\s+".toRegex())
+                currentSha = parts[0].take(8)
+                lineNum = parts[2].toIntOrNull() ?: 0
+            } else if (line.startsWith("author ")) {
+                currentAuthor = line.removePrefix("author ").trim()
+            } else if (line.startsWith("author-time ")) {
+                val timestamp = line.removePrefix("author-time ").trim().toLongOrNull() ?: 0L
+                currentDate = if (timestamp > 0) {
+                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                        .format(java.util.Date(timestamp * 1000))
+                } else ""
+            } else if (line.startsWith("\t")) {
+                if (lineNum > 0) {
+                    map[lineNum] = BlameLine(currentAuthor.take(12), currentDate, currentSha)
+                }
+            }
+        }
+        return map
+    }
 }
+
+/**
+ * Git blame line data.
+ */
+data class BlameLine(
+    val author: String,
+    val date: String,
+    val shortSha: String
+)

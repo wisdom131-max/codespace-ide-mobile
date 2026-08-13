@@ -1189,37 +1189,7 @@ fun EditorPane(
                                         if (guestPath != null) {
                                             val raw = com.codespace.ide.scm.GitCommandExecutor.runRaw(context, "blame --line-porcelain '$fileName'", guestPath)
                                             val map = mutableMapOf<Int, com.codespace.ide.editor.BlameLine>()
-                                            var idx = 0; var author = ""; var sha = ""
-                                            raw.lines().forEach { ln ->
-                                                if (ln.startsWith("author ") && !ln.startsWith("author-")) author = ln.removePrefix("author ").trim()
-                                                else if (ln.length >= 40 && ln.matches(Regex("^[0-9a-f]{40}.*"))) sha = ln.substring(0, 8)
-                                                else if (ln.startsWith("\t")) {
-                                                    map[idx] = com.codespace.ide.editor.BlameLine(author.take(12), "", sha)
-                                                    idx++
-                                                }
-                                            }
-                                            map.toMap()
-                                        } else null
-                                    } catch (_: Exception) { null }
-                                }
-                                blameData = result
-                            }
-                        }
-                    }
-                    // P20-A: Fetch git blame data
-                    if (showBlame && active != null) {
-                        val blamePath = active.path
-                        LaunchedEffect(showBlame, blamePath) {
-                            if (showBlame) {
-                                val result = withContext(Dispatchers.IO) {
-                                    try {
-                                        val repoDir2 = blamePath.substringBeforeLast("/")
-                                        val fileName = blamePath.substringAfterLast("/")
-                                        val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
-                                        if (guestPath != null) {
-                                            val raw = com.codespace.ide.scm.GitCommandExecutor.runRaw(context, "blame --line-porcelain '$fileName'", guestPath)
-                                            val map = mutableMapOf<Int, com.codespace.ide.editor.BlameLine>()
-                                            var idx = 0; var author = ""; var sha = ""
+                                            var idx = 1; var author = ""; var sha = ""
                                             raw.lines().forEach { ln ->
                                                 if (ln.startsWith("author ") && !ln.startsWith("author-")) author = ln.removePrefix("author ").trim()
                                                 else if (ln.length >= 40 && ln.matches(Regex("^[0-9a-f]{40}.*"))) sha = ln.substring(0, 8)

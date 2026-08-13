@@ -103,6 +103,8 @@ fun SourceControlPane(projectId: String) {
     var showHistory by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
     var showGitignoreDialog by remember { mutableStateOf(false) }
+    var showGraphDialog by remember { mutableStateOf(false) }
+    var showCloneDialog by remember { mutableStateOf(false) }
     var diffFile by remember { mutableStateOf<String?>(null) }
     var diffData by remember { mutableStateOf<ScmFileDiff?>(null) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
@@ -212,6 +214,14 @@ fun SourceControlPane(projectId: String) {
             )
             HorizontalDivider()
             DropdownMenuItem(
+                text = { Text("Graph", fontSize = 12.sp) },
+                enabled = operation is ScmOperation.Idle,
+                onClick = {
+                    showOverflowMenu = false
+                    showGraphDialog = true
+                },
+            )
+            DropdownMenuItem(
                 text = { Text("Tags", fontSize = 12.sp) },
                 enabled = operation is ScmOperation.Idle,
                 onClick = {
@@ -259,17 +269,25 @@ fun SourceControlPane(projectId: String) {
                         fontSize = 13.sp,
                     )
                     Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                val (ok, msg) = scmState.initRepo(hostPath)
-                                snackbarMsg = msg
-                                if (ok) refresh()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = IconColor)
-                    ) {
-                        Text("Initialize Repository", fontSize = 12.sp)
+                    Row {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    val (ok, msg) = scmState.initRepo(hostPath)
+                                    snackbarMsg = msg
+                                    if (ok) refresh()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = IconColor)
+                        ) {
+                            Text("Init Repo", fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = { showCloneDialog = true },
+                        ) {
+                            Text("Clone URL", fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -516,6 +534,26 @@ fun SourceControlPane(projectId: String) {
         GitignoreDialog(
             hostPath = hostPath,
             onDismiss = { showGitignoreDialog = false },
+            onResult = { msg -> snackbarMsg = msg },
+            onRefresh = { refresh() },
+        )
+    }
+
+    // ── Branch graph dialog ──
+    if (showGraphDialog) {
+        BranchGraphDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            onDismiss = { showGraphDialog = false },
+        )
+    }
+
+    // ── Clone dialog ──
+    if (showCloneDialog) {
+        CloneDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            onDismiss = { showCloneDialog = false },
             onResult = { msg -> snackbarMsg = msg },
             onRefresh = { refresh() },
         )
@@ -1333,6 +1371,130 @@ private fun GitignoreDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── Branch Graph Dialog ──────────────────────────────────────────────────────
+@Composable
+private fun BranchGraphDialog(
+    scmState: ScmState,
+    hostPath: String,
+    onDismiss: () -> Unit,
+) {
+    var graphText by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            graphText = scmState.graphLog(hostPath, 100)
+            loading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Branch Graph", fontSize = 14.sp, color = TextColor) },
+        text = {
+            if (loading) {
+                Text("Loading...", color = MutedColor, fontSize = 12.sp)
+            } else if (graphText.isBlank()) {
+                Text("No commits yet", color = MutedColor, fontSize = 12.sp)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        graphText,
+                        color = TextColor,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 14.sp,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── Clone Dialog ─────────────────────────────────────────────────────────────
+@Composable
+private fun CloneDialog(
+    scmState: ScmState,
+    hostPath: String,
+    onDismiss: () -> Unit,
+    onResult: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var cloneUrl by remember { mutableStateOf("") }
+    var destDir by remember { mutableStateOf("") }
+    var cloning by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = { if (!cloning) onDismiss() },
+        title = { Text("Clone Repository", fontSize = 14.sp, color = TextColor) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = cloneUrl,
+                    onValueChange = { cloneUrl = it },
+                    label = { Text("Repository URL", fontSize = 11.sp) },
+                    placeholder = { Text("https://github.com/user/repo.git", fontSize = 11.sp) },
+                    singleLine = true,
+                    enabled = !cloning,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = destDir,
+                    onValueChange = { destDir = it },
+                    label = { Text("Destination (relative path)", fontSize = 11.sp) },
+                    placeholder = { Text("my-cloned-repo", fontSize = 11.sp) },
+                    singleLine = true,
+                    enabled = !cloning,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
+                )
+                if (cloning) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Cloning...", color = MutedColor, fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (cloneUrl.isNotBlank() && destDir.isNotBlank()) {
+                        cloning = true
+                        scope.launch {
+                            val (ok, msg) = scmState.cloneRepo(hostPath, cloneUrl.trim(), destDir.trim())
+                            cloning = false
+                            onResult(msg)
+                            if (ok) {
+                                onDismiss()
+                                onRefresh()
+                            }
+                        }
+                    }
+                },
+                enabled = !cloning && cloneUrl.isNotBlank() && destDir.isNotBlank(),
+            ) { Text("Clone", fontSize = 12.sp) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !cloning) { Text("Cancel", fontSize = 12.sp) }
         },
     )
 }
