@@ -1187,7 +1187,7 @@ fun EditorPane(
                                         val fileName = blamePath.substringAfterLast("/")
                                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
                                         if (guestPath != null) {
-                                            val raw = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git blame --line-porcelain '$fileName'", guestPath)
+                                            val raw = com.codespace.ide.scm.GitCommandExecutor.runRaw(context, "blame --line-porcelain '$fileName'", guestPath)
                                             val map = mutableMapOf<Int, com.codespace.ide.editor.BlameLine>()
                                             var idx = 0; var author = ""; var sha = ""
                                             raw.lines().forEach { ln ->
@@ -1217,7 +1217,7 @@ fun EditorPane(
                                         val fileName = blamePath.substringAfterLast("/")
                                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir2)
                                         if (guestPath != null) {
-                                            val raw = com.codespace.ide.terminal.ProotInstaller.execOnce(context, "git blame --line-porcelain '$fileName'", guestPath)
+                                            val raw = com.codespace.ide.scm.GitCommandExecutor.runRaw(context, "blame --line-porcelain '$fileName'", guestPath)
                                             val map = mutableMapOf<Int, com.codespace.ide.editor.BlameLine>()
                                             var idx = 0; var author = ""; var sha = ""
                                             raw.lines().forEach { ln ->
