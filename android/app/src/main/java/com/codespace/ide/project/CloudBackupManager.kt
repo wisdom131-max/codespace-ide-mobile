@@ -79,8 +79,14 @@ object CloudBackupManager {
         onRetry: ((attempt: Int, max: Int) -> Unit)? = null,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val projectDir = File(context.filesDir, "projects/$projectId")
-            if (!projectDir.exists()) error("Project directory not found: ${projectDir.absolutePath}")
+            // TEST-53-FIX: projectId from navigation is a timestamp (System.currentTimeMillis()),
+            // but the actual folder on disk is named after the project name.
+            // Resolve the real directory: check SharedPreferences for the project name,
+            // then fall back to direct projectId match, then search projects/ for a matching folder.
+            val projectsBase = File(context.filesDir, "projects")
+            val projectDir = resolveProjectDir(context, projectId, projectsBase)
+            if (projectDir == null || !projectDir.exists())
+                error("Project directory not found. Looked for '$projectId' in ${projectsBase.absolutePath}")
 
             val archiveFile = File(context.cacheDir, "backup_${projectId}_${System.currentTimeMillis()}.tar.gz")
             try {
@@ -196,6 +202,46 @@ object CloudBackupManager {
                 }
             }
         }
+    }
+
+    /**
+     * TEST-53-FIX: Resolve the actual project directory on disk.
+     *
+     * Navigation passes projectId (a timestamp like "1690000000000") but the folder
+     * on disk is named after the project name (e.g. "MyApp"). This helper:
+     *   1. Checks if projects/$projectId exists directly (legacy/edge case)
+     *   2. Looks up the project name from SharedPreferences ("projects" → "list" JSON)
+     *   3. Falls back to scanning projects/ for a single subdirectory
+     */
+    private fun resolveProjectDir(context: Context, projectId: String, projectsBase: File): File? {
+        // 1. Direct match (if someone named the folder with the timestamp)
+        val direct = File(projectsBase, projectId)
+        if (direct.exists() && direct.isDirectory) return direct
+
+        // 2. Look up project name from SharedPreferences
+        try {
+            val prefs = context.getSharedPreferences("projects", Context.MODE_PRIVATE)
+            val listStr = prefs.getString("list", null)
+            if (listStr != null) {
+                val arr = JSONArray(listStr)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    if (obj.optString("id") == projectId) {
+                        val name = obj.optString("name")
+                        if (name.isNotBlank()) {
+                            val byName = File(projectsBase, name)
+                            if (byName.exists() && byName.isDirectory) return byName
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 3. Fallback: if there's exactly one project folder, use it
+        val subdirs = projectsBase.listFiles { f -> f.isDirectory && !f.name.startsWith(".") && f.name != ".trash" }
+        if (subdirs != null && subdirs.size == 1) return subdirs[0]
+
+        return null
     }
 
     // ── Tar.gz helpers ──────────────────────────────────────────────────────────
