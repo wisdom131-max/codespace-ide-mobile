@@ -192,6 +192,12 @@ fun ProjectFileSearchPanel(
             }
         }
         searching = false
+        // TEST-48-FIX: Save search query to recent history when it produces results,
+        // not just when a result is clicked. This ensures history persists even if
+        // the user closes the search without clicking a result.
+        if (query.isNotBlank() && (fileResults.isNotEmpty() || textResults.isNotEmpty())) {
+            saveRecentSearch(query)
+        }
     }
 
     // ── Full-screen scrim ───────────────────────────────────────────────────
