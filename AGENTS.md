@@ -84,17 +84,17 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-13 08:07 WAT)
+## CURRENT STATE (2026-08-13 09:06 WAT)
 
 | | |
 |-|-|
-| Latest commit | **a76819f** — fix(build #2184): TerminalService cancel import + ExplorerPane NotificationStore.show() → .add() (#2186 GREEN) — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **TESTING STAGE** — Phase U COMPLETE ✅ (Build #2179). Previous AI's Test 11/14/43/45/48/50/51/53 fixes now compiling (#2186 GREEN). Test 53 Cloud Backup root cause still unfixed. 9 tests need device retest. | 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
+| Latest commit | **994b571** — fix(Test 53): CloudBackupManager resolveProjectDir() 3-tier fallback (#2189 GREEN) — fix(build #2184): TerminalService cancel import + ExplorerPane NotificationStore.show() → .add() (#2186 GREEN) — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
+| Active phase | **TESTING STAGE** — Phase U COMPLETE ✅. All code fixes done: build #2186 (compile fixes) + #2189 (Test 53 Cloud Backup). 17 tests need device retest. 2 tests still unfixed (36, 39). | 55). Debug gutter fixed (Test 54) with spacing. Problems panel jump fixed (Test 19). Build #2156-2158 fixed. Find bar fixed. Multi-cursor done. Smart completion done. CursorBehaviors.kt crash fixes in commit 35e4e319 (needs APK rebuild). Next: UI restructuring (Tests 36, 38, 41, 42). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2186 (a76819f) ✅ — Customize Layout dropdown + vtsls config (8b899f5) |
+| Last green | #2189 (994b571) ✅ ✅ — Customize Layout dropdown + vtsls config (8b899f5) |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -15424,6 +15424,13 @@ After all 8 features are implemented, audit the full pipeline:
 **Files touched:** TerminalService.kt, ExplorerPane.kt
 **Next on roadmap:** Fix Test 53 (Cloud Backup) root cause — CloudBackupManager.backupProject() uses `projectId` (a timestamp ID from navigation) as the folder name under `projects/`, but the actual project directory is named after the project name. Need to resolve the real project directory the same way Explorer/Editor do (line 756 of ProjectShellScreen.kt: `File(context.filesDir, "projects/$projectId")`). Then device retest all 9 previously-fixed tests (7,8,9,12,16,19,32,54,55) and all newly-fixed tests (11,14,43,45,48,50,51,53).
 
+
+
+### [2026-08-13 09:06 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 994b571 | **CI Build:** #2189 PASS ✅
+**What was fixed:** Test 53 Cloud Backup root cause — CloudBackupManager.backupProject() was using `projectId` (a timestamp from navigation, e.g. "1690000000000") to locate the project folder at `projects/$projectId`, but the actual folder on disk is named after the project name (e.g. "MyApp"). Added `resolveProjectDir()` with 3-tier fallback: (1) direct match if folder happens to be named with the timestamp, (2) look up project name from SharedPreferences "projects"/"list" JSON and match by ID, (3) fallback to single-directory scan if only one project exists. This is the same mismatch the previous AI identified but didn't get to push before running out of tokens.
+**Files touched:** CloudBackupManager.kt
+**Next on roadmap:** Update AGENTS.md Current State table. Then device retest all fixed tests: 7, 8, 9, 12, 16, 19, 32, 54, 55 (Phase U era) + 11, 14, 43, 45, 48, 50, 51, 53 (this session). Then fix remaining unfixed tests: 36, 39.
 
 
 ### [2026-08-13 07:00 WAT] — AI Agent: Claude (Base44 Superagent)
