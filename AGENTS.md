@@ -17036,3 +17036,14 @@ Before implementation, produce a complete plan covering:
 2. Device testing of all SCM features (E1-E13, E15)
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 23:20 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 88a29a9 | **CI Build:** #2224 (pending)
+**What was fixed:** Completed ALL remaining SCM features — E16, E17, E18. (1) E16 GitHub Sign-in: Added "Sign in with GitHub" button to SCM empty state. Triggers GitHubAuth Device Flow — shows device code dialog with monospace code + github.com/login/device URL + polling indicator. On success, stores token via SecureTokenStore. (2) E17 Browse My Repos: Added "Browse My Repos" button (visible when signed in) that opens existing RepoBrowserSheet for listing/cloning user's GitHub repos. (3) E18 Publish to GitHub: Added "Publish to GitHub" to overflow menu (visible when signed in). PublishDialog collects repo name, description, private flag. On publish: creates GitHub repo via GitHubAuth.createRepo(), inits local repo if needed, adds remote origin, stages+commits, pushes. Also added addRemote() to ScmState.
+**Files touched:** SourceControlPane.kt, ScmState.kt
+**SCM test coverage (ALL COMPLETE):** E1(panel✅), E2(stage/unstage✅), E3(commit✅), E4(diff✅), E5(branch create/switch✅), E6(branch delete✅), E7(history✅), E8(branch graph✅), E9(stash✅), E10(tags✅), E11(.gitignore✅), E12(merge conflict✅), E13(git blame✅), E14(LSP go-to-def✅ already implemented), E15(clone from URL✅), E16(GitHub sign-in✅ NEW), E17(browse repos✅ NEW), E18(publish to GitHub✅ NEW). ALL 18 SCM TESTS NOW HAVE IMPLEMENTATIONS.
+**Next on roadmap:**
+1. Verify build #2224 green
+2. Device testing of all SCM features (E1-E18)
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
