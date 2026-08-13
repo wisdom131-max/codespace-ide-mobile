@@ -23,6 +23,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.scm.ScmState
+import com.codespace.ide.data.GitHubAuth
+import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.ui.sheets.RepoBrowserSheet
 import com.codespace.ide.scm.ScmRepoState
 import com.codespace.ide.scm.ScmFileStatus
 import com.codespace.ide.scm.FileChange
@@ -105,6 +108,14 @@ fun SourceControlPane(projectId: String) {
     var showGitignoreDialog by remember { mutableStateOf(false) }
     var showGraphDialog by remember { mutableStateOf(false) }
     var showCloneDialog by remember { mutableStateOf(false) }
+    var showPublishDialog by remember { mutableStateOf(false) }
+    var showRepoBrowser by remember { mutableStateOf(false) }
+    var githubDeviceCode by remember { mutableStateOf<GitHubAuth.DeviceCode?>(null) }
+    var githubSigningIn by remember { mutableStateOf(false) }
+    val tokenStore = remember { SecureTokenStore(context) }
+    val githubToken by remember { mutableStateOf(tokenStore.githubToken) }
+    var tokenRefreshKey by remember { mutableStateOf(0) }
+    val isGithubSignedIn = remember(tokenRefreshKey) { !tokenStore.githubToken.isNullOrBlank() }
     var diffFile by remember { mutableStateOf<String?>(null) }
     var diffData by remember { mutableStateOf<ScmFileDiff?>(null) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
@@ -221,6 +232,24 @@ fun SourceControlPane(projectId: String) {
                     showGraphDialog = true
                 },
             )
+            if (isGithubSignedIn) {
+                DropdownMenuItem(
+                    text = { Text("Publish to GitHub", fontSize = 12.sp) },
+                    enabled = operation is ScmOperation.Idle,
+                    onClick = {
+                        showOverflowMenu = false
+                        showPublishDialog = true
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Browse My Repos", fontSize = 12.sp) },
+                    enabled = operation is ScmOperation.Idle,
+                    onClick = {
+                        showOverflowMenu = false
+                        showRepoBrowser = true
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text("Tags", fontSize = 12.sp) },
                 enabled = operation is ScmOperation.Idle,
@@ -287,6 +316,41 @@ fun SourceControlPane(projectId: String) {
                             onClick = { showCloneDialog = true },
                         ) {
                             Text("Clone URL", fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (isGithubSignedIn) {
+                        OutlinedButton(
+                            onClick = { showRepoBrowser = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = IconColor),
+                        ) {
+                            Text("Browse My Repos", fontSize = 12.sp)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                githubSigningIn = true
+                                scope.launch {
+                                    try {
+                                        val device = GitHubAuth.requestDeviceCode()
+                                        githubDeviceCode = device
+                                        val tok = GitHubAuth.pollForToken(device)
+                                        val user = GitHubAuth.fetchUsername(tok)
+                                        tokenStore.githubToken = tok
+                                        tokenStore.githubUsername = user
+                                        tokenRefreshKey++
+                                        snackbarMsg = "Signed in as $user"
+                                    } catch (e: Exception) {
+                                        snackbarMsg = "GitHub sign-in failed: ${e.message}"
+                                    } finally {
+                                        githubSigningIn = false
+                                        githubDeviceCode = null
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = IconColor),
+                        ) {
+                            Text("Sign in with GitHub", fontSize = 12.sp)
                         }
                     }
                 }
@@ -556,6 +620,73 @@ fun SourceControlPane(projectId: String) {
             onDismiss = { showCloneDialog = false },
             onResult = { msg -> snackbarMsg = msg },
             onRefresh = { refresh() },
+        )
+    }
+
+    // ── Publish to GitHub dialog ──
+    if (showPublishDialog) {
+        PublishDialog(
+            scmState = scmState,
+            hostPath = hostPath,
+            token = githubToken ?: "",
+            onDismiss = { showPublishDialog = false },
+            onResult = { msg -> snackbarMsg = msg },
+            onRefresh = { refresh() },
+        )
+    }
+
+    // ── Repo browser sheet ──
+    if (showRepoBrowser) {
+        RepoBrowserSheet(
+            onDismiss = { showRepoBrowser = false },
+            onProjectCreated = { _ ->
+                showRepoBrowser = false
+                refresh()
+            },
+        )
+    }
+
+    // ── GitHub device code dialog ──
+    if (githubDeviceCode != null && githubSigningIn) {
+        AlertDialog(
+            onDismissRequest = {
+                githubSigningIn = false
+                githubDeviceCode = null
+            },
+            title = { Text("Sign in to GitHub", fontSize = 14.sp, color = TextColor) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Enter this code at:", color = MutedColor, fontSize = 12.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "github.com/login/device",
+                        color = IconColor,
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("Code:", color = MutedColor, fontSize = 12.sp)
+                    Text(
+                        githubDeviceCode!!.userCode,
+                        color = TextColor,
+                        fontSize = 24.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Waiting for approval...", color = MutedColor, fontSize = 11.sp)
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    githubSigningIn = false
+                    githubDeviceCode = null
+                }) { Text("Cancel", fontSize = 12.sp) }
+            },
         )
     }
 }
@@ -1495,6 +1626,116 @@ private fun CloneDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !cloning) { Text("Cancel", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── Publish to GitHub Dialog ─────────────────────────────────────────────────
+@Composable
+private fun PublishDialog(
+    scmState: ScmState,
+    hostPath: String,
+    token: String,
+    onDismiss: () -> Unit,
+    onResult: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var repoName by remember { mutableStateOf("") }
+    var repoDesc by remember { mutableStateOf("") }
+    var isPrivate by remember { mutableStateOf(false) }
+    var publishing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = { if (!publishing) onDismiss() },
+        title = { Text("Publish to GitHub", fontSize = 14.sp, color = TextColor) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = repoName,
+                    onValueChange = { repoName = it },
+                    label = { Text("Repository name", fontSize = 11.sp) },
+                    singleLine = true,
+                    enabled = !publishing,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = repoDesc,
+                    onValueChange = { repoDesc = it },
+                    label = { Text("Description (optional)", fontSize = 11.sp) },
+                    singleLine = true,
+                    enabled = !publishing,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    androidx.compose.material3.Checkbox(
+                        checked = isPrivate,
+                        onCheckedChange = { isPrivate = it },
+                        enabled = !publishing,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Text("Private repo", fontSize = 12.sp, color = TextColor)
+                }
+                if (publishing) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = IconColor)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Publishing...", color = MutedColor, fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (repoName.isNotBlank()) {
+                        publishing = true
+                        scope.launch {
+                            try {
+                                // 1. Create repo on GitHub
+                                val cloneUrl = GitHubAuth.createRepo(token, repoName.trim(), repoDesc.trim(), isPrivate)
+                                // 2. Init local repo if not already
+                                val state = scmState.loadStatus(hostPath)
+                                if (state == null) {
+                                    scmState.initRepo(hostPath)
+                                }
+                                // 3. Add remote origin
+                                scmState.addRemote(hostPath, "origin", cloneUrl)
+                                // 4. Stage and commit if there are changes
+                                val st = scmState.loadStatus(hostPath)
+                                if (st != null && (st.staged.isNotEmpty() || st.unstaged.isNotEmpty())) {
+                                    scmState.addAllAndCommit(hostPath, "Initial commit")
+                                }
+                                // 5. Push
+                                val (pushOk, pushMsg) = scmState.push(hostPath)
+                                if (pushOk) {
+                                    onResult("Published $repoName to GitHub!")
+                                } else {
+                                    onResult("Repo created but push failed: $pushMsg\nRemote added — try pushing manually.")
+                                }
+                                publishing = false
+                                onDismiss()
+                                onRefresh()
+                            } catch (e: Exception) {
+                                publishing = false
+                                onResult("Publish failed: ${e.message}")
+                            }
+                        }
+                    }
+                },
+                enabled = !publishing && repoName.isNotBlank(),
+            ) { Text("Publish", fontSize = 12.sp) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !publishing) { Text("Cancel", fontSize = 12.sp) }
         },
     )
 }

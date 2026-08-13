@@ -379,6 +379,15 @@ class ScmState(private val context: Context) {
             }
         }
 
+    suspend fun addRemote(hostPath: String, name: String, url: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.addRemote(name, url, workdir)) {
+                is GitResult.Ok -> true to "Added remote $name"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
     /**
      * Initialize a new repository.
      */
