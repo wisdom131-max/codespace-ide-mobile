@@ -47,6 +47,7 @@ import java.io.File
  *   - Battery is already set to Unrestricted (user confirmed) — this is the code-side complement.
  */
 class TerminalService : Service() {
+    private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob())
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -113,6 +114,12 @@ class TerminalService : Service() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_FOREGROUND)
         try {
             startForeground(NOTIF_ID, buildNotification(text))
+            // TEST-50-FIX: Observe terminal notification toggle and rebuild immediately
+            serviceScope.launch {
+                androidx.compose.runtime.snapshotFlow { ProjectSettingsStore.terminalNotifications.value }
+                    .distinctUntilChanged()
+                    .collect { rebuildNotification("Terminal ready") }
+            }
         } catch (e: Exception) {
             // Defensive: if this throws (e.g. a transient AMS race right after process
             // restart from a killed background state), don't take the whole app down —
@@ -161,6 +168,7 @@ class TerminalService : Service() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         // Genuine teardown (force-stop, real system kill, or explicit notification stop) —
         // finish any sessions still tracked here so we don't leave orphaned proot/bash
         // process trees running past the service's own lifetime.
