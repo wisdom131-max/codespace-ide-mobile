@@ -15661,3 +15661,28 @@ WsSymbolsScopeRow, WindowTitleRow, CommandsToSkipShellRow), `AGENTS.md` (this en
 **Next on roadmap:** Device retest of all settings items (1-5). Then Problems panel
 dropdown (Item 1 from restructuring list). Then Test 41 (SCM scroll) + Test 42 (SCM
 git error). Then Phase S: LSP Spec Compliance.
+
+### [2026-08-13 14:40 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** pending
+**Tags:** UI-FIX, PROBLEMS-PANEL
+
+**What was fixed:** Full implementation of restructuring Item 1 — Problems panel dropdown.
+Each problem row now has a dropdown arrow (ExpandMore icon) at the end. Tapping it
+opens an inline detail popup with:
+- Full error message in monospace font (no truncation, multi-line, scrollable)
+- Metadata row: Line, Source, Code (when available)
+- Related info entries (when present)
+- Copy button — copies full error text + metadata to clipboard
+- Save button — writes error details to Downloads as a .txt file
+- Close button — collapses the popup
+
+Only one problem can be expanded at a time (accordion behavior). Tapping the row
+itself still jumps to the error line — the dropdown arrow only toggles the detail popup.
+
+**Files touched:** `ProblemsPanel.kt` (full rewrite — added ProblemRow + ProblemDetailPopup
+composables, new imports for ContentCopy/ExpandMore/SaveAlt icons, ClipboardManager,
+Toast, verticalScroll), `AGENTS.md` (this entry).
+
+**Next on roadmap:** Device retest of all settings items (1-5) + Problems panel dropdown.
+Then Test 41 (SCM scroll) + Test 42 (SCM git dubious ownership). Then Phase S: LSP
+Spec Compliance.
