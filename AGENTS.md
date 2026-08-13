@@ -16963,3 +16963,14 @@ Before implementation, produce a complete plan covering:
 4. SCM-15-16: Testing and race-condition audit
 5. YouTube Test 51 fix
 6. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 22:10 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** (pending)
+**What was fixed:** SCM-13: Added diff viewer and history/log view to SourceControlPane. (1) DiffViewerDialog — shows unified diff with color-coded added/deleted/context lines, hunk headers, binary file detection. Triggered by clicking file path in staged/unstaged sections. (2) HistoryDialog — shows commit log (hash, author, date, message, HEAD marker) with scrollable list, loads last 50 commits. (3) Added "History" item to overflow menu. (4) FileRow now accepts optional onShowDiff callback — clicking file name opens diff viewer. Completes plan phase 10 (History) and adds diff viewing capability.
+**Files touched:** android/app/src/main/java/com/codespace/ide/ui/panes/SourceControlPane.kt
+**Next on roadmap:**
+1. Verify builds #2214, #2215, #2216 all green
+2. SCM-14: Authentication error-hardening
+3. SCM-15-16: Testing and race-condition audit
+4. YouTube Test 51 fix
+5. Phase V LSP Reliability Upgrade

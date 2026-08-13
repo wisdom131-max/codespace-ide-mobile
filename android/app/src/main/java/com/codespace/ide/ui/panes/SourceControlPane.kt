@@ -28,6 +28,10 @@ import com.codespace.ide.scm.ScmFileStatus
 import com.codespace.ide.scm.FileChange
 import com.codespace.ide.scm.ScmOperation
 import com.codespace.ide.scm.GitError
+import com.codespace.ide.scm.ScmFileDiff
+import com.codespace.ide.scm.ScmDiffLine
+import com.codespace.ide.scm.DiffLineType
+import com.codespace.ide.scm.ScmCommit
 import kotlinx.coroutines.launch
 
 // ── Palette (matches ExplorerPane/ProjectShellScreen dark theme) ─────────────
@@ -96,6 +100,9 @@ fun SourceControlPane(projectId: String) {
     var showBranchDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showMergeDialog by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
+    var diffFile by remember { mutableStateOf<String?>(null) }
+    var diffData by remember { mutableStateOf<ScmFileDiff?>(null) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
     var isRepo by remember { mutableStateOf<Boolean?>(null) }
 
@@ -188,6 +195,14 @@ fun SourceControlPane(projectId: String) {
                 onClick = {
                     showOverflowMenu = false
                     showMergeDialog = true
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("History", fontSize = 12.sp) },
+                onClick = {
+                    showOverflowMenu = false
+                    showHistory = true
                 },
             )
             if (repoState?.conflicted?.isNotEmpty() == true) {
@@ -284,6 +299,12 @@ fun SourceControlPane(projectId: String) {
                         if (ok) refresh()
                     }
                 },
+                onShowDiff = { file ->
+                    scope.launch {
+                        diffData = scmState.diffFile(hostPath, file)
+                        diffFile = file
+                    }
+                },
                 onStage = { file ->
                     scope.launch {
                         operation = ScmOperation.Staging(listOf(file))
@@ -377,6 +398,27 @@ fun SourceControlPane(projectId: String) {
                         if (ok) refresh()
                     }
                     showMergeDialog = false
+                },
+            )
+        }
+
+        // ── History dialog ──
+        if (showHistory) {
+            HistoryDialog(
+                scmState = scmState,
+                hostPath = hostPath,
+                onDismiss = { showHistory = false },
+            )
+        }
+
+        // ── Diff viewer dialog ──
+        if (diffFile != null) {
+            DiffViewerDialog(
+                filePath = diffFile!!,
+                diff = diffData,
+                onDismiss = {
+                    diffFile = null
+                    diffData = null
                 },
             )
         }
@@ -524,6 +566,7 @@ private fun CommitInputSection(
 private fun FileChangesList(
     repoState: ScmRepoState?,
     onResolveConflict: (String) -> Unit,
+    onShowDiff: (String) -> Unit,
     onStage: (String) -> Unit,
     onStageAll: () -> Unit,
     onUnstage: (String) -> Unit,
@@ -573,7 +616,14 @@ private fun FileChangesList(
         if (repoState.staged.isNotEmpty()) {
             SectionHeader("Staged Changes (${repoState.staged.size})", IconColor)
             repoState.staged.forEach { file ->
-                FileRow(file, isStaged = true, isConflicted = false, onStage = {}, onUnstage = { onUnstage(file.path) })
+                FileRow(
+                    file = file,
+                    isStaged = true,
+                    isConflicted = false,
+                    onStage = {},
+                    onUnstage = { onUnstage(file.path) },
+                    onShowDiff = { onShowDiff(file.path) },
+                )
             }
             Spacer(Modifier.height(4.dp))
         }
@@ -603,7 +653,14 @@ private fun FileChangesList(
                 }
             }
             repoState.unstaged.forEach { file ->
-                FileRow(file, isStaged = false, isConflicted = false, onStage = { onStage(file.path) }, onUnstage = {})
+                FileRow(
+                    file = file,
+                    isStaged = false,
+                    isConflicted = false,
+                    onStage = { onStage(file.path) },
+                    onUnstage = {},
+                    onShowDiff = { onShowDiff(file.path) },
+                )
             }
             repoState.untracked.forEach { file ->
                 FileRow(file, isStaged = false, isConflicted = false, onStage = { onStage(file.path) }, onUnstage = {})
@@ -648,12 +705,17 @@ private fun FileRow(
     isConflicted: Boolean,
     onStage: () -> Unit,
     onUnstage: () -> Unit,
+    onShowDiff: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isStaged) StagedBg else Color.Transparent)
-            .clickable { if (isStaged) onUnstage() else onStage() }
+            .clickable {
+                if (isConflicted) onStage()  // resolve conflict
+                else if (isStaged) onUnstage()
+                else onStage()
+            }
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -678,7 +740,7 @@ private fun FileRow(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(16.dp),
         )
-        // File path
+        // File path (clickable for diff if available)
         Text(
             file.path,
             color = TextColor,
@@ -686,7 +748,9 @@ private fun FileRow(
             fontFamily = FontFamily.Monospace,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .then(if (onShowDiff != null) Modifier.clickable { onShowDiff() } else Modifier),
         )
         // Action icon
         if (isStaged) {
@@ -849,6 +913,163 @@ private fun MergeBranchDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── Diff Viewer Dialog ──────────────────────────────────────────────────────
+@Composable
+private fun DiffViewerDialog(
+    filePath: String,
+    diff: ScmFileDiff?,
+    onDismiss: () -> Unit,
+) {
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "Diff: $filePath",
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        text = {
+            if (diff == null) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = IconColor)
+                }
+            } else if (diff.isBinary) {
+                Text("Binary file — no diff available", color = MutedColor, fontSize = 12.sp)
+            } else if (diff.hunks.isEmpty()) {
+                Text("No changes", color = MutedColor, fontSize = 12.sp)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 500.dp)
+                        .verticalScroll(scrollState)
+                ) {
+                    diff.hunks.forEach { hunk ->
+                        // Hunk header
+                        Text(
+                            "@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@",
+                            color = MutedColor,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                        // Diff lines
+                        hunk.lines.forEach { line ->
+                            val (lineColor, prefix) = when (line.type) {
+                                DiffLineType.ADDED -> Pair(UntrackedColor, "+")
+                                DiffLineType.DELETED -> Pair(DeletedColor, "-")
+                                DiffLineType.CONTEXT -> Pair(TextColor, " ")
+                                DiffLineType.HUNK_HEADER -> Pair(MutedColor, "@")
+                            }
+                            Text(
+                                "$prefix${line.content}",
+                                color = lineColor,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── History Dialog ───────────────────────────────────────────────────────────
+@Composable
+private fun HistoryDialog(
+    scmState: ScmState,
+    hostPath: String,
+    onDismiss: () -> Unit,
+) {
+    var commits by remember { mutableStateOf<List<ScmCommit>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            commits = scmState.log(hostPath, maxCount = 50)
+            loading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Commit History", fontSize = 14.sp) },
+        text = {
+            if (loading) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = IconColor)
+                }
+            } else if (commits.isEmpty()) {
+                Text("No commits yet", color = MutedColor, fontSize = 12.sp)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 500.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    commits.forEach { commit ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                        ) {
+                            // Hash (short)
+                            Text(
+                                commit.hash.take(7),
+                                color = IconColor,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.width(56.dp),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    commit.message.take(80),
+                                    color = TextColor,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "${commit.author} · ${commit.date}",
+                                    color = MutedColor,
+                                    fontSize = 9.sp,
+                                    maxLines = 1,
+                                )
+                            }
+                            if (commit.isHead) {
+                                Spacer(Modifier.width(4.dp))
+                                Text("HEAD", color = UntrackedColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
         },
     )
 }
