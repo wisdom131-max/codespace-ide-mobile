@@ -16974,3 +16974,13 @@ Before implementation, produce a complete plan covering:
 3. SCM-15-16: Testing and race-condition audit
 4. YouTube Test 51 fix
 5. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 22:25 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** (pending)
+**What was fixed:** SCM-14: Authentication and error-hardening. Improved snackbar in SourceControlPane to classify errors by type (auth, network, conflict, not-a-repo) and show helpful tips. Auth errors now suggest checking GitHub token in Settings. Network errors suggest checking connection. Conflict errors suggest resolving in Conflicts section. Error snackbars stay visible 5s instead of 3s. Increased maxLines to 4 for error messages with tips.
+**Files touched:** android/app/src/main/java/com/codespace/ide/ui/panes/SourceControlPane.kt
+**Next on roadmap:**
+1. Verify builds #2214-#2217 all green
+2. SCM-15-16: Testing and race-condition audit
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade

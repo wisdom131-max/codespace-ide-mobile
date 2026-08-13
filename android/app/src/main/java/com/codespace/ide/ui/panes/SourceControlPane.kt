@@ -337,22 +337,41 @@ fun SourceControlPane(projectId: String) {
 
         // ── Snackbar ──
         snackbarMsg?.let { msg ->
+            // Classify error type for better UX
+            val isAuthError = msg.contains("Authentication failed") || msg.contains("could not read Username")
+            val isNetworkError = msg.contains("Network error") || msg.contains("Could not resolve host")
+            val isConflictError = msg.contains("Merge conflicts") || msg.contains("CONFLICT")
+            val isNotRepoError = msg.contains("Not a git repository")
+            val isError = isAuthError || isNetworkError || isConflictError || isNotRepoError ||
+                msg.startsWith("Error") || msg.contains("failed")
+
+            val displayMsg = when {
+                isAuthError -> "$msg\n\nTip: Check your GitHub token in Settings → AI Keys."
+                isNetworkError -> "$msg\n\nTip: Check your network connection."
+                isConflictError -> "$msg\n\nResolve conflicts in the Conflicts section, then commit."
+                else -> msg
+            }
+
             LaunchedEffect(msg) {
-                kotlinx.coroutines.delay(3000)
+                kotlinx.coroutines.delay(if (isError) 5000 else 3000)
                 snackbarMsg = null
             }
             Surface(
-                color = if (msg.startsWith("Error") || msg.contains("failed")) Color(0xFFCC3333) else Color(0xFF2D4A22),
+                color = when {
+                    isError -> Color(0xFFCC3333)
+                    isConflictError -> Color(0xFF8B4513)  // Brown for conflicts
+                    else -> Color(0xFF2D4A22)
+                },
                 modifier = Modifier
                     .padding(8.dp)
                     .fillMaxWidth()
             ) {
                 Text(
-                    msg,
+                    displayMsg,
                     color = Color.White,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(8.dp),
-                    maxLines = 2,
+                    maxLines = if (isError) 4 else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
