@@ -1750,7 +1750,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     onValueChange = { newValue ->
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
                         // Phase U-5: Check if typed char should commit the selected completion
-                        if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
+                        val commitCharMatch = if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
                             val typedChar = newValue.text.getOrNull(newValue.selection.end - 1)
                             val selectedComp = allCompletions.getOrNull(
                                 allCompletions.indexOfFirst { it.label == selectedLabel }
@@ -1762,18 +1762,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val end = cursor.coerceAtMost(text.length)
                                 var start = end
                                 while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
-                                val insertText = selectedComp.insertText
-                                val committedText = text.substring(0, start) + insertText + typedChar.toString() + text.substring(end)
-                                val committedCursor = start + insertText.length + 1
+                                val insertTxt = selectedComp.insertText
+                                val committedText = text.substring(0, start) + insertTxt + typedChar.toString() + text.substring(end)
+                                val committedCursor = start + insertTxt.length + 1
                                 value = TextFieldValue(text = committedText, selection = TextRange(committedCursor))
                                 onContentChange(committedText)
                                 CompletionHistoryStore.recordAccepted(selectedComp.label, language.name, context)
                                 showCompletions = false
                                 selectedLabel = null
                                 completionFilter = null
-                                return@onValueChange
-                            }
-                        }
+                                true
+                            } else false
+                        } else false
+                        if (commitCharMatch) {
+                            // Already committed — skip the rest of onValueChange
+                            updatedValue = newValue
+                        } else {
                         var updatedValue = newValue
                         // 1. Auto-close brackets & quotes
                         if (newValue.text.length == value.text.length + 1) {
@@ -1894,6 +1898,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val cLineStart = updatedValue.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                         val cCol = cOff - cLineStart
                         onCursorChange?.invoke(cLine, cCol)
+                        }
                     },
                     textStyle = LocalTextStyle.current.merge(
                         TextStyle(
