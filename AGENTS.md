@@ -15816,3 +15816,264 @@ P. Final audit — source-code audit after implementation. Report files changed,
 
 **Next on roadmap:** Phase V implementation (LSP Server Manager Reliability Upgrade).
 SCM restructuring plan still pending from Wisdom.
+
+### [2026-08-13 16:18 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (none — planning only) | **CI Build:** N/A
+**Tags:** SCM-REBUILD, PLANNING
+
+**What was done:** Registered the Advanced SCM Rebuild plan (46 sections) as
+the next major architecture phase. The previous SourceControlPane.kt was
+intentionally wiped (commit 0ad78a8, 1682 lines → 33-line skeleton) due to
+recurring bugs. This plan rebuilds SCM from scratch with a production-grade,
+layered architecture.
+
+**SCM Rebuild Plan — 46 Sections:**
+
+**1. Core Architecture (Layered):**
+SCM UI → SCM ViewModel/Controller → SCM State Manager → SCM Repository Model
+→ SCM Operation Manager → Git Service → Git Command Executor → Git Process
+→ Repository. Suggested components: SourceControlPane, SourceControlViewModel,
+ScmStateManager, ScmRepositoryModel, ScmResourceGroup, ScmResourceState,
+ScmOperationManager, ScmOperationLock, GitService, GitRepository,
+GitCommandExecutor, GitResult, GitStatusParser, GitDiffParser, GitLogParser,
+GitBranchParser, GitConflictParser, GitErrorMapper, GitRepositoryWatcher,
+GitCredentialsManager. Do not duplicate existing infrastructure.
+
+**2. Repository Model:** Model around actual Git concepts — HEAD, Index/Staging
+Area, Working Tree, Conflicts, Remotes/References. Distinguish WORKING TREE,
+INDEX/STAGED, HEAD, CONFLICT STATE. A file can have staged AND unstaged changes
+simultaneously — model must preserve that.
+
+**3. Resource State Model:** ScmResourceState with uri, path, workingTreeState,
+indexState, conflictState, decorations, diff info. States: MODIFIED, ADDED,
+DELETED, RENAMED, COPIED, UNTRACKED, IGNORED, CONFLICTED. Staged and unstaged
+represented independently.
+
+**4. Resource Groups:** Changes, Staged Changes, Untracked, Conflicts. Grouping
+derived from repository/resource state, not independently maintained by UI.
+
+**5. Single Source of Truth:** ONE authoritative SCMState model. Contains:
+repository detected/not, repository root, name, HEAD, current branch, detached
+HEAD, working-tree state, index/staged state, untracked, ignored, conflicts,
+ahead/behind, remotes, active operation, progress, cancellation, auth state,
+loading/refresh state, last structured error. No duplication across screens.
+
+**6. Repository Discovery:** Auto-detect Git repo. Support workspace root, parent
+directory, repo root discovery, unavailable/deleted/moved repo, Git executable
+unavailable. Handle .git directory and .git file/worktree repos. Cache repo root.
+
+**7. Git Backend:** Single Git backend for all operations. NO scattered
+ProcessBuilder Git commands in UI. Support: status, branch, switch, checkout,
+add, restore, reset, commit, fetch, pull, push, merge, rebase, stash, tag, log,
+show, diff, remote, clone, worktree. Return structured results, not raw output.
+
+**8. Centralized Git Command Execution:** Handle command construction, working
+directory, environment, stdin, stdout, stderr, exit code, timeout, cancellation,
+process cleanup, encoding, large output, command logging without secrets. Safe
+argument passing — no blind concatenation. Never log passwords/tokens/keys.
+
+**9. Structured Git Result:** GitResult { success, exitCode, stdout, stderr,
+parsedResult, error }. Centralize exit-code/stderr interpretation.
+
+**10. Status System:** Robust Git status model. Support all states. File may have
+staged + unstaged simultaneously. Prefer machine-readable Git status output
+(git status --porcelain=v1) over fragile human-readable parsing.
+
+**11. Refresh System:** ONE authoritative refresh pipeline. discover → status →
+branch/HEAD → conflicts → ahead/behind → update model → update SCMState → UI
+recomposes. Prevent multiple simultaneous refreshes. Coalesce redundant requests.
+No refresh loops.
+
+**12. File Watching:** Detect workspace filesystem changes, trigger SCM refresh
+with debouncing. Do NOT run git status on every keystroke. Keep unsaved editor
+content separate from filesystem/Git state.
+
+**13. Branch Management:** Current branch, local/remote branches, create, switch,
+rename, delete, checkout, upstream/tracking. Detect dangerous working-tree
+changes before switch. Never silently destroy work. Detect detached HEAD.
+
+**14. Staging:** Stage file, unstage, stage selected, stage all, unstage all,
+discard changes, stage hunks. Distinguish STAGE/UNSTAGE/DISCARD. Discard is
+destructive — requires confirmation. Refresh after every mutation.
+
+**15. Diff:** Structured diff support. Unstaged, staged, against HEAD, file diff,
+commit diff, branch comparison. Preserve paths, additions, deletions, context,
+hunks, line ranges. Navigation from resource to diff.
+
+**16. Commit:** Commit message, commit staged, amend. Validate: non-empty
+message, staged changes exist, no merge conflict state. Refresh after commit.
+
+**17. Fetch:** Fetch selected remote, fetch all, prune when requested. Refresh
+remote refs, ahead/behind, branch state. Fetch must not modify working-tree.
+
+**18. Pull:** Distinguish fast-forward, merge, rebase, conflicts, auth failure,
+network failure. Refresh after success. Conflicts → CONFLICT state. Don't report
+success just because process started.
+
+**19. Push:** Push current branch, selected remote, upstream setup, force push
+ONLY with explicit confirmation. NEVER silently force-push. Handle auth failure,
+rejected, non-fast-forward, missing upstream, remote unavailable. Refresh
+ahead/behind after.
+
+**20. Merge:** Check repo state, working tree, dangerous local changes before
+merge. MERGING state during. Refresh after success. Conflicts → CONFLICTED.
+Never auto-overwrite conflict contents.
+
+**21. Rebase:** Distinct operation. Start, continue, abort, conflict detection.
+Represent NORMAL, MERGING, REBASING, CONFLICTED, DETACHED_HEAD. Don't hide
+repo operation state.
+
+**22. Conflict Model / Resolver:** Dedicated conflict model. Detect conflicted
+files, Git index conflict state, merge/rebase state. Represent OURS, THEIRS,
+BASE, RESULT. Support accept ours, accept theirs, manual, mark resolved, stage
+resolved, continue. Never auto-overwrite conflict contents.
+
+**23. Stash:** Create, message, include untracked, list, show, apply, pop, drop.
+Handle stash conflicts safely. Destructive ops require confirmation.
+
+**24. Tags:** List, create, annotated, delete, push, inspect. Never silently
+delete/overwrite.
+
+**25. Remotes:** List, add, remove, rename, update URL. Never expose embedded
+credentials in remote URLs.
+
+**26. History / Log:** Commit list, author, date, message, hash, parent info,
+pagination/lazy loading, commit details, changed files, commit diff. Don't
+load enormous history into memory at once.
+
+**27. Authentication:** Separate Git ops from credential management. Support SSH,
+HTTPS credentials, credential helper, tokens. Never log/display/store secrets.
+Auth failures → structured errors.
+
+**28. Centralized Error Model:** CRITICAL requirement. Classifications:
+GIT_NOT_INSTALLED, NOT_A_REPOSITORY, REPOSITORY_UNAVAILABLE, WORKTREE_DIRTY,
+MERGE_CONFLICT, REBASE_CONFLICT, AUTHENTICATION_FAILED, PERMISSION_DENIED,
+NETWORK_ERROR, REMOTE_NOT_FOUND, BRANCH_NOT_FOUND, NON_FAST_FORWARD,
+NOTHING_TO_COMMIT, NOTHING_TO_PUSH, NOTHING_TO_PULL, DETACHED_HEAD, LOCK_FILE,
+GIT_PROCESS_FAILED, OPERATION_CANCELLED, TIMEOUT, UNKNOWN_GIT_ERROR. Preserve
+raw stderr internally. UI receives structured error + human-readable message.
+
+**29. Git Lock File Safety:** Detect index.lock. Do NOT auto-delete. Check if
+another Git process is running. Stale lock → safe recovery option. Never
+blindly delete repo metadata.
+
+**30. Operation Manager:** Centralized SCM operation manager. Track IDLE,
+RUNNING, CANCELLING, SUCCESS, FAILED. Repository-mutating ops serialized
+through operation lock. Read-only ops may run concurrently when safe.
+
+**31. Operation Cancellation:** Support cancellation for fetch, pull, push,
+clone, large history. Terminate process safely, release locks, clear state,
+refresh, never leave UI stuck in RUNNING.
+
+**32. Operation Progress:** Expose progress for long-running ops. Parse Git
+machine-readable progress. Don't invent fake percentages. Indeterminate when
+unavailable.
+
+**33. State Recovery After Failure:** After any mutating op: determine
+success/failure, release lock, refresh status/branch/HEAD/conflicts/ahead-
+behind, update SCMState, clear stale operation state. Never leave SCM
+permanently loading. Report refresh failure separately from op failure.
+
+**34. Special Repository States:** Detect detached HEAD, merge/rebase/
+cherry-pick/revert/bisect in progress, worktrees, submodules. Don't present
+NORMAL when Git reports active operation.
+
+**35. UI Architecture:** SourceControlPane as presentation layer. Structure:
+Repository Header, Changes (Staged/Unstaged/Untracked), Commit, Sync
+(Pull/Push/Fetch), Branches, History, Stash, Tags, Remotes, Conflicts. Don't
+put all logic in one composable.
+
+**36. UI State:** Observe SCMState. No random UI booleans, duplicated loading
+states, stale file lists/branch info. Buttons enabled/disabled per SCM state.
+States: NO_REPOSITORY, LOADING, READY, OPERATION_RUNNING, CONFLICT, ERROR.
+
+**37. Destructive Action Protection:** Confirm before discard, reset --hard,
+force push, delete branch, drop stash, delete tag, remove remote.
+
+**38. Race Condition Protection:** Safe under simultaneous refresh, user
+actions, file watch events, operation completion, operation cancellation.
+Use operation locks and state guards.
+
+**39. Performance:** Avoid excessive Git commands. Debounce file watching.
+Lazy-load history. Avoid full status on every keystroke. Cache parsed results.
+Don't block UI thread.
+
+**40. Testing Strategy:** Unit tests for parsers, GitCommandExecutor,
+ScmOperationManager, state transitions. Integration tests for GitService.
+Mock Git process for deterministic tests.
+
+**41. Mobile-Specific Concerns:** Battery — minimize background Git operations.
+Memory — lazy loading, limit history size. Network — handle connectivity
+changes, offline mode. Storage — .git can be large, monitor disk. Process
+limits — Android process limits, OOM awareness. Screen — scrollable, touch-
+friendly, small screen.
+
+**42. Pre-Implementation Audit:** Before coding, inspect: current SCM files,
+remaining SCM references, activity bar integration, workspace integration,
+process execution infrastructure, async/coroutine infrastructure, dialog
+infrastructure, notification/snackbar infrastructure, Git availability,
+existing tests, reusable services. Preserve existing SCM activity-bar entry
+point.
+
+**43. Implementation Phases (16 phases):**
+- Phase 1: SCM domain models (repository, resource state, resource groups, SCMState)
+- Phase 2: GitCommandExecutor, GitResult, process lifecycle/error handling
+- Phase 3: GitService, repository discovery
+- Phase 4: Status, HEAD, branch, resource groups, central refresh pipeline
+- Phase 5: Operation manager, repository locking, cancellation, progress
+- Phase 6: Stage, unstage, discard, diff
+- Phase 7: Commit
+- Phase 8: Fetch, pull, push
+- Phase 9: Branches
+- Phase 10: History
+- Phase 11: Merge, conflict resolver
+- Phase 12: Rebase
+- Phase 13: Stash, tags, remotes, worktrees
+- Phase 14: Authentication and error-hardening
+- Phase 15: Advanced Source Control UI
+- Phase 16: Failure/recovery testing, race-condition audit, performance audit,
+  final SCM architecture audit
+
+**44. Before Coding — Required Audit:** Inspect existing project: SCM files,
+remaining references, activity bar, workspace, process execution, async/coroutine,
+dialog, notification/snackbar, Git availability, tests, reusable services.
+
+**45. Final Plan Output (25 items):** Architecture diagram, component tree,
+repository model, resource state model, resource group model, SCM state model,
+Git operation model, error model, operation locking strategy, async/threading
+strategy, refresh strategy, file watching strategy, UI structure, conflict
+architecture, authentication architecture, recovery strategy, testing strategy,
+implementation phases, files to create, existing files to modify, dependencies,
+risks, how architecture prevents previous recurring errors, VS Code-inspired
+parts, mobile-specific parts.
+
+**46. Core Design Principle:** UI never the Git engine. Git engine never owns
+UI state. Repository model represents actual Git state. Operation manager
+protects mutations. SCM state is single source of truth. System recovers
+cleanly from errors. PLAN FIRST — no coding until approved.
+
+**Files to be created (when work begins):**
+- Domain models: ScmRepositoryModel, ScmResourceState, ScmResourceGroup,
+  ScmState, GitResult, GitError
+- Backend: GitCommandExecutor, GitService, GitStatusParser, GitDiffParser,
+  GitLogParser, GitBranchParser, GitConflictParser, GitErrorMapper,
+  GitRepositoryWatcher, GitCredentialsManager
+- Operations: ScmOperationManager, ScmOperationLock
+- ViewModel: SourceControlViewModel
+- UI: SourceControlPane (rebuild), plus extracted composables for each section
+  (RepositoryHeader, StagedChanges, Changes, UntrackedFiles, CommitSection,
+  SyncSection, BranchSection, HistorySection, StashSection, ConflictsSection)
+
+**Files to be modified (when work begins):**
+- `SourceControlPane.kt` — full rebuild from skeleton
+- `ExplorerPane.kt` — GitSidePanel integration (keep existing call site)
+- `ProjectShellScreen.kt` — activity bar entry (keep existing SidePanel.GIT)
+- `ProjectSettingsStore.kt` — SCM settings if needed
+- `AGENTS.md` — per-phase change log entries
+
+**No code changes made. Plan registered for future implementation.**
+
+**Next on roadmap:**
+1. SCM Rebuild (Phase 1-16 above) — awaiting Wisdom's approval to begin
+2. Phase V LSP Reliability Upgrade — also registered, awaiting start
+3. Pre-implementation audit required before coding either phase
