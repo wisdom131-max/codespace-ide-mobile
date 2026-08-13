@@ -83,6 +83,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 8. Prioritize the migration to DAP (Debug Adapter Protocol) as defined in the Phase 26 plan, while maintaining the current DebugProvider architecture until Phase 26-1 is fully validated.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
+11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
 ## CURRENT STATE (2026-08-13 21:30 WAT)
 
@@ -4470,6 +4471,7 @@ with breakpoints, stepping, variable inspection, watches, call stack, debug cons
 8. Prioritize the migration to DAP (Debug Adapter Protocol) as defined in the Phase 26 plan, while maintaining the current DebugProvider architecture until Phase 26-1 is fully validated.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
+11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
 ## CURRENT STATE (as of Phase 25)
 
@@ -11844,6 +11846,7 @@ Previous patterns (from USER.md):
 8. Prioritize the migration to DAP (Debug Adapter Protocol) as defined in the Phase 26 plan, while maintaining the current DebugProvider architecture until Phase 26-1 is fully validated.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
+11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
 ## CURRENT STATE UPDATE (2026-08-09 18:15, by Superagent)
 
@@ -17067,7 +17070,9 @@ Before implementation, produce a complete plan covering:
 **What was fixed:** Phase P — Central DiagnosticManager + AdvancedProblemsPanel. Created DiagnosticManager (central diagnostic store with source ownership, dedup, stale marking, thread safety). Created DiagnosticConverter (bridges LSP JSONArray, LintError, Problem, BuildProblem to unified Diagnostic model). Created DiagnosticPublisher (publishes lint+build diagnostics into central store). Created AdvancedProblemsPanel (severity filters, search, file grouping, stale indicators, source badges, click-to-navigate). Wired LSP publishDiagnostics directly into DiagnosticManager (LspManager). Wired lint publishing on file open, tab switch, content change (EditorPane). Wired build diagnostics into DiagnosticManager (ProjectShellScreen). Replaced old inline ProblemsPanel with AdvancedProblemsPanel. Removed old inline ProblemsPanel dead code.
 **Files touched:** DiagnosticManager.kt (NEW), DiagnosticConverter.kt (NEW), DiagnosticPublisher.kt (NEW), AdvancedProblemsPanel.kt (NEW), LspManager.kt, EditorPane.kt, ProjectShellScreen.kt
 **Next on roadmap:**
-1. Verify build #2232 green
+1. Verify build #2235 green (✅ GREEN)
 2. Device testing of all SCM features (E1-E18)
 3. YouTube Test 51 fix
-4. Phase V — LSP Reliability Upgrade (awaiting start)
+4. Phase N — Advanced Notification System (PLAN REGISTERED, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
+5. Phase P — Advanced Problems Panel ✅ DONE (build green, DiagnosticManager + AdvancedProblemsPanel live)
+6. Phase V — LSP Reliability Upgrade (awaiting start)
