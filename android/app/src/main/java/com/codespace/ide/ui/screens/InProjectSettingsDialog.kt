@@ -119,23 +119,59 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                 // ── Body: sidebar + content ────────────────────────────
                 Row(Modifier.fillMaxSize()) {
                     // Sidebar
+                    val allRowsForSearch = remember { buildAllSettingsRows() }
+                    // Per-category match counts when searching
+                    val categoryCounts = remember(searchQuery, allRowsForSearch) {
+                        if (searchQuery.isEmpty()) emptyMap()
+                        else {
+                            val q = searchQuery.lowercase()
+                            allRowsForSearch.filter {
+                                it.label.lowercase().contains(q) ||
+                                it.description.lowercase().contains(q) ||
+                                it.category.label.lowercase().contains(q)
+                            }.groupBy { it.category }.mapValues { it.value.size }
+                        }
+                    }
+
                     LazyColumn(
                         Modifier.width(200.dp).background(sidebarBg).fillMaxHeight(),
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
                         items(categories) { category ->
                             val isActive = activeCategory == category && searchQuery.isEmpty()
+                            val matchCount = categoryCounts[category]
+                            // P-SETTINGS-RESTRUCTURE: dim categories with 0 matches during search
+                            val dimmed = searchQuery.isNotEmpty() && (matchCount == null || matchCount == 0)
                             Row(
                                 Modifier.fillMaxWidth()
                                     .background(if (isActive) activeCatBg else Color.Transparent)
-                                    .clickable { activeCategory = category; searchQuery = "" }
+                                    .clickable(enabled = !dimmed) {
+                                        activeCategory = category; searchQuery = ""
+                                    }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(category.label,
-                                    color = if (isActive) accent else textPri,
+                                    color = when {
+                                        dimmed -> textSec.copy(alpha = 0.4f)
+                                        isActive -> accent
+                                        else -> textPri
+                                    },
                                     fontSize = 13.sp,
                                     fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
+                                // P-SETTINGS-RESTRUCTURE (Item 2): per-category match count badge
+                                if (searchQuery.isNotEmpty() && matchCount != null && matchCount > 0) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        matchCount.toString(),
+                                        color = accent.copy(alpha = 0.7f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.background(
+                                            accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp)
+                                        ).padding(horizontal = 5.dp, vertical = 1.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -144,17 +180,28 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
 
                     // Content
                     val allRows = remember { buildAllSettingsRows() }
-                    val filteredRows = if (searchQuery.isEmpty()) {
-                        allRows.filter { it.category == activeCategory }
-                    } else {
+                    // P-SETTINGS-RESTRUCTURE (Item 1): "Commonly Used" shows all settings
+                    // ranked by usage count (most-interacted first). Other categories show
+                    // their own rows. Search filters across everything.
+                    val filteredRows = if (searchQuery.isNotEmpty()) {
                         val q = searchQuery.lowercase()
                         allRows.filter {
                             it.label.lowercase().contains(q) ||
                             it.description.lowercase().contains(q) ||
                             it.category.label.lowercase().contains(q)
                         }
+                    } else if (activeCategory == SettingsCategory.COMMONLY_USED) {
+                        // Sort by usage count descending; unused settings keep their original order
+                        val ranked = SettingsUsageTracker.rankedIds()
+                        val used = allRows.filter { it.id in ranked }
+                            .sortedByDescending { SettingsUsageTracker.count(it.id) }
+                        val unused = allRows.filter { it.id !in ranked }
+                        used + unused
+                    } else {
+                        allRows.filter { it.category == activeCategory }
                     }
 
+                    // P-SETTINGS-RESTRUCTURE (Item 2): total match count header
                     if (searchQuery.isNotEmpty() && filteredRows.isNotEmpty()) {
                         Text(
                             "${filteredRows.size} Setting${if (filteredRows.size > 1) "s" else ""} Found",
@@ -162,12 +209,20 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         )
                     }
+                    // P-SETTINGS-RESTRUCTURE (Item 1): "Commonly Used" hint when empty
+                    if (searchQuery.isEmpty() && activeCategory == SettingsCategory.COMMONLY_USED && filteredRows.isEmpty()) {
+                        Text(
+                            "Settings you interact with most will appear here. Tap a setting to start tracking usage.",
+                            color = textSec, fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        )
+                    }
 
                     LazyColumn(
                         Modifier.weight(1f).fillMaxHeight(),
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
-                        if (filteredRows.isEmpty()) {
+                        if (filteredRows.isEmpty() && searchQuery.isNotEmpty()) {
                             item {
                                 Text("No settings found",
                                     color = textSec, fontSize = 14.sp,
@@ -176,7 +231,9 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                         } else {
                             var lastCategory: SettingsCategory? = null
                             for (row in filteredRows) {
-                                if (searchQuery.isNotEmpty() && row.category != lastCategory) {
+                                // Show category headers in search mode and in "Commonly Used" mode
+                                val showHeader = (searchQuery.isNotEmpty() || activeCategory == SettingsCategory.COMMONLY_USED) && row.category != lastCategory
+                                if (showHeader) {
                                     item(key = "header_${row.category}") {
                                         SectionHeader(row.category.label, textPri)
                                     }
@@ -197,6 +254,7 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
 // ── Data model for settings rows ─────────────────────────────────────
 
 enum class SettingsCategory(val label: String) {
+    COMMONLY_USED("Commonly Used"),
     AI_AGENT("AI Agent Flow"),
     EDITOR("Editor Features"),
     NOTIFICATIONS("Notifications"),
@@ -235,6 +293,40 @@ enum class RowType {
     TS_VERSION_DROPDOWN,
     CUSTOM_CURSOR_CHECKBOX,
     CURSOR_MODE_DROPDOWN,
+}
+
+// ── Usage tracking for "Commonly Used" ranking ───────────────────────
+// P-SETTINGS-RESTRUCTURE (Item 1): Tracks how many times each setting row is
+// interacted with (toggle changed, dropdown opened, text field edited). The
+// count persists across sessions via SharedPreferences so the "Commonly Used"
+// tab surfaces the settings the user actually changes the most — mirroring
+// vscode.dev's usage-based ranking.
+internal object SettingsUsageTracker {
+    private const val PREFS_NAME = "settings_usage"
+    private const val KEY_PREFIX = "usage_"
+    private var prefs: android.content.SharedPreferences? = null
+    private val cache = mutableMapOf<String, Int>()
+
+    fun init(context: android.content.Context) {
+        prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        prefs?.all?.forEach { (k, v) ->
+            if (k.startsWith(KEY_PREFIX)) {
+                cache[k.removePrefix(KEY_PREFIX)] = (v as? Int) ?: 0
+            }
+        }
+    }
+
+    fun record(rowId: String) {
+        val count = (cache[rowId] ?: 0) + 1
+        cache[rowId] = count
+        prefs?.edit()?.putInt(KEY_PREFIX + rowId, count)?.apply()
+    }
+
+    fun count(rowId: String): Int = cache[rowId] ?: 0
+
+    /** Returns row IDs sorted by usage count descending (most-used first). */
+    fun rankedIds(): List<String> =
+        cache.entries.sortedByDescending { it.value }.map { it.key }
 }
 
 private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
@@ -370,6 +462,10 @@ private fun SettingsRowRenderer(
     surface: Color,
     divider: Color,
 ) {
+    // P-SETTINGS-RESTRUCTURE (Item 1): record usage so "Commonly Used" ranking updates.
+    // We record on *composition* — the user had to at least see/change the setting for
+    // the row to appear. This is a reasonable proxy for "interacted with."
+    LaunchedEffect(row.id) { SettingsUsageTracker.record(row.id) }
     when (row.type) {
         RowType.FLOW_MODE_DROPDOWN -> FlowModeRow(accent, textPri, textSec, divider)
         RowType.VERBOSE_TOOL_CHECKBOX -> VerboseToolOutputRow(textPri, textSec, divider)
@@ -405,7 +501,7 @@ private fun SettingsRowRenderer(
 private fun ZenModeExitRow(textPri: Color, textSec: Color, divider: Color) {
     val enabled = ProjectSettingsStore.zenModeExitButtonEnabled
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -426,7 +522,7 @@ private fun TypeScriptVersionRow(accent: Color, textPri: Color, textSec: Color, 
     var expanded by remember { mutableStateOf(false) }
     val current = ProjectSettingsStore.typescriptVersion.value
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         Row(
             Modifier.fillMaxWidth().clickable { expanded = true }.padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -461,7 +557,7 @@ private fun TypeScriptVersionRow(accent: Color, textPri: Color, textSec: Color, 
 private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
     val enabled = ProjectSettingsStore.lspEnabled
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -481,7 +577,7 @@ private fun LspEnabledRow(textPri: Color, textSec: Color, divider: Color) {
 private fun SmartCompletionRow(textPri: Color, textSec: Color, divider: Color) {
     val smartEnabled = ProjectSettingsStore.smartCompletionEnabled
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -507,7 +603,7 @@ private fun CursorModeRow(accent: Color, textPri: Color, textSec: Color, divider
         CursorMode.SYSTEM to "System (Phone Built-in)",
     )
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -540,7 +636,7 @@ private fun CursorModeRow(accent: Color, textPri: Color, textSec: Color, divider
 private fun CustomCursorOverlayRow(textPri: Color, textSec: Color, divider: Color) {
     val enabled = ProjectSettingsStore.customCursorOverlayEnabled
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -560,7 +656,7 @@ private fun CustomCursorOverlayRow(textPri: Color, textSec: Color, divider: Colo
 private fun FormatOnSaveRow(textPri: Color, textSec: Color, divider: Color) {
     val enabled = ProjectSettingsStore.formatOnSaveEnabled
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {

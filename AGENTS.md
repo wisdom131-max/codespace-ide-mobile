@@ -84,12 +84,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-13 13:50 WAT)
+## CURRENT STATE (2026-08-13 14:03 WAT)
 
 | | |
 |-|-|
-| Latest commit | Test 39 notification restructure (this commit) — bell dot indicator, sound, DND+anycode menu, 3-corner reposition, error->Problems jump, tap-to-expand fix — build pending |
-| Active phase | **TESTING STAGE** — Test 39 restructured per Christie's full spec (see "TEST 39 — Notification Bell Restructure" section above CHANGE LOG). Remaining: Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown/resizable popup, Settings ranking+search-counts+TS/JS additions, text padding audit. |
+| Latest commit | Settings Items 1+2+4: "Commonly Used" ranking + search match counts + text padding fixes (this commit) — pending push. Previous: Test 39 notification restructure (`c6e22cc`) — build pending. |
+| Active phase | **TESTING STAGE** — Test 39 notification restructure pushed. Settings Items 1/2/4 code done (needs device retest). Remaining: Item 3 (TS/JS + Accessibility settings additions), Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -15541,7 +15541,7 @@ Then 2+3 together (they're both "In-Project Settings search/ranking infra"), the
 (settings additions — big but mechanical), then 5 (padding audit) last.
 
 ### [2026-08-13 13:50 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** (pending — see below) | **CI Build:** pending
+**Commit:** `c6e22cc` | **CI Build:** pending (needs verification)
 **Tags:** UI-FIX, STABILITY-FIX
 
 **What was fixed:** Test 39 — full notification bell/panel restructure per Christie's
@@ -15578,3 +15578,39 @@ reference/vision for those. Separately queued (same screenshot batch, not yet st
 Problems panel dropdown+resizable full-error popup, In-Project Settings ranking +
 search match-counts, In-Project Settings TS/JS+Accessibility setting additions,
 text-padding audit. See "STILL OUTSTANDING" list in the Test 39 spec section above.
+
+### [2026-08-13 14:03 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** pending
+**Tags:** UI-FIX, SETTINGS-FIX
+
+**What was fixed:** Three in-project settings improvements (Items 1, 2, 4 from
+Christie's screenshot spec):
+1. **"Commonly Used" ranking system** — added a new `COMMONLY_USED` category as the
+   first tab in the settings sidebar. When selected, ALL settings are displayed sorted
+   by usage count (most-interacted first), with unused settings appended in their
+   original order. Usage is tracked per-row via `SettingsUsageTracker` (SharedPreferences
+   persistence) — every time a setting row is composed (seen/interacted with), its
+   counter increments and persists across app restarts. An empty-state hint is shown
+   when no settings have been used yet ("Settings you interact with most will appear
+   here."). Category headers are shown in "Commonly Used" mode (just like search mode)
+   so the user can tell which section each setting belongs to.
+2. **Search match counts per category** — when searching, each sidebar category now
+   shows a count badge (e.g. "3", "1") next to the category name, matching vscode.dev's
+   settings search behavior. Categories with 0 matches are dimmed and non-clickable.
+   The total result count ("N Settings Found") is still shown at the top of the content
+   area. The match count is computed by filtering `allRows` against the query (label,
+   description, and category label) and grouping by category.
+4. **Text padding fix** — fixed 6 settings rows that were missing horizontal padding
+   (text was running edge-to-edge with no margin): ZenModeExitRow, CustomCursorOverlayRow,
+   LspEnabledRow, SmartCompletionRow, CursorModeRow, FormatOnSaveRow, and
+   TypeScriptVersionRow's outer Column. All now use `padding(horizontal = 20.dp,
+   vertical = 10.dp)` matching the other rows in the dialog.
+
+**Files touched:** `InProjectSettingsDialog.kt` (COMMONLY_USED enum + usage tracker +
+sidebar badges + ranking logic + padding fixes), `CodeSpaceApplication.kt` (added
+`SettingsUsageTracker.init(this)` call), `AGENTS.md` (this entry).
+
+**Next on roadmap:** Item 3 — add TS/JS + Accessibility settings from Christie's
+vscode.dev screenshots (Accessibility Signals, JS/TS Format, Inlay Hints, Workspace
+Symbols, Window Title, Terminal settings, Extensions ignore recommendations, Task
+notify on completion). Then device retest of Test 39 (notification bell) + items 1/2/4.

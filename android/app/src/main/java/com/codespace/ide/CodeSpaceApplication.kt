@@ -22,6 +22,7 @@ import javax.inject.Inject
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.data.NotificationStore
+import com.codespace.ide.ui.screens.SettingsUsageTracker
 
 @HiltAndroidApp
 class CodeSpaceApplication : Application(), Configuration.Provider {
@@ -36,6 +37,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         FeatureToggleStore.init(this)
         ProjectSettingsStore.init(this)
         NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
+        SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         super.onCreate()
         // X7 fix: Start Agent API server on app launch so the MCP status indicator
         // is green from startup, not just when a terminal session is created.
