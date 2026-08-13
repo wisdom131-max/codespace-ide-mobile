@@ -69,7 +69,8 @@ object StdlibCompletions {
         // real detection requires jedi/pylsp introspecting the live environment)
         "requests", "numpy", "pandas", "matplotlib", "flask", "django",
         "pytest", "setuptools", "pip", "wheel", "yaml", "attr", "attrs",
-        "click", "jinja2", "markupsafe", "markdown", "certifi"  // TEST-14-FIX: add markdown module, "urllib3", "idna",
+        "click", "jinja2", "markupsafe", "markdown", "certifi",  // TEST-14-FIX: add markdown module
+        "urllib3", "idna",
         "charset_normalizer", "six", "dateutil", "pytz", "cryptography",
         "cffi", "pycparser", "packaging", "pyparsing", "mock", "coverage",
         "tox", "black", "flake8", "pylint", "mypy", "mypy_extensions",

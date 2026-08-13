@@ -49,6 +49,7 @@ import android.content.ClipboardManager
 import android.content.ClipData
 import java.io.File
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.data.NotificationStore
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.asImageBitmap
@@ -1496,7 +1497,7 @@ fun ExplorerSidePanel(
                                                     refresh++
                                                     // TEST-43-FIX: Show success notification so user knows extraction worked
                                                     AppOutputLog.log("[Extract] Successfully extracted to ${outDir.absolutePath}", "terminal")
-                                                    NotificationStore.show("${f.name} extracted", "Extracted to ${outDir.name}/")
+                                                    NotificationStore.add("${f.name} extracted", "Extracted to ${outDir.name}/")
                                                 } catch (e: Exception) {
                                                     AppOutputLog.log("[Extract] Error: ${e.message}", "terminal")
                                                     NotificationStore.show("Extract failed", e.message ?: "Unknown error")

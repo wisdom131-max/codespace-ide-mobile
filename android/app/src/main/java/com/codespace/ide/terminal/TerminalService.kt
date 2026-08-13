@@ -18,6 +18,8 @@ import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
 import com.termux.terminal.TerminalSession
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
