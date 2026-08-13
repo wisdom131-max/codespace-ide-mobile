@@ -21,6 +21,7 @@ import java.util.Locale
 import javax.inject.Inject
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.ProjectSettingsStore
+import com.codespace.ide.data.NotificationStore
 
 @HiltAndroidApp
 class CodeSpaceApplication : Application(), Configuration.Provider {
@@ -34,6 +35,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         FeatureToggleStore.init(this)
         ProjectSettingsStore.init(this)
+        NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
         super.onCreate()
         // X7 fix: Start Agent API server on app launch so the MCP status indicator
         // is green from startup, not just when a terminal session is created.

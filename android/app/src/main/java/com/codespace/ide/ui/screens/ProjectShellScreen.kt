@@ -1011,13 +1011,17 @@ fun ProjectShellScreen(
                     if (dnd) "warning" else "success"
                 )
             }
-            "Notifications: Bell to Title Bar" -> {
-                NotificationStore.setBellPosition("top")
-                showNotification("Bell moved to title bar", "info")
+            "Notifications: Bell to Top Right" -> {
+                NotificationStore.setBellPosition(NotificationStore.POS_TOP_RIGHT)
+                showNotification("Notification bell moved to top right", "info")
             }
-            "Notifications: Bell to Status Bar" -> {
-                NotificationStore.setBellPosition("bottom")
-                showNotification("Bell moved to status bar", "info")
+            "Notifications: Bell to Bottom Right" -> {
+                NotificationStore.setBellPosition(NotificationStore.POS_BOTTOM_RIGHT)
+                showNotification("Notification bell moved to bottom right", "info")
+            }
+            "Notifications: Bell to Bottom Left" -> {
+                NotificationStore.setBellPosition(NotificationStore.POS_BOTTOM_LEFT)
+                showNotification("Notification bell moved to bottom left", "info")
             }
             "Notifications: Clear All" -> {
                 NotificationStore.clearAll()
@@ -1666,6 +1670,11 @@ private fun PssOverlays(
                     onShowNotifDrawerChange(false)
                     onCommandQueryChange("Notifications")
                     onShowCommandPaletteChange(true)
+                },
+                onOpenProblems = {
+                    // P-NOTIF-RESTRUCTURE (Test 39): tapping an ERROR notification
+                    // jumps straight to the Problems panel, matching VS Code.
+                    handleMenuAction("Problems")
                 },
             )
         }
@@ -3244,7 +3253,7 @@ private fun StatusBarContent(
         }
         // P34-NOTIF: VS Code-style bell in status bar (bottom-right)
         Spacer(Modifier.width(6.dp))
-        NotificationBell(iconSize = 14, onClick = onToggleNotif)
+        NotificationBell(iconSize = 18, onClick = onToggleNotif)
     }
 }
 

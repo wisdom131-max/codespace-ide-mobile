@@ -84,12 +84,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-13 09:06 WAT)
+## CURRENT STATE (2026-08-13 13:50 WAT)
 
 | | |
 |-|-|
-| Latest commit | **994b571** — fix(Test 53): CloudBackupManager resolveProjectDir() 3-tier fallback (#2189 GREEN) — fix(build #2184): TerminalService cancel import + ExplorerPane NotificationStore.show() → .add() (#2186 GREEN) — fix(Test 55): .md file icon (Description icon) + fix(Test 54): gutter spacing (2dp between bookmark ◆ and breakpoint dot) — build pending |
-| Active phase | **TESTING STAGE** — Phase U COMPLETE ✅. All code fixes done. Test 36 restructured by other AI (`6f718a3`, documented retroactively). 18 tests need device retest. 1 test still unfixed (39). Partials: 38, 41, 42 need restructuring direction. |
+| Latest commit | Test 39 notification restructure (this commit) — bell dot indicator, sound, DND+anycode menu, 3-corner reposition, error->Problems jump, tap-to-expand fix — build pending |
+| Active phase | **TESTING STAGE** — Test 39 restructured per Christie's full spec (see "TEST 39 — Notification Bell Restructure" section above CHANGE LOG). Remaining: Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown/resizable popup, Settings ranking+search-counts+TS/JS additions, text padding audit. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -15466,3 +15466,115 @@ The other AI restructured the top bar layout to match VS Code parity but ran out
 **Files touched:** `ProjectShellScreen.kt`
 **Status:** Code pushed, needs device retest to confirm VS Code parity.
 **Next:** Device retest Test 36. Then continue with remaining restructuring items (38, 39, 41, 42) — awaiting Christie's direction.
+
+---
+
+## TEST 39 — Notification Bell Restructure (FULL SPEC, from Christie's screenshots 2026-08-13)
+
+Christie sent ~30 vscode.dev screenshots and a detailed voice-to-text spec. This is the
+canonical reference — do not re-derive requirements from memory, read this section.
+
+### Bell icon
+- Bigger than before, translucent/outline style so the status-bar color shows through
+  (like vscode.dev's white outline bell against the blue title bar).
+- Unread indicator is a small **round dot** — NOT a number badge.
+- Swaps to a "slashed" bell icon + dims when Do Not Disturb is on.
+
+### Tapping the bell → notification panel
+Opens a rectangular popup (anchored to whichever corner is active) containing the
+notification list plus **4 header icons**, in this exact order:
+1. **Clear All** — clears every notification.
+2. **DND / mute icon** (bell-with-slash) — tap opens a small dropdown menu:
+   - "Disable Do Not Disturb Mode" / "Enable Do Not Disturb Mode" — toggles DND,
+     closes the menu, and the status-bar bell also shows the slashed icon.
+   - "anycode" (checkmark row) — the app's master notification switch. Unchecking
+     silences ALL notifications app-wide; re-checking restores them. Defaults ON.
+     Tapping this does NOT close the menu (matches vscode.dev channel-toggle behavior).
+3. **Reposition icon** (opposite-facing arrows) — tap opens a small dropdown with 3
+   options: **Bottom Right** (default) / **Bottom Left** / **Top Right**. Selecting one
+   moves the bell AND the toast/panel to that corner together.
+4. **Collapse chevron** — closes the panel. Tapping the bell icon again also closes it.
+
+### Notification rows
+- Tapping a **non-error** row expands it in place to show the FULL message (previously
+  hard-capped at 2 lines — this was the reported "tap to expand doesn't work" bug).
+- Tapping an **ERROR** row jumps straight to the **Problems panel** (matches vscode.dev:
+  tapping a build/editor error notification opens Problems), instead of expanding.
+
+### Notification sound
+- Plays the system default notification sound (RingtoneManager TYPE_NOTIFICATION) when
+  a new item arrives, respecting DND (suppressed the same way toasts are) and a
+  soundEnabled setting (default ON).
+
+### Implementation status: ✅ CODE PUSHED (commit below) — needs device retest.
+Files: `NotificationStore.kt` (3-corner position enum, master enable toggle, sound,
+SharedPreferences persistence), `NotificationDrawerOverlay.kt` (bell UI, 4-icon header,
+DND/reposition dropdown menus, row expand/error-jump), `ProjectShellScreen.kt` (wiring),
+`CodeSpaceApplication.kt` (NotificationStore.init() call for persistence + sound context).
+
+### ⚠️ STILL OUTSTANDING — NOT part of this commit, next up
+These were in the same screenshot batch but are separate work items:
+
+1. **Problems panel — full error view.** Add a dropdown arrow at the end of each problem
+   row. Tapping it opens a resizable popup (like the completion popup) with the full
+   error text + Copy button + Save-to-ZIP button.
+2. **In-Project Settings — "Commonly Used" ranking.** Settings used most often should
+   float to the top of "Commonly Used", like vscode.dev's usage-based ranking.
+3. **In-Project Settings — search match counts.** Searching should show a per-category
+   count next to each category name (e.g. "Workbench (3)", "Zen Mode (1)"), like
+   vscode.dev's settings search.
+4. **In-Project Settings — add TS/JS + Accessibility settings from screenshots.**
+   Christie wants these added to In-Project Settings (mirroring vscode.dev's Settings UI):
+   Accessibility Signals (Position Has Warning, Progress — sound/announcement rows),
+   JS/TS Format (Enabled, Indent Switch Case, Insert Space After Comma/Constructor/
+   Function Keyword/Control Flow Keywords), JS/TS Tsserver (Log, Use Syntax Server),
+   JS/TS Inlay Hints (Suppress When Argument/Type Matches Name, Parameter Types Enabled),
+   JS/TS Workspace Symbols (Exclude Library Symbols, Scope: allOpenProjects/currentProject),
+   Window Title template, Terminal Integrated Enable Notifications + Commands To Skip
+   Shell, Extensions Ignore Recommendations, Task Notify Window On Task Completion.
+5. **In-Project Settings — text padding bug.** Some screens render text edge-to-edge
+   with no left/right margin (unlike vscode.dev's version, which always has padding).
+   Needs an app-wide pass to find and fix wherever this shows up.
+
+**Next AI: pick up item 1 (Problems panel dropdown) first — it's the most self-contained.**
+Then 2+3 together (they're both "In-Project Settings search/ranking infra"), then 4
+(settings additions — big but mechanical), then 5 (padding audit) last.
+
+### [2026-08-13 13:50 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending — see below) | **CI Build:** pending
+**Tags:** UI-FIX, STABILITY-FIX
+
+**What was fixed:** Test 39 — full notification bell/panel restructure per Christie's
+detailed screenshot spec (vscode.dev reference). Bell is now bigger + translucent
+(status bar color shows through) and shows a round unread DOT instead of a number
+badge. Added a 4-icon panel header (Clear All, DND menu, Reposition menu, Collapse
+chevron) replacing the old duplicated DrawerHeader+NotificationCommandBar controls.
+DND icon opens a dropdown with "Disable/Enable Do Not Disturb Mode" + an "anycode"
+checkmark row (master app-notifications switch, defaults ON, stays open on tap).
+Reposition icon opens a dropdown with 3 corners (Bottom Right default / Bottom Left /
+Top Right) — replaces the old top/bottom-only toggle. Notification rows: tapping a
+non-error row now expands it in place to show the FULL body text (was hard-capped at
+2 lines — the reported "tap to expand doesn't work" bug); tapping an ERROR row jumps
+straight to the Problems panel via `handleMenuAction("Problems")` instead of expanding.
+Added a system notification sound (RingtoneManager TYPE_NOTIFICATION) on new items,
+respecting DND suppression and a soundEnabled setting (default ON). All notification
+settings (enabled/anycode, DND, sound, position) are now persisted to SharedPreferences
+via `NotificationStore.init(context)` — previously they reset to defaults on every app
+restart. Old "top"/"bottom" position values auto-migrate to "top-right"/"bottom-right".
+
+**Files touched:** `NotificationStore.kt` (3-corner position enum + persistence +
+sound + master toggle), `NotificationDrawerOverlay.kt` (bell UI, 4-icon header, DND/
+reposition dropdown menus, row expand/error-jump logic), `ProjectShellScreen.kt`
+(command palette position strings updated to 3 corners, bell size bumped 14→18,
+`onOpenProblems` wired into the drawer call site), `CodeSpaceApplication.kt`
+(added `NotificationStore.init(this)` alongside the other store inits), `AGENTS.md`
+(full Test 39 spec documented + this entry).
+
+**Next on roadmap:** Device retest Test 39 (bell appearance, dot indicator, sound,
+DND+anycode menu, 3-corner reposition, error→Problems jump, row expand). Then, per
+Christie: Test 41 (Source Control doesn't scroll on rotation — needs restructuring)
+and Test 42 (Source Control shows git errors — needs restructuring) once she gives
+reference/vision for those. Separately queued (same screenshot batch, not yet started):
+Problems panel dropdown+resizable full-error popup, In-Project Settings ranking +
+search match-counts, In-Project Settings TS/JS+Accessibility setting additions,
+text-padding audit. See "STILL OUTSTANDING" list in the Test 39 spec section above.

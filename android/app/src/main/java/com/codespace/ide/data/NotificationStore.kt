@@ -1,5 +1,8 @@
 package com.codespace.ide.data
 
+import android.content.Context
+import android.content.SharedPreferences
+import android.media.RingtoneManager
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.mutableStateListOf
@@ -57,14 +60,24 @@ object NotificationStore {
         val read: Boolean = false,
     )
 
-    // ── Settings (persisted via SharedPreferences — see NotificationSettings) ─
+    // P-NOTIF-RESTRUCTURE: Bell/panel position — 3 corners, matches Test 39 spec
+    const val POS_BOTTOM_RIGHT = "bottom-right"
+    const val POS_BOTTOM_LEFT = "bottom-left"
+    const val POS_TOP_RIGHT = "top-right"
+    val ALL_POSITIONS = listOf(POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT, POS_TOP_RIGHT)
+
+    // ── Settings (persisted via SharedPreferences, see init()/loadPersisted()) ─
     data class Settings(
+        // P-NOTIF-RESTRUCTURE: "anycode" master toggle — enables/disables ALL app
+        // notifications. Defaults ON per spec.
         val enabled: Boolean = true,
         val showToast: Boolean = true,
         val toastDurationMs: Long = 3000L,
         val maxHistory: Int = 100,
         // P35-NOTIF: Do Not Disturb — suppresses INFO + WARNING toasts (ERROR still shows)
         val doNotDisturb: Boolean = false,
+        // P-NOTIF-RESTRUCTURE: play a system notification sound when a new item arrives
+        val soundEnabled: Boolean = true,
         // Severity filters — true = show
         val showInfo: Boolean = true,
         val showSuccess: Boolean = true,
@@ -84,9 +97,8 @@ object NotificationStore {
         val srcSystem: Boolean = true,
         val srcBackup: Boolean = true,
         val srcConnector: Boolean = true,
-        // P35-NOTIF: Bell position — matches VS Code's workbench.notifications.position
-        // "top" = title bar (top-right), "bottom" = status bar (bottom-right)
-        val bellPosition: String = "top",
+        // P-NOTIF-RESTRUCTURE: bell/panel corner — one of ALL_POSITIONS
+        val bellPosition: String = POS_BOTTOM_RIGHT,
     )
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -94,8 +106,47 @@ object NotificationStore {
 
     val items = mutableStateListOf<Item>()
 
-    /** Current settings — updated by NotificationSettingsStore */
+    /** Current settings — persisted to SharedPreferences on every change. */
     @Volatile var settings = Settings()
+        private set
+
+    private var appContext: Context? = null
+    private var prefs: SharedPreferences? = null
+
+    /** Call once from Application.onCreate() — enables persistence + notification sound. */
+    fun init(context: Context) {
+        appContext = context.applicationContext
+        prefs = appContext!!.getSharedPreferences("notification_settings", Context.MODE_PRIVATE)
+        loadPersisted()
+    }
+
+    private fun loadPersisted() {
+        val p = prefs ?: return
+        settings = Settings(
+            enabled = p.getBoolean("enabled", true),
+            doNotDisturb = p.getBoolean("dnd", false),
+            soundEnabled = p.getBoolean("sound", true),
+            bellPosition = p.getString("position", POS_BOTTOM_RIGHT)
+                ?.let { legacyPositionMigration(it) } ?: POS_BOTTOM_RIGHT,
+        )
+    }
+
+    private fun persist() {
+        prefs?.edit()
+            ?.putBoolean("enabled", settings.enabled)
+            ?.putBoolean("dnd", settings.doNotDisturb)
+            ?.putBoolean("sound", settings.soundEnabled)
+            ?.putString("position", settings.bellPosition)
+            ?.apply()
+    }
+
+    /** Old builds stored "top"/"bottom" — map to the new 3-corner scheme. */
+    private fun legacyPositionMigration(pos: String): String = when (pos) {
+        "top" -> POS_TOP_RIGHT
+        "bottom" -> POS_BOTTOM_RIGHT
+        POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT, POS_TOP_RIGHT -> pos
+        else -> POS_BOTTOM_RIGHT
+    }
 
     val unreadCount: Int get() = items.count { !it.read }
 
@@ -113,14 +164,28 @@ object NotificationStore {
         else       -> "idle"
     }
 
-    /** Toggle DND mode */
+    /** Toggle DND mode. Persisted. */
     fun toggleDoNotDisturb() {
         settings = settings.copy(doNotDisturb = !settings.doNotDisturb)
+        persist()
     }
 
-    /** Set bell position: "top" or "bottom" */
+    /** Toggle the "anycode" master notifications switch. Persisted. */
+    fun toggleAppNotifications() {
+        settings = settings.copy(enabled = !settings.enabled)
+        persist()
+    }
+
+    /** Toggle notification sound on/off. Persisted. */
+    fun toggleSound() {
+        settings = settings.copy(soundEnabled = !settings.soundEnabled)
+        persist()
+    }
+
+    /** Set bell/panel position — one of ALL_POSITIONS. Persisted. */
     fun setBellPosition(pos: String) {
-        settings = settings.copy(bellPosition = if (pos == "bottom") "bottom" else "top")
+        settings = settings.copy(bellPosition = if (pos in ALL_POSITIONS) pos else POS_BOTTOM_RIGHT)
+        persist()
     }
 
     // ── Active toast for the in-app banner ────────────────────────────────────
@@ -157,6 +222,19 @@ object NotificationStore {
                 toastHandler.removeCallbacks(clearToastRunnable)
                 toastHandler.postDelayed(clearToastRunnable, settings.toastDurationMs)
             }
+            if (!dndSuppress) playSound()
+        }
+    }
+
+    /** P-NOTIF-RESTRUCTURE: Plays the system default notification sound (best-effort). */
+    private fun playSound() {
+        if (!settings.soundEnabled) return
+        val ctx = appContext ?: return
+        try {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            RingtoneManager.getRingtone(ctx, uri)?.play()
+        } catch (_: Exception) {
+            // Best-effort — never crash the app over a missing/broken ringtone.
         }
     }
 
