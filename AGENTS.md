@@ -84,7 +84,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-12 21:30 WAT)
+## CURRENT STATE (2026-08-13 08:07 WAT)
 
 | | |
 |-|-|
@@ -15414,6 +15414,7 @@ After all 8 features are implemented, audit the full pipeline:
 **What was fixed:** Updated AGENTS.md with accurate test status from change log audit. Test 2.2 had 18 fails. 9 have code fixes but need device retest (Tests 7, 8, 9, 12, 16, 19, 32, 54, 55 — device was running old APK). 9 are completely unfixed (Tests 11, 14, 36, 39, 43, 45, 48, 50, 53). Now starting Phase U — Completion Pipeline Upgrade (8 features: isIncomplete, sortText, filterText, command, commitCharacters, fuzzy matching, dedup, textEdit).
 **Files touched:** AGENTS.md (documentation only)
 **Next on roadmap:** Implement Phase U features U-1 through U-8. Then device retest of Tests 7,8,9,12,16,19,32,54,55. Then fix remaining unfixed Tests 11,14,36,39,43,45,48,50,53.
+
 ### [2026-08-13 08:00 WAT] — AI Agent: Claude (Base44 Superagent)
 **Commit:** a76819f | **CI Build:** #2186 PASS ✅
 **What was fixed:** Two compile errors from the previous AI's Test 43/50 commits (builds #2182-#2184 all failed):
@@ -15426,7 +15427,7 @@ After all 8 features are implemented, audit the full pipeline:
 
 
 ### [2026-08-13 07:00 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commits:** (pending — batch commit after Test 53) | **CI Build:** pending
+**Commits:** bf9ce86, 756d169, 6f64d2b, f50fa8f, fdb0abe, 6e5c548, 775bda2, dd93096, 8024fc9 | **CI Build:** #2182-#2184 FAILED ❌ (compile errors: TerminalService.kt:173 Unresolved reference: cancel, ExplorerPane.kt:1503 Unresolved reference: show — fixed in #2186)
 **What was fixed:** Batch of 6 remaining unfixed tests from the 13-item backlog.
 - **Test 43 (Extract Here):** Added success/failure notification showing the exact extraction path so the user can verify/locate extracted files.
 - **Test 45 (Command palette history):** `TerminalHistoryStore.load()` now merges real `.bash_history` from the proot rootfs, so commands actually run in the terminal show up in the command palette (previously only in-app-issued commands were tracked).
