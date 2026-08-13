@@ -85,7 +85,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-13 21:30 WAT)
+## CURRENT STATE (2026-08-14 00:42 WAT)
 
 | | |
 |-|-|
@@ -95,7 +95,7 @@ then do X. Don't go searching for random work — follow the roadmap.
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2213 (9f946a7) ✅ — GitService compilation fix verified green |
+| Last green | #2236 (b274588) ✅ — DiagnosticManager overload merge fix verified green |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -17083,6 +17083,17 @@ Before implementation, produce a complete plan covering:
 **Files touched:** LspManager.kt, JsonRpcClient.kt, EditorPane.kt, ProjectSettingsStore.kt, InProjectSettingsDialog.kt
 **Next on roadmap:**
 1. Verify build #2236 green
+2. Device testing of all SCM features (E1-E18)
+3. YouTube Test 51 fix
+4. Phase V — LSP Reliability Upgrade ✅ DONE (pending CI verification)
+5. Phase N — Advanced Notification System (PLAN REGISTERED, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
+
+### [2026-08-14 00:42 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 139c7ea2 | **CI Build:** #2240 (pending)
+**What was fixed:** Systematic `${'$'}{` escaping bug across 9 files. Phase V (and earlier Phase P) code used `${'$'}{variable}` pattern in Kotlin strings, which produces literal `${variable}` instead of interpolating the variable value. This caused a syntax error at LspManager.kt:1991 (nested string interpolation with escaped dollars broke the parser) and runtime bugs in 8 other files where map keys, log messages, and UI text showed literal `${var}` instead of actual values. Fixed all `${'$'}{` → `${` in Kotlin interpolation contexts. Shell script strings (ProotInstaller, BusyboxInstaller, McpShellProfile, ProjectTemplates, TerminalPane) were NOT touched — their `${'$'}{` patterns are intentional literal dollar signs for shell variable syntax.
+**Files touched:** LspManager.kt, EditorPane.kt, DiagnosticManager.kt, CodeEditor.kt, DocumentFormatter.kt, FileIndexer.kt, TimelinePanel.kt, CopilotChatPanelOverlay.kt, ProjectShellScreen.kt
+**Next on roadmap:**
+1. Verify build #2240 green
 2. Device testing of all SCM features (E1-E18)
 3. YouTube Test 51 fix
 4. Phase V — LSP Reliability Upgrade ✅ DONE (pending CI verification)
