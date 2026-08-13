@@ -16467,3 +16467,463 @@ Before implementation, produce a complete plan covering:
 2. SCM Rebuild (16 phases) — awaiting Wisdom's approval
 3. Phase V LSP Reliability Upgrade — awaiting start
 4. Phase N Advanced Notification System — awaiting approval, pre-implementation audit required
+
+---
+
+# Phase P — Advanced Problems Panel (PLAN REGISTERED — NOT YET IMPLEMENTED)
+
+> **Status:** ⬜ PLAN ONLY — awaiting approval. Do NOT implement until Wisdom approves.
+> **Registered:** 2026-08-13 16:58 WAT
+> **Rule:** PLAN FIRST. No coding until approved. Inspect existing infrastructure before designing. DO NOT rebuild LSP architecture. DO NOT replace existing diagnostics infrastructure unnecessarily. Reuse existing infrastructure where appropriate.
+
+## Core Architecture
+
+```
+Diagnostic Sources (LSP / Compiler / Build / Linter / Analyzer / Type Checker / Test / Extension / Other)
+    ↓
+Diagnostic Ingestion
+    ↓
+Diagnostic Manager
+    ↓
+Diagnostic State Store (central source of truth)
+    ↓
+Diagnostic Processor (Deduplication → Grouping → Sorting → Filtering → Lifecycle cleanup)
+    ↓
+Problems Model
+    ↓
+Problems UI
+    ↓
+Editor Navigation / Code Actions
+```
+
+**Suggested components:**
+DiagnosticManager, DiagnosticStore, DiagnosticSource, DiagnosticProcessor, DiagnosticNormalizer, DiagnosticDeduplicator, DiagnosticGroupManager, DiagnosticFilter, DiagnosticSorter, DiagnosticNavigator, DiagnosticActionProvider, ProblemsViewModel, ProblemsPane
+
+Use names consistent with existing project. Do not create duplicate state-management systems.
+
+## 1. Core Design Principle
+
+The Problems panel is NOT the diagnostic engine.
+
+```
+LSP / Compiler / Build / Analyzer
+        ↓
+  Diagnostic Sources
+        ↓
+  Diagnostic Manager
+        ↓
+  Central Diagnostic Store
+        ↓
+  Normalized Problems
+        ↓
+  ┌───────┼────────┐
+  ↓       ↓        ↓
+Problems  Editor   Quick Fix
+ Panel   Markers   / Actions
+```
+
+- Central diagnostic store = source of truth
+- Problems panel = a view
+- Editor markers = another view
+- Notifications = another view
+- Quick fixes operate against diagnostic/source infrastructure
+- Do NOT maintain conflicting copies of diagnostics
+
+**Core guarantees:**
+NO STALE ERRORS. NO RANDOM DUPLICATES. NO UI THREAD BLOCKING. NO LOST DIAGNOSTICS. NO CROSS-SOURCE OVERWRITES. NO CRASH WHEN A DIAGNOSTIC SOURCE FAILS.
+
+## 2. Diagnostic Sources
+
+Support diagnostics from: LSP, COMPILER, BUILD, LINTER, STATIC_ANALYZER, TYPE_CHECKER, TEST, PROJECT, EXTENSION, OTHER
+
+Every diagnostic preserves its source and source ID. Examples: `LSP/python-pyright`, `BUILD/gradle`, `COMPILER/kotlin`
+
+## 3. Normalized Diagnostic Model
+
+```kotlin
+Diagnostic {
+    id
+    source          // LSP, COMPILER, BUILD, LINTER, etc.
+    sourceId        // e.g. "python-pyright", "gradle", "kotlin"
+    uri
+    filePath
+    range           // start line, start col, end line, end col
+    severity        // ERROR, WARNING, INFO, HINT
+    message
+    code
+    codeDescription
+    sourceName
+    relatedInformation
+    tags
+    data
+    quickFixes
+    timestamp
+    documentVersion
+    isStale
+}
+```
+
+Do not discard useful LSP diagnostic metadata during conversion.
+
+## 4. Severity
+
+ERROR, WARNING, INFO, HINT. Allow independent filtering of each severity.
+
+## 5. Diagnostic Range
+
+Preserve start line, start column, end line, end column. Centralize LSP/editor coordinate conversion. Do not mix coordinate conventions. Support zero-length, token, line, and multi-line ranges.
+
+## 6. Exact Editor Navigation
+
+Clicking a problem must:
+1. Open the file if necessary
+2. Activate the relevant tab
+3. Move to the exact line and column
+4. Reveal the range
+5. Optionally select/highlight it
+
+Handle missing/deleted files without crashing.
+
+## 7. Editor Markers
+
+Support: error underline, warning underline, info marker, hint marker, gutter marker, optional inline/error-lens display.
+
+Problems panel and editor markers must derive from the SAME central diagnostic state. Do not maintain unrelated diagnostic lists.
+
+## 8. LSP Diagnostics
+
+Integrate with existing LSP diagnostic handling. Support `textDocument/publishDiagnostics`. Where already supported, support workspace diagnostics. Do not invent unsupported LSP methods. Respect document versions where provided.
+
+When a source publishes authoritative diagnostics for a document, correctly replace the previous diagnostics belonging to that source/document.
+
+## 9. Diagnostic Lifecycle
+
+```
+RECEIVED → NORMALIZED → STORED → DISPLAYED → UPDATED / RESOLVED / REMOVED → STALE or CLEARED
+```
+
+Do not append diagnostics forever.
+
+## 10. Stale Diagnostics
+
+Prevent problems remaining after: file fixed, file deleted, LSP restart, build completion, project changes, document version changes, source disappearance.
+
+When an LSP server restarts, diagnostics owned by the old server instance must NOT remain indefinitely. Coordinate with the LSP Server Manager reliability system (Phase V).
+
+## 11. Document Versioning
+
+Where supported, track: URI, document version, source version. Do not let old diagnostics overwrite newer diagnostic state when version information allows detection.
+
+## 12. Deduplication
+
+Multiple sources may report equivalent problems. Deterministic deduplication strategy using identity: source, URI, range, severity, code, normalized message.
+
+Do NOT deduplicate solely by message. Do NOT merge genuinely different diagnostics.
+
+## 13. Grouping
+
+Support grouping by: FILE, FOLDER, PROJECT, SOURCE, SEVERITY
+
+```
+Problems
+├── Errors (5)
+├── Warnings (8)
+├── File: main.py
+│   ├── Error
+│   └── Warning
+└── File: utils.py
+    └── Error
+```
+
+Keep the mobile UI simple.
+
+## 14. Filtering
+
+Support: ALL, ERRORS, WARNINGS, INFO, HINTS. Also source filters (LSP, COMPILER, BUILD, LINTER, etc.).
+
+Filtering affects the view, NOT the underlying diagnostics. Filtering must never permanently delete diagnostics.
+
+## 15. Search
+
+Search by: message, filename, path, diagnostic code, source, severity. Use debouncing where necessary.
+
+## 16. Sorting
+
+Support: by file, by severity, by source, by line, by diagnostic code.
+
+Default: file path → line → column → severity (predictable).
+
+## 17. Counts / Badges
+
+Expose: Errors, Warnings, Info, Hints, Total. Problems badges and panel counts must come from the central diagnostic store.
+
+## 18. Problem Details
+
+Show: message, severity, source, code, file, line, column, related information, available fixes, technical details. Keep default mobile presentation compact and expandable.
+
+## 19. Related Information
+
+Preserve and display diagnostic related information. Clicking a related location must navigate to it.
+
+## 20. Quick Fix / Code Actions
+
+Integrate with existing LSP Code Action infrastructure. Support: single fix, multiple fixes, fix all where provided, preview where appropriate, apply, cancel. Do NOT invent fixes.
+
+## 21. Fix-All
+
+Where source provides fix-all actions: expose Fix All, apply relevant edits, refresh diagnostics afterward.
+
+## 22. Build / Compiler Diagnostics
+
+Integrate: Gradle, Kotlin compiler, Java compiler, Android build tools. Prefer structured output where available. Normalize into common Diagnostic model. Do NOT blindly clear LSP diagnostics after a build.
+
+## 23. Linter / Analyzer Diagnostics
+
+Support: ESLint, Ruff, Pylint, MyPy, other analyzers. Problems panel must NOT depend directly on one specific tool.
+
+## 24. Source Ownership
+
+Every diagnostic belongs to a source instance: `source = LSP`, `sourceId = python-pyright`. Allows clearing only that source's diagnostics without affecting others.
+
+## 25. Clearing
+
+Support: clear one, clear file, clear source, clear project, clear all. Distinguish clearing the current view from removing authoritative source state. Filtering must never permanently delete diagnostics.
+
+## 26. Problems Panel UI
+
+```
+Problems
+├── Toolbar
+│   ├── Error count
+│   ├── Warning count
+│   ├── Info count
+│   ├── Filter
+│   ├── Search
+│   └── View options
+├── Filter bar
+└── Problem List
+    ├── File
+    │   ├── Error
+    │   ├── Warning
+    │   └── Info
+    └── File
+        └── Error
+```
+
+Each item: severity, message, file, line, column, source/code. Click → exact navigation. Long press/context action → details, quick fix, copy, related information.
+
+## 27. Mobile UX
+
+Optimize for small screens: expandable details, touch-friendly actions, efficient scrolling, lazy rendering, compact severity indicators, search/filter controls.
+
+## 28. Large Project Performance
+
+Handle thousands of diagnostics. Do NOT: render everything eagerly, sort expensively on every keystroke, scan every file for every update, rebuild entire diagnostic tree unnecessarily.
+
+Use incremental updates, lazy lists, debouncing, efficient indexing, bounded caches.
+
+## 29. Thread Safety
+
+Diagnostics can arrive from: LSP reader threads, compiler processes, Gradle processes, build workers, linters, background analyzers, UI. DiagnosticManager must be thread-safe. Never mutate UI state directly from background threads.
+
+## 30. Race Conditions
+
+Handle: user edits file, old diagnostics arrive, new diagnostics arrive, LSP crashes, LSP restarts, document closes, build starts, build finishes, workspace changes. Prevent old state from overwriting newer state where version/source data allows detection.
+
+## 31. Source Coexistence
+
+Do NOT assume one diagnostic source is always correct. Preserve source identity. If two sources report equivalent diagnostics, deduplicate only when safe. Do NOT hide compiler errors simply because LSP reports a similar issue.
+
+## 32. LSP Restart Integration
+
+When an LSP server crashes:
+1. Identify diagnostics owned by that server instance
+2. Mark stale or clear according to policy
+3. Prevent them remaining indefinitely
+4. Allow server restart
+5. Restore documents
+6. Accept new diagnostics
+7. Replace stale diagnostics
+
+## 33. Document Close / Delete / Rename
+
+Closing a document must NOT automatically remove legitimate project-wide diagnostics. Deleting a file should remove its diagnostics when appropriate. Renaming should update diagnostic URI/path where possible, otherwise clear stale entries safely.
+
+## 34. LSP + Build Coexistence
+
+LSP, compiler, and build diagnostics must coexist. Example: main.kt has LSP 2 warnings + Compiler 1 error = Problems shows 3 total. One source must never accidentally overwrite another.
+
+## 35. Notification Integration
+
+Integrate with the Advanced Notification System (Phase N). Do NOT notify for every diagnostic. Meaningful notifications: "Build failed — 12 problems found.", "Project analysis completed — 4 errors.", "Language server diagnostics unavailable."
+
+## 36. Problem Badges
+
+Integrate with: Problems activity-bar icon, bottom panel, editor indicators. Counts come from central diagnostic state.
+
+## 37. Persistence
+
+Do NOT persist transient LSP diagnostics indefinitely. Build/project diagnostics may be retained only when useful and clearly marked stale/historical. Never present old diagnostics as guaranteed current.
+
+## 38. Stale / Historical State
+
+If diagnostics are retained after their source is inactive, mark them STALE or HISTORICAL. Never present them as definitely current.
+
+## 39. Accessibility
+
+Support accessibility services. Announce: severity, message, file, line, column, source. Do not rely only on color.
+
+## 40. Security
+
+Diagnostics may contain paths and tool output. NEVER expose passwords, tokens, private keys, or credentials. Sanitize sensitive output.
+
+## 41. Source Failure Handling
+
+If a diagnostic source fails: do NOT crash the Problems panel. Show "LSP diagnostics unavailable." Continue showing diagnostics from healthy sources. A failed parser must NOT destroy the entire diagnostic store.
+
+## 42. Source Health
+
+Distinguish: READY, UNAVAILABLE, FAILED, STALE. Do NOT confuse "zero problems" with "source failed to provide diagnostics."
+
+## 43. Refresh / Reanalyze
+
+Support: Refresh diagnostics, Re-run analysis, Rebuild, Restart language server, Clear stale diagnostics. Do NOT run expensive operations automatically without a reason.
+
+## 44. Quick Fix Refresh
+
+After applying a fix: apply workspace edits → apply additional edits → update document state → save where appropriate → request/await diagnostics → update Problems state. Old fixed diagnostics must NOT remain indefinitely.
+
+## 45. Processing Pipeline
+
+```
+Raw Diagnostic
+→ Validate
+→ Normalize
+→ Coordinate Conversion
+→ Attach Source Identity
+→ Version Check
+→ Deduplicate
+→ Store
+→ Group
+→ Sort
+→ Filter
+→ Problems UI
+→ Editor Marker / Navigation / Quick Fix
+```
+
+Keep stages testable independently.
+
+## 46. Testing
+
+Tests for: diagnostic parsing, LSP conversion, severity mapping, range conversion, source ownership, version handling, stale cleanup, deduplication, grouping, filtering, sorting, counts, navigation, related information, quick fixes, fix-all, compiler diagnostics, build diagnostics, source coexistence, server restart, document close, document deletion, file rename, race conditions, large diagnostic sets, notification integration, persistence, accessibility.
+
+Scale tests: 1, 10, 100, 1,000+ diagnostics.
+
+## 47. Manual Test Matrix
+
+1. Single LSP error
+2. Multiple errors
+3. Errors + warnings + info
+4. Click problem → exact line/column
+5. Fix error → diagnostic disappears
+6. LSP restart → stale diagnostics disappear/recover
+7. Build failure → compiler diagnostics appear
+8. LSP + compiler diagnostics coexist
+9. Duplicate diagnostic from two sources
+10. Quick Fix
+11. Fix All
+12. File rename
+13. File deletion
+14. Large problem list
+15. Search
+16. Severity filtering
+17. Source filtering
+18. Notification integration
+19. App background/foreground
+20. Rapid editing while diagnostics arrive
+
+## 48. Implementation Phases (20 phases — adjust after audit)
+
+| Phase | Description |
+|-------|-------------|
+| 1 | Audit existing Problems/diagnostic infrastructure |
+| 2 | Normalized Diagnostic model |
+| 3 | Diagnostic source abstraction |
+| 4 | Diagnostic Manager and State Store |
+| 5 | LSP diagnostic integration |
+| 6 | Editor markers and navigation |
+| 7 | Problems panel UI |
+| 8 | Filtering/search/sorting/grouping |
+| 9 | Deduplication and stale-state handling |
+| 10 | Build/compiler diagnostics |
+| 11 | Linter/analyzer integration |
+| 12 | Quick Fix / Code Actions |
+| 13 | Notification integration |
+| 14 | Persistence/history policy |
+| 15 | Performance and large-project optimization |
+| 16 | Thread-safety/race-condition hardening |
+| 17 | Accessibility/mobile UX |
+| 18 | Automated tests |
+| 19 | Manual device test plan |
+| 20 | Final architecture and reliability audit |
+
+## 49. Before Coding — Required Audit
+
+Inspect the project first. Report:
+1. Existing Problems panel implementation
+2. Existing diagnostic model
+3. Existing LSP diagnostics handling
+4. Existing editor diagnostic markers
+5. Existing LSP Code Action implementation
+6. Existing compiler/build diagnostic parsing
+7. Existing notification system
+8. Existing bottom panel
+9. Existing activity bar integration
+10. Existing state-management architecture
+11. Existing navigation/editor APIs
+12. Existing logging
+13. Existing tests
+14. Files remaining from previous work
+15. Reusable files
+16. Files to modify
+17. Files to create
+18. Existing gaps
+19. Potential conflicts
+
+Do not guess about existing code. Inspect it first.
+
+## 50. Plan-First Requirement
+
+Before implementation, produce a complete plan covering:
+1. Existing diagnostic architecture audit, 2. Proposed architecture, 3. Component tree, 4. Diagnostic data model, 5. Source model, 6. Diagnostic lifecycle, 7. LSP integration, 8. Compiler/build integration, 9. Editor marker integration, 10. Navigation architecture, 11. Quick Fix architecture, 12. Deduplication strategy, 13. Stale diagnostic strategy, 14. Versioning strategy, 15. Grouping strategy, 16. Filtering strategy, 17. Sorting strategy, 18. Search strategy, 19. Performance strategy, 20. Thread-safety strategy, 21. Race-condition strategy, 22. Notification integration, 23. Persistence strategy, 24. Accessibility strategy, 25. Security strategy, 26. Testing strategy, 27. Manual testing matrix, 28. Files to create, 29. Files to modify, 30. Existing infrastructure to reuse, 31. Risks, 32. Remaining limitations, 33. Anti-stale design, 34. Anti-duplicate design, 35. Anti-source-collision design, 36. Anti-UI-freeze design, 37. Anti-state-corruption design
+
+**WAIT FOR APPROVAL BEFORE IMPLEMENTING.**
+
+## 51. Core Design Principle (Restated)
+
+- Central diagnostic store = source of truth
+- Problems panel = a view
+- Editor markers = another view
+- Notifications = another view
+- Quick fixes operate against diagnostic/source infrastructure
+- NO STALE ERRORS
+- NO RANDOM DUPLICATES
+- NO UI THREAD BLOCKING
+- NO LOST DIAGNOSTICS
+- NO CROSS-SOURCE OVERWRITES
+- NO CRASH WHEN A DIAGNOSTIC SOURCE FAILS
+
+**DO NOT CODE YET. PLAN FIRST.**
+
+---
+
+### [2026-08-13 16:58 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A (no code pushed — documentation only) | **CI Build:** N/A
+**What was done:** Registered the Advanced Problems Panel plan (51 sections, 20 implementation phases) in AGENTS.md as Phase P. Plan covers: centralized diagnostic architecture with source ownership, normalized diagnostic model, severity/range/navigation, editor markers, LSP diagnostics, lifecycle (RECEIVED→NORMALIZED→STORED→DISPLAYED→RESOLVED→STALE), stale diagnostic prevention, document versioning, deduplication, grouping, filtering, search, sorting, counts/badges, problem details, related information, quick fix/code actions, fix-all, build/compiler diagnostics, linter/analyzer integration, source coexistence, LSP restart integration, notification integration (Phase N), persistence, accessibility, security, source failure handling, source health, refresh/reanalyze, quick fix refresh, processing pipeline, testing, manual test matrix (20 tests), and 20-phase implementation roadmap. Plan explicitly states DO NOT IMPLEMENT YET — awaiting Wisdom's approval.
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:**
+1. YouTube Test 51 fix — only remaining unfixed item from 57-test audit (Shorts audio-only, settings black screen, sign-in "insecure browser" warning)
+2. SCM Rebuild (16 phases) — awaiting Wisdom's approval
+3. Phase V LSP Reliability Upgrade — awaiting start
+4. Phase N Advanced Notification System — awaiting approval, pre-implementation audit required
+5. Phase P Advanced Problems Panel — awaiting approval, pre-implementation audit required
