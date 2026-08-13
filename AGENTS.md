@@ -17076,3 +17076,14 @@ Before implementation, produce a complete plan covering:
 4. Phase N — Advanced Notification System (PLAN REGISTERED, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
 5. Phase P — Advanced Problems Panel ✅ DONE (build green, DiagnosticManager + AdvancedProblemsPanel live)
 6. Phase V — LSP Reliability Upgrade (awaiting start)
+
+### [2026-08-14 00:30 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 16225da | **CI Build:** #2236 (pending)
+**What was fixed:** Phase V — LSP Reliability Upgrade. Implemented comprehensive LSP reliability system across 5 files. (1) LspState state machine: 8 states (STOPPED/STARTING/INITIALIZING/READY/UNHEALTHY/RESTARTING/STOPPING/IDLE_CLOSE) with thread-safe transitions and reason tracking. (2) Crash detection via JsonRpcClient.onDisconnect callback with generation IDs to ignore stale callbacks from dead servers. (3) Auto-restart with exponential backoff (1s→2s→4s→8s→16s) + circuit breaker (max 5 consecutive restarts before giving up). (4) Document tracking/recovery: trackDocument/untrackDocument saves open docs, on restart re-opens all tracked documents automatically. (5) Memory monitoring with OOM detection (500MB threshold). (6) Health check with LSP ping. (7) Configurable idle timeout (30s/1m/5m/10m/30m/Never) with auto-close of idle servers. (8) Graceful shutdown sequence (shutdown→exit→destroy→destroyForcibly). (9) Lifecycle logging for all server state transitions. (10) Settings UI: LSP_IDLE_TIMEOUT_DROPDOWN in InProjectSettingsDialog with 6 options.
+**Files touched:** LspManager.kt, JsonRpcClient.kt, EditorPane.kt, ProjectSettingsStore.kt, InProjectSettingsDialog.kt
+**Next on roadmap:**
+1. Verify build #2236 green
+2. Device testing of all SCM features (E1-E18)
+3. YouTube Test 51 fix
+4. Phase V — LSP Reliability Upgrade ✅ DONE (pending CI verification)
+5. Phase N — Advanced Notification System (PLAN REGISTERED, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
