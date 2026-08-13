@@ -84,17 +84,17 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-13 14:27 WAT)
+## CURRENT STATE (2026-08-13 19:26 WAT)
 
 | | |
 |-|-|
-| Latest commit | Settings Item 4: Full TS/JS + Accessibility + Window + Terminal + Extensions + Task settings added (this commit) — pending push. Previous: `2f60b41` (Items 1+2+5: ranking + search counts + padding). |
+| Latest commit | `ef75b74` — Fix GitService compilation (return@let→continue, trim()→removePrefix). Fixes 7 consecutive build failures #2205-#2211. |
 | Active phase | **TESTING STAGE** — All 5 settings restructuring items code-complete. Remaining: Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown (Item 1), device retests. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2189 (994b571) ✅ ✅ — Customize Layout dropdown + vtsls config (8b899f5) |
+| Last green | #2189 (994b571) ✅ — **SCM rebuild builds #2205-#2211 were RED (GitService compilation error), fix pushed in `ef75b74`, #2212 PENDING** |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -16927,3 +16927,15 @@ Before implementation, produce a complete plan covering:
 3. Phase V LSP Reliability Upgrade — awaiting start
 4. Phase N Advanced Notification System — awaiting approval, pre-implementation audit required
 5. Phase P Advanced Problems Panel — awaiting approval, pre-implementation audit required
+
+### [2026-08-13 19:26 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** ef75b74 | **CI Build:** #2212 PENDING (fixes #2205-#2211 which were all RED)
+**What was fixed:** Audited and fixed 7 consecutive CI build failures (#2205 through #2211) caused by a compilation error in GitService.kt's parseUnifiedDiff function. Root cause: the function used `return@let` statements inside a `for` loop but outside the `?.let { m -> ... }` lambda block — Kotlin had no `@let` label at that scope, producing 8 "Unresolved reference: @let" errors. Additionally, `trim("b/")` was invalid — `String.trim()` accepts Char varargs or a `(Char) -> Boolean` predicate, not a String. Changed to `removePrefix("b/")` which matches the intended behavior (strip the "b/" prefix from old file paths in unified diffs). All 8 `return@let` calls changed to `continue`, all `trim("b/")` changed to `removePrefix("b/")`.
+**Files touched:** android/app/src/main/java/com/codespace/ide/scm/GitService.kt
+**Next on roadmap:**
+1. SCM Phase 11 (AgentTools migration to GitCommandExecutor) — was attempted in previous session but not committed; needs to be redone
+2. After SCM-11: SCM-12 through SCM-16 remaining (ScmState wiring, SourceControlPane integration, old code removal, etc.)
+3. YouTube Test 51 fix — only remaining unfixed item from 57-test audit
+4. Phase V LSP Reliability Upgrade — awaiting start
+5. Phase N Advanced Notification System — awaiting approval
+6. Phase P Advanced Problems Panel — awaiting approval
