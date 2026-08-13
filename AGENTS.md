@@ -17061,3 +17061,13 @@ Before implementation, produce a complete plan covering:
 4. Phase N — Advanced Notification System (PLAN REGISTERED in AGENTS.md, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
 5. Phase P — Advanced Problems Panel (PLAN REGISTERED in AGENTS.md, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
 6. Phase V — LSP Reliability Upgrade (awaiting start)
+
+### [2026-08-13 21:50 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** b8641ab | **CI Build:** #2232 (in_progress)
+**What was fixed:** Phase P — Central DiagnosticManager + AdvancedProblemsPanel. Created DiagnosticManager (central diagnostic store with source ownership, dedup, stale marking, thread safety). Created DiagnosticConverter (bridges LSP JSONArray, LintError, Problem, BuildProblem to unified Diagnostic model). Created DiagnosticPublisher (publishes lint+build diagnostics into central store). Created AdvancedProblemsPanel (severity filters, search, file grouping, stale indicators, source badges, click-to-navigate). Wired LSP publishDiagnostics directly into DiagnosticManager (LspManager). Wired lint publishing on file open, tab switch, content change (EditorPane). Wired build diagnostics into DiagnosticManager (ProjectShellScreen). Replaced old inline ProblemsPanel with AdvancedProblemsPanel. Removed old inline ProblemsPanel dead code.
+**Files touched:** DiagnosticManager.kt (NEW), DiagnosticConverter.kt (NEW), DiagnosticPublisher.kt (NEW), AdvancedProblemsPanel.kt (NEW), LspManager.kt, EditorPane.kt, ProjectShellScreen.kt
+**Next on roadmap:**
+1. Verify build #2232 green
+2. Device testing of all SCM features (E1-E18)
+3. YouTube Test 51 fix
+4. Phase V — LSP Reliability Upgrade (awaiting start)
