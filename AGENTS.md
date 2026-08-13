@@ -17004,3 +17004,13 @@ Before implementation, produce a complete plan covering:
 2. SCM-16: Final testing checklist
 3. YouTube Test 51 fix
 4. Phase V LSP Reliability Upgrade
+
+### [2026-08-13 22:55 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** f62a4f0 | **CI Build:** #2221 (pending)
+**What was fixed:** Fixed unresolved references in FileChangesList composable. The conflicted files section was directly calling `scope.launch { scmState.resolveConflict(hostPath, ...) }` inside FileChangesList, but scope/scmState/hostPath/snackbarMsg/refresh are parent SourceControlPane variables not accessible in the child composable. Replaced with the existing `onResolveConflict(file.path)` callback parameter. This was the second compilation error after the DropdownMenu brace fix.
+**Files touched:** android/app/src/main/java/com/codespace/ide/ui/panes/SourceControlPane.kt
+**Next on roadmap:**
+1. Verify build #2221 green
+2. SCM-16: Final testing checklist
+3. YouTube Test 51 fix
+4. Phase V LSP Reliability Upgrade
