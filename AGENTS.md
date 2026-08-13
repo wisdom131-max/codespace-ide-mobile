@@ -16951,3 +16951,15 @@ Before implementation, produce a complete plan covering:
 4. Phase V LSP Reliability Upgrade — awaiting start
 5. Phase N Advanced Notification System — awaiting approval
 6. Phase P Advanced Problems Panel — awaiting approval
+
+### [2026-08-13 21:50 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** (pending)
+**What was fixed:** SCM-12: Added merge, rebase, abortMerge, continueRebase, resolveConflict, tags (create/list/delete), remotes (list/remove) to GitService and ScmState. Wired up SourceControlPane UI with: (1) Fetch button in header, (2) Overflow menu with Stash, Pop Stash, Merge, Abort Merge, (3) Conflict resolution — clicking a conflicted file now marks it as resolved via git add, (4) Merge branch dialog. This covers plan phases 11 (Merge/conflict resolver), 12 (Rebase), and partially 13 (tags/remotes).
+**Files touched:** android/app/src/main/java/com/codespace/ide/scm/GitService.kt, android/app/src/main/java/com/codespace/ide/scm/ScmState.kt, android/app/src/main/java/com/codespace/ide/ui/panes/SourceControlPane.kt
+**Next on roadmap:**
+1. Verify build green for this commit
+2. SCM-13: Wire up diff viewer and history/log view in SourceControlPane
+3. SCM-14: Authentication error-hardening (better error messages for auth failures)
+4. SCM-15-16: Testing and race-condition audit
+5. YouTube Test 51 fix
+6. Phase V LSP Reliability Upgrade

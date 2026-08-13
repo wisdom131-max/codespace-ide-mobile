@@ -365,6 +365,103 @@ class GitService(private val context: Context) {
         return state.conflicted.map { it.path }
     }
 
+    // ── Merge / Rebase ─────────────────────────────────────────────────────
+
+    /**
+     * Merge a branch into the current branch.
+     */
+    fun merge(branch: String, workdir: String): GitResult {
+        val result = GitCommandExecutor.run(context, listOf("merge", branch), workdir, timeoutSeconds = 120, token = token)
+        return result
+    }
+
+    /**
+     * Abort an in-progress merge.
+     */
+    fun abortMerge(workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("merge", "--abort"), workdir, token = token)
+    }
+
+    /**
+     * Rebase onto a branch.
+     */
+    fun rebase(branch: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("rebase", branch), workdir, timeoutSeconds = 120, token = token)
+    }
+
+    /**
+     * Abort an in-progress rebase.
+     */
+    fun abortRebase(workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("rebase", "--abort"), workdir)
+    }
+
+    /**
+     * Continue a rebase after resolving conflicts.
+     */
+    fun continueRebase(workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("rebase", "--continue"), workdir, token = token)
+    }
+
+    /**
+     * Mark a conflicted file as resolved (git add).
+     * Same as stageFiles but named for clarity in conflict resolution flow.
+     */
+    fun resolveConflict(filePath: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("add", filePath), workdir)
+    }
+
+    // ── Tags ──────────────────────────────────────────────────────────────
+
+    /**
+     * List all tags.
+     */
+    fun tags(workdir: String): List<String> {
+        val result = GitCommandExecutor.run(context, listOf("tag", "--list"), workdir)
+        return if (result is GitResult.Ok) result.lines else emptyList()
+    }
+
+    /**
+     * Create a tag.
+     */
+    fun createTag(name: String, message: String? = null, workdir: String): GitResult {
+        val args = if (message != null) listOf("tag", "-a", name, "-m", message) else listOf("tag", name)
+        return GitCommandExecutor.run(context, args, workdir)
+    }
+
+    /**
+     * Delete a tag.
+     */
+    fun deleteTag(name: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("tag", "-d", name), workdir)
+    }
+
+    // ── Remotes ────────────────────────────────────────────────────────────
+
+    /**
+     * List all remotes (name + URL).
+     */
+    fun remotes(workdir: String): List<Pair<String, String>> {
+        val result = GitCommandExecutor.run(context, listOf("remote", "-v"), workdir)
+        if (result !is GitResult.Ok) return emptyList()
+        return result.lines.mapNotNull { line ->
+            // Format: "origin	git@github.com:user/repo.git (fetch)"
+            val parts = line.split("\t")
+            if (parts.size >= 2) {
+                val name = parts[0].trim()
+                val url = parts[1].trim().removeSuffix(" (fetch)").removeSuffix(" (push)")
+                Pair(name, url)
+            } else null
+        }.distinctBy { it.first }
+    }
+
+    /**
+     * Remove a remote.
+     */
+    fun removeRemote(name: String, workdir: String): GitResult {
+        return GitCommandExecutor.run(context, listOf("remote", "remove", name), workdir)
+    }
+
     // ── Init / Remote ─────────────────────────────────────────────────────
 
     /**

@@ -238,6 +238,132 @@ class ScmState(private val context: Context) {
         }
 
     /**
+     * Merge a branch into the current branch.
+     */
+    suspend fun merge(hostPath: String, branch: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.merge(branch, workdir)) {
+                is GitResult.Ok -> true to "Merged $branch"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Abort an in-progress merge.
+     */
+    suspend fun abortMerge(hostPath: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.abortMerge(workdir)) {
+                is GitResult.Ok -> true to "Merge aborted"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Rebase onto a branch.
+     */
+    suspend fun rebase(hostPath: String, branch: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.rebase(branch, workdir)) {
+                is GitResult.Ok -> true to "Rebased onto $branch"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Abort an in-progress rebase.
+     */
+    suspend fun abortRebase(hostPath: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.abortRebase(workdir)) {
+                is GitResult.Ok -> true to "Rebase aborted"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Continue a rebase after resolving conflicts.
+     */
+    suspend fun continueRebase(hostPath: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.continueRebase(workdir)) {
+                is GitResult.Ok -> true to "Rebase continued"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Mark a conflicted file as resolved.
+     */
+    suspend fun resolveConflict(hostPath: String, file: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.resolveConflict(file, workdir)) {
+                is GitResult.Ok -> true to "Resolved: $file"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * List all tags.
+     */
+    suspend fun tags(hostPath: String): List<String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext emptyList()
+            service.tags(workdir)
+        }
+
+    /**
+     * Create a tag.
+     */
+    suspend fun createTag(hostPath: String, name: String, message: String? = null): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.createTag(name, message, workdir)) {
+                is GitResult.Ok -> true to "Created tag $name"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * Delete a tag.
+     */
+    suspend fun deleteTag(hostPath: String, name: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.deleteTag(name, workdir)) {
+                is GitResult.Ok -> true to "Deleted tag $name"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
+     * List all remotes.
+     */
+    suspend fun remotes(hostPath: String): List<Pair<String, String>> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext emptyList()
+            service.remotes(workdir)
+        }
+
+    /**
+     * Remove a remote.
+     */
+    suspend fun removeRemote(hostPath: String, name: String): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.removeRemote(name, workdir)) {
+                is GitResult.Ok -> true to "Removed remote $name"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
      * Initialize a new repository.
      */
     suspend fun initRepo(hostPath: String): Pair<Boolean, String> =

@@ -94,6 +94,8 @@ fun SourceControlPane(projectId: String) {
     var operation by remember { mutableStateOf<ScmOperation>(ScmOperation.Idle) }
     var commitMessage by remember { mutableStateOf("") }
     var showBranchDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showMergeDialog by remember { mutableStateOf(false) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
     var isRepo by remember { mutableStateOf<Boolean?>(null) }
 
@@ -122,6 +124,15 @@ fun SourceControlPane(projectId: String) {
             operation = operation,
             isRepo = isRepo,
             onRefresh = { refresh() },
+            onFetch = {
+                scope.launch {
+                    operation = ScmOperation.Fetching(repoState?.upstream ?: "origin")
+                    val (ok, msg) = scmState.fetch(hostPath)
+                    snackbarMsg = msg
+                    operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
+                    if (ok) refresh()
+                }
+            },
             onPush = {
                 scope.launch {
                     operation = ScmOperation.Pushing(repoState?.upstream ?: "origin")
@@ -141,6 +152,58 @@ fun SourceControlPane(projectId: String) {
                 }
             },
             onBranchClick = { showBranchDialog = true },
+            onOverflowClick = { showOverflowMenu = true },
+        )
+
+        // ── Overflow dropdown menu ──
+        DropdownMenu(
+            expanded = showOverflowMenu,
+            onDismissRequest = { showOverflowMenu = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Stash Changes", fontSize = 12.sp) },
+                onClick = {
+                    showOverflowMenu = false
+                    scope.launch {
+                        val (ok, msg) = scmState.stash(hostPath)
+                        snackbarMsg = msg
+                        if (ok) refresh()
+                    }
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Pop Stash", fontSize = 12.sp) },
+                onClick = {
+                    showOverflowMenu = false
+                    scope.launch {
+                        val (ok, msg) = scmState.stashPop(hostPath)
+                        snackbarMsg = msg
+                        if (ok) refresh()
+                    }
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Merge...", fontSize = 12.sp) },
+                onClick = {
+                    showOverflowMenu = false
+                    showMergeDialog = true
+                },
+            )
+            if (repoState?.conflicted?.isNotEmpty() == true) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Abort Merge", fontSize = 12.sp, color = ConflictColor) },
+                    onClick = {
+                        showOverflowMenu = false
+                        scope.launch {
+                            val (ok, msg) = scmState.abortMerge(hostPath)
+                            snackbarMsg = msg
+                            if (ok) refresh()
+                        }
+                    },
+                )
+            }
         )
 
         HorizontalDivider(color = DividerColor, thickness = 1.dp)
@@ -214,6 +277,13 @@ fun SourceControlPane(projectId: String) {
         } else {
             FileChangesList(
                 repoState = repoState,
+                onResolveConflict = { file ->
+                    scope.launch {
+                        val (ok, msg) = scmState.resolveConflict(hostPath, file)
+                        snackbarMsg = msg
+                        if (ok) refresh()
+                    }
+                },
                 onStage = { file ->
                     scope.launch {
                         operation = ScmOperation.Staging(listOf(file))
@@ -291,6 +361,25 @@ fun SourceControlPane(projectId: String) {
                 showBranchDialog = false
             },
         )
+
+        // ── Merge dialog ──
+        if (showMergeDialog) {
+            MergeBranchDialog(
+                scmState = scmState,
+                hostPath = hostPath,
+                onDismiss = { showMergeDialog = false },
+                onMerge = { branch ->
+                    scope.launch {
+                        operation = ScmOperation.Loading("Merging $branch...")
+                        val (ok, msg) = scmState.merge(hostPath, branch)
+                        snackbarMsg = msg
+                        operation = ScmOperation.Idle
+                        if (ok) refresh()
+                    }
+                    showMergeDialog = false
+                },
+            )
+        }
     }
 }
 
@@ -301,9 +390,11 @@ private fun ScmHeader(
     operation: ScmOperation,
     isRepo: Boolean?,
     onRefresh: () -> Unit,
+    onFetch: () -> Unit,
     onPush: () -> Unit,
     onPull: () -> Unit,
     onBranchClick: () -> Unit,
+    onOverflowClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -368,11 +459,17 @@ private fun ScmHeader(
         IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = MutedColor, modifier = Modifier.size(16.dp))
         }
+        IconButton(onClick = onFetch, enabled = !isBusy && repoState != null, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.CloudDownload, contentDescription = "Fetch", tint = MutedColor, modifier = Modifier.size(16.dp))
+        }
         IconButton(onClick = onPull, enabled = !isBusy && repoState != null, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Filled.ArrowDownward, contentDescription = "Pull", tint = MutedColor, modifier = Modifier.size(16.dp))
         }
         IconButton(onClick = onPush, enabled = !isBusy && repoState != null, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Filled.ArrowUpward, contentDescription = "Push", tint = MutedColor, modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onOverflowClick, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = MutedColor, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -426,6 +523,7 @@ private fun CommitInputSection(
 @Composable
 private fun FileChangesList(
     repoState: ScmRepoState?,
+    onResolveConflict: (String) -> Unit,
     onStage: (String) -> Unit,
     onStageAll: () -> Unit,
     onUnstage: (String) -> Unit,
@@ -454,7 +552,19 @@ private fun FileChangesList(
         if (repoState.conflicted.isNotEmpty()) {
             SectionHeader("Conflicts (${repoState.conflicted.size})", ConflictColor)
             repoState.conflicted.forEach { file ->
-                FileRow(file, isStaged = false, isConflicted = true, onStage = {}, onUnstage = {})
+                FileRow(
+                    file = file,
+                    isStaged = false,
+                    isConflicted = true,
+                    onStage = {
+                        scope.launch {
+                            val (ok, msg) = scmState.resolveConflict(hostPath, file.path)
+                            snackbarMsg = msg
+                            if (ok) refresh()
+                        }
+                    },
+                    onUnstage = {},
+                )
             }
             Spacer(Modifier.height(4.dp))
         }
@@ -680,6 +790,65 @@ private fun BranchSelectionDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close", fontSize = 12.sp) }
+        },
+    )
+}
+
+// ── Merge Branch Dialog ──────────────────────────────────────────────────────
+@Composable
+private fun MergeBranchDialog(
+    scmState: ScmState,
+    hostPath: String,
+    onDismiss: () -> Unit,
+    onMerge: (String) -> Unit,
+) {
+    var branches by remember { mutableStateOf<List<com.codespace.ide.scm.ScmBranch>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            branches = scmState.branches(hostPath).filter { !it.isCurrent }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Merge Branch", fontSize = 14.sp) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (branches.isEmpty()) {
+                    Text("No other branches available", color = MutedColor, fontSize = 12.sp)
+                } else {
+                    Text("Select a branch to merge into current:", color = MutedColor, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    branches.forEach { branch ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onMerge(branch.name) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.CallSplit, contentDescription = null, tint = MutedColor, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                branch.name,
+                                color = TextColor,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", fontSize = 12.sp) }
         },
     )
 }
