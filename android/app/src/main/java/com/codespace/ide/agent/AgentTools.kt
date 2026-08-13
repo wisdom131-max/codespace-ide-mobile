@@ -244,8 +244,18 @@ You can use multiple tools in sequence. When done, give a final summary.
     // route through ProotInstaller.execOnce, same as runCommand above. repoDir/repo.absolutePath
     // here is expected to be a guest-side path (e.g. "/root/myproject").
     private fun gitRun(vararg args: String, repo: File, context: Context): String {
-        val quoted = args.joinToString(" ") { a -> "'" + a.replace("'", "'\\''") + "'" }
-        return ProotInstaller.execOnce(context, "git $quoted", repo.path)
+        // P-SCM-11: Route through GitCommandExecutor for safe.directory + auth + structured errors
+        val token = SecureTokenStore(context).githubToken
+        val result = com.codespace.ide.scm.GitCommandExecutor.run(
+            context = context,
+            args = args.toList(),
+            workdir = repo.path,
+            token = token,
+        )
+        return when (result) {
+            is com.codespace.ide.scm.GitResult.Ok -> result.output
+            is com.codespace.ide.scm.GitResult.Err -> result.error.message
+        }
     }
 
     private fun getRepoDir(repoDir: String?, context: Context): File =

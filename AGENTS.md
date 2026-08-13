@@ -84,17 +84,17 @@ then do X. Don't go searching for random work — follow the roadmap.
 9. All debug UI panels must use the listener-list pattern in UniversalDebugManager to avoid callback overwriting.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 
-## CURRENT STATE (2026-08-13 19:26 WAT)
+## CURRENT STATE (2026-08-13 21:30 WAT)
 
 | | |
 |-|-|
-| Latest commit | `ef75b74` — Fix GitService compilation (return@let→continue, trim()→removePrefix). Fixes 7 consecutive build failures #2205-#2211. |
+| Latest commit | SCM-11: AgentTools gitRun migrated to GitCommandExecutor (pending push). |
 | Active phase | **TESTING STAGE** — All 5 settings restructuring items code-complete. Remaining: Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown (Item 1), device retests. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2189 (994b571) ✅ — **SCM rebuild builds #2205-#2211 were RED (GitService compilation error), fix pushed in `ef75b74`, #2212 PENDING** |
+| Last green | #2213 (9f946a7) ✅ — GitService compilation fix verified green |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -16935,6 +16935,18 @@ Before implementation, produce a complete plan covering:
 **Next on roadmap:**
 1. SCM Phase 11 (AgentTools migration to GitCommandExecutor) — was attempted in previous session but not committed; needs to be redone
 2. After SCM-11: SCM-12 through SCM-16 remaining (ScmState wiring, SourceControlPane integration, old code removal, etc.)
+3. YouTube Test 51 fix — only remaining unfixed item from 57-test audit
+4. Phase V LSP Reliability Upgrade — awaiting start
+5. Phase N Advanced Notification System — awaiting approval
+6. Phase P Advanced Problems Panel — awaiting approval
+
+### [2026-08-13 21:30 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** (pending)
+**What was fixed:** SCM-11: Migrated AgentTools.gitRun() from raw ProotInstaller.execOnce("git ...") to GitCommandExecutor.run(). This brings safe.directory='*' (no more "dubious ownership" errors), automatic GitHub token injection for authenticated commands (push/pull/fetch), and structured error classification (GitResult.Ok/Err instead of raw string parsing). All 5 git functions in AgentTools (gitCommitPush, gitPullRebase, gitBranch, gitStatus, gitDiff) now go through GitCommandExecutor via gitRun. This completes the AgentTools portion of the SCM migration — all git calls in the app now go through GitCommandExecutor.
+**Files touched:** android/app/src/main/java/com/codespace/ide/agent/AgentTools.kt
+**Next on roadmap:**
+1. SCM-12: ScmState wiring to SourceControlPane (already done — needs verification after green build)
+2. SCM-13-16: Remaining SCM phases (old code removal, full integration testing)
 3. YouTube Test 51 fix — only remaining unfixed item from 57-test audit
 4. Phase V LSP Reliability Upgrade — awaiting start
 5. Phase N Advanced Notification System — awaiting approval
