@@ -35,6 +35,12 @@ class JsonRpcClient(private val process: Process) {
     @Volatile private var running = false
 
     /**
+     * Phase V-M: Server generation ID — set by LspManager.
+     * Used to detect and ignore stale responses from a dead server instance.
+     */
+    @Volatile var generation: Int = 0
+
+    /**
      * P38-FIX: Called when the reader thread exits (server crashed, EOF, etc.).
      */
     var onDisconnect: (() -> Unit)? = null

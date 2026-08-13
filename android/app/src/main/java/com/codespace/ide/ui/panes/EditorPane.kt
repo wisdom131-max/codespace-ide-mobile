@@ -203,6 +203,35 @@ fun EditorPane(
             lspOpenedFiles.clear()
         }
     }
+
+    // Phase V-D: Clear lspOpenedFiles when a server dies unexpectedly.
+    // Without this, the stale lspOpenedFiles entries block didOpen on the new server
+    // after an auto-restart (the code thinks the file is already open on the server).
+    // This effect polls running servers and clears lspOpenedFiles for dead languages.
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            for (lang in com.codespace.ide.domain.Language.entries) {
+                if (!LspManager.isSupported(lang)) continue
+                if (!LspManager.isServerRunning(lang) && lspOpenedFiles.values.any { it }) {
+                    // Server died — clear stale opened files state
+                    // Only clear if the server is truly gone (not just starting)
+                    val state = LspManager.getServerState(lang)
+                    if (state == com.codespace.ide.lsp.LspState.STOPPED || state == com.codespace.ide.lsp.LspState.UNHEALTHY) {
+                        // Check if any tab still has this language — if so, the server
+                        // will be restarted by Effect-A, and we need to re-open files
+                        val hasTabsForLang = tabs.any { it.language == lang }
+                        if (hasTabsForLang && state == com.codespace.ide.lsp.LspState.UNHEALTHY) {
+                            // Server crashed — clear opened files so Effect-A can re-open them
+                            lspOpenedFiles.entries.removeAll { e ->
+                                tabs.any { it.language == lang && it.path == e.key }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     var lspCursorLine by remember { mutableStateOf(0) }
     var lspCursorCol by remember { mutableStateOf(0) }
     // P35: Guards to prevent redundant LSP requests when cursor position hasn't changed.

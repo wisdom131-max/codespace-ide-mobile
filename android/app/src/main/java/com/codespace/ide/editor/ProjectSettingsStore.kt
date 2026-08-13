@@ -81,6 +81,11 @@ object ProjectSettingsStore {
     /** Master switch for all LSP servers. When disabled, only fallback completions are used. */
     val lspEnabled: MutableState<Boolean> = mutableStateOf(true)
 
+    // ── LSP Idle Auto-Close Timeout (Phase V-I) ───────────────────────────
+    /** LSP server idle auto-close timeout in seconds. 0 = Never auto-close.
+     *  Options: 30, 60, 300, 600, 1800, 0 (Never). Default: 10 (backward compat). */
+    val lspIdleTimeoutSeconds: MutableState<Long> = mutableStateOf(10L)
+
     // ── Smart Completion Toggle ─────────────────────────────────────────
     /** When enabled, LSP completions take priority. If LSP doesn't respond within 5s,
      *  falls back to regex/local completions. Once LSP responds, local completions are suppressed.
@@ -168,6 +173,7 @@ object ProjectSettingsStore {
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
+        lspIdleTimeoutSeconds.value = prefs.getLong("lsp_idle_timeout_seconds", 10L)
         smartCompletionEnabled.value = prefs.getBoolean("smart_completion_enabled", true)
         customCursorOverlayEnabled.value = prefs.getBoolean("custom_cursor_overlay", false)
         cursorMode.value = try {
@@ -220,6 +226,12 @@ object ProjectSettingsStore {
     fun setLspEnabled(value: Boolean) {
         lspEnabled.value = value
         prefs.edit().putBoolean("lsp_enabled", value).apply()
+    }
+    fun setLspIdleTimeoutSeconds(value: Long) {
+        lspIdleTimeoutSeconds.value = value
+        prefs.edit().putLong("lsp_idle_timeout_seconds", value).apply()
+        // Phase V-I: Propagate to LspManager immediately
+        com.codespace.ide.lsp.LspManager.setIdleTimeout(value)
     }
     fun setSmartCompletionEnabled(value: Boolean) {
         smartCompletionEnabled.value = value

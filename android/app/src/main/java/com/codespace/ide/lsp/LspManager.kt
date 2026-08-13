@@ -32,6 +32,89 @@ data class LspCodeAction(
     val diagnostics: String? = null,
 )
 
+
+/**
+ * Phase V-A: LSP Server Lifecycle State Machine.
+ *
+ * Authoritative lifecycle state — replaces scattered booleans.
+ * Transitions:
+ *   STOPPED → STARTING → INITIALIZING → READY
+ *   READY → UNHEALTHY → RESTARTING → STARTING → ...
+ *   any → STOPPING → STOPPED
+ *   READY → IDLE_CLOSE → STOPPING → STOPPED  (idle timeout, not a crash)
+ */
+enum class LspState {
+    STOPPED,
+    STARTING,
+    INITIALIZING,
+    READY,
+    UNHEALTHY,
+    RESTARTING,
+    STOPPING,
+    IDLE_CLOSE,
+}
+
+/**
+ * Phase V-M: Server generation ID — incremented on every server start.
+ * Prevents stale callbacks from a dead server instance from affecting the new one.
+ */
+data class ServerGeneration(val language: Language, val generation: Int)
+
+/**
+ * Phase V-D: Tracked open document for workspace recovery after restart.
+ * Stores everything needed to re-open a document after a server crash.
+ */
+data class TrackedDocument(
+    val uri: String,
+    val languageId: String,
+    val content: String,
+    val version: Int,
+)
+
+/**
+ * Phase V-E: Memory snapshot from /proc/<pid>/status.
+ */
+data class MemorySnapshot(
+    val vmRssKb: Long,
+    val vmSizeKb: Long,
+    val vmPeakKb: Long,
+    val state: MemoryState,
+)
+
+enum class MemoryState { NORMAL, WARNING, CRITICAL }
+
+/**
+ * Phase V-C: Restart backoff state.
+ */
+data class RestartBackoff(
+    val language: Language,
+    val consecutiveRestarts: Int = 0,
+    val lastRestartTime: Long = 0L,
+) {
+    companion object {
+        const val MAX_RESTARTS = 5
+        // Backoff: 1s, 2s, 5s, 15s, 30s → circuit breaker
+        val BACKOFF_MS = longArrayOf(1_000, 2_000, 5_000, 15_000, 30_000)
+    }
+
+    fun nextDelayMs(): Long {
+        val idx = consecutiveRestarts.coerceAtMost(BACKOFF_MS.size - 1)
+        return BACKOFF_MS[idx]
+    }
+
+    fun canRestart(): Boolean = consecutiveRestarts < MAX_RESTARTS
+
+    fun increment(): RestartBackoff = copy(
+        consecutiveRestarts = consecutiveRestarts + 1,
+        lastRestartTime = System.currentTimeMillis()
+    )
+
+    fun reset(): RestartBackoff = copy(
+        consecutiveRestarts = 0,
+        lastRestartTime = 0L
+    )
+}
+
 /**
  * LspManager - manages LSP server lifecycle and provides LSP operations.
  *
@@ -582,6 +665,58 @@ object LspManager {
     @Volatile var autoCloseEnabled = true
     private var autoCloseScheduled = false
 
+    // Phase V-A: Server state per language — authoritative lifecycle
+    private val serverStates = ConcurrentHashMap<Language, LspState>()
+
+    // Phase V-M: Generation counter per language — incremented on every server start
+    private val generationCounters = ConcurrentHashMap<Language, Int>()
+
+    // Phase V-C: Restart backoff per language
+    private val restartBackoffs = ConcurrentHashMap<Language, RestartBackoff>()
+
+    // Phase V-B: Process exit monitor threads
+    private val processMonitors = ConcurrentHashMap<Language, Thread>()
+
+    // Phase V-E: Memory monitor executor
+    private val memoryMonitorExecutor = Executors.newSingleThreadScheduledExecutor()
+    private var memoryMonitorScheduled = false
+
+    // Phase V-I: Configurable idle timeout (seconds). 0 = never auto-close.
+    @Volatile var idleTimeoutSeconds: Long = 10_000L // default 10s for backward compat
+
+    // Phase V-G: Health check executor
+    private val healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
+    private var healthCheckScheduled = false
+
+    // Phase V-N: Lifecycle log tag
+    private const val LSP_LOG_TAG = "[LSP]"
+
+    // Phase V-A: Get the authoritative state of a server
+    fun getServerState(language: Language): LspState =
+        serverStates[language] ?: LspState.STOPPED
+
+    // Phase V-A: Set server state with structured logging (Section N)
+    private fun setServerState(language: Language, newState: LspState, extra: String = "") {
+        val oldState = serverStates[language] ?: LspState.STOPPED
+        serverStates[language] = newState
+        if (oldState != newState) {
+            val server = servers[language]
+            val gen = server?.generation ?: 0
+            val pid = server?.process?.pid()?.toString() ?: "N/A"
+            val restartCount = restartBackoffs[language]?.consecutiveRestarts ?: 0
+            val memInfo = server?.memorySnapshot?.let { "VmRSS=${it.vmRssKb}kB" } ?: ""
+            val extraStr = if (extra.isNotEmpty()) " $extra" else ""
+            lifecycleLog("STATE ${oldState}→${newState} lang=${language.displayName} gen=$gen pid=$pid restarts=$restartCount $memInfo$extraStr")
+        }
+    }
+
+    // Phase V-N: Structured lifecycle log
+    private fun lifecycleLog(event: String) {
+        val msg = "$LSP_LOG_TAG $event"
+        Log.d(TAG, msg)
+        AppOutputLog.log(msg, "lsp")
+    }
+
     // P50-3: ctags-lsp as secondary server for workspace/symbol fallback.
     // Runs alongside primary servers. When a primary server doesn't support
     // workspace/symbol, we route the request to ctags-lsp instead.
@@ -597,10 +732,26 @@ object LspManager {
         val client: JsonRpcClient,
         val rootUri: String,
         val command: String = "",
+        val generation: Int = 0,
     ) {
         @Volatile var initialized = false
         @Volatile var capabilities: JSONObject? = null
         val diagnostics = ConcurrentHashMap<String, JSONArray>()
+
+        // Phase V-A: Authoritative lifecycle state
+        @Volatile var state: LspState = LspState.STARTING
+
+        // Phase V-D: Tracked open documents for workspace recovery
+        val trackedDocuments = ConcurrentHashMap<String, TrackedDocument>()
+
+        // Phase V-E: Last memory snapshot
+        @Volatile var memorySnapshot: MemorySnapshot? = null
+
+        // Phase V-F: Exit code from last process death
+        @Volatile var lastExitCode: Int = -1
+
+        // Phase V-F: Whether last death was a crash (vs intentional shutdown)
+        @Volatile var lastDeathWasCrash: Boolean = false
     }
 
     // ── Server lifecycle ───────────────────────────────────────────
@@ -615,18 +766,25 @@ object LspManager {
         lastActivity[language]?.set(System.currentTimeMillis())
     }
 
-    /** Start the 10s idle auto-close checker (called once on first server start). */
+    /**
+     * Start the idle auto-close checker (called once on first server start).
+     * Phase V-I: Uses configurable idleTimeoutSeconds instead of hardcoded 10s.
+     */
     private fun ensureAutoCloseStarted() {
         if (autoCloseScheduled) return
         autoCloseScheduled = true
         autoCloseExecutor.scheduleAtFixedRate({
             if (!autoCloseEnabled) return@scheduleAtFixedRate
+            // Phase V-I: 0 means never auto-close
+            if (idleTimeoutSeconds == 0L) return@scheduleAtFixedRate
             val now = System.currentTimeMillis()
             lastActivity.entries.forEach { (lang, ts) ->
-                if (now - ts.get() > 10_000L) {
+                if (now - ts.get() > idleTimeoutSeconds) {
                     val server = servers[lang]
                     if (server != null && server.process.isAlive) {
-                        AppOutputLog.log("[LSP] Auto-closing idle server for ${lang.displayName} (10s idle)", "lsp")
+                        // Phase V-I: Idle close is NOT a crash — no restart, no backoff
+                        setServerState(lang, LspState.IDLE_CLOSE, "idle ${idleTimeoutSeconds / 1000}s")
+                        lifecycleLog("IDLE_CLOSE lang=${lang.displayName} gen=${server.generation} — idle ${idleTimeoutSeconds / 1000}s")
                         stopServer(lang)
                         lastActivity.remove(lang)
                     }
@@ -902,6 +1060,7 @@ object LspManager {
         // language was opened. Only stop if the process has already died.
         val existing = servers[language]
         if (existing != null && existing.process.isAlive && existing.initialized) {
+            setServerState(language, LspState.READY, "reuse existing")
             AppOutputLog.log("[LSP] ${language.displayName} server already running and healthy — reusing", "lsp")
             return true
         }
@@ -909,6 +1068,9 @@ object LspManager {
             AppOutputLog.log("[LSP] ${language.displayName} server found but dead (isAlive=${existing.process.isAlive}) — restarting", "lsp")
             stopServer(language)
         }
+
+        // Phase V-A: Transition to STARTING
+        setServerState(language, LspState.STARTING)
 
         // BUG-FIX: Guard against proot rootfs not being installed yet.
         // If bash exists but the version marker is missing/stale (happens when rootfs was
@@ -1083,8 +1245,19 @@ object LspManager {
         val rootUri = "file://$guestPathEncoded"
 
         val client = JsonRpcClient(process)
-        val server = LspServer(language, process, client, rootUri, config.command)
+        // Phase V-M: Increment generation for this new server instance
+        val generation = (generationCounters[language] ?: 0) + 1
+        generationCounters[language] = generation
+        val server = LspServer(language, process, client, rootUri, config.command, generation)
         servers[language] = server
+        // Phase V-M: Set generation on the client for stale response protection
+        client.generation = generation
+
+        // Phase V-B: Start process exit monitor (crash detection)
+        startProcessMonitor(language, server)
+
+        // Phase V-E: Start memory monitoring
+        ensureMemoryMonitorStarted()
 
         // Set up diagnostics push handler
         client.onNotification("textDocument/publishDiagnostics") { params ->
@@ -1108,9 +1281,26 @@ object LspManager {
         // P38-FIX: When the reader thread exits (server crashed, EOF, etc.),
         // mark the server as not initialized so the next startServer call
         // can restart it.
+        // Phase V-B/V-K: On disconnect, mark server dead and trigger auto-restart
         client.onDisconnect = {
-            AppOutputLog.log("[LSP] Reader thread disconnected for ${'$'}{language.displayName} — marking server for restart", "lsp")
-            server.initialized = false
+            val gen = server.generation
+            val currentGen = generationCounters[language] ?: 0
+            if (gen != currentGen) {
+                lifecycleLog("DISCONNECT lang=${language.displayName} gen=$gen STALE (current=$currentGen) — ignoring")
+                return@onDisconnect
+            }
+            val wasIntentional = getServerState(language) == LspState.STOPPING
+            if (!wasIntentional) {
+                server.lastDeathWasCrash = true
+                lifecycleLog("CRASH lang=${language.displayName} gen=$gen — unexpected disconnect")
+                setServerState(language, LspState.UNHEALTHY, "reader disconnected")
+                server.initialized = false
+                // Phase V-C: Trigger auto-restart with backoff
+                handleAutoRestart(context, language, workspacePath)
+            } else {
+                lifecycleLog("DISCONNECT lang=${language.displayName} gen=$gen — intentional shutdown")
+                server.initialized = false
+            }
         }
 
         // ── LSP initialize request ────────────────────────────────────────
@@ -1150,6 +1340,8 @@ object LspManager {
             })
         }
 
+        // Phase V-A: Transition to INITIALIZING
+        setServerState(language, LspState.INITIALIZING)
         Log.d(TAG, "startServer: sending initialize to ${language.displayName} (30s timeout)...")
         AppOutputLog.log("[LSP] Sending initialize to ${language.displayName} server (rootUri=$rootUri, 30s timeout)…", "lsp")
         val response = client.request("initialize", initParams, timeoutSeconds = 30)
@@ -1168,6 +1360,11 @@ object LspManager {
         val caps = result?.optJSONObject("capabilities") ?: result
         server.capabilities = caps
         server.initialized = true
+        // Phase V-A: Transition to READY
+        setServerState(language, LspState.READY, "initialized")
+        // Phase V-C: Reset restart backoff on successful init
+        restartBackoffs[language]?.reset()?.let { restartBackoffs[language] = it }
+        lifecycleLog("READY lang=${language.displayName} gen=${server.generation} pid=${process.pid()}")
         AppOutputLog.log("[LSP] Server capabilities: ${caps.toString().take(300)}", "lsp")
 
         client.notify("initialized")
@@ -1549,18 +1746,288 @@ object LspManager {
         } catch (_: Exception) {}
     }
 
+    // ── Phase V-B: Process Exit Monitor (crash detection) ──────────────────
+
+    /**
+     * Start a dedicated thread that waits for the LSP process to exit.
+     * Captures exit status and distinguishes crash vs intentional shutdown.
+     */
+    private fun startProcessMonitor(language: Language, server: LspServer) {
+        val gen = server.generation
+        val monitorThread = Thread {
+            try {
+                val exitCode = server.process.waitFor()
+                val currentGen = generationCounters[language] ?: 0
+                if (gen != currentGen) {
+                    // This monitor is for an old generation — ignore
+                    lifecycleLog("PROCESS_EXIT lang=${language.displayName} gen=$gen STALE (current=$currentGen) — ignoring")
+                    return@Thread
+                }
+                server.lastExitCode = exitCode
+                val state = getServerState(language)
+                if (state == LspState.STOPPING || state == LspState.STOPPED || state == LspState.IDLE_CLOSE) {
+                    // Intentional shutdown — not a crash
+                    server.lastDeathWasCrash = false
+                    lifecycleLog("PROCESS_EXIT lang=${language.displayName} gen=$gen exit=$exitCode — intentional")
+                } else {
+                    // Unexpected death — this is a crash
+                    server.lastDeathWasCrash = true
+                    server.initialized = false
+                    // Phase V-F: Detect OOM (exit code 137 = SIGKILL, commonly OOM killer)
+                    val oomIndicator = if (exitCode == 137 || exitCode == 9) {
+                        val memSnap = server.memorySnapshot
+                        if (memSnap != null && memSnap.state == MemoryState.CRITICAL) {
+                            " POSSIBLE_OOM"
+                        } else {
+                            " POSSIBLE_SIGKILL"
+                        }
+                    } else ""
+                    lifecycleLog("CRASH lang=${language.displayName} gen=$gen exit=$exitCode$oomIndicator")
+                    setServerState(language, LspState.UNHEALTHY, "process exit code=$exitCode")
+                }
+            } catch (_: InterruptedException) {
+                // Normal — monitor was interrupted during stopServer
+            }
+        }.apply {
+            isDaemon = true
+            name = "LSP-Monitor-${'$'}{language.displayName}-gen${'$'}gen"
+            start()
+        }
+        processMonitors[language] = monitorThread
+    }
+
+    // ── Phase V-C: Auto-restart with backoff ──────────────────────────────
+
+    /**
+     * Attempt to auto-restart a crashed LSP server with exponential backoff.
+     * Circuit breaker after MAX_RESTARTS consecutive failures.
+     */
+    private fun handleAutoRestart(context: Context, language: Language, workspacePath: String) {
+        val backoff = restartBackoffs.getOrPut(language) { RestartBackoff(language) }
+
+        if (!backoff.canRestart()) {
+            lifecycleLog("RESTART lang=${language.displayName} — CIRCUIT BREAKER (max ${'$'}{RestartBackoff.MAX_RESTARTS} restarts exceeded)")
+            setServerState(language, LspState.STOPPED, "circuit breaker")
+            return
+        }
+
+        val delayMs = backoff.nextDelayMs()
+        val nextRestartCount = backoff.consecutiveRestarts + 1
+        lifecycleLog("RESTART lang=${language.displayName} attempt=$nextRestartCount/${'$'}{RestartBackoff.MAX_RESTARTS} delay=${delayMs}ms")
+
+        setServerState(language, LspState.RESTARTING, "attempt $nextRestartCount")
+
+        Thread {
+            try {
+                Thread.sleep(delayMs)
+                // Check if we were interrupted (e.g., user closed the tab during backoff)
+                if (getServerState(language) == LspState.STOPPED) {
+                    lifecycleLog("RESTART lang=${language.displayName} — cancelled during backoff (server stopped)")
+                    return@Thread
+                }
+                // Phase V-C: Update backoff before restart attempt
+                restartBackoffs[language] = backoff.increment()
+                // Phase V-D: Save tracked documents before restart
+                val savedDocs = servers[language]?.trackedDocuments?.let { HashMap(it) } ?: emptyMap()
+                // Clean up old server
+                servers.remove(language)?.let { old ->
+                    old.client.stop()
+                    old.process.destroyForcibly()
+                }
+                lifecycleLog("REINITIALIZE lang=${language.displayName}")
+                // Restart the server
+                val restarted = startServer(context, language, workspacePath)
+                if (restarted) {
+                    // Phase V-D: Restore workspace — re-open all tracked documents
+                    if (savedDocs.isNotEmpty()) {
+                        lifecycleLog("RESTORE_DOCUMENT lang=${language.displayName} — re-opening ${savedDocs.size} document(s)")
+                        for ((_, doc) in savedDocs) {
+                            didOpen(language, doc.uri, doc.languageId, doc.content, doc.version)
+                        }
+                    }
+                } else {
+                    lifecycleLog("RESTART lang=${language.displayName} — FAILED")
+                    setServerState(language, LspState.UNHEALTHY, "restart failed")
+                }
+            } catch (_: InterruptedException) {
+                lifecycleLog("RESTART lang=${language.displayName} — interrupted during backoff")
+            }
+        }.apply {
+            isDaemon = true
+            name = "LSP-Restart-${'$'}{language.displayName}"
+            start()
+        }
+    }
+
+    // ── Phase V-D: Workspace / Document Recovery ───────────────────────────
+
+    /**
+     * Track an open document for workspace recovery after server restart.
+     * Called by didOpen to record document state.
+     */
+    private fun trackDocument(language: Language, uri: String, languageId: String, content: String, version: Int) {
+        val server = servers[language] ?: return
+        server.trackedDocuments[uri] = TrackedDocument(uri, languageId, content, version)
+    }
+
+    /**
+     * Update tracked document content on didChange.
+     */
+    private fun updateTrackedDocument(language: Language, uri: String, content: String, version: Int) {
+        val server = servers[language] ?: return
+        val existing = server.trackedDocuments[uri] ?: return
+        server.trackedDocuments[uri] = existing.copy(content = content, version = version)
+    }
+
+    /**
+     * Remove a tracked document on didClose.
+     */
+    private fun untrackDocument(language: Language, uri: String) {
+        servers[language]?.trackedDocuments?.remove(uri)
+    }
+
+    /**
+     * Clear all tracked documents for a language (on server death).
+     * Phase V-D: Fix stale lspOpenedFiles problem — EditorPane should also clear its lspOpenedFiles.
+     */
+    fun clearTrackedDocuments(language: Language) {
+        servers[language]?.trackedDocuments?.clear()
+    }
+
+    // ── Phase V-E: Memory Usage Monitoring ─────────────────────────────────
+
+    /**
+     * Start periodic memory monitoring for all running servers.
+     * Reads /proc/<pid>/status off the UI thread.
+     */
+    private fun ensureMemoryMonitorStarted() {
+        if (memoryMonitorScheduled) return
+        memoryMonitorScheduled = true
+        memoryMonitorExecutor.scheduleAtFixedRate({
+            for ((language, server) in servers) {
+                if (!server.process.isAlive) continue
+                try {
+                    val pid = server.process.pid()
+                    val snap = readMemorySnapshot(pid)
+                    if (snap != null) {
+                        server.memorySnapshot = snap
+                        if (snap.state != MemoryState.NORMAL) {
+                            lifecycleLog("MEMORY lang=${language.displayName} gen=${server.generation} ${'$'}{snap.state} VmRSS=${'$'}{snap.vmRssKb}kB VmPeak=${'$'}{snap.vmPeakKb}kB")
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }, 5, 10, TimeUnit.SECONDS) // first check after 5s, then every 10s
+    }
+
+    /**
+     * Read VmRSS, VmSize, VmPeak from /proc/<pid>/status.
+     * Returns null if the file is unavailable (e.g., proot hides it).
+     */
+    private fun readMemorySnapshot(pid: Long): MemorySnapshot? {
+        return try {
+            val statusFile = java.io.File("/proc/${'$'}pid/status")
+            if (!statusFile.exists()) return null
+            var vmRss = 0L
+            var vmSize = 0L
+            var vmPeak = 0L
+            statusFile.bufferedReader().forEachLine { line ->
+                when {
+                    line.startsWith("VmRSS:") -> vmRss = line.split("\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
+                    line.startsWith("VmSize:") -> vmSize = line.split("\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
+                    line.startsWith("VmPeak:") -> vmPeak = line.split("\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
+                }
+            }
+            // Phase V-E: Classify memory state
+            // WARNING: >500MB RSS, CRITICAL: >1GB RSS (configurable in future)
+            val state = when {
+                vmRss > 1_000_000 -> MemoryState.CRITICAL  // >1GB
+                vmRss > 500_000 -> MemoryState.WARNING      // >500MB
+                else -> MemoryState.NORMAL
+            }
+            MemorySnapshot(vmRss, vmSize, vmPeak, state)
+        } catch (_: Exception) { null }
+    }
+
+    // ── Phase V-G: Health Check / Responsiveness ──────────────────────────
+
+    /**
+     * Start periodic health checks for all running servers.
+     * Uses a lightweight ping — the server's response to a simple request.
+     */
+    private fun ensureHealthCheckStarted() {
+        if (healthCheckScheduled) return
+        healthCheckScheduled = true
+        healthCheckExecutor.scheduleAtFixedRate({
+            for ((language, server) in servers) {
+                if (!server.process.isAlive) continue
+                if (!server.initialized) continue
+                val state = getServerState(language)
+                if (state != LspState.READY) continue
+                try {
+                    // Phase V-G: Non-disruptive probe — check if process is alive AND responsive
+                    // Use a short-timeout ping (not a real LSP method, just check alive)
+                    val alive = server.process.isAlive
+                    if (!alive) {
+                        lifecycleLog("HEALTH_CHECK lang=${language.displayName} gen=${server.generation} — DEAD")
+                        setServerState(language, LspState.UNHEALTHY, "health check: process dead")
+                    }
+                    // Note: We don't send a real LSP ping — no invented method.
+                    // If the process is alive, we consider it responsive. The reader
+                    // thread will detect unresponsive servers via timeout on real requests.
+                } catch (_: Exception) {}
+            }
+        }, 30, 60, TimeUnit.SECONDS) // first check after 30s, then every 60s
+    }
+
+    // ── Phase V-I: Configurable Idle Auto-close ────────────────────────────
+
+    /**
+     * Set the idle timeout for LSP servers.
+     * @param seconds 0 = never auto-close, otherwise auto-close after N seconds idle
+     */
+    fun setIdleTimeout(seconds: Long) {
+        idleTimeoutSeconds = if (seconds > 0) seconds * 1000 else 0L
+        lifecycleLog("IDLE_TIMEOUT set to ${'$'}{if (seconds == 0L) "Never" else "${'$'}seconds s"}")
+    }
+
+    /**
+     * Get the effective idle timeout in milliseconds.
+     */
+    fun getIdleTimeoutMs(): Long = idleTimeoutSeconds
+
     fun stopServer(language: Language) {
         val server = servers.remove(language) ?: return
+        // Phase V-A: Transition to STOPPING
+        setServerState(language, LspState.STOPPING)
         // Phase P: Mark diagnostics from this LSP server as stale
         DiagnosticManager.markSourceStale(DiagnosticManager.DiagnosticSource.LSP, language.name.lowercase())
+        // Phase V-J: Graceful shutdown — shutdown → exit → wait → destroy → destroyForcibly
         try {
             if (server.initialized) {
                 server.client.request("shutdown", timeoutSeconds = 5)
                 server.client.notify("exit")
             }
         } catch (_: Exception) {}
+        // Phase V-J: Give the server a brief grace period to exit cleanly
+        try {
+            if (!server.process.waitFor(2, TimeUnit.SECONDS)) {
+                server.process.destroy()
+                if (!server.process.waitFor(3, TimeUnit.SECONDS)) {
+                    // Last resort: SIGKILL
+                    lifecycleLog("FORCE_KILL lang=${language.displayName} gen=${server.generation} — graceful shutdown exceeded 5s")
+                    server.process.destroyForcibly()
+                    server.process.waitFor(1, TimeUnit.SECONDS)
+                }
+            }
+        } catch (_: Exception) {
+            server.process.destroyForcibly()
+        }
         server.client.stop()
-        server.process.destroyForcibly()
+        // Phase V-B: Stop the process exit monitor
+        processMonitors.remove(language)?.let { it.interrupt() }
+        lifecycleLog("SHUTDOWN lang=${language.displayName} gen=${server.generation} — complete")
+        setServerState(language, LspState.STOPPED)
         Log.d(TAG, "LSP server stopped for ${language.displayName}")
         AppOutputLog.log("[LSP] Server stopped for ${language.displayName}", "lsp")
     }
@@ -1580,6 +2047,17 @@ object LspManager {
             ctagsServer = null
             AppOutputLog.log("[LSP] ctags-lsp secondary server stopped", "lsp")
         }
+        // Phase V-E: Stop memory monitor
+        memoryMonitorExecutor.shutdownNow()
+        memoryMonitorScheduled = false
+        // Phase V-G: Stop health check
+        healthCheckExecutor.shutdownNow()
+        healthCheckScheduled = false
+        // Phase V: Clear all state
+        serverStates.clear()
+        restartBackoffs.clear()
+        processMonitors.values.forEach { it.interrupt() }
+        processMonitors.clear()
     }
 
     // ── Text document synchronization ──────────────────────────────
@@ -1602,6 +2080,8 @@ object LspManager {
         }
         val params = JSONObject().apply { put("textDocument", td) }
         server.client.notify("textDocument/didOpen", params)
+        // Phase V-D: Track document for workspace recovery
+        trackDocument(language, uri, languageId, text, version)
         touchActivity(language)
         AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId)", "lsp")
         return true
@@ -1627,6 +2107,8 @@ object LspManager {
             put("contentChanges", changes)
         }
         server.client.notify("textDocument/didChange", params)
+        // Phase V-D: Update tracked document content
+        updateTrackedDocument(language, uri, text, version)
         touchActivity(language)
         return true
     }
@@ -1638,6 +2120,8 @@ object LspManager {
         val td = JSONObject().apply { put("uri", uri) }
         val params = JSONObject().apply { put("textDocument", td) }
         server.client.notify("textDocument/didClose", params)
+        // Phase V-D: Untrack document
+        untrackDocument(language, uri)
         return true
     }
 

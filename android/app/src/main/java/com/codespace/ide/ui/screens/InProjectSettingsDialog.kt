@@ -300,6 +300,7 @@ enum class RowType {
     LSP_ENABLED_CHECKBOX,
     SMART_COMPLETION_CHECKBOX,
     TS_VERSION_DROPDOWN,
+    LSP_IDLE_TIMEOUT_DROPDOWN,
     CUSTOM_CURSOR_CHECKBOX,
     CURSOR_MODE_DROPDOWN,
     // ── Item 4: TS/JS + Accessibility row types ──
@@ -478,6 +479,10 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "TypeScript Version",
         "TypeScript 7 uses native LSP (tsc --lsp --stdio). Older versions use typescript-language-server.",
         RowType.TS_VERSION_DROPDOWN))
+    add(SettingsRow("lsp_idle_timeout", SettingsCategory.LSP_SERVERS,
+        "LSP Idle Auto-Close",
+        "Shut down idle language servers after N seconds. Never = keep running until tab close.",
+        RowType.LSP_IDLE_TIMEOUT_DROPDOWN))
 
     // ── Item 4: Accessibility settings ──────────────────────────────────
     add(SettingsRow("acc_signal_position_warning", SettingsCategory.ACCESSIBILITY,
@@ -615,6 +620,7 @@ private fun SettingsRowRenderer(
         RowType.LSP_ENABLED_CHECKBOX -> LspEnabledRow(textPri, textSec, divider)
         RowType.SMART_COMPLETION_CHECKBOX -> SmartCompletionRow(textPri, textSec, divider)
         RowType.TS_VERSION_DROPDOWN -> TypeScriptVersionRow(accent, textPri, textSec, divider)
+        RowType.LSP_IDLE_TIMEOUT_DROPDOWN -> LspIdleTimeoutRow(accent, textPri, textSec, divider)
         RowType.CUSTOM_CURSOR_CHECKBOX -> CustomCursorOverlayRow(textPri, textSec, divider)
         RowType.CURSOR_MODE_DROPDOWN -> CursorModeRow(accent, textPri, textSec, divider)
         // ── Item 4 renderers ──
@@ -742,6 +748,45 @@ private fun TypeScriptVersionRow(accent: Color, textPri: Color, textSec: Color, 
         }
         HorizontalDivider(Modifier.padding(top = 4.dp), thickness = 0.5.dp, color = divider)
     }
+}
+
+/**
+ * Phase V-I: LSP Idle Auto-Close timeout dropdown.
+ * Options: 30s, 1m, 5m, 10m, 30m, Never.
+ */
+@Composable
+fun LspIdleTimeoutRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    val options = listOf(30L to "30s", 60L to "1m", 300L to "5m", 600L to "10m", 1800L to "30m", 0L to "Never")
+    val current = ProjectSettingsStore.lspIdleTimeoutSeconds.value
+    val currentLabel = options.firstOrNull { it.first == current }?.second ?: "10s"
+    var expanded by remember { mutableStateOf(false) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("LSP Idle Auto-Close", color = textPri, fontSize = 14.sp)
+            Text("Close idle servers after $currentLabel", color = textSec, fontSize = 12.sp)
+        }
+        Box {
+            Text(currentLabel, color = accent, fontSize = 14.sp, modifier = Modifier.clickable { expanded = true })
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { (value, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            ProjectSettingsStore.setLspIdleTimeoutSeconds(value)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = divider)
 }
 
 @Composable
