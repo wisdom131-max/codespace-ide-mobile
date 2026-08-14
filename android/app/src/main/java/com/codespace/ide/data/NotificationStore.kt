@@ -154,6 +154,17 @@ object NotificationStore {
         val minToastPriority: Priority = Priority.LOW,
         // Phase N: Rate limiting — max notifications with same dedupKey per second
         val rateLimitPerSecond: Int = 5,
+        // Phase 15: Per-source rate limits (overrides global if set)
+        val rateLimitLsp: Int = 10,       // LSP is chatty — allow more
+        val rateLimitBuild: Int = 3,      // Build events are rare — strict limit
+        val rateLimitGit: Int = 5,
+        val rateLimitTerminal: Int = 8,
+        val rateLimitDap: Int = 5,
+        val rateLimitSystem: Int = 3,
+        // Phase 15: Global burst protection — max total notifications per 10s window
+        val burstLimitPer10s: Int = 50,
+        // Phase 15: Dedup window in ms (how long to consider notifications as duplicates)
+        val dedupWindowMs: Long = 5000L,
     )
 
     // ── Action handler registry ───────────────────────────────────────────────
@@ -220,6 +231,15 @@ object NotificationStore {
             srcTerminal = p.getBoolean("srcTerminal", true),
             srcDap = p.getBoolean("srcDap", true),
             srcAi = p.getBoolean("srcAi", true),
+            // Phase 15: Load rate limiting settings
+            rateLimitLsp = p.getInt("rateLimitLsp", 10),
+            rateLimitBuild = p.getInt("rateLimitBuild", 3),
+            rateLimitGit = p.getInt("rateLimitGit", 5),
+            rateLimitTerminal = p.getInt("rateLimitTerminal", 8),
+            rateLimitDap = p.getInt("rateLimitDap", 5),
+            rateLimitSystem = p.getInt("rateLimitSystem", 3),
+            burstLimitPer10s = p.getInt("burstLimitPer10s", 50),
+            dedupWindowMs = p.getLong("dedupWindowMs", 5000L),
         )
         // Phase 9: Load notification history
         p.getString("history", null)?.let { deserializeHistory(it) }
@@ -243,6 +263,15 @@ object NotificationStore {
             ?.putBoolean("srcTerminal", settings.srcTerminal)
             ?.putBoolean("srcDap", settings.srcDap)
             ?.putBoolean("srcAi", settings.srcAi)
+            // Phase 15: Persist rate limiting settings
+            ?.putInt("rateLimitLsp", settings.rateLimitLsp)
+            ?.putInt("rateLimitBuild", settings.rateLimitBuild)
+            ?.putInt("rateLimitGit", settings.rateLimitGit)
+            ?.putInt("rateLimitTerminal", settings.rateLimitTerminal)
+            ?.putInt("rateLimitDap", settings.rateLimitDap)
+            ?.putInt("rateLimitSystem", settings.rateLimitSystem)
+            ?.putInt("burstLimitPer10s", settings.burstLimitPer10s)
+            ?.putLong("dedupWindowMs", settings.dedupWindowMs)
             // Phase N: Persist notification history (last 50)
             ?.putString("history", serializeHistory())
             ?.apply()
@@ -457,6 +486,52 @@ object NotificationStore {
     // ── Rate limiting state ───────────────────────────────────────────────────
     private val dedupTimestamps = ConcurrentHashMap<String, MutableList<Long>>()
     private val dedupLock = Any()
+    // Phase 15: Burst protection — tracks all notification timestamps in a 10s window
+    private val burstTimestamps = mutableListOf<Long>()
+    // Phase 15: Suppressed notification counter (for diagnostics)
+    @Volatile var suppressedCount: Int = 0
+        private set
+    // Phase 15: Per-source timestamp tracking for source-level rate limiting
+    private val sourceTimestamps = ConcurrentHashMap<Source, MutableList<Long>>()
+
+    // Phase 15: Get rate limit for a specific source
+    private fun rateLimitFor(source: Source): Int = when (source) {
+        Source.LSP -> settings.rateLimitLsp
+        Source.BUILD -> settings.rateLimitBuild
+        Source.GIT -> settings.rateLimitGit
+        Source.TERMINAL -> settings.rateLimitTerminal
+        Source.DAP -> settings.rateLimitDap
+        Source.SYSTEM -> settings.rateLimitSystem
+        else -> settings.rateLimitPerSecond
+    }
+
+    // Phase 15: Check burst protection — returns true if we should suppress
+    private fun checkBurstLimit(now: Long): Boolean {
+        synchronized(burstTimestamps) {
+            burstTimestamps.removeAll { now - it > 10_000L }
+            if (burstTimestamps.size >= settings.burstLimitPer10s) {
+                suppressedCount++
+                return true
+            }
+            burstTimestamps.add(now)
+            return false
+        }
+    }
+
+    // Phase 15: Check per-source rate limit — returns true if we should suppress
+    private fun checkSourceRateLimit(source: Source, now: Long): Boolean {
+        val limit = rateLimitFor(source)
+        synchronized(sourceTimestamps) {
+            val timestamps = sourceTimestamps.getOrPut(source) { mutableListOf() }
+            timestamps.removeAll { now - it > 1000L }
+            if (timestamps.size >= limit) {
+                suppressedCount++
+                return true
+            }
+            timestamps.add(now)
+            return false
+        }
+    }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -488,9 +563,16 @@ object NotificationStore {
         if (!isSeverityAllowed(severity)) return
         if (!isSourceAllowed(source)) return
 
+        val now = System.currentTimeMillis()
+
+        // Phase 15: Burst protection — global limit across all sources
+        if (checkBurstLimit(now)) return
+
+        // Phase 15: Per-source rate limiting
+        if (checkSourceRateLimit(source, now)) return
+
         // Phase N: Deduplication — update existing if same key within rate-limit window
         if (deduplicationKey != null) {
-            val now = System.currentTimeMillis()
             synchronized(dedupLock) {
                 // Check rate limiting
                 val timestamps = dedupTimestamps.getOrPut(deduplicationKey) { mutableListOf() }
@@ -517,7 +599,7 @@ object NotificationStore {
 
                 // Also check for existing notification with same dedup key (within 5s)
                 val existing = items.firstOrNull {
-                    it.deduplicationKey == deduplicationKey && (now - it.timestamp) < 5000L
+                    it.deduplicationKey == deduplicationKey && (now - it.timestamp) < settings.dedupWindowMs
                 }
                 if (existing != null) {
                     post {
@@ -720,6 +802,11 @@ object NotificationStore {
         if (undoStack.size > MAX_UNDO) undoStack.subList(MAX_UNDO, undoStack.size).clear()
         items.clear()
         _toastListeners.forEach { it() }
+    }
+
+    /** Phase 15: Reset suppressed counter (for diagnostics). */
+    fun resetSuppressedCount() {
+        suppressedCount = 0
     }
 
     /** Clear only completed/failed/dismissed items (keep active errors). */
