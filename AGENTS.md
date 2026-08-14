@@ -17110,35 +17110,41 @@ Before implementation, produce a complete plan covering:
 4. Phase N — Advanced Notification System (PLAN REGISTERED, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
 
 ### [2026-08-14 01:35 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** pending | **CI Build:** pending
+**Commit:** 65f826c5 | **CI Build:** #2245 FAILED → #2249 GREEN (fixed by d3cd4007)
 **What was fixed:** Phase N (Advanced Notification System) — Phase 1-7 implementation. (1) Upgraded NotificationStore with full Phase N model: Priority enum (LOW/NORMAL/HIGH/CRITICAL), NotificationState enum (ACTIVE/READ/DISMISSED/COMPLETED/FAILED), NotificationAction with stable action IDs, ProgressInfo (determinate/indeterminate), ErrorDetails (two-level user/technical), groupKey, deduplicationKey, dedupCount, category, persistent, autoDismissMs, metadata. (2) Added deduplication logic with rate limiting (max N per second per dedup key, updates existing notification count instead of creating duplicates). (3) Added progress API: startProgress(), updateProgress(), completeProgress() for long-running operations. (4) Added action handler registry: registerActionHandler()/executeAction() for notification buttons like [Retry], [View Logs], [Restart]. (5) Added clearResolved() to clean completed/failed/dismissed items. (6) Upgraded NotificationDrawerOverlay: action buttons on toast and drawer rows, progress bars, expandable error details, dedup count badges "(4)", source filter row (LSP/GIT/BUILD/TERMINAL/DAP/AI/SYSTEM), fixed relativeTime bug (was using item.id instead of item.timestamp). (7) Wired LSP integration: notifyLspEvent() helper called on STARTING, READY, CRASH, OOM, CIRCUIT_BREAKER, IDLE_CLOSE with appropriate severity and actions. (8) Wired SCM integration: SourceControlPane snackbar messages now also push to NotificationStore with error classification and ErrorDetails. (9) Wired EditorPane: 4 Toast.makeText calls replaced with NotificationStore.add(). (10) Registered action handlers (view_logs, restart) in CodeSpaceApplication.onCreate().
 **Files touched:** NotificationStore.kt, NotificationDrawerOverlay.kt, LspManager.kt, SourceControlPane.kt, EditorPane.kt, CodeSpaceApplication.kt
 **Next on roadmap:**
 1. Phase N phases 8-16: persistence, preferences, accessibility, rate limiting hardening, full testing
 2. Device testing of all SCM features (E1-E18) — needs physical device
 3. YouTube Test 51 fix
-4. Phase P — Advanced Problems Panel (awaiting approval)
+4. Phase P — Advanced Problems Panel ✅ DONE (build #2243 GREEN)
 
 ### [2026-08-14 01:35 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** pending | **CI Build:** pending
+**Commit:** c6e5b950 | **CI Build:** #2246 FAILED → #2249 GREEN (fixed by d3cd4007)
 **What was fixed:** Phase N phases 8-14. (1) Phase 8: Undo support — dismissWithUndo(), undoDismiss(), undoStack (max 10), undo button in drawer header. (2) Phase 9: Notification history persistence — serialize/deserialize last 50 items to SharedPreferences as JSON, restored on app start, nextId advanced past restored IDs. (3) Phase 10: Per-source and per-severity toggle methods (toggleSeverityFilter, toggleSourceFilter, setMaxHistory, setToastDuration) with full SharedPreferences persistence. (4) Phase 11: Build integration — BuildRunner notifies on build start (indeterminate progress), success (with error/warning counts), failure (with View Logs action), error (catch block), and cancel. (5) Phase 12: Debug integration — UniversalDebugManager notifies on session stop with language and session ID. (6) Phase 13: Terminal integration — SimpleTerminalSessionClient.onSessionFinished notifies with exit status, error classification for non-zero exits. (7) Phase 14: Accessibility — semantics contentDescription on NotificationRow for screen readers, includes severity, title, body, dedup count, and action labels.
 **Files touched:** NotificationStore.kt, NotificationDrawerOverlay.kt, BuildRunner.kt, UniversalDebugManager.kt, TerminalPane.kt
 **Next on roadmap:** Phase 15 (rate limiting hardening), Phase 16 (full testing), device testing SCM E1-E18
 
 ### [2026-08-14 01:45 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** pending | **CI Build:** pending
+**Commit:** 1f793ce1 | **CI Build:** #2247 FAILED → #2249 GREEN (fixed by d3cd4007)
 **What was fixed:** Phase N phase 15 — Rate limiting hardening. (1) Added per-source rate limits to Settings: LSP=10/s, Build=3/s, Git=5/s, Terminal=8/s, DAP=5/s, System=3/s, others=5/s (global default). (2) Added burst protection: max 50 total notifications per 10s window — suppresses flood attacks. (3) Added configurable dedup window (default 5s, was hardcoded). (4) Added suppressedCount counter for diagnostics. (5) All Phase 15 settings persisted to SharedPreferences. (6) rateLimitFor() helper returns source-specific limit, checkBurstLimit() and checkSourceRateLimit() guard the add() entry point before dedup logic.
 **Files touched:** NotificationStore.kt
 **Next on roadmap:** Phase 16 (full testing checklist), device testing SCM E1-E18
 
 ### [2026-08-14 01:50 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** pending | **CI Build:** pending
+**Commit:** 833da6e2 | **CI Build:** #2248 FAILED → #2249 GREEN (fixed by d3cd4007)
 **What was fixed:** Phase N phase 16 — Full testing checklist. 24 test scenarios (N-01 through N-24) covering all 15 phases: core model, priority, severity, states, actions, progress, error details, undo, persistence, settings, build/debug/terminal integration, accessibility, rate limiting, DND, sound, bell position, and clearResolved. Written to docs/phase_n_test_checklist.md.
 **Files touched:** docs/phase_n_test_checklist.md
 **Next on roadmap:** Device testing of all N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix; Phase P — Advanced Problems Panel
 
 ### [2026-08-14 01:38 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** pending | **CI Build:** pending (fixing #2245 failure)
+**Commit:** d3cd4007 | **CI Build:** #2249 GREEN ✅
 **What was fixed:** LspManager.kt lines 723 and 737 used `language.id` which does not exist on the Language enum (it only has `displayName`, `extensions`, and implicit `name`). Changed to `language.name` which is consistent with the rest of the file (line 1313 uses `language.name.lowercase()`). This was the root cause of CI build #2245 failure — `Unresolved reference: id` at 723:40 and 737:40.
 **Files touched:** LspManager.kt
+**Next on roadmap:** Device testing N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix
+
+### [2026-08-14 02:00 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** d3cd4007 | **CI Build:** #2249 GREEN ✅
+**What was fixed:** All Phase N builds (#2245-#2248) failed due to `Unresolved reference: id` in LspManager.kt:723 and 737. Root cause: `language.id` used on Language enum which has no `id` property (only `displayName`, `extensions`, implicit `name`). Fixed by changing to `language.name`. All Phase N code (phases 1-16) now compiles and builds green. Updated all changelog entries with actual commit SHAs and CI build numbers. Updated Phase P status references — Phase P is ALREADY DONE (commit b8641ab3, build green).
+**Files touched:** LspManager.kt, AGENTS.md
 **Next on roadmap:** Device testing N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix
