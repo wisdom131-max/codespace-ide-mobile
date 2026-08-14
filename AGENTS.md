@@ -17480,3 +17480,13 @@ STARTING → loading/disabled state
 - P27-11: Breakpoint verification via DAP setBreakpoints response. Added verified + message fields to DebugBreakpoint data class. UDM.markBreakpointsVerified() updates breakpoint verified status from DAP setBreakpoints response body. Both PythonDAPAdapter and NodeDAPAdapter now extract per-breakpoint verification status from the setBreakpoints response and call markBreakpointsVerified() to update the UDM breakpoint store.
 **Files touched:** UniversalDebugManager.kt, PythonDAPAdapter.kt, NodeDAPAdapter.kt
 **Next on roadmap:** Confirm CI build green. Device testing of all Run/Debug features (P27 test matrix). UI wiring audit (trace every control end-to-end). Then Phase N — Advanced Notification System.
+
+### [2026-08-14 02:50 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** b30a0cd | **CI Build:** pending
+**Tags:** UI-FIX, DEBUG-FIX
+**What was fixed:** Phase 27 UI Wiring Audit — Restart button + variable expansion:
+- Added Restart button to RunDebugPanel (ExplorerPane.kt) — wired to udm.restartSession(), green button with Refresh icon between Step Out and Stop
+- Added Restart button to DebugConsolePanel (ProjectShellScreen.kt) — wired to udm.restartSession(), green icon before Stop icon
+- Simple variable expansion in RunDebugPanel — tapping expandable variable arrow calls existing udm.evaluateExpression() and shows result inline (no new DAP methods or data class fields needed). Arrow toggles between right/down states. Expanded value shows up to 5 lines below the variable row.
+**Files touched:** ExplorerPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** Confirm CI build green. Device testing of Run/Debug features. Continue UI wiring audit (menu items, keyboard shortcuts). Phase S — LSP Spec Compliance.

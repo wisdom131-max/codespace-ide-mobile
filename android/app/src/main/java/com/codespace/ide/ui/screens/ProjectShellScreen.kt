@@ -2785,6 +2785,15 @@ private fun buildRunCommand(path: String): String? {
             }
             // Stop button — only when session active
             if (activeSession != null) {
+                // P27-AUDIT: Restart button — wired to udm.restartSession()
+                Icon(Icons.Default.Refresh, "Restart", tint = Color(0xFF388A34),
+                    modifier = Modifier.size(16.dp).clickable {
+                        activeSession?.id?.let { sid ->
+                            udm.restartSession(sid)
+                            messages.add("[debug] Restarting session $sid...")
+                        }
+                    })
+                Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Stop, "Stop", tint = Color(0xFFE53935),
                     modifier = Modifier.size(16.dp).clickable {
                         activeSession?.id?.let { udm.stopSession(it) }

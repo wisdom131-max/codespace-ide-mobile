@@ -2858,6 +2858,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var showWatch by remember { mutableStateOf(false) }
     var showCallStack by remember { mutableStateOf(true) }
     var showBreakpoints by remember { mutableStateOf(true) }
+    // P27-AUDIT: Simple variable expansion — evaluate via existing evaluateExpression
+    val expandedVarValues = remember { mutableStateMapOf<String, String>() }
     var watchInput by remember { mutableStateOf("") }
     var watchIdCounter by remember { mutableStateOf(0) }
     var debugInput by remember { mutableStateOf("") }
@@ -3024,6 +3026,20 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     Icon(Icons.Default.ArrowUpward, "Step Out", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(4.dp))
+                // P27-AUDIT: Restart button — wired to udm.restartSession()
+                FilledIconButton(
+                    onClick = {
+                        activeSessionId?.let { sid ->
+                            udm.restartSession(sid)
+                            sessionState = DebugState.STARTING
+                        }
+                    },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF388A34)),
+                ) {
+                    Icon(Icons.Default.Refresh, "Restart", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(4.dp))
                 FilledIconButton(
                     onClick = {
                         activeSessionId?.let { udm.stopSession(it) }
@@ -3063,18 +3079,51 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             if (showVariables) {
                 if (isRunning && variables.isNotEmpty()) {
                     items(variables) { v ->
-                        Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)) {
-                            if (v.expandable) {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(12.dp))
-                            } else {
-                                Spacer(Modifier.width(16.dp))
+                        val isExpanded = expandedVarValues.containsKey(v.name)
+                        Column {
+                            Row(
+                                Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)
+                                    .then(if (v.expandable) Modifier.clickable {
+                                        if (isExpanded) {
+                                            expandedVarValues.remove(v.name)
+                                        } else {
+                                            val sid = activeSessionId
+                                            if (sid != null) {
+                                                val result = udm.evaluateExpression(sid, v.name)
+                                                expandedVarValues[v.name] = result ?: "<unable to evaluate>"
+                                            }
+                                        }
+                                    } else Modifier),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (v.expandable) {
+                                    Icon(
+                                        if (isExpanded) Icons.AutoMirrored.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        if (isExpanded) "Collapse" else "Expand",
+                                        tint = MutedColor, modifier = Modifier.size(12.dp),
+                                    )
+                                } else {
+                                    Spacer(Modifier.width(16.dp))
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                Text(v.name, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
+                                Text(": ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                                Text(v.type, fontSize = 11.sp, color = Color(0xFF569CD6), fontFamily = FontFamily.Monospace)
+                                Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                                Text(v.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            Spacer(Modifier.width(4.dp))
-                            Text(v.name, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
-                            Text(": ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
-                            Text(v.type, fontSize = 11.sp, color = Color(0xFF569CD6), fontFamily = FontFamily.Monospace)
-                            Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
-                            Text(v.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // P27-AUDIT: Show evaluated expansion below the row
+                            if (isExpanded) {
+                                Text(
+                                    expandedVarValues[v.name] ?: "",
+                                    fontSize = 10.sp,
+                                    color = MutedColor,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.padding(start = 48.dp, bottom = 2.dp, end = 12.dp),
+                                    maxLines = 5,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 } else {
