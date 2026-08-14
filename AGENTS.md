@@ -17960,3 +17960,27 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 - Test: fast typing should not show stale completions
 - Test: tap in editor should show hover info
 - Test: switching tabs should clear hover from previous file
+
+### [2026-08-14 08:56 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** a256a412 | **CI Build:** #31781456974 — FAILED (compilation errors)
+**What was fixed:** Phase X — Editor Interaction Trigger Reliability Upgrade. Added EditorEvent sealed class (8 event types) to gate LSP requests. Only UserTyping triggers completion, only UserTyping + UserCursorMove trigger hover/signature. Generation counters for stale-response protection. Per-method cancellation in JsonRpcClient/LspManager. Moved blocking signature help LSP call from remember() to async LaunchedEffect. Fire onCursorChange on tap/long-press (hover on touch). File-switch isolation clears stale hover/completion.
+**Files touched:** EditorEvent.kt (NEW), CodeEditor.kt, JsonRpcClient.kt, LspManager.kt, EditorPane.kt
+**Next on roadmap:** Fix build compilation errors (SignatureInfo? nullable + ConcurrentHashMap missing parens), rebuild APK, device retest all 57 tests.
+
+### [2026-08-14 08:58 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** 5ebc461c | **CI Build:** pending
+**What was fixed:** AGENTS.md Phase X documentation — full 11 sub-phase write-up with problem description, solution details, files modified, and next steps.
+**Files touched:** AGENTS.md
+**Next on roadmap:** Fix build compilation errors, rebuild APK, device retest.
+
+### [2026-08-14 09:00 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** 7e50a8ef | **CI Build:** pending
+**What was fixed:** Updated AGENTS.md test status — replaced old FAIL/PARTIAL section with comprehensive table mapping all 57 tests to their fix commits. All tests marked "FIXED — needs device retest."
+**Files touched:** AGENTS.md
+**Next on roadmap:** Fix build compilation errors, rebuild APK, device retest all 57 tests.
+
+### [2026-08-14 09:02 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** (this commit) | **CI Build:** pending
+**What was fixed:** Fixing broken build #31781456974 — root cause was 7 compilation errors in Phase X code: (1) CodeEditor.kt line 4169 — `activeSignature` is MutableState-backed var, Kotlin can't smart-cast after null check, needed `!!` assertion (6 downstream errors on lines 4176-4213 for sig.name/sig.params/sig.activeParam/sig.returnType). (2) JsonRpcClient.kt line 34 — `ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>` missing constructor parentheses `()`. Also adding CHANGE LOG entries for commits a256a412, 5ebc461c, 7e50a8ef that were missing from the required format.
+**Files touched:** CodeEditor.kt, JsonRpcClient.kt, AGENTS.md
+**Next on roadmap:** Rebuild APK, verify CI passes, then device retest all 57 tests. Priority: crash bugs (7,8,9,16), then functional (10-19), then UI restructure (36-42), then remaining (43-55).

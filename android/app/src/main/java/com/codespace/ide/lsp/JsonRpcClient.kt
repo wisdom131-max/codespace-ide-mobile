@@ -31,7 +31,7 @@ class JsonRpcClient(private val process: Process) {
     private val pendingRequests = ConcurrentHashMap<Long, CompletableFuture<Any?>>()
     // Phase X-7: Per-method pending request tracking — prevents cross-method cancellation
     // (e.g. cancelling a completion accidentally cancelling a hover with a higher ID).
-    private val pendingRequestsByMethod = ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>
+    private val pendingRequestsByMethod = ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>()
     private val notificationHandlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
     private val writeLock = Any()
 

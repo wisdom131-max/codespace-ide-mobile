@@ -4166,7 +4166,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // doesn't cover what's being typed. Hidden while the autocomplete dropdown is open
         // to avoid stacking two popups on the same spot.
         if (!showCompletions && activeSignature != null) {
-            val sig = activeSignature
+            val sig = activeSignature!!
             val cursorLineIdx = lineFromOffset(value.selection.end)
             val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
             // BUG-2 FIX: subtract scroll offset so the popup appears at the visible cursor position
