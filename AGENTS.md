@@ -48,6 +48,42 @@ After every commit you push, add an entry to the **CHANGE LOG** section at the E
 See the **CHANGE LOG** section at the bottom of this file. If the last entry says "Next: do X",
 then do X. Don't go searching for random work — follow the roadmap.
 
+## ⚠️ MANDATORY RULE: EMBED RULES IN EVERY AGENT MD & CHANGELOG UPDATE (ALL AI AGENTS MUST FOLLOW)
+
+**Problem:** Some AI agents don't bother to search for or read the full rules in AGENTS.md.
+They skip to the bottom, write a changelog entry, and never see the format requirements,
+the two-repo rule, the tag conventions, or the roadmap continuity rule above. This causes
+inconsistent entries, wrong repos, missing tags, and broken continuity.
+
+**Solution:** Every time you update AGENTS.md or write a CHANGE LOG entry, you MUST include
+a **Rules Reminder Block** at the TOP of your changelog entry. This block must contain the
+full rules so that even if an AI agent only reads the latest changelog entry, they still see
+ALL the rules. Copy this block verbatim into every changelog entry:
+
+```
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+```
+
+**When to add this block:**
+- Every CHANGE LOG entry you write
+- Every AGENTS.md update you make
+- Any new AGENTS.md file created in any repo in this project
+
+This ensures rules propagate across all agent MD files and all changelog entries, so
+no AI agent can claim they did not see the rules.
+
 ---
 
 # AI Agent / Copilot — MASTER PROJECT CONTEXT
@@ -17984,3 +18020,23 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 **What was fixed:** Fixing broken build #31781456974 — root cause was 7 compilation errors in Phase X code: (1) CodeEditor.kt line 4169 — `activeSignature` is MutableState-backed var, Kotlin can't smart-cast after null check, needed `!!` assertion (6 downstream errors on lines 4176-4213 for sig.name/sig.params/sig.activeParam/sig.returnType). (2) JsonRpcClient.kt line 34 — `ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>` missing constructor parentheses `()`. Also adding CHANGE LOG entries for commits a256a412, 5ebc461c, 7e50a8ef that were missing from the required format.
 **Files touched:** CodeEditor.kt, JsonRpcClient.kt, AGENTS.md
 **Next on roadmap:** Rebuild APK, verify CI passes, then device retest all 57 tests. Priority: crash bugs (7,8,9,16), then functional (10-19), then UI restructure (36-42), then remaining (43-55).
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+
+### [2026-08-14 09:08 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** (this commit) | **CI Build:** #31781456974 was RED, fixed in 3d405f7c → GREEN ✅
+**What was fixed:** Added new MANDATORY RULE to AGENTS.md — "EMBED RULES IN EVERY AGENT MD & CHANGELOG UPDATE". Requires all AI agents to include a Rules Reminder Block at the top of every changelog entry so agents who don't search/read the full AGENTS.md still see the two-repo rule, tag conventions, format requirements, and roadmap continuity rule. Also fixed 7 Phase X compile errors in commit 3d405f7c (SignatureInfo? nullable needing !!, ConcurrentHashMap missing constructor parens). Added missing CHANGE LOG entries for Phase X commits a256a412, 5ebc461c, 7e50a8ef.
+**Files touched:** AGENTS.md, CodeEditor.kt, JsonRpcClient.kt
+**Next on roadmap:** Rebuild APK (CI is GREEN on 3d405f7c), device retest all 57 tests. Priority order: crash bugs (7,8,9,16), functional (10-19), UI restructure (36-42), remaining (43-55). Phase X event-driven triggers need on-device validation.
