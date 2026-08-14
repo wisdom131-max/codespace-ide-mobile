@@ -17505,7 +17505,7 @@ STARTING → loading/disabled state
 - Added Restart button to RunDebugPanel — green Refresh icon between Step Out and Stop, wired to `udm.restartSession()`
 - Added Restart button to DebugConsolePanel (ProjectShellScreen.kt) — green Refresh icon before Stop, wired to `udm.restartSession()`
 **Files touched:** UniversalDebugManager.kt, DebugAdapter.kt, NodeDAPAdapter.kt, PythonDAPAdapter.kt, ExplorerPane.kt, ProjectShellScreen.kt
-**Next on roadmap:** Confirm CI build green. Continue UI wiring audit (menu items, keyboard shortcuts, all controls trace). Device testing. Phase U — Completion Pipeline Upgrade.
+**Next on roadmap:** Confirm CI build green. Continue UI wiring audit (menu items, keyboard shortcuts, all controls trace). Device testing.
 
 ### [2026-08-14 03:10 WAT] — AI Agent: Claude (Base44 Superagent)
 **Commit:** cc1af09 | **CI Build:** pending
@@ -17520,7 +17520,7 @@ STARTING → loading/disabled state
 - Audited PortsPanel — all controls wired (rescan, add port, click to open)
 - Audited DebugConsolePanel — all controls wired (session switcher, capability toolbar, input/send, attach dialog, restart, stop, run, clear)
 **Files touched:** ProjectShellScreen.kt
-**Next on roadmap:** Confirm CI build green. Device testing of all debug features + menu actions. Phase U — Completion Pipeline Upgrade.
+**Next on roadmap:** Confirm CI build green. Device testing of all debug features + menu actions.
 
 ### [2026-08-14 03:15 WAT] — AI Agent: Claude (Base44 Superagent)
 **Commit:** 305decc | **CI Build:** pending (fixes #2263-#2268)
@@ -17545,4 +17545,4 @@ Only one instance in the entire codebase (ExplorerPane.kt:3102).
 | 1 | ExplorerPane.kt | 3102 | compileProdDebugKotlin FAILED — Unresolved reference: Icons.AutoMirrored.Filled.KeyboardArrowDown (receiver type mismatch) | KeyboardArrowDown is not an auto-mirrored icon — only KeyboardArrowRight/Left are. Used AutoMirrored namespace for a non-auto-mirrored icon. | 305decc | KeyboardArrowDown has NO auto-mirrored variant. Only use Icons.Default.KeyboardArrowDown. AutoMirrored is only for directionally-sensitive icons (Left/Right). |
 
 **Files touched:** ExplorerPane.kt, AGENTS.md
-**Next on roadmap:** Confirm CI green. Device testing of all debug features + menu actions. Phase U — Completion Pipeline Upgrade.
+**Next on roadmap:** Confirm CI green. Device testing of all debug features + menu actions.
