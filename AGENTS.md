@@ -17393,6 +17393,54 @@ Both use:
 - ONE process lifecycle system
 - ONE source of truth
 
+### UI WIRING REQUIREMENT (Phase 27)
+
+Do not only create the backend architecture.
+
+Trace every existing Run/Debug UI control from the actual UI event
+to the underlying DebugManager operation.
+
+BOTTOM RUN UI:
+```
+Run button     → resolveActiveRunnableFile() → RunDebugController.run() → ExecutionManager → process
+Stop button    → RunDebugController.stop() → DebugManager → active session/process
+Restart button → RunDebugController.restart() → existing session cleanup → new session
+```
+
+ACTIVITY BAR DEBUGGER:
+```
+Run/Debug button   → DebugManager.startDebug()
+Continue           → DebugSession.continue()
+Pause              → DebugSession.pause()
+Step Over          → DebugSession.stepOver()
+Step Into          → DebugSession.stepInto()
+Step Out           → DebugSession.stepOut()
+Stop               → DebugSession.stop()
+Restart            → DebugSession.restart()
+Breakpoint click   → BreakpointManager.toggleBreakpoint()
+Call-stack frame   → Editor navigation to file + line + column
+Variable expansion → DebugSession.variables()
+Watch expression   → DebugSession.evaluate()
+Debug Console input → DebugSession.evaluate()
+```
+
+Every button/control must have a real end-to-end action.
+Do not leave UI controls as visual placeholders.
+
+After implementation, audit every Run/Debug control and report:
+```
+UI CONTROL → UI callback → controller method → manager method → session method → provider method → actual process/debugger operation
+```
+
+Also verify that UI state updates back from DebugState:
+```
+RUNNING  → Run button changes appropriately
+PAUSED   → Continue/Step controls become available
+STOPPED  → controls reset
+CRASHED  → error state displayed
+STARTING → loading/disabled state
+```
+
 ### [2026-08-14 02:20 WAT] — AI Agent: Claude (Base44 Superagent)
 **Commit:** f500b07c, 3ffa53a3 | **CI Build:** #2252 GREEN ✅, #2253 GREEN ✅, #2254 GREEN ✅
 **What was fixed:** (1) CI #2251 failed — duplicate `onPermissionRequest` in BrowserPreview WebChromeClient (conflicting overloads). Removed the one I added, kept the original. (2) Accidentally committed build log files — removed and added to .gitignore. (3) Registered Phase 27 — Run & Debug System Rebuild plan (PLAN FIRST) in AGENTS.md. Plan includes full architecture spec, debug state machine, UI wiring requirement, and 33-item plan-first output checklist. Awaiting Goodluck's approval before implementation.
@@ -17409,3 +17457,26 @@ Both use:
 - P27-5: Added restartSession() — stops current, preserves breakpoints, starts new session.
 **Files touched:** UniversalDebugManager.kt, PythonDAPAdapter.kt, NodeDAPAdapter.kt
 **Next on roadmap:** P27-6 ProcessTracker, P27-7 UI StateFlow, P27-8 Quick Run separation, P27-9 DebugConfiguration, P27-10 crash detection, P27-11 breakpoint verification
+### [2026-08-14 02:35 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 55db64f5 | **CI Build:** pending
+**What was fixed:** Phase 27 Run & Debug System Rebuild — Steps 6-8:
+- P27-6: Added ProcessTracker to UDM — TrackedProcess data class with PID, sessionId, command, workDir, startTime, exitStatus. Methods: trackProcess(), untrackProcess(), getTrackedProcess(), cleanupOrphanedProcesses().
+- P27-7: UDM now sets activeSessionId on successful startDebug() and clears it on stopSession(). RunDebugPanel state listener syncs activeSessionId with UDM as single source of truth — handles FAILED/CRASHED states. DebugConsolePanel state listener also handles FAILED/CRASHED.
+- P27-8: Quick Run vs Debug separation already exists at Activity Bar level (Run File button → terminal, Debug button → debug session). No change needed.
+**Files touched:** UniversalDebugManager.kt, ExplorerPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** P27-9 DebugConfiguration, P27-10 crash detection, P27-11 breakpoint verification
+
+### [2026-08-14 02:40 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 915ee8a0 | **CI Build:** pending
+**What was fixed:** Phase 27 Run & Debug System Rebuild — Steps 9-10:
+- P27-9: Created DebugConfiguration data class with name, type, program, args, cwd, env, runtime. Auto-derives from file path (Python/Node/Shell). Replaced hardcoded config dropdown in RunDebugPanel with DebugConfiguration.defaults. Language mapping now uses config type.
+- P27-10: Crash detection — onStopped callback now takes exitCode: Int. PythonDAPAdapter and NodeDAPAdapter store exit code from DAP 'exited' event in lastExitCode field, pass it to onStopped() on 'terminated' event. UDM transitions to CRASHED state if exitCode != 0, STOPPED if 0. LegacyDebugAdapter passes 0 (legacy providers don't track exit codes).
+**Files touched:** DebugConfiguration.kt (new), DebugAdapter.kt, PythonDAPAdapter.kt, NodeDAPAdapter.kt, UniversalDebugManager.kt, ExplorerPane.kt
+**Next on roadmap:** P27-11 breakpoint verification, final commit + changelog
+
+### [2026-08-14 02:45 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** df5904ef | **CI Build:** pending
+**What was fixed:** Phase 27 Run & Debug System Rebuild — Step 11:
+- P27-11: Breakpoint verification via DAP setBreakpoints response. Added verified + message fields to DebugBreakpoint data class. UDM.markBreakpointsVerified() updates breakpoint verified status from DAP setBreakpoints response body. Both PythonDAPAdapter and NodeDAPAdapter now extract per-breakpoint verification status from the setBreakpoints response and call markBreakpointsVerified() to update the UDM breakpoint store.
+**Files touched:** UniversalDebugManager.kt, PythonDAPAdapter.kt, NodeDAPAdapter.kt
+**Next on roadmap:** Confirm CI build green. Device testing of all Run/Debug features (P27 test matrix). UI wiring audit (trace every control end-to-end). Then Phase N — Advanced Notification System.
