@@ -17883,3 +17883,89 @@ Do NOT rewrite Terminal, Problems, or Output themselves unless necessary.
 14. Performance characteristics
 
 **Next on roadmap:** Audit existing bottom-panel layout → implement drag resize per this plan → manual device testing (18 tests).
+
+
+## Phase X — LSP Trigger Gating & Stale-Response Protection (commit a256a412)
+
+**Date:** 2026-08-14
+**Goal:** Fix spurious LSP requests on file open/switch, stale response overwrites, and cross-method cancellation.
+
+### Problem
+The editor was firing LSP completion, hover, signature help, and code-action requests on **every** `TextFieldValue` change — including file open, tab switch, content reload, and programmatic cursor moves. This caused:
+1. Spurious completion popups on file open
+2. Stale LSP responses overwriting fresh state (slow response from position A arriving after cursor moved to B)
+3. Cross-method cancellation (cancelling a completion could accidentally cancel a hover with a higher request ID)
+4. Blocking LSP call in `remember()` for signature help (ran on main thread during recomposition)
+
+### Solution (11 sub-phases)
+
+**X-1: EditorEvent sealed class** (`EditorEvent.kt` — NEW)
+- 8 event types: `InitialCursorPlacement`, `FileOpen`, `FileSwitch`, `UserTyping`, `UserCursorMove`, `UserSelection`, `ProgrammaticCursorMove`, `ProgrammaticTextChange`
+- Trigger authority properties: `shouldTriggerCompletion` (UserTyping only), `shouldTriggerHover` (UserTyping + UserCursorMove), `shouldTriggerSignatureHelp` (UserTyping + UserCursorMove), `shouldTriggerCodeActions` (all user events)
+- `logTag` for AppOutputLog tracing
+
+**X-2: Event tagging on all value write paths**
+- `onValueChange`: text changed → `UserTyping`, selection only → `UserSelection`
+- Tap handler: `UserCursorMove`
+- Long press handler: `UserSelection`
+- `onCursorMoved` (keyboard arrows): `UserCursorMove`
+- Content reload: `ProgrammaticCursorMove`
+- Format result: `ProgrammaticTextChange`
+- Completion commit: `ProgrammaticTextChange`
+- Snippet insertion/tab-stops: `ProgrammaticTextChange` / `ProgrammaticCursorMove`
+- Find/replace: `ProgrammaticTextChange`
+
+**X-3: Completion trigger gating**
+- `LaunchedEffect` for LSP completion now checks `editorEvent.shouldTriggerCompletion` — only fires on `UserTyping`
+- `showCompletions` LaunchedEffect also gated — suppressed on non-user events
+
+**X-4: Dot trigger separation**
+- Renamed `isDotTriggered` → `isDotContext` (pure state — true whenever cursor is after a dot)
+- Added `dotWasTyped` (event-derived — true only when `UserTyping` AND `isDotContext`)
+- `triggerKind=2` (TriggerCharacter) is sent when cursor is after a dot, which is correct because completion only fires on UserTyping now
+
+**X-5: Hover on tap**
+- `onCursorChange` callback now fires on tap and long-press handlers (previously only on keyboard cursor move)
+- Hover info appears when user taps in the editor, not just when using arrow keys
+
+**X-6: Signature help async fix**
+- Moved blocking LSP `lspSignatureHelpProvider.invoke()` out of `remember()` (main thread) into `LaunchedEffect` (coroutine)
+- `remember()` now only computes `isInsideCall` (pure boolean — scan backwards for unmatched `(`)
+- LSP request is async with 200ms debounce, gated on `editorEvent.shouldTriggerSignatureHelp`
+
+**X-7: Per-method cancellation**
+- `JsonRpcClient`: Added `pendingRequestsByMethod` map alongside `pendingRequests`
+- New `getPendingRequestId(method: String)` and `cancelRequest(method: String, requestId: Long)` overloads
+- `LspManager`: Added `getPendingRequestId(language, method)` and `cancelPendingRequest(language, method, requestId)`
+- `EditorPane.kt`: Cancellation providers updated to use `"textDocument/completion"` — cancelling a completion can no longer cancel a hover
+
+**X-8: Stale-response protection (generation counters)**
+- `completionRequestGen` in CodeEditor.kt — incremented before each LSP completion request, checked after response
+- `hoverRequestGen` in EditorPane.kt — incremented before each hover request, checked after response
+- `signatureHelpRequestGen` in CodeEditor.kt — same pattern for signature help
+- Stale responses are discarded with AppOutputLog logging
+
+**X-9: Code-action gating**
+- `LaunchedEffect` for code actions now checks `editorEvent.shouldTriggerCodeActions` — only fires on user events, not on file open/switch
+
+**X-11: File/tab isolation**
+- `LaunchedEffect(active?.path)` in EditorPane.kt now clears `lspHoverContent = null` and increments `hoverRequestGen` to invalidate any in-flight hover from the previous file
+- Prevents stale hover results from previous document appearing in new document
+
+**X-13: LSP trigger logging**
+- All trigger decisions logged via AppOutputLog: `COMPLETION_TRIGGER blocked/allowed`, `DOT_CONTEXT`, `DOT_TYPED`, `triggerKind=1/2`, `stale_response_discarded`
+
+### Files Modified
+- `EditorEvent.kt` (NEW) — sealed class
+- `CodeEditor.kt` — event tagging, completion/hover/signature gating, stale checks, logging
+- `JsonRpcClient.kt` — per-method pending request tracking + cancel overloads
+- `LspManager.kt` — per-method cancel functions
+- `EditorPane.kt` — hover stale-response, file-switch isolation, per-method cancel wiring
+
+### Next Steps
+- Build APK and verify on device
+- Test: file open should NOT trigger completion popups
+- Test: typing `obj.` should trigger completion with triggerKind=2
+- Test: fast typing should not show stale completions
+- Test: tap in editor should show hover info
+- Test: switching tabs should clear hover from previous file
