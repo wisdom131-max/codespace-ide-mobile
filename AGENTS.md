@@ -17130,3 +17130,9 @@ Before implementation, produce a complete plan covering:
 **What was fixed:** Phase N phase 15 — Rate limiting hardening. (1) Added per-source rate limits to Settings: LSP=10/s, Build=3/s, Git=5/s, Terminal=8/s, DAP=5/s, System=3/s, others=5/s (global default). (2) Added burst protection: max 50 total notifications per 10s window — suppresses flood attacks. (3) Added configurable dedup window (default 5s, was hardcoded). (4) Added suppressedCount counter for diagnostics. (5) All Phase 15 settings persisted to SharedPreferences. (6) rateLimitFor() helper returns source-specific limit, checkBurstLimit() and checkSourceRateLimit() guard the add() entry point before dedup logic.
 **Files touched:** NotificationStore.kt
 **Next on roadmap:** Phase 16 (full testing checklist), device testing SCM E1-E18
+
+### [2026-08-14 01:50 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** pending | **CI Build:** pending
+**What was fixed:** Phase N phase 16 — Full testing checklist. 24 test scenarios (N-01 through N-24) covering all 15 phases: core model, priority, severity, states, actions, progress, error details, undo, persistence, settings, build/debug/terminal integration, accessibility, rate limiting, DND, sound, bell position, and clearResolved. Written to docs/phase_n_test_checklist.md.
+**Files touched:** docs/phase_n_test_checklist.md
+**Next on roadmap:** Device testing of all N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix; Phase P — Advanced Problems Panel
