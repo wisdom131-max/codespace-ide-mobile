@@ -15,6 +15,7 @@ import com.codespace.ide.util.WorkspaceManager
 import android.widget.Toast
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -401,17 +402,17 @@ private fun PssTopBar(
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Spacer(Modifier.width(4.dp))
-        // Back button
-        Box(Modifier.size(44.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(22.dp))
+        // Back button — sits right next to the pill (VS Code style)
+        Box(Modifier.size(28.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(18.dp))
         }
-        // Centered search pill
+        // Centered search pill — long, rounded rectangle (VS Code style)
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(
-                Modifier.background(Color(0xFFECECEC), RoundedCornerShape(4.dp))
+                Modifier.background(Color(0xFFECECEC), RoundedCornerShape(12.dp))
                     .clickable { onShowCommandPalette() }
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .border(1.dp, Color(0xFFD0D0D0), RoundedCornerShape(12.dp)),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -420,6 +421,7 @@ private fun PssTopBar(
                 Text(projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1)
             }
         }
+        Spacer(Modifier.width(4.dp))
         // ── VS Code-style layout box icons (top-right) ──
         // Test 36: Reordered to match real VS Code — Customize Layout (Editor Layout)
         // icon comes FIRST, followed by Primary Side Bar / Panel / Secondary Side Bar
@@ -1156,7 +1158,11 @@ fun ProjectShellScreen(
                 // Side Panel — hidden in Zen Mode
                 if (!zenMode && activePanel != null && !fullScreen) {
                     val spWidth = with(density) { sidePanelWidth.toDp() }.coerceIn(150.dp, 500.dp)
-                    Column(Modifier.width(spWidth).fillMaxHeight().background(BgColor)) {
+                    Column(
+                        Modifier.width(spWidth).fillMaxHeight()
+                            .background(BgColor, RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                            .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                    ) {
                         when (activePanel) {
                             SidePanel.EXPLORER -> ExplorerSidePanel(
                                 projectId = projectId,
@@ -1859,53 +1865,53 @@ private fun PssOverlays(
             }
         }
 
-        // Gear / Settings menu — VS Code-style bottom-left dropdown
+        // Gear / Settings menu — VS Code-style bottom-left dropdown (wider, centered, rounded)
+        var showThemesSubmenu by remember { mutableStateOf(false) }
         if (showGearMenu) {
             Box(
                 Modifier.fillMaxSize()
-                    .background(Color(0x44000000))
                     .pointerInput(Unit) {
                         detectTapGestures { onShowGearMenuChange(false) }
                     }
             ) {
+                // Main gear menu — wider, centered to the left, rounded
                 Card(
                     Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 52.dp, bottom = 56.dp)
-                        .width(240.dp)
-                        .heightIn(max = 360.dp)
+                        .padding(start = 48.dp, bottom = 52.dp)
+                        .width(280.dp)
+                        .heightIn(max = 420.dp)
                         .pointerInput(Unit) {
                             detectTapGestures { /* swallow taps inside the card */ }
                         },
                     colors = CardDefaults.cardColors(containerColor = MenuBg),
                     elevation = CardDefaults.cardElevation(8.dp),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(12.dp),
                 ) {
                     LazyColumn(Modifier.padding(4.dp)) {
                         item {
                             Text("Settings", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f),
                                 modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
                         }
+                        // Themes row — has chevron (>) for submenu
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { showThemesSubmenu = !showThemesSubmenu }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Themes", fontSize = 13.sp, color = MenuText)
+                                Icon(Icons.Default.KeyboardArrowRight, null, tint = MenuText.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
                         val gearItems = listOf(
-                            "Color Theme" to { onShowColorThemeChange(true); onShowGearMenuChange(false) },
                             "Toggle Sidebar" to { onActivePanelChange(if (activePanel == null) SidePanel.EXPLORER else null); onShowGearMenuChange(false) },
                             "Toggle Terminal" to { onShowBottomPanelChange(!showBottomPanel); onShowGearMenuChange(false) },
                             "Toggle Copilot Chat" to { onShowChatPanelChange(!showChatPanel); onShowGearMenuChange(false) },
                             "Toggle Zen Mode" to { handleMenuAction("Toggle Zen Mode"); onShowGearMenuChange(false) },
-                            "Font Size +" to { onEditorFontSizeChange((editorFontSize + 1).coerceAtMost(32)); onShowGearMenuChange(false) },
-                            "Font Size -" to { onEditorFontSizeChange((editorFontSize - 1).coerceAtLeast(8)); onShowGearMenuChange(false) },
-                            "App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}" to {
-                                onAppWakeLockOnChange(!appWakeLockOn)
-                                val appCtx = context.applicationContext as com.codespace.ide.CodeSpaceApplication
-                                if (appWakeLockOn) {
-                                    appCtx.acquireAppWakeLock()
-                                    showNotification("App WakeLock ON — CPU stays active", "success")
-                                } else {
-                                    appCtx.releaseAppWakeLock()
-                                    showNotification("App WakeLock OFF", "info")
-                                }
-                                onShowGearMenuChange(false)
-                            },
                         )
                         items(gearItems) { (label, action) ->
                             Row(
@@ -1915,6 +1921,29 @@ private fun PssOverlays(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(label, fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                        item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
+                        // Font controls
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Font Size", fontSize = 13.sp, color = MenuText)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(24.dp).clickable { onEditorFontSizeChange((editorFontSize - 1).coerceAtLeast(8)) }.background(MenuText.copy(alpha = 0.1f), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
+                                        Text("-", fontSize = 14.sp, color = MenuText)
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("$editorFontSize sp", fontSize = 12.sp, color = MenuText.copy(alpha = 0.7f))
+                                    Spacer(Modifier.width(8.dp))
+                                    Box(Modifier.size(24.dp).clickable { onEditorFontSizeChange((editorFontSize + 1).coerceAtMost(32)) }.background(MenuText.copy(alpha = 0.1f), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
+                                        Text("+", fontSize = 14.sp, color = MenuText)
+                                    }
+                                }
                             }
                         }
                         item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
@@ -1941,11 +1970,77 @@ private fun PssOverlays(
                         item {
                             Row(
                                 Modifier.fillMaxWidth()
+                                    .clickable {
+                                        onAppWakeLockOnChange(!appWakeLockOn)
+                                        val appCtx = context.applicationContext as com.codespace.ide.CodeSpaceApplication
+                                        if (!appWakeLockOn) {
+                                            appCtx.acquireAppWakeLock()
+                                            showNotification("App WakeLock ON — CPU stays active", "success")
+                                        } else {
+                                            appCtx.releaseAppWakeLock()
+                                            showNotification("App WakeLock OFF", "info")
+                                        }
+                                        onShowGearMenuChange(false)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("App WakeLock: ${if (appWakeLockOn) "ON" else "OFF"}", fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                        item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
                                     .clickable { onShowGearMenuChange(false); onSignOut() }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("Sign Out", fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                    }
+                }
+                // Themes submenu — appears to the right of the gear menu (VS Code style)
+                if (showThemesSubmenu) {
+                    Card(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 332.dp, bottom = 52.dp)
+                            .width(200.dp)
+                            .pointerInput(Unit) {
+                                detectTapGestures { /* swallow taps */ }
+                            },
+                        colors = CardDefaults.cardColors(containerColor = MenuBg),
+                        elevation = CardDefaults.cardElevation(8.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(Modifier.padding(4.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { onShowColorThemeChange(true); showThemesSubmenu = false; onShowGearMenuChange(false) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Color Theme", fontSize = 13.sp, color = MenuText)
+                            }
+                            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { showNotification("File Icon Theme — coming soon", "info"); showThemesSubmenu = false }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("File Icon Theme", fontSize = 13.sp, color = MenuText)
+                            }
+                            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { showNotification("Product Icon Theme — coming soon", "info"); showThemesSubmenu = false }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Product Icon Theme", fontSize = 13.sp, color = MenuText)
                             }
                         }
                     }
@@ -2189,6 +2284,8 @@ private fun PssActivityBar(
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // VS Code-style rounded container wrapping activity bar icons
+        Spacer(Modifier.height(4.dp))
         // P-SCM-7: Use GitCommandExecutor for badge count (replaces raw execOnce)
         val gitBadgeCount by produceState(0, projectId, activeEditorTab) {
             withContext(Dispatchers.IO) {
@@ -2226,6 +2323,13 @@ private fun PssActivityBar(
                 kotlinx.coroutines.delay(3_000)
             }
         }
+        Card(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 4.dp)
+                .background(activityBarBg, RoundedCornerShape(8.dp)),
+            colors = CardDefaults.cardColors(containerColor = activityBarBg),
+            shape = RoundedCornerShape(8.dp),
+        ) {
         listOf(
             Triple(SidePanel.EXPLORER, Icons.Default.Description, 0),
             Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
@@ -2240,7 +2344,7 @@ private fun PssActivityBar(
                 contentAlignment = Alignment.Center,
             ) {
                 if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
-                Icon(icon, null, tint = if (isActive) activityBarIconActive else activityBarIcon, modifier = Modifier.size(24.dp))
+                Icon(icon, null, tint = if (isActive) activityBarIconActive else activityBarIcon, modifier = Modifier.size(26.dp))
                 if (badge > 0) {
                     Box(
                         Modifier.align(Alignment.BottomEnd)
@@ -2252,13 +2356,25 @@ private fun PssActivityBar(
                 }
             }
         }
+        } // end Card
+        Spacer(Modifier.height(4.dp))
         Spacer(Modifier.weight(1f))
+        // Bottom icons (Account + Settings) also in a rounded container
+        Card(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 4.dp)
+                .background(activityBarBg, RoundedCornerShape(8.dp)),
+            colors = CardDefaults.cardColors(containerColor = activityBarBg),
+            shape = RoundedCornerShape(8.dp),
+        ) {
         Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowPersonMenu() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.AccountCircle, null, tint = activityBarIcon, modifier = Modifier.size(24.dp))
+            Icon(Icons.Default.AccountCircle, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
         }
         Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowGearMenu() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Settings, null, tint = activityBarIcon, modifier = Modifier.size(24.dp))
+            Icon(Icons.Default.Settings, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
         }
+        } // end bottom Card
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -3218,11 +3334,13 @@ private fun StatusBarContent(
             }
         }
         Spacer(Modifier.weight(1f))
-        // P9-5: Live cursor position
-        Text("Ln $cursorLine, Col $cursorCol", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
-        Spacer(Modifier.width(8.dp))
-        Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
-        Spacer(Modifier.width(8.dp))
+        // P9-5: Live cursor position — only shown when a file is open (VS Code behavior)
+        if (activeEditorTab != null) {
+            Text("Ln $cursorLine, Col $cursorCol", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+            Spacer(Modifier.width(8.dp))
+            Text("UTF-8", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+            Spacer(Modifier.width(8.dp))
+        }
         // P9-3: RAM usage indicator
         val memInfo = remember { mutableStateOf(MemoryMonitor.getMemInfo()) }
         LaunchedEffect(Unit) {
@@ -3674,7 +3792,13 @@ private fun PssEditorColumn(
                     udm = udm,
                 )
             } else {
-                Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.fillMaxSize()
+                        .padding(4.dp)
+                        .background(BgColor, RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         androidx.compose.foundation.Image(
                             painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.vncode_watermark),
@@ -4153,11 +4277,13 @@ private fun ExplorerOverflowMenu(
 ) {
     val items = listOf("New File", "New Folder", "Refresh", "Collapse All", "Open in Terminal")
 
-    Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
+    // No full-screen scrim — menu floats transparently, only closes via the 3-dot icon
+    Box(Modifier.fillMaxSize()) {
         Card(
             Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp),
             colors = CardDefaults.cardColors(containerColor = menuBg),
             elevation = CardDefaults.cardElevation(8.dp),
+            shape = RoundedCornerShape(12.dp),
         ) {
             items.forEach { item ->
                 Row(
