@@ -1215,11 +1215,6 @@ private fun BrowserPreview(
                 wv.webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
 
-                    // TEST-51-FIX: Grant media permissions for YouTube video playback
-                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
-                        request?.grant(request.resources)
-                    }
-
                     override fun onShowFileChooser(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
@@ -1373,11 +1368,6 @@ private fun RemotionPreview(
                 }
                 wv.webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
-
-                    // TEST-51-FIX: Grant media permissions for YouTube video playback
-                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
-                        request?.grant(request.resources)
-                    }
 
                     override fun onShowFileChooser(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,

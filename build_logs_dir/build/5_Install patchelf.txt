@@ -1,0 +1,50 @@
+﻿2026-08-14T00:45:35.5511004Z ##[group]Run sudo apt-get update && sudo apt-get install -y patchelf
+2026-08-14T00:45:35.5511623Z [36;1msudo apt-get update && sudo apt-get install -y patchelf[0m
+2026-08-14T00:45:35.5537437Z shell: /usr/bin/bash -e {0}
+2026-08-14T00:45:35.5537753Z env:
+2026-08-14T00:45:35.5538075Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-8/x64
+2026-08-14T00:45:35.5538593Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-8/x64
+2026-08-14T00:45:35.5538996Z   ANDROID_HOME: /usr/local/lib/android/sdk
+2026-08-14T00:45:35.5539337Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+2026-08-14T00:45:35.5539642Z ##[endgroup]
+2026-08-14T00:45:35.6471105Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-08-14T00:45:35.7009415Z Get:6 https://packages.microsoft.com/repos/azure-cli noble InRelease [3564 B]
+2026-08-14T00:45:35.7185919Z Get:7 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-08-14T00:45:35.7443428Z Get:8 https://dl.google.com/linux/chrome-stable/deb stable InRelease [2548 B]
+2026-08-14T00:45:35.7986776Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-08-14T00:45:35.8000280Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-08-14T00:45:35.8073396Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-08-14T00:45:35.8122242Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-08-14T00:45:35.8170195Z Get:9 https://packages.microsoft.com/repos/azure-cli noble/main amd64 Packages [2452 B]
+2026-08-14T00:45:35.8427008Z Get:10 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [280 kB]
+2026-08-14T00:45:35.8612010Z Get:11 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [321 kB]
+2026-08-14T00:45:35.8723768Z Get:12 https://packages.microsoft.com/ubuntu/24.04/prod noble/main armhf Packages [12.3 kB]
+2026-08-14T00:45:35.9090734Z Get:13 https://dl.google.com/linux/chrome-stable/deb stable/main amd64 Packages [1413 B]
+2026-08-14T00:45:35.9590893Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1191 kB]
+2026-08-14T00:45:35.9662713Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [282 kB]
+2026-08-14T00:45:35.9670293Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Components [180 kB]
+2026-08-14T00:45:35.9687652Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1683 kB]
+2026-08-14T00:45:35.9759006Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [335 kB]
+2026-08-14T00:45:35.9785458Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Components [388 kB]
+2026-08-14T00:45:35.9837708Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1424 kB]
+2026-08-14T00:45:35.9905175Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [323 kB]
+2026-08-14T00:45:35.9906973Z Get:22 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse Translation-en [12.6 kB]
+2026-08-14T00:45:35.9923123Z Get:23 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Components [940 B]
+2026-08-14T00:45:36.0570997Z Get:24 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Components [5768 B]
+2026-08-14T00:45:36.0582280Z Get:25 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Components [12.6 kB]
+2026-08-14T00:45:36.0589763Z Get:26 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [934 kB]
+2026-08-14T00:45:36.0629705Z Get:27 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [202 kB]
+2026-08-14T00:45:36.0644377Z Get:28 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Components [46.3 kB]
+2026-08-14T00:45:36.0652915Z Get:29 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1201 kB]
+2026-08-14T00:45:36.0799066Z Get:30 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [240 kB]
+2026-08-14T00:45:36.0819227Z Get:31 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Components [76.3 kB]
+2026-08-14T00:45:36.0829057Z Get:32 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1329 kB]
+2026-08-14T00:45:36.0888578Z Get:33 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [304 kB]
+2026-08-14T00:45:36.0911424Z Get:34 http://azure.archive.ubuntu.com/ubuntu noble-security/multiverse Translation-en [10.9 kB]
+2026-08-14T00:45:44.0199142Z Fetched 11.2 MB in 1s (8569 kB/s)
+2026-08-14T00:45:44.6427477Z Reading package lists...
+2026-08-14T00:45:44.6668920Z Reading package lists...
+2026-08-14T00:45:44.7634264Z Building dependency tree...
+2026-08-14T00:45:44.7639775Z Reading state information...
+2026-08-14T00:45:44.9461000Z patchelf is already the newest version (0.18.0-1.1build1).
+2026-08-14T00:45:44.9461549Z 0 upgraded, 0 newly installed, 0 to remove and 8 not upgraded.
