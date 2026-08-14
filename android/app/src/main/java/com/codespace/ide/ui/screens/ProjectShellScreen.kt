@@ -17,6 +17,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
@@ -2296,6 +2299,59 @@ private fun PssOverlays(
 /**
  * Activity bar (left icon strip). Extracted from ProjectShellScreen to reduce DEX register count.
  */
+/**
+ * Custom-drawn Extensions icon: a 2x2 grid of hollow rounded shapes — 3 squares +
+ * 1 diamond (rotated square) in the top-right slot — matching the reference icon
+ * the user provided (NOT the real VS Code codicon, which is a merged puzzle shape
+ * the user explicitly did not want). Drawn via Canvas for pixel-accurate control
+ * instead of hand-authored vector pathData.
+ */
+@Composable
+private fun VscodeExtensionsIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val s = size.minDimension / 100f
+        val strokeW = 8f * s
+        val corner = androidx.compose.ui.geometry.CornerRadius(8f * s, 8f * s)
+        val squareSize = androidx.compose.ui.geometry.Size(36f * s, 36f * s)
+        val style = Stroke(width = strokeW)
+
+        // Top-left square
+        drawRoundRect(
+            color = tint,
+            topLeft = androidx.compose.ui.geometry.Offset(8f * s, 8f * s),
+            size = squareSize,
+            cornerRadius = corner,
+            style = style,
+        )
+        // Bottom-left square
+        drawRoundRect(
+            color = tint,
+            topLeft = androidx.compose.ui.geometry.Offset(8f * s, 56f * s),
+            size = squareSize,
+            cornerRadius = corner,
+            style = style,
+        )
+        // Bottom-right square
+        drawRoundRect(
+            color = tint,
+            topLeft = androidx.compose.ui.geometry.Offset(56f * s, 56f * s),
+            size = squareSize,
+            cornerRadius = corner,
+            style = style,
+        )
+        // Top-right diamond — a rounded square rotated 45° about its own center
+        rotate(degrees = 45f, pivot = androidx.compose.ui.geometry.Offset(72f * s, 26f * s)) {
+            drawRoundRect(
+                color = tint,
+                topLeft = androidx.compose.ui.geometry.Offset(54f * s, 8f * s),
+                size = squareSize,
+                cornerRadius = corner,
+                style = style,
+            )
+        }
+    }
+}
+
 @Composable
 private fun PssActivityBar(
     projectId: String,
@@ -2631,12 +2687,19 @@ private fun PssActivityBar(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
-                        Icon(
-                            painter = painterResource(id = iconRes),
-                            contentDescription = null,
-                            tint = if (isActive) activityBarIconActive else activityBarIcon,
-                            modifier = Modifier.size(26.dp),
-                        )
+                        if (panel == SidePanel.EXTENSIONS) {
+                            VscodeExtensionsIcon(
+                                tint = if (isActive) activityBarIconActive else activityBarIcon,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = iconRes),
+                                contentDescription = null,
+                                tint = if (isActive) activityBarIconActive else activityBarIcon,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
                         if (badge > 0) {
                             Box(
                                 Modifier.align(Alignment.BottomEnd)
@@ -2697,12 +2760,19 @@ private fun PssActivityBar(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
-                        Icon(
-                            painter = painterResource(id = iconRes),
-                            contentDescription = null,
-                            tint = if (isActive) activityBarIconActive else activityBarIcon,
-                            modifier = Modifier.size(26.dp),
-                        )
+                        if (panel == SidePanel.EXTENSIONS) {
+                            VscodeExtensionsIcon(
+                                tint = if (isActive) activityBarIconActive else activityBarIcon,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = iconRes),
+                                contentDescription = null,
+                                tint = if (isActive) activityBarIconActive else activityBarIcon,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
                         if (badge > 0) {
                             Box(
                                 Modifier.align(Alignment.BottomEnd)
