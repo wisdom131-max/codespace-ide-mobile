@@ -3099,7 +3099,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             ) {
                                 if (v.expandable) {
                                     Icon(
-                                        if (isExpanded) Icons.AutoMirrored.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                         if (isExpanded) "Collapse" else "Expand",
                                         tint = MutedColor, modifier = Modifier.size(12.dp),
                                     )
