@@ -135,7 +135,7 @@ no AI agent can claim they did not see the rules.
 
 | | |
 |-|-|
-| Latest commit | fb86f8e — feat(UI): Activity bar hamburger + VS Code icons + landscape overflow + file picker |
+| Latest commit | 1432f16327 — fix(icons): remove invalid android:tint=?attr/colorOnSurface from all 6 codicon XMLs (build fix #2285–#2295) |
 | Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu at top of activity bar, File submenu (New Text File, Open File picker, Open Folder picker, Open Recent, New Window with Profile), VS Code-exact icons (6 custom vector drawables), landscape overflow (Explorer + active + "..." MRU). Build pending. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -18120,3 +18120,35 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 3. Wired `VscodeExtensionsIcon` into both the portrait and landscape activity-bar icon-rendering branches in PssActivityBar (special-cased on `panel == SidePanel.EXTENSIONS`, other panels still use painterResource with the static vector drawables).
 **Files touched:** ProjectShellScreen.kt (added VscodeExtensionsIcon composable + Canvas/Stroke/rotate imports, updated 2 render call-sites), drawable/ic_vscode_run_debug.xml (exact codicon path), AGENTS.md
 **Next on roadmap:** Verify CI green. Device retest all 57 tests. Remaining UI items: bottom panel rounded corners, chat panel rounded corners, Open Recent needs to filter command palette to recent files, New Window with Profile needs to actually navigate to new project (currently calls onBack), folder picker needs to add folder to explorer tree, unused ic_vscode_extensions.xml puzzle-piece drawable can be deleted (dead resource, harmless).
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+7. **UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum). Save to memory.**
+
+### [$TIMESTAMP] — AI Agent: $AGENT
+**Commit:** 1432f16327 (last of 6 icon fixes) | **CI Build:** #2285–#2295 all FAILED ❌ → fix pending CI
+**Tags:** [BUILD-FIX], [UI], [ICONS]
+**What was fixed:** Fixed 11 consecutive CI failures (#2285–#2295) caused by a single root cause: all 6 VS Code codicon vector drawable XMLs (ic_vscode_explorer, ic_vscode_search, ic_vscode_source_control, ic_vscode_run_debug, ic_vscode_extensions, ic_vscode_hamburger) declared `android:tint="?attr/colorOnSurface"` — but the app theme (`Theme.CodeSpace` parent=`android:Theme.Material.NoActionBar`) does NOT define `colorOnSurface` (that's a Material Components / Material3 attr, not available in the platform Material theme). AAPT2 failed at `processProdDebugResources` with "resource attr/colorOnSurface not found". Fix: removed the `android:tint` line from all 6 XML files — the Compose `Icon(tint = if (isActive) activityBarIconActive else activityBarIcon)` in ProjectShellScreen.kt already handles icon tinting at render time, so the XML tint was both redundant and broken. Each icon was fixed in a separate commit for traceability.
+**Files touched:** drawable/ic_vscode_explorer.xml, drawable/ic_vscode_search.xml, drawable/ic_vscode_source_control.xml, drawable/ic_vscode_run_debug.xml, drawable/ic_vscode_extensions.xml, drawable/ic_vscode_hamburger.xml, AGENTS.md
+**Commits:** 0a431fc4a2, 4e1d7da3c7, 66abedb3e5, f3219aee63, a1cd9a9849, 1432f16327
+**Next on roadmap:**
+1. ⏳ Verify CI green on this fix (build #2296 or later)
+2. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+3. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom — add `Modifier.width(IntrinsicSize.Min)` to BasicTextField + `LaunchedEffect(fontSize)` to clamp scroll state
+4. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y coordinate; fix `distinctBy { it.start }` to composite key; stack vertically
+5. 🔲 TypeScript 7 as default LSP with vtsls, TS 5.6.3/4.9.5 backup, version toggle in settings, auto-install on selection
+6. 🔲 Multi-Cursor feature — double-tap trigger, 3-dot floating menu, Select Next/All Occurrences, column-aware selection
+7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+8. 🔲 Codicon activity bar icons — waiting for Wisdom's screenshots to match exact VS Code codicon designs
+9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
