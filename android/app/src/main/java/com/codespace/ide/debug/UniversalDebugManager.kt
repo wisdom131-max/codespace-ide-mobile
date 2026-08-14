@@ -70,6 +70,7 @@ data class DebugVariable(
     val value: String,
     val depth: Int = 0,
     val expandable: Boolean = false,
+    val variablesReference: Int = 0,  // P27-AUDIT: DAP variablesReference for child variable expansion
 )
 
 /** A frame in the call stack. */
@@ -630,6 +631,14 @@ object UniversalDebugManager {
             return adapter.evaluate(session, expression)
         }
         return providers.find { it.id == session.providerId }?.evaluate(session, expression)
+    }
+
+    // P27-AUDIT: Fetch child variables for an expandable variable (DAP variablesReference > 0)
+    fun getChildVariables(sessionId: String, variablesReference: Int): List<DebugVariable> {
+        if (variablesReference == 0) return emptyList()
+        val session = sessions[sessionId] ?: return emptyList()
+        val adapter = sessionAdapters[sessionId] ?: return emptyList()
+        return adapter.getVariables(session, variablesReference)
     }
 
     /**

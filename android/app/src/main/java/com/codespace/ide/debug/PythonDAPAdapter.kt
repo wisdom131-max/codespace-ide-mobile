@@ -402,14 +402,39 @@ class PythonDAPAdapter : DebugAdapter {
             val vars = varResp.optJSONArray("variables") ?: continue
             for (j in 0 until vars.length()) {
                 val v = vars.getJSONObject(j)
+                val varRef = v.optInt("variablesReference", 0)
                 result += DebugVariable(
                     name       = v.optString("name", "?"),
                     type       = v.optString("type", scopeName),
                     value      = v.optString("value", ""),
                     depth      = 0,
-                    expandable = v.optInt("variablesReference", 0) > 0,
+                    expandable = varRef > 0,
+                    variablesReference = varRef,
                 )
             }
+        }
+        return result
+    }
+
+    // P27-AUDIT: Public override — fetch child variables by DAP variablesReference
+    override fun getVariables(session: DebugSession, variablesReference: Int): List<DebugVariable> {
+        if (variablesReference == 0) return emptyList()
+        val dapClient = client ?: return emptyList()
+        val varResp = dapClient.request("variables",
+            JSONObject().put("variablesReference", variablesReference).put("count", 100),
+            timeoutSeconds = 5) ?: return emptyList()
+        val vars = varResp.optJSONArray("variables") ?: return emptyList()
+        val result = mutableListOf<DebugVariable>()
+        for (j in 0 until vars.length()) {
+            val v = vars.getJSONObject(j)
+            val ref = v.optInt("variablesReference", 0)
+            result += DebugVariable(
+                name       = v.optString("name", "?"),
+                type       = v.optString("type", ""),
+                value      = v.optString("value", ""),
+                expandable = ref > 0,
+                variablesReference = ref,
+            )
         }
         return result
     }

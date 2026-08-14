@@ -17490,3 +17490,19 @@ STARTING → loading/disabled state
 - Simple variable expansion in RunDebugPanel — tapping expandable variable arrow calls existing udm.evaluateExpression() and shows result inline (no new DAP methods or data class fields needed). Arrow toggles between right/down states. Expanded value shows up to 5 lines below the variable row.
 **Files touched:** ExplorerPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Confirm CI build green. Device testing of Run/Debug features. Continue UI wiring audit (menu items, keyboard shortcuts). Phase S — LSP Spec Compliance.
+
+### [2026-08-14 03:00 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** d24a195 | **CI Build:** pending
+**Tags:** DEBUG-FIX, UI-FIX
+**What was fixed:** Phase 27 UI Wiring Audit — Full DAP variable expansion + Restart buttons:
+- Added `variablesReference` field to `DebugVariable` data class — stores DAP variablesReference for child expansion
+- Added `getVariables(session, variablesReference)` to `DebugAdapter` interface with default emptyList() — legacy adapters return empty
+- Added `getVariables()` override to `NodeDAPAdapter` — fetches child variables via DAP `variables` request by variablesReference
+- Added `getVariables()` override to `PythonDAPAdapter` — same DAP variables request with count=100
+- Added `getChildVariables(sessionId, variablesReference)` to `UniversalDebugManager` — routes to adapter.getVariables()
+- Updated `fetchVariables()` in both NodeDAPAdapter and PythonDAPAdapter to populate `variablesReference` field from DAP response
+- Wired full variable expansion UI in RunDebugPanel (ExplorerPane.kt) — tap expandable var arrow → calls `udm.getChildVariables()` → renders child variables inline (depth 1, indented at 48dp, smaller 10sp font)
+- Added Restart button to RunDebugPanel — green Refresh icon between Step Out and Stop, wired to `udm.restartSession()`
+- Added Restart button to DebugConsolePanel (ProjectShellScreen.kt) — green Refresh icon before Stop, wired to `udm.restartSession()`
+**Files touched:** UniversalDebugManager.kt, DebugAdapter.kt, NodeDAPAdapter.kt, PythonDAPAdapter.kt, ExplorerPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** Confirm CI build green. Continue UI wiring audit (menu items, keyboard shortcuts, all controls trace). Device testing. Phase U — Completion Pipeline Upgrade.

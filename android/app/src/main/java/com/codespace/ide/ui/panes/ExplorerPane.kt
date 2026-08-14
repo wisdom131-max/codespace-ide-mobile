@@ -2858,8 +2858,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var showWatch by remember { mutableStateOf(false) }
     var showCallStack by remember { mutableStateOf(true) }
     var showBreakpoints by remember { mutableStateOf(true) }
-    // P27-AUDIT: Simple variable expansion — evaluate via existing evaluateExpression
-    val expandedVarValues = remember { mutableStateMapOf<String, String>() }
+    // P27-AUDIT: Full DAP variable expansion — maps variable key to child variables
+    val expandedVarChildren = remember { mutableStateMapOf<String, List<DebugVariable>>() }
     var watchInput by remember { mutableStateOf("") }
     var watchIdCounter by remember { mutableStateOf(0) }
     var debugInput by remember { mutableStateOf("") }
@@ -3079,18 +3079,19 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             if (showVariables) {
                 if (isRunning && variables.isNotEmpty()) {
                     items(variables) { v ->
-                        val isExpanded = expandedVarValues.containsKey(v.name)
+                        val varKey = v.name
+                        val isExpanded = expandedVarChildren.containsKey(varKey)
                         Column {
                             Row(
                                 Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp)
                                     .then(if (v.expandable) Modifier.clickable {
                                         if (isExpanded) {
-                                            expandedVarValues.remove(v.name)
+                                            expandedVarChildren.remove(varKey)
                                         } else {
                                             val sid = activeSessionId
-                                            if (sid != null) {
-                                                val result = udm.evaluateExpression(sid, v.name)
-                                                expandedVarValues[v.name] = result ?: "<unable to evaluate>"
+                                            if (sid != null && v.variablesReference > 0) {
+                                                val children = udm.getChildVariables(sid, v.variablesReference)
+                                                expandedVarChildren[varKey] = children
                                             }
                                         }
                                     } else Modifier),
@@ -3112,17 +3113,27 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                 Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
                                 Text(v.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            // P27-AUDIT: Show evaluated expansion below the row
+                            // P27-AUDIT: Render child variables recursively (depth 1)
                             if (isExpanded) {
-                                Text(
-                                    expandedVarValues[v.name] ?: "",
-                                    fontSize = 10.sp,
-                                    color = MutedColor,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.padding(start = 48.dp, bottom = 2.dp, end = 12.dp),
-                                    maxLines = 5,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                val children = expandedVarChildren[varKey] ?: emptyList()
+                                children.forEach { child ->
+                                    Row(Modifier.padding(start = 48.dp, top = 1.dp, bottom = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        if (child.expandable) {
+                                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MutedColor, modifier = Modifier.size(10.dp))
+                                        } else {
+                                            Spacer(Modifier.width(14.dp))
+                                        }
+                                        Spacer(Modifier.width(3.dp))
+                                        Text(child.name, fontSize = 10.sp, color = IconColor, fontFamily = FontFamily.Monospace)
+                                        Text(": ", fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                                        Text(child.type, fontSize = 10.sp, color = Color(0xFF569CD6), fontFamily = FontFamily.Monospace)
+                                        Text(" = ", fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
+                                        Text(child.value, fontSize = 10.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                if (children.isEmpty()) {
+                                    Text("No children", fontSize = 10.sp, color = MutedColor, modifier = Modifier.padding(start = 48.dp, bottom = 2.dp))
+                                }
                             }
                         }
                     }

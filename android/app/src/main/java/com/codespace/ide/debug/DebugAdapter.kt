@@ -50,6 +50,9 @@ interface DebugAdapter {
      * Returns true if breakpoints were successfully sent.
      */
     fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean = false
+
+    // P27-AUDIT: Fetch child variables by DAP variablesReference (> 0 means expandable)
+    fun getVariables(session: DebugSession, variablesReference: Int): List<DebugVariable> = emptyList()
 }
 
 // ── LegacyDebugAdapter ───────────────────────────────────────────────────────
@@ -89,4 +92,7 @@ class LegacyDebugAdapter(private val provider: DebugProvider) : DebugAdapter {
 
     // P32-BREAKPOINT-FIX: Legacy providers don't support live breakpoint updates.
     override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean = false
+
+    // P27-AUDIT: Legacy providers don't support variable expansion.
+    override fun getVariables(session: DebugSession, variablesReference: Int): List<DebugVariable> = emptyList()
 }
