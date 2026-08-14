@@ -89,6 +89,8 @@ data class DebugBreakpoint(
     val logMessage: String? = null,
     val enabled: Boolean = true,
     val hitCount: Int = 0,
+    val verified: Boolean = false,   // P27-11: DAP setBreakpoints verification status
+    val message: String? = null,     // P27-11: optional verification message from DAP
 )
 
 /** A watch expression being evaluated during debugging. */
