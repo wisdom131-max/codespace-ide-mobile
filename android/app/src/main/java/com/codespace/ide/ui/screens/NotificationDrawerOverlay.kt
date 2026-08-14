@@ -83,18 +83,30 @@ internal fun NotificationBell(
     ) {
         Icon(
             painter = painterResource(
-                when {
-                    dnd && unread > 0 -> R.drawable.ic_notification_bell_slash_dot
-                    dnd              -> R.drawable.ic_notification_bell_slash
-                    unread > 0        -> R.drawable.ic_notification_bell_dot
-                    else              -> R.drawable.ic_notification_bell
-                }
+                if (dnd) R.drawable.ic_notification_bell_slash
+                else R.drawable.ic_notification_bell
             ),
             null,
             tint = bellColor,
             modifier = Modifier.size(iconSize.dp),
         )
-    }
+        // Severity-colored dot indicator — VS Code style, color by notification type
+        if (unread > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .size(7.dp)
+                    .background(
+                        when (bellState) {
+                            "error"   -> Color(0xFFF38BA8)
+                            "warning" -> Color(0xFFFAB387)
+                            "success" -> Color(0xFFA6E3A1)
+                            else      -> Color(0xFF89B4FA)
+                        },
+                        CircleShape,
+                    ),
+            )
+        }
 }
 
 // ── In-app Toast Banner (VS Code-style floating card, 3-corner anchored) ───────
