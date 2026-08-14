@@ -2931,7 +2931,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
                 }
                 DropdownMenu(expanded = showConfigMenu, onDismissRequest = { showConfigMenu = false }) {
-                    val configs = listOf("Kotlin Application", "Android App (Debug)", "Android App (Release)", "Gradle Build", "JUnit Tests", "Terminal Script")
+                    // P27-9: Real debug configurations from DebugConfiguration
+                    val configs = com.codespace.ide.debug.DebugConfiguration.defaults.map { it.name }
                     configs.forEach { config ->
                         DropdownMenuItem(
                             text = { Text(config, fontSize = 12.sp) },
@@ -2963,10 +2964,12 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         val dbgLang = if (activeFilePath.isNotBlank()) {
                             com.codespace.ide.domain.Language.fromPath(activeFilePath)
                         } else {
-                            when (selectedConfig) {
-                                "Kotlin Application", "Android App (Debug)", "Android App (Release)", "Gradle Build" -> Language.KOTLIN
-                                "JUnit Tests" -> Language.JAVA
-                                "Terminal Script" -> Language.SHELL
+                            // P27-9: Derive language from DebugConfiguration type
+                            val config = com.codespace.ide.debug.DebugConfiguration.defaults.find { it.name == selectedConfig }
+                            when (config?.type) {
+                                "python" -> com.codespace.ide.domain.Language.PYTHON
+                                "node" -> com.codespace.ide.domain.Language.JAVASCRIPT
+                                "terminal" -> com.codespace.ide.domain.Language.SHELL
                                 else -> Language.KOTLIN
                             }
                         }

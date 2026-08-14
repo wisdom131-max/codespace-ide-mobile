@@ -375,8 +375,15 @@ object UniversalDebugManager {
                     transitionState(session, DebugState.PAUSED)
                     notifyPaused(stack, vars)
                 },
-                onStopped = {
-                    transitionState(session, DebugState.STOPPED)
+                onStopped = { exitCode ->
+                    // P27-10: Crash detection — non-zero exit = CRASHED
+                    if (exitCode != 0) {
+                        transitionState(session, DebugState.CRASHED)
+                        notifyOutput("[debug] Process crashed (exit code $exitCode)")
+                    } else {
+                        transitionState(session, DebugState.STOPPED)
+                    }
+                    if (activeSessionId == session.id) activeSessionId = null
                     sessions.remove(session.id)
                     sessionAdapters.remove(session.id)
                 },
@@ -472,8 +479,13 @@ object UniversalDebugManager {
                 transitionState(session, DebugState.PAUSED)
                 notifyPaused(stack, vars)
             },
-            onStopped = {
-                transitionState(session, DebugState.STOPPED)
+            onStopped = { exitCode ->
+                if (exitCode != 0) {
+                    transitionState(session, DebugState.CRASHED)
+                    notifyOutput("[debug] Process crashed (exit code $exitCode)")
+                } else {
+                    transitionState(session, DebugState.STOPPED)
+                }
                 sessions.remove(session.id)
                 sessionAdapters.remove(session.id)
             }

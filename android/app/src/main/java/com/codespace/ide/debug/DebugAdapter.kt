@@ -29,7 +29,7 @@ interface DebugAdapter {
         breakpoints: List<DebugBreakpoint>,
         onOutput: (String) -> Unit,
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-        onStopped: () -> Unit,
+        onStopped: (exitCode: Int) -> Unit,
     ): Boolean
 
     fun stop(session: DebugSession)
@@ -73,7 +73,7 @@ class LegacyDebugAdapter(private val provider: DebugProvider) : DebugAdapter {
         breakpoints: List<DebugBreakpoint>,
         onOutput: (String) -> Unit,
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-        onStopped: () -> Unit,
+        onStopped: (exitCode: Int) -> Unit,
     ): Boolean = provider.launch(session, breakpoints, onOutput, onPaused)
 
     override fun stop(session: DebugSession) = provider.stop(session)

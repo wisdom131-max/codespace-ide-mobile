@@ -49,6 +49,9 @@ class NodeDAPAdapter : DebugAdapter {
     private var client: DAPClient? = null
     private var caps: DAPCapabilities? = null
 
+    // P27-10: Track process exit code for crash detection
+    @Volatile private var lastExitCode: Int = 0
+
     @Volatile private var threadId: Int = 1
     @Volatile private var currentFrameId: Int = 0
 
@@ -140,7 +143,7 @@ class NodeDAPAdapter : DebugAdapter {
         breakpoints: List<DebugBreakpoint>,
         onOutput: (String) -> Unit,
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-        onStopped: () -> Unit,
+        onStopped: (exitCode: Int) -> Unit,
     ): Boolean {
         Log.d(TAG, "launch: ${session.filePath}")
         return launchInternal(
@@ -165,7 +168,7 @@ class NodeDAPAdapter : DebugAdapter {
         pid: Int = -1,
         onOutput: (String) -> Unit,
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-        onStopped: () -> Unit,
+        onStopped: (exitCode: Int) -> Unit,
     ): Boolean {
         Log.d(TAG, "attach: port=$port pid=$pid file=${session.filePath}")
         val attachParams = if (pid > 0) {
@@ -185,7 +188,7 @@ class NodeDAPAdapter : DebugAdapter {
         breakpoints: List<DebugBreakpoint>,
         onOutput: (String) -> Unit,
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-        onStopped: () -> Unit,
+        onStopped: (exitCode: Int) -> Unit,
         attachParams: JSONObject?,
     ): Boolean {
         // 1. Ensure js-debug is installed
@@ -292,12 +295,14 @@ class NodeDAPAdapter : DebugAdapter {
         dapClient.onEvent("terminated") { _ ->
             Log.d(TAG, "DAP terminated")
             onOutput("[js-debug] Session terminated.\n")
-            onStopped()
+            onStopped(lastExitCode)
         }
 
         dapClient.onEvent("exited") { body ->
             val code = body.optInt("exitCode", 0)
             onOutput("[js-debug] Process exited with code $code.\n")
+        
+            lastExitCode = code  // P27-10
         }
 
         dapClient.onEvent("thread") { body ->

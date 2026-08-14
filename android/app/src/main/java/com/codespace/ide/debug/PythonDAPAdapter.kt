@@ -33,6 +33,9 @@ class PythonDAPAdapter : DebugAdapter {
     private val TAG = "PythonDAPAdapter"
 
     private var client: DAPClient? = null
+
+    // P27-10: Track process exit code for crash detection
+    @Volatile private var lastExitCode: Int = 0
     private var caps: DAPCapabilities? = null
 
     // Running thread ID — set when stopped event fires
@@ -115,7 +118,7 @@ class PythonDAPAdapter : DebugAdapter {
         breakpoints: List<DebugBreakpoint>,
         onOutput: (String) -> Unit,
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-        onStopped: () -> Unit,
+        onStopped: (exitCode: Int) -> Unit,
     ): Boolean {
         Log.d(TAG, "launch: ${session.filePath}")
 
@@ -206,14 +209,14 @@ class PythonDAPAdapter : DebugAdapter {
         dapClient.onEvent("terminated") { _ ->
             Log.d(TAG, "DAP terminated")
             onOutput("[debugpy] Session terminated.\n")
-            onStopped()
+            onStopped(lastExitCode)
             client = null
         }
 
         dapClient.onEvent("exited") { body ->
             val code = body.optInt("exitCode", 0)
             onOutput("[debugpy] Process exited with code $code\n")
-            onStopped()
+            lastExitCode = code  // P27-10
         }
 
         // P32-DAP-ORDER: Register initialized event handler BEFORE start().
