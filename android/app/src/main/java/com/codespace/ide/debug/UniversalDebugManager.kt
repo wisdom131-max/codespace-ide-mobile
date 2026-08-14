@@ -7,6 +7,8 @@ import com.codespace.ide.editor.FileIndexer
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.data.NotificationStore
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Phase 23-4: Universal Debug Manager — the shared backend for both the
@@ -32,7 +34,33 @@ data class DebugSession(
 )
 
 enum class DebugState {
-    IDLE, STARTING, RUNNING, PAUSED, STOPPING, STOPPED, ERROR
+    IDLE, STARTING, RUNNING, PAUSED, STEPPING, STOPPING, STOPPED, CRASHED, FAILED, ERROR
+}
+
+/**
+ * P27-3: State machine validator — enforces valid debug state transitions.
+ * Rejects illegal transitions (e.g., STOPPED → STEP, IDLE → CONTINUE) with a log warning.
+ */
+private val validTransitions: Map<DebugState, Set<DebugState>> = mapOf(
+    DebugState.IDLE      to setOf(DebugState.STARTING),
+    DebugState.STARTING  to setOf(DebugState.RUNNING, DebugState.FAILED, DebugState.STOPPED, DebugState.ERROR),
+    DebugState.RUNNING   to setOf(DebugState.PAUSED, DebugState.CRASHED, DebugState.STOPPING, DebugState.STEPPING, DebugState.STOPPED),
+    DebugState.PAUSED    to setOf(DebugState.RUNNING, DebugState.STEPPING, DebugState.STOPPING, DebugState.STOPPED),
+    DebugState.STEPPING  to setOf(DebugState.PAUSED, DebugState.RUNNING, DebugState.CRASHED, DebugState.STOPPING, DebugState.STOPPED),
+    DebugState.STOPPING  to setOf(DebugState.STOPPED, DebugState.CRASHED),
+    DebugState.STOPPED   to setOf(DebugState.IDLE),  // via restart
+    DebugState.CRASHED   to setOf(DebugState.IDLE),  // via restart
+    DebugState.FAILED    to setOf(DebugState.IDLE),  // via restart
+    DebugState.ERROR     to setOf(DebugState.IDLE, DebugState.STARTING),
+    // Any state can transition to STOPPING (from stop()) or STOPPED
+)
+
+/** P27-3: Validate and execute a state transition. Returns true if allowed. */
+fun isValidTransition(from: DebugState, to: DebugState): Boolean {
+    if (from == to) return true // same state is always ok
+    // STOPPING and STOPPED are always reachable (force stop from any state)
+    if (to == DebugState.STOPPING || to == DebugState.STOPPED) return true
+    return validTransitions[from]?.contains(to) == true
 }
 
 /** A variable in the current debug scope. */
@@ -105,16 +133,17 @@ object UniversalDebugManager {
     private val TAG = "UDM"
 
     private val providers = mutableListOf<DebugProvider>()
-    private val sessions = mutableMapOf<String, DebugSession>()
-    private val breakpoints = mutableMapOf<String, MutableList<DebugBreakpoint>>() // filePath -> breakpoints
-    private var sessionCounter = 0
+    // P27-4: Thread-safe collections — DAP events arrive on background threads
+    private val sessions = ConcurrentHashMap<String, DebugSession>()
+    private val breakpoints = ConcurrentHashMap<String, MutableList<DebugBreakpoint>>() // filePath -> breakpoints
+    private val sessionCounter = AtomicInteger(0)
 
     // P26-2d: DAP adapters — tried before legacy providers; prefer DAP when available.
     // Each real adapter (PythonDAPAdapter, etc.) wraps its own DAPClient lifecycle.
     // LegacyDebugAdapter wraps existing DebugProviders as fallback.
-    private val adapters = mutableListOf<DebugAdapter>()
+    private val adapters = mutableListOf<DebugAdapter>()  // P27-4: accessed in init only, no sync needed
     // Active adapter per session
-    private val sessionAdapters = mutableMapOf<String, DebugAdapter>()
+    private val sessionAdapters = ConcurrentHashMap<String, DebugAdapter>()
 
     /** Register a DAP adapter. Called in init/registerProviders. */
     fun registerAdapter(adapter: DebugAdapter) {
@@ -198,6 +227,19 @@ object UniversalDebugManager {
         }
     }
     private fun notifySessionStateChanged(s: DebugSession) = sessionStateListeners.forEach { it(s) }
+
+    /**
+     * P27-3: Validated state transition. Logs and rejects illegal transitions.
+     * Use this instead of directly setting session.state = newState.
+     */
+    private fun transitionState(session: DebugSession, newState: DebugState) {
+        if (!isValidTransition(session.state, newState)) {
+            Log.w("UDM", "Invalid state transition: ${session.state} → $newState (rejected)")
+            return
+        }
+        session.state = newState
+        notifySessionStateChanged(session)
+    }
     private fun notifyOutput(msg: String) = outputListeners.forEach { it(msg) }
     private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
 
@@ -249,7 +291,7 @@ object UniversalDebugManager {
     ): String? {
         // P27-1: Route through DAP adapters when context is available.
         // When context is null (legacy callers), fall back to direct provider.launch().
-        val sessionId = "session-${sessionCounter++}"
+        val sessionId = "session-${sessionCounter.getAndIncrement()}"
 
         // Resolve adapter if context is available
         val adapter: DebugAdapter? = if (context != null) {
@@ -295,13 +337,11 @@ object UniversalDebugManager {
                 context, session, fileBreakpoints,
                 onOutput = { msg -> notifyOutput(msg) },
                 onPaused = { stack, vars ->
-                    session.state = DebugState.PAUSED
-                    notifySessionStateChanged(session)
+                    transitionState(session, DebugState.PAUSED)
                     notifyPaused(stack, vars)
                 },
                 onStopped = {
-                    session.state = DebugState.STOPPED
-                    notifySessionStateChanged(session)
+                    transitionState(session, DebugState.STOPPED)
                     sessions.remove(session.id)
                     sessionAdapters.remove(session.id)
                 },
@@ -312,20 +352,18 @@ object UniversalDebugManager {
                 session, fileBreakpoints,
                 onOutput = { msg -> notifyOutput(msg) },
                 onPaused = { stack, vars ->
-                    session.state = DebugState.PAUSED
-                    notifySessionStateChanged(session)
+                    transitionState(session, DebugState.PAUSED)
                     notifyPaused(stack, vars)
                 },
             )
         }
 
         if (launched) {
-            session.state = DebugState.RUNNING
+            transitionState(session, DebugState.RUNNING)
         } else {
-            session.state = DebugState.ERROR
+            transitionState(session, DebugState.FAILED)
             sessionAdapters.remove(session.id)
         }
-        notifySessionStateChanged(session)
 
         return if (launched) session.id else null
     }
@@ -333,16 +371,14 @@ object UniversalDebugManager {
     fun stopSession(sessionId: String) {
         val session = sessions[sessionId] ?: return
         val adapter = sessionAdapters[sessionId]
-        session.state = DebugState.STOPPING
-        notifySessionStateChanged(session)
+        transitionState(session, DebugState.STOPPING)
         // P27-1: Use adapter if available, fall back to legacy provider
         if (adapter != null) {
             adapter.stop(session)
         } else {
             providers.find { it.id == session.providerId }?.stop(session)
         }
-        session.state = DebugState.STOPPED
-        notifySessionStateChanged(session)
+        transitionState(session, DebugState.STOPPED)
         sessions.remove(sessionId)
         sessionAdapters.remove(sessionId)
         // Phase N: Notify debug session stopped
@@ -369,7 +405,7 @@ object UniversalDebugManager {
         pid: Int = -1,
     ): String? {
         val session = DebugSession(
-            id = "attach-${sessionCounter++}",
+            id = "attach-${sessionCounter.getAndIncrement()}",
             language = language,
             filePath = filePath,
             providerId = "node-dap",
@@ -393,20 +429,21 @@ object UniversalDebugManager {
             context, session, port, pid,
             onOutput = { msg -> notifyOutput(msg) },
             onPaused = { stack, vars ->
-                session.state = DebugState.PAUSED
-                notifySessionStateChanged(session)
+                transitionState(session, DebugState.PAUSED)
                 notifyPaused(stack, vars)
             },
             onStopped = {
-                session.state = DebugState.STOPPED
-                notifySessionStateChanged(session)
+                transitionState(session, DebugState.STOPPED)
                 sessions.remove(session.id)
                 sessionAdapters.remove(session.id)
             }
         )
 
-        session.state = if (launched) DebugState.RUNNING else DebugState.ERROR
-        notifySessionStateChanged(session)
+        if (launched) {
+            transitionState(session, DebugState.RUNNING)
+        } else {
+            transitionState(session, DebugState.FAILED)
+        }
         return if (launched) session.id else null
     }
 
@@ -420,6 +457,35 @@ object UniversalDebugManager {
      * P26-3d: Get a specific session by ID.
      */
     fun getSessionById(sessionId: String): DebugSession? = sessions[sessionId]
+
+    /**
+     * P27-5: Restart a debug session — stop current, preserve breakpoints, start new.
+     * Returns the new session ID, or null on failure.
+     */
+    fun restartSession(
+        sessionId: String,
+        context: Context? = null,
+    ): String? {
+        val session = sessions[sessionId] ?: return null
+        val language = session.language
+        val filePath = session.filePath
+        val breakpoints = getBreakpoints(filePath)
+
+        // Stop current session
+        stopSession(sessionId)
+
+        // Wait briefly for clean state (max 2s)
+        var waited = 0
+        while (waited < 2000) {
+            if (sessions[sessionId] == null) break
+            Thread.sleep(100)
+            waited += 100
+        }
+
+        // Start new session with same config — breakpoints preserved in BreakpointManager
+        Log.d(TAG, "restartSession: restarting $language debug for ${filePath.substringAfterLast("/")}")
+        return startDebug(language, filePath, null, context)
+    }
 
     /**
      * P26-3c: Capability negotiation — returns the DAP capabilities for the active session's adapter.
@@ -464,13 +530,15 @@ object UniversalDebugManager {
         } else {
             providers.find { it.id == session.providerId }?.resume(session)
         }
-        session.state = DebugState.RUNNING
-        notifySessionStateChanged(session)
+        // P27-3: Validated transition back to RUNNING
+        transitionState(session, DebugState.RUNNING)
     }
 
     fun stepOver(sessionId: String) {
         val session = sessions[sessionId] ?: return
         val adapter = sessionAdapters[sessionId]
+        // P27-3: Transition to STEPPING state
+        transitionState(session, DebugState.STEPPING)
         if (adapter != null) {
             adapter.stepOver(session)
         } else {
@@ -481,6 +549,7 @@ object UniversalDebugManager {
     fun stepInto(sessionId: String) {
         val session = sessions[sessionId] ?: return
         val adapter = sessionAdapters[sessionId]
+        transitionState(session, DebugState.STEPPING)
         if (adapter != null) {
             adapter.stepInto(session)
         } else {
@@ -491,6 +560,7 @@ object UniversalDebugManager {
     fun stepOut(sessionId: String) {
         val session = sessions[sessionId] ?: return
         val adapter = sessionAdapters[sessionId]
+        transitionState(session, DebugState.STEPPING)
         if (adapter != null) {
             adapter.stepOut(session)
         } else {
