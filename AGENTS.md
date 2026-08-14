@@ -135,7 +135,7 @@ no AI agent can claim they did not see the rules.
 
 | | |
 |-|-|
-| Latest commit | 8ebd097 — fix(build): add missing closing brace in NotificationBell function (fixes #2324) |
+| Latest commit | 377547e — fix(icons): ic_vscode_run_debug redesigned to match VS Code codicon debug-alt in stroke style |
 | Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu at top of activity bar, File submenu (New Text File, Open File picker, Open Folder picker, Open Recent, New Window with Profile), VS Code-exact icons (6 custom vector drawables), landscape overflow (Explorer + active + "..." MRU). Build pending. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -18176,4 +18176,29 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 6. 🔲 Multi-Cursor feature
 7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 8. 🔲 Codicon activity bar icons — waiting for Wisdom's screenshots
+9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-14 16:45 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 377547e | **CI Build:** pending (build #2325 or later)
+**Tags:** [ICONS]
+**What was fixed:** Redesigned `ic_vscode_run_debug.xml` to match the actual VS Code codicon `debug-alt` icon. Traced the filled SVG path data from the VS Code codicon to extract exact coordinates, then recreated as stroke/outline paths matching the style of other activity bar icons (explorer, search, source control, extensions). Changes: (1) Play triangle repositioned to upper area with tip at bottom-right (matching codicon proportions), (2) Added connector line from triangle to bug, (3) Bug repositioned to lower-left, (4) Added bug head semicircle arc, (5) Added V-shape center antennae (tallest, reaching y=8), (6) Added upper side antennae, (7) Side and lower legs repositioned. All 12 paths use strokeWidth=1.1, round caps/joins, transparent fill.
+**Files touched:** ic_vscode_run_debug.xml
+**Next on roadmap:**
+1. ⏳ Verify CI green on brace fix + icon redesign (build #2325+)
+2. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+3. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+4. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+5. 🔲 TypeScript 7 as default LSP with vtsls
+6. 🔲 Multi-Cursor feature
+7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+8. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
