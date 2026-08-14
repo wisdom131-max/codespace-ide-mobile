@@ -17150,10 +17150,251 @@ Before implementation, produce a complete plan covering:
 **Next on roadmap:** Device testing N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix
 
 ### [2026-08-14 02:10 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** pending | **CI Build:** pending
+**Commit:** 606a04d4 | **CI Build:** #2251 FAILED (duplicate onPermissionRequest) → #2252 pending (fix)
 **What was fixed:** Test 51 (YouTube preview) — three issues fixed:
 (1) Shorts audio-only (no video): `playsinline` was incorrectly in CSS (it's an HTML attribute, not a CSS property). Added `YOUTUBE_VIDEO_FIX_JS` that sets `playsinline`/`webkit-playsinline`/`autoplay` attributes on video elements via JS, forces non-zero dimensions, and uses MutationObserver to catch dynamically added videos (YouTube SPA navigation). Also added `onPermissionRequest` to WebChromeClient to grant media permissions.
 (2) Settings page black screen: YouTube uses Shadow DOM (custom elements like ytd-app, ytd-settings). Standard `<style>` tags don't pierce Shadow DOM. Added `YOUTUBE_SHADOW_DOM_FIX_JS` that injects styles directly into shadow roots of all YouTube custom elements, with MutationObserver to catch dynamically created elements.
 (3) Sign-in "insecure browser" warning: Fixed popup `onCreateWindow` OAuth flow — was redirecting all popup URLs to main WebView immediately, breaking Google's OAuth callback. Now only redirects when the popup URL contains youtube.com (OAuth completed). UA override JS was already present (window.chrome, navigator.webdriver=false, navigator.userAgentData).
 **Files touched:** PreviewPane.kt
 **Next on roadmap:** Device testing: Test 51 (YouTube), Test N-01 through N-24, SCM E1-E18
+
+---
+
+## PHASE 27 — RUN & DEBUG SYSTEM REBUILD (PLAN FIRST — AWAITING APPROVAL)
+
+**Status:** 🟡 PLAN REGISTERED — DO NOT IMPLEMENT until Goodluck approves
+**Date registered:** 2026-08-14
+
+### CORE PRINCIPLE
+Do NOT immediately modify or delete code. Audit first, plan first, then wait for approval.
+
+The existing Run/Debug implementation has accumulated major issues. Goal: a clean, reliable architecture for BOTH:
+1. The quick Run button in the bottom/terminal area (QUICK RUN)
+2. The full Debugger opened from the Activity Bar (FULL DEBUG)
+
+The two entry points must share ONE underlying execution/debugging architecture.
+Do NOT create two separate debugging systems.
+
+### ARCHITECTURE (Proposed)
+```
+Editor/UI
+  ↓
+RunDebugController
+  ↓
+DebugManager
+  ↓
+DebugSessionManager
+  ↓
+DebugSession
+  ↓
+DebugProvider
+  ↓
+Language-specific debugger
+  ↓
+Target process
+```
+
+Components: RunDebugController, DebugManager, DebugSessionManager, DebugSession, DebugProvider, DebugConfiguration, BreakpointManager, DebugProcess, DebugEvent, DebugState. Adapt names to existing conventions. Do not create duplicate managers.
+
+### DEBUG STATE MACHINE
+States: IDLE, STARTING, RUNNING, PAUSED, STEPPING, STOPPING, STOPPED, CRASHED, FAILED
+Control valid transitions, prevent invalid operations (e.g., STOPPED → STEP_OVER, IDLE → CONTINUE, STARTING → STARTING, STOPPING → STARTING).
+
+### SINGLE SOURCE OF TRUTH
+ONE central debug state: DebugManager → Current DebugSession → Observable DebugState → All UI surfaces. Bottom Run Panel, Activity Bar Debugger, Editor, Debug Console, Variables, and Call Stack must NOT maintain conflicting independent states.
+
+### BOTTOM RUN BUTTON (Quick Run)
+- Job: run the currently active file (e.g., python /current/file.py, node /current/file.js)
+- Always resolve the current active editor document — NOT previously opened file, hard-coded file, stale tab path, project root, or random terminal working directory
+- Resolve: active file, language, absolute path, workspace root, working directory, runtime, arguments, environment
+- If no runnable file exists, show a clear error
+- Run is NOT Debug: Bottom Run → ExecutionManager → Process. Must not automatically create a full debug session
+- Provide distinct actions: Run, Run Without Debugging, Debug
+
+### ACTIVITY BAR DEBUGGER (Full Debug)
+- Run and Debug, configurations, breakpoints, variables, watch, call stack, debug console, controls, session status, restart, stop
+- Must use the same underlying execution infrastructure as Quick Run
+
+### DEBUG PROVIDERS
+```
+DebugProvider
+  ├── PythonDebugProvider
+  └── NodeDebugProvider
+```
+The UI must NOT contain Python-specific or Node-specific debugging logic. Providers handle: launch, attach, continue, pause, step over, step into, step out, evaluate, variables, stack frames, breakpoints, terminate.
+
+### PYTHON DEBUGGER
+Support where technically available: launch, breakpoints, continue, pause, step over, step into, step out, stack, locals, variables, evaluate, exceptions, stop, restart. Do not claim unsupported functionality works.
+
+### JAVASCRIPT / TYPESCRIPT / NODE DEBUGGER
+Support where technically available: launch, breakpoints, continue, pause, step over, step into, step out, call stack, variables, evaluate, exceptions, stop, restart. Use appropriate Node Inspector mechanism or clean provider abstraction.
+
+### DEBUG PROTOCOL
+Inspect actual implementation — determine whether it uses DAP, Node Inspector, pdb, custom stdin/stdout protocol, or another protocol. Do not falsely describe it as DAP. Do not automatically rewrite to DAP unless audit demonstrates it is practical and beneficial. Preserve working provider mechanisms.
+
+### PROCESS MANAGEMENT
+Centralize process lifecycle. Every debug process tracks: PID, start time, state, command, working directory, language, provider, exit status. Handle: START, RUN, STOP, CRASH, EXIT, RESTART. Prevent orphaned debugger/target processes.
+
+### PROCESS TERMINATION
+1. Request graceful termination where supported → 2. Stop debugger connection → 3. Stop target process → 4. Wait briefly → 5. Force terminate only if necessary → 6. Clean streams → 7. Clear session state. Do not blindly force-kill immediately.
+
+### STDIN / STDOUT / STDERR
+Centralize process streams. Support: program output, errors, debugger protocol traffic, user stdin where supported. Do not mix protocol messages with ordinary program output. Prevent one reader from blocking the debugger.
+
+### BREAKPOINT SYSTEM
+Central BreakpointManager. Support: line breakpoints, enable/disable, remove, clear all, persistence, debugger synchronization, verified/unverified state, breakpoint errors. Where supported: conditional breakpoints, logpoints. Editor and debugger share the same breakpoint state. When debugging stops, clean session state without losing persistent breakpoints.
+
+### VARIABLES
+Structured variable model: name, value, type, children, expand/collapse, scope, evaluate availability. Do not display raw protocol JSON directly.
+
+### CALL STACK
+Support: thread, frame, function, file, line, column. Clicking a frame must open/activate the file and navigate to the exact location.
+
+### WATCH
+Support: add expression, remove expression, evaluate, refresh after pause. Do not continuously evaluate while running unless explicitly required.
+
+### DEBUG CONSOLE
+Provide: expression evaluation, command/input where supported, output, errors, history. Keep debugger commands separate from program output.
+
+### CONFIGURATIONS
+Support launch configurations per project: name, type (python/node), program, args, cwd, env, runtime. Store in project settings. Provide sensible defaults when no configuration exists (auto-derive from active file). Support multiple configurations with a dropdown selector.
+
+### ACTIVE-FILE RESOLUTION
+Resolve: active editor file, language, absolute path (via proot mount), workspace root, working directory, runtime, arguments, environment. Use /host-files/projects/<name> path convention (NOT raw Android path). See ProotInstaller.hostToGuestPath() for mapping.
+
+### TERMINAL INTEGRATION
+Bottom Run shares terminal output area. Debug Console is separate from terminal. Program stdout/stderr → terminal panel. Debugger protocol traffic → debug console. Terminal input → program stdin. Debug console input → debugger evaluate.
+
+### THREAD-SAFETY
+Debug operations on background thread. UI state updates on main thread. Use StateFlow for observable debug state. Mutex/coroutine for session access. Prevent concurrent stop/start race conditions. Single-threaded session manager.
+
+### CRASH RECOVERY
+Detect process crash, detect debugger crash, clean up orphaned processes, notify user, offer restart, update DebugState to CRASHED or FAILED. Log crash details. Attempt graceful cleanup.
+
+### RESTART STRATEGY
+Stop current session (graceful → force if needed) → Wait for clean state → Start new session with same configuration → Preserve breakpoints → Reset UI state to STARTING.
+
+### ERROR HANDLING
+Every operation returns success/failure. Errors include: error type, message, recoverable flag, suggested action. Surface errors in UI (not just logs). Distinguish: process errors, debugger errors, user errors, configuration errors. Never silently swallow errors.
+
+### LOGGING
+Log: session lifecycle, state transitions, provider operations, breakpoint changes, process events, errors. Use existing logging infrastructure. Verbose mode for debugging.
+
+### PERFORMANCE
+Lazy-load debugger components. Release resources on session end. Avoid polling — use callbacks/events. Limit variable tree depth. Debounce watch evaluation. Stream output incrementally (don't buffer entire run).
+
+### SECURITY
+Sanitize all user input (file paths, arguments, expressions). Prevent command injection. Restrict file access to workspace. Restrict network access for debug processes if needed. Never expose debug protocol to network.
+
+### UI WIRING REQUIREMENT
+
+Do not only create the backend architecture. Trace every existing Run/Debug UI control from the actual UI event to the underlying DebugManager operation.
+
+**BOTTOM RUN UI:**
+```
+Run button    → resolveActiveRunnableFile() → RunDebugController.run() → Execution Manager → process
+Stop button   → RunDebugController.stop() → DebugManager → active session/process
+Restart button → RunDebugController.restart() → existing session cleanup → new session
+```
+
+**ACTIVITY BAR DEBUGGER:**
+```
+Run/Debug button    → DebugManager.startDebug()
+Continue            → DebugSession.continue()
+Pause               → DebugSession.pause()
+Step Over           → DebugSession.stepOver()
+Step Into           → DebugSession.stepInto()
+Step Out            → DebugSession.stepOut()
+Stop                → DebugSession.stop()
+Restart             → DebugSession.restart()
+Breakpoint click    → BreakpointManager.toggleBreakpoint()
+Call-stack frame    → Editor navigation to file + line + column
+Variable expansion  → DebugSession.variables()
+Watch expression    → DebugSession.evaluate()
+Debug Console input → DebugSession.evaluate()
+```
+
+Every button/control must have a real end-to-end action. Do not leave UI controls as visual placeholders.
+
+After implementation, audit every Run/Debug control and report:
+```
+UI CONTROL → UI callback → controller method → manager method → session method → provider method → actual process/debugger operation
+```
+
+Also verify that UI state updates back from DebugState:
+```
+RUNNING  → Run button changes appropriately
+PAUSED   → Continue/Step controls become available
+STOPPED  → controls reset
+CRASHED  → error state displayed
+STARTING → loading/disabled state
+```
+
+### RESTRICTIONS
+Do NOT:
+- Rebuild unrelated LSP systems
+- Modify SCM
+- Modify Problems unless required for integration
+- Modify Notifications except for required debug integration
+- Create duplicate debugger managers
+- Put language-specific logic in UI
+- Leave old and new debugger implementations running together
+- Claim DAP support unless actually implemented
+- Claim runtime/device testing when it was not performed
+
+Reuse working infrastructure when safe.
+
+### PLAN-FIRST OUTPUT (must be produced before implementation)
+1. Existing architecture
+2. Existing files
+3. Existing reusable components
+4. Existing problems
+5. Proposed architecture
+6. Component diagram
+7. Debug state machine
+8. Bottom Run architecture
+9. Activity Bar Debugger architecture
+10. Python debugger architecture
+11. Node/JS/TS debugger architecture
+12. Process lifecycle
+13. Breakpoint architecture
+14. Variable architecture
+15. Call stack architecture
+16. Debug Console architecture
+17. Configuration architecture
+18. Active-file resolution
+19. Terminal integration
+20. Thread-safety strategy
+21. Crash recovery
+22. Restart strategy
+23. Error handling
+24. Logging
+25. Performance strategy
+26. Security strategy
+27. Files to modify
+28. Files to create
+29. Files to delete (ONLY if proven obsolete)
+30. Migration strategy
+31. Automated test plan
+32. Manual device test plan
+33. Remaining limitations
+
+Then WAIT FOR APPROVAL. Do not implement the rebuild until the plan is approved.
+
+### GOAL
+```
+BOTTOM ▶ RUN     = quick execution of the active file
+ACTIVITY BAR 🐞  = complete debugging experience
+```
+Both use:
+- ONE shared execution/debug core
+- ONE session/state system
+- ONE breakpoint system
+- ONE process lifecycle system
+- ONE source of truth
+
+### [2026-08-14 02:20 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** f500b07c, 3ffa53a3 | **CI Build:** #2252 pending
+**What was fixed:** (1) CI #2251 failed — duplicate `onPermissionRequest` in BrowserPreview WebChromeClient (conflicting overloads). Removed the one I added, kept the original. (2) Accidentally committed build log files — removed and added to .gitignore. (3) Registered Phase 27 — Run & Debug System Rebuild plan (PLAN FIRST) in AGENTS.md. Plan includes full architecture spec, debug state machine, UI wiring requirement, and 33-item plan-first output checklist. Awaiting Goodluck's approval before implementation.
+**Files touched:** PreviewPane.kt, .gitignore, AGENTS.md
+**Next on roadmap:** Confirm #2252 green → Begin Phase 27 audit (AFTER approval) → Device testing N-01 through N-24, SCM E1-E18, Test 51
