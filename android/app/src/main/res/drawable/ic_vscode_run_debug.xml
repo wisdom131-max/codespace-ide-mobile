@@ -3,11 +3,72 @@
     android:height="24dp"
     android:viewportWidth="16"
     android:viewportHeight="16">
+    <!-- Play triangle (upper) -->
     <path
         android:strokeColor="@android:color/white"
         android:strokeWidth="1.1"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:fillColor="@android:color/transparent"
-        android:pathData="M5,3 L12,8 L5,13 Z" />
+        android:pathData="M4,2.5 L10,6 L4,9.5 Z" />
+    <!-- Bug body (circle, lower center) -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M3,12 A1.5,1.5 0 1 0 6,12 A1.5,1.5 0 1 0 3,12" />
+    <!-- Bug antennae (2 lines from top of body going up-out) -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M3.6,10.7 L2.3,9.2" />
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M5.4,10.7 L6.7,9.2" />
+    <!-- Bug legs (4 lines from body sides going out) -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M3,11.3 L1.3,10.6" />
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M3,12.7 L1.3,13.4" />
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M6,11.3 L7.7,10.6" />
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M6,12.7 L7.7,13.4" />
+    <!-- Bug body center line -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4.5,10.5 L4.5,13.5" />
 </vector>
