@@ -17148,3 +17148,12 @@ Before implementation, produce a complete plan covering:
 **What was fixed:** All Phase N builds (#2245-#2248) failed due to `Unresolved reference: id` in LspManager.kt:723 and 737. Root cause: `language.id` used on Language enum which has no `id` property (only `displayName`, `extensions`, implicit `name`). Fixed by changing to `language.name`. All Phase N code (phases 1-16) now compiles and builds green. Updated all changelog entries with actual commit SHAs and CI build numbers. Updated Phase P status references — Phase P is ALREADY DONE (commit b8641ab3, build green).
 **Files touched:** LspManager.kt, AGENTS.md
 **Next on roadmap:** Device testing N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix
+
+### [2026-08-14 02:10 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** pending | **CI Build:** pending
+**What was fixed:** Test 51 (YouTube preview) — three issues fixed:
+(1) Shorts audio-only (no video): `playsinline` was incorrectly in CSS (it's an HTML attribute, not a CSS property). Added `YOUTUBE_VIDEO_FIX_JS` that sets `playsinline`/`webkit-playsinline`/`autoplay` attributes on video elements via JS, forces non-zero dimensions, and uses MutationObserver to catch dynamically added videos (YouTube SPA navigation). Also added `onPermissionRequest` to WebChromeClient to grant media permissions.
+(2) Settings page black screen: YouTube uses Shadow DOM (custom elements like ytd-app, ytd-settings). Standard `<style>` tags don't pierce Shadow DOM. Added `YOUTUBE_SHADOW_DOM_FIX_JS` that injects styles directly into shadow roots of all YouTube custom elements, with MutationObserver to catch dynamically created elements.
+(3) Sign-in "insecure browser" warning: Fixed popup `onCreateWindow` OAuth flow — was redirecting all popup URLs to main WebView immediately, breaking Google's OAuth callback. Now only redirects when the popup URL contains youtube.com (OAuth completed). UA override JS was already present (window.chrome, navigator.webdriver=false, navigator.userAgentData).
+**Files touched:** PreviewPane.kt
+**Next on roadmap:** Device testing: Test 51 (YouTube), Test N-01 through N-24, SCM E1-E18

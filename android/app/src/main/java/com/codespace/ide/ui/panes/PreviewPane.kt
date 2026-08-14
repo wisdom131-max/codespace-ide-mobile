@@ -974,16 +974,100 @@ private const val USER_AGENT_DATA_OVERRIDE_JS = """
 
 // P48: CSS to inject on YouTube pages to fix Shorts black screen and force desktop layout
 private const val YOUTUBE_FIX_CSS = """
-/* Force playsinline for all videos — fixes YouTube Shorts black screen */
-video { playsinline: true; -webkit-playsinline: true; }
 /* Force desktop viewport for YouTube */
 ytd-app { min-width: 1280px !important; }
-/* Ensure video elements have a visible background */
-video, .html5-video-player, #movie_player { background-color: #000 !important; }
-/* TEST-51-FIX: Fix YouTube settings page black screen — ensure visible backgrounds */
+/* Ensure video elements have a visible background and non-zero size */
+video, .html5-video-player, #movie_player { background-color: #000 !important; min-width: 100% !important; min-height: 100% !important; }
+/* TEST-51-FIX: Fix YouTube settings page black screen */
 ytd-app, ytd-settings, .settings-page, tp-yt-paper-dialog, #settings { background-color: #fff !important; color: #0f0f0f !important; display: block !important; visibility: visible !important; opacity: 1 !important; }
-/* TEST-51-FIX: Force video to render inline (not just audio) */
-video source, video { width: 100% !important; height: auto !important; display: block !important; }
+/* TEST-51-FIX: Force video container to have explicit dimensions (fixes Shorts audio-only) */
+#movie_player, .html5-video-player, #player-container, #player-container-outerline, .player-container { width: 100% !important; height: 100vh !important; min-height: 480px !important; }
+/* Ensure Shorts player has dimensions */
+#shorts-player, ytd-reel-video-renderer video, ytd-shorts video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+"""
+
+// TEST-51-FIX: JS to force video playback and fix Shorts audio-only
+// playsinline is an HTML attribute, NOT a CSS property — must be set via JS
+private const val YOUTUBE_VIDEO_FIX_JS = """
+(function() {
+  function fixVideo(v) {
+    if (!v) return;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', 'true');
+    v.setAttribute('autoplay', 'true');
+    // Force video to render (not just audio)
+    if (v.videoWidth === 0 || v.videoHeight === 0) {
+      v.style.width = '100%';
+      v.style.height = '100%';
+      v.style.objectFit = 'contain';
+    }
+    // Try to play if paused (autoplay was blocked)
+    if (v.paused && v.readyState >= 2) {
+      v.play().catch(function() {});
+    }
+  }
+  // Fix all existing videos
+  document.querySelectorAll('video').forEach(fixVideo);
+  // MutationObserver: catch dynamically added videos (YouTube SPA)
+  if (!window.__ytVideoObserver) {
+    window.__ytVideoObserver = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(function(n) {
+          if (n.nodeName === 'VIDEO') fixVideo(n);
+          if (n.querySelectorAll) n.querySelectorAll('video').forEach(fixVideo);
+        });
+      });
+    });
+    window.__ytVideoObserver.observe(document.body || document.documentElement, {childList: true, subtree: true});
+  }
+  // Also poll every 500ms for 5 seconds (covers lazy-loaded players)
+  if (!window.__ytVideoPollCount) window.__ytVideoPollCount = 0;
+  if (window.__ytVideoPollCount < 10) {
+    window.__ytVideoPollCount++;
+    setTimeout(function() {
+      document.querySelectorAll('video').forEach(fixVideo);
+    }, 500);
+  }
+})();
+"""
+
+// TEST-51-FIX: JS to pierce YouTube Shadow DOM for settings page
+// Standard CSS <style> tags don't pierce Shadow DOM — must inject into shadow roots
+private const val YOUTUBE_SHADOW_DOM_FIX_JS = """
+(function() {
+  function injectShadowStyles(root, styles) {
+    if (!root || !root.shadowRoot) return;
+    var s = document.createElement('style');
+    s.textContent = styles;
+    root.shadowRoot.appendChild(s);
+  }
+  var settingsCSS = 'div, ytd-settings, .settings-page { background-color: #fff !important; color: #0f0f0f !important; display: block !important; visibility: visible !important; opacity: 1 !important; } * { visibility: visible !important; }';
+  // Inject into all known YouTube custom elements that use shadow DOM
+  var selectors = ['ytd-app', 'ytd-settings', 'ytd-browse', 'ytd-page-manager', 'tp-yt-app-drawer', 'tp-yt-paper-dialog'];
+  selectors.forEach(function(sel) {
+    document.querySelectorAll(sel).forEach(function(el) {
+      injectShadowStyles(el, settingsCSS);
+    });
+  });
+  // MutationObserver: catch dynamically created custom elements
+  if (!window.__ytShadowObserver) {
+    window.__ytShadowObserver = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(function(n) {
+          if (n.nodeName && n.nodeName.startsWith('YTD-') || n.nodeName === 'TP-YT-PAPER-DIALOG') {
+            injectShadowStyles(n, settingsCSS);
+          }
+          if (n.querySelectorAll) {
+            n.querySelectorAll('ytd-app, ytd-settings, ytd-browse, ytd-page-manager, tp-yt-app-drawer, tp-yt-paper-dialog').forEach(function(el) {
+              injectShadowStyles(el, settingsCSS);
+            });
+          }
+        });
+      });
+    });
+    window.__ytShadowObserver.observe(document.body || document.documentElement, {childList: true, subtree: true});
+  }
+})();
 """
 
 // P48: CSS to force desktop layout on all sites
@@ -1091,6 +1175,10 @@ private fun BrowserPreview(
                         // P48: Inject UA override on page START, not just finish —
                         // Google checks navigator.userAgentData before the page fully loads
                         view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                        // TEST-51-FIX: Inject video fix JS early for YouTube (before video elements load)
+                        if (url != null && (url.contains("youtube.com") || url.contains("youtu.be"))) {
+                            view?.evaluateJavascript(YOUTUBE_VIDEO_FIX_JS, null)
+                        }
                     }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoading(false)
@@ -1102,6 +1190,10 @@ private fun BrowserPreview(
                         val currentUrl = url ?: ""
                         if (currentUrl.contains("youtube.com") || currentUrl.contains("youtu.be")) {
                             view?.evaluateJavascript("var s=document.createElement('style');s.textContent='" + YOUTUBE_FIX_CSS.replace("\n"," ") + "';document.head.appendChild(s);", null)
+                            // TEST-51-FIX: Force playsinline + autoplay on video elements (fixes Shorts audio-only)
+                            view?.evaluateJavascript(YOUTUBE_VIDEO_FIX_JS, null)
+                            // TEST-51-FIX: Inject styles into Shadow DOM (fixes settings black screen)
+                            view?.evaluateJavascript(YOUTUBE_SHADOW_DOM_FIX_JS, null)
                         }
                         // P48: Inject desktop viewport CSS on all sites
                         view?.evaluateJavascript("var s2=document.createElement('style');s2.textContent='" + DESKTOP_VIEWPORT_CSS.replace("\n"," ") + "';document.head.appendChild(s2);", null)
@@ -1122,6 +1214,12 @@ private fun BrowserPreview(
                 }
                 wv.webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
+
+                    // TEST-51-FIX: Grant media permissions for YouTube video playback
+                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
+                        request?.grant(request.resources)
+                    }
+
                     override fun onShowFileChooser(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
@@ -1139,7 +1237,16 @@ private fun BrowserPreview(
                                 pv?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
                             }
                             override fun onPageFinished(popupView: WebView?, popupUrl: String?) {
-                                if (popupUrl != null) { view.loadUrl(popupUrl) }
+                                // TEST-51-FIX: Don't redirect Google sign-in OAuth back to main WebView immediately.
+                                // Let the popup handle the OAuth flow — it will redirect itself
+                                // back to YouTube when auth completes. Only load in main WebView
+                                // if the popup URL is a YouTube URL (OAuth callback completed).
+                                if (popupUrl != null &&
+                                    (popupUrl.contains("youtube.com") || popupUrl.contains("google.com"))) {
+                                    if (popupUrl.contains("youtube.com")) {
+                                        view.loadUrl(popupUrl)
+                                    }
+                                }
                             }
                             override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
                                 handler?.proceed()
@@ -1266,6 +1373,12 @@ private fun RemotionPreview(
                 }
                 wv.webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
+
+                    // TEST-51-FIX: Grant media permissions for YouTube video playback
+                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
+                        request?.grant(request.resources)
+                    }
+
                     override fun onShowFileChooser(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
@@ -1284,7 +1397,6 @@ private fun RemotionPreview(
                     }
                     override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
                     override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
-                    override fun onPermissionRequest(request: android.webkit.PermissionRequest?) { request?.grant(request.resources) }
                 }
                 sharedWebView?.value = wv
             }
