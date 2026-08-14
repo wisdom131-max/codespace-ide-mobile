@@ -108,6 +108,7 @@ internal fun NotificationBell(
             )
         }
 }
+}
 
 // ── In-app Toast Banner (VS Code-style floating card, 3-corner anchored) ───────
 
