@@ -50,6 +50,7 @@ data class DebugStackFrame(
     val file: String,
     val line: Int,
     val active: Boolean = false,
+    val frameId: Int = 0,  // P27-2: DAP frame ID for evaluate operations
 )
 
 /** A breakpoint — line breakpoints, conditional, log points. */
@@ -246,41 +247,83 @@ object UniversalDebugManager {
         projectRoot: String? = null,
         context: Context? = null,
     ): String? {
-        val provider = selectProvider(language, filePath)
-            ?: return null
+        // P27-1: Route through DAP adapters when context is available.
+        // When context is null (legacy callers), fall back to direct provider.launch().
+        val sessionId = "session-${sessionCounter++}"
+
+        // Resolve adapter if context is available
+        val adapter: DebugAdapter? = if (context != null) {
+            val tempSession = DebugSession(
+                id = sessionId,
+                language = language,
+                filePath = filePath,
+                providerId = "",
+                state = DebugState.STARTING,
+            )
+            resolveAdapter(context, tempSession)
+        } else {
+            null
+        }
+
+        // For legacy path, still need a provider
+        val provider: DebugProvider? = if (adapter == null || adapter is LegacyDebugAdapter) {
+            selectProvider(language, filePath)
+        } else {
+            null
+        }
+
+        if (adapter == null && provider == null) return null
 
         val session = DebugSession(
-            id = "session-${sessionCounter++}",
+            id = sessionId,
             language = language,
             filePath = filePath,
-            providerId = provider.id,
+            providerId = adapter?.id ?: provider!!.id,
             state = DebugState.STARTING,
         )
         sessions[session.id] = session
+        if (adapter != null) {
+            sessionAdapters[session.id] = adapter
+        }
         notifySessionStateChanged(session)
 
         val fileBreakpoints = breakpoints[filePath] ?: emptyList()
-        // P26-3: Try to resolve a DAP adapter for capability negotiation (context may be null for legacy callers)
-        if (context != null) {
-            sessionAdapters[session.id] = resolveAdapter(context, session)
+
+        val launched = if (adapter != null && context != null) {
+            // P27-1: DAP adapter path (or LegacyDebugAdapter with context)
+            adapter.launch(
+                context, session, fileBreakpoints,
+                onOutput = { msg -> notifyOutput(msg) },
+                onPaused = { stack, vars ->
+                    session.state = DebugState.PAUSED
+                    notifySessionStateChanged(session)
+                    notifyPaused(stack, vars)
+                },
+                onStopped = {
+                    session.state = DebugState.STOPPED
+                    notifySessionStateChanged(session)
+                    sessions.remove(session.id)
+                    sessionAdapters.remove(session.id)
+                },
+            )
+        } else {
+            // P27-1: Legacy path — no context, direct provider.launch()
+            provider!!.launch(
+                session, fileBreakpoints,
+                onOutput = { msg -> notifyOutput(msg) },
+                onPaused = { stack, vars ->
+                    session.state = DebugState.PAUSED
+                    notifySessionStateChanged(session)
+                    notifyPaused(stack, vars)
+                },
+            )
         }
-        val launched = provider.launch(
-            session,
-            fileBreakpoints,
-            onOutput = { msg ->
-                notifyOutput(msg)
-            },
-            onPaused = { stack, vars ->
-                session.state = DebugState.PAUSED
-                notifySessionStateChanged(session)
-                notifyPaused(stack, vars)
-            }
-        )
 
         if (launched) {
             session.state = DebugState.RUNNING
         } else {
             session.state = DebugState.ERROR
+            sessionAdapters.remove(session.id)
         }
         notifySessionStateChanged(session)
 
@@ -289,13 +332,19 @@ object UniversalDebugManager {
 
     fun stopSession(sessionId: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
+        val adapter = sessionAdapters[sessionId]
         session.state = DebugState.STOPPING
         notifySessionStateChanged(session)
-        provider?.stop(session)
+        // P27-1: Use adapter if available, fall back to legacy provider
+        if (adapter != null) {
+            adapter.stop(session)
+        } else {
+            providers.find { it.id == session.providerId }?.stop(session)
+        }
         session.state = DebugState.STOPPED
         notifySessionStateChanged(session)
         sessions.remove(sessionId)
+        sessionAdapters.remove(sessionId)
         // Phase N: Notify debug session stopped
         NotificationStore.notifyDebugEvent(
             title = "Debug session ended",
@@ -397,40 +446,66 @@ object UniversalDebugManager {
 
     fun pauseSession(sessionId: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
-        provider?.pause(session)
+        val adapter = sessionAdapters[sessionId]
+        // P27-1: Use adapter if available, fall back to legacy provider
+        if (adapter != null) {
+            adapter.pause(session)
+        } else {
+            providers.find { it.id == session.providerId }?.pause(session)
+        }
     }
 
     fun resumeSession(sessionId: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
-        provider?.resume(session)
+        val adapter = sessionAdapters[sessionId]
+        // P27-1: Use adapter if available, fall back to legacy provider
+        if (adapter != null) {
+            adapter.resume(session)
+        } else {
+            providers.find { it.id == session.providerId }?.resume(session)
+        }
         session.state = DebugState.RUNNING
         notifySessionStateChanged(session)
     }
 
     fun stepOver(sessionId: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
-        provider?.stepOver(session)
+        val adapter = sessionAdapters[sessionId]
+        if (adapter != null) {
+            adapter.stepOver(session)
+        } else {
+            providers.find { it.id == session.providerId }?.stepOver(session)
+        }
     }
 
     fun stepInto(sessionId: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
-        provider?.stepInto(session)
+        val adapter = sessionAdapters[sessionId]
+        if (adapter != null) {
+            adapter.stepInto(session)
+        } else {
+            providers.find { it.id == session.providerId }?.stepInto(session)
+        }
     }
 
     fun stepOut(sessionId: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
-        provider?.stepOut(session)
+        val adapter = sessionAdapters[sessionId]
+        if (adapter != null) {
+            adapter.stepOut(session)
+        } else {
+            providers.find { it.id == session.providerId }?.stepOut(session)
+        }
     }
 
     fun evaluateExpression(sessionId: String, expression: String): String? {
         val session = sessions[sessionId] ?: return null
-        val provider = providers.find { it.id == session.providerId }
-        return provider?.evaluate(session, expression)
+        val adapter = sessionAdapters[sessionId]
+        // P27-1: Use adapter if available, fall back to legacy provider
+        if (adapter != null) {
+            return adapter.evaluate(session, expression)
+        }
+        return providers.find { it.id == session.providerId }?.evaluate(session, expression)
     }
 
     /**
@@ -439,9 +514,16 @@ object UniversalDebugManager {
      */
     fun sendInput(sessionId: String, text: String) {
         val session = sessions[sessionId] ?: return
-        val provider = providers.find { it.id == session.providerId }
-        if (provider is InteractiveDebugProvider) {
-            provider.sendInput(session, text)
+        val adapter = sessionAdapters[sessionId]
+        // P27-1: DAP adapter — evaluate expression; Legacy — write to stdin
+        if (adapter != null) {
+            val result = adapter.evaluate(session, text)
+            if (result != null) notifyOutput(result)
+        } else {
+            val provider = providers.find { it.id == session.providerId }
+            if (provider is InteractiveDebugProvider) {
+                provider.sendInput(session, text)
+            }
         }
     }
 
@@ -451,6 +533,8 @@ object UniversalDebugManager {
     fun sessionSupportsInput(sessionId: String?): Boolean {
         if (sessionId == null) return false
         val session = sessions[sessionId] ?: return false
+        // P27-1: DAP adapters support evaluate as debug console input
+        if (sessionAdapters[sessionId] != null) return true
         val provider = providers.find { it.id == session.providerId }
         return provider is InteractiveDebugProvider
     }

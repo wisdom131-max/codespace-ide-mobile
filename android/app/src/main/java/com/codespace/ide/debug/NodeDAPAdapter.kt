@@ -282,11 +282,7 @@ class NodeDAPAdapter : DebugAdapter {
 
             Thread {
                 val frames = fetchStackFrames(dapClient, threadId)
-                val frameId = if (frames.isNotEmpty()) {
-                    frames.first().file
-                        .substringAfterLast("::frameId=", "0")
-                        .toIntOrNull() ?: 0
-                } else 0
+                val frameId = if (frames.isNotEmpty()) frames.first().frameId else 0
                 currentFrameId = frameId
                 val vars = fetchVariables(dapClient, frameId)
                 onPaused(frames, vars)
@@ -494,10 +490,10 @@ class NodeDAPAdapter : DebugAdapter {
             val srcPath = src?.optString("path", "") ?: src?.optString("name", "") ?: ""
             DebugStackFrame(
                 function = f.optString("name", "<anonymous>"),
-                // Encode frameId into file field for retrieval in stopped handler
-                file = "$srcPath::frameId=$rawId",
+                file = srcPath,  // P27-2: clean path, frameId stored separately
                 line = f.optInt("line", 0) - 1, // DAP 1-based → 0-based
                 active = i == 0,
+                frameId = rawId,
             )
         }
     }

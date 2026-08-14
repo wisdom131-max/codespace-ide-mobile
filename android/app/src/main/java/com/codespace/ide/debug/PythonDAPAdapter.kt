@@ -196,12 +196,7 @@ class PythonDAPAdapter : DebugAdapter {
             Thread {
                 val frames = fetchStackFrames(dapClient, threadId)
                 val vars = if (frames.isNotEmpty()) {
-                    currentFrameId = frames.first().let { f ->
-                        // We need the raw frameId from DAP — stored in DebugStackFrame.line as a
-                        // temporary storage mechanism. See fetchStackFrames impl.
-                        // Actually store frameId in DebugStackFrame.file field as a workaround:
-                        f.file.substringAfterLast("::frameId=", "0").toIntOrNull() ?: 0
-                    }
+                    currentFrameId = frames.first().frameId
                     fetchVariables(dapClient, currentFrameId)
                 } else emptyList()
                 onPaused(frames, vars)
@@ -363,13 +358,12 @@ class PythonDAPAdapter : DebugAdapter {
             val frameId = f.optInt("id", 0)
             val src = f.optJSONObject("source")
             val path = src?.optString("path", "") ?: ""
-            // Encode frameId into the file field for retrieval in stopped handler
-            val encodedPath = if (path.isNotEmpty()) "$path::frameId=$frameId" else "::frameId=$frameId"
             result += DebugStackFrame(
                 function = f.optString("name", "<unknown>"),
-                file     = encodedPath,
+                file     = path,
                 line     = f.optInt("line", 0) - 1, // convert to 0-based
                 active   = i == 0,
+                frameId  = frameId,  // P27-2: store DAP frame ID directly
             )
         }
         return result
