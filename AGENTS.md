@@ -90,12 +90,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 | | |
 |-|-|
 | Latest commit | SCM-11: AgentTools gitRun migrated to GitCommandExecutor (pending push). |
-| Active phase | **TESTING STAGE** — All 5 settings restructuring items code-complete. Remaining: Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown (Item 1), device retests. |
+| Active phase | **TESTING STAGE** — Phase 27 (Run/Debug rebuild + UI audit) shipped ✅. Phase U (Completion Pipeline) shipped ✅ (#2179). Remaining: device testing of debug features + menu actions, Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown, device retests. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2236 (b274588) ✅ — DiagnosticManager overload merge fix verified green |
+| Last green | #2270 (5152247) ✅ — KeyboardArrowDown icon fix + Phase 27 full audit shipped |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -17546,3 +17546,10 @@ Only one instance in the entire codebase (ExplorerPane.kt:3102).
 
 **Files touched:** ExplorerPane.kt, AGENTS.md
 **Next on roadmap:** Confirm CI green. Device testing of all debug features + menu actions.
+
+### [2026-08-14 05:25 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** e036b4e | **CI Build:** pending
+**Tags:** DOCS-FIX
+**What was fixed:** Corrected roadmap references — Phase U (Completion Pipeline Upgrade) was already fully implemented (build #2179, all 8 features U-1 through U-8) but was incorrectly listed as "next on roadmap" in 3 changelog entries from 03:00-03:15. Removed Phase U from all future roadmap lines. Updated Current State table: last green build → #2270, active phase updated to reflect Phase U ✅ + Phase 27 ✅ both shipped.
+**Files touched:** AGENTS.md
+**Next on roadmap:** Device testing of all debug features + menu actions. Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown. Then next development phase (TBD).
