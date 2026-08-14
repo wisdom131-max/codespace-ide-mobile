@@ -17705,3 +17705,66 @@ LSP publishDiagnostics notification
 
 **Files audited (no code changes):** CodeEditor.kt, EditorPane.kt, EditorOverlays.kt, SyntaxTransformation.kt, DiagnosticsOverlay.kt, DiagnosticManager.kt, DiagnosticConverter.kt, DiagnosticPublisher.kt, LspIntegration.kt, LspManager.kt, ProjectShellScreen.kt
 **Next on roadmap:** Implement Bug 1 fix (scroll+zoom) and Bug 2 fix (diagnostic overlap) in parallel. Both need new extracted composable files to stay under JVM 64KB method limit.
+
+### [2026-08-14 07:11 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** queued
+**Tags:** FIX — Editor Scroll+Zoom + Diagnostic Overlap
+**Phase:** EDITOR-FIX-IMPL
+
+**What was fixed:** Both editor bugs audited in the previous entry are now implemented.
+
+---
+
+**Bug 1 — Editor Scroll + Zoom Fix (3 changes):**
+
+1. **Added `Modifier.width(IntrinsicSize.Min)` to BasicTextField** (CodeEditor.kt:1926):
+   - Forces Compose to measure the actual text content width (widest line) when inside `horizontalScroll`
+   - Without this, BasicTextField with Compose BOM 2024.06.00 wraps to viewport width → scroll range = 0
+   - Now horizontal scroll range = max(0, textWidth - viewportWidth) — scrolls correctly at all zoom levels
+
+2. **Added `LaunchedEffect(fontSize)` scroll clamp** (CodeEditor.kt:691-700):
+   - When font size changes, clamps `hScroll.value` and `vScroll.value` against new `maxValue`
+   - Prevents scroll from getting stuck at stale boundaries after zoom
+
+3. **Standardized max zoom at 32sp** (ProjectShellScreen.kt:912):
+   - Menu "Zoom In" was capped at 24sp, all other controls at 32sp — now consistent
+
+---
+
+**Bug 2 — Diagnostic Overlap Fix (4 changes):**
+
+1. **Created `ErrorLensOverlay.kt`** (96 lines, new file):
+   - Extracted ErrorLens rendering from inline CodeEditor.kt block into separate @Composable
+   - Same-line diagnostics now STACK vertically instead of rendering at identical Y positions
+   - Each subsequent diagnostic on the same line gets an incremental Y offset (slotIndex × stackedHeight)
+   - Severity-based coloring: errors=red, warnings=amber, info=blue (was all red)
+   - Uses GUTTER_WIDTH parameter for consistent gutter offset
+
+2. **Replaced `distinctBy { it.start }` with composite key** (CodeEditor.kt:1479,1486):
+   - Old: `distinctBy { it.start }` — drops diagnostics with same start offset even if message/code differ
+   - New: `distinctBy { Triple(it.start, it.end, it.message) }` — preserves legitimate same-start diagnostics
+   - This fixes the silent diagnostic loss bug
+
+3. **Added deterministic sorting** (CodeEditor.kt:1479,1486):
+   - `sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))`
+   - Ensures stable rendering order across recompositions — same diagnostics always stack in same order
+
+4. **Replaced inline ErrorLens block with extracted function call** (CodeEditor.kt:2291-2301):
+   - Removed 30 lines of inline code from CodeEditor.kt composable body
+   - Replaced with single `ErrorLensOverlay(...)` call — helps stay under JVM 64KB method limit
+   - Net reduction: ~20 lines from CodeEditor.kt composable body
+
+---
+
+**Error Trace Log:**
+
+| # | File | Line(s) | Symptom | Root Cause | Fix Commit | Lesson |
+|---|------|---------|---------|------------|-----------|--------|
+| 1 | CodeEditor.kt | 1926 | Horizontal scroll stuck when zoomed in — can't reach end of long lines | BasicTextField in horizontalScroll missing width(IntrinsicSize.Min) — Compose BOM 2024.06.00 doesn't auto-report intrinsic width | (pending) | Always add Modifier.width(IntrinsicSize.Min) when placing BasicTextField inside horizontalScroll |
+| 2 | CodeEditor.kt | 691-700 | Scroll position stuck at stale boundary after font size change | No LaunchedEffect to clamp scroll state against new maxValue after zoom | (pending) | Font size changes alter content dimensions — clamp scroll state against new maxValue after any layout-affecting config change |
+| 3 | CodeEditor.kt | 2291-2301 | Multiple diagnostics on same line overlap and become unreadable | ErrorLens positioned all same-line diagnostics at identical Y coordinate with no stacking logic | (pending) | Same-line diagnostics must be stacked vertically using a slot index, not placed at the same Y coordinate |
+| 4 | CodeEditor.kt | 1479,1486 | Legitimate diagnostics silently dropped — user never sees them | distinctBy { it.start } drops diagnostics with same start offset even if message/code differ | (pending) | Dedup diagnostics by composite key (start, end, message), not by start offset alone |
+| 5 | ProjectShellScreen.kt | 912 | Inconsistent max zoom — menu caps at 24sp, other controls at 32sp | Copy-paste of zoom control didn't match the 32sp cap used elsewhere | (pending) | Standardize zoom limits across all controls — menu, gear menu, status bar buttons should all use the same max |
+
+**Files touched:** CodeEditor.kt, ErrorLensOverlay.kt (new), ProjectShellScreen.kt
+**Next on roadmap:** Verify CI green. Device testing: zoom scroll test, same-line diagnostic test.

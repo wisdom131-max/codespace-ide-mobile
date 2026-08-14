@@ -909,7 +909,7 @@ fun ProjectShellScreen(
             "Find in Files"      -> { showFileSearch = true }
             "Go to File"         -> showCommandPalette = true
             "Change Color Theme" -> showColorTheme = true
-            "Zoom In"            -> editorFontSize = (editorFontSize + 1).coerceAtMost(24)
+            "Zoom In"            -> editorFontSize = (editorFontSize + 1).coerceAtMost(32)
             "Zoom Out"           -> editorFontSize = (editorFontSize - 1).coerceAtLeast(8)
             "Exit"               -> onBack()
             "Toggle Zen Mode"    -> {

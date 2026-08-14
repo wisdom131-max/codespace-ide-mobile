@@ -688,6 +688,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     val hScroll = rememberScrollState()
     // Reactive minimap visibility from FeatureToggleStore — toggling in Settings updates immediately
+    // EDITOR-FIX: Clamp scroll positions when font size changes — prevents stuck scroll at stale boundaries
+    LaunchedEffect(fontSize) {
+        // Clamp horizontal scroll against new max value (content width changed with font size)
+        if (hScroll.value > hScroll.maxValue) {
+            hScroll.scrollTo(hScroll.maxValue)
+        }
+        // Clamp vertical scroll against new max value
+        if (vScroll.value > vScroll.maxValue) {
+            vScroll.scrollTo(vScroll.maxValue)
+        }
+    }
     var showMinimapState by FeatureToggleStore.state("minimap")
 
     // 2. Code folding state
@@ -1464,15 +1475,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(value.text, language) {
         kotlinx.coroutines.delay(500)   // debounce — only lint after 500 ms idle
         val localErrors = LintAnalyzer.analyze(value.text, language)
-        // P24-1: merge LSP diagnostics as squiggles — deduplicate by start offset
-        val combined = (localErrors + lspDiagnosticErrors).distinctBy { it.start }
+        // P24-1: merge LSP diagnostics as squiggles — deduplicate by composite key (start, end, message)
+        val combined = (localErrors + lspDiagnosticErrors).distinctBy { Triple(it.start, it.end, it.message) }.sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))
         lintErrors = combined
     }
 
     // P24-1: Re-merge when LSP diagnostics arrive (server push)
     LaunchedEffect(lspDiagnosticErrors) {
         val localErrors = LintAnalyzer.analyze(value.text, language)
-        lintErrors = (localErrors + lspDiagnosticErrors).distinctBy { it.start }
+        lintErrors = (localErrors + lspDiagnosticErrors).distinctBy { Triple(it.start, it.end, it.message) }.sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))
     }
 
     // ── P2-11 Inlay hints state ─────────────────────────────────────────
@@ -1912,6 +1923,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     },
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
+                        .width(IntrinsicSize.Min)
                         .padding(end = 24.dp)
                         .focusRequester(focusRequester)
                         .pointerInput(Unit) {
@@ -2275,35 +2287,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // P41-O1: Error Lens — inline error text at end of code lines (VS Code-style)
-        if (toggles.showErrorLens && lintErrors.isNotEmpty() && !showCompletions) {
-            val lineHeightPxEL = lineHeightDp.value  // P50-FIX: density-corrected line height
-            val charWidthPxEL = fontSize * 0.6f
-            for (err in lintErrors) {
-                // Find which line this error is on
-                val textBefore = value.text.substring(0, err.start.coerceIn(0, value.text.length))
-                val errorLine = textBefore.count { it == '\n' }
-                // Find the end of that line (for x-positioning after the code)
-                val lineStart = value.text.lastIndexOf('\n', (err.start - 1).coerceAtLeast(0)) + 1
-                val lineEnd = value.text.indexOf('\n', err.start)
-                val lineLength = (if (lineEnd < 0) value.text.length else lineEnd) - lineStart
-                val lineTopDp = errorLine * lineHeightPxEL - vScrollDp
-                val lineLeftDp = (lineLength * charWidthPxEL) + 80f // gutter width + code width + small gap
-                // Only render if visible in viewport
-                if (lineTopDp >= 0 && lineTopDp < (displayLines.size + 5) * lineHeightPxEL) {
-                    Text(
-                        text = "  ${if (err.code != null) "[${err.code}] " else ""}${err.message.replace("\n", " ").take(80)}",
-                        color = Color(0xFFFF6B6B).copy(alpha = 0.7f),
-                        fontSize = (fontSize * 0.8f).sp,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = lineLeftDp.dp, top = lineTopDp.dp)
-                            .zIndex(3f)
-                    )
-                }
-            }
-        }
+        // EDITOR-FIX: Extracted to ErrorLensOverlay.kt with same-line diagnostic stacking
+        ErrorLensOverlay(
+            showErrorLens = toggles.showErrorLens,
+            lintErrors = lintErrors,
+            hasCompletions = showCompletions,
+            value = value,
+            lineHeightDp = lineHeightDp,
+            vScrollDp = vScrollDp,
+            fontSize = fontSize,
+            GUTTER_WIDTH = GUTTER_WIDTH,
+            displayLineCount = displayLines.size,
+        )
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (toggles.showCodeLens && lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
             val lineHeightPxCL = lineHeightDp.value  // P50-FIX: density-corrected line height
