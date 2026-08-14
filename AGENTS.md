@@ -17136,3 +17136,9 @@ Before implementation, produce a complete plan covering:
 **What was fixed:** Phase N phase 16 — Full testing checklist. 24 test scenarios (N-01 through N-24) covering all 15 phases: core model, priority, severity, states, actions, progress, error details, undo, persistence, settings, build/debug/terminal integration, accessibility, rate limiting, DND, sound, bell position, and clearResolved. Written to docs/phase_n_test_checklist.md.
 **Files touched:** docs/phase_n_test_checklist.md
 **Next on roadmap:** Device testing of all N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix; Phase P — Advanced Problems Panel
+
+### [2026-08-14 01:38 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** pending | **CI Build:** pending (fixing #2245 failure)
+**What was fixed:** LspManager.kt lines 723 and 737 used `language.id` which does not exist on the Language enum (it only has `displayName`, `extensions`, and implicit `name`). Changed to `language.name` which is consistent with the rest of the file (line 1313 uses `language.name.lowercase()`). This was the root cause of CI build #2245 failure — `Unresolved reference: id` at 723:40 and 737:40.
+**Files touched:** LspManager.kt
+**Next on roadmap:** Device testing N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix

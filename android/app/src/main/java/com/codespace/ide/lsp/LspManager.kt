@@ -720,7 +720,7 @@ object LspManager {
 
     // Phase N: LSP lifecycle notifications — push meaningful events to NotificationStore
     private fun notifyLspEvent(language: Language, event: String, severity: NotificationStore.Severity, body: String, actions: List<NotificationStore.NotificationAction> = emptyList()) {
-        val dedupKey = "lsp:${language.id}:$event"
+        val dedupKey = "lsp:${language.name}:$event"
         NotificationStore.add(
             title = "${language.displayName} language server",
             body = body,
@@ -734,7 +734,7 @@ object LspManager {
             },
             actions = actions,
             deduplicationKey = dedupKey,
-            groupKey = "lsp-${language.id}",
+            groupKey = "lsp-${language.name}",
             category = event,
         )
     }
