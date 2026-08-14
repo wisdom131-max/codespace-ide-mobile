@@ -582,48 +582,6 @@ fun ProjectShellScreen(
     // correctly-sized window on rotate.
     val orientation = LocalConfiguration.current.orientation
 
-    // ── File picker launcher (Open File from hamburger menu) ──
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-                // Copy file into project dir
-                val projectDir = java.io.File(context.filesDir, "projects/$projectId")
-                val fileName = uri.lastPathSegment?.substringAfterLast("/") ?: "imported_file"
-                val destFile = java.io.File(projectDir, fileName)
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    destFile.outputStream().use { output -> input.copyTo(output) }
-                }
-                val path = destFile.absolutePath
-                if (!editorTabs.contains(path)) editorTabs.add(path)
-                activeEditorTab = path
-                showNotification("Opened $fileName", "success")
-            } catch (e: Exception) {
-                showNotification("Failed to open file: ${e.message}", "error")
-            }
-        }
-    }
-
-    // ── Folder picker launcher (Open Folder from hamburger menu) ──
-    val folderPickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-                showNotification("Folder added to workspace", "success")
-                // TODO: add folder to explorer tree
-            } catch (e: Exception) {
-                showNotification("Failed to open folder: ${e.message}", "error")
-            }
-        }
-    }
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
     val ActivityBarBg = t.ActivityBarBg
@@ -811,6 +769,49 @@ fun ProjectShellScreen(
             severity = severity,
             source = NotificationStore.Source.SYSTEM,
         )
+    }
+
+    // ── File picker launcher (Open File from hamburger menu) ──
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                // Copy file into project dir
+                val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                val fileName = uri.lastPathSegment?.substringAfterLast("/") ?: "imported_file"
+                val destFile = java.io.File(projectDir, fileName)
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                val path = destFile.absolutePath
+                if (!editorTabs.contains(path)) editorTabs.add(path)
+                activeEditorTab = path
+                showNotification("Opened $fileName", "success")
+            } catch (e: Exception) {
+                showNotification("Failed to open file: ${e.message}", "error")
+            }
+        }
+    }
+
+    // ── Folder picker launcher (Open Folder from hamburger menu) ──
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                showNotification("Folder added to workspace", "success")
+                // TODO: add folder to explorer tree
+            } catch (e: Exception) {
+                showNotification("Failed to open folder: ${e.message}", "error")
+            }
+        }
     }
 
         // ── P2-10: Navigation history helpers ──────────────────────────────────
