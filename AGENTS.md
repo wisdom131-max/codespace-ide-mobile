@@ -17150,7 +17150,7 @@ Before implementation, produce a complete plan covering:
 **Next on roadmap:** Device testing N-01 through N-24; Device testing SCM E1-E18; YouTube Test 51 fix
 
 ### [2026-08-14 02:10 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** 606a04d4 | **CI Build:** #2251 FAILED (duplicate onPermissionRequest) → #2252 pending (fix)
+**Commit:** 606a04d4 | **CI Build:** #2251 FAILED → fixed in f500b07c → #2252 GREEN ✅
 **What was fixed:** Test 51 (YouTube preview) — three issues fixed:
 (1) Shorts audio-only (no video): `playsinline` was incorrectly in CSS (it's an HTML attribute, not a CSS property). Added `YOUTUBE_VIDEO_FIX_JS` that sets `playsinline`/`webkit-playsinline`/`autoplay` attributes on video elements via JS, forces non-zero dimensions, and uses MutationObserver to catch dynamically added videos (YouTube SPA navigation). Also added `onPermissionRequest` to WebChromeClient to grant media permissions.
 (2) Settings page black screen: YouTube uses Shadow DOM (custom elements like ytd-app, ytd-settings). Standard `<style>` tags don't pierce Shadow DOM. Added `YOUTUBE_SHADOW_DOM_FIX_JS` that injects styles directly into shadow roots of all YouTube custom elements, with MutationObserver to catch dynamically created elements.
@@ -17394,7 +17394,7 @@ Both use:
 - ONE source of truth
 
 ### [2026-08-14 02:20 WAT] — AI Agent: Claude (Base44 Superagent)
-**Commit:** f500b07c, 3ffa53a3 | **CI Build:** #2252 pending
+**Commit:** f500b07c, 3ffa53a3 | **CI Build:** #2252 GREEN ✅, #2253 GREEN ✅, #2254 GREEN ✅
 **What was fixed:** (1) CI #2251 failed — duplicate `onPermissionRequest` in BrowserPreview WebChromeClient (conflicting overloads). Removed the one I added, kept the original. (2) Accidentally committed build log files — removed and added to .gitignore. (3) Registered Phase 27 — Run & Debug System Rebuild plan (PLAN FIRST) in AGENTS.md. Plan includes full architecture spec, debug state machine, UI wiring requirement, and 33-item plan-first output checklist. Awaiting Goodluck's approval before implementation.
 **Files touched:** PreviewPane.kt, .gitignore, AGENTS.md
 **Next on roadmap:** Confirm #2252 green → Begin Phase 27 audit (AFTER approval) → Device testing N-01 through N-24, SCM E1-E18, Test 51
