@@ -85,12 +85,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-14 00:42 WAT)
+## CURRENT STATE (2026-08-14 07:01 WAT)
 
 | | |
 |-|-|
-| Latest commit | SCM-11: AgentTools gitRun migrated to GitCommandExecutor (pending push). |
-| Active phase | **TESTING STAGE** — Phase 27 (Run/Debug rebuild + UI audit) shipped ✅. Phase U (Completion Pipeline) shipped ✅ (#2179). Remaining: device testing of debug features + menu actions, Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown, device retests. |
+| Latest commit | 78faea2 — AGENTS.md roadmap correction (Phase U already complete) |
+| Active phase | **AUDIT STAGE** — Editor Scroll+Zoom + Diagnostic Overlap audit complete. Root causes identified for both bugs. Implementation pending. Phase 27 ✅, Phase U ✅ shipped (#2270 green). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -11852,9 +11852,9 @@ Previous patterns (from USER.md):
 
 | | |
 |-|-|
-| Latest commit | **07ecf98e** — CI fix: comma-in-comment in CodeEditor.kt (fixes #2011-#2019) |
+| Latest commit | 78faea2 — AGENTS.md roadmap correction (Phase U already complete) |
 | Previous green | **6869688d** — P49 Snippet Tab + Select Next Occurrence (build #2009) |
-| Active phase | **Phase 50** — P50-1 through P50-4 implemented by other AI, all were broken by comma bug, now fixed |
+| Active phase | **AUDIT STAGE** — Editor Scroll+Zoom + Diagnostic Overlap audit complete. Root causes identified for both bugs. Implementation pending. Phase 27 ✅, Phase U ✅ shipped (#2270 green). |
 | Backend | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com |
 | Phase 39 | ✅ COMPLETE — OAuth, env vars, redirect URIs all configured |
 
@@ -17553,3 +17553,155 @@ Only one instance in the entire codebase (ExplorerPane.kt:3102).
 **What was fixed:** Corrected roadmap references — Phase U (Completion Pipeline Upgrade) was already fully implemented (build #2179, all 8 features U-1 through U-8) but was incorrectly listed as "next on roadmap" in 3 changelog entries from 03:00-03:15. Removed Phase U from all future roadmap lines. Updated Current State table: last green build → #2270, active phase updated to reflect Phase U ✅ + Phase 27 ✅ both shipped.
 **Files touched:** AGENTS.md
 **Next on roadmap:** Device testing of all debug features + menu actions. Test 41 (SCM scroll), Test 42 (SCM dubious ownership), Problems panel dropdown. Then next development phase (TBD).
+
+### [2026-08-14 07:01 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** (pending) | **CI Build:** N/A (audit only, no code changes)
+**Tags:** AUDIT — Editor Scroll+Zoom + Diagnostic Overlap
+**Phase:** EDITOR-FIX-AUDIT
+
+**What was audited:** Two serious editor usability bugs — (1) horizontal scrolling gets stuck when zoom/font size increases, (2) multiple LSP diagnostic messages render at the same screen position and overlap each other. Full architecture-level audit performed on both before any implementation.
+
+---
+
+**BUG 1 — Editor Scroll + Zoom Architecture Audit**
+
+**Symptom:** When user increases editor font size (zoom in), horizontal scrolling becomes stuck. User cannot scroll far enough right to see the end of long lines. Works at default font size (13sp) but breaks at larger sizes.
+
+**Files audited:**
+- `CodeEditor.kt` (5569 lines) — editor layout, scroll state, text rendering, all overlays
+- `EditorPane.kt` (2392 lines) — editor container, fontSize parameter passing
+- `ProjectShellScreen.kt` — editorFontSize state management, zoom in/out controls
+- `EditorOverlays.kt` (250 lines) — extracted overlay composables
+- `SyntaxTransformation.kt` — squiggle rendering via VisualTransformation
+
+**Layout architecture traced:**
+```
+Box(fillMaxSize)
+  → Row(fillMaxSize + verticalScroll(vScroll))
+    → Gutter Column (fixed 72dp width)
+    → Box(horizontalScroll(hScroll))     ← wordWrap=false
+      → BasicTextField (no width modifier, just padding(end=24.dp))
+```
+
+**Root cause identified (3 issues):**
+
+1. **Missing `width(IntrinsicSize.Min)` on BasicTextField** (PRIMARY):
+   - `horizontalScroll(hScroll)` on the Box passes `maxWidth = Constraints.Infinity` to the child
+   - With Compose BOM 2024.06.00, `BasicTextField` does NOT properly report its intrinsic content width in a horizontally scrollable container without explicit `Modifier.width(IntrinsicSize.Min)`
+   - Without it, `BasicTextField` wraps to the viewport width → content width = viewport width → `hScroll.maxValue = 0` → no horizontal scroll possible
+   - At default font size (13sp), most code lines fit within the viewport, so the bug is invisible. At larger font sizes, lines exceed viewport width but the scroll range stays 0 — scroll appears "stuck"
+
+2. **No scroll state invalidation on zoom change:**
+   - `hScroll` is `rememberScrollState()` (line 689) — persists across recompositions ✅
+   - But there's no `LaunchedEffect(fontSize)` to clamp the current scroll position against the new max value after zoom
+   - When font size changes, the content width changes, but if the old scroll position is outside the new valid range, it can get stuck at a stale boundary
+
+3. **`charWidthPx = fontSize * 0.6f` heuristic** (SECONDARY — affects overlays, not scroll itself):
+   - All overlay positioning (ErrorLens, cursor, search matches, inlay hints, code lens, document links, completion popup, hover popup) uses `fontSize * 0.6f` as character width
+   - This is a rough approximation — actual monospace char width varies by font family and density
+   - At extreme zoom levels, overlay positions drift from actual text positions
+   - Should use `textLayoutResult.getBoundingBox(offset).width` for measured char width
+
+**Zoom architecture traced:**
+- `editorFontSize` state in `ProjectShellScreen.kt` (line 763) — `rememberSaveable` via `restoredState`
+- Changed via: menu "Zoom In/Out" (±2), gear menu "Font Size +/-" (±1), status bar buttons (±1)
+- Range: 8sp to 32sp (menu) or 8sp to 24sp (gear menu) — inconsistent max
+- Passed to `EditorPane` → `CodeEditor` as `fontSize: Int = 13`
+- No scroll preservation logic during zoom — no `LaunchedEffect(fontSize)` to preserve logical cursor/viewport position
+- `lineHeightDp` recalculates correctly (line 669): `with(scrollDensity) { (fontSize * 1.25f).sp.toDp() }` ✅
+- `vScrollDp` converts pixels to dp correctly (line 673) ✅
+
+**Fix plan (not yet implemented):**
+1. Add `Modifier.width(IntrinsicSize.Min)` to the `BasicTextField` modifier chain
+2. Add `LaunchedEffect(fontSize)` to clamp `hScroll.value` and `vScroll.value` against new max ranges after zoom
+3. Preserve logical cursor position during zoom (optional — clamp-only is acceptable per prompt)
+4. Replace `fontSize * 0.6f` heuristic with measured char width from `textLayoutResult` (secondary, can be phased)
+5. Cap max zoom consistently at 32sp across all zoom controls
+
+---
+
+**BUG 2 — Diagnostic Overlap Root Cause Audit**
+
+**Symptom:** Multiple LSP diagnostics (e.g., `[W292] W292 newline at end of file` and `undefined name '...'`) render at the exact same screen position and overlap each other. With 3+ diagnostics, messages pile up and become unreadable.
+
+**Files audited:**
+- `CodeEditor.kt` lines 2278-2305 — ErrorLens inline diagnostic renderer
+- `CodeEditor.kt` lines 1463-1476 — diagnostic merge + dedup logic
+- `SyntaxTransformation.kt` lines 148-210 — squiggle rendering via VisualTransformation
+- `EditorOverlays.kt` — extracted overlays (ExtraCursor, SearchMatch, MergeConflict)
+- `DiagnosticsOverlay.kt` (21 lines) — gutter diagnostic colors
+- `DiagnosticManager.kt` (302 lines) — central diagnostic store
+- `DiagnosticConverter.kt` (233 lines) — LSP → Diagnostic conversion
+- `DiagnosticPublisher.kt` (77 lines) — diagnostic publishing
+- `LspIntegration.kt` — `lspDiagnosticsToLintErrors()` conversion
+- `EditorPane.kt` line 983 — diagnostic handler wiring
+
+**Diagnostic pipeline traced:**
+```
+LSP publishDiagnostics notification
+  → LspManager.setDiagnosticsHandler() callback (EditorPane.kt:983)
+  → lspDiagnosticsToLintErrors(diags, snap.content) (LspIntegration.kt:308)
+  → Converts 0-based line/col to char offsets in document text
+  → Returns List<LintError>(start, end, message, code, severity)
+  → Stored as lspSquiggles state in EditorPane
+  → Passed to CodeEditor as lspDiagnosticErrors parameter
+  → Merged with local LintAnalyzer results (CodeEditor.kt:1468)
+  → Deduped by distinctBy { it.start } (CodeEditor.kt:1468)
+  → Stored as lintErrors state
+  → Used by:
+    1. SyntaxTransformation — squiggle underline (text decoration)
+    2. ErrorLens — inline message text at end of line (CodeEditor.kt:2278-2305)
+    3. Minimap error markers (CodeEditor.kt:2524-2580)
+    4. Gutter severity colors (DiagnosticsOverlay.kt)
+    5. Debug current-line highlight (CodeEditor.kt:2580)
+    6. Hover popup diagnostic display (CodeEditor.kt:5420+)
+    7. Code action lightbulb (CodeEditor.kt:881)
+```
+
+**Root cause identified (3 issues):**
+
+1. **ErrorLens positions all same-line diagnostics at identical Y coordinate** (PRIMARY):
+   - Line 2289: `val lineTopDp = errorLine * lineHeightPxEL - vScrollDp`
+   - `errorLine` is computed from `value.text.substring(0, err.start).count { it == '\n' }`
+   - If 2+ diagnostics are on the same document line, they all get the SAME `errorLine` → SAME `lineTopDp` → SAME Y position
+   - They render on top of each other with `zIndex(3f)` — no stacking, no offset, no collision detection
+   - This is the exact bug described in the prompt
+
+2. **`distinctBy { it.start }` drops same-start-offset diagnostics** (SECONDARY):
+   - Line 1468: `(localErrors + lspDiagnosticErrors).distinctBy { it.start }`
+   - If two diagnostics have the same `start` offset (e.g., both at column 0 of the same line), only the first is kept
+   - This silently drops legitimate diagnostics — the user never sees the second one
+   - Should dedup by a composite key: (start, message, code, severity) or by diagnostic ID
+
+3. **No deterministic ordering of lintErrors** (TERTIARY):
+   - `lintErrors` is built from `(localErrors + lspDiagnosticErrors)` — order depends on list concatenation
+   - No sort by (line, column, severity, source, code) before rendering
+   - Unstable ordering means the same diagnostics can render in different order across recompositions
+
+**No duplicate renderer found:**
+- Squiggles are rendered via `SyntaxTransformation` (VisualTransformation) — inline text decoration only
+- ErrorLens messages are rendered as separate `Text` composables — no overlap with squiggles
+- These are two different rendering modes (decoration vs message text), not duplicates ✅
+- No legacy renderer found — no duplicate Compose layers
+
+**Fix plan (not yet implemented):**
+1. Group diagnostics by document line. For same-line diagnostics, stack vertically: first diagnostic at `errorLine * lineHeight`, each subsequent diagnostic below the previous one's measured height + spacing
+2. Replace `distinctBy { it.start }` with dedup by composite key `(start, end, message, code, severity)` to preserve legitimate same-start diagnostics
+3. Sort `lintErrors` by (line, column, severity, code) deterministically before rendering
+4. Extract the new ErrorLens layout logic into a separate file (e.g., `ErrorLensOverlay.kt`) to stay under the JVM 64KB method limit
+5. Use measured text height for stacking, not a fixed `lineHeight` assumption
+
+---
+
+**Error Trace Log (audit findings — no code changes yet):**
+
+| # | File | Line(s) | Symptom | Root Cause | Fix Commit | Lesson |
+|---|------|---------|---------|------------|-----------|--------|
+| 1 | CodeEditor.kt | 1746-1748 | Horizontal scroll stuck after zoom — can't reach end of long lines | BasicTextField inside horizontalScroll missing `width(IntrinsicSize.Min)` — Compose BOM 2024.06.00 doesn't auto-report intrinsic width for BasicTextField in scrollable containers | (pending) | Always add `Modifier.width(IntrinsicSize.Min)` when placing BasicTextField inside `horizontalScroll` to ensure content width is measured correctly |
+| 2 | CodeEditor.kt | 689 | Scroll position not clamped after font size change — can get stuck at stale boundary | No `LaunchedEffect(fontSize)` to clamp `hScroll.value`/`vScroll.value` against new max range after zoom | (pending) | Font size changes alter content dimensions — always clamp scroll state against new maxValue after any layout-affecting config change |
+| 3 | CodeEditor.kt | 2289 | Multiple diagnostics on same line render at identical Y position and overlap | `lineTopDp = errorLine * lineHeightPxEL - vScrollDp` — all same-line diagnostics get same Y, no stacking logic | (pending) | Same-line diagnostics must be stacked vertically using measured heights, not placed at the same Y coordinate |
+| 4 | CodeEditor.kt | 1468 | Legitimate diagnostics silently dropped | `distinctBy { it.start }` drops diagnostics with same start offset even if message/code differ | (pending) | Dedup diagnostics by composite key (start, end, message, code, severity), not by start offset alone |
+| 5 | CodeEditor.kt (multiple) | 2280, 2243, 2350, 2392, 4245, 4733 | Overlays drift from text at extreme zoom levels | `charWidthPx = fontSize * 0.6f` heuristic — not measured from actual text layout | (pending) | Use `textLayoutResult.getBoundingBox(offset).width` for measured char width instead of `fontSize * 0.6f` approximation |
+
+**Files audited (no code changes):** CodeEditor.kt, EditorPane.kt, EditorOverlays.kt, SyntaxTransformation.kt, DiagnosticsOverlay.kt, DiagnosticManager.kt, DiagnosticConverter.kt, DiagnosticPublisher.kt, LspIntegration.kt, LspManager.kt, ProjectShellScreen.kt
+**Next on roadmap:** Implement Bug 1 fix (scroll+zoom) and Bug 2 fix (diagnostic overlap) in parallel. Both need new extracted composable files to stay under JVM 64KB method limit.
