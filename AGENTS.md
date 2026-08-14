@@ -85,12 +85,12 @@ then do X. Don't go searching for random work — follow the roadmap.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-14 07:01 WAT)
+## CURRENT STATE (2026-08-14 07:44 WAT)
 
 | | |
 |-|-|
 | Latest commit | 78faea2 — AGENTS.md roadmap correction (Phase U already complete) |
-| Active phase | **AUDIT STAGE** — Editor Scroll+Zoom + Diagnostic Overlap audit complete. Root causes identified for both bugs. Implementation pending. Phase 27 ✅, Phase U ✅ shipped (#2270 green). |
+| Active phase | **PLANNED: Bottom Panel Drag Resize** — VS Code-style top-edge drag handle for Terminal/Problems/Output. Single shared panel height state. Editor-Fix (scroll+zoom + diagnostic overlap) shipped ✅ (commit 793f8f4). Phase 27 ✅, Phase U ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -11854,7 +11854,7 @@ Previous patterns (from USER.md):
 |-|-|
 | Latest commit | 78faea2 — AGENTS.md roadmap correction (Phase U already complete) |
 | Previous green | **6869688d** — P49 Snippet Tab + Select Next Occurrence (build #2009) |
-| Active phase | **AUDIT STAGE** — Editor Scroll+Zoom + Diagnostic Overlap audit complete. Root causes identified for both bugs. Implementation pending. Phase 27 ✅, Phase U ✅ shipped (#2270 green). |
+| Active phase | **PLANNED: Bottom Panel Drag Resize** — VS Code-style top-edge drag handle for Terminal/Problems/Output. Single shared panel height state. Editor-Fix (scroll+zoom + diagnostic overlap) shipped ✅ (commit 793f8f4). Phase 27 ✅, Phase U ✅. |
 | Backend | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com |
 | Phase 39 | ✅ COMPLETE — OAuth, env vars, redirect URIs all configured |
 
@@ -17768,3 +17768,118 @@ LSP publishDiagnostics notification
 
 **Files touched:** CodeEditor.kt, ErrorLensOverlay.kt (new), ProjectShellScreen.kt
 **Next on roadmap:** Verify CI green. Device testing: zoom scroll test, same-line diagnostic test.
+
+---
+
+## PHASE: BOTTOM-PANEL-DRAG-RESIZE — VS Code-Style Bottom Panel Drag Resize
+
+**Status:** PLANNED (not yet implemented)
+**Added:** 2026-08-14 07:44 WAT
+**Source:** User-provided prompt file (d52e894eb_VS_Code_Style_Bottom_Panel_Drag_Resize_Prompt.txt)
+
+### Objective
+Rebuild the bottom panel so Terminal, Problems, Output, and future bottom-panel views behave like a professional IDE. User grabs the TOP EDGE and drags: up → panel taller, down → panel shorter, to minimum → collapsed, up again → expands. Editor resizes continuously during drag. NOT a fixed-height toggle.
+
+### Target Architecture
+```
+ProjectShell
+├── MainEditorArea
+└── BottomPanel
+    ├── ResizeHandle
+    └── BottomPanelContent
+        ├── Terminal
+        ├── Problems
+        ├── Output
+        └── other bottom views
+```
+Resize behavior belongs to BottomPanel. ONE shared container, not separate resize systems per tab.
+
+### Key Requirements (22 sections from prompt)
+
+1. **Audit first** — Find ProjectShell/root layout, editor container, bottom panel container, Terminal/Problems/Output panels, tab switching, current height state, visibility/collapse state, existing divider/drag logic, keyboard/window resize handling. Prefer ONE shared BottomPanel container.
+
+2. **Top-edge resize handle** — TOP boundary is draggable. Visible divider may be thin, but touch target must be mobile-friendly (not pixel-perfect).
+
+3. **Drag direction** — Finger UP = panel grows + editor shrinks. Finger DOWN = panel shrinks + editor grows. Consistent direction.
+
+4. **Continuous resizing** — Resize continuously during gesture, not after release. Pointer → drag delta → new height → clamp → update layout → editor resizes immediately.
+
+5. **Single panel height state** — One authoritative BottomPanel state: visible, height, minHeight, maxHeight, collapsed, selectedTab. Terminal/Problems/Output must NOT maintain separate heights.
+
+6. **Min/max height** — Density-aware. Reasonable minimum (header/tab bar usable). Max ~70-80% of available height. No arbitrary fixed pixel limits.
+
+7. **Collapse** — If design supports it: drag to collapse threshold collapses panel. Reopening restores previous meaningful height. Don't force collapse if unsupported.
+
+8. **Tab switching** — Terminal → Problems → Output must preserve same panel height. No separate geometry per tab.
+
+9. **Preserve user size** — Close/reopen restores previous height, clamped to current range.
+
+10. **Window/orientation resize** — Handle portrait/landscape, split screen, window resize, keyboard visibility. `newHeight = clamp(savedHeight, minHeight, maxHeight)`. Don't reset to random default.
+
+11. **Keyboard handling** — Keyboard open: calculate new available height, clamp, prevent negative editor dimensions. Keyboard close: restore preferred height.
+
+12. **Gesture separation** — CRITICAL. Top edge drag = resize panel. Inside Terminal = scroll terminal. Inside Problems = scroll Problems. Inside Output = scroll Output. Content surface must NOT become a resize gesture. Once resize gesture begins on handle, resize handler owns it until end.
+
+13. **Compose/state safety** — Stable state ownership. Don't recreate height state during recomposition. Don't reset height on tab switch. Avoid multiple independent resize states. Update layout immediately during drag. Don't keep height in transient local variable.
+
+14. **Main editor resize** — `availableEditorHeight = totalAvailableHeight - bottomPanelHeight - otherFixedUI`. Editor must actually shrink/grow. Don't overlay panel on editor unless intended.
+
+15. **Bottom content** — Terminal: viewport resizes, remains usable, scroll position valid. Problems: list viewport resizes, scroll valid. Output: viewport resizes, scroll valid. Don't recreate data/state on every drag.
+
+16. **Visual handle** — Subtle visual indication: divider, drag indicator, highlighted while dragging. Keep UI clean.
+
+17. **Performance** — Smooth dragging. Avoid rebuilding shell, recreating Terminal/Problems/Output state, expensive work on pointer events. Only layout dimensions should change.
+
+18. **Don't break unrelated features** — Don't modify LSP, completion, hover, diagnostics, SCM, debugger, editor text rendering, terminal execution, Problems data, Output logging unless audit proves direct dependency.
+
+### Implementation Process
+1. Audit current bottom-panel architecture
+2. Identify actual panel container
+3. Identify height state
+4. Identify tab switching
+5. Identify existing gesture logic
+6. Identify keyboard/window handling
+7. Identify whether multiple panels maintain separate heights
+8. Write short implementation plan
+9. Implement smallest robust restructure
+10. Build the project
+
+Do NOT rewrite Terminal, Problems, or Output themselves unless necessary.
+
+### Manual Test Matrix (18 tests — user will test manually)
+1. Open Terminal, drag top edge up → panel grows, editor shrinks
+2. Drag down → panel shrinks, editor grows
+3. Repeated up/down → smooth continuous resizing
+4. Terminal → Problems → same panel height
+5. Problems → Output → same panel height
+6. Close/reopen panel → previous height restored
+7. Drag to minimum → minimum/collapse works
+8. Drag to maximum → max constraint works
+9. Scroll Terminal → terminal scrolls, panel doesn't resize
+10. Scroll Problems → scrolls normally
+11. Scroll Output → scrolls normally
+12. Start drag inside Terminal content → content scrolls, not panel resize
+13. Start drag on resize handle → panel resizes
+14. Open keyboard → panel stays within available screen
+15. Close keyboard → preferred size restored
+16. Rotate/window resize → height clamps correctly
+17. Rapid tab switching → no height reset or glitch
+18. Repeated handle dragging → no jumps, flicker, stuck gesture, runaway height
+
+### Final Audit Report Required
+1. Existing bottom-panel architecture
+2. Root cause of any current resize limitation
+3. New BottomPanel architecture
+4. Resize-state ownership
+5. Resize-handle implementation
+6. Minimum height value
+7. Maximum height value
+8. Collapse behavior
+9. Tab switch height preservation
+10. Close/reopen height restoration
+11. Keyboard handling
+12. Orientation/window resize handling
+13. Gesture separation
+14. Performance characteristics
+
+**Next on roadmap:** Audit existing bottom-panel layout → implement drag resize per this plan → manual device testing (18 tests).
