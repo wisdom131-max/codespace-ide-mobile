@@ -17521,3 +17521,28 @@ STARTING → loading/disabled state
 - Audited DebugConsolePanel — all controls wired (session switcher, capability toolbar, input/send, attach dialog, restart, stop, run, clear)
 **Files touched:** ProjectShellScreen.kt
 **Next on roadmap:** Confirm CI build green. Device testing of all debug features + menu actions. Phase U — Completion Pipeline Upgrade.
+
+### [2026-08-14 03:15 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 305decc | **CI Build:** pending (fixes #2263-#2268)
+**Tags:** CI-FIX
+**What was fixed:** Fixed 6 consecutive failed CI builds (#2263-#2268) — all failed
+with the same compile error in ExplorerPane.kt:
+`Icons.AutoMirrored.Filled.KeyboardArrowDown` — Unresolved reference, receiver type mismatch.
+
+**Root cause:** `KeyboardArrowDown` is NOT an auto-mirrored icon in Compose Material
+Icons. Only `KeyboardArrowRight` and `KeyboardArrowLeft` have auto-mirrored variants.
+`KeyboardArrowDown` exists only as `Icons.Default.KeyboardArrowDown` (or `Icons.Filled.KeyboardArrowDown`).
+The code at line 3102 used `Icons.AutoMirrored.Filled.KeyboardArrowDown` which doesn't exist,
+causing `compileProdDebugKotlin` to fail.
+
+**Fix:** Changed `Icons.AutoMirrored.Filled.KeyboardArrowDown` → `Icons.Default.KeyboardArrowDown`.
+Only one instance in the entire codebase (ExplorerPane.kt:3102).
+
+**Error Trace Log:**
+
+| # | File | Line(s) | Symptom | Root Cause | Fix Commit | Lesson |
+|---|------|---------|---------|------------|-----------|--------|
+| 1 | ExplorerPane.kt | 3102 | compileProdDebugKotlin FAILED — Unresolved reference: Icons.AutoMirrored.Filled.KeyboardArrowDown (receiver type mismatch) | KeyboardArrowDown is not an auto-mirrored icon — only KeyboardArrowRight/Left are. Used AutoMirrored namespace for a non-auto-mirrored icon. | 305decc | KeyboardArrowDown has NO auto-mirrored variant. Only use Icons.Default.KeyboardArrowDown. AutoMirrored is only for directionally-sensitive icons (Left/Right). |
+
+**Files touched:** ExplorerPane.kt, AGENTS.md
+**Next on roadmap:** Confirm CI green. Device testing of all debug features + menu actions. Phase U — Completion Pipeline Upgrade.
