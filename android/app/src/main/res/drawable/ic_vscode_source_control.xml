@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnSurface">
+    <!-- VS Code Source Control: circle at top, circle at bottom, circle right, connected by branch lines -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M6,1a3,3 0,0 0,-1 5.83v10.34A3,3 0,1 0,7 22v-4a2,2 0,0 1,2 -2h3a3,3 0,0 0,3 -3V6.83A3,3 0,0 0,14 1a3,3 0,0 0,-1 5.83v6.34A1,1 0,0 1,12 14H9a3,3 0,0 0,-2 0.18V6.83A3,3 0,0 0,6 1zM6,3a1,1 0,1 1,0 2 1,1 0,0 1,0 -2zM6,19a1,1 0,1 1,0 2 1,1 0,0 1,0 -2zM14,3a1,1 0,1 1,0 2 1,1 0,0 1,0 -2z"/>
+</vector>
