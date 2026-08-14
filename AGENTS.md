@@ -17398,3 +17398,14 @@ Both use:
 **What was fixed:** (1) CI #2251 failed — duplicate `onPermissionRequest` in BrowserPreview WebChromeClient (conflicting overloads). Removed the one I added, kept the original. (2) Accidentally committed build log files — removed and added to .gitignore. (3) Registered Phase 27 — Run & Debug System Rebuild plan (PLAN FIRST) in AGENTS.md. Plan includes full architecture spec, debug state machine, UI wiring requirement, and 33-item plan-first output checklist. Awaiting Goodluck's approval before implementation.
 **Files touched:** PreviewPane.kt, .gitignore, AGENTS.md
 **Next on roadmap:** Confirm #2252 green → Begin Phase 27 audit (AFTER approval) → Device testing N-01 through N-24, SCM E1-E18, Test 51
+
+### [2026-08-14 02:30 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 60568233, 818e75ae | **CI Build:** pending
+**What was fixed:** Phase 27 Run & Debug System Rebuild — Steps 1-5:
+- P27-1 (CRITICAL): Fixed startDebug() to route through DAP adapters instead of legacy providers. Previously PythonDAPAdapter and NodeDAPAdapter were registered but never called — DAP code was dead. Now all control methods (stop/pause/resume/step/evaluate/sendInput/sessionSupportsInput) use sessionAdapters[] first.
+- P27-2: Removed frameId encoding hack from PythonDAPAdapter and NodeDAPAdapter. Added proper frameId field to DebugStackFrame data class.
+- P27-3: Added STEPPING, CRASHED, FAILED states. Added isValidTransition() validator + transitionState() helper. All state changes now validated.
+- P27-4: Thread safety — sessions/breakpoints/sessionAdapters → ConcurrentHashMap, sessionCounter → AtomicInteger.
+- P27-5: Added restartSession() — stops current, preserves breakpoints, starts new session.
+**Files touched:** UniversalDebugManager.kt, PythonDAPAdapter.kt, NodeDAPAdapter.kt
+**Next on roadmap:** P27-6 ProcessTracker, P27-7 UI StateFlow, P27-8 Quick Run separation, P27-9 DebugConfiguration, P27-10 crash detection, P27-11 breakpoint verification
