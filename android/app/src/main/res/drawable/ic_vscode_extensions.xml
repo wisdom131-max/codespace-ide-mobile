@@ -3,7 +3,6 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24"
-    android:tint="?attr/colorOnSurface">
     <!-- VS Code Extensions: puzzle piece shape -->
     <path
         android:fillColor="@android:color/white"
