@@ -2817,6 +2817,24 @@ object LspManager {
         return server.client.getPendingRequestId()
     }
 
+    /**
+     * Phase X-7: Per-method pending request ID — prevents cross-method cancellation.
+     */
+    fun getPendingRequestId(language: Language, method: String): Long {
+        val server = servers[language] ?: return -1L
+        if (!server.initialized) return -1L
+        return server.client.getPendingRequestId(method)
+    }
+
+    /**
+     * Phase X-7: Cancel a pending request for a specific LSP method only.
+     */
+    fun cancelPendingRequest(language: Language, method: String, requestId: Long) {
+        val server = servers[language] ?: return
+        if (!server.initialized) return
+        server.client.cancelRequest(method, requestId)
+    }
+
     // ── Prepare Rename ──────────────────────────────────────────
 
     /**

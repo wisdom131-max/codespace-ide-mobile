@@ -29,6 +29,9 @@ class JsonRpcClient(private val process: Process) {
     private val dataInput = DataInputStream(process.inputStream)
     private val nextId = AtomicLong(1)
     private val pendingRequests = ConcurrentHashMap<Long, CompletableFuture<Any?>>()
+    // Phase X-7: Per-method pending request tracking — prevents cross-method cancellation
+    // (e.g. cancelling a completion accidentally cancelling a hover with a higher ID).
+    private val pendingRequestsByMethod = ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>
     private val notificationHandlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
     private val writeLock = Any()
 
@@ -75,6 +78,7 @@ class JsonRpcClient(private val process: Process) {
                 it.completeExceptionally(IOException("LSP connection closed"))
             }
             pendingRequests.clear()
+            pendingRequestsByMethod.clear()
             // P38-FIX: Notify LspManager that the connection dropped.
             try { onDisconnect?.invoke() } catch (_: Exception) {}
         }.apply {
@@ -106,12 +110,15 @@ class JsonRpcClient(private val process: Process) {
 
         val future = CompletableFuture<Any?>()
         pendingRequests[id] = future
+        // Phase X-7: Track by method for per-method cancellation
+        pendingRequestsByMethod.getOrPut(method) { mutableMapOf() }[id] = future
 
         try {
             writeMessage(message)
         } catch (e: Exception) {
             log("[LSP][rpc] request('$method'): writeMessage FAILED: ${e.javaClass.simpleName}: ${e.message}")
             pendingRequests.remove(id)
+            pendingRequestsByMethod.values.forEach { it.remove(id) }
             return null
         }
 
@@ -171,6 +178,24 @@ class JsonRpcClient(private val process: Process) {
         return pendingRequests.keys.maxOrNull() ?: -1L
     }
 
+    /**
+     * Phase X-7: Get the pending request ID for a specific method (for per-method cancellation).
+     * Returns -1 if no pending request matches the given method.
+     */
+    fun getPendingRequestId(method: String): Long {
+        return pendingRequestsByMethod[method]?.keys?.maxOrNull() ?: -1L
+    }
+
+    /**
+     * Phase X-7: Cancel a pending request for a specific method only.
+     */
+    fun cancelRequest(method: String, requestId: Long) {
+        val params = JSONObject().apply { put("id", requestId) }
+        notify("$/cancelRequest", params)
+        pendingRequestsByMethod[method]?.remove(requestId)
+        log("[LSP][rpc] Sent $/cancelRequest for method=$method id=$requestId")
+    }
+
     // ── Internal ──────────────────────────────────────────────────
 
     private fun handleMessage(message: JSONObject) {
@@ -181,6 +206,7 @@ class JsonRpcClient(private val process: Process) {
             // Response to our request
             val id = message.optLong("id", -1)
             val future = pendingRequests.remove(id)
+            pendingRequestsByMethod.values.forEach { it.remove(id) }
             if (future != null) {
                 if (message.has("error")) {
                     val errorObj = message.optJSONObject("error")

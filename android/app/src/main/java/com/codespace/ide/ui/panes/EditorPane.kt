@@ -240,6 +240,7 @@ fun EditorPane(
     // even when the actual cursor line/col are the same. These track the last position
     // that was actually queried so we can skip duplicate requests.
     var lastHoverLine by remember { mutableStateOf(-1) }
+        var hoverRequestGen by remember { mutableStateOf(0L) }  // Phase X-8: stale-response protection
     var lastHoverCol by remember { mutableStateOf(-1) }
     var lastHighlightLine by remember { mutableStateOf(-1) }
     var lastHighlightCol by remember { mutableStateOf(-1) }
@@ -990,17 +991,28 @@ fun EditorPane(
         // The LaunchedEffect re-fires on any TextFieldValue change (IME events, scroll,
         // auto-save reload) even when the cursor line/col haven't changed. The guard
         // tracks the last position queried and skips the LSP request if unchanged.
+        // Phase X-5/X-8: Hover trigger — now fires on tap AND keyboard cursor move
+        // (previously only fired on keyboard via onCursorChange). Stale-response protection
+        // via hoverRequestGen ensures a slow hover from position A cannot overwrite position B.
         LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
             if (showLspHover && active != null && LspManager.isServerRunning(active.language)) {
                 // Skip if this position was already queried — prevents idle spam
                 if (lspCursorLine == lastHoverLine && lspCursorCol == lastHoverCol) return@LaunchedEffect
                 delay(300)
+                // Phase X-8: Increment generation for stale-response protection
+                hoverRequestGen++
+                val myGen = hoverRequestGen
                 lastHoverLine = lspCursorLine
                 lastHoverCol = lspCursorCol
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
                     val hover = withContext(Dispatchers.IO) {
                         LspManager.getHover(active.language, uri, lspCursorLine, lspCursorCol)
+                    }
+                    // Phase X-8: Stale check — discard if a newer hover request was made
+                    if (myGen != hoverRequestGen) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] HOVER stale_response_discarded", "lsp")
+                        return@LaunchedEffect
                     }
                     lspHoverContent = hover?.let { parseHoverContent(it) }
                 }
@@ -1042,11 +1054,17 @@ fun EditorPane(
         // P35: Reset LSP query guards when switching files — ensures first cursor
         // position in a new file always gets queried even if it matches the last
         // position from the previous file (e.g. both open at line 0, col 0).
+        // Phase X-11: File/tab isolation — clear ALL LSP UI results on switch.
+        // Old completion/hover/signature results must not appear in the new document.
+        // Stale async responses from previous document are discarded via generation counters.
         LaunchedEffect(active?.path) {
             lastHoverLine = -1
             lastHoverCol = -1
             lastHighlightLine = -1
             lastHighlightCol = -1
+            // Phase X-11: Clear LSP UI state from previous document
+            lspHoverContent = null
+            hoverRequestGen++  // Invalidate any in-flight hover from previous file
             // Phase P: Publish lint diagnostics when switching to a tab
             if (active != null && active.path.isNotEmpty()) {
                 DiagnosticPublisher.publishLintDiagnostics(active.path, active.content)
@@ -1620,15 +1638,15 @@ fun EditorPane(
                                 com.codespace.ide.lsp.resolveCompletionItem(active.language, item)
                             }
                         } else null,
-                        // P41-K: Request cancellation — sends $/cancelRequest for stale completion requests
+                        // P41-K/X-7: Request cancellation — per-method to prevent cross-method cancellation
                         lspCancellationProvider = if (LspManager.isServerRunning(active.language)) {
                             { reqId ->
-                                LspManager.cancelPendingRequest(active.language, reqId)
+                                LspManager.cancelPendingRequest(active.language, "textDocument/completion", reqId)
                             }
                         } else null,
-                        // P41-K: Request ID provider — returns current pending request ID for cancellation tracking
+                        // P41-K/X-7: Request ID provider — per-method (completion only)
                         lspRequestIdProvider = if (LspManager.isServerRunning(active.language)) {
-                            { -> LspManager.getPendingRequestId(active.language) }
+                            { -> LspManager.getPendingRequestId(active.language, "textDocument/completion") }
                         } else null,
                         // P41-M: Call Hierarchy — prepare call hierarchy at cursor
                         onPrepareCallHierarchy = if (LspManager.isServerRunning(active.language)) {

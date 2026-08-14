@@ -3,6 +3,7 @@ package com.codespace.ide.editor
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Brush
 import org.json.JSONObject
+import com.codespace.ide.diagnostics.AppOutputLog
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -628,6 +629,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
+    // Phase X-2: EditorEvent — tags the source of every value change.
+    // Only UserTyping/UserCursorMove/UserSelection have trigger authority.
+    var editorEvent by remember { mutableStateOf<EditorEvent>(EditorEvent.InitialCursorPlacement(0)) }
+    // Phase X-8: Generation counters for stale-response protection.
+    var completionRequestGen by remember { mutableStateOf(0L) }
+    var signatureHelpRequestGen by remember { mutableStateOf(0L) }
     // FIX: Focus + keyboard management — the transparent overlay intercepts taps
     // before BasicTextField sees them, so we must explicitly request focus + show
     // keyboard on every tap. Without this, the keyboard never appears after the
@@ -642,6 +649,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(content) {
         if (value.text != content) {
             value = TextFieldValue(content, TextRange(content.length))
+            editorEvent = EditorEvent.ProgrammaticCursorMove(content.length, "content_reload")
         }
     }
     // Phase R: Format Selection — format the selected text range when triggered
@@ -657,6 +665,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             )
             if (result != null) {
                 value = TextFieldValue(result.first, TextRange(result.second, result.third))
+                editorEvent = EditorEvent.ProgrammaticTextChange(result.first, result.second)
                 onContentChange(result.first)
             }
         }
@@ -850,11 +859,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
 
     val prefix = remember(value) { currentWord(value.text, value.selection.end) }
-    // P33-INTELLISENSE: Detect dot-triggered completions (e.g. "lines." "user.")
-    val isDotTriggered = remember(value) {
+    // P33-INTELLISENSE: Detect dot context (e.g. "lines." "user.")
+    // Phase X-4: Renamed from isDotContext → isDotContext (pure state, NOT a trigger).
+    // dotWasTyped (below) is the event-derived trigger that only fires when the user
+    // actually types a dot — not when a file opens or cursor moves to an existing dot.
+    val isDotContext = remember(value) {
         val cursor = value.selection.end.coerceAtMost(value.text.length)
         cursor > 0 && value.text.getOrElse(cursor - 1) { ' ' } == '.'
     }
+    // Phase X-4: "user just typed a dot" — only true on UserTyping events where the
+    // inserted character was a dot. Distinguishes from isDotContext which is true
+    // whenever the cursor happens to be after a dot (file open, cursor move, etc.).
+    val dotWasTyped = editorEvent is EditorEvent.UserTyping && isDotContext
     val completions = remember(prefix, language) { completionsFor(prefix, language) }
     var showCompletions by remember { mutableStateOf(false) }
     // NEW (2026-08-10): Resizable completion popup — drag bottom edge to grow/shrink, like VS Code.
@@ -891,9 +907,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lightbulbLine by remember { mutableStateOf(-1) }
     var lightbulbActions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCodeAction>>(emptyList()) }
     var showLightbulbMenu by remember { mutableStateOf(false) }
-    // P39: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
-    LaunchedEffect(value.selection.start) {
+    // P39/X-9: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
+    // Phase X-9: Gate on editorEvent — do not trigger on file open/switch/programmatic.
+    LaunchedEffect(value.selection.start, editorEvent) {
         if (lspCodeActionProvider != null) {
+            if (!editorEvent.shouldTriggerCodeActions) return@LaunchedEffect
             kotlinx.coroutines.delay(500L)
             val cursorLine = lineFromOffset(value.selection.start)
             try {
@@ -968,14 +986,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var cachedLspResults by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
     var cachedLspCursorLine by remember { mutableStateOf(-1) }
     val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
-    LaunchedEffect(prefix, isDotTriggered, value.selection.end, pathContext) {
+    // Phase X-3: Completion trigger gated by editorEvent — only UserTyping can trigger.
+    // Context detection (prefix, isDotContext, completionContext) still recomputes freely
+    // (pure, cheap) — they feed display/filtering. But the LSP request only fires when
+    // the user actually typed something, not on file open, cursor move, or selection.
+    LaunchedEffect(prefix, isDotContext, value.selection.end, pathContext, editorEvent) {
         // P41-G: Skip LSP completions when path context is active
         if (pathContext != null) { lspCompletions = emptyList(); workspaceCompletions = emptyList(); return@LaunchedEffect }
 
-        if ((prefix.length >= 2 || isDotTriggered || (completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT && prefix.length >= 1)) && lspCompletionProvider != null) {  // TEST-14-FIX: also trigger LSP for 1-char import context
+        // Phase X-3: Block completion on non-user events
+        if (!editorEvent.shouldTriggerCompletion) {
+            AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER blocked=${editorEvent.logTag}", "lsp")
+            return@LaunchedEffect
+        }
+        AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER allowed=true", "lsp")
+        if (isDotContext) { AppOutputLog.log("[EDITOR] DOT_CONTEXT=true", "lsp") }
+        if (dotWasTyped) { AppOutputLog.log("[EDITOR] DOT_TYPED=true", "lsp") }
+
+        if ((prefix.length >= 2 || isDotContext || (completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT && prefix.length >= 1)) && lspCompletionProvider != null) {  // TEST-14-FIX: also trigger LSP for 1-char import context
             kotlinx.coroutines.delay(150)  // debounce
 
             // P41-K: Cancel any previous in-flight completion request before sending new one
+            // Phase X-8: Also increment generation counter for stale-response protection
+            completionRequestGen++
+            val myCompGen = completionRequestGen
             if (lspRequestId >= 0 && lspCancellationProvider != null) {
                 try { lspCancellationProvider.invoke(lspRequestId) } catch (_: Exception) {}
                 lspRequestId = -1L
@@ -989,6 +1023,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // P41-K: Track request ID for cancellation
             if (lspRequestIdProvider != null) {
                 try { lspRequestId = lspRequestIdProvider.invoke() } catch (_: Exception) {}
+            }
+            // Phase X-4/X-13: Log triggerKind for dot-triggered completion
+            if (dotWasTyped) {
+                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION triggerKind=2 triggerCharacter=.", "lsp")
+            } else {
+                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION triggerKind=1 (Invoked)", "lsp")
             }
 
             // Smart completion: LSP first with 5s timeout, then regex fallback
@@ -1004,6 +1044,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     }
                 }
                 if (results != null) {
+                    // Phase X-8: Stale check — discard if a newer completion request was made
+                    if (myCompGen != completionRequestGen) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION stale_response_discarded", "lsp")
+                        return@LaunchedEffect
+                    }
                     lspHasResponded = true
                     lspCompletions = results.first
                     workspaceCompletions = results.second
@@ -1021,6 +1066,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
                     } else emptyList()
                     Pair(lsp, ws)
+                }
+                // Phase X-8: Stale check for legacy path too
+                if (myCompGen != completionRequestGen) {
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION stale_response_discarded", "lsp")
+                    return@LaunchedEffect
                 }
                 lspCompletions = results.first
                 workspaceCompletions = results.second
@@ -1104,7 +1154,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         // vscode.dev Test #6: Keywords ranked ABOVE variables/imports when matching prefix
         // (matches VS Code behavior where keywords appear first in general context)
-        if (!completionContext.lspOnly && !isDotTriggered) {
+        if (!completionContext.lspOnly && !isDotContext) {
             ranked = ranked.map { item ->
                 if (item.kind == CompletionItemKind.KEYWORD) item.copy(score = item.score + 8f) else item
             }.sortedByDescending { it.score }
@@ -1138,7 +1188,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P41 Phase B: Load completion history once per file open
     LaunchedEffect(Unit) { CompletionHistoryStore.load(context) }
 
-    LaunchedEffect(prefix, isDotTriggered, allCompletions, pathContext, completionContext) {
+    LaunchedEffect(prefix, isDotContext, allCompletions, pathContext, completionContext, editorEvent) {
+        // Phase X-3: Suppress completions on non-user events
+        if (!editorEvent.shouldTriggerCompletion) {
+            showCompletions = false
+            completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null
+            return@LaunchedEffect
+        }
         // P41-V: Context-aware suppression
         if (!completionContext.shouldShowCompletions) {
             showCompletions = false
@@ -1146,7 +1202,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // P41-G: Path completions show even with 1-char prefix
             showCompletions = allCompletions.isNotEmpty()
         } else {
-            showCompletions = (prefix.length >= 1 || isDotTriggered || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT) && allCompletions.isNotEmpty()
+            showCompletions = (prefix.length >= 1 || isDotContext || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.MEMBER_ACCESS || completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT) && allCompletions.isNotEmpty()
         }
         if (!showCompletions) { completionFilter = null; selectedLabel = null; detailDoc = null; detailDetail = null; detailLabel = null }
     }
@@ -1183,13 +1239,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var ghostTextIsAi by remember { mutableStateOf(false) }
 
     // IntelliSense ghost text (existing behavior, 800ms debounce)
-    LaunchedEffect(prefix, isDotTriggered, allCompletions, completionContext) {
+    LaunchedEffect(prefix, isDotContext, allCompletions, completionContext) {
         ghostText = null
         ghostTextLines = emptyList()
         ghostTextIsAi = false
         // P41-V: Suppress ghost text in string/comment context
         if (!completionContext.shouldShowCompletions) return@LaunchedEffect
-        if ((prefix.length >= 2 || isDotTriggered) && allCompletions.isNotEmpty()) {
+        if ((prefix.length >= 2 || isDotContext) && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
             val top = allCompletions.firstOrNull()
             if (top != null) {
@@ -1272,27 +1328,53 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // The old code called the LSP provider on every text change — even when the cursor
     // wasn't inside a function call — wasting CPU and spamming the LSP server.
     // Quick local check: scan backwards for unmatched '(' before the cursor.
-    val activeSignature = remember(value.text, value.selection.end, language, lspSignatureHelpProvider) {
-        // Quick guard: check if cursor is inside a function call before invoking LSP
+    // Phase X-6: Split signature help into pure detection + async LSP request.
+    // OLD: blocking LSP call inside remember() — ran on main thread during recomposition.
+    // NEW: remember() only computes isInsideCall (pure boolean). LSP call is in LaunchedEffect.
+    val isInsideCall = remember(value.text, value.selection.end) {
         val textBeforeCursor = value.text.substring(0, value.selection.end.coerceAtMost(value.text.length))
         var depth = 0
-        var insideCall = false
+        var inside = false
         for (ch in textBeforeCursor.reversed()) {
             when (ch) {
                 ')' -> depth++
-                '(' -> { if (depth == 0) { insideCall = true }; break }
+                '(' -> { if (depth == 0) { inside = true }; break }
             }
         }
-        if (lspSignatureHelpProvider != null && insideCall) {
-            val cLine = lineFromOffset(value.selection.end)
-            val cCol = value.selection.end - (value.text.lastIndexOf('\n', value.selection.end - 1) + 1)
-            try { lspSignatureHelpProvider.invoke(cLine, cCol) } catch (_: Exception) { null }
-                ?: SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
-        } else if (insideCall) {
-            SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
-        } else {
-            null
+        inside
+    }
+    var activeSignature by remember { mutableStateOf<SignatureInfo?>(null) }
+    // Phase X-6: Async LSP request — only on user events with trigger authority.
+    LaunchedEffect(isInsideCall, value.selection.end, language, editorEvent) {
+        if (!isInsideCall) {
+            activeSignature = null
+            return@LaunchedEffect
         }
+        // Block on non-user events (file open, switch, programmatic)
+        if (!editorEvent.shouldTriggerSignatureHelp) {
+            // Still compute local signature analysis (pure, no LSP)
+            activeSignature = SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(200) // debounce
+        // Phase X-8: Stale response protection
+        signatureHelpRequestGen++
+        val myGen = signatureHelpRequestGen
+        val cOff = value.selection.end
+        val cLine = lineFromOffset(cOff)
+        val cCol = cOff - (value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1)
+        val result = if (lspSignatureHelpProvider != null) {
+            try { lspSignatureHelpProvider.invoke(cLine, cCol) } catch (_: Exception) { null }
+                ?: SignatureHelpAnalyzer.findActiveCall(value.text, cOff, language)
+        } else {
+            SignatureHelpAnalyzer.findActiveCall(value.text, cOff, language)
+        }
+        // Stale check: if generation changed while we were waiting, discard
+        if (myGen != signatureHelpRequestGen) {
+            AppOutputLog.log("[LSP] SIGNATURE_HELP stale_response_discarded", "lsp")
+            return@LaunchedEffect
+        }
+        activeSignature = result
     }
 
     // P41-R: Overload navigation — track which signature overload is selected
@@ -1760,6 +1842,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     value = value,
                     onValueChange = { newValue ->
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
+                        // Phase X-2: Tag the event source
+                        val insertedChars = newValue.text.length - value.text.length
+                        if (newValue.text != value.text) {
+                            editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
+                        } else if (newValue.selection != value.selection) {
+                            editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
+                        }
                         // Phase U-5: Check if typed char should commit the selected completion
                         var updatedValue = newValue
                         val commitCharMatch = if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
@@ -1778,6 +1867,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val committedText = text.substring(0, start) + insertTxt + typedChar.toString() + text.substring(end)
                                 val committedCursor = start + insertTxt.length + 1
                                 value = TextFieldValue(text = committedText, selection = TextRange(committedCursor))
+                                editorEvent = EditorEvent.ProgrammaticTextChange(committedText, committedCursor)
                                 onContentChange(committedText)
                                 CompletionHistoryStore.recordAccepted(selectedComp.label, language.name, context)
                                 showCompletions = false
@@ -1947,6 +2037,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         textLayoutResult?.let { layout ->
                                             val pos = layout.getOffsetForPosition(offset)
                                             value = value.copy(selection = TextRange(pos))
+                                            // Phase X-5: Tag as user cursor move + fire onCursorChange for hover
+                                            editorEvent = EditorEvent.UserCursorMove(pos)
+                                            val cLine = value.text.take(pos).count { it == '\n' }
+                                            val cLineStart = value.text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)) + 1
+                                            val cCol = pos - cLineStart
+                                            onCursorChange?.invoke(cLine, cCol)
                                         }
                                         try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                                     }
@@ -1964,6 +2060,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         while (wordEnd < text.length && (text[wordEnd].isLetterOrDigit() || text[wordEnd] == '_')) wordEnd++
                                         // Select the word (VS Code behavior)
                                         value = value.copy(selection = TextRange(wordStart, wordEnd))
+                                        // Phase X-5/X-10: Tag as user selection + fire onCursorChange
+                                        editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
+                                        val cLine = value.text.take(wordEnd).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (wordEnd - 1).coerceAtLeast(0)) + 1
+                                        val cCol = wordEnd - cLineStart
+                                        onCursorChange?.invoke(cLine, cCol)
                                         // Trigger the floating LSP menu to auto-open
                                         longPressTrigger++
                                     }
@@ -2028,6 +2130,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                             }
                                             value = TextFieldValue(text = finalText, selection = selRange)
+                                            editorEvent = EditorEvent.ProgrammaticTextChange(finalText, (selRange?.start ?: 0))
                                             onContentChange(finalText)
                                         } else {
                                             // Plain text snippet — place cursor at end of inserted text
@@ -2058,6 +2161,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             value = value.copy(
                                                 selection = TextRange(stopRange.first, stopRange.last + 1)
                                             )
+                                            editorEvent = EditorEvent.ProgrammaticCursorMove(stopRange.first, "snippet_prev_stop")
                                         }
                                     } else {
                                         // At first stop — exit snippet mode
@@ -2074,12 +2178,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             value = value.copy(
                                                 selection = TextRange(stopRange.first, stopRange.last + 1)
                                             )
+                                            editorEvent = EditorEvent.ProgrammaticCursorMove(stopRange.first, "snippet_next_stop")
                                         }
                                     } else {
                                         // Last stop — move to final cursor ($0) and exit
                                         value = value.copy(
                                             selection = TextRange(session.finalCursorOffset)
                                         )
+                                        editorEvent = EditorEvent.ProgrammaticCursorMove(session.finalCursorOffset, "snippet_final")
                                         snippetSession = null
                                     }
                                 }
@@ -2129,6 +2235,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             textLayoutResult = textLayoutResult,
                             onCursorMoved = { pos ->
                                 value = value.copy(selection = TextRange(pos))
+                                // Phase X-2: Tag as user cursor move (keyboard arrows)
+                                editorEvent = EditorEvent.UserCursorMove(pos)
                             },
                             onTap = {
                                 // STABILITY-FIX: requestFocus() can throw
@@ -3398,6 +3506,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
                                     if (result != null) {
                                         value = TextFieldValue(result, value.selection)
+                                        editorEvent = EditorEvent.ProgrammaticTextChange(result, value.selection.start)
                                         onContentChange(result)
                                     }
                                 }
@@ -3419,6 +3528,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedImports(value.text, language)
                                     if (result != null) {
                                         value = TextFieldValue(result, value.selection)
+                                        editorEvent = EditorEvent.ProgrammaticTextChange(result, value.selection.start)
                                         onContentChange(result)
                                     }
                                 }
