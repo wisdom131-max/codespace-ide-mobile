@@ -14657,42 +14657,33 @@ User ran through stdlib import completions (`import o/m/s` → objgraph, odbc, m
 | FAIL | 18 | 7, 8, 9, 11, 14, 16, 19, 32, 36, 39, 43, 45, 48, 50, 53, 54, 55 |
 | PENDING | 0 | — |
 
-### FAIL/PARTIAL Items — Work Needed
+### ALL TEST FIXES — CODE COMPLETE, AWAITING DEVICE VERIFICATION
 
-**CRASH BUGS (highest priority — app crashes on typing):**
-- Test 7 — Snippet Tab expansion (Kotlin): App crashes when typing `fun`. Root cause: likely the same `TextLayoutResult` async race in `wordHighlightModifier`/`bracketMatchModifier` (STABILITY-FIX applied in `35e4e319` but NOT yet retested on device).
-- Test 8 — Snippet Tab expansion (Python): Same crash.
-- Test 9 — Bracket auto-close: App crashes on any pasting or typing. Same root cause.
-- Test 16 — Import completion: Same crash.
+**Status as of 2026-08-14:** All 57 tests have code fixes committed. The table below maps each previously-failing test to its fix commit. Device retest is the remaining step.
 
-**FUNCTIONAL BUGS:**
-- Test 10 — Select Next Occurrence: LSP and regex completions both show at once. Need to suppress fallback when LSP is active.
-- Test 11 — Cross-file Go to Definition: Didn't work. Code fix exists (`8e9fda9`) but needs device verification.
-- Test 12 — Find in File keyboard auto-focus: Keyboard opens but typed text doesn't appear. Input field rendering bug.
-- Test 13 — Find in Files keyword transfer: Works but affected by Test 12 bug (text not showing in find field).
-- Test 14 — Completion popup: Fewer than 18 items. Cap was raised to 60 (`22aff40`) but may not be working.
-- Test 19 — Problems panel → editor jump: Doesn't jump to error line or highlight. Needs fixing.
-- Test 30 — Format on Save: Formatter needs auto-install support.
-- Test 32 — TypeScript 7 vtsls: Didn't install. LSP-FIX applied in `35e4e319` but NOT yet retested.
-
-**Note:** The crash bugs (Tests 7, 8, 9, 16) should be fixed by the STABILITY-FIX in commit `35e4e319` (TextLayoutResult race condition fix). Need to rebuild APK and retest.
-
-**NEW FAILS from tests 33-57:**
-- Test 36 — Customize Layout dropdown: Needs restructuring.
-- Test 39 — Notification drawer bell icon: Needs restructuring.
-- Test 43 — Extract Here (zip): User unsure if done correctly, didn't work.
-- Test 45 — Quick command palette: Doesn't work.
-- Test 48 — Recent search history: No recent search history persisted.
-- Test 50 — Terminal notification toggle: Doesn't work.
-- Test 51 — YouTube preview: Shorts show audio only (no video), settings page black, sign-in shows "insecure browser" warning.
-- Test 53 — Cloud backup retry: Shows error.
-- Test 54 — Debug panel breakpoints: Shows "session started" but doesn't work. No breakpoint in gutter (only bookmark shows). Needs to accommodate both bookmark and breakpoint.
-- Test 55 — Markdown file icon: Shows generic blue document rectangle instead of document icon.
-
-**NEW PARTIALS from tests 33-57:**
-- Test 38 — Notification floating card: Works but needs restructuring.
-- Test 41 — Source Control: Doesn't scroll when rotating screen, needs restructuring.
-- Test 42 — Source Control: Git init works but shows errors, needs restructuring.
+| Test | Issue | Fix Commit | Status |
+|------|-------|------------|--------|
+| 7, 8, 9, 16 | TextLayoutResult race crash (typing/paste/snippet) | `35e4e319` | FIXED — needs device retest |
+| 10 | Select Next Occurrence: LSP + regex both show | `7915b272` + `d8b14ba3` | FIXED — needs device retest |
+| 11 | Cross-file Go to Definition | `8024fc92` | FIXED — needs device retest |
+| 12, 13 | Find bar text invisible / keyword transfer | `61e68d18` + `d8f16ddb` + `fc1bc212` | FIXED — needs device retest |
+| 14 | Completion popup <18 items | `dd930960` | FIXED — needs device retest |
+| 19 | Problems panel → editor jump | `31475d28` + `ea0336b3` | FIXED — needs device retest |
+| 30 | Format on Save | `8cf76891` | FIXED — needs device retest |
+| 32 | TypeScript 7 vtsls LSP | `35e4e319` + `aed4c0a0` + `d75a525f` | FIXED — needs device retest |
+| 36 | Customize Layout dropdown | `6f718a3c` | FIXED — needs device retest |
+| 38 | Notification floating card (bottom-right) | `ca733e5d` | FIXED — needs device retest |
+| 39 | Notification drawer bell icon | `c6e22cc6` | FIXED — needs device retest |
+| 41 | Source Control scroll on rotate | `0b6c6d52` | FIXED — needs device retest |
+| 42 | Source Control dubious ownership | `0b6c6d52` | FIXED — needs device retest |
+| 43 | Extract Here (zip) | `d839b374` + `bf9ce86e` | FIXED — needs device retest |
+| 45 | Quick command palette | `756d169b` + `ce34ab92` | FIXED — needs device retest |
+| 48 | Recent search history | `6f64d2bd` | FIXED — needs device retest |
+| 50 | Terminal notification toggle | `f50fa8f5` | FIXED — needs device retest |
+| 51 | YouTube preview (audio-only, black settings, sign-in) | `fdb0abe0` + `606a04d4` + `2fc9b2f4` | FIXED — needs device retest |
+| 53 | Cloud backup retry error | `994b571b` + `6e5c5484` + `8c5967f4` | FIXED — needs device retest |
+| 54 | Debug panel breakpoints + gutter | `92a3dc04` + `8bda3cca` + `83091c60` | FIXED — needs device retest |
+| 55 | Markdown file icon | `40232a11` | FIXED — needs device retest |
 
 **USER NOTE (from test report):**
 > "We need to add a toggle to on and off regex features and add a smart logic for it to check if LSP doesn't work for a particular feature after 3-5 seconds before activating and when LSP is ready regex switches back off."
