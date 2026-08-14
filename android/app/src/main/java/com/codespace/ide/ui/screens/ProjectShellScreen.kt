@@ -2307,23 +2307,52 @@ private fun PssBottomPanelContent(
     val density = LocalDensity.current
     if (!showBottomPanel || fullScreen) return
 
+    // Whether an editor tab is open — when it is, manual drag must stop short of
+    // fully covering it (VS Code reserves the editor's tab bar + a few lines during
+    // a normal sash drag; only the explicit Maximize Panel button covers it fully).
+    val hasOpenEditor = activeEditorTab != null
+    val editorReservedPx = with(density) { 140.dp.toPx() } // tab bar + toolbar + a few code lines
+    val manualDragMaxHeight = if (hasOpenEditor) {
+        (totalHeight - editorReservedPx).coerceAtLeast(totalHeight * 0.3f)
+    } else {
+        totalHeight * 0.92f // no editor content to protect — allow near-full drag
+    }
+    // Collapse threshold — matches the side-panel divider's live (not deferred) collapse
+    // behavior: crossing it during the drag hides the panel immediately.
+    val collapseThresholdPx = with(density) { 48.dp.toPx() }
+    val minUsableHeightPx = with(density) { 120.dp.toPx() }
+
     Box(
-        Modifier.fillMaxWidth().height(8.dp).background(dividerColor.copy(alpha = 0.6f))
+        // VS Code drives every sash (side panel AND bottom panel) off ONE setting —
+        // workbench.sash.size, default 4px — so this now matches the explorer's 4.dp handle
+        // exactly instead of being its own inconsistent 8.dp.
+        Modifier.fillMaxWidth().height(4.dp).background(dividerColor.copy(alpha = 0.6f))
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { onDraggingChange(true) },
                     onDragEnd = {
                         onDraggingChange(false)
-                        if (bottomPanelHeight < 60f) {
+                        if (bottomPanelHeight < collapseThresholdPx) {
                             onHideBottomPanel()
-                            onBottomPanelHeightChange(260f)
+                            onBottomPanelHeightChange(bottomPanelPrevHeight.coerceAtLeast(200f))
                         }
                     },
                     onDragCancel = { onDraggingChange(false) },
                 ) { _, dragAmount ->
                     val nh = bottomPanelHeight - dragAmount.y
-                    onBottomPanelHeightChange(nh.coerceIn(0f, totalHeight * 0.92f))
                     if (bottomPanelMaximized) onBottomPanelMaximizedChange(false)
+                    if (nh < collapseThresholdPx) {
+                        // Live collapse — same instant behavior as the side panel's
+                        // "if (nw < 80f) activePanel = null" check, not deferred to release.
+                        onHideBottomPanel()
+                        onBottomPanelHeightChange(bottomPanelPrevHeight.coerceAtLeast(200f))
+                    } else {
+                        val clamped = nh.coerceIn(0f, manualDragMaxHeight)
+                        onBottomPanelHeightChange(clamped)
+                        // Track the last usable (non-collapsed) height so collapse/maximize
+                        // restore always has an accurate value to return to.
+                        if (clamped >= minUsableHeightPx) onBottomPanelPrevHeightChange(clamped)
+                    }
                 }
             }
     )

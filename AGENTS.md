@@ -18040,3 +18040,23 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 **What was fixed:** Added new MANDATORY RULE to AGENTS.md — "EMBED RULES IN EVERY AGENT MD & CHANGELOG UPDATE". Requires all AI agents to include a Rules Reminder Block at the top of every changelog entry so agents who don't search/read the full AGENTS.md still see the two-repo rule, tag conventions, format requirements, and roadmap continuity rule. Also fixed 7 Phase X compile errors in commit 3d405f7c (SignatureInfo? nullable needing !!, ConcurrentHashMap missing constructor parens). Added missing CHANGE LOG entries for Phase X commits a256a412, 5ebc461c, 7e50a8ef.
 **Files touched:** AGENTS.md, CodeEditor.kt, JsonRpcClient.kt
 **Next on roadmap:** Rebuild APK (CI is GREEN on 3d405f7c), device retest all 57 tests. Priority order: crash bugs (7,8,9,16), functional (10-19), UI restructure (36-42), remaining (43-55). Phase X event-driven triggers need on-device validation.
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+
+### [2026-08-14 09:31 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** (this commit) | **CI Build:** pending
+**What was fixed:** Bottom Panel Drag Resize — refined the existing implementation (was already functional, not built from scratch) against real VS Code behavior researched from official docs + source config: (1) VS Code drives every sash — side panel AND bottom panel — off ONE setting (`workbench.sash.size`, default 4px). Changed bottom panel drag handle from 8.dp to 4.dp to exactly match the explorer/side-panel divider's existing 4.dp, per user request and VS Code parity. (2) VS Code's manual sash drag stops short of fully covering the editor (reserves tab bar + a few lines); only the explicit "Maximize Panel Size" button covers it fully. Added `hasOpenEditor` check (derived from existing `activeEditorTab` param, no new param needed) — when an editor tab is open, manual drag now clamps to `totalHeight - 140dp` (reserved editor space) instead of the old flat `totalHeight * 0.92f` which nearly matched the Maximize button's own cap and let manual drag fully cover the editor. When no editor tab is open, drag still allows near-full height (0.92f) since there's nothing to protect. (3) VS Code's sash collapses live during the drag once the threshold is crossed, not deferred to release — moved the collapse check from `onDragEnd`-only into the `onDrag` lambda itself (mirrors the side panel's existing `if (nw < 80f) activePanel = null` live-check pattern). (4) Replaced the hardcoded collapse-restore value (was forced to a fixed `260f` every time) with restoring the last tracked usable height (`bottomPanelPrevHeight`, continuously updated during drag whenever height >= 120dp) — preserves user's preferred size across collapse/reopen instead of discarding it. (5) Converted previously arbitrary raw-pixel constants (60f, 92f*totalHeight) to density-aware dp-based thresholds via `with(density) { X.dp.toPx() }`. Researched and declined keyboard-aware resize as low priority — VS Code has no software keyboard concept; deferred until proven necessary (Terminal/Output input actually gets obscured).
+**Files touched:** ProjectShellScreen.kt
+**Next on roadmap:** Rebuild APK, device retest: (a) drag handle now feels same as explorer handle (4dp), (b) dragging up with a file open stops before fully covering editor — editor tab bar/toolbar/few lines stay visible, (c) dragging up with no file open (welcome screen) still allows near-full height, (d) dragging down collapses live at the threshold without needing to release, (e) reopening the panel (via Terminal/Problems/Output menu items) restores the last dragged height, not a hardcoded 260. Then continue with the 13 remaining unfixed tests (11, 14, 36, 38, 39, 41, 42, 43, 45, 48, 50, 51, 53) and full device retest of Phase X event-driven LSP triggers.
