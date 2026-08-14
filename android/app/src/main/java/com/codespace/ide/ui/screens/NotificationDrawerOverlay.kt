@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.data.NotificationStore
+import androidx.compose.ui.platform.LocalContext
+import android.os.VibratorManager
+import android.os.VibrationEffect
 import androidx.compose.ui.res.painterResource
 import com.codespace.ide.R
 import java.util.concurrent.TimeUnit
@@ -71,10 +74,7 @@ internal fun NotificationBell(
     // P35-NOTIF: VS Code bell colors — translucent so the bar color shows through.
     val bellColor = when {
         dnd -> Color(0xFF7F849C).copy(alpha = 0.45f)   // dimmed when DND on
-        bellState == "error"   -> Color(0xFFF38BA8).copy(alpha = 0.9f)
-        bellState == "warning" -> Color(0xFFFAB387).copy(alpha = 0.9f)
-        bellState == "info"    -> Color(0xFF89B4FA).copy(alpha = 0.9f)
-        else                    -> Color(0xFFFFFFFF).copy(alpha = 0.55f) // translucent white, idle
+        else -> Color(0xFFFFFFFF).copy(alpha = 0.55f)  // consistent translucent white
     }
 
     Box(
@@ -355,6 +355,7 @@ private fun DrawerHeader(
 ) {
     var showDndMenu by remember { mutableStateOf(false) }
     var showPosMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val dnd = NotificationStore.settings.doNotDisturb
     val appEnabled = NotificationStore.settings.enabled
     val pos = NotificationStore.settings.bellPosition
@@ -392,7 +393,7 @@ private fun DrawerHeader(
                 Icon(
                     if (dnd) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
                     contentDescription = "Do Not Disturb options",
-                    tint = if (dnd) Color(0xFFF38BA8) else Color(0xFF9CA0B0),
+                    tint = Color(0xFF9CA0B0),
                     modifier = Modifier.size(16.dp).clickable { showDndMenu = true },
                 )
                 DropdownMenu(expanded = showDndMenu, onDismissRequest = { showDndMenu = false }) {
@@ -405,6 +406,11 @@ private fun DrawerHeader(
                         },
                         onClick = {
                             NotificationStore.toggleDoNotDisturb()
+                            // Vibrate when DND is toggled
+                            try {
+                                context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+                                    ?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+                            } catch (e: Exception) { }
                             showDndMenu = false
                         },
                     )
