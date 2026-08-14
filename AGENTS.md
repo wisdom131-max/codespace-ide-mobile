@@ -135,7 +135,7 @@ no AI agent can claim they did not see the rules.
 
 | | |
 |-|-|
-| Latest commit | 1432f16327 — fix(icons): remove invalid android:tint=?attr/colorOnSurface from all 6 codicon XMLs (build fix #2285–#2295) |
+| Latest commit | 8ebd097 — fix(build): add missing closing brace in NotificationBell function (fixes #2324) |
 | Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu at top of activity bar, File submenu (New Text File, Open File picker, Open Folder picker, Open Recent, New Window with Profile), VS Code-exact icons (6 custom vector drawables), landscape overflow (Explorer + active + "..." MRU). Build pending. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -18151,4 +18151,29 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 6. 🔲 Multi-Cursor feature — double-tap trigger, 3-dot floating menu, Select Next/All Occurrences, column-aware selection
 7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 8. 🔲 Codicon activity bar icons — waiting for Wisdom's screenshots to match exact VS Code codicon designs
+9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-14 16:10 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 8ebd097 | **CI Build:** #2324 FAILED ❌ → fix pending CI #2325+
+**Tags:** [BUILD-FIX]
+**What was fixed:** Fixed build #2324 failure — root cause was a single missing closing brace `}` in `NotificationBell()` function in `NotificationDrawerOverlay.kt`. The function body opened at L71 (`) {`), the inner `Box` content closed at L110 (`}`), but the function body's own closing `}` was absent. Brace count was 147 opens / 146 closes (off by 1). Added one `}` after the Box close to properly close `NotificationBell()`.
+**Files touched:** NotificationDrawerOverlay.kt
+**Next on roadmap:**
+1. ⏳ Verify CI green on this fix (build #2325 or later)
+2. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+3. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+4. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+5. 🔲 TypeScript 7 as default LSP with vtsls
+6. 🔲 Multi-Cursor feature
+7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+8. 🔲 Codicon activity bar icons — waiting for Wisdom's screenshots
 9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
