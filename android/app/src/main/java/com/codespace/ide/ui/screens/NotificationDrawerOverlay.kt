@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -175,6 +176,53 @@ internal fun NotificationToastBanner() {
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        // Phase N: Progress bar for PROGRESS severity
+                        if (t.severity == NotificationStore.Severity.PROGRESS && t.progress != null) {
+                            Spacer(Modifier.height(4.dp))
+                            if (t.progress.indeterminate) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                                    color = Color(0xFF89DCEB),
+                                )
+                            } else {
+                                val progress = if (t.progress.max > 0) {
+                                    t.progress.current.toFloat() / t.progress.max.toFloat()
+                                } else 0f
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                                    color = Color(0xFF89DCEB),
+                                )
+                            }
+                            t.progress.statusMessage?.let {
+                                Text(it, fontSize = 9.sp, color = Color(0xFF6C7086), maxLines = 1)
+                            }
+                        }
+                        // Phase N: Action buttons on toast
+                        if (t.actions.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                t.actions.forEach { action ->
+                                    Text(
+                                        action.label,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (action.destructive) Color(0xFFF38BA8) else Color(0xFF89B4FA),
+                                        modifier = Modifier
+                                            .background(
+                                                if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f)
+                                                else Color(0xFF89B4FA).copy(alpha = 0.15f),
+                                                RoundedCornerShape(4.dp),
+                                            )
+                                            .clickable {
+                                                NotificationStore.executeAction(t.id, action.id)
+                                                NotificationStore.dismissToast()
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
                     Spacer(Modifier.width(6.dp))
                     Icon(
@@ -213,9 +261,13 @@ internal fun NotificationDrawerOverlay(
 
     // Filter state
     var filterSeverity by remember { mutableStateOf<NotificationStore.Severity?>(null) }
+    var filterSource by remember { mutableStateOf<NotificationStore.Source?>(null) }
 
-    val displayItems = remember(allItems, filterSeverity) {
-        allItems.filter { item -> filterSeverity == null || item.severity == filterSeverity }
+    val displayItems = remember(allItems, filterSeverity, filterSource) {
+        allItems.filter { item ->
+            (filterSeverity == null || item.severity == filterSeverity) &&
+            (filterSource == null || item.source == filterSource)
+        }
     }
 
     // Mark all read when drawer opens
@@ -255,6 +307,7 @@ internal fun NotificationDrawerOverlay(
                 // ── Severity filter chips ────────────────────────────────────
                 if (allItems.isNotEmpty()) {
                     FilterChipsRow(filterSeverity) { filterSeverity = if (filterSeverity == it) null else it }
+                    SourceFilterRow(filterSource) { filterSource = if (filterSource == it) null else it }
                     HorizontalDivider(color = Color(0xFF313244), thickness = 0.5.dp)
                 }
 
@@ -436,6 +489,46 @@ private fun FilterChipsRow(
 }
 
 /**
+ * Phase N: Source filter row — filter notifications by source subsystem.
+ */
+@Composable
+private fun SourceFilterRow(
+    activeFilter: NotificationStore.Source?,
+    onFilter: (NotificationStore.Source) -> Unit,
+) {
+    val sources = listOf(
+        NotificationStore.Source.LSP, NotificationStore.Source.GIT,
+        NotificationStore.Source.BUILD, NotificationStore.Source.TERMINAL,
+        NotificationStore.Source.DAP, NotificationStore.Source.AI,
+        NotificationStore.Source.SYSTEM,
+    )
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        sources.forEach { src ->
+            val color = sourceColor(src)
+            val active = activeFilter == src
+            Box(
+                Modifier
+                    .background(
+                        if (active) color.copy(alpha = 0.25f) else Color(0xFF313244),
+                        RoundedCornerShape(8.dp),
+                    )
+                    .clickable { onFilter(src) }
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    src.name.lowercase(),
+                    fontSize = 8.sp,
+                    color = if (active) color else Color(0xFF9CA0B0),
+                )
+            }
+        }
+    }
+}
+
+/**
  * P-NOTIF-RESTRUCTURE: A single notification row.
  * - ERROR severity rows jump to the Problems panel on tap (onErrorTap).
  * - All other rows expand in place on tap to show the FULL body text
@@ -477,6 +570,15 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                // Phase N: Dedup count badge
+                if (item.dedupCount > 1) {
+                    Text(
+                        "(${item.dedupCount})",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFAB387),
+                    )
+                }
                 // Source tag
                 Box(
                     Modifier.background(sourceColor(item.source).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
@@ -495,7 +597,71 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                     overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
                 )
             }
-            Text(relativeTime(item.id), fontSize = 9.sp, color = Color(0xFF6C7086))
+            // Phase N: Error details (expandable)
+            if (expanded && item.errorDetails != null) {
+                Spacer(Modifier.height(4.dp))
+                item.errorDetails.technicalDetails?.let { tech ->
+                    Surface(
+                        color = Color(0xFF181825),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            tech,
+                            fontSize = 9.sp,
+                            color = Color(0xFF6C7086),
+                            maxLines = Int.MAX_VALUE,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.padding(6.dp),
+                        )
+                    }
+                }
+            }
+            // Phase N: Progress bar
+            if (item.severity == NotificationStore.Severity.PROGRESS && item.progress != null) {
+                Spacer(Modifier.height(4.dp))
+                if (item.progress.indeterminate) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        color = Color(0xFF89DCEB),
+                    )
+                } else {
+                    val progress = if (item.progress.max > 0) {
+                        item.progress.current.toFloat() / item.progress.max.toFloat()
+                    } else 0f
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        color = Color(0xFF89DCEB),
+                    )
+                }
+                item.progress.statusMessage?.let {
+                    Text(it, fontSize = 9.sp, color = Color(0xFF6C7086), maxLines = 1)
+                }
+            }
+            // Phase N: Action buttons
+            if (item.actions.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item.actions.forEach { action ->
+                        Text(
+                            action.label,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (action.destructive) Color(0xFFF38BA8) else Color(0xFF89B4FA),
+                            modifier = Modifier
+                                .background(
+                                    if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f)
+                                    else Color(0xFF89B4FA).copy(alpha = 0.15f),
+                                    RoundedCornerShape(4.dp),
+                                )
+                                .clickable { NotificationStore.executeAction(item.id, action.id) }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
+            Text(relativeTime(item.timestamp), fontSize = 9.sp, color = Color(0xFF6C7086))
         }
         Spacer(Modifier.width(4.dp))
         Icon(

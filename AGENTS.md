@@ -17108,3 +17108,13 @@ Before implementation, produce a complete plan covering:
 2. YouTube Test 51 fix
 3. Phase V — LSP Reliability Upgrade ✅ DONE (build #2243 GREEN, all 16 sections live)
 4. Phase N — Advanced Notification System (PLAN REGISTERED, awaiting Wisdom's approval — DO NOT IMPLEMENT until approved)
+
+### [2026-08-14 01:35 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** pending | **CI Build:** pending
+**What was fixed:** Phase N (Advanced Notification System) — Phase 1-7 implementation. (1) Upgraded NotificationStore with full Phase N model: Priority enum (LOW/NORMAL/HIGH/CRITICAL), NotificationState enum (ACTIVE/READ/DISMISSED/COMPLETED/FAILED), NotificationAction with stable action IDs, ProgressInfo (determinate/indeterminate), ErrorDetails (two-level user/technical), groupKey, deduplicationKey, dedupCount, category, persistent, autoDismissMs, metadata. (2) Added deduplication logic with rate limiting (max N per second per dedup key, updates existing notification count instead of creating duplicates). (3) Added progress API: startProgress(), updateProgress(), completeProgress() for long-running operations. (4) Added action handler registry: registerActionHandler()/executeAction() for notification buttons like [Retry], [View Logs], [Restart]. (5) Added clearResolved() to clean completed/failed/dismissed items. (6) Upgraded NotificationDrawerOverlay: action buttons on toast and drawer rows, progress bars, expandable error details, dedup count badges "(4)", source filter row (LSP/GIT/BUILD/TERMINAL/DAP/AI/SYSTEM), fixed relativeTime bug (was using item.id instead of item.timestamp). (7) Wired LSP integration: notifyLspEvent() helper called on STARTING, READY, CRASH, OOM, CIRCUIT_BREAKER, IDLE_CLOSE with appropriate severity and actions. (8) Wired SCM integration: SourceControlPane snackbar messages now also push to NotificationStore with error classification and ErrorDetails. (9) Wired EditorPane: 4 Toast.makeText calls replaced with NotificationStore.add(). (10) Registered action handlers (view_logs, restart) in CodeSpaceApplication.onCreate().
+**Files touched:** NotificationStore.kt, NotificationDrawerOverlay.kt, LspManager.kt, SourceControlPane.kt, EditorPane.kt, CodeSpaceApplication.kt
+**Next on roadmap:**
+1. Phase N phases 8-16: persistence, preferences, accessibility, rate limiting hardening, full testing
+2. Device testing of all SCM features (E1-E18) — needs physical device
+3. YouTube Test 51 fix
+4. Phase P — Advanced Problems Panel (awaiting approval)

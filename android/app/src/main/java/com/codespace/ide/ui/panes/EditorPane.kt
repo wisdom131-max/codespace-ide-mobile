@@ -42,6 +42,7 @@ import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.DiagnosticPublisher
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.DocumentSymbolCache
@@ -406,7 +407,7 @@ fun EditorPane(
                         }
                     }
                     showUnsavedDialog = false
-                    Toast.makeText(context, "Saved ✓", Toast.LENGTH_SHORT).show()
+                    NotificationStore.add("File saved", "Saved ✓", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                 }) { androidx.compose.material3.Text("Yes, Save") }
             },
             dismissButton = {
@@ -576,7 +577,7 @@ fun EditorPane(
                             } catch (_: Exception) {}
                         }
                         autosaveFiles = emptyList()
-                        Toast.makeText(context, "Edits restored ✓", Toast.LENGTH_SHORT).show()
+                        NotificationStore.add("Edits restored", "Edits restored ✓", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                     }) { androidx.compose.material3.Text("Restore") }
                 },
                 dismissButton = {
@@ -723,12 +724,12 @@ fun EditorPane(
                                         }
                                     }
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        Toast.makeText(context, "Formatted ✓ (${activeTab.language.displayName} formatter)", Toast.LENGTH_SHORT).show()
+                                        NotificationStore.add("Formatted", "Formatted ✓ (${activeTab.language.displayName} formatter)", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                                     }
                                 } else {
                                     // P37-TEST4-FIX: surface the failure/no-op reason instead of silently doing nothing
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        Toast.makeText(context, "Format: ${result.message}", Toast.LENGTH_LONG).show()
+                                        NotificationStore.add("Format result", "Format: ${result.message}", NotificationStore.Severity.WARNING, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
                                     }
                                     AppOutputLog.log("[Format] regex-button result: ${result.message}", "format")
                                 }

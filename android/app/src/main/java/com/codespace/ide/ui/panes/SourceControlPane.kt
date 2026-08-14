@@ -36,6 +36,7 @@ import com.codespace.ide.scm.ScmDiffLine
 import com.codespace.ide.scm.DiffLineType
 import com.codespace.ide.scm.ScmCommit
 import kotlinx.coroutines.launch
+import com.codespace.ide.data.NotificationStore
 
 // ── Palette (matches ExplorerPane/ProjectShellScreen dark theme) ─────────────
 private val BgColor      = Color(0xFF1E1E1E)
@@ -468,6 +469,19 @@ fun SourceControlPane(projectId: String) {
             }
 
             LaunchedEffect(msg) {
+                // Phase N: Also push to NotificationStore for history/center
+                NotificationStore.add(
+                    title = if (isError) "Git Error" else "Git",
+                    body = msg,
+                    severity = if (isError) NotificationStore.Severity.ERROR else NotificationStore.Severity.SUCCESS,
+                    source = NotificationStore.Source.GIT,
+                    priority = if (isError) NotificationStore.Priority.HIGH else NotificationStore.Priority.NORMAL,
+                    deduplicationKey = "scm:${msg.take(40)}",
+                    errorDetails = if (isError) NotificationStore.ErrorDetails(
+                        userMessage = msg,
+                        technicalDetails = displayMsg,
+                    ) else null,
+                )
                 kotlinx.coroutines.delay(if (isError) 5000 else 3000)
                 snackbarMsg = null
             }

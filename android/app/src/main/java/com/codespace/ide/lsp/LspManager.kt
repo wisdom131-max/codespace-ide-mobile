@@ -3,6 +3,7 @@ package com.codespace.ide.lsp
 import android.content.Context
 import android.util.Log
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.DiagnosticManager
 import com.codespace.ide.diagnostics.DiagnosticConverter
 import com.codespace.ide.domain.Language
@@ -717,6 +718,27 @@ object LspManager {
         AppOutputLog.log(msg, "lsp")
     }
 
+    // Phase N: LSP lifecycle notifications — push meaningful events to NotificationStore
+    private fun notifyLspEvent(language: Language, event: String, severity: NotificationStore.Severity, body: String, actions: List<NotificationStore.NotificationAction> = emptyList()) {
+        val dedupKey = "lsp:${language.id}:$event"
+        NotificationStore.add(
+            title = "${language.displayName} language server",
+            body = body,
+            severity = severity,
+            source = NotificationStore.Source.LSP,
+            priority = when (severity) {
+                NotificationStore.Severity.ERROR -> NotificationStore.Priority.HIGH
+                NotificationStore.Severity.WARNING -> NotificationStore.Priority.NORMAL
+                NotificationStore.Severity.PROGRESS -> NotificationStore.Priority.NORMAL
+                else -> NotificationStore.Priority.LOW
+            },
+            actions = actions,
+            deduplicationKey = dedupKey,
+            groupKey = "lsp-${language.id}",
+            category = event,
+        )
+    }
+
     // Phase V: Get PID of a child Process on Android (Process.pid() is Java 9, not available on Android)
     private fun getProcessPid(process: Process): Long {
         return try {
@@ -804,6 +826,7 @@ object LspManager {
                         // Phase V-I: Idle close is NOT a crash — no restart, no backoff
                         setServerState(lang, LspState.IDLE_CLOSE, "idle ${idleTimeoutSeconds / 1000}s")
                         lifecycleLog("IDLE_CLOSE lang=${lang.displayName} gen=${server.generation} — idle ${idleTimeoutSeconds / 1000}s")
+            notifyLspEvent(lang, "idle_close", NotificationStore.Severity.INFO, "Server idle for ${idleTimeoutSeconds / 1000}s — shutting down to save memory.")
                         stopServer(lang)
                         lastActivity.remove(lang)
                     }
@@ -1241,6 +1264,7 @@ object LspManager {
             return false
         }
         Log.d(TAG, "startServer: process spawned, isAlive=${process.isAlive}")
+        notifyLspEvent(language, "starting", NotificationStore.Severity.PROGRESS, "Initializing language server…")
         AppOutputLog.log("[LSP] Process spawned for ${language.displayName} — isAlive=${process.isAlive}", "lsp")
 
         // Drain stderr in background thread so it doesn't block stdout (JSON-RPC) reads
@@ -1312,6 +1336,10 @@ object LspManager {
             if (!wasIntentional) {
                 server.lastDeathWasCrash = true
                 lifecycleLog("CRASH lang=${language.displayName} gen=$gen — unexpected disconnect")
+                notifyLspEvent(language, "crash", NotificationStore.Severity.ERROR, "Server crashed unexpectedly. Restarting with backoff.", listOf(
+                    NotificationStore.NotificationAction("restart", "Restart"),
+                    NotificationStore.NotificationAction("view_logs", "View Logs"),
+                ))
                 setServerState(language, LspState.UNHEALTHY, "reader disconnected")
                 server.initialized = false
                 // Phase V-C: Trigger auto-restart with backoff
@@ -1384,6 +1412,7 @@ object LspManager {
         // Phase V-C: Reset restart backoff on successful init
         restartBackoffs[language]?.reset()?.let { restartBackoffs[language] = it }
         lifecycleLog("READY lang=${language.displayName} gen=${server.generation} pid=${getProcessPid(process)}")
+        notifyLspEvent(language, "ready", NotificationStore.Severity.SUCCESS, "Server started successfully.")
         AppOutputLog.log("[LSP] Server capabilities: ${caps.toString().take(300)}", "lsp")
 
         client.notify("initialized")
@@ -1802,6 +1831,14 @@ object LspManager {
                         }
                     } else ""
                     lifecycleLog("CRASH lang=${language.displayName} gen=$gen exit=$exitCode$oomIndicator")
+                    if (oomIndicator.contains("OOM")) {
+                        notifyLspEvent(language, "oom", NotificationStore.Severity.WARNING, "Server may have been killed by OOM (exit code $exitCode). High memory usage detected.")
+                    } else {
+                        notifyLspEvent(language, "crash", NotificationStore.Severity.ERROR, "Server crashed (exit code $exitCode). Auto-restarting with backoff.", listOf(
+                            NotificationStore.NotificationAction("restart", "Restart"),
+                            NotificationStore.NotificationAction("view_logs", "View Logs"),
+                        ))
+                    }
                     setServerState(language, LspState.UNHEALTHY, "process exit code=$exitCode")
                 }
             } catch (_: InterruptedException) {
@@ -1827,6 +1864,9 @@ object LspManager {
         if (!backoff.canRestart()) {
             lifecycleLog("RESTART lang=${language.displayName} — CIRCUIT BREAKER (max ${RestartBackoff.MAX_RESTARTS} restarts exceeded)")
             setServerState(language, LspState.STOPPED, "circuit breaker")
+            notifyLspEvent(language, "circuit_breaker", NotificationStore.Severity.ERROR, "Server repeatedly failed to start (${RestartBackoff.MAX_RESTARTS} attempts). Auto-restart disabled.", listOf(
+                NotificationStore.NotificationAction("restart", "Restart Manually"),
+            ))
             return
         }
 

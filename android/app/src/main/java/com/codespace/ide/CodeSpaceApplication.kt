@@ -22,6 +22,7 @@ import javax.inject.Inject
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.data.NotificationStore
+import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.ui.screens.SettingsUsageTracker
 
 @HiltAndroidApp
@@ -37,6 +38,15 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         FeatureToggleStore.init(this)
         ProjectSettingsStore.init(this)
         NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
+        // Phase N: Register notification action handlers
+        NotificationStore.registerActionHandler("view_logs") { _, _ ->
+            // Opens the LSP output log — handled by ProjectShellScreen via activeOutputTarget
+            AppOutputLog.log("[Notification] View Logs action triggered", "system")
+        }
+        NotificationStore.registerActionHandler("restart") { _, _ ->
+            // LSP restart is handled via LspManager — this logs the action
+            AppOutputLog.log("[Notification] Restart action triggered", "system")
+        }
         SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         super.onCreate()
         // X7 fix: Start Agent API server on app launch so the MCP status indicator

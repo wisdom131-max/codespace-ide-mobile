@@ -6,19 +6,25 @@ import android.media.RingtoneManager
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.mutableStateListOf
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * P34-NOTIF: App-wide notification store — single source of truth.
+ * Phase N — Advanced Notification System
  *
- * Unified store replaces the dual-track system (local notifList in PSS + global store).
- * All callers must use NotificationStore.add(); do NOT maintain local notification lists.
+ * Central notification authority. Single source of truth for all app notifications.
+ * Replaces scattered Toast/Snackbar calls with a unified, priority-aware, deduplicating,
+ * groupable, action-capable notification pipeline.
  *
  * Thread-safety: all mutations dispatched to main thread via Handler.post.
+ * Anti-spam: rate limiting via deduplication keys and timestamps.
  */
 object NotificationStore {
 
-    // ── Severity ─────────────────────────────────────────────────────────────
+    // ── Severity (visual + routing) ──────────────────────────────────────────
     enum class Severity { INFO, SUCCESS, WARNING, ERROR, PROGRESS }
+
+    // ── Priority (queue ordering, persistence, presentation weight) ───────────
+    enum class Priority { LOW, NORMAL, HIGH, CRITICAL }
 
     // ── Source category ───────────────────────────────────────────────────────
     enum class Source {
@@ -27,6 +33,9 @@ object NotificationStore {
         // Legacy compat
         BACKUP, CONNECTOR
     }
+
+    // ── Notification lifecycle state ─────────────────────────────────────────
+    enum class NotificationState { ACTIVE, READ, DISMISSED, COMPLETED, FAILED }
 
     // ── Legacy Type compat shim (do not add new callers) ─────────────────────
     @Deprecated("Use Severity + Source instead")
@@ -50,6 +59,27 @@ object NotificationStore {
         }
     }
 
+    // ── Notification action (clickable button on a notification) ──────────────
+    data class NotificationAction(
+        val id: String,           // stable action ID, e.g. "retry", "view_logs"
+        val label: String,        // button text, e.g. "Retry", "View Logs"
+        val destructive: Boolean = false,  // styling hint
+    )
+
+    // ── Progress info (for PROGRESS severity) ────────────────────────────────
+    data class ProgressInfo(
+        val indeterminate: Boolean = false,
+        val current: Int = 0,       // current progress value (0..max)
+        val max: Int = 100,         // max progress value
+        val statusMessage: String? = null,  // "Downloading language server…"
+    )
+
+    // ── Error details (two-level: user message + technical) ───────────────────
+    data class ErrorDetails(
+        val userMessage: String,          // "Git push failed — Push was rejected by the remote."
+        val technicalDetails: String? = null,  // command, exit code, stderr — never secrets
+    )
+
     // ── Notification item ─────────────────────────────────────────────────────
     data class Item(
         val id: Long = nextId.getAndIncrement(),
@@ -57,7 +87,30 @@ object NotificationStore {
         val body: String,
         val severity: Severity = Severity.INFO,
         val source: Source = Source.SYSTEM,
+        val priority: Priority = Priority.NORMAL,
+        val state: NotificationState = NotificationState.ACTIVE,
         val read: Boolean = false,
+        val timestamp: Long = System.currentTimeMillis(),
+        // Phase N: Grouping — notifications with the same groupKey are collapsed
+        val groupKey: String? = null,
+        // Phase N: Deduplication — same dedupKey + recent timestamp → update existing
+        val deduplicationKey: String? = null,
+        // Phase N: Count of deduplicated occurrences (shown as "(4)" in UI)
+        val dedupCount: Int = 1,
+        // Phase N: Action buttons
+        val actions: List<NotificationAction> = emptyList(),
+        // Phase N: Progress info for PROGRESS severity
+        val progress: ProgressInfo? = null,
+        // Phase N: Error details for ERROR severity
+        val errorDetails: ErrorDetails? = null,
+        // Phase N: Category for finer-grained filtering within a source
+        val category: String? = null,
+        // Phase N: Persistent notifications survive app restart (in-memory only for now)
+        val persistent: Boolean = false,
+        // Phase N: Auto-dismiss duration in ms (0 = no auto-dismiss)
+        val autoDismissMs: Long = 0L,
+        // Phase N: Metadata bag for action handlers
+        val metadata: Map<String, String> = emptyMap(),
     )
 
     // P-NOTIF-RESTRUCTURE: Bell/panel position — 3 corners, matches Test 39 spec
@@ -68,15 +121,11 @@ object NotificationStore {
 
     // ── Settings (persisted via SharedPreferences, see init()/loadPersisted()) ─
     data class Settings(
-        // P-NOTIF-RESTRUCTURE: "anycode" master toggle — enables/disables ALL app
-        // notifications. Defaults ON per spec.
         val enabled: Boolean = true,
         val showToast: Boolean = true,
         val toastDurationMs: Long = 3000L,
         val maxHistory: Int = 100,
-        // P35-NOTIF: Do Not Disturb — suppresses INFO + WARNING toasts (ERROR still shows)
         val doNotDisturb: Boolean = false,
-        // P-NOTIF-RESTRUCTURE: play a system notification sound when a new item arrives
         val soundEnabled: Boolean = true,
         // Severity filters — true = show
         val showInfo: Boolean = true,
@@ -99,7 +148,36 @@ object NotificationStore {
         val srcConnector: Boolean = true,
         // P-NOTIF-RESTRUCTURE: bell/panel corner — one of ALL_POSITIONS
         val bellPosition: String = POS_BOTTOM_RIGHT,
+        // Phase N: Priority filter — minimum priority to show as toast/banner
+        val minToastPriority: Priority = Priority.LOW,
+        // Phase N: Rate limiting — max notifications with same dedupKey per second
+        val rateLimitPerSecond: Int = 5,
     )
+
+    // ── Action handler registry ───────────────────────────────────────────────
+    /** Register a handler for an action ID. Called when user taps an action button. */
+    private val actionHandlers = ConcurrentHashMap<String, (Item, NotificationAction) -> Unit>()
+    fun registerActionHandler(actionId: String, handler: (Item, NotificationAction) -> Unit) {
+        actionHandlers[actionId] = handler
+    }
+    fun unregisterActionHandler(actionId: String) {
+        actionHandlers.remove(actionId)
+    }
+    fun executeAction(itemId: Long, actionId: String) {
+        post {
+            val item = items.find { it.id == itemId } ?: return@post
+            val action = item.actions.find { it.id == actionId } ?: return@post
+            val handler = actionHandlers[actionId]
+            if (handler != null) {
+                try { handler(item, action) } catch (e: Exception) {
+                    android.util.Log.e("NotificationStore", "Action handler '$actionId' threw", e)
+                }
+            }
+            // Mark as read after action execution
+            val idx = items.indexOfFirst { it.id == itemId }
+            if (idx >= 0) items[idx] = items[idx].copy(read = true, state = NotificationState.READ)
+        }
+    }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val nextId = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
@@ -150,8 +228,6 @@ object NotificationStore {
 
     val unreadCount: Int get() = items.count { !it.read }
 
-    // P35-NOTIF: Bell color state — matches VS Code behavior
-    // idle = gray, error = red, warning = amber, info/success = blue
     val hasError: Boolean get() = items.any { !it.read && it.severity == Severity.ERROR }
     val hasWarning: Boolean get() = items.any { !it.read && it.severity == Severity.WARNING }
     val hasInfo: Boolean get() = items.any { !it.read && (it.severity == Severity.INFO || it.severity == Severity.SUCCESS) }
@@ -197,33 +273,206 @@ object NotificationStore {
     fun addToastListener(l: () -> Unit) { _toastListeners.add(l) }
     fun removeToastListener(l: () -> Unit) { _toastListeners.remove(l) }
 
+    // ── Rate limiting state ───────────────────────────────────────────────────
+    private val dedupTimestamps = ConcurrentHashMap<String, MutableList<Long>>()
+    private val dedupLock = Any()
+
     // ── Public API ────────────────────────────────────────────────────────────
 
+    /**
+     * Add a notification with full Phase N features.
+     *
+     * Deduplication: if a notification with the same deduplicationKey exists and was
+     * added within the last 5 seconds, the existing notification is updated (count++,
+     * timestamp refreshed) instead of creating a new one.
+     */
+    @JvmOverloads
     fun add(
         title: String,
         body: String,
         severity: Severity = Severity.INFO,
         source: Source = Source.SYSTEM,
+        priority: Priority = Priority.NORMAL,
+        actions: List<NotificationAction> = emptyList(),
+        groupKey: String? = null,
+        deduplicationKey: String? = null,
+        progress: ProgressInfo? = null,
+        errorDetails: ErrorDetails? = null,
+        category: String? = null,
+        persistent: Boolean = false,
+        autoDismissMs: Long = 0L,
+        metadata: Map<String, String> = emptyMap(),
     ) {
         if (!settings.enabled) return
         if (!isSeverityAllowed(severity)) return
         if (!isSourceAllowed(source)) return
 
-        val item = Item(title = title, body = body, severity = severity, source = source)
+        // Phase N: Deduplication — update existing if same key within rate-limit window
+        if (deduplicationKey != null) {
+            val now = System.currentTimeMillis()
+            synchronized(dedupLock) {
+                // Check rate limiting
+                val timestamps = dedupTimestamps.getOrPut(deduplicationKey) { mutableListOf() }
+                timestamps.removeAll { now - it > 1000L } // within last 1s
+                if (timestamps.size >= settings.rateLimitPerSecond) {
+                    // Rate limited — update the most recent notification instead of creating new
+                    val existing = items.firstOrNull { it.deduplicationKey == deduplicationKey }
+                    if (existing != null) {
+                        post {
+                            val idx = items.indexOfFirst { it.id == existing.id }
+                            if (idx >= 0) {
+                                items[idx] = items[idx].copy(
+                                    dedupCount = items[idx].dedupCount + 1,
+                                    timestamp = now,
+                                    body = body,
+                                )
+                            }
+                        }
+                        timestamps.add(now)
+                        return
+                    }
+                }
+                timestamps.add(now)
+
+                // Also check for existing notification with same dedup key (within 5s)
+                val existing = items.firstOrNull {
+                    it.deduplicationKey == deduplicationKey && (now - it.timestamp) < 5000L
+                }
+                if (existing != null) {
+                    post {
+                        val idx = items.indexOfFirst { it.id == existing.id }
+                        if (idx >= 0) {
+                            items[idx] = items[idx].copy(
+                                dedupCount = items[idx].dedupCount + 1,
+                                timestamp = now,
+                                body = body,
+                            )
+                        }
+                    }
+                    return
+                }
+            }
+        }
+
+        val item = Item(
+            title = title,
+            body = body,
+            severity = severity,
+            source = source,
+            priority = priority,
+            actions = actions,
+            groupKey = groupKey,
+            deduplicationKey = deduplicationKey,
+            progress = progress,
+            errorDetails = errorDetails,
+            category = category,
+            persistent = persistent,
+            autoDismissMs = autoDismissMs,
+            metadata = metadata,
+        )
         post {
             items.add(0, item)
             if (items.size > settings.maxHistory) items.removeAt(items.lastIndex)
+
             // Fire toast if enabled (respect DND: errors always show, info/warning suppressed)
-            val dndSuppress = settings.doNotDisturb &&
-                severity != Severity.ERROR
-            if (settings.showToast && !dndSuppress) {
+            val shouldShowToast = settings.showToast &&
+                priority.ordinal >= settings.minToastPriority.ordinal &&
+                !(settings.doNotDisturb && severity != Severity.ERROR)
+            if (shouldShowToast) {
                 activeToast = item
                 _toastListeners.forEach { it() }
                 toastHandler.removeCallbacks(clearToastRunnable)
-                toastHandler.postDelayed(clearToastRunnable, settings.toastDurationMs)
+                val duration = if (autoDismissMs > 0) autoDismissMs else settings.toastDurationMs
+                toastHandler.postDelayed(clearToastRunnable, duration)
             }
-            if (!dndSuppress) playSound()
+            if (!(settings.doNotDisturb && severity != Severity.ERROR)) playSound()
         }
+    }
+
+    /**
+     * Update an existing progress notification in place.
+     * Use for long-running operations: 10% → 25% → 50% → 75% → 100% is ONE notification.
+     */
+    fun updateProgress(
+        notificationId: Long,
+        current: Int,
+        statusMessage: String? = null,
+        severity: Severity? = null,
+    ) {
+        post {
+            val idx = items.indexOfFirst { it.id == notificationId }
+            if (idx >= 0) {
+                val item = items[idx]
+                items[idx] = item.copy(
+                    progress = (item.progress ?: ProgressInfo()).copy(
+                        current = current,
+                        statusMessage = statusMessage ?: item.progress?.statusMessage,
+                    ),
+                    severity = severity ?: item.severity,
+                    timestamp = System.currentTimeMillis(),
+                )
+            }
+        }
+    }
+
+    /**
+     * Complete a progress notification — transition to completed/failed state.
+     */
+    @JvmOverloads
+    fun completeProgress(
+        notificationId: Long,
+        success: Boolean = true,
+        title: String? = null,
+        body: String? = null,
+    ) {
+        post {
+            val idx = items.indexOfFirst { it.id == notificationId }
+            if (idx >= 0) {
+                val item = items[idx]
+                items[idx] = item.copy(
+                    severity = if (success) Severity.SUCCESS else Severity.ERROR,
+                    state = if (success) NotificationState.COMPLETED else NotificationState.FAILED,
+                    progress = null,
+                    title = title ?: item.title,
+                    body = body ?: item.body,
+                    timestamp = System.currentTimeMillis(),
+                )
+            }
+        }
+    }
+
+    /**
+     * Start a progress notification and return its ID for later updates.
+     */
+    @JvmOverloads
+    fun startProgress(
+        title: String,
+        body: String,
+        source: Source = Source.SYSTEM,
+        indeterminate: Boolean = true,
+        current: Int = 0,
+        max: Int = 100,
+        statusMessage: String? = null,
+        actions: List<NotificationAction> = emptyList(),
+        deduplicationKey: String? = null,
+    ): Long {
+        val item = Item(
+            title = title,
+            body = body,
+            severity = Severity.PROGRESS,
+            source = source,
+            priority = Priority.HIGH,
+            progress = ProgressInfo(indeterminate, current, max, statusMessage),
+            actions = actions,
+            deduplicationKey = deduplicationKey,
+        )
+        // Add directly to get the ID
+        if (!settings.enabled) return -1L
+        post {
+            items.add(0, item)
+            if (items.size > settings.maxHistory) items.removeAt(items.lastIndex)
+        }
+        return item.id
     }
 
     /** P-NOTIF-RESTRUCTURE: Plays the system default notification sound (best-effort). */
@@ -248,16 +497,23 @@ object NotificationStore {
 
     fun markRead(id: Long) = post {
         val idx = items.indexOfFirst { it.id == id }
-        if (idx >= 0) items[idx] = items[idx].copy(read = true)
+        if (idx >= 0) items[idx] = items[idx].copy(read = true, state = NotificationState.READ)
     }
 
     fun markAllRead() = post {
-        val updated = items.map { it.copy(read = true) }
+        val updated = items.map { it.copy(read = true, state = NotificationState.READ) }
         items.clear()
         items.addAll(updated)
     }
 
     fun clearAll() = post { items.clear() }
+
+    /** Clear only completed/failed/dismissed items (keep active errors). */
+    fun clearResolved() = post {
+        items.removeAll {
+            it.state in setOf(NotificationState.COMPLETED, NotificationState.FAILED, NotificationState.DISMISSED)
+        }
+    }
 
     fun dismissToast() {
         toastHandler.removeCallbacks(clearToastRunnable)
@@ -269,6 +525,29 @@ object NotificationStore {
         severities: Set<Severity> = Severity.values().toSet(),
         sources: Set<Source> = Source.values().toSet(),
     ): List<Item> = items.filter { it.severity in severities && it.source in sources }
+
+    /** Get grouped notifications — groupKey → list of items (first item is the group representative). */
+    fun groupedItems(): List<Item> {
+        val groups = mutableMapOf<String, MutableList<Item>>()
+        val ungrouped = mutableListOf<Item>()
+        for (item in items) {
+            val gk = item.groupKey
+            if (gk != null) {
+                groups.getOrPut(gk) { mutableListOf() }.add(item)
+            } else {
+                ungrouped.add(item)
+            }
+        }
+        // For grouped items, return the first with dedupCount = sum of group
+        val result = mutableListOf<Item>()
+        for ((_, groupItems) in groups) {
+            val representative = groupItems.first()
+            val totalCount = groupItems.sumOf { it.dedupCount }
+            result.add(representative.copy(dedupCount = totalCount))
+        }
+        result.addAll(ungrouped)
+        return result.sortedByDescending { it.priority.ordinal }
+    }
 
     // ── Private helpers ───────────────────────────────────────────────────────
     private fun isSeverityAllowed(s: Severity): Boolean = when (s) {
