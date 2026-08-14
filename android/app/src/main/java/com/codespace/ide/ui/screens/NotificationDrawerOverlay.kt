@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.data.NotificationStore
+import androidx.compose.ui.res.painterResource
+import com.codespace.ide.R
 import java.util.concurrent.TimeUnit
 
 // Legacy compat — kept so existing callers don't break
@@ -80,23 +82,18 @@ internal fun NotificationBell(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            if (dnd) Icons.Outlined.NotificationsOff else Icons.Outlined.Notifications,
+            painter = painterResource(
+                when {
+                    dnd && unread > 0 -> R.drawable.ic_notification_bell_slash_dot
+                    dnd              -> R.drawable.ic_notification_bell_slash
+                    unread > 0        -> R.drawable.ic_notification_bell_dot
+                    else              -> R.drawable.ic_notification_bell
+                }
+            ),
             null,
             tint = bellColor,
             modifier = Modifier.size(iconSize.dp),
         )
-        // Round dot indicator — VS Code style, no numbers.
-        if (unread > 0 && !dnd) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(7.dp)
-                    .background(
-                        if (bellState == "error") Color(0xFFF38BA8) else Color(0xFF89B4FA),
-                        CircleShape,
-                    ),
-            )
-        }
     }
 }
 
