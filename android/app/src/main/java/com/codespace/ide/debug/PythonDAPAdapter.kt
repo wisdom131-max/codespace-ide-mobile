@@ -300,6 +300,19 @@ class PythonDAPAdapter : DebugAdapter {
                 AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
             } else {
                 AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+                // P27-11: Extract verification status from DAP response
+                val bpBody = bpResp.optJSONObject("body")
+                val bpArray = bpBody?.optJSONArray("breakpoints")
+                if (bpArray != null) {
+                    val verifiedMap = mutableMapOf<Int, Boolean>()
+                    for (j in 0 until bpArray.length()) {
+                        val bpInfo = bpArray.optJSONObject(j)
+                        val dapLine = bpInfo?.optInt("line", -1) ?: -1
+                        val isVerified = bpInfo?.optBoolean("verified", false) ?: false
+                        if (dapLine > 0) verifiedMap[dapLine] = isVerified
+                    }
+                    UniversalDebugManager.markBreakpointsVerified(filePath, verifiedMap)
+                }
             }
         }
 

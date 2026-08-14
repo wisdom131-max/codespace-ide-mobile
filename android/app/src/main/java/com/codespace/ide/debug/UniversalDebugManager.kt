@@ -674,6 +674,21 @@ object UniversalDebugManager {
         }
     }
 
+    /**
+     * P27-11: Mark breakpoints as verified after DAP setBreakpoints response.
+     * Called by DAP adapters when they receive the setBreakpoints response body.
+     */
+    fun markBreakpointsVerified(filePath: String, verifiedLines: Map<Int, Boolean>) {
+        val list = breakpoints[filePath] ?: return
+        for (i in list.indices) {
+            val bp = list[i]
+            val isVerified = verifiedLines[bp.line + 1] ?: true  // DAP uses 1-based lines
+            if (bp.verified != isVerified) {
+                list[i] = bp.copy(verified = isVerified)
+            }
+        }
+    }
+
     fun removeBreakpoint(filePath: String, line: Int) {
         breakpoints[filePath]?.removeAll { it.line == line }
         if (breakpoints[filePath]?.isEmpty() == true) breakpoints.remove(filePath)
