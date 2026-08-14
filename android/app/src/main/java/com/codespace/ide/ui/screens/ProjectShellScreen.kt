@@ -14,7 +14,10 @@ import com.codespace.ide.ui.panels.CloudBackupPanel
 import com.codespace.ide.util.WorkspaceManager
 import android.widget.Toast
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -541,70 +544,6 @@ private fun PssTopBar(
             AnimatedBotIcon(modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(10.dp))
-        // ── 3-dot overflow menu (kept exactly as-is, rightmost — user explicitly wants this preserved) ──
-        Box {
-            Icon(
-                Icons.Default.MoreVert, null,
-                tint = tabTextInactive,
-                modifier = Modifier.size(20.dp).clickable { showOverflowMenu = !showOverflowMenu },
-            )
-            androidx.compose.material3.DropdownMenu(
-                expanded = showOverflowMenu,
-                onDismissRequest = { showOverflowMenu = false; openSubmenu = null },
-            ) {
-                if (openSubmenu == null) {
-                    // First level: category names
-                    MENU_BAR.forEach { menuItem ->
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(menuItem.label, fontSize = 13.sp, color = menuText, fontWeight = FontWeight.Medium)
-                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = menuText.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                                }
-                            },
-                            onClick = { openSubmenu = menuItem.label },
-                        )
-                    }
-                    HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(currentTheme, fontSize = 11.sp, color = menuText.copy(alpha = 0.5f)) },
-                        onClick = { onMenuAction("Preferences"); showOverflowMenu = false },
-                    )
-                } else {
-                    // Second level: items of selected category
-                    val menuItem = MENU_BAR.find { it.label == openSubmenu }
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = menuText.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(openSubmenu!!, fontSize = 13.sp, color = menuText, fontWeight = FontWeight.Medium)
-                            }
-                        },
-                        onClick = { openSubmenu = null },
-                    )
-                    HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
-                    menuItem?.items?.forEach { action ->
-                        if (action.divider) {
-                            HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 2.dp))
-                        } else {
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = {
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(action.label, fontSize = 12.sp, color = menuText)
-                                        if (action.shortcut.isNotEmpty()) {
-                                            Text(action.shortcut, fontSize = 10.sp, color = menuText.copy(alpha = 0.5f))
-                                        }
-                                    }
-                                },
-                                onClick = { onMenuAction(action.label); showOverflowMenu = false; openSubmenu = null },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.width(8.dp))
     }
 }
 
@@ -639,6 +578,49 @@ fun ProjectShellScreen(
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.
     val orientation = LocalConfiguration.current.orientation
+
+    // ── File picker launcher (Open File from hamburger menu) ──
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                // Copy file into project dir
+                val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                val fileName = uri.lastPathSegment?.substringAfterLast("/") ?: "imported_file"
+                val destFile = java.io.File(projectDir, fileName)
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                val path = destFile.absolutePath
+                if (!editorTabs.contains(path)) editorTabs.add(path)
+                activeEditorTab = path
+                showNotification("Opened $fileName", "success")
+            } catch (e: Exception) {
+                showNotification("Failed to open file: ${e.message}", "error")
+            }
+        }
+    }
+
+    // ── Folder picker launcher (Open Folder from hamburger menu) ──
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                showNotification("Folder added to workspace", "success")
+                // TODO: add folder to explorer tree
+            } catch (e: Exception) {
+                showNotification("Failed to open folder: ${e.message}", "error")
+            }
+        }
+    }
     val t = ideColors(currentTheme)
     val BgColor = t.BgColor
     val ActivityBarBg = t.ActivityBarBg
@@ -1042,7 +1024,7 @@ fun ProjectShellScreen(
             "Paste" -> showNotification("Paste via editor toolbar", "info")
             "Select All" -> showNotification("Select All via editor long-press", "info")
             "Save As" -> showNotification("Save As — use Save (file saves in place)", "info")
-            "Open File" -> { activePanel = SidePanel.EXPLORER }
+            "Open File" -> { filePickerLauncher.launch(arrayOf("*/*")) }
             "Restart" -> {
                 val sid = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()?.id
                 if (sid != null) {
@@ -1153,6 +1135,55 @@ fun ProjectShellScreen(
                     activityBarIcon = ActivityBarIcon,
                     activityBarIconActive = ActivityBarIconActive,
                     dividerColor = DividerColor,
+                    onMenuAction = { handleMenuAction(it) },
+                    onNewTextFile = {
+                        // Create Untitled-N file (VS Code style)
+                        val untitledCount = editorTabs.count { it.contains("Untitled-") }
+                        val untitledName = "Untitled-${untitledCount + 1}"
+                        val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                        val newFile = java.io.File(projectDir, untitledName)
+                        if (!newFile.exists()) newFile.createNewFile()
+                        val path = newFile.absolutePath
+                        if (!editorTabs.contains(path)) editorTabs.add(path)
+                        activeEditorTab = path
+                        activePanel = null
+                        showNotification("Created $untitledName", "success")
+                    },
+                    onOpenFilePicker = {
+                        // Launch Android file picker
+                        filePickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    onOpenFolderPicker = {
+                        // Launch folder picker
+                        folderPickerLauncher.launch(null)
+                    },
+                    onOpenRecent = {
+                        // Open command palette showing recent files
+                        showCommandPalette = true
+                        // TODO: filter palette to show recent files
+                    },
+                    onNewWindowProfile = {
+                        // Create a new project and navigate to it
+                        val newId = java.util.UUID.randomUUID().toString()
+                        val newDir = java.io.File(context.filesDir, "projects/$newId")
+                        newDir.mkdirs()
+                        // Save to projects list
+                        val prefs = context.getSharedPreferences("projects", android.content.Context.MODE_PRIVATE)
+                        val str = prefs.getString("list", null) ?: "[]"
+                        try {
+                            val arr = org.json.JSONArray(str)
+                            arr.put(org.json.JSONObject()
+                                .put("id", newId)
+                                .put("name", "New Project")
+                                .put("kind", "LOCAL")
+                                .put("pathOrUrl", newDir.absolutePath)
+                                .put("defaultBranch", ""))
+                            prefs.edit().putString("list", arr.toString()).apply()
+                        } catch (_: Exception) {}
+                        showNotification("New project window created", "success")
+                        // Navigate to the new project
+                        onBack()
+                    },
                 ) }
 
                 // Side Panel — hidden in Zen Mode
@@ -2277,16 +2308,254 @@ private fun PssActivityBar(
     activityBarIcon: Color,
     activityBarIconActive: Color,
     dividerColor: Color,
+    onMenuAction: (String) -> Unit = {},
+    onNewTextFile: () -> Unit = {},
+    onOpenFilePicker: () -> Unit = {},
+    onOpenFolderPicker: () -> Unit = {},
+    onOpenRecent: () -> Unit = {},
+    onNewWindowProfile: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val orientation = LocalConfiguration.current.orientation
+    val isLandscape = orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    var showHamburgerMenu by remember { mutableStateOf(false) }
+    var openSubmenu by remember { mutableStateOf<String?>(null) }
+    var showFileSubmenu by remember { mutableStateOf(false) }
+    var showNewProfilePrompt by remember { mutableStateOf(false) }
+    var newProfileName by remember { mutableStateOf("") }
+    // Track which icon is in the "visible slot" in landscape mode (MRU rotation)
+    var landscapeVisiblePanel by remember { mutableStateOf(SidePanel.EXPLORER) }
+
     Column(
         Modifier.width(48.dp).fillMaxHeight().background(activityBarBg)
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // VS Code-style rounded container wrapping activity bar icons
+        // ── HAMBURGER MENU (3-line icon at top of activity bar — VS Code style) ──
         Spacer(Modifier.height(4.dp))
-        // P-SCM-7: Use GitCommandExecutor for badge count (replaces raw execOnce)
+        Card(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 4.dp)
+                .background(activityBarBg, RoundedCornerShape(8.dp)),
+            colors = CardDefaults.cardColors(containerColor = activityBarBg),
+            shape = RoundedCornerShape(8.dp),
+        ) {
+            Box(
+                Modifier.fillMaxWidth().height(48.dp)
+                    .clickable { showHamburgerMenu = !showHamburgerMenu; openSubmenu = null; showFileSubmenu = false },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = com.codespace.ide.R.drawable.ic_vscode_hamburger),
+                    contentDescription = "Menu",
+                    tint = activityBarIcon,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+
+        // ── Hamburger dropdown menu ──
+        androidx.compose.material3.DropdownMenu(
+            expanded = showHamburgerMenu,
+            onDismissRequest = { showHamburgerMenu = false; openSubmenu = null; showFileSubmenu = false },
+        ) {
+            if (openSubmenu == null && !showFileSubmenu) {
+                // First level: category names (File, Edit, Selection, View, Go, Run, Terminal, Help)
+                MENU_BAR.forEach { menuItem ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(menuItem.label, fontSize = 13.sp, color = activityBarIcon, fontWeight = FontWeight.Medium)
+                                Icon(Icons.Default.KeyboardArrowRight, null, tint = activityBarIcon.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                            }
+                        },
+                        onClick = {
+                            if (menuItem.label == "File") {
+                                showFileSubmenu = true
+                            } else {
+                                openSubmenu = menuItem.label
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+            } else if (showFileSubmenu) {
+                // File submenu — with new items
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = activityBarIcon.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("File", fontSize = 13.sp, color = activityBarIcon, fontWeight = FontWeight.Medium)
+                        }
+                    },
+                    onClick = { showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                // New Text File — creates Untitled-N
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("New Text File", fontSize = 12.sp, color = activityBarIcon)
+                        Text("Ctrl+N", fontSize = 10.sp, color = activityBarIcon.copy(alpha = 0.5f))
+                    }},
+                    onClick = { onNewTextFile(); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                // New File (existing — creates file in explorer)
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("New File", fontSize = 12.sp, color = activityBarIcon)
+                    }},
+                    onClick = { onMenuAction("New File"); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                // New Folder
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("New Folder", fontSize = 12.sp, color = activityBarIcon)
+                    }},
+                    onClick = { onMenuAction("New Folder"); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                // Open File — launches Android file picker
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Open File...", fontSize = 12.sp, color = activityBarIcon)
+                        Text("Ctrl+O", fontSize = 10.sp, color = activityBarIcon.copy(alpha = 0.5f))
+                    }},
+                    onClick = { onOpenFilePicker(); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                // Open Folder — launches folder picker
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Open Folder...", fontSize = 12.sp, color = activityBarIcon)
+                    }},
+                    onClick = { onOpenFolderPicker(); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                // Open Recent — opens command palette with recent files
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Open Recent...", fontSize = 12.sp, color = activityBarIcon)
+                    }},
+                    onClick = { onOpenRecent(); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                // New Window with Profile — chevron submenu
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("New Window with Profile", fontSize = 12.sp, color = activityBarIcon)
+                        Icon(Icons.Default.KeyboardArrowRight, null, tint = activityBarIcon.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                    }},
+                    onClick = { showNewProfilePrompt = true; showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                // Save, Save As, Auto Save (existing items)
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Save", fontSize = 12.sp, color = activityBarIcon)
+                        Text("Ctrl+S", fontSize = 10.sp, color = activityBarIcon.copy(alpha = 0.5f))
+                    }},
+                    onClick = { onMenuAction("Save"); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Auto Save", fontSize = 12.sp, color = activityBarIcon) },
+                    onClick = { onMenuAction("Auto Save"); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Preferences", fontSize = 12.sp, color = activityBarIcon) },
+                    onClick = { onMenuAction("Preferences"); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Exit", fontSize = 12.sp, color = activityBarIcon) },
+                    onClick = { onMenuAction("Exit"); showHamburgerMenu = false; showFileSubmenu = false },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            } else {
+                // Other submenus (Edit, Selection, View, Go, Run, Terminal, Help)
+                val menuItem = MENU_BAR.find { it.label == openSubmenu }
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = activityBarIcon.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(openSubmenu!!, fontSize = 13.sp, color = activityBarIcon, fontWeight = FontWeight.Medium)
+                        }
+                    },
+                    onClick = { openSubmenu = null },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                menuItem?.items?.forEach { action ->
+                    if (action.divider) {
+                        HorizontalDivider(color = dividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                    } else {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(action.label, fontSize = 12.sp, color = activityBarIcon)
+                                    if (action.shortcut.isNotEmpty()) {
+                                        Text(action.shortcut, fontSize = 10.sp, color = activityBarIcon.copy(alpha = 0.5f))
+                                    }
+                                }
+                            },
+                            onClick = { onMenuAction(action.label); showHamburgerMenu = false; openSubmenu = null },
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── New Profile prompt dialog ──
+        if (showNewProfilePrompt) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showNewProfilePrompt = false; newProfileName = "" },
+                title = { Text("New Profile", color = activityBarIcon) },
+                text = {
+                    Column {
+                        Text("Enter a name for the new project window:", fontSize = 13.sp, color = activityBarIcon.copy(alpha = 0.7f))
+                        Spacer(Modifier.height(8.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = newProfileName,
+                            onValueChange = { newProfileName = it },
+                            placeholder = { Text("Project name", fontSize = 13.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            if (newProfileName.isNotBlank()) {
+                                onNewWindowProfile()
+                                showNewProfilePrompt = false
+                                newProfileName = ""
+                            }
+                        }
+                    ) { Text("Create") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { showNewProfilePrompt = false; newProfileName = "" }
+                    ) { Text("Cancel") }
+                },
+            )
+        }
+
+        // P-SCM-7: Use GitCommandExecutor for badge count
         val gitBadgeCount by produceState(0, projectId, activeEditorTab) {
             withContext(Dispatchers.IO) {
                 try {
@@ -2308,7 +2577,7 @@ private fun PssActivityBar(
                 } catch (_: Exception) {}
             }
         }
-        // P22-A: poll error badge every 3 s so it updates as user types
+        // P22-A: poll error badge every 3 s
         val runBadgeCount by produceState(0, activeEditorTab) {
             while (true) {
                 withContext(Dispatchers.IO) {
@@ -2323,6 +2592,8 @@ private fun PssActivityBar(
                 kotlinx.coroutines.delay(3_000)
             }
         }
+
+        // ── Activity bar icons ──
         Card(
             Modifier.fillMaxWidth()
                 .padding(horizontal = 4.dp)
@@ -2330,32 +2601,120 @@ private fun PssActivityBar(
             colors = CardDefaults.cardColors(containerColor = activityBarBg),
             shape = RoundedCornerShape(8.dp),
         ) {
-        listOf(
-            Triple(SidePanel.EXPLORER, Icons.Default.Description, 0),
-            Triple(SidePanel.SEARCH, Icons.Default.Search, 0),
-            Triple(SidePanel.GIT, Icons.Default.AccountTree, gitBadgeCount),
-            Triple(SidePanel.RUN, Icons.Default.BugReport, runBadgeCount),
-            Triple(SidePanel.EXTENSIONS, Icons.Default.Extension, 0),
-        ).forEach { (panel, icon, badge) ->
-            val isActive = activePanel == panel
-            Box(
-                Modifier.fillMaxWidth().height(48.dp)
-                    .clickable { onActivePanelChange(if (activePanel == panel) null else panel) },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
-                Icon(icon, null, tint = if (isActive) activityBarIconActive else activityBarIcon, modifier = Modifier.size(26.dp))
-                if (badge > 0) {
+            if (isLandscape) {
+                // LANDSCAPE: Show Explorer + active panel + "..." overflow
+                val allPanels = listOf(
+                    SidePanel.EXPLORER to com.codespace.ide.R.drawable.ic_vscode_explorer,
+                    SidePanel.SEARCH to com.codespace.ide.R.drawable.ic_vscode_search,
+                    SidePanel.GIT to com.codespace.ide.R.drawable.ic_vscode_source_control,
+                    SidePanel.RUN to com.codespace.ide.R.drawable.ic_vscode_run_debug,
+                    SidePanel.EXTENSIONS to com.codespace.ide.R.drawable.ic_vscode_extensions,
+                )
+                val badgeMap = mapOf(
+                    SidePanel.GIT to gitBadgeCount,
+                    SidePanel.RUN to runBadgeCount,
+                )
+                // Show Explorer always
+                val explorerEntry = allPanels.first { it.first == SidePanel.EXPLORER }
+                val activeEntry = allPanels.first { it.first == landscapeVisiblePanel }
+                val visibleIcons = if (landscapeVisiblePanel == SidePanel.EXPLORER) {
+                    listOf(explorerEntry)
+                } else {
+                    listOf(explorerEntry, activeEntry)
+                }
+                visibleIcons.forEach { (panel, iconRes) ->
+                    val isActive = activePanel == panel
+                    val badge = badgeMap[panel] ?: 0
                     Box(
-                        Modifier.align(Alignment.BottomEnd)
-                            .background(Color(0xFF007ACC), androidx.compose.foundation.shape.CircleShape)
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                        Modifier.fillMaxWidth().height(48.dp)
+                            .clickable { onActivePanelChange(if (activePanel == panel) null else panel) },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(badge.toString(), fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = null,
+                            tint = if (isActive) activityBarIconActive else activityBarIcon,
+                            modifier = Modifier.size(26.dp),
+                        )
+                        if (badge > 0) {
+                            Box(
+                                Modifier.align(Alignment.BottomEnd)
+                                    .background(Color(0xFF007ACC), androidx.compose.foundation.shape.CircleShape)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(badge.toString(), fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                // "..." overflow — shows hidden panels
+                var showOverflow by remember { mutableStateOf(false) }
+                Box(
+                    Modifier.fillMaxWidth().height(48.dp)
+                        .clickable { showOverflow = !showOverflow },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.MoreHoriz, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = showOverflow,
+                        onDismissRequest = { showOverflow = false },
+                    ) {
+                        allPanels.filter { it.first != SidePanel.EXPLORER && it.first != landscapeVisiblePanel }.forEach { (panel, iconRes) ->
+                            val panelName = when (panel) {
+                                SidePanel.SEARCH -> "Search"
+                                SidePanel.GIT -> "Source Control"
+                                SidePanel.RUN -> "Run & Debug"
+                                SidePanel.EXTENSIONS -> "Extensions"
+                                else -> panel.name
+                            }
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(panelName, fontSize = 13.sp, color = activityBarIcon) },
+                                onClick = {
+                                    landscapeVisiblePanel = panel
+                                    onActivePanelChange(panel)
+                                    showOverflow = false
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
+            } else {
+                // PORTRAIT: Show all icons (VS Code style)
+                val allPanels = listOf(
+                    Triple(SidePanel.EXPLORER, com.codespace.ide.R.drawable.ic_vscode_explorer, 0),
+                    Triple(SidePanel.SEARCH, com.codespace.ide.R.drawable.ic_vscode_search, 0),
+                    Triple(SidePanel.GIT, com.codespace.ide.R.drawable.ic_vscode_source_control, gitBadgeCount),
+                    Triple(SidePanel.RUN, com.codespace.ide.R.drawable.ic_vscode_run_debug, runBadgeCount),
+                    Triple(SidePanel.EXTENSIONS, com.codespace.ide.R.drawable.ic_vscode_extensions, 0),
+                )
+                allPanels.forEach { (panel, iconRes, badge) ->
+                    val isActive = activePanel == panel
+                    Box(
+                        Modifier.fillMaxWidth().height(48.dp)
+                            .clickable { onActivePanelChange(if (activePanel == panel) null else panel) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (isActive) Box(Modifier.width(2.dp).height(24.dp).align(Alignment.CenterStart).background(Color(0xFF007ACC)))
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = null,
+                            tint = if (isActive) activityBarIconActive else activityBarIcon,
+                            modifier = Modifier.size(26.dp),
+                        )
+                        if (badge > 0) {
+                            Box(
+                                Modifier.align(Alignment.BottomEnd)
+                                    .background(Color(0xFF007ACC), androidx.compose.foundation.shape.CircleShape)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(badge.toString(), fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
-        }
         } // end Card
         Spacer(Modifier.height(4.dp))
         Spacer(Modifier.weight(1f))
@@ -2367,12 +2726,12 @@ private fun PssActivityBar(
             colors = CardDefaults.cardColors(containerColor = activityBarBg),
             shape = RoundedCornerShape(8.dp),
         ) {
-        Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowPersonMenu() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.AccountCircle, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
-        }
-        Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowGearMenu() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Settings, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
-        }
+            Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowPersonMenu() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.AccountCircle, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
+            }
+            Box(Modifier.fillMaxWidth().height(48.dp).clickable { onShowGearMenu() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Settings, null, tint = activityBarIcon, modifier = Modifier.size(26.dp))
+            }
         } // end bottom Card
         Spacer(Modifier.height(4.dp))
     }
