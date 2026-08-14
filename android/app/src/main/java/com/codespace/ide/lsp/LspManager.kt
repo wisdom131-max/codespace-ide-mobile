@@ -1952,9 +1952,9 @@ object LspManager {
             var vmPeak = 0L
             statusFile.bufferedReader().forEachLine { line ->
                 when {
-                    line.startsWith("VmRSS:") -> vmRss = line.split("\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
-                    line.startsWith("VmSize:") -> vmSize = line.split("\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
-                    line.startsWith("VmPeak:") -> vmPeak = line.split("\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
+                    line.startsWith("VmRSS:") -> vmRss = line.split("\\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
+                    line.startsWith("VmSize:") -> vmSize = line.split("\\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
+                    line.startsWith("VmPeak:") -> vmPeak = line.split("\\s+".toRegex()).getOrNull(1)?.toLongOrNull() ?: 0L
                 }
             }
             // Phase V-E: Classify memory state
