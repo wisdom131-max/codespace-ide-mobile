@@ -2732,8 +2732,11 @@ private fun buildRunCommand(path: String): String? {
     )
 
     val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
+        // P27-7: Handle new states (FAILED, CRASHED) alongside STOPPED/ERROR
         val stopped = session.state == com.codespace.ide.debug.DebugState.STOPPED ||
-                      session.state == com.codespace.ide.debug.DebugState.ERROR
+                      session.state == com.codespace.ide.debug.DebugState.ERROR ||
+                      session.state == com.codespace.ide.debug.DebugState.FAILED ||
+                      session.state == com.codespace.ide.debug.DebugState.CRASHED
         // Update the focused session: if this session stopped, pick another active one or null
         if (stopped && activeSession?.id == session.id) {
             activeSession = udm.getActiveSessions().firstOrNull { it.id != session.id }

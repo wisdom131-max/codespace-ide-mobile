@@ -145,6 +145,41 @@ object UniversalDebugManager {
     // Active adapter per session
     private val sessionAdapters = ConcurrentHashMap<String, DebugAdapter>()
 
+    // P27-6: ProcessTracker — centralized process lifecycle tracking
+    data class TrackedProcess(
+        val pid: Int,
+        val sessionId: String,
+        val command: String,
+        val workDir: String,
+        val startTime: Long = System.currentTimeMillis(),
+        var exitStatus: Int? = null,
+    )
+    private val processTracker = ConcurrentHashMap<String, TrackedProcess>()
+
+    /** P27-6: Register a process for tracking. Called by adapters/providers on launch. */
+    fun trackProcess(sessionId: String, pid: Int, command: String, workDir: String) {
+        processTracker[sessionId] = TrackedProcess(pid, sessionId, command, workDir)
+        Log.d(TAG, "trackProcess: pid=$pid session=$sessionId cmd=${command.take(80)}")
+    }
+
+    /** P27-6: Unregister a process. Called on stop/crash. */
+    fun untrackProcess(sessionId: String) {
+        processTracker.remove(sessionId)
+    }
+
+    /** P27-6: Get tracked process info for a session. */
+    fun getTrackedProcess(sessionId: String): TrackedProcess? = processTracker[sessionId]
+
+    /** P27-6: Clean up orphaned processes (called on app exit or periodic check). */
+    fun cleanupOrphanedProcesses() {
+        for ((sessionId, proc) in processTracker) {
+            if (sessions[sessionId] == null) {
+                Log.w(TAG, "cleanupOrphanedProcesses: orphaned process pid=${proc.pid} session=$sessionId — removing from tracker")
+                processTracker.remove(sessionId)
+            }
+        }
+    }
+
     /** Register a DAP adapter. Called in init/registerProviders. */
     fun registerAdapter(adapter: DebugAdapter) {
         adapters.removeAll { it.id == adapter.id }
@@ -360,6 +395,7 @@ object UniversalDebugManager {
 
         if (launched) {
             transitionState(session, DebugState.RUNNING)
+            activeSessionId = session.id  // P27-7: Track active session in UDM
         } else {
             transitionState(session, DebugState.FAILED)
             sessionAdapters.remove(session.id)
@@ -379,6 +415,10 @@ object UniversalDebugManager {
             providers.find { it.id == session.providerId }?.stop(session)
         }
         transitionState(session, DebugState.STOPPED)
+        // P27-7: Clear active session if this was it
+        if (activeSessionId == sessionId) {
+            activeSessionId = null
+        }
         sessions.remove(sessionId)
         sessionAdapters.remove(sessionId)
         // Phase N: Notify debug session stopped

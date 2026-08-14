@@ -2865,10 +2865,21 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     val bpListener: () -> Unit = { allBreakpoints = udm.getAllBreakpoints() }
     val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
         sessionState = session.state
-        if (session.state == DebugState.STOPPED || session.state == DebugState.ERROR) {
-            activeSessionId = null
-            variables = emptyList()
-            callStack = emptyList()
+        // P27-7: Sync activeSessionId with UDM — single source of truth
+        when (session.state) {
+            DebugState.STOPPED, DebugState.ERROR, DebugState.FAILED, DebugState.CRASHED -> {
+                if (activeSessionId == session.id) {
+                    activeSessionId = null
+                }
+                variables = emptyList()
+                callStack = emptyList()
+            }
+            DebugState.RUNNING, DebugState.PAUSED -> {
+                if (activeSessionId == null) {
+                    activeSessionId = session.id
+                }
+            }
+            else -> {}
         }
     }
     val pausedListener: (List<DebugStackFrame>, List<DebugVariable>) -> Unit = { stack, vars ->
@@ -2896,7 +2907,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         }
     }
 
-    val isRunning = activeSessionId != null && sessionState != DebugState.STOPPED && sessionState != DebugState.ERROR
+    val isRunning = activeSessionId != null && sessionState != DebugState.STOPPED && sessionState != DebugState.ERROR && sessionState != DebugState.FAILED && sessionState != DebugState.CRASHED
 
     Column(Modifier.fillMaxSize()) {
         Row(
