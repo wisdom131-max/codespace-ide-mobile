@@ -1,5 +1,9 @@
 package com.codespace.ide.ui.screens
 
+import android.os.VibratorManager
+import android.os.VibrationEffect
+import android.media.AudioManager
+import android.media.ToneGenerator
 import com.codespace.ide.ui.panels.ToolchainPanel
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.ui.screens.NotificationDrawerOverlay
@@ -769,6 +773,21 @@ fun ProjectShellScreen(
             severity = severity,
             source = NotificationStore.Source.SYSTEM,
         )
+        // Haptic + audio feedback: vibrate always, pop sound only when not DND
+        val dnd = NotificationStore.settings.doNotDisturb
+        try {
+            val vibrator = context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+            if (dnd) {
+                // DND: vibrate only (short pulse, no sound)
+                vibrator?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                // Normal: vibrate + pop sound
+                vibrator?.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                toneGen.release()
+            }
+        } catch (e: Exception) { /* ignore haptic/audio failures */ }
     }
 
     // ── File picker launcher (Open File from hamburger menu) ──
