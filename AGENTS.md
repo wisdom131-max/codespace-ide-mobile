@@ -17506,3 +17506,18 @@ STARTING → loading/disabled state
 - Added Restart button to DebugConsolePanel (ProjectShellScreen.kt) — green Refresh icon before Stop, wired to `udm.restartSession()`
 **Files touched:** UniversalDebugManager.kt, DebugAdapter.kt, NodeDAPAdapter.kt, PythonDAPAdapter.kt, ExplorerPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Confirm CI build green. Continue UI wiring audit (menu items, keyboard shortcuts, all controls trace). Device testing. Phase U — Completion Pipeline Upgrade.
+
+### [2026-08-14 03:10 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** cc1af09 | **CI Build:** pending
+**Tags:** UI-FIX, DEBUG-FIX
+**What was fixed:** Phase 27 UI Wiring Audit — Menu actions + panel overflow audit:
+- Wired 14 previously unhandled menu bar actions: Undo, Redo, Cut, Copy, Paste, Select All, Save As, Open File, Restart, Stop, Add Breakpoint, Go to Definition, Release Notes (all route to real handlers or informative notifications)
+- Restart/Stop/Add Breakpoint menu actions use UDM directly (getActiveSession, restartSession, stopSession, toggleBreakpoint)
+- Audited all 57 menu bar actions — 100% now handled (was 43/57)
+- Audited all panel overflow menu items across 19 bottom tabs — all wired with real handlers (terminal, output, problems, debug, ports, split, preview, logcat, variables, build, toolchain, tasks, history, artifacts, downloads, backup, todo, tests, analysis)
+- Audited Explorer overflow menu — all 5 items wired (New File, New Folder, Refresh, Collapse All, Open in Terminal)
+- Audited OutputPanel — all controls wired (channel filters, copy, save, clear, auto-scroll)
+- Audited PortsPanel — all controls wired (rescan, add port, click to open)
+- Audited DebugConsolePanel — all controls wired (session switcher, capability toolbar, input/send, attach dialog, restart, stop, run, clear)
+**Files touched:** ProjectShellScreen.kt
+**Next on roadmap:** Confirm CI build green. Device testing of all debug features + menu actions. Phase U — Completion Pipeline Upgrade.
