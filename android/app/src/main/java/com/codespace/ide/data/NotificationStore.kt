@@ -3,6 +3,8 @@ package com.codespace.ide.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.media.RingtoneManager
+import org.json.JSONArray
+import org.json.JSONObject
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.mutableStateListOf
@@ -206,7 +208,21 @@ object NotificationStore {
             soundEnabled = p.getBoolean("sound", true),
             bellPosition = p.getString("position", POS_BOTTOM_RIGHT)
                 ?.let { legacyPositionMigration(it) } ?: POS_BOTTOM_RIGHT,
+            // Phase N: Load per-source and per-severity filters
+            showInfo = p.getBoolean("showInfo", true),
+            showSuccess = p.getBoolean("showSuccess", true),
+            showWarning = p.getBoolean("showWarning", true),
+            showError = p.getBoolean("showError", true),
+            showProgress = p.getBoolean("showProgress", true),
+            srcLsp = p.getBoolean("srcLsp", true),
+            srcGit = p.getBoolean("srcGit", true),
+            srcBuild = p.getBoolean("srcBuild", true),
+            srcTerminal = p.getBoolean("srcTerminal", true),
+            srcDap = p.getBoolean("srcDap", true),
+            srcAi = p.getBoolean("srcAi", true),
         )
+        // Phase 9: Load notification history
+        p.getString("history", null)?.let { deserializeHistory(it) }
     }
 
     private fun persist() {
@@ -215,7 +231,73 @@ object NotificationStore {
             ?.putBoolean("dnd", settings.doNotDisturb)
             ?.putBoolean("sound", settings.soundEnabled)
             ?.putString("position", settings.bellPosition)
+            // Phase N: Persist per-source and per-severity filters
+            ?.putBoolean("showInfo", settings.showInfo)
+            ?.putBoolean("showSuccess", settings.showSuccess)
+            ?.putBoolean("showWarning", settings.showWarning)
+            ?.putBoolean("showError", settings.showError)
+            ?.putBoolean("showProgress", settings.showProgress)
+            ?.putBoolean("srcLsp", settings.srcLsp)
+            ?.putBoolean("srcGit", settings.srcGit)
+            ?.putBoolean("srcBuild", settings.srcBuild)
+            ?.putBoolean("srcTerminal", settings.srcTerminal)
+            ?.putBoolean("srcDap", settings.srcDap)
+            ?.putBoolean("srcAi", settings.srcAi)
+            // Phase N: Persist notification history (last 50)
+            ?.putString("history", serializeHistory())
             ?.apply()
+    }
+
+    // ── Phase 9: Notification history persistence ─────────────────────────────
+    private fun serializeHistory(): String {
+        val arr = JSONArray()
+        items.take(50).forEach { item ->
+            val obj = JSONObject()
+            obj.put("id", item.id)
+            obj.put("title", item.title)
+            obj.put("body", item.body)
+            obj.put("severity", item.severity.name)
+            obj.put("source", item.source.name)
+            obj.put("priority", item.priority.name)
+            obj.put("state", item.state.name)
+            obj.put("read", item.read)
+            obj.put("timestamp", item.timestamp)
+            obj.put("groupKey", item.groupKey ?: JSONObject.NULL)
+            obj.put("dedupCount", item.dedupCount)
+            obj.put("category", item.category ?: JSONObject.NULL)
+            obj.put("persistent", item.persistent)
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
+
+    private fun deserializeHistory(json: String) {
+        try {
+            val arr = JSONArray(json)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val item = Item(
+                    id = obj.optLong("id", nextId.getAndIncrement()),
+                    title = obj.optString("title", ""),
+                    body = obj.optString("body", ""),
+                    severity = runCatching { Severity.valueOf(obj.optString("severity", "INFO")) }.getOrDefault(Severity.INFO),
+                    source = runCatching { Source.valueOf(obj.optString("source", "SYSTEM")) }.getOrDefault(Source.SYSTEM),
+                    priority = runCatching { Priority.valueOf(obj.optString("priority", "NORMAL")) }.getOrDefault(Priority.NORMAL),
+                    state = runCatching { NotificationState.valueOf(obj.optString("state", "ACTIVE")) }.getOrDefault(NotificationState.ACTIVE),
+                    read = obj.optBoolean("read", false),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                    groupKey = if (obj.isNull("groupKey")) null else obj.optString("groupKey", null),
+                    dedupCount = obj.optInt("dedupCount", 1),
+                    category = if (obj.isNull("category")) null else obj.optString("category", null),
+                    persistent = obj.optBoolean("persistent", false),
+                )
+                // Ensure nextId is ahead of any restored IDs
+                if (item.id >= nextId.get()) nextId.set(item.id + 1)
+                items.add(item)
+            }
+        } catch (e: Exception) {
+            // Corrupted history — start fresh
+        }
     }
 
     /** Old builds stored "top"/"bottom" — map to the new 3-corner scheme. */
@@ -257,6 +339,105 @@ object NotificationStore {
         settings = settings.copy(soundEnabled = !settings.soundEnabled)
         persist()
     }
+
+    // ── Phase 10: Per-source and per-severity toggle methods ──────────────────
+    fun toggleSeverityFilter(severity: Severity) {
+        settings = when (severity) {
+            Severity.INFO -> settings.copy(showInfo = !settings.showInfo)
+            Severity.SUCCESS -> settings.copy(showSuccess = !settings.showSuccess)
+            Severity.WARNING -> settings.copy(showWarning = !settings.showWarning)
+            Severity.ERROR -> settings.copy(showError = !settings.showError)
+            Severity.PROGRESS -> settings.copy(showProgress = !settings.showProgress)
+        }
+        persist()
+    }
+
+    fun toggleSourceFilter(source: Source) {
+        settings = when (source) {
+            Source.LSP -> settings.copy(srcLsp = !settings.srcLsp)
+            Source.DAP -> settings.copy(srcDap = !settings.srcDap)
+            Source.BUILD -> settings.copy(srcBuild = !settings.srcBuild)
+            Source.TERMINAL -> settings.copy(srcTerminal = !settings.srcTerminal)
+            Source.GIT -> settings.copy(srcGit = !settings.srcGit)
+            Source.EXTENSIONS -> settings.copy(srcExtensions = !settings.srcExtensions)
+            Source.WORKSPACE -> settings.copy(srcWorkspace = !settings.srcWorkspace)
+            Source.AUTH -> settings.copy(srcAuth = !settings.srcAuth)
+            Source.AI -> settings.copy(srcAi = !settings.srcAi)
+            Source.SYSTEM -> settings.copy(srcSystem = !settings.srcSystem)
+            Source.BACKUP -> settings.copy(srcBackup = !settings.srcBackup)
+            Source.CONNECTOR -> settings.copy(srcConnector = !settings.srcConnector)
+        }
+        persist()
+    }
+
+    fun setMaxHistory(max: Int) {
+        settings = settings.copy(maxHistory = max.coerceIn(10, 500))
+        persist()
+    }
+
+    fun setToastDuration(ms: Long) {
+        settings = settings.copy(toastDurationMs = ms.coerceIn(1000L, 10000L))
+        persist()
+    }
+
+    // ── Phase 11-13: Integration helpers for build/debugger/terminal ──────────
+    /**
+     * Phase 11: Notify about build events.
+     */
+    fun notifyBuildEvent(
+        title: String,
+        body: String,
+        isError: Boolean = false,
+        progress: ProgressInfo? = null,
+        actions: List<NotificationAction> = emptyList(),
+    ) = add(
+        title = title,
+        body = body,
+        severity = when {
+            isError -> Severity.ERROR
+            progress != null -> Severity.PROGRESS
+            else -> Severity.SUCCESS
+        },
+        source = Source.BUILD,
+        priority = if (isError) Priority.HIGH else Priority.NORMAL,
+        progress = progress,
+        actions = actions,
+        deduplicationKey = "build:$title",
+    )
+
+    /**
+     * Phase 12: Notify about debugger events.
+     */
+    fun notifyDebugEvent(
+        title: String,
+        body: String,
+        isError: Boolean = false,
+        actions: List<NotificationAction> = emptyList(),
+    ) = add(
+        title = title,
+        body = body,
+        severity = if (isError) Severity.ERROR else Severity.INFO,
+        source = Source.DAP,
+        priority = if (isError) Priority.HIGH else Priority.LOW,
+        actions = actions,
+        deduplicationKey = "dap:$title",
+    )
+
+    /**
+     * Phase 13: Notify about terminal events.
+     */
+    fun notifyTerminalEvent(
+        title: String,
+        body: String,
+        isError: Boolean = false,
+    ) = add(
+        title = title,
+        body = body,
+        severity = if (isError) Severity.WARNING else Severity.INFO,
+        source = Source.TERMINAL,
+        priority = if (isError) Priority.NORMAL else Priority.LOW,
+        deduplicationKey = "term:$title",
+    )
 
     /** Set bell/panel position — one of ALL_POSITIONS. Persisted. */
     fun setBellPosition(pos: String) {
@@ -386,6 +567,7 @@ object NotificationStore {
                 toastHandler.postDelayed(clearToastRunnable, duration)
             }
             if (!(settings.doNotDisturb && severity != Severity.ERROR)) playSound()
+            persist()
         }
     }
 
@@ -493,7 +675,7 @@ object NotificationStore {
     fun add(title: String, body: String, type: Type) =
         add(title, body, type.toSeverity(), type.toSource())
 
-    fun dismiss(id: Long) = post { items.removeAll { it.id == id } }
+    fun dismiss(id: Long) = post { items.removeAll { it.id == id }; persist() }
 
     fun markRead(id: Long) = post {
         val idx = items.indexOfFirst { it.id == id }
@@ -506,7 +688,39 @@ object NotificationStore {
         items.addAll(updated)
     }
 
-    fun clearAll() = post { items.clear() }
+    // ── Phase 8: Undo support ─────────────────────────────────────────────────
+    private val undoStack = mutableListOf<Item>()
+    private const val MAX_UNDO = 10
+
+    /** Dismiss an item but keep it in the undo stack for potential restoration. */
+    fun dismissWithUndo(id: Long) = post {
+        val item = items.find { it.id == id }
+        if (item != null) {
+            undoStack.add(0, item)
+            if (undoStack.size > MAX_UNDO) undoStack.removeAt(undoStack.size - 1)
+            items.removeAll { it.id == id }
+            _toastListeners.forEach { it() }
+        }
+    }
+
+    /** Restore the most recently dismissed item. Returns true if an item was restored. */
+    fun undoDismiss(): Boolean {
+        if (undoStack.isEmpty()) return false
+        val item = undoStack.removeAt(0)
+        post {
+            items.add(0, item.copy(read = false, state = NotificationState.ACTIVE))
+            _toastListeners.forEach { it() }
+        }
+        return true
+    }
+
+    /** Clear all items but keep them in the undo stack. */
+    fun clearAll() = post {
+        undoStack.addAll(0, items.take(MAX_UNDO))
+        if (undoStack.size > MAX_UNDO) undoStack.subList(MAX_UNDO, undoStack.size).clear()
+        items.clear()
+        _toastListeners.forEach { it() }
+    }
 
     /** Clear only completed/failed/dismissed items (keep active errors). */
     fun clearResolved() = post {

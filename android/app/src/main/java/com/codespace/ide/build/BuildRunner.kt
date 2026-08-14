@@ -3,6 +3,7 @@ package com.codespace.ide.build
 import android.content.Context
 import android.util.Log
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,6 +115,12 @@ object BuildRunner {
         _buildOutput.value = "Building: $task\n"
         _buildProgress.value = 0f
         AppOutputLog.log("Build started: $task", "build")
+        // Phase N: Notify build start
+        NotificationStore.notifyBuildEvent(
+            title = "Build started",
+            body = "Running Gradle task: $task",
+            progress = NotificationStore.ProgressInfo(indeterminate = true, statusMessage = "Building..."),
+        )
 
         try {
             // Map host path to guest path for proot
@@ -159,6 +166,16 @@ object BuildRunner {
 
             _buildStatus.value = status
             AppOutputLog.log("Build ${if (isSuccess) "SUCCESSFUL" else "FAILED"} (${duration}ms, ${errors.size} errors, ${warnings.size} warnings)", "build")
+            // Phase N: Notify build completion
+            NotificationStore.notifyBuildEvent(
+                title = if (isSuccess) "Build successful" else "Build failed",
+                body = "${errors.size} errors, ${warnings.size} warnings (${duration}ms)" +
+                    if (apkPath != null) " — APK ready" else "",
+                isError = !isSuccess,
+                actions = if (!isSuccess) listOf(
+                    NotificationStore.NotificationAction("view_logs", "View Logs"),
+                ) else emptyList(),
+            )
 
             BuildResult(
                 status = status,
@@ -174,6 +191,12 @@ object BuildRunner {
             _buildStatus.value = BuildStatus.FAILED
             _buildOutput.value = "Build error: ${e.message ?: "Unknown error"}"
             AppOutputLog.log("Build error: ${e.message ?: "Unknown"}", "build")
+            // Phase N: Notify build error
+            NotificationStore.notifyBuildEvent(
+                title = "Build error",
+                body = e.message ?: "Unknown error",
+                isError = true,
+            )
             BuildResult(
                 status = BuildStatus.FAILED,
                 output = "Build error: ${e.message ?: "Unknown error"}",
@@ -190,6 +213,11 @@ object BuildRunner {
         currentProcess?.destroyForcibly()
         currentProcess = null
         _buildStatus.value = BuildStatus.CANCELLED
+        // Phase N: Notify build cancelled
+        NotificationStore.notifyBuildEvent(
+            title = "Build cancelled",
+            body = "Build was cancelled by user",
+        )
     }
 
     /**

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.TerminalSessionStore
+import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.terminal.BackupManager
 import com.codespace.ide.terminal.McpShellProfile
@@ -80,6 +81,13 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     }
 
     override fun onSessionFinished(finishedSession: TerminalSession) {
+        // Phase N: Notify terminal session ended
+        val exitCode = finishedSession.exitStatus
+        NotificationStore.notifyTerminalEvent(
+            title = if (exitCode == 0) "Terminal session ended" else "Terminal session crashed",
+            body = "Exit code: $exitCode",
+            isError = exitCode != 0,
+        )
         onSessionFinished?.invoke()
     }
 

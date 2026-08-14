@@ -17118,3 +17118,9 @@ Before implementation, produce a complete plan covering:
 2. Device testing of all SCM features (E1-E18) — needs physical device
 3. YouTube Test 51 fix
 4. Phase P — Advanced Problems Panel (awaiting approval)
+
+### [2026-08-14 01:35 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** pending | **CI Build:** pending
+**What was fixed:** Phase N phases 8-14. (1) Phase 8: Undo support — dismissWithUndo(), undoDismiss(), undoStack (max 10), undo button in drawer header. (2) Phase 9: Notification history persistence — serialize/deserialize last 50 items to SharedPreferences as JSON, restored on app start, nextId advanced past restored IDs. (3) Phase 10: Per-source and per-severity toggle methods (toggleSeverityFilter, toggleSourceFilter, setMaxHistory, setToastDuration) with full SharedPreferences persistence. (4) Phase 11: Build integration — BuildRunner notifies on build start (indeterminate progress), success (with error/warning counts), failure (with View Logs action), error (catch block), and cancel. (5) Phase 12: Debug integration — UniversalDebugManager notifies on session stop with language and session ID. (6) Phase 13: Terminal integration — SimpleTerminalSessionClient.onSessionFinished notifies with exit status, error classification for non-zero exits. (7) Phase 14: Accessibility — semantics contentDescription on NotificationRow for screen readers, includes severity, title, body, dedup count, and action labels.
+**Files touched:** NotificationStore.kt, NotificationDrawerOverlay.kt, BuildRunner.kt, UniversalDebugManager.kt, TerminalPane.kt
+**Next on roadmap:** Phase 15 (rate limiting hardening), Phase 16 (full testing), device testing SCM E1-E18

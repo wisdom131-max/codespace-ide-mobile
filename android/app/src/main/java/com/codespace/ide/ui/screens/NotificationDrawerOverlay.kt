@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -380,6 +382,14 @@ private fun DrawerHeader(
                 modifier = Modifier.size(16.dp).clickable { onClearAll() },
             )
 
+            // Phase 8: Undo last dismiss
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = "Undo last dismissed notification",
+                tint = Color(0xFF9CA0B0),
+                modifier = Modifier.size(16.dp).clickable { NotificationStore.undoDismiss() },
+            )
+
             // 2. Do Not Disturb — opens small menu
             Box {
                 Icon(
@@ -546,6 +556,12 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                 NotificationStore.markRead(item.id)
                 if (item.severity == NotificationStore.Severity.ERROR) onErrorTap()
                 else expanded = !expanded
+            }
+            // Phase 14: Accessibility — content description for screen readers
+            .semantics {
+                contentDescription = "${item.severity.name.lowercase()}: ${item.title}. ${item.body}"
+                if (item.dedupCount > 1) contentDescription = "$contentDescription ${item.dedupCount} occurrences."
+                if (item.actions.isNotEmpty()) contentDescription = "$contentDescription Actions: ${item.actions.joinToString { it.label }}."
             }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.Top,

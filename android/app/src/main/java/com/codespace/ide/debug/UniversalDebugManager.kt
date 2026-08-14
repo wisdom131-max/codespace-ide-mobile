@@ -5,6 +5,7 @@ import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.FileIndexer
 import com.codespace.ide.diagnostics.AppOutputLog
+import com.codespace.ide.data.NotificationStore
 import java.io.File
 
 /**
@@ -295,6 +296,11 @@ object UniversalDebugManager {
         session.state = DebugState.STOPPED
         notifySessionStateChanged(session)
         sessions.remove(sessionId)
+        // Phase N: Notify debug session stopped
+        NotificationStore.notifyDebugEvent(
+            title = "Debug session ended",
+            body = "Session $sessionId (${session.language.displayName}) stopped",
+        )
     }
 
     /**
