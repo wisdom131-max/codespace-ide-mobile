@@ -2,7 +2,7 @@
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
-    android:viewportHeight="24"
+    android:viewportHeight="24">
     <!-- Exact VS Code codicon "debug-alt" (Run and Debug activity bar icon) — verified pixel-for-pixel against microsoft/vscode-codicons -->
     <path
         android:fillColor="@android:color/white"
