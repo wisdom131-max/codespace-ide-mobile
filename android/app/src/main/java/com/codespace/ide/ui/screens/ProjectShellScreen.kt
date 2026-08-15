@@ -4502,11 +4502,14 @@ private fun PanelOverflowMenu(
         BottomTab.ANALYSIS -> listOf("Refresh", "Export Report")
     }
 
+    // Preventative: same shadow-elevation -> border swap as ExplorerOverflowMenu (see its
+    // comment) — this Card also floats directly over a newly-clipped rounded panel.
     Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
         Card(
-            Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp),
+            Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp)
+                .border(1.dp, menuText.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
             colors = CardDefaults.cardColors(containerColor = menuBg),
-            elevation = CardDefaults.cardElevation(8.dp),
+            elevation = CardDefaults.cardElevation(0.dp),
         ) {
             menuItems.forEach { item ->
                 Row(
@@ -4754,12 +4757,21 @@ private fun ExplorerOverflowMenu(
 ) {
     val items = listOf("New File", "New Folder", "Refresh", "Collapse All", "Open in Terminal")
 
-    // No full-screen scrim — menu floats transparently, only closes via the 3-dot icon
-    Box(Modifier.fillMaxSize()) {
+    // BUG FIX (reported): this Box was missing .clickable { onDismiss() } that its sibling
+    // PanelOverflowMenu already has — tapping outside did nothing, leaving users stuck with
+    // only the hardware back button to close it. Now matches PanelOverflowMenu's dismiss UX.
+    // Also swapped the Card's shadow `elevation` for a plain `border` — Card elevation renders
+    // via a RenderNode shadow layer, which combined with the new clipped rounded-panel
+    // Modifiers (WorkspaceShapes, commit c33333a4) sitting directly underneath this exact
+    // TopStart anchor point is a known Compose/GPU compositing risk for black-render glitches
+    // on some devices. A border gives the same "floating card" affordance without a shadow
+    // RenderNode, removing that risk entirely.
+    Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
         Card(
-            Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp),
+            Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp)
+                .border(1.dp, menuText.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
             colors = CardDefaults.cardColors(containerColor = menuBg),
-            elevation = CardDefaults.cardElevation(8.dp),
+            elevation = CardDefaults.cardElevation(0.dp),
             shape = RoundedCornerShape(12.dp),
         ) {
             items.forEach { item ->

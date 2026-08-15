@@ -131,17 +131,17 @@ no AI agent can claim they did not see the rules.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-15 19:15 WAT)
+## CURRENT STATE (2026-08-15 21:20 WAT)
 
 | | |
 |-|-|
-| Latest commit | 29ec2db2 — [UI] Top bar + command field: theme-aware colors (replaces hardcoded light backgrounds) |
-| Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu, File submenu, VS Code-exact icons, landscape overflow, **rounded workspace container architecture** (all panels as individual rounded rectangles with gap background), **top bar + command field theme-aware** (no more hardcoded light backgrounds). Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
+| Latest commit | (pending — this session's Explorer overflow menu fix) |
+| Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu, File submenu, VS Code-exact icons, landscape overflow, **rounded workspace container architecture** (all panels as individual rounded rectangles with gap background), **top bar + command field theme-aware** (no more hardcoded light backgrounds), **app logo → new blue ribbon logo** (launcher icon, adaptive icon, splash screen — commit 5ae0ed51). Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2332 (29ec2db2) ✅ — Top bar + command field theme-aware colors + rounded workspace container architecture |
+| Last confirmed green | #2332 (29ec2db2) ✅. Commit 5ae0ed51 (logo change) pushed by a different AI agent whose session ran out of tokens before logging it here — CI confirmed green via GitHub API by this session, but not yet documented until now. |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -18300,3 +18300,40 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 8. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 9. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 10. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-15 20:50 WAT] — AI Agent: (unlogged — session ran out of tokens before writing this entry)
+**Commit:** 5ae0ed51 | **CI Build:** confirmed green (verified via GitHub API by the next session — see entry below)
+**Tags:** [ICONS]
+**What was fixed:** App logo replaced across launcher icon, adaptive icon, and splash screen with a new blue ribbon logo. Touched `ic_launcher_background.xml`, all `mipmap-*dpi/ic_launcher*.png` densities (hdpi/mdpi/xhdpi/xxhdpi/xxxhdpi), `mipmap-anydpi-v26/ic_launcher*.xml`, `themes.xml` (v31 splash theme).
+**Files touched:** ic_launcher_background.xml, mipmap-*/ic_launcher*.png (all densities), mipmap-anydpi-v26/ic_launcher.xml, mipmap-anydpi-v26/ic_launcher_round.xml, values-v31/themes.xml
+**Note:** This entry was reconstructed and backfilled by the next session (Koda) from the commit itself since the agent that made it ran out of tokens before logging. Going forward: if you're an AI agent and you know you're close to running out of budget, write the changelog entry for what you've ALREADY committed FIRST, before attempting more work — a committed-but-undocumented change is much worse for continuity than an unstarted task.
+**Next on roadmap:** (carried forward, see next entry)
+
+### [2026-08-15 21:20 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** (pending push) | **CI Build:** pending
+**Tags:** [UI], [DOCS]
+**What was fixed:** Explorer overflow menu (3-dot "⋮" next to "EXPLORER" title, opens New File/New Folder/Refresh/Collapse All/Open in Terminal) — user reported tapping it makes everything around the popup go blank/black with no way back except hardware back button. Root-caused two concrete bugs by diffing against the sibling `PanelOverflowMenu` (same overlay pattern, not reported broken): (1) `ExplorerOverflowMenu`'s full-screen `Box` was missing `.clickable { onDismiss() }` that `PanelOverflowMenu` already has — tapping outside literally did nothing, so the only way to close it was the system back button, which most users don't think to try for a popup — this alone explains "can't go back". (2) The Card used `elevation = CardDefaults.cardElevation(8.dp)` (a shadow RenderNode) anchored directly over the brand-new clipped rounded-panel Modifiers from the Rounded Workspace Container Restructure (commit c33333a4) — Card elevation shadows layered on top of clipped `graphicsLayer` ancestors is a known Compose/GPU-driver compositing risk for black-render glitches on some devices, and this is the FIRST overlay anchored directly over that newly-clipped region since that restructure shipped. Swapped shadow elevation for a plain 1dp border (`menuText.copy(alpha=0.15f)`) on both `ExplorerOverflowMenu` and preventatively on `PanelOverflowMenu` (same shadow-over-clip pattern, anchored over the bottom panel's rounded clip — not yet reported broken but same risk profile). Could not attach a physical device to visually confirm the exact black-render mechanism; this fix eliminates the two most probable/provable causes found via code-diff against the working sibling menu. **Flag for device retest** to confirm actually resolved — if it recurs, next step is to check if it's isolated to a specific GPU/Android version via logcat `SurfaceFlinger`/`RenderThread` output during the tap.
+**Files touched:** ProjectShellScreen.kt (ExplorerOverflowMenu, PanelOverflowMenu), AGENTS.md (backfilled missing logo changelog entry + this entry)
+**Next on roadmap:**
+1. 🔲 **NEW — device retest:** Explorer 3-dot menu — confirm tap-outside now dismisses AND black screen no longer occurs
+2. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+3. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+4. ✅ App logo → blue ribbon — SHIPPED (5ae0ed51, confirmed green)
+5. ✅ Bottom Panel Drag Resize refinements (handle size 8dp→4dp match explorer, manual-drag editor-reserve cap, live collapse, height persistence) — SHIPPED (f7706e58)
+6. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+7. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+8. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+9. 🔲 TypeScript 7 as default LSP with vtsls
+10. 🔲 Multi-Cursor feature
+11. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+12. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+13. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
