@@ -75,6 +75,8 @@ import androidx.compose.animation.core.snap
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.terminal.BusyboxInstaller
@@ -4502,14 +4504,19 @@ private fun PanelOverflowMenu(
         BottomTab.ANALYSIS -> listOf("Refresh", "Export Report")
     }
 
-    // Preventative: same shadow-elevation -> border swap as ExplorerOverflowMenu (see its
-    // comment) — this Card also floats directly over a newly-clipped rounded panel.
-    Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
+    // FIX: replaced full-screen Box overlay with Popup — same fix as ExplorerOverflowMenu.
+    // The overlay was an invisible full-screen layer that blanked the screen behind the menu.
+    Popup(
+        alignment = Alignment.BottomEnd,
+        offset = IntOffset(-8, -360), // ~bottom 90dp, end 8dp (px at xhdpi)
+        properties = PopupProperties(focusable = false),
+        onDismissRequest = { onDismiss() },
+    ) {
         Card(
-            Modifier.align(Alignment.BottomEnd).padding(bottom = 90.dp, end = 8.dp).width(200.dp)
-                .border(1.dp, menuText.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+            Modifier.width(200.dp),
             colors = CardDefaults.cardColors(containerColor = menuBg),
-            elevation = CardDefaults.cardElevation(0.dp),
+            elevation = CardDefaults.cardElevation(8.dp),
+            shape = RoundedCornerShape(8.dp),
         ) {
             menuItems.forEach { item ->
                 Row(
@@ -4757,21 +4764,22 @@ private fun ExplorerOverflowMenu(
 ) {
     val items = listOf("New File", "New Folder", "Refresh", "Collapse All", "Open in Terminal")
 
-    // BUG FIX (reported): this Box was missing .clickable { onDismiss() } that its sibling
-    // PanelOverflowMenu already has — tapping outside did nothing, leaving users stuck with
-    // only the hardware back button to close it. Now matches PanelOverflowMenu's dismiss UX.
-    // Also swapped the Card's shadow `elevation` for a plain `border` — Card elevation renders
-    // via a RenderNode shadow layer, which combined with the new clipped rounded-panel
-    // Modifiers (WorkspaceShapes, commit c33333a4) sitting directly underneath this exact
-    // TopStart anchor point is a known Compose/GPU compositing risk for black-render glitches
-    // on some devices. A border gives the same "floating card" affordance without a shadow
-    // RenderNode, removing that risk entirely.
-    Box(Modifier.fillMaxSize().clickable { onDismiss() }) {
+    // FIX: replaced the full-screen Box(Modifier.fillMaxSize().clickable{}) overlay with a
+    // Popup — the old overlay was an invisible layer covering the entire screen whenever the
+    // menu was open, which is what caused the "everything goes blank" bug the user reported.
+    // Popup floats natively in its own window with no full-screen overlay, and dismisses
+    // automatically on outside tap via focusable = false. Shadow elevation restored as
+    // requested — the shadow was never the problem; the overlay was.
+    Popup(
+        alignment = Alignment.TopStart,
+        offset = IntOffset(48, 256), // ~top 64dp + explorer header, start 48dp (px at xhdpi)
+        properties = PopupProperties(focusable = false),
+        onDismissRequest = { onDismiss() },
+    ) {
         Card(
-            Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 48.dp).width(200.dp)
-                .border(1.dp, menuText.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+            Modifier.width(200.dp),
             colors = CardDefaults.cardColors(containerColor = menuBg),
-            elevation = CardDefaults.cardElevation(0.dp),
+            elevation = CardDefaults.cardElevation(8.dp),
             shape = RoundedCornerShape(12.dp),
         ) {
             items.forEach { item ->

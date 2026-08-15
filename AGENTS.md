@@ -18337,3 +18337,32 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 11. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 12. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 13. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-15 21:23 WAT] — AI Agent: Koda (Base44 Superagent)
+**Commit:** (pending push) | **CI Build:** pending
+**Tags:** [UI]
+**What was fixed:** Explorer 3-dot overflow menu blank-screen bug — REAL root cause was the full-screen `Box(Modifier.fillMaxSize().clickable{})` overlay, NOT the Card shadow elevation. The overlay was an invisible layer covering the entire screen whenever the menu opened — that's what blanked everything out. Replaced the full-screen Box overlay approach with Compose `Popup` in BOTH `ExplorerOverflowMenu` and `PanelOverflowMenu`. Popup floats in its own native window (no full-screen overlay), dismisses automatically on outside tap via `PopupProperties(focusable = false)` + `onDismissRequest`, and the shadow elevation (8dp) is restored on both Cards as the user requested — the shadow was never the problem. Previous commit's border swap was reverted; shadow is back.
+**Files touched:** ProjectShellScreen.kt (ExplorerOverflowMenu, PanelOverflowMenu — both converted to Popup), AGENTS.md (this changelog)
+**Next on roadmap:**
+1. 🔲 **DEVICE RETEST:** Explorer 3-dot menu — confirm blank screen is gone, menu dismisses on outside tap, shadow looks right
+2. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+3. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+4. ✅ App logo → blue ribbon — SHIPPED (5ae0ed51, confirmed green)
+5. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+6. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+7. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+8. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+9. 🔲 TypeScript 7 as default LSP with vtsls
+10. 🔲 Multi-Cursor feature
+11. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+12. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+13. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
