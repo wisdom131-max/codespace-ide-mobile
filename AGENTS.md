@@ -18391,3 +18391,40 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 13. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 14. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 15. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### [2026-08-15 22:52 WAT] — AI Agent: Elowen (Base44 Superagent)
+**Commit:** 1e93e93a | **CI Build:** #2339 (queued on push, check before next work)
+**Tags:** [UI]
+**What was fixed:** Confirmed 0a132a08 (dividers+logo) → CI #2337 GREEN, 8d16e78d (docs) → CI #2338 GREEN.
+Then fixed the top bar command field (the "Workspace"/project-name box next to the back
+arrow): a previous AI pass already set `CommandFieldShape = RoundedCornerShape(8.dp)` (a
+real rectangle, not a pill, per its own doc comment) but never gave the wrapping Row a
+width constraint — it shrink-wrapped tightly around the short text, so at its small
+rendered height (~20dp) the 8dp radius read as proportionally pill-shaped. It was also
+centered in the FULL remaining top-bar width (`Box(contentAlignment = Alignment.Center)`),
+putting a big empty gap between the back arrow and the narrow field — looking disconnected
+from the back button, unlike VS Code where the command bar sits close to the nav arrows.
+Fix: widened it (`widthIn(min = 260.dp)` + `fillMaxWidth(0.62f)`, longer like VS Code's own
+bar), switched to `Alignment.CenterStart` with a 6dp gap so it hugs the back button instead
+of floating dead-center, bumped vertical padding 4dp→5dp for a touch more height so the
+8dp radius reads as a rectangle. Did NOT touch the full-width divider border on the top bar
+Row itself — Goodluck confirmed that "long line across" isn't the issue.
+**Files touched:** ProjectShellScreen.kt (PssTopBar)
+**Next on roadmap:**
+1. 🔲 **CONFIRM CI GREEN** for commit 1e93e93a (top bar command field fix) before next work
+2. 🔲 **DEVICE VERIFY:** command field now reads as a rectangle (not pill), longer, sits close to the back arrow; dividers from prior commit look subtle; new watermark logo renders correctly
+3. 🔲 Optional/offered, not yet actioned: same subtle-divider treatment on the Split Terminal drag handle (still a solid 4dp bar) — only do if Goodluck asks
+4. ✅ Panel dividers + Editor/Bottom Panel independent containers + watermark logo — SHIPPED (0a132a08, CI #2337 GREEN)
+5. ✅ Explorer 3-dot menu — SHIPPED (2da2ca9f, CI #2336 GREEN)
+6. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+7. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+8. ✅ App logo → blue ribbon (launcher/adaptive/splash) — SHIPPED (5ae0ed51, confirmed green)
+9. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+10. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+11. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+12. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+13. 🔲 TypeScript 7 as default LSP with vtsls
+14. 🔲 Multi-Cursor feature
+15. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+16. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+17. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
