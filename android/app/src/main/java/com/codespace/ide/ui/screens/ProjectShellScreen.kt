@@ -534,7 +534,12 @@ private fun PssTopBar(
                 .clickable { onToggleSidebar() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.ViewSidebar, null, tint = tabTextInactive, modifier = Modifier.size(20.dp))
+            Icon(
+                painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_side_bar),
+                contentDescription = null,
+                tint = tabTextInactive,
+                modifier = Modifier.size(20.dp),
+            )
         }
         Spacer(Modifier.width(6.dp))
         // Toggle Bottom Panel (terminal/build/output) — highlighted when open
@@ -547,10 +552,15 @@ private fun PssTopBar(
                 .clickable { onToggleBottomPanel() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.VerticalAlignBottom, null, tint = tabTextInactive, modifier = Modifier.size(20.dp))
+            Icon(
+                painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_bar_bottom),
+                contentDescription = null,
+                tint = tabTextInactive,
+                modifier = Modifier.size(20.dp),
+            )
         }
         Spacer(Modifier.width(6.dp))
-        // Toggle Secondary Sidebar (AI chat — right panel) — highlighted when open
+        // Toggle Secondary Side Bar (AI chat — right panel) — highlighted when open
         Box(
             Modifier.size(24.dp)
                 .background(
@@ -560,7 +570,12 @@ private fun PssTopBar(
                 .clickable { onToggleSecondarySidebar() },
             contentAlignment = Alignment.Center,
         ) {
-            AnimatedBotIcon(modifier = Modifier.size(20.dp))
+            Icon(
+                painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_thumbnail_bar),
+                contentDescription = null,
+                tint = tabTextInactive,
+                modifier = Modifier.size(20.dp),
+            )
         }
         Spacer(Modifier.width(10.dp))
     }
@@ -4026,10 +4041,11 @@ private fun PssEditorColumn(
                 .clip(WorkspaceShapes.EditorShape)
         ) {
 
-        // Editor tab bar
+        // Editor tab bar — scrolling tabs + fixed split-editor button overlay
         if (editorTabs.isNotEmpty()) {
+            Box(Modifier.fillMaxWidth().height(35.dp).background(TabBarBg)) {
             Row(
-                Modifier.fillMaxWidth().height(35.dp).background(TabBarBg)
+                Modifier.fillMaxWidth().height(35.dp)
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.Bottom,
             ) {
@@ -4109,6 +4125,20 @@ private fun PssEditorColumn(
                     Box(Modifier.width(1.dp).height(35.dp).background(DividerColor))
                 }
             }
+            // Split Editor button — fixed at right edge, does NOT scroll with tabs
+            Box(
+                Modifier.align(Alignment.CenterEnd).size(35.dp)
+                    .clickable { onShowNotification("Split editor — coming soon", "info") },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
+                    contentDescription = "Split Editor",
+                    tint = TabTextInactive,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            } // end Box overlay
         }
 
         // Breadcrumb
