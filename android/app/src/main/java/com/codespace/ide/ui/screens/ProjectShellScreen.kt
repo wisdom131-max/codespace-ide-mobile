@@ -415,34 +415,34 @@ private fun PssTopBar(
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Back button — sits right next to the command field (VS Code style)
-        Box(Modifier.size(28.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(6.dp))
-        // Command field — a real rounded RECTANGLE (8dp corners), not a pill. Fixed at
-        // CenterStart (not centered in the full remaining width) and widened with a
-        // min width so it reads as one long bar sitting close to the back button —
-        // matching VS Code, where the command field floats near the nav arrows rather
-        // than dead-center of the whole window with a big empty gap next to them.
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            Row(
-                Modifier
-                    .widthIn(min = 260.dp)
-                    .fillMaxWidth(0.62f)
-                    .background(menuBg, WorkspaceShapes.CommandFieldShape)
-                    .clickable { onShowCommandPalette() }
-                    .padding(horizontal = 16.dp, vertical = 5.dp)
-                    .border(1.dp, dividerColor, WorkspaceShapes.CommandFieldShape),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Icon(Icons.Default.Search, null, tint = tabTextInactive, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1)
+        // P-CENTER: Back button + command field grouped together in the CENTER of
+        // the top bar — both sit as one cluster, matching VS Code where the nav
+        // arrow and the command bar are a single centered unit.
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                // Back button — right next to the command field, both centered
+                Box(Modifier.size(28.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+                // Command field — rounded RECTANGLE (8dp corners), not a pill. Widened
+                // so the 8dp radius reads as a proper rectangle, not a tiny pill shape.
+                Row(
+                    Modifier
+                        .widthIn(min = 260.dp)
+                        .background(menuBg, WorkspaceShapes.CommandFieldShape)
+                        .clickable { onShowCommandPalette() }
+                        .padding(horizontal = 16.dp, vertical = 5.dp)
+                        .border(1.dp, dividerColor, WorkspaceShapes.CommandFieldShape),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(Icons.Default.Search, null, tint = tabTextInactive, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1)
+                }
             }
         }
-        Spacer(Modifier.width(4.dp))
         // ── VS Code-style layout box icons (top-right) ──
         // Test 36: Reordered to match real VS Code — Customize Layout (Editor Layout)
         // icon comes FIRST, followed by Primary Side Bar / Panel / Secondary Side Bar
