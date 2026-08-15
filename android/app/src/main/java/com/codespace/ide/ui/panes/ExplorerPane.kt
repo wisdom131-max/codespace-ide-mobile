@@ -205,6 +205,8 @@ fun ExplorerSidePanel(
     triggerNewFile: Any? = null,
     /** External trigger: when set to a non-null value, opens the New Folder dialog. */
     triggerNewFolder: Any? = null,
+    /** Theme-aware panel background for section headers (from ideColors). */
+    panelBg: Color = Color(0xFF252526),
 ) {
     val context = LocalContext.current
     // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
@@ -574,7 +576,7 @@ fun ExplorerSidePanel(
         // own header below, matching real VS Code (the EXPLORER title bar itself is bare).
         Row(
             Modifier.fillMaxWidth().height(35.dp)
-                .background(Color(0xFFF3F3F3))
+                .background(panelBg)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -766,7 +768,7 @@ fun ExplorerSidePanel(
             var showFolderOverflow by remember { mutableStateOf(false) }
             Row(
                 Modifier.fillMaxWidth().height(28.dp)
-                    .background(Color(0xFFF3F3F3))
+                    .background(panelBg)
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -851,7 +853,7 @@ fun ExplorerSidePanel(
 
         // ── Device folders quick-access panel ──
         if (showDeviceFolders && workspaceExpanded) {
-            Column(Modifier.fillMaxWidth().background(Color(0xFFF8F8F8))) {
+            Column(Modifier.fillMaxWidth().background(panelBg)) {
                 Text("  Device Folders", fontSize = 10.sp, color = MutedColor,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
                 DEVICE_FOLDERS.forEach { (label, path) ->

@@ -422,7 +422,7 @@ private fun PssTopBar(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 // Back button — right next to the command field, both centered
                 Box(Modifier.size(28.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ChevronLeft, null, tint = tabTextInactive, modifier = Modifier.size(22.dp))
                 }
                 Spacer(Modifier.width(4.dp))
                 // Command field — rounded RECTANGLE (8dp corners), not a pill. Widened
@@ -1371,6 +1371,7 @@ fun ProjectShellScreen(
                                 onShowNotification = { msg, type -> showNotification(msg, type) },
                                 triggerNewFile = triggerNewFileCounter,
                                 triggerNewFolder = triggerNewFolderCounter,
+                                panelBg = PanelBg,
                             )
                             SidePanel.SEARCH     -> SearchPanel(
                                 projectId = projectId,
