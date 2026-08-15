@@ -415,16 +415,17 @@ private fun PssTopBar(
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // P-CENTER: Back button + command field grouped together in the CENTER of
-        // the top bar — both sit as one cluster, matching VS Code where the nav
-        // arrow and the command bar are a single centered unit.
+        // P-CENTER-V2: Back button + command field are SEPARATE elements, near
+        // each other but with a clear visual gap between them — matching the VS Code
+        // reference screenshot where the nav arrow sits apart from the command bar,
+        // not fused against it. Both still sit together as a loosely-centered group.
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                // Back button — right next to the command field, both centered
+                // Back button — its own tap target, clearly separated from the field
                 Box(Modifier.size(28.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.ChevronLeft, null, tint = tabTextInactive, modifier = Modifier.size(22.dp))
                 }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(14.dp))
                 // Command field — rounded RECTANGLE (8dp corners), not a pill. Widened
                 // so the 8dp radius reads as a proper rectangle, not a tiny pill shape.
                 Row(
