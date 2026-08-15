@@ -18428,3 +18428,28 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 15. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 16. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 17. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### [2026-08-15 23:05 WAT] — AI Agent: Elowen (Base44 Superagent)
+**Commits:** 77e2c1ea, f77966e0, af4dfcb3 | **CI:** #2341 GREEN, #2342/#2343 running (check before next work)
+**Tags:** [UI]
+**What was fixed:** Iterating on top bar per Goodluck's screenshots:
+1. **77e2c1ea** — Grouped back arrow + command field as one centered cluster (fix for field being left-aligned instead of centered).
+2. **f77966e0** — Swapped Material filled `ArrowBack` for `Icons.Default.ChevronLeft` (22dp) to match VS Code's thin chevron nav arrow. Also fixed explorer panel headers (EXPLORER title bar, folder toolbar, device folders panel) hardcoded to `Color(0xFFF3F3F3)`/`Color(0xFFF8F8F8)` regardless of theme — added `panelBg: Color` param to `ExplorerSidePanel`, wired to the caller's theme-aware `PanelBg`.
+3. **af4dfcb3** — Goodluck's reference screenshot showed the back arrow and command box as SEPARATE elements with a visible gap, not fused together. Widened the spacer between them from 4dp to 14dp.
+**Files touched:** ProjectShellScreen.kt (PssTopBar: chevron icon, spacer width, panelBg pass-through), ExplorerPane.kt (panelBg param + 3 hardcoded header backgrounds replaced)
+**Next on roadmap:**
+1. 🔲 **CONFIRM CI GREEN** for #2342 (f77966e0) and #2343 (af4dfcb3) before next work
+2. 🔲 **DEVICE VERIFY:** back arrow is a thin chevron; arrow + command box are visibly separate but close together (not fused, not far apart); explorer header changes color when theme changes (Dark → Light → Dracula)
+3. ✅ Panel dividers + Editor/Bottom Panel independent containers + watermark logo — SHIPPED (0a132a08, CI #2337 GREEN)
+4. ✅ Explorer 3-dot menu — SHIPPED (2da2ca9f, CI #2336 GREEN)
+5. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+6. ✅ App logo → blue ribbon (launcher/adaptive/splash) — SHIPPED (5ae0ed51, confirmed green)
+7. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+8. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+9. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+10. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+11. 🔲 TypeScript 7 as default LSP with vtsls
+12. 🔲 Multi-Cursor feature
+13. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+14. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+15. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
