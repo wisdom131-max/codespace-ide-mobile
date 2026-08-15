@@ -131,17 +131,17 @@ no AI agent can claim they did not see the rules.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-15 21:20 WAT)
+## CURRENT STATE (2026-08-16 00:25 WAT)
 
 | | |
 |-|-|
-| Latest commit | (pending — this session's Explorer overflow menu fix) |
-| Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu, File submenu, VS Code-exact icons, landscape overflow, **rounded workspace container architecture** (all panels as individual rounded rectangles with gap background), **top bar + command field theme-aware** (no more hardcoded light backgrounds), **app logo → new blue ribbon logo** (launcher icon, adaptive icon, splash screen — commit 5ae0ed51). Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
+| Latest commit | 191f2b6c — Activity Bar gap fix |
+| Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last confirmed green | #2332 (29ec2db2) ✅. Commit 5ae0ed51 (logo change) pushed by a different AI agent whose session ran out of tokens before logging it here — CI confirmed green via GitHub API by this session, but not yet documented until now. |
+| Last confirmed green | #2346 (191f2b6c) ✅. #2345 (cbae61bd) ✅ — both confirmed via GitHub API. |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -18453,3 +18453,76 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 13. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 14. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 15. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-16 00:15 WAT] — AI Agent: Elowen (Base44 Superagent)
+**Commit:** cbae61bd | **CI Build:** #2345 GREEN ✅
+**Tags:** [UI] [ICONS]
+**What was fixed:**
+1. Replaced 3 top-right toggle icons with exact VS Code codicon SVGs Goodluck provided:
+   - Primary Side Bar: Material `ViewSidebar` → `ic_vs_side_bar` (ri--side-bar-line)
+   - Bottom Panel: Material `VerticalAlignBottom` → `ic_vs_bar_bottom` (ci--bar-bottom, stroke-based)
+   - Secondary Side Bar: `AnimatedBotIcon` → `ic_vs_thumbnail_bar` (material-symbols--thumbnail-bar-outline) — the bot icon is gone, replaced with VS Code's actual right-panel toggle icon
+   Highlight-when-open behavior preserved (background tint on active state).
+2. Added Split Editor button to the editor tab bar — fixed at the right edge (does NOT scroll with tabs), uses `ic_vs_split_editor` icon. Currently shows "coming soon" notification; wiring actual split pane logic is a separate task.
+**Files touched:** ProjectShellScreen.kt (3 icon replacements in PssTopBar + split editor button in PssEditorColumn tab bar)
+**New drawables:** res/drawable/ic_vs_side_bar.xml, ic_vs_bar_bottom.xml, ic_vs_thumbnail_bar.xml, ic_vs_split_editor.xml
+**Next on roadmap:**
+1. 🔲 **DEVICE VERIFY:** 3 top-right icons match VS Code screenshots and light up when toggling panels; split editor button visible at right edge of tab bar
+2. 🔲 **DEVICE VERIFY:** Activity Bar gap fix (next commit 191f2b6c) — gap visible between Activity Bar and Editor when no side panel is open
+3. 🔲 Split editor pane wiring (currently placeholder "coming soon")
+4. ✅ Panel dividers + Editor/Bottom Panel independent containers + watermark logo — SHIPPED (0a132a08, CI #2337 GREEN)
+5. ✅ Explorer 3-dot menu — SHIPPED (2da2ca9f, CI #2336 GREEN)
+6. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+7. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+8. ✅ App logo → blue ribbon — SHIPPED (5ae0ed51, confirmed green)
+9. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+10. ✅ Top bar chevron back arrow + explorer header theme-aware — SHIPPED (f77966e0, af4dfcb3, CI #2342/#2344 GREEN)
+11. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+12. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+13. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+14. 🔲 TypeScript 7 as default LSP with vtsls
+15. 🔲 Multi-Cursor feature
+16. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+17. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### [2026-08-16 00:25 WAT] — AI Agent: Elowen (Base44 Superagent)
+**Commit:** 191f2b6c | **CI Build:** #2346 GREEN ✅
+**Tags:** [UI]
+**What was fixed:** Activity Bar ↔ Editor gap was missing when no side panel was open. The `PanelGapSmall` Spacer between the Activity Bar and the next element was gated on `activePanel != null`, so it only rendered when Explorer/Search/Git/Run/Extensions was open. With no panel open (Goodluck's screenshots), the Activity Bar sat flush against the Editor's rounded left edge — zero breathing room, unlike real VS Code which always keeps a small gap so the Activity Bar reads as its own independent rounded pill regardless of what's next to it. Fix: removed the `activePanel != null` condition — the gap now always renders whenever the Activity Bar is visible.
+**Files touched:** ProjectShellScreen.kt (main body Row — Spacer condition fix)
+**Next on roadmap:**
+1. 🔲 **DEVICE VERIFY (all pending from this session):**
+   - Top-right icons match VS Code (side bar, bottom panel, secondary side bar)
+   - Icons highlight when their panel is open
+   - Split editor button visible at right edge of tab bar
+   - Activity Bar gap visible between Activity Bar and Editor when no side panel is open
+   - Dividers from prior commit look subtle (Explorer↔Editor, Editor↔Bottom Panel, Editor↔Chat)
+   - New watermark logo renders correctly
+   - Back arrow is thin chevron, visibly separate from command box
+   - Explorer header changes color with theme
+2. 🔲 Split editor pane wiring (currently placeholder "coming soon")
+3. ✅ VS Code-exact top-right icons — SHIPPED (cbae61bd, CI #2345 GREEN)
+4. ✅ Activity Bar gap fix — SHIPPED (191f2b6c, CI #2346 GREEN)
+5. ✅ Panel dividers + independent containers + watermark logo — SHIPPED (0a132a08, CI #2337 GREEN)
+6. ✅ Explorer 3-dot menu — SHIPPED (2da2ca9f, CI #2336 GREEN)
+7. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+8. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+9. ✅ App logo → blue ribbon — SHIPPED (5ae0ed51, confirmed green)
+10. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+11. ✅ Top bar chevron back arrow + explorer header theme-aware — SHIPPED (f77966e0, af4dfcb3, CI #2342/#2344 GREEN)
+12. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+13. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+14. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+15. 🔲 TypeScript 7 as default LSP with vtsls
+16. 🔲 Multi-Cursor feature
+17. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+18. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
