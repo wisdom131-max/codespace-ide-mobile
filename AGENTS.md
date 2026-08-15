@@ -131,17 +131,17 @@ no AI agent can claim they did not see the rules.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-14 14:15 WAT)
+## CURRENT STATE (2026-08-15 19:15 WAT)
 
 | | |
 |-|-|
-| Latest commit | 377547e — fix(icons): ic_vscode_run_debug redesigned to match VS Code codicon debug-alt in stroke style |
-| Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu at top of activity bar, File submenu (New Text File, Open File picker, Open Folder picker, Open Recent, New Window with Profile), VS Code-exact icons (6 custom vector drawables), landscape overflow (Explorer + active + "..." MRU). Build pending. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
+| Latest commit | 29ec2db2 — [UI] Top bar + command field: theme-aware colors (replaces hardcoded light backgrounds) |
+| Active phase | **UI RESTRUCTURING ROUND 2** — Shipped: hamburger menu, File submenu, VS Code-exact icons, landscape overflow, **rounded workspace container architecture** (all panels as individual rounded rectangles with gap background), **top bar + command field theme-aware** (no more hardcoded light backgrounds). Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last green | #2270 (5152247) ✅ — KeyboardArrowDown icon fix + Phase 27 full audit shipped |
+| Last green | #2332 (29ec2db2) ✅ — Top bar + command field theme-aware colors + rounded workspace container architecture |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -18224,3 +18224,79 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 4. Phase V LSP Reliability Upgrade — awaiting start.
 5. Phase N Advanced Notification System — awaiting approval, pre-implementation audit required.
 6. Phase P Advanced Problems Panel — awaiting approval, pre-implementation audit required.
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-15 18:00 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** c33333a4 | **CI Build:** #2330 PASS ✅
+**Tags:** [UI], [RESTRUCTURE]
+**What was fixed:** Implemented rounded workspace container architecture — all major workspace panels now render as individual rounded rectangles with visible ash/gray gaps between them. Created `WorkspaceShapes.kt` with centralized shape/spacing tokens (ActivityBarShape, ExplorerShape, EditorShape, BottomPanelShape, ChatShape, CommandFieldShape, PanelGapSmall/Medium, WorkspacePadding). Root workspace Box now uses `workspaceGapBg` (BgColor darkened ~18%) so gaps between rounded panels show as ash/gray. Applied `Modifier.clip(shape)` + matching background/border to: Activity Bar (rounded bg + border), Explorer sidebar (full 4-corner rounding), Editor/Workspace (EditorShape), Empty workspace welcome screen, Bottom Panel (header top-corner rounding, content bottom-corner rounding), Chat panel (full 4-corner rounding), Command field (8dp rounded rectangle, was 12dp pill). Added gap Spacers between all panels. Main body Row gets 3dp padding so gap background shows on all sides. Status bar untouched (blue, as specified). No editor/LSP/SCM/debugger/terminal logic modified.
+**Files touched:** WorkspaceShapes.kt (new), ProjectShellScreen.kt
+**Next on roadmap:**
+1. ⏳ Verify CI green (build #2330 — PASSED ✅)
+2. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+3. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+4. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+5. 🔲 TypeScript 7 as default LSP with vtsls
+6. 🔲 Multi-Cursor feature
+7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+8. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-15 18:05 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 53385659 | **CI Build:** #2331 FAILED ❌ (fixed in #2332)
+**Tags:** [UI], [BUILD-FIX]
+**What was fixed:** Replaced hardcoded light backgrounds in PssTopBar with theme-aware colors. Top bar Row: `background(Color(0xFFF8F8F8))` → `background(bgColor)` — now matches the workspace theme on all dark/light themes instead of always showing a white-ish bar on dark themes. Command field: `background(0xFFECECEC)` → `menuBg`, border `0xFFD0D0D0` → `dividerColor` (initially used `menuBorder` which doesn't exist as a PssTopBar parameter, causing build #2331 to fail with "Unresolved reference: menuBorder" at line 426).
+**Files touched:** ProjectShellScreen.kt
+**Next on roadmap:**
+1. ⏳ Fix build #2331 failure — menuBorder → dividerColor (pushed as 29ec2db2)
+2. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+3. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+4. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+5. 🔲 TypeScript 7 as default LSP with vtsls
+6. 🔲 Multi-Cursor feature
+7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+8. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-15 19:15 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** 29ec2db2 | **CI Build:** #2332 PASS ✅
+**Tags:** [BUILD-FIX], [UI]
+**What was fixed:** Fixed build #2331 failure — `Unresolved reference: menuBorder` at ProjectShellScreen.kt:426. PssTopBar doesn't have a `menuBorder` parameter; replaced with `dividerColor` (which PssTopBar already receives) for the command field border. This completes the top bar + command field theme-aware color fix: the top bar now uses `bgColor` (matching the workspace theme) instead of hardcoded `Color(0xFFF8F8F8)`, and the command field uses `menuBg` + `dividerColor` instead of hardcoded `0xFFECECEC` + `0xFFD0D0D0`. On dark themes, the top bar will now be dark instead of white.
+**Files touched:** ProjectShellScreen.kt, AGENTS.md (changelog)
+**Next on roadmap:**
+1. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+2. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+3. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+4. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+5. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+6. 🔲 TypeScript 7 as default LSP with vtsls
+7. 🔲 Multi-Cursor feature
+8. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+9. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+10. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
