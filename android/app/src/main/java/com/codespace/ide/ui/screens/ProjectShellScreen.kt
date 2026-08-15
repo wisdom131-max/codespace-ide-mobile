@@ -1243,7 +1243,13 @@ fun ProjectShellScreen(
                         onBack()
                     },
                 ) }
-                if (!zenMode && showActivityBar && activePanel != null && !fullScreen) {
+                // Gap always renders when the Activity Bar is visible — regardless of
+                // whether a side panel is open. Previously this Spacer was gated on
+                // `activePanel != null`, so with no panel open the Activity Bar sat flush
+                // against the Editor's rounded corner with zero gap. Real VS Code always
+                // keeps a small breathing gap between the Activity Bar and whatever's next
+                // (side panel OR editor), so both stay visually independent rounded shapes.
+                if (!zenMode && showActivityBar && !fullScreen) {
                     Spacer(Modifier.width(WorkspaceShapes.PanelGapSmall))
                 }
 
