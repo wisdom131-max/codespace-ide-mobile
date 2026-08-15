@@ -18202,3 +18202,25 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 7. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 8. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 9. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-15 18:35 WAT] — AI Agent: Claude (Base44 Superagent)
+**Commit:** N/A (documentation only — no code pushed) | **CI Build:** N/A
+**Tags:** [DOCS], [TESTING]
+**What was fixed:** (1) Marked the 130-item device retest (from the 2026-08-14 feature audit) as PENDING — Wisdom is running the tests on the TECNO KL4 device and will report PASS/PARTIAL/FAIL results back. No results have been reported yet, so nothing in that test matrix should be treated as verified. (2) Registered a new pending task: "Visual Node Code — Rounded Workspace Container Restructure". Wisdom supplied a detailed 25-section spec (attached as Visual_Node_Code_Rounded_Workspace_Full_Prompt.txt) plus 3 reference screenshots (VS Code rounded-panel reference x2, current app screenshot x1) requesting a structural redesign of the workspace shell: Activity Bar, Explorer, Main Editor, Bottom Panel, and Chat panel must each become ONE rounded rectangular container (not individually-rounded children), with visible ash/gray gaps between them, a rounded (non-pill) top command field, and the blue status bar left untouched. Preliminary source audit (no code changes made) confirms: root layout lives in `ProjectShellScreen.kt` — `Column(fillMaxSize) { PssTopBar(...); Row(weight=1f) { PssActivityBar(...) [Column, plain ActivityBarBg, no rounding] ; Explorer sidebar Column [ExplorerPane, no rounding] ; PssEditorColumn(...) [editor + bottom panel + split terminal + Chat, all flush Box/Column with plain background(), no clip/round] } }`. `PssTopBar` (line ~381) already has a RoundedCornerShape(12.dp) workspace/search field — needs verification against the "rectangular not pill" requirement. Chat panel (`CopilotChatPanelInline`, wired at PssEditorColumn ~line 4373) is a plain `Box(...).background(PanelBg)` with a 4dp plain divider drag handle — no rounding, no gap. Bottom panel and split terminal are similarly flush/square. Implementation NOT started — awaiting Wisdom's go-ahead per the request ("tell me what you understand" only, no code changes this session).
+**Files touched:** AGENTS.md (documentation only)
+**Next on roadmap:**
+1. **PENDING — Wisdom's 130-test device results** — awaiting PASS/PARTIAL/FAIL report from Wisdom before any further test-driven fixes.
+2. **Rounded Workspace Container Restructure (NEW, awaiting go-ahead)** — full audit + centralized shape/dimens token system (WorkspaceOuterRadius, ActivityBarRadius, ExplorerRadius, EditorRadius, BottomPanelRadius, ChatRadius, CommandPaletteRadius) + apply Modifier.clip(shape) + matching background/border to each of: PssActivityBar, Explorer sidebar Column, PssEditorColumn's editor region, bottom panel container, Chat panel Box, PssTopBar's command field. Must preserve ash/gray gaps between panels, blue status bar untouched, no functionality regressions. Do NOT round every child (icons/rows/tabs) — one rounded container per major panel only.
+3. YouTube Test 51 fix — only remaining unfixed item from the original 57-test audit (Shorts audio-only, settings black screen, sign-in "insecure browser" warning).
+4. Phase V LSP Reliability Upgrade — awaiting start.
+5. Phase N Advanced Notification System — awaiting approval, pre-implementation audit required.
+6. Phase P Advanced Problems Panel — awaiting approval, pre-implementation audit required.
