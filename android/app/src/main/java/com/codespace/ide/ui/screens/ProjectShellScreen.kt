@@ -409,7 +409,7 @@ private fun PssTopBar(
 
     // ── Top Bar (VS Code style) — single row, no separate menu bar
     Row(
-        Modifier.fillMaxWidth().height(28.dp).background(Color(0xFFF8F8F8))
+        Modifier.fillMaxWidth().height(28.dp).background(bgColor)
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -420,10 +420,10 @@ private fun PssTopBar(
         // Centered search pill — long, rounded rectangle (VS Code style)
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(
-                Modifier.background(Color(0xFFECECEC), WorkspaceShapes.CommandFieldShape)
+                Modifier.background(menuBg, WorkspaceShapes.CommandFieldShape)
                     .clickable { onShowCommandPalette() }
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .border(1.dp, Color(0xFFD0D0D0), WorkspaceShapes.CommandFieldShape),
+                    .border(1.dp, menuBorder, WorkspaceShapes.CommandFieldShape),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
