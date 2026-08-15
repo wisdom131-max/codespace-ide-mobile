@@ -5,6 +5,7 @@ import android.os.VibrationEffect
 import android.media.AudioManager
 import android.media.ToneGenerator
 import com.codespace.ide.ui.panels.ToolchainPanel
+import com.codespace.ide.ui.WorkspaceShapes
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.ui.screens.NotificationDrawerOverlay
 import com.codespace.ide.ui.screens.NotificationBell
@@ -419,10 +420,10 @@ private fun PssTopBar(
         // Centered search pill — long, rounded rectangle (VS Code style)
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(
-                Modifier.background(Color(0xFFECECEC), RoundedCornerShape(12.dp))
+                Modifier.background(Color(0xFFECECEC), WorkspaceShapes.CommandFieldShape)
                     .clickable { onShowCommandPalette() }
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .border(1.dp, Color(0xFFD0D0D0), RoundedCornerShape(12.dp)),
+                    .border(1.dp, Color(0xFFD0D0D0), WorkspaceShapes.CommandFieldShape),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -1108,8 +1109,14 @@ fun ProjectShellScreen(
         }
     }
 
+    // WorkspaceGapBg: slightly darker than BgColor so rounded panel gaps are visible
+    val workspaceGapBg = BgColor.copy(
+        red = (BgColor.red * 0.82f).coerceIn(0f, 1f),
+        green = (BgColor.green * 0.82f).coerceIn(0f, 1f),
+        blue = (BgColor.blue * 0.82f).coerceIn(0f, 1f),
+    )
     Box(
-        Modifier.fillMaxSize().background(BgColor)
+        Modifier.fillMaxSize().background(workspaceGapBg)
             .then(if (orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT)
                 Modifier.statusBarsPadding() else Modifier) // shield: portrait only — landscape is fine edge-to-edge
             .onGloballyPositioned { totalWidth = it.size.width.toFloat(); totalHeight = it.size.height.toFloat() }
@@ -1143,7 +1150,9 @@ fun ProjectShellScreen(
             ) }
 
             // ── Main body
-            Row(Modifier.weight(1f).fillMaxWidth()) {
+            Row(Modifier.weight(1f).fillMaxWidth()
+                .padding(WorkspaceShapes.WorkspacePadding)
+            ) {
 
                 // Activity Bar — hidden in Zen Mode
                 if (!zenMode && showActivityBar && !fullScreen) {
@@ -1208,14 +1217,17 @@ fun ProjectShellScreen(
                         onBack()
                     },
                 ) }
+                if (!zenMode && showActivityBar && activePanel != null && !fullScreen) {
+                    Spacer(Modifier.width(WorkspaceShapes.PanelGapSmall))
+                }
 
                 // Side Panel — hidden in Zen Mode
                 if (!zenMode && activePanel != null && !fullScreen) {
                     val spWidth = with(density) { sidePanelWidth.toDp() }.coerceIn(150.dp, 500.dp)
                     Column(
                         Modifier.width(spWidth).fillMaxHeight()
-                            .background(BgColor, RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
-                            .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                            .background(BgColor, WorkspaceShapes.ExplorerShape)
+                            .clip(WorkspaceShapes.ExplorerShape)
                     ) {
                         when (activePanel) {
                             SidePanel.EXPLORER -> ExplorerSidePanel(
@@ -1418,6 +1430,9 @@ fun ProjectShellScreen(
                                 }
                             }
                     )
+                }
+                if (!zenMode && activePanel != null && !fullScreen) {
+                    Spacer(Modifier.width(WorkspaceShapes.PanelGapMedium))
                 }
 
                 // Editor Column + Split Terminal + Chat Panel
@@ -2403,8 +2418,10 @@ private fun PssActivityBar(
     var landscapeVisiblePanel by remember { mutableStateOf(SidePanel.EXPLORER) }
 
     Column(
-        Modifier.width(48.dp).fillMaxHeight().background(activityBarBg)
-            .border(1.dp, dividerColor, RoundedCornerShape(0.dp)).padding(end = 1.dp),
+        Modifier.width(48.dp).fillMaxHeight().background(activityBarBg, WorkspaceShapes.ActivityBarShape)
+            .clip(WorkspaceShapes.ActivityBarShape)
+            .border(1.dp, dividerColor.copy(alpha = 0.3f), WorkspaceShapes.ActivityBarShape)
+            .padding(end = 1.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // ── HAMBURGER MENU (3-line icon at top of activity bar — VS Code style) ──
@@ -2922,7 +2939,9 @@ private fun PssBottomPanelContent(
             }
     )
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFF3F3F3)).height(26.dp),
+        Modifier.fillMaxWidth().background(panelBg, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+            .height(26.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LazyRow(
@@ -2974,7 +2993,9 @@ private fun PssBottomPanelContent(
         animationSpec = if (isDraggingBottomPanel) snap() else tween(180),
         label = "bottomPanelHeight",
     )
-    Box(Modifier.fillMaxWidth().height(animatedBh).background(panelBg)) {
+    Box(Modifier.fillMaxWidth().height(animatedBh)
+        .background(panelBg, RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
+        .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))) {
         when (activeBottomTab) {
             BottomTab.TERMINAL -> TerminalPane(
                 initialCommand = terminalCommandToRun,
@@ -3966,7 +3987,10 @@ private fun PssEditorColumn(
     var buildProblems by buildProblemsMs
 
     // Editor Column
-    Column(modifier.fillMaxHeight()) {
+    Column(modifier.fillMaxHeight()
+        .background(BgColor, WorkspaceShapes.EditorShape)
+        .clip(WorkspaceShapes.EditorShape)
+    ) {
 
         // Editor tab bar
         if (editorTabs.isNotEmpty()) {
@@ -4244,8 +4268,8 @@ private fun PssEditorColumn(
                 Box(
                     Modifier.fillMaxSize()
                         .padding(4.dp)
-                        .background(BgColor, RoundedCornerShape(8.dp))
-                        .clip(RoundedCornerShape(8.dp)),
+                        .background(BgColor, WorkspaceShapes.EditorShape)
+                        .clip(WorkspaceShapes.EditorShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -4333,6 +4357,7 @@ private fun PssEditorColumn(
 
     // Split Terminal Panel
     if (showSplitTerminal) {
+        Spacer(Modifier.width(WorkspaceShapes.PanelGapMedium))
         val localDensity = androidx.compose.ui.platform.LocalDensity.current
         Box(
             Modifier
@@ -4371,6 +4396,7 @@ private fun PssEditorColumn(
 
     // ── AI Chat Panel (right side, draggable, own region — not shared with Explorer) ──
     if (showChatPanel && !fullScreen) {
+        Spacer(Modifier.width(WorkspaceShapes.PanelGapMedium))
         val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
         // Drag handle on left edge of chat panel — mirrors Explorer's mechanics but
         // flipped: drag right→left widens (handle moves left, panel gets wider),
@@ -4393,7 +4419,9 @@ private fun PssEditorColumn(
                 }
         )
         // Chat panel content
-        Box(Modifier.width(chatWidth).fillMaxHeight().background(PanelBg)) {
+        Box(Modifier.width(chatWidth).fillMaxHeight()
+            .background(PanelBg, WorkspaceShapes.ChatShape)
+            .clip(WorkspaceShapes.ChatShape)) {
             CopilotChatPanelInline(
                 onClose = { showChatPanel = false },
                 pendingPrompt = pendingChatPrompt,
