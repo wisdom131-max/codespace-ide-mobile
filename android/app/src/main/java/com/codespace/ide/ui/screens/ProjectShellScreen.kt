@@ -415,16 +415,24 @@ private fun PssTopBar(
             .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Back button — sits right next to the pill (VS Code style)
+        // Back button — sits right next to the command field (VS Code style)
         Box(Modifier.size(28.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tabTextInactive, modifier = Modifier.size(18.dp))
         }
-        // Centered search pill — long, rounded rectangle (VS Code style)
-        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+        Spacer(Modifier.width(6.dp))
+        // Command field — a real rounded RECTANGLE (8dp corners), not a pill. Fixed at
+        // CenterStart (not centered in the full remaining width) and widened with a
+        // min width so it reads as one long bar sitting close to the back button —
+        // matching VS Code, where the command field floats near the nav arrows rather
+        // than dead-center of the whole window with a big empty gap next to them.
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             Row(
-                Modifier.background(menuBg, WorkspaceShapes.CommandFieldShape)
+                Modifier
+                    .widthIn(min = 260.dp)
+                    .fillMaxWidth(0.62f)
+                    .background(menuBg, WorkspaceShapes.CommandFieldShape)
                     .clickable { onShowCommandPalette() }
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .padding(horizontal = 16.dp, vertical = 5.dp)
                     .border(1.dp, dividerColor, WorkspaceShapes.CommandFieldShape),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
