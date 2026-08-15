@@ -1423,18 +1423,25 @@ fun ProjectShellScreen(
                             else                 -> {}
                         }
                     }
+                    // P-DIVIDER: Subtle draggable separator — sits in the panel gap between
+                    // Explorer and Editor. Wide invisible hit area (12dp) keeps it touch-friendly;
+                    // thin low-alpha visible line (1dp) keeps it from reading as a thick bar and
+                    // lets both panels' rounded corners stay visually independent.
                     Box(
-                        Modifier.width(4.dp).fillMaxHeight().background(DividerColor)
+                        Modifier.width(12.dp).fillMaxHeight()
                             .pointerInput(Unit) {
                                 detectDragGestures { _, dragAmount ->
                                     val nw = sidePanelWidth + dragAmount.x
                                     if (nw < 80f) activePanel = null else sidePanelWidth = nw.coerceIn(80f, totalWidth * 0.7f)
                                 }
-                            }
-                    )
-                }
-                if (!zenMode && activePanel != null && !fullScreen) {
-                    Spacer(Modifier.width(WorkspaceShapes.PanelGapMedium))
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.width(1.dp).fillMaxHeight(0.94f)
+                                .background(DividerColor.copy(alpha = 0.35f), RoundedCornerShape(1.dp))
+                        )
+                    }
                 }
 
                 // Editor Column + Split Terminal + Chat Panel
@@ -2906,11 +2913,13 @@ private fun PssBottomPanelContent(
     val collapseThresholdPx = with(density) { 48.dp.toPx() }
     val minUsableHeightPx = with(density) { 120.dp.toPx() }
 
+    // P-DIVIDER: Subtle draggable separator — same treatment as the Explorer/Chat
+    // dividers. Wide invisible hit area (12dp) keeps the drag touch-target generous;
+    // thin low-alpha visible line (1dp) centered in it reads as a gap, not a seam,
+    // so the Editor region above and this Bottom Panel stay visually independent
+    // rounded containers (drag logic unchanged from before).
     Box(
-        // VS Code drives every sash (side panel AND bottom panel) off ONE setting —
-        // workbench.sash.size, default 4px — so this now matches the explorer's 4.dp handle
-        // exactly instead of being its own inconsistent 8.dp.
-        Modifier.fillMaxWidth().height(4.dp).background(dividerColor.copy(alpha = 0.6f))
+        Modifier.fillMaxWidth().height(12.dp)
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { onDraggingChange(true) },
@@ -2938,8 +2947,14 @@ private fun PssBottomPanelContent(
                         if (clamped >= minUsableHeightPx) onBottomPanelPrevHeightChange(clamped)
                     }
                 }
-            }
-    )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.fillMaxWidth(0.94f).height(1.dp)
+                .background(dividerColor.copy(alpha = 0.35f), RoundedCornerShape(1.dp))
+        )
+    }
     Row(
         Modifier.fillMaxWidth().background(panelBg, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
             .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
@@ -3988,11 +4003,18 @@ private fun PssEditorColumn(
     var terminalCommandToRun by terminalCommandToRunMs
     var buildProblems by buildProblemsMs
 
-    // Editor Column
-    Column(modifier.fillMaxHeight()
-        .background(BgColor, WorkspaceShapes.EditorShape)
-        .clip(WorkspaceShapes.EditorShape)
-    ) {
+    // Editor Column — outer container has NO shared background/clip. The editor
+    // region and the Bottom Panel each get their OWN independent rounded container
+    // (mirrors the Explorer/Editor split) with a real gap + subtle drag handle
+    // between them, instead of one merged rectangle with an internal seam.
+    Column(modifier.fillMaxHeight()) {
+
+        // Editor region — own rounded container (tab bar + find bar + editor + toolbar)
+        Column(
+            Modifier.weight(1f).fillMaxWidth()
+                .background(BgColor, WorkspaceShapes.EditorShape)
+                .clip(WorkspaceShapes.EditorShape)
+        ) {
 
         // Editor tab bar
         if (editorTabs.isNotEmpty()) {
@@ -4317,9 +4339,21 @@ private fun PssEditorColumn(
             HorizontalDivider(color = DividerColor)
         }
 
+        } // end editor region Column (own rounded container)
+
+        // P-DIVIDER: Gap + subtle drag handle between the Editor region and the Bottom
+        // Panel — only present while the panel is visible, mirroring the visibility
+        // check PssBottomPanelContent does internally. The visible drag handle itself
+        // (rendered inside PssBottomPanelContent) provides the touch-friendly thin
+        // separator; this gap is what keeps the two rounded containers independent.
+        if (showBottomPanel && !fullScreen) {
+            Spacer(Modifier.height(WorkspaceShapes.PanelGapMedium))
+        }
+
         // Bottom Panel — extracted to PssBottomPanelContent to keep
         // ProjectShellScreen's DEX method register count below ART's 256-register
-        // verifier limit (VerifyError fix).
+        // verifier limit (VerifyError fix). Renders as its OWN independent rounded
+        // container (see WorkspaceShapes doc) — not merged into the editor region above.
         PssBottomPanelContent(
             showBottomPanel = showBottomPanel,
             onHideBottomPanel = { showBottomPanel = false },
@@ -4398,16 +4432,16 @@ private fun PssEditorColumn(
 
     // ── AI Chat Panel (right side, draggable, own region — not shared with Explorer) ──
     if (showChatPanel && !fullScreen) {
-        Spacer(Modifier.width(WorkspaceShapes.PanelGapMedium))
         val chatWidth = with(density) { aiPanelWidth.toDp() }.coerceIn(0.dp, 600.dp)
-        // Drag handle on left edge of chat panel — mirrors Explorer's mechanics but
-        // flipped: drag right→left widens (handle moves left, panel gets wider),
-        // drag left→right shrinks it down to a full close.
+        // P-DIVIDER: Subtle draggable separator — mirrors the Explorer divider treatment.
+        // Drag handle on left edge of chat panel: drag right→left widens (handle moves
+        // left, panel gets wider), drag left→right shrinks it down to a full close.
+        // Wide invisible hit area (12dp), thin low-alpha visible line (1dp) so Editor
+        // and Chat panels stay visually independent rounded containers.
         Box(
             Modifier
-                .width(4.dp)
+                .width(12.dp)
                 .fillMaxHeight()
-                .background(DividerColor)
                 .pointerInput(Unit) {
                     detectDragGestures { _, dragAmount ->
                         val nw = aiPanelWidth - dragAmount.x
@@ -4418,8 +4452,14 @@ private fun PssEditorColumn(
                             aiPanelWidth = nw.coerceIn(0f, totalWidth * 0.8f)
                         }
                     }
-                }
-        )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier.width(1.dp).fillMaxHeight(0.94f)
+                    .background(DividerColor.copy(alpha = 0.35f), RoundedCornerShape(1.dp))
+            )
+        }
         // Chat panel content
         Box(Modifier.width(chatWidth).fillMaxHeight()
             .background(PanelBg, WorkspaceShapes.ChatShape)
