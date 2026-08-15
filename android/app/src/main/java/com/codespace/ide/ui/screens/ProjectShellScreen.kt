@@ -423,7 +423,7 @@ private fun PssTopBar(
                 Modifier.background(menuBg, WorkspaceShapes.CommandFieldShape)
                     .clickable { onShowCommandPalette() }
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .border(1.dp, menuBorder, WorkspaceShapes.CommandFieldShape),
+                    .border(1.dp, dividerColor, WorkspaceShapes.CommandFieldShape),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
