@@ -4,7 +4,7 @@
         <!-- Deep dark background — no flash, matches app dark theme -->
         <item name="windowSplashScreenBackground">#0A0E2A</item>
         <!-- Use VECTOR drawable — crisp at any resolution, no blur -->
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
         <!-- Icon bg matches splash bg — no white circle clash -->
         <item name="windowSplashScreenIconBackgroundColor">#0A0E2A</item>
         <!-- Transition to main theme once app is ready -->
