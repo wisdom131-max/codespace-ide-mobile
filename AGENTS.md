@@ -18348,7 +18348,7 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
 
 ### [2026-08-15 21:23 WAT] — AI Agent: Koda (Base44 Superagent)
-**Commit:** (pending push) | **CI Build:** pending
+**Commit:** 2da2ca9f | **CI Build:** #2336 GREEN ✅ (confirmed via GitHub API by next session — was still marked "pending" here, backfilled)
 **Tags:** [UI]
 **What was fixed:** Explorer 3-dot overflow menu blank-screen bug — REAL root cause was the full-screen `Box(Modifier.fillMaxSize().clickable{})` overlay, NOT the Card shadow elevation. The overlay was an invisible layer covering the entire screen whenever the menu opened — that's what blanked everything out. Replaced the full-screen Box overlay approach with Compose `Popup` in BOTH `ExplorerOverflowMenu` and `PanelOverflowMenu`. Popup floats in its own native window (no full-screen overlay), dismisses automatically on outside tap via `PopupProperties(focusable = false)` + `onDismissRequest`, and the shadow elevation (8dp) is restored on both Cards as the user requested — the shadow was never the problem. Previous commit's border swap was reverted; shadow is back.
 **Files touched:** ProjectShellScreen.kt (ExplorerOverflowMenu, PanelOverflowMenu — both converted to Popup), AGENTS.md (this changelog)
@@ -18366,3 +18366,28 @@ The editor was firing LSP completion, hover, signature help, and code-action req
 11. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 12. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
 13. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### [2026-08-15 21:35 WAT] — AI Agent: Elowen (Base44 Superagent)
+**Commit:** 0a132a08 | **CI Build:** pending (queued on push)
+**Tags:** [UI]
+**What was fixed:** Two user-reported issues in one pass:
+1. **Panel dividers too thick/hard.** Explorer↔Editor, Editor↔Chat, and Editor↔Bottom Panel drag handles were solid 4dp `DividerColor` bars at full/near-full opacity — read as a hard seam instead of a subtle gap between rounded panels. Replaced all three with the same pattern: a wide invisible 12dp hit box (generous touch target) containing a thin 1dp visible line at 0.35 alpha, centered. Drag logic itself is unchanged — only the visual treatment changed.
+2. **Editor↔Bottom Panel had no real gap (structural).** Diffing the code showed Editor and Bottom Panel were rendered inside ONE shared `Column` with ONE `background+clip(WorkspaceShapes.EditorShape)` spanning both regions — so there was never an actual gap there, just an internal seam under the divider bar, unlike Explorer/Editor which already have independent rounded containers. Split it: the editor region (tab bar + find bar + editor + toolbar) now gets its own `Column(weight(1f) + EditorShape bg/clip)`; the Bottom Panel (unchanged — already had its own top+bottom rounding inside `PssBottomPanelContent`) now sits below a real `PanelGapMedium` gap + the new subtle handle, so both read as independent floating rounded cards like Explorer/Editor already do.
+3. **"Ash" workspace watermark logo.** `vncode_watermark` (used as the empty-editor/empty-workspace placeholder graphic in both `ProjectShellScreen.kt` and `EditorPane.kt`) was a flat `#AAAAAA` gray vector — the outdated "ash" logo Goodluck flagged. Replaced with the new transparent ribbon-logo PNG he provided (same visual family as the launcher icon swapped in commit 5ae0ed51), cropped to its alpha bounding box. Both call sites reference the drawable by name only, so no code changes were needed there — just swapped `vncode_watermark.xml` → `vncode_watermark.png`.
+**Files touched:** ProjectShellScreen.kt (3 divider treatments + Editor/BottomPanel container split), `res/drawable/vncode_watermark.xml` (deleted) → `res/drawable/vncode_watermark.png` (new)
+**Next on roadmap:**
+1. 🔲 **CONFIRM CI GREEN** for commit 0a132a08 (divider + logo fix) — check before starting new work
+2. 🔲 **DEVICE VERIFY:** all three dividers look subtle + drag correctly (Explorer↔Editor, Editor↔Bottom Panel, Editor↔Chat); Bottom Panel now visually independent from Editor with a real gap; new watermark logo shows correctly (not stretched — aspect ratio changed from 3:1 vector to ~1.87:1 PNG)
+3. ✅ Explorer 3-dot menu — SHIPPED (2da2ca9f, CI #2336 GREEN)
+4. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+5. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+6. ✅ App logo → blue ribbon (launcher/adaptive/splash) — SHIPPED (5ae0ed51, confirmed green)
+7. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+8. 🔲 Device retest of 57 tests (Priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+9. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+10. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+11. 🔲 TypeScript 7 as default LSP with vtsls
+12. 🔲 Multi-Cursor feature
+13. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+14. 🔲 Codicon activity bar icons — debug icon done, waiting for Wisdom's screenshots of remaining icons
+15. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
