@@ -75,6 +75,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.PopupPositionProvider
@@ -1875,6 +1876,27 @@ private fun PssOverlays(
     handleMenuAction: (String) -> Unit,
     showNotification: (String, String) -> Unit,
 ) {
+        // P-NOTIF-BELL-POSITION-FIX: Bell is a floating overlay positioned by
+        // bellPosition (same corner as the toast/drawer), NOT hardcoded in the
+        // status bar. This way when the user repositions to bottom-left or
+        // top-right, the bell moves with the panel.
+        val notifPos = NotificationStore.settings.bellPosition
+        Box(
+            Modifier
+                .fillMaxSize()
+                .zIndex(90f),
+            contentAlignment = when (notifPos) {
+                NotificationStore.POS_TOP_RIGHT   -> Alignment.TopEnd
+                NotificationStore.POS_BOTTOM_LEFT -> Alignment.BottomStart
+                else                              -> Alignment.BottomEnd
+            },
+        ) {
+            NotificationBell(
+                iconSize = 18,
+                onClick = { onShowNotifDrawerChange(true); NotificationStore.markAllRead() },
+            )
+        }
+
         // P34-NOTIF: VS Code-style in-app toast banner (auto-dismiss)
         NotificationToastBanner(
             colors = NotifColors(
@@ -3990,9 +4012,6 @@ private fun StatusBarContent(
             }
             is SyncState.Idle -> { /* nothing */ }
         }
-        // P34-NOTIF: VS Code-style bell in status bar (bottom-right)
-        Spacer(Modifier.width(6.dp))
-        NotificationBell(iconSize = 18, onClick = onToggleNotif)
     }
 }
 
