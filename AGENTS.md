@@ -18783,3 +18783,50 @@ When a server transitions from running → STOPPED or UNHEALTHY, the row shakes/
 - 🔲 TypeScript 7 as default LSP with vtsls
 - 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 - ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+---
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+
+---
+
+### [2026-08-16 11:45 WAT] — AI Agent: Elowen (Claude Sonnet 4, Base44 Superagent)
+**Commit:** 2eb7e38c | **CI Build:** pending (last green #2346)
+**Tags:** [UI] [CRASH] [BUILD-FIX]
+
+**What was fixed:**
+Four fixes to the Command Palette:
+1. Removed the full-screen dark scrim (`Color(0x88000000)`) dimming the whole screen behind the palette — real VS Code doesn't dim the background, matched to reference screenshots.
+2. Fixed "opening another tab closes the palette instead of switching to it" — root cause: the old scrim used `detectTapGestures` which **consumes** the tap, blocking it from ever reaching an editor tab underneath. Replaced with a non-consuming `PointerEventPass.Initial` observer that checks the tap position against the card's tracked bounds (`onGloballyPositioned`); taps outside the card close the palette WITHOUT consuming the touch, so the same tap still reaches whatever's underneath (e.g. a tab) in one motion.
+3. Added a black 1dp outline around the command palette card.
+4. Added a "recently opened" section — shown below a divider (same black color as the outline) when the search query is empty, listing currently-open editor tabs with a language bracket-symbol icon (`{ }`, `< >`, `#`, `Aa`), matching VS Code Quick Open. Threaded `editorTabs` + a tab-switch callback through `PssOverlays`.
+
+**Files touched:**
+- ProjectShellScreen.kt (command palette Box/Card, PssOverlays signature + call site, imports: awaitEachGesture, awaitFirstDown, PointerEventPass, Rect)
+
+**Next on roadmap:**
+- 🔲 Notification restructure (awaiting Goodluck's plan)
+- 🔲 Device testing of all SCM features (E1–E18)
+- 🔲 YouTube Test 51 fix
+- 🔲 Phase N — Advanced Notification System (awaiting user plan)
+- 🔲 Portrait settings device test
+- 🔲 LSP server status indicators device test
+- 🔲 Command Palette fixes device test (new — click-through, no scrim, recently opened)
+- 🔲 Split editor pane wiring (currently placeholder "coming soon")
+- 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+- 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+- 🔲 TypeScript 7 as default LSP with vtsls
+- 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+- ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
