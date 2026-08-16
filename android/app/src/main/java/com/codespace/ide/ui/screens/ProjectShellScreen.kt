@@ -77,6 +77,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.terminal.BusyboxInstaller
@@ -314,6 +318,67 @@ private fun ideColors(themeName: String): IdeColors {
 }
 
 private enum class SidePanel { EXPLORER, SEARCH, GIT, RUN, EXTENSIONS, AI_CHAT }
+
+/**
+ * P-THEMES-SUBMENU-FIX (2026-08-16): Adaptive, VS Code-style submenu positioning.
+ *
+ * Replaces the old hardcoded `padding(start = 332.dp, bottom = 52.dp)` offset, which only
+ * worked in landscape (wide enough screens). In portrait, 332dp + the submenu's 200dp width
+ * overflows the window entirely, so the submenu was pushed off-screen while its scrim still
+ * covered the display — looking like a big empty popup.
+ *
+ * This provider is handed the REAL measured anchor bounds (the "Themes" row), the real
+ * window size, and the real measured submenu content size by the Popup framework itself —
+ * no fixed coordinates anywhere. Compose re-invokes `calculatePosition` automatically on
+ * rotation / window size / inset changes, satisfying the "recalculate on layout change"
+ * requirement for free.
+ *
+ * Placement order (mirrors VS Code): prefer opening to the right of the anchor row; if there
+ * isn't room, try the left; if neither side fits (narrow/portrait phones), stack the submenu
+ * below the row (or above it if there's no room below), always clamped inside the window.
+ */
+private class AdaptiveSubmenuPositionProvider(private val marginPx: Int) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val subW = popupContentSize.width
+        val subH = popupContentSize.height
+
+        val spaceRight = windowSize.width - anchorBounds.right - marginPx
+        val spaceLeft = anchorBounds.left - marginPx
+
+        val x: Int
+        val y: Int
+        when {
+            // Enough room to the right of the anchor row — VS Code's default direction.
+            spaceRight >= subW -> {
+                x = anchorBounds.right + marginPx
+                y = anchorBounds.top.coerceIn(marginPx, (windowSize.height - subH - marginPx).coerceAtLeast(marginPx))
+            }
+            // Flip to the left when the right side doesn't have room.
+            spaceLeft >= subW -> {
+                x = anchorBounds.left - subW - marginPx
+                y = anchorBounds.top.coerceIn(marginPx, (windowSize.height - subH - marginPx).coerceAtLeast(marginPx))
+            }
+            // Neither side fits (typical portrait phone width) — stack in place instead,
+            // below the row if there's room, else above it. Always clamped to the window.
+            else -> {
+                x = anchorBounds.left.coerceIn(marginPx, (windowSize.width - subW - marginPx).coerceAtLeast(marginPx))
+                val spaceBelow = windowSize.height - anchorBounds.bottom - marginPx
+                y = if (spaceBelow >= subH) {
+                    anchorBounds.bottom + marginPx
+                } else {
+                    (anchorBounds.top - subH - marginPx).coerceAtLeast(marginPx)
+                }
+            }
+        }
+        return IntOffset(x, y.coerceIn(marginPx, (windowSize.height - subH - marginPx).coerceAtLeast(marginPx)))
+    }
+}
+
 
 // NotifItem moved to NotificationDrawerOverlay.kt
 private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, DOWNLOADS, BACKUP, TODO, TESTS, ANALYSIS }
@@ -1988,6 +2053,7 @@ private fun PssOverlays(
 
         // Gear / Settings menu — VS Code-style bottom-left dropdown (wider, centered, rounded)
         var showThemesSubmenu by remember { mutableStateOf(false) }
+        val themesSubmenuDensity = LocalDensity.current
         if (showGearMenu) {
             Box(
                 Modifier.fillMaxSize()
@@ -2014,17 +2080,67 @@ private fun PssOverlays(
                             Text("Settings", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f),
                                 modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
                         }
-                        // Themes row — has chevron (>) for submenu
+                        // Themes row — has chevron (>) for submenu.
+                        // P-THEMES-SUBMENU-FIX: the submenu Popup is nested directly inside
+                        // this row's own Box, so the Popup framework anchors it to the row's
+                        // real measured bounds (not a hardcoded offset) — see
+                        // AdaptiveSubmenuPositionProvider for the flip/clamp logic.
                         item {
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { showThemesSubmenu = !showThemesSubmenu }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text("Themes", fontSize = 13.sp, color = MenuText)
-                                Icon(Icons.Default.KeyboardArrowRight, null, tint = MenuText.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                            Box {
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .clickable { showThemesSubmenu = !showThemesSubmenu }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Themes", fontSize = 13.sp, color = MenuText)
+                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MenuText.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                                }
+                                if (showThemesSubmenu) {
+                                    val submenuMarginPx = with(themesSubmenuDensity) { 8.dp.roundToPx() }
+                                    Popup(
+                                        popupPositionProvider = remember(submenuMarginPx) { AdaptiveSubmenuPositionProvider(submenuMarginPx) },
+                                        properties = PopupProperties(focusable = false),
+                                        onDismissRequest = { showThemesSubmenu = false },
+                                    ) {
+                                        Card(
+                                            Modifier.width(200.dp),
+                                            colors = CardDefaults.cardColors(containerColor = MenuBg),
+                                            elevation = CardDefaults.cardElevation(8.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                        ) {
+                                            Column(Modifier.padding(4.dp)) {
+                                                Row(
+                                                    Modifier.fillMaxWidth()
+                                                        .clickable { onShowColorThemeChange(true); showThemesSubmenu = false; onShowGearMenuChange(false) }
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Text("Color Theme", fontSize = 13.sp, color = MenuText)
+                                                }
+                                                HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                                                Row(
+                                                    Modifier.fillMaxWidth()
+                                                        .clickable { showNotification("File Icon Theme — coming soon", "info"); showThemesSubmenu = false }
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Text("File Icon Theme", fontSize = 13.sp, color = MenuText)
+                                                }
+                                                HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp))
+                                                Row(
+                                                    Modifier.fillMaxWidth()
+                                                        .clickable { showNotification("Product Icon Theme — coming soon", "info"); showThemesSubmenu = false }
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Text("Product Icon Theme", fontSize = 13.sp, color = MenuText)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
@@ -2118,50 +2234,6 @@ private fun PssOverlays(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("Sign Out", fontSize = 13.sp, color = MenuText)
-                            }
-                        }
-                    }
-                }
-                // Themes submenu — appears to the right of the gear menu (VS Code style)
-                if (showThemesSubmenu) {
-                    Card(
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 332.dp, bottom = 52.dp)
-                            .width(200.dp)
-                            .pointerInput(Unit) {
-                                detectTapGestures { /* swallow taps */ }
-                            },
-                        colors = CardDefaults.cardColors(containerColor = MenuBg),
-                        elevation = CardDefaults.cardElevation(8.dp),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Column(Modifier.padding(4.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { onShowColorThemeChange(true); showThemesSubmenu = false; onShowGearMenuChange(false) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("Color Theme", fontSize = 13.sp, color = MenuText)
-                            }
-                            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp))
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { showNotification("File Icon Theme — coming soon", "info"); showThemesSubmenu = false }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("File Icon Theme", fontSize = 13.sp, color = MenuText)
-                            }
-                            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp))
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { showNotification("Product Icon Theme — coming soon", "info"); showThemesSubmenu = false }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("Product Icon Theme", fontSize = 13.sp, color = MenuText)
                             }
                         }
                     }
