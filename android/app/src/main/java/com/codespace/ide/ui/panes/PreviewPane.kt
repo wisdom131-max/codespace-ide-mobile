@@ -776,6 +776,10 @@ private fun HtmlPreview(
                 settings.domStorageEnabled = true
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
+                // P-ZOOM: Enable pinch-to-zoom for HTML preview
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
@@ -904,12 +908,13 @@ private fun SvgPreview(
     content: String,
     onWebView: (WebView) -> Unit,
 ) {
+    // P-RENDER: No max-width/max-height constraints so SVG can be zoomed freely.
+    // overflow:auto allows panning when zoomed in.
     val html = """
         <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
-        <style>body{background:#1e1e1e;display:flex;align-items:center;justify-content:center;
-               min-height:100vh;margin:0;padding:16px;box-sizing:border-box;}
-               svg{max-width:100%;max-height:80vh;}</style>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.3, maximum-scale=8.0, user-scalable=yes">
+        <style>body{background:#1e1e1e;margin:0;padding:8px;overflow:auto;}
+               svg{display:block;margin:0 auto;}</style>
         </head><body>$content</body></html>
     """.trimIndent()
 
@@ -919,6 +924,10 @@ private fun SvgPreview(
                 settings.javaScriptEnabled = false
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
+                // P-ZOOM: Enable pinch-to-zoom for SVG
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
                 onWebView(this)
             }
         },

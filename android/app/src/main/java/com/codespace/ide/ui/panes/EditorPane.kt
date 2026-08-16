@@ -1450,9 +1450,10 @@ fun EditorPane(
                             AndroidView(
                                 factory = { ctx ->
                                     android.webkit.WebView(ctx).apply {
-                                        settings.javaScriptEnabled = true
+                                        settings.javaScriptEnabled = false  // P-RENDER: local renderer, no JS needed
                                         settings.loadWithOverviewMode = true
                                         settings.useWideViewPort = true
+                                        settings.setSupportZoom(true)  // P-ZOOM
                                         settings.builtInZoomControls = true
                                         settings.displayZoomControls = false
                                         webViewClient = android.webkit.WebViewClient()
