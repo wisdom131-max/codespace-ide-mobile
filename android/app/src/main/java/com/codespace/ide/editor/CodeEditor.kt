@@ -1451,55 +1451,82 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             snippetSession = null
                         }
                     } else if (!showCompletions) {
-                        val cursor = value.selection.end
-                        var wordStart = cursor
-                        while (wordStart > 0 && (value.text[wordStart - 1].isLetterOrDigit() || value.text[wordStart - 1] == '_')) {
-                            wordStart--
-                        }
-                        val singleWord = value.text.substring(wordStart, cursor)
-                        var twoWordStart = wordStart
-                        if (wordStart > 0 && value.text[wordStart - 1] == ' ') {
-                            var ws = wordStart - 1
-                            while (ws > 0 && value.text[ws - 1] == ' ') ws--
-                            val prevWordEnd = ws
-                            if (prevWordEnd > 0 && (value.text[prevWordEnd - 1].isLetterOrDigit() || value.text[prevWordEnd - 1] == '_')) {
-                                var prevWordStart = prevWordEnd
-                                while (prevWordStart > 0 && (value.text[prevWordStart - 1].isLetterOrDigit() || value.text[prevWordStart - 1] == '_')) prevWordStart--
-                                twoWordStart = prevWordStart
+                        // P-EXTRAKEYS: Respect selection like a laptop Tab key.
+                        // Multi-line selection → indent all lines; single-line → replace selection.
+                        val selStart = value.selection.min
+                        val selEnd = value.selection.max
+                        if (selStart != selEnd) {
+                            val selectedText = value.text.substring(selStart, selEnd)
+                            if (selectedText.contains("\n")) {
+                                // Multi-line indent: prepend tab to each line in the selection
+                                val beforeSel = value.text.substring(0, selStart)
+                                val lineStart = beforeSel.lastIndexOf('\n') + 1
+                                val linesToIndent = value.text.substring(lineStart, selEnd)
+                                val indented = linesToIndent.split("\n").map { "\t" + it }.joinToString("\n")
+                                val newText = value.text.substring(0, lineStart) + indented + value.text.substring(selEnd)
+                                value = TextFieldValue(text = newText, selection = TextRange(lineStart, lineStart + indented.length))
+                                onContentChange(newText)
+                            } else {
+                                // Single-line selection: replace with tab
+                                val newText = value.text.substring(0, selStart) + "\t" + value.text.substring(selEnd)
+                                value = TextFieldValue(text = newText, selection = TextRange(selStart + 1))
+                                onContentChange(newText)
                             }
-                        }
-                        val twoWord = if (twoWordStart < wordStart) value.text.substring(twoWordStart, cursor) else singleWord
-                        if (singleWord.isNotEmpty()) {
-                            val localSnippets = snippetsFor(language)
-                            val matched = localSnippets.firstOrNull { it.label == twoWord }
-                                ?: localSnippets.firstOrNull { it.label == singleWord }
-                                ?: localSnippets.firstOrNull { it.label.startsWith(singleWord) && singleWord.length >= 3 }
-                            if (matched != null) {
-                                val expandStart = if (matched.label == twoWord) twoWordStart else wordStart
-                                val snippetText = matched.insertText
-                                if (matched.insertTextFormat == 2) {
-                                    val parsed = parseSnippet(snippetText, SnippetContext(
-                                        lineNumber = lineFromOffset(expandStart) + 1,
-                                        lineIndex = lineFromOffset(expandStart),
-                                        currentLine = value.text.split('\n').getOrNull(lineFromOffset(expandStart)) ?: "",
-                                        selectedText = "",
-                                    ))
-                                    val cleanedText = parsed.cleanedText
-                                    val finalText = value.text.substring(0, expandStart) + cleanedText + value.text.substring(cursor)
-                                    val session = createSnippetSession(expandStart, parsed)
-                                    snippetSession = session
-                                    showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
-                                    val firstStop = session.tabStops.firstOrNull()
-                                    val selRange = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
-                                        TextRange(firstStop.startOffset, firstStop.endOffset)
+                        } else {
+                            val cursor = selStart
+                            var wordStart = cursor
+                            while (wordStart > 0 && (value.text[wordStart - 1].isLetterOrDigit() || value.text[wordStart - 1] == '_')) {
+                                wordStart--
+                            }
+                            val singleWord = value.text.substring(wordStart, cursor)
+                            var twoWordStart = wordStart
+                            if (wordStart > 0 && value.text[wordStart - 1] == ' ') {
+                                var ws = wordStart - 1
+                                while (ws > 0 && value.text[ws - 1] == ' ') ws--
+                                val prevWordEnd = ws
+                                if (prevWordEnd > 0 && (value.text[prevWordEnd - 1].isLetterOrDigit() || value.text[prevWordEnd - 1] == '_')) {
+                                    var prevWordStart = prevWordEnd
+                                    while (prevWordStart > 0 && (value.text[prevWordStart - 1].isLetterOrDigit() || value.text[prevWordStart - 1] == '_')) prevWordStart--
+                                    twoWordStart = prevWordStart
+                                }
+                            }
+                            val twoWord = if (twoWordStart < wordStart) value.text.substring(twoWordStart, cursor) else singleWord
+                            if (singleWord.isNotEmpty()) {
+                                val localSnippets = snippetsFor(language)
+                                val matched = localSnippets.firstOrNull { it.label == twoWord }
+                                    ?: localSnippets.firstOrNull { it.label == singleWord }
+                                    ?: localSnippets.firstOrNull { it.label.startsWith(singleWord) && singleWord.length >= 3 }
+                                if (matched != null) {
+                                    val expandStart = if (matched.label == twoWord) twoWordStart else wordStart
+                                    val snippetText = matched.insertText
+                                    if (matched.insertTextFormat == 2) {
+                                        val parsed = parseSnippet(snippetText, SnippetContext(
+                                            lineNumber = lineFromOffset(expandStart) + 1,
+                                            lineIndex = lineFromOffset(expandStart),
+                                            currentLine = value.text.split('\n').getOrNull(lineFromOffset(expandStart)) ?: "",
+                                            selectedText = "",
+                                        ))
+                                        val cleanedText = parsed.cleanedText
+                                        val finalText = value.text.substring(0, expandStart) + cleanedText + value.text.substring(cursor)
+                                        val session = createSnippetSession(expandStart, parsed)
+                                        snippetSession = session
+                                        showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
+                                        val firstStop = session.tabStops.firstOrNull()
+                                        val selRange = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                            TextRange(firstStop.startOffset, firstStop.endOffset)
+                                        } else {
+                                            TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                        }
+                                        value = TextFieldValue(text = finalText, selection = selRange)
+                                        onContentChange(finalText)
                                     } else {
-                                        TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                        val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
+                                        value = TextFieldValue(text = newText, selection = TextRange(expandStart + snippetText.length))
+                                        onContentChange(newText)
                                     }
-                                    value = TextFieldValue(text = finalText, selection = selRange)
-                                    onContentChange(finalText)
                                 } else {
-                                    val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
-                                    value = TextFieldValue(text = newText, selection = TextRange(expandStart + snippetText.length))
+                                    val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
+                                    value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
                                     onContentChange(newText)
                                 }
                             } else {
@@ -1507,15 +1534,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
                                 onContentChange(newText)
                             }
-                        } else {
-                            val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
-                            value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
-                            onContentChange(newText)
                         }
                     }
                 }
                 else -> {
-                    val cursor = value.selection.end
+                    // P-EXTRAKEYS: Act like a laptop key — insert at cursor, replace selection.
+                    // selStart/selEnd handle both collapsed cursor (no selection) and
+                    // active text selection (replace the selected text with the typed key).
+                    val selStart = value.selection.min
+                    val selEnd = value.selection.max
                     // P-BRACKET: Auto-close brackets/quotes from extra keys toolbar
                     // (Keyboard input goes through onValueChange which already auto-closes,
                     // but extra keys toolbar inserts directly here — add the closing pair)
@@ -1525,13 +1552,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     )
                     val closing = closingMap[text]
                     if (closing != null) {
-                        val newText = value.text.substring(0, cursor) + text + closing + value.text.substring(cursor)
+                        val newText = value.text.substring(0, selStart) + text + closing + value.text.substring(selEnd)
                         // Place cursor between the pair (e.g. between ( and ))
-                        value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                        value = TextFieldValue(text = newText, selection = TextRange(selStart + 1))
                         onContentChange(newText)
                     } else {
-                        val newText = value.text.substring(0, cursor) + text + value.text.substring(cursor)
-                        value = TextFieldValue(text = newText, selection = TextRange(cursor + text.length))
+                        val newText = value.text.substring(0, selStart) + text + value.text.substring(selEnd)
+                        value = TextFieldValue(text = newText, selection = TextRange(selStart + text.length))
                         onContentChange(newText)
                     }
                 }
