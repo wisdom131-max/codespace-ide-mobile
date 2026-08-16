@@ -1386,6 +1386,9 @@ fun ExplorerSidePanel(
                         add("Cut" to Icons.Default.ContentCut)
                         if (hasPaste) add("Paste" to Icons.Default.ContentPaste)
                         add("Duplicate" to Icons.Default.FileCopy)
+                        if (workspaceRoot != null && f.parentFile?.absolutePath != workspaceRoot.absolutePath) {
+                            add("Move to Root Folder" to Icons.Default.ArrowUpward)
+                        }
                         add("Delete" to Icons.Default.Delete)
                         add("Copy Path" to Icons.Default.ContentCopy)
                         add("Share" to Icons.Default.Share)
@@ -1469,6 +1472,24 @@ fun ExplorerSidePanel(
                                                 if (f.isDirectory) f.copyRecursively(dest, overwrite = false)
                                                 else f.copyTo(dest, overwrite = false)
                                                 refresh++
+                                            }
+                                        }
+                                        "Move to Root Folder" -> {
+                                            val root = workspaceRoot
+                                            if (root != null && f.parentFile != null && f.parentFile!!.absolutePath != root.absolutePath) {
+                                                val dest = File(root, f.name)
+                                                if (dest.exists()) {
+                                                    onShowNotification?.invoke("A file named \'${f.name}\' already exists in the root folder", "error")
+                                                } else {
+                                                    val moved = f.renameTo(dest)
+                                                    if (moved) {
+                                                        refresh++
+                                                        selected = dest.absolutePath
+                                                        onShowNotification?.invoke("Moved \'${f.name}\' to root folder", "success")
+                                                    } else {
+                                                        onShowNotification?.invoke("Failed to move \'${f.name}\'", "error")
+                                                    }
+                                                }
                                             }
                                         }
                                         "Delete" -> showDelete = true
