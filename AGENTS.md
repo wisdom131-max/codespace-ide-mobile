@@ -18927,3 +18927,12 @@ Four fixes to the Command Palette:
 
 **Files touched:** AGENTS.md only (changelog + roadmap update)
 **Next on roadmap:** Start from top of remaining list — Crash #3/#4 (Notification Drawer) is easiest + most localized.
+
+### [2026-08-16 15:10 WAT] — AI Agent: Claude (Superagent), Commit: none (audit only)
+**Tags:** [AUDIT] [CRASH]
+**What was verified:**
+- **Crash #3 (duplicate LazyColumn key)** — ALREADY FIXED. `NotificationDrawerOverlay.kt:323` now uses `items(displayItems, key = { it.id })` — unique per-item IDs, no `"header_NOTIFICATIONS"` duplicate.
+- **Crash #4 (semantics property read)** — ALREADY FIXED. `NotificationDrawerOverlay.kt:550` now builds a local `desc` string and assigns via `.semantics { contentDescription = desc }` — no direct `getContentDescription` call.
+
+**Files touched:** none (code audit only)
+**Next on roadmap:** Next easiest items: Test 47 (git config auto-setup, unblocks 10 tests), Test 69 (trash delete persistence), Tests 124/125 (missing menu entries).
