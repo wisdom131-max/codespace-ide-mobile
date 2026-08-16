@@ -18695,25 +18695,44 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 
 ---
 
-### [2026-08-16 11:10 WAT] — AI Agent: Elowen (Claude Sonnet 4), Commit b791fc87 + pending, CI Build pending
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+
+---
+
+### [2026-08-16 11:04 WAT] — AI Agent: Elowen (Claude Sonnet 4, Base44 Superagent)
+**Commit:** b791fc87 + 9a5a2748 + 0e02642b | **CI Build:** pending (last green #2346)
+**Tags:** [UI] [GIT] [SETTINGS]
 
 **What was fixed:**
-1. Status bar Git branch was hardcoded "main" — now dynamically reads `.git/HEAD` to show actual current branch name. Shows short SHA (7 chars) for detached HEAD. Falls back to "main" if not a git repo.
-2. Status bar language indicator — replaced Material icons with VS Code-style text label showing language name (e.g. "TypeScript", "JSON", "Kotlin") in white when a file is open. Uses `Language.fromPath()` for detection.
-3. In-Project Settings portrait layout — was always fixed 200dp sidebar + content side-by-side, which cramped badly in portrait. Now responsive: portrait (< 600dp width) uses horizontal scrolling category tab strip on top + content below; landscape keeps the original VS Code-style sidebar layout.
+1. **[GIT] Dynamic Git branch in status bar** — was hardcoded "main", now reads `.git/HEAD` to show actual current branch name. Shows short SHA (7 chars) for detached HEAD. Falls back to "main" if not a git repo.
+2. **[UI] VS Code-style language indicator in status bar** — shows bracket symbol + language name, all white. Brackets map by type: `{ }` for code langs (TypeScript, JavaScript, Kotlin, Python, CSS, JSON), `< >` for markup (HTML, XML), `#` for Markdown, `Aa` for plain text. Example: `{ } TypeScript`. Uses `Language.fromPath()` for detection. Only shows when a file is open.
+3. **[UI] In-Project Settings responsive portrait layout** — was always fixed 200dp sidebar + content side-by-side, which cramped badly on phones in portrait. Now checks `LocalConfiguration.screenWidthDp`: portrait (< 600dp) uses horizontal scrolling category tab strip on top + content below; landscape (>= 600dp) keeps original VS Code-style sidebar layout.
 
 **Files touched:**
-- ProjectShellScreen.kt (StatusBarContent: added projectRootPath param, dynamic branch via .git/HEAD, Language.fromPath() text label)
-- InProjectSettingsDialog.kt (responsive portrait/landscape layout, horizontalScroll category tabs, LocalConfiguration import)
+- ProjectShellScreen.kt (StatusBarContent: added projectRootPath param, dynamic branch via .git/HEAD, bracket symbol + Language.fromPath() displayName text)
+- InProjectSettingsDialog.kt (responsive portrait/landscape layout via LocalConfiguration, horizontalScroll category tabs, added imports for horizontalScroll/rememberScrollState/LocalConfiguration)
 
-**Next:** Notification restructure (awaiting user plan), portrait settings device test
-
-### [2026-08-16 11:15 WAT] — AI Agent: Elowen (Claude Sonnet 4), Commit pending, CI Build pending
-
-**What was fixed:**
-Status bar language indicator refined — now shows VS Code-style bracket symbol + language name, all white. Bracket symbols map by language type: `{ }` for code langs (TS/JS/Kotlin/Python/CSS/JSON), `< >` for markup (HTML/XML), `#` for Markdown, `Aa` for plain text. Example: "{ } TypeScript".
-
-**Files touched:**
-- ProjectShellScreen.kt (StatusBarContent: bracket symbol + lang.displayName text)
-
-**Next:** Notification restructure (awaiting user plan)
+**Next on roadmap:**
+- 🔲 Notification restructure (awaiting Goodluck's plan)
+- 🔲 Device testing of all SCM features (E1–E18)
+- 🔲 YouTube Test 51 fix
+- 🔲 Phase N — Advanced Notification System (awaiting user plan)
+- 🔲 Portrait settings device test
+- 🔲 Split editor pane wiring (currently placeholder "coming soon")
+- 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+- 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+- 🔲 TypeScript 7 as default LSP with vtsls
+- 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+- ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
