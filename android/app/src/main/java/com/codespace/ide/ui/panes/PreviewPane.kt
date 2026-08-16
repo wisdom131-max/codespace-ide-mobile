@@ -814,6 +814,7 @@ private fun HtmlPreview(
             }
             onWebView(wv)
         },
+        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
         modifier = Modifier.fillMaxSize(),
     )
 }
@@ -889,6 +890,7 @@ private fun MarkdownPreview(
             }
             onWebView(wv)
         },
+        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
         modifier = Modifier.fillMaxSize(),
     )
 }
@@ -929,6 +931,7 @@ private fun SvgPreview(
             }
             onWebView(wv)
         },
+        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
         modifier = Modifier.fillMaxSize(),
     )
 }
@@ -1333,6 +1336,7 @@ private fun BrowserPreview(
             }
             onWebView(wv)
         },
+        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
         modifier = Modifier.fillMaxSize().clipToBounds(),
     )
 }
@@ -1421,6 +1425,7 @@ private fun RemotionPreview(
             onCanGoBack(wv.canGoBack())
             onWebView(wv)
         },
+        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
         modifier = Modifier.fillMaxSize().clipToBounds(),
     )
 }
@@ -1527,6 +1532,7 @@ private fun DashboardPreview(
             }
             onWebView(wv)
         },
+        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
         modifier = Modifier.fillMaxSize(),
     )
 }

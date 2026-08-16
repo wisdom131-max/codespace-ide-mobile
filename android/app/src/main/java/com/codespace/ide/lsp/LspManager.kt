@@ -679,14 +679,17 @@ object LspManager {
     private val processMonitors = ConcurrentHashMap<Language, Thread>()
 
     // Phase V-E: Memory monitor executor
-    private val memoryMonitorExecutor = Executors.newSingleThreadScheduledExecutor()
+    // CRASH-FIX: was `val` — after shutdownNow() on teardown, startServer() would
+    // call scheduleAtFixedRate on the dead executor → RejectedExecutionException.
+    // Now recreated fresh in ensureMemoryMonitorStarted() if terminated.
+    private var memoryMonitorExecutor = Executors.newSingleThreadScheduledExecutor()
     private var memoryMonitorScheduled = false
 
     // Phase V-I: Configurable idle timeout (seconds). 0 = never auto-close.
     @Volatile var idleTimeoutSeconds: Long = 10_000L // default 10s for backward compat
 
     // Phase V-G: Health check executor
-    private val healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
+    private var healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
     private var healthCheckScheduled = false
 
     // Phase V-N: Lifecycle log tag
@@ -1961,6 +1964,10 @@ object LspManager {
      */
     private fun ensureMemoryMonitorStarted() {
         if (memoryMonitorScheduled) return
+        // CRASH-FIX: recreate executor if it was shut down during teardown
+        if (memoryMonitorExecutor.isShutdown || memoryMonitorExecutor.isTerminated) {
+            memoryMonitorExecutor = Executors.newSingleThreadScheduledExecutor()
+        }
         memoryMonitorScheduled = true
         memoryMonitorExecutor.scheduleAtFixedRate({
             for ((language, server) in servers) {
@@ -2016,6 +2023,10 @@ object LspManager {
      */
     private fun ensureHealthCheckStarted() {
         if (healthCheckScheduled) return
+        // CRASH-FIX: recreate executor if it was shut down during teardown
+        if (healthCheckExecutor.isShutdown || healthCheckExecutor.isTerminated) {
+            healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
+        }
         healthCheckScheduled = true
         healthCheckExecutor.scheduleAtFixedRate({
             for ((language, server) in servers) {

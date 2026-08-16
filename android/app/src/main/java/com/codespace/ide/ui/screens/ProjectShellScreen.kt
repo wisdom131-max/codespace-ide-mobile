@@ -68,6 +68,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -756,6 +758,7 @@ fun ProjectShellScreen(
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     val showFindBarMs = remember { mutableStateOf(false) }; var showFindBar by showFindBarMs
+    val findMatchIndexMs = remember { mutableStateOf(0) }; var findMatchIndex by findMatchIndexMs
     val wordWrapMs = remember { FeatureToggleStore.state("word_wrap") }; var _wordWrap by wordWrapMs
     val showInlayHintsMs = remember { FeatureToggleStore.state("inlay_hints") }; var _showInlayHints by showInlayHintsMs  // P2-11
     val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
@@ -4457,15 +4460,23 @@ private fun PssEditorColumn(
         // Find & Replace bar
         if (showFindBar) {
             Column(
-                Modifier.fillMaxWidth().background(Color(0xFFF5F5F5))
-                    .border(1.dp, DividerColor, RoundedCornerShape(0.dp))
+                Modifier.fillMaxWidth().background(Color(0xFF252526))
+                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(0.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = findQuery, onValueChange = { findQuery = it },
-                        placeholder = { Text("Find", fontSize = 12.sp) },
+                        placeholder = { Text("Find", fontSize = 12.sp, color = Color(0xFF666666)) },
                         singleLine = true, modifier = Modifier.weight(1f).height(36.dp),
+                        textStyle = TextStyle(color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF007ACC),
+                            unfocusedBorderColor = Color(0xFF3C3C3C),
+                            cursorColor = Color(0xFFAEAFAD),
+                            focusedTextColor = Color(0xFFCCCCCC),
+                            unfocusedTextColor = Color(0xFFCCCCCC),
+                        ),
                     )
                     Spacer(Modifier.width(4.dp))
                     val toggleBg = androidx.compose.ui.graphics.Color(0xFF007ACC)
@@ -4496,10 +4507,31 @@ private fun PssEditorColumn(
                             color = if (findUseRegex) toggleBg else Color(0xFF888888))
                     }
                     Spacer(Modifier.width(8.dp))
+                    val _findMatches = remember(findQuery, activeEditorTab) {
+                        if (findQuery.isEmpty() || activeEditorTab == null) emptyList()
+                        else try {
+                            val content = java.io.File(activeEditorTab).readText()
+                            val opts = if (findCaseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+                            val rawPattern = if (findUseRegex) findQuery else Regex.escape(findQuery)
+                            val finalPattern = if (findWholeWord && !findUseRegex) "\\b${rawPattern}\\b" else rawPattern
+                            Regex(finalPattern, opts).findAll(content).map { it.range.first }.toList()
+                        } catch (_: Exception) { emptyList() }
+                    }
+                    val _safeIdx = findMatchIndex.coerceIn(0, (_findMatches.size - 1).coerceAtLeast(0))
+                    Text(if (_findMatches.isEmpty()) "0/0" else "${_safeIdx + 1}/${_findMatches.size}",
+                        fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 4.dp))
                     Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive,
-                        modifier = Modifier.size(20.dp).clickable { /* find prev — CodeEditor handles via externalFindQuery */ })
+                        modifier = Modifier.size(20.dp).clickable {
+                            if (_findMatches.isNotEmpty()) {
+                                findMatchIndex = (_safeIdx - 1 + _findMatches.size) % _findMatches.size
+                            }
+                        })
                     Icon(Icons.Default.KeyboardArrowDown, null, tint = TabTextInactive,
-                        modifier = Modifier.size(20.dp).clickable { /* find next — CodeEditor handles via externalFindQuery */ })
+                        modifier = Modifier.size(20.dp).clickable {
+                            if (_findMatches.isNotEmpty()) {
+                                findMatchIndex = (_safeIdx + 1) % _findMatches.size
+                            }
+                        })
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Default.Close, null, tint = TabTextInactive,
                         modifier = Modifier.size(18.dp).clickable { showFindBar = false; findQuery = ""; replaceQuery = "" })
@@ -4508,8 +4540,16 @@ private fun PssEditorColumn(
                     Spacer(Modifier.height(4.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(value = replaceQuery, onValueChange = { replaceQuery = it },
-                            placeholder = { Text("Replace", fontSize = 12.sp) },
-                            singleLine = true, modifier = Modifier.weight(1f).height(36.dp))
+                            placeholder = { Text("Replace", fontSize = 12.sp, color = Color(0xFF666666)) },
+                            singleLine = true, modifier = Modifier.weight(1f).height(36.dp),
+                            textStyle = TextStyle(color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF007ACC),
+                                unfocusedBorderColor = Color(0xFF3C3C3C),
+                                cursorColor = Color(0xFFAEAFAD),
+                                focusedTextColor = Color(0xFFCCCCCC),
+                                unfocusedTextColor = Color(0xFFCCCCCC),
+                            ))
                         Spacer(Modifier.width(4.dp))
                         OutlinedButton(onClick = {
                             val active = activeEditorTab
