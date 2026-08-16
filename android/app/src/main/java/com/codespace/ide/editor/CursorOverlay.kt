@@ -55,7 +55,7 @@ internal fun cursorOverlayModifier(
         // CRASH-FIX: clamp cursor offset to valid range — after multi-cursor edits
         // the stored offset can exceed the current text length, causing
         // IllegalArgumentException in getHorizontalPosition (Test 19 crash).
-        val cursor = selection.end.coerceIn(0, layout.text.length)
+        val cursor = selection.end.coerceIn(0, layout.layoutInput.text.length)
         val lineIdx = layout.getLineForOffset(cursor)
         val cx = layout.getHorizontalPosition(cursor, true)
         val cy = layout.getLineTop(lineIdx)

@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -1595,6 +1596,7 @@ fun ProjectShellScreen(
                     cursorLineMs = cursorLineMs,
                     editorFontSizeMs = editorFontSizeMs,
                     findQueryMs = findQueryMs,
+                    findMatchIndexMs = findMatchIndexMs,
                     isDraggingBottomPanelMs = isDraggingBottomPanelMs,
                     keyboardInsertMs = keyboardInsertMs,
                     previewPortMs = previewPortMs,
@@ -1989,7 +1991,11 @@ private fun PssOverlays(
                         .fillMaxWidth(0.75f)
                         .widthIn(max = 380.dp)
                         .heightIn(max = 240.dp)
-                        .onGloballyPositioned { coords -> cmdCardBounds = coords.boundsInWindow() }
+                        .onGloballyPositioned { coords ->
+                            val pos = coords.positionInWindow()
+                            val sz = coords.size
+                            cmdCardBounds = Rect(pos.x, pos.y, pos.x + sz.width.toFloat(), pos.y + sz.height.toFloat())
+                        }
                         // P-CMDPAL-FIX-4: black outline around the command palette card
                         .border(1.dp, Color.Black, androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
                     colors = CardDefaults.cardColors(containerColor = MenuBg),
@@ -4184,6 +4190,7 @@ private fun PssEditorColumn(
     cursorLineMs: MutableState<Int>,
     editorFontSizeMs: MutableState<Int>,
     findQueryMs: MutableState<String>,
+    findMatchIndexMs: MutableState<Int>,
     isDraggingBottomPanelMs: MutableState<Boolean>,
     keyboardInsertMs: MutableState<((String) -> Unit)?>,
     previewPortMs: MutableState<Int?>,
@@ -4232,6 +4239,7 @@ private fun PssEditorColumn(
     var cursorLine by cursorLineMs
     var editorFontSize by editorFontSizeMs
     var findQuery by findQueryMs
+    var findMatchIndex by findMatchIndexMs
     var isDraggingBottomPanel by isDraggingBottomPanelMs
     var keyboardInsert by keyboardInsertMs
     var previewPort by previewPortMs
