@@ -121,8 +121,12 @@ fun PreviewPane(
         }
     }
 
-    // Read file content from disk whenever path changes
-    val content by produceState(initialValue = "", key1 = activeFilePath) {
+    // Refresh trigger — increments when the user taps the refresh button to force a
+    // re-read from disk. Without this, produceState only re-reads when activeFilePath
+    // changes, so editing the file in the editor + pressing refresh shows stale content.
+    var refreshTrigger by remember { mutableStateOf(0) }
+    // Read file content from disk whenever path changes OR refresh is triggered
+    val content by produceState(initialValue = "", key1 = activeFilePath, key2 = refreshTrigger) {
         value = if (activeFilePath.isNotBlank()) {
             try { java.io.File(activeFilePath).readText() } catch (e: Exception) { "" }
         } else ""
@@ -138,7 +142,7 @@ fun PreviewPane(
         }
     }
     // Auto-detect mode from file language
-    val _defaultMode = when (language) {
+    val defaultModeForFile = when (language) {
         Language.HTML                          -> PreviewMode.HTML
         Language.MARKDOWN                      -> PreviewMode.MARKDOWN
         Language.XML                           -> if (activeFilePath.endsWith(".svg")) PreviewMode.SVG else PreviewMode.HTML
@@ -152,6 +156,17 @@ fun PreviewPane(
     // below go straight through sharedState.X (Kotlin doesn't allow custom accessors on
     // local variables, so we reference the shared property directly rather than aliasing it).
     val sharedState = externalState ?: rememberPreviewState()
+    // BUG-FIX (Goodluck report 2026-08-16): defaultModeForFile was computed correctly per
+    // file type (HTML/MARKDOWN/SVG) but was DEAD CODE — never applied anywhere. sharedState
+    // survives across file switches (by design, so manually switching tabs doesn't reset the
+    // user's chosen mode), which meant opening an .svg file after an .html or .md file kept
+    // showing the PREVIOUS file's mode (e.g. SVG content rendered through the HTML or
+    // Markdown viewer) instead of switching to the SVG viewer. Auto-apply the detected mode
+    // whenever the active file path actually changes — the user can still manually switch
+    // modes afterwards for that same file if they want a different view.
+    LaunchedEffect(activeFilePath) {
+        sharedState.activeMode = defaultModeForFile
+    }
     var showGuide by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var pageTitle by remember { mutableStateOf("") }
@@ -254,6 +269,13 @@ fun PreviewPane(
                     modifier = Modifier
                         .size(18.dp)
                         .clickable {
+                            // Force re-read from disk (editor writes to disk on every keystroke,
+                            // but produceState above only re-reads when the path changes, not when
+                            // the file content changes). Incrementing refreshTrigger retriggers
+                            // produceState, which feeds fresh content into the WebView's update block.
+                            refreshTrigger++
+                            // Also tell the WebView to reload — covers the case where the content
+                            // hasn't changed but the user just wants to re-render (e.g. external CSS).
                             when (sharedState.activeMode) {
                                 PreviewMode.BROWSER -> webViewRef?.reload()
                                 else -> webViewRef?.reload()

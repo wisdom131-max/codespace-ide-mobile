@@ -507,6 +507,15 @@ fun CodeEditor(
     scrollToLine: Int = 0,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
+    /** External find query from the top find bar (white bar in ProjectShellScreen).
+     *  When non-null, syncs to internal findQuery so the top bar drives match highlighting. */
+    externalFindQuery: String? = null,
+    /** When true, forces find mode active (driven by top find bar toggle). */
+    externalFindBarOpen: Boolean = false,
+    /** External find options from the top find bar. -1 = don't override internal state. */
+    externalCaseSensitive: Boolean? = null,
+    externalWholeWord: Boolean? = null,
+    externalUseRegex: Boolean? = null,
     goToLineOpen: Boolean = false,
     onGoToLineClose: () -> Unit = {},
     /** P2-9 Bookmarks: initial set of bookmarked line indices (0-based). */
@@ -1547,6 +1556,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
+    // Sync external find bar (top white bar) to internal find state
+    LaunchedEffect(externalFindQuery) {
+        if (externalFindQuery != null && externalFindQuery != findQuery) {
+            findQuery = externalFindQuery
+            matchIndex = 0
+        }
+    }
+    LaunchedEffect(externalCaseSensitive) {
+        if (externalCaseSensitive != null) caseSensitive = externalCaseSensitive
+    }
+    LaunchedEffect(externalWholeWord) {
+        if (externalWholeWord != null) wholeWord = externalWholeWord
+    }
+    LaunchedEffect(externalUseRegex) {
+        if (externalUseRegex != null) useRegex = externalUseRegex
+    }
     var useRegex by remember { mutableStateOf(false) }
     var caseSensitive by remember { mutableStateOf(false) }
     var wholeWord by remember { mutableStateOf(false) }

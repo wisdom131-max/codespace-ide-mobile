@@ -611,10 +611,12 @@ object ProotInstaller {
                 File(profileDDir, "01-essential-tools.sh").writeText(
                     "#!/bin/sh\n" +
                     "# Auto-install essential dev tools if missing (self-healing)\n" +
+                    "# Suppress all errors — useradd/groupadd exit 9 for 'already exists' which is\n" +
+                    "# harmless. Never let apt-get exit codes propagate to the login shell.\n" +
                     "if ! command -v git >/dev/null 2>&1; then\n" +
-                    "    echo \"[setup] Installing git...\">/dev/null\n" +
-                    "    apt-get update -qq && apt-get install -y --no-install-recommends git curl && echo \"[setup] git installed\">/dev/null\n" +
-                    "fi\n"
+                    "    (apt-get update -qq && apt-get install -y --no-install-recommends git curl) >/dev/null 2>&1 || true\n" +
+                    "fi\n" +
+                    "exit 0\n"
                 )
                 File(profileDDir, "01-essential-tools.sh").setExecutable(true, false)
                 File(profileDDir, "99-dpkg-fix.sh").writeText(

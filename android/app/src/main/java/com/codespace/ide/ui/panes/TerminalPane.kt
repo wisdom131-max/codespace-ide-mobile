@@ -83,11 +83,18 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     override fun onSessionFinished(finishedSession: TerminalSession) {
         // Phase N: Notify terminal session ended
         val exitCode = finishedSession.exitStatus
-        NotificationStore.notifyTerminalEvent(
-            title = if (exitCode == 0) "Terminal session ended" else "Terminal session crashed",
-            body = "Exit code: $exitCode",
-            isError = exitCode != 0,
-        )
+        // Exit code 9 = useradd/groupadd wrapper "already exists" (harmless, fires during
+        // proot setup when apt-get tries to create a user that's already in /etc/passwd).
+        // Don't show a crash notification for it — the terminal itself is still usable.
+        // Exit code 0 = normal exit. Exit code 130 = Ctrl+C (SIGINT). Both are also fine.
+        val isHarmless = exitCode == 0 || exitCode == 9 || exitCode == 130
+        if (!isHarmless) {
+            NotificationStore.notifyTerminalEvent(
+                title = "Terminal session crashed",
+                body = "Exit code: $exitCode",
+                isError = true,
+            )
+        }
         onSessionFinished?.invoke()
     }
 

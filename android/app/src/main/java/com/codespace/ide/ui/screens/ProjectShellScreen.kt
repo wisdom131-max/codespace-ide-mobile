@@ -4028,6 +4028,10 @@ private fun PssEditorColumn(
     var _showFileSearch by showFileSearchMs
     var showFindBar by showFindBarMs
     var showReplaceRow by showReplaceRowMs
+    // Find bar toggle states (Aa = case sensitive, \b = whole word, .* = regex)
+    var findCaseSensitive by remember { mutableStateOf(false) }
+    var findWholeWord by remember { mutableStateOf(false) }
+    var findUseRegex by remember { mutableStateOf(false) }
     var showSplitTerminal by showSplitTerminalMs
     var _showSymbolSearch by showSymbolSearchMs
     var splitTerminalWidth by splitTerminalWidthMs
@@ -4252,20 +4256,38 @@ private fun PssEditorColumn(
                         singleLine = true, modifier = Modifier.weight(1f).height(36.dp),
                     )
                     Spacer(Modifier.width(4.dp))
-                    Box(Modifier.border(1.dp, DividerColor, RoundedCornerShape(3.dp)).padding(4.dp)) {
-                        Text("Aa", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    val toggleBg = androidx.compose.ui.graphics.Color(0xFF007ACC)
+                    Box(
+                        Modifier.border(1.dp, if (findCaseSensitive) toggleBg else DividerColor, RoundedCornerShape(3.dp))
+                            .background(if (findCaseSensitive) toggleBg.copy(alpha = 0.15f) else Color.Transparent)
+                            .padding(4.dp).clickable { findCaseSensitive = !findCaseSensitive }
+                    ) {
+                        Text("Aa", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                            color = if (findCaseSensitive) toggleBg else Color(0xFF888888))
                     }
                     Spacer(Modifier.width(4.dp))
-                    Box(Modifier.border(1.dp, DividerColor, RoundedCornerShape(3.dp)).padding(4.dp)) {
-                        Text("\\b", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Box(
+                        Modifier.border(1.dp, if (findWholeWord) toggleBg else DividerColor, RoundedCornerShape(3.dp))
+                            .background(if (findWholeWord) toggleBg.copy(alpha = 0.15f) else Color.Transparent)
+                            .padding(4.dp).clickable { findWholeWord = !findWholeWord }
+                    ) {
+                        Text("\\b", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                            color = if (findWholeWord) toggleBg else Color(0xFF888888))
                     }
                     Spacer(Modifier.width(4.dp))
-                    Box(Modifier.border(1.dp, DividerColor, RoundedCornerShape(3.dp)).padding(4.dp)) {
-                        Text(".*", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Box(
+                        Modifier.border(1.dp, if (findUseRegex) toggleBg else DividerColor, RoundedCornerShape(3.dp))
+                            .background(if (findUseRegex) toggleBg.copy(alpha = 0.15f) else Color.Transparent)
+                            .padding(4.dp).clickable { findUseRegex = !findUseRegex }
+                    ) {
+                        Text(".*", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                            color = if (findUseRegex) toggleBg else Color(0xFF888888))
                     }
                     Spacer(Modifier.width(8.dp))
-                    Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = TabTextInactive, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive,
+                        modifier = Modifier.size(20.dp).clickable { /* find prev — CodeEditor handles via externalFindQuery */ })
+                    Icon(Icons.Default.KeyboardArrowDown, null, tint = TabTextInactive,
+                        modifier = Modifier.size(20.dp).clickable { /* find next — CodeEditor handles via externalFindQuery */ })
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Default.Close, null, tint = TabTextInactive,
                         modifier = Modifier.size(18.dp).clickable { showFindBar = false; findQuery = ""; replaceQuery = "" })
@@ -4333,6 +4355,11 @@ private fun PssEditorColumn(
                     onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
                     formatOnSaveTrigger = formatOnSaveTrigger,
                     udm = udm,
+                    externalFindQuery = if (showFindBar) _findQuery else null,
+                    externalFindBarOpen = showFindBar,
+                    externalCaseSensitive = if (showFindBar) findCaseSensitive else null,
+                    externalWholeWord = if (showFindBar) findWholeWord else null,
+                    externalUseRegex = if (showFindBar) findUseRegex else null,
                 )
             } else {
                 Box(

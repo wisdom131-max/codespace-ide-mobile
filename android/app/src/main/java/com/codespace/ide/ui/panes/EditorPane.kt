@@ -141,6 +141,13 @@ fun EditorPane(
     onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) -> String?)? = null,
     /** P41-O2: Format on Save trigger — increments when user clicks Save. EditorPane formats then saves. */
     formatOnSaveTrigger: Int = 0,
+    /** External find query from the top white find bar in ProjectShellScreen. */
+    externalFindQuery: String? = null,
+    /** When true, the top find bar is open — drive CodeEditor's find highlighting. */
+    externalFindBarOpen: Boolean = false,
+    externalCaseSensitive: Boolean? = null,
+    externalWholeWord: Boolean? = null,
+    externalUseRegex: Boolean? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -1316,6 +1323,11 @@ fun EditorPane(
                         scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
+                        externalFindQuery = externalFindQuery,
+                        externalFindBarOpen = externalFindBarOpen,
+                        externalCaseSensitive = externalCaseSensitive,
+                        externalWholeWord = externalWholeWord,
+                        externalUseRegex = externalUseRegex,
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
                         breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
