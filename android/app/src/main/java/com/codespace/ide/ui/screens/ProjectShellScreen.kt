@@ -1811,7 +1811,15 @@ private fun PssOverlays(
     showNotification: (String, String) -> Unit,
 ) {
         // P34-NOTIF: VS Code-style in-app toast banner (auto-dismiss)
-        NotificationToastBanner()
+        NotificationToastBanner(
+            colors = NotifColors(
+                panelBg = MenuBg,
+                border = DividerColor,
+                text = MenuText,
+                textSecondary = SectionHeaderText,
+                accent = TabActiveIndicator,
+            )
+        )
 
         // Notification Drawer — scrim already in NotificationDrawerOverlay
         if (showNotifDrawer) {
@@ -1819,16 +1827,20 @@ private fun PssOverlays(
                 onDismiss = { onShowNotifDrawerChange(false) },
                 onClear = { /* handled by store */ },
                 onShowCommands = {
-                    // P35-NOTIF: Chevron in drawer opens command palette with notification commands
                     onShowNotifDrawerChange(false)
                     onCommandQueryChange("Notifications")
                     onShowCommandPaletteChange(true)
                 },
                 onOpenProblems = {
-                    // P-NOTIF-RESTRUCTURE (Test 39): tapping an ERROR notification
-                    // jumps straight to the Problems panel, matching VS Code.
                     handleMenuAction("Problems")
                 },
+                colors = NotifColors(
+                    panelBg = MenuBg,
+                    border = DividerColor,
+                    text = MenuText,
+                    textSecondary = SectionHeaderText,
+                    accent = TabActiveIndicator,
+                ),
             )
         }
 

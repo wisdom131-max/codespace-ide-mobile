@@ -1,7 +1,9 @@
 package com.codespace.ide.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,6 +40,24 @@ import java.util.concurrent.TimeUnit
 // Legacy compat — kept so existing callers don't break
 internal data class NotifItem(val id: Long, val msg: String, val type: String)
 
+/**
+ * P-NOTIF-UI-FIX: Theme-aware colors for the notification panel/toast.
+ * Passed in from ProjectShellScreen's per-theme IdeColors so this panel matches
+ * whichever editor theme is active (Dark Default, Dracula, Catppuccin, AMOLED, ...)
+ * instead of a hardcoded purple/indigo palette.
+ *
+ * Defaults below match "Dark (Default)" purely as a compile-time fallback — real
+ * call sites always pass the live theme's colors.
+ */
+internal data class NotifColors(
+    val panelBg: Color = Color(0xFF252526),
+    val border: Color = Color(0xFF454545),
+    val text: Color = Color(0xFFCCCCCC),
+    val textSecondary: Color = Color(0xFF969696),
+    val chipBg: Color = Color(0xFF969696).copy(alpha = 0.12f),
+    val accent: Color = Color(0xFF007ACC),
+)
+
 // ── Position helpers (Test 39: 3-corner bell/panel positioning) ────────────────
 
 private fun cornerAlignment(pos: String): Alignment = when (pos) {
@@ -54,14 +74,6 @@ private fun cornerLabel(pos: String): String = when (pos) {
 
 // ── VS Code-style Notification Bell ────────────────────────────────────────────
 
-/**
- * P-NOTIF-RESTRUCTURE (Test 39): VS Code-style notification bell.
- * - Bigger, translucent outline icon (status bar color shows through).
- * - Unread indicator is a small round DOT, not a numeric badge (VS Code parity).
- * - Swaps to a "slash" bell + dims when Do Not Disturb is on.
- *
- * @param onClick Called when bell is tapped (opens notification center)
- */
 @Composable
 internal fun NotificationBell(
     iconSize: Int = 22,
@@ -71,10 +83,9 @@ internal fun NotificationBell(
     val bellState = remember { derivedStateOf { NotificationStore.bellState } }.value
     val dnd = remember { derivedStateOf { NotificationStore.settings.doNotDisturb } }.value
 
-    // P35-NOTIF: VS Code bell colors — translucent so the bar color shows through.
     val bellColor = when {
-        dnd -> Color(0xFF7F849C).copy(alpha = 0.45f)   // dimmed when DND on
-        else -> Color(0xFFFFFFFF).copy(alpha = 0.55f)  // consistent translucent white
+        dnd -> Color(0xFF7F849C).copy(alpha = 0.45f)
+        else -> Color(0xFFFFFFFF).copy(alpha = 0.55f)
     }
 
     Box(
@@ -90,7 +101,6 @@ internal fun NotificationBell(
             tint = bellColor,
             modifier = Modifier.size(iconSize.dp),
         )
-        // Severity-colored dot indicator — VS Code style, color by notification type
         if (unread > 0) {
             Box(
                 Modifier
@@ -107,20 +117,13 @@ internal fun NotificationBell(
                     ),
             )
         }
-}
+    }
 }
 
 // ── In-app Toast Banner (VS Code-style floating card, 3-corner anchored) ───────
 
-/**
- * P-NOTIF-RESTRUCTURE: VS Code-style notification toast.
- * Appears as a compact floating card anchored to whichever corner is selected
- * in NotificationStore.settings.bellPosition (bottom-right / bottom-left / top-right).
- * Card is ~320dp wide, rounded corners, subtle border, shadow — NOT full-width.
- * Auto-dismisses after toastDurationMs.
- */
 @Composable
-internal fun NotificationToastBanner() {
+internal fun NotificationToastBanner(colors: NotifColors = NotifColors()) {
     var toast by remember { mutableStateOf(NotificationStore.activeToast) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -151,15 +154,14 @@ internal fun NotificationToastBanner() {
                 ),
         ) {
             val t = toast ?: return@AnimatedVisibility
-            // VS Code-style compact card — 320dp wide, rounded, border, shadow
             Card(
                 Modifier
                     .width(320.dp)
                     .clickable(enabled = false) {},
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
+                colors = CardDefaults.cardColors(containerColor = colors.panelBg),
                 elevation = CardDefaults.cardElevation(6.dp),
                 shape = RoundedCornerShape(6.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF313244)),
+                border = BorderStroke(1.dp, colors.border),
             ) {
                 Row(
                     Modifier
@@ -176,7 +178,7 @@ internal fun NotificationToastBanner() {
                                 t.title,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFCDD6F4),
+                                color = colors.text,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -184,17 +186,16 @@ internal fun NotificationToastBanner() {
                         Text(
                             t.body,
                             fontSize = 11.sp,
-                            color = Color(0xFF9CA0B0),
+                            color = colors.textSecondary,
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        // Phase N: Progress bar for PROGRESS severity
                         if (t.severity == NotificationStore.Severity.PROGRESS && t.progress != null) {
                             Spacer(Modifier.height(4.dp))
                             if (t.progress.indeterminate) {
                                 LinearProgressIndicator(
                                     modifier = Modifier.fillMaxWidth().height(2.dp),
-                                    color = Color(0xFF89DCEB),
+                                    color = colors.accent,
                                 )
                             } else {
                                 val progress = if (t.progress.max > 0) {
@@ -203,14 +204,13 @@ internal fun NotificationToastBanner() {
                                 LinearProgressIndicator(
                                     progress = { progress },
                                     modifier = Modifier.fillMaxWidth().height(2.dp),
-                                    color = Color(0xFF89DCEB),
+                                    color = colors.accent,
                                 )
                             }
                             t.progress.statusMessage?.let {
-                                Text(it, fontSize = 9.sp, color = Color(0xFF6C7086), maxLines = 1)
+                                Text(it, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
                             }
                         }
-                        // Phase N: Action buttons on toast
                         if (t.actions.isNotEmpty()) {
                             Spacer(Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -219,29 +219,20 @@ internal fun NotificationToastBanner() {
                                         action.label,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = if (action.destructive) Color(0xFFF38BA8) else Color(0xFF89B4FA),
+                                        color = if (action.destructive) Color(0xFFF38BA8) else colors.accent,
                                         modifier = Modifier
                                             .background(
                                                 if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f)
-                                                else Color(0xFF89B4FA).copy(alpha = 0.15f),
+                                                else colors.accent.copy(alpha = 0.15f),
                                                 RoundedCornerShape(4.dp),
                                             )
-                                            .clickable {
-                                                NotificationStore.executeAction(t.id, action.id)
-                                                NotificationStore.dismissToast()
-                                            }
+                                            .clickable { NotificationStore.executeAction(t.id, action.id) }
                                             .padding(horizontal = 8.dp, vertical = 3.dp),
                                     )
                                 }
                             }
                         }
                     }
-                    Spacer(Modifier.width(6.dp))
-                    Icon(
-                        Icons.Default.Close, null,
-                        tint = Color(0xFF6C7086),
-                        modifier = Modifier.size(14.dp).clickable { NotificationStore.dismissToast() },
-                    )
                 }
             }
         }
@@ -250,20 +241,14 @@ internal fun NotificationToastBanner() {
 
 // ── Notification Drawer ───────────────────────────────────────────────────────
 
-/**
- * P-NOTIF-RESTRUCTURE (Test 39): Full VS Code-style notification drawer.
- * Reads from NotificationStore (single source of truth).
- * Header row = title + 4 icons: Clear All, DND menu, Reposition menu, Collapse chevron.
- * Tapping an ERROR row jumps straight to the Problems panel (onOpenProblems).
- * Tapping any other row expands it in place to show the full message.
- */
 @Composable
 internal fun NotificationDrawerOverlay(
-    @Suppress("UNUSED_PARAMETER") notifList: List<NotifItem> = emptyList(), // legacy param — ignored
+    @Suppress("UNUSED_PARAMETER") notifList: List<NotifItem> = emptyList(),
     onDismiss: () -> Unit,
     onClear: () -> Unit,
     onShowCommands: () -> Unit = {},
     onOpenProblems: () -> Unit = {},
+    colors: NotifColors = NotifColors(),
 ) {
     val allItems by remember { derivedStateOf { NotificationStore.items.toList() } }
     val unread = NotificationStore.unreadCount
@@ -271,7 +256,6 @@ internal fun NotificationDrawerOverlay(
     val isTop = pos == NotificationStore.POS_TOP_RIGHT
     val isLeft = pos == NotificationStore.POS_BOTTOM_LEFT
 
-    // Filter state
     var filterSeverity by remember { mutableStateOf<NotificationStore.Severity?>(null) }
     var filterSource by remember { mutableStateOf<NotificationStore.Source?>(null) }
 
@@ -282,7 +266,6 @@ internal fun NotificationDrawerOverlay(
         }
     }
 
-    // Mark all read when drawer opens
     LaunchedEffect(Unit) { NotificationStore.markAllRead() }
 
     Box(
@@ -301,34 +284,38 @@ internal fun NotificationDrawerOverlay(
                     end = if (isLeft) 0.dp else 4.dp,
                 )
                 .width(320.dp)
-                .heightIn(max = 520.dp)
+                .heightIn(max = 460.dp)
                 .clickable(enabled = false) {},
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
+            colors = CardDefaults.cardColors(containerColor = colors.panelBg),
             elevation = CardDefaults.cardElevation(8.dp),
             shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, colors.border),
         ) {
             Column {
-                // ── Header: title + 4 action icons ─────────────────────────
                 DrawerHeader(
                     unread = unread,
+                    colors = colors,
                     onClearAll = { NotificationStore.clearAll(); onClear() },
                     onCollapse = onDismiss,
                 )
-                HorizontalDivider(color = Color(0xFF313244))
 
-                // ── Severity filter chips ────────────────────────────────────
                 if (allItems.isNotEmpty()) {
-                    FilterChipsRow(filterSeverity) { filterSeverity = if (filterSeverity == it) null else it }
-                    SourceFilterRow(filterSource) { filterSource = if (filterSource == it) null else it }
-                    HorizontalDivider(color = Color(0xFF313244), thickness = 0.5.dp)
+                    HorizontalDivider(color = colors.border, thickness = 0.5.dp)
+                    NotifFilterBar(
+                        filterSeverity = filterSeverity,
+                        filterSource = filterSource,
+                        colors = colors,
+                        onFilterSeverity = { filterSeverity = if (filterSeverity == it) null else it },
+                        onFilterSource = { filterSource = if (filterSource == it) null else it },
+                    )
                 }
+                HorizontalDivider(color = colors.border, thickness = 0.5.dp)
 
-                // ── List ─────────────────────────────────────────────────────
                 if (displayItems.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 20.dp), contentAlignment = Alignment.Center) {
                         Text(
                             if (allItems.isEmpty()) "No New Notifications" else "No matching notifications",
-                            color = Color(0xFF6C7086), fontSize = 12.sp,
+                            color = colors.textSecondary, fontSize = 12.sp,
                         )
                     }
                 } else {
@@ -336,13 +323,14 @@ internal fun NotificationDrawerOverlay(
                         items(displayItems, key = { it.id }) { item ->
                             NotificationRow(
                                 item = item,
+                                colors = colors,
                                 onErrorTap = {
                                     NotificationStore.markRead(item.id)
                                     onOpenProblems()
                                     onDismiss()
                                 },
                             )
-                            HorizontalDivider(color = Color(0xFF313244), thickness = 0.5.dp)
+                            HorizontalDivider(color = colors.border, thickness = 0.5.dp)
                         }
                     }
                 }
@@ -351,18 +339,10 @@ internal fun NotificationDrawerOverlay(
     }
 }
 
-/**
- * P-NOTIF-RESTRUCTURE: Notification panel header.
- * Title on the left ("No New Notifications" / "N New Notifications").
- * Four icons on the right, in VS Code order:
- *   1. Clear All          — clears every notification
- *   2. Do Not Disturb     — opens a small menu (Disable/Enable DND + "anycode" toggle)
- *   3. Reposition         — opens a small menu (Bottom Right / Bottom Left / Top Right)
- *   4. Collapse (chevron) — closes the panel (tapping the bell again also closes it)
- */
 @Composable
 private fun DrawerHeader(
     unread: Int,
+    colors: NotifColors,
     onClearAll: () -> Unit,
     onCollapse: () -> Unit,
 ) {
@@ -380,46 +360,35 @@ private fun DrawerHeader(
     ) {
         Text(
             if (unread > 0) "$unread New Notification${if (unread != 1) "s" else ""}" else "No New Notifications",
-            color = Color(0xFFCDD6F4), fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
+            color = colors.text, fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            // 1. Clear All
             Icon(
                 Icons.Default.ClearAll,
                 contentDescription = "Clear all notifications",
-                tint = Color(0xFF9CA0B0),
+                tint = colors.textSecondary,
                 modifier = Modifier.size(16.dp).clickable { onClearAll() },
             )
-
-            // Phase 8: Undo last dismiss
             Icon(
                 Icons.Default.Refresh,
                 contentDescription = "Undo last dismissed notification",
-                tint = Color(0xFF9CA0B0),
+                tint = colors.textSecondary,
                 modifier = Modifier.size(16.dp).clickable { NotificationStore.undoDismiss() },
             )
-
-            // 2. Do Not Disturb — opens small menu
             Box {
                 Icon(
                     if (dnd) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
                     contentDescription = "Do Not Disturb options",
-                    tint = Color(0xFF9CA0B0),
+                    tint = colors.textSecondary,
                     modifier = Modifier.size(16.dp).clickable { showDndMenu = true },
                 )
                 DropdownMenu(expanded = showDndMenu, onDismissRequest = { showDndMenu = false }) {
                     DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (dnd) "Disable Do Not Disturb Mode" else "Enable Do Not Disturb Mode",
-                                fontSize = 12.sp,
-                            )
-                        },
+                        text = { Text(if (dnd) "Disable Do Not Disturb Mode" else "Enable Do Not Disturb Mode", fontSize = 12.sp) },
                         onClick = {
                             NotificationStore.toggleDoNotDisturb()
-                            // Vibrate when DND is toggled
                             try {
                                 context.getSystemService(VibratorManager::class.java)?.defaultVibrator
                                     ?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
@@ -432,23 +401,19 @@ private fun DrawerHeader(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("anycode", fontSize = 12.sp, modifier = Modifier.weight(1f))
                                 if (appEnabled) {
-                                    Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp), tint = Color(0xFF89B4FA))
+                                    Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp), tint = colors.accent)
                                 }
                             }
                         },
-                        // P-NOTIF-RESTRUCTURE: master app-notifications toggle. Menu stays open
-                        // so the checkmark state is visible immediately after tapping.
                         onClick = { NotificationStore.toggleAppNotifications() },
                     )
                 }
             }
-
-            // 3. Reposition — opens small menu with 3 corners
             Box {
                 Icon(
                     Icons.Default.SwapHoriz,
                     contentDescription = "Move notification panel",
-                    tint = Color(0xFF9CA0B0),
+                    tint = colors.textSecondary,
                     modifier = Modifier.size(16.dp).clickable { showPosMenu = true },
                 )
                 DropdownMenu(expanded = showPosMenu, onDismissRequest = { showPosMenu = false }) {
@@ -458,7 +423,7 @@ private fun DrawerHeader(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(cornerLabel(corner), fontSize = 12.sp, modifier = Modifier.weight(1f))
                                     if (pos == corner) {
-                                        Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp), tint = Color(0xFF89B4FA))
+                                        Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp), tint = colors.accent)
                                     }
                                 }
                             },
@@ -470,12 +435,10 @@ private fun DrawerHeader(
                     }
                 }
             }
-
-            // 4. Collapse chevron — closes the panel
             Icon(
                 Icons.Default.KeyboardArrowDown,
                 contentDescription = "Close notifications",
-                tint = Color(0xFF9CA0B0),
+                tint = colors.textSecondary,
                 modifier = Modifier.size(18.dp).clickable { onCollapse() },
             )
         }
@@ -483,100 +446,104 @@ private fun DrawerHeader(
 }
 
 @Composable
-private fun FilterChipsRow(
-    activeFilter: NotificationStore.Severity?,
-    onFilter: (NotificationStore.Severity) -> Unit,
+private fun NotifFilterBar(
+    filterSeverity: NotificationStore.Severity?,
+    filterSource: NotificationStore.Source?,
+    colors: NotifColors,
+    onFilterSeverity: (NotificationStore.Severity) -> Unit,
+    onFilterSource: (NotificationStore.Source) -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+    val sources = remember {
+        listOf(
+            NotificationStore.Source.LSP, NotificationStore.Source.GIT,
+            NotificationStore.Source.BUILD, NotificationStore.Source.TERMINAL,
+            NotificationStore.Source.DAP, NotificationStore.Source.AI,
+            NotificationStore.Source.SYSTEM,
+        )
+    }
+    LazyRow(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        NotificationStore.Severity.values().forEach { sev ->
-            val (_, color) = severityIcon(sev)
-            val active = activeFilter == sev
+        items(NotificationStore.Severity.values().toList()) { sev ->
+            val (_, dotColor) = severityIcon(sev)
+            NotifChip(
+                label = sev.name.lowercase().replaceFirstChar { it.uppercase() },
+                dotColor = dotColor,
+                active = filterSeverity == sev,
+                colors = colors,
+                onClick = { onFilterSeverity(sev) },
+            )
+        }
+        item {
             Box(
                 Modifier
-                    .background(
-                        if (active) color.copy(alpha = 0.25f) else Color(0xFF313244),
-                        RoundedCornerShape(12.dp),
-                    )
-                    .clickable { onFilter(sev) }
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
-            ) {
-                Text(
-                    sev.name.lowercase().replaceFirstChar { it.uppercase() },
-                    fontSize = 9.sp,
-                    color = if (active) color else Color(0xFF9CA0B0),
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                )
-            }
+                    .padding(horizontal = 2.dp)
+                    .width(1.dp)
+                    .height(16.dp)
+                    .background(colors.border),
+            )
+        }
+        items(sources) { src ->
+            NotifChip(
+                label = src.name.lowercase(),
+                dotColor = sourceColor(src),
+                active = filterSource == src,
+                colors = colors,
+                onClick = { onFilterSource(src) },
+            )
         }
     }
 }
 
-/**
- * Phase N: Source filter row — filter notifications by source subsystem.
- */
 @Composable
-private fun SourceFilterRow(
-    activeFilter: NotificationStore.Source?,
-    onFilter: (NotificationStore.Source) -> Unit,
+private fun NotifChip(
+    label: String,
+    dotColor: Color,
+    active: Boolean,
+    colors: NotifColors,
+    onClick: () -> Unit,
 ) {
-    val sources = listOf(
-        NotificationStore.Source.LSP, NotificationStore.Source.GIT,
-        NotificationStore.Source.BUILD, NotificationStore.Source.TERMINAL,
-        NotificationStore.Source.DAP, NotificationStore.Source.AI,
-        NotificationStore.Source.SYSTEM,
-    )
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        Modifier
+            .background(
+                if (active) colors.accent.copy(alpha = 0.16f) else Color.Transparent,
+                RoundedCornerShape(10.dp),
+            )
+            .border(
+                1.dp,
+                if (active) colors.accent.copy(alpha = 0.7f) else colors.border,
+                RoundedCornerShape(10.dp),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        sources.forEach { src ->
-            val color = sourceColor(src)
-            val active = activeFilter == src
-            Box(
-                Modifier
-                    .background(
-                        if (active) color.copy(alpha = 0.25f) else Color(0xFF313244),
-                        RoundedCornerShape(8.dp),
-                    )
-                    .clickable { onFilter(src) }
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-            ) {
-                Text(
-                    src.name.lowercase(),
-                    fontSize = 8.sp,
-                    color = if (active) color else Color(0xFF9CA0B0),
-                )
-            }
-        }
+        Box(Modifier.size(5.dp).background(dotColor, CircleShape))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            label,
+            fontSize = 9.sp,
+            color = if (active) colors.accent else colors.textSecondary,
+            fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+        )
     }
 }
 
-/**
- * P-NOTIF-RESTRUCTURE: A single notification row.
- * - ERROR severity rows jump to the Problems panel on tap (onErrorTap).
- * - All other rows expand in place on tap to show the FULL body text
- *   (previously truncated to 2 lines — Christie's reported bug).
- */
 @Composable
-private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit) {
+private fun NotificationRow(item: NotificationStore.Item, colors: NotifColors, onErrorTap: () -> Unit) {
     var expanded by remember(item.id) { mutableStateOf(false) }
     val (iconVec, iconColor) = severityIcon(item.severity)
     Row(
         Modifier
             .fillMaxWidth()
-            .background(if (!item.read) Color(0x0DFFFFFF) else Color.Transparent)
+            .background(if (!item.read) colors.accent.copy(alpha = 0.06f) else Color.Transparent)
             .clickable {
                 NotificationStore.markRead(item.id)
                 if (item.severity == NotificationStore.Severity.ERROR) onErrorTap()
                 else expanded = !expanded
             }
-            // Phase 14: Accessibility — content description for screen readers
             .semantics {
-                // Build description in a local var — reading contentDescription back from
-                // the semantics receiver throws UnsupportedOperationException (Crash #3).
                 var desc = "${item.severity.name.lowercase()}: ${item.title}. ${item.body}"
                 if (item.dedupCount > 1) desc = "$desc ${item.dedupCount} occurrences."
                 if (item.actions.isNotEmpty()) desc = "$desc Actions: ${item.actions.joinToString { it.label }}."
@@ -585,10 +552,9 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        // Unread dot
         Box(Modifier.size(6.dp).padding(top = 4.dp)) {
             if (!item.read) {
-                Box(Modifier.fillMaxSize().background(Color(0xFF89B4FA), CircleShape))
+                Box(Modifier.fillMaxSize().background(colors.accent, CircleShape))
             }
         }
         Spacer(Modifier.width(6.dp))
@@ -600,21 +566,14 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                     item.title,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Color(0xFFCDD6F4),
+                    color = colors.text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                // Phase N: Dedup count badge
                 if (item.dedupCount > 1) {
-                    Text(
-                        "(${item.dedupCount})",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFAB387),
-                    )
+                    Text("(${item.dedupCount})", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFAB387))
                 }
-                // Source tag
                 Box(
                     Modifier.background(sourceColor(item.source).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
                         .padding(horizontal = 4.dp, vertical = 1.dp),
@@ -626,55 +585,34 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                 Text(
                     item.body,
                     fontSize = 10.sp,
-                    color = Color(0xFF9CA0B0),
-                    // P-NOTIF-RESTRUCTURE: full text on expand, was hard-capped at 2 lines
+                    color = colors.textSecondary,
                     maxLines = if (expanded) Int.MAX_VALUE else 2,
                     overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
                 )
             }
-            // Phase N: Error details (expandable)
             if (expanded && item.errorDetails != null) {
                 Spacer(Modifier.height(4.dp))
                 item.errorDetails.technicalDetails?.let { tech ->
                     Surface(
-                        color = Color(0xFF181825),
+                        color = colors.panelBg,
                         shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, colors.border),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(
-                            tech,
-                            fontSize = 9.sp,
-                            color = Color(0xFF6C7086),
-                            maxLines = Int.MAX_VALUE,
-                            overflow = TextOverflow.Clip,
-                            modifier = Modifier.padding(6.dp),
-                        )
+                        Text(tech, fontSize = 9.sp, color = colors.textSecondary, maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip, modifier = Modifier.padding(6.dp))
                     }
                 }
             }
-            // Phase N: Progress bar
             if (item.severity == NotificationStore.Severity.PROGRESS && item.progress != null) {
                 Spacer(Modifier.height(4.dp))
                 if (item.progress.indeterminate) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().height(2.dp),
-                        color = Color(0xFF89DCEB),
-                    )
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = colors.accent)
                 } else {
-                    val progress = if (item.progress.max > 0) {
-                        item.progress.current.toFloat() / item.progress.max.toFloat()
-                    } else 0f
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(2.dp),
-                        color = Color(0xFF89DCEB),
-                    )
+                    val progress = if (item.progress.max > 0) item.progress.current.toFloat() / item.progress.max.toFloat() else 0f
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp), color = colors.accent)
                 }
-                item.progress.statusMessage?.let {
-                    Text(it, fontSize = 9.sp, color = Color(0xFF6C7086), maxLines = 1)
-                }
+                item.progress.statusMessage?.let { Text(it, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1) }
             }
-            // Phase N: Action buttons
             if (item.actions.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -683,11 +621,10 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                             action.label,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
-                            color = if (action.destructive) Color(0xFFF38BA8) else Color(0xFF89B4FA),
+                            color = if (action.destructive) Color(0xFFF38BA8) else colors.accent,
                             modifier = Modifier
                                 .background(
-                                    if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f)
-                                    else Color(0xFF89B4FA).copy(alpha = 0.15f),
+                                    if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f) else colors.accent.copy(alpha = 0.15f),
                                     RoundedCornerShape(4.dp),
                                 )
                                 .clickable { NotificationStore.executeAction(item.id, action.id) }
@@ -696,14 +633,10 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
                     }
                 }
             }
-            Text(relativeTime(item.timestamp), fontSize = 9.sp, color = Color(0xFF6C7086))
+            Text(relativeTime(item.timestamp), fontSize = 9.sp, color = colors.textSecondary)
         }
         Spacer(Modifier.width(4.dp))
-        Icon(
-            Icons.Default.Close, null,
-            tint = Color(0xFF555570),
-            modifier = Modifier.size(13.dp).clickable { NotificationStore.dismiss(item.id) },
-        )
+        Icon(Icons.Default.Close, null, tint = colors.textSecondary, modifier = Modifier.size(13.dp).clickable { NotificationStore.dismiss(item.id) })
     }
 }
 
@@ -735,9 +668,9 @@ private fun sourceColor(source: NotificationStore.Source): Color = when (source)
 private fun relativeTime(timestampMs: Long): String {
     val diff = System.currentTimeMillis() - timestampMs
     return when {
-        diff < TimeUnit.MINUTES.toMillis(1)  -> "just now"
-        diff < TimeUnit.HOURS.toMillis(1)    -> "${TimeUnit.MILLISECONDS.toMinutes(diff)}m ago"
-        diff < TimeUnit.DAYS.toMillis(1)     -> "${TimeUnit.MILLISECONDS.toHours(diff)}h ago"
+        diff < TimeUnit.MINUTES.toMillis(1) -> "just now"
+        diff < TimeUnit.HOURS.toMillis(1)   -> "${TimeUnit.MILLISECONDS.toMinutes(diff)}m ago"
+        diff < TimeUnit.DAYS.toMillis(1)    -> "${TimeUnit.MILLISECONDS.toHours(diff)}h ago"
         else                                 -> "${TimeUnit.MILLISECONDS.toDays(diff)}d ago"
     }
 }
