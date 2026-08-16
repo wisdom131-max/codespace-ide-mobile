@@ -575,9 +575,12 @@ private fun NotificationRow(item: NotificationStore.Item, onErrorTap: () -> Unit
             }
             // Phase 14: Accessibility — content description for screen readers
             .semantics {
-                contentDescription = "${item.severity.name.lowercase()}: ${item.title}. ${item.body}"
-                if (item.dedupCount > 1) contentDescription = "$contentDescription ${item.dedupCount} occurrences."
-                if (item.actions.isNotEmpty()) contentDescription = "$contentDescription Actions: ${item.actions.joinToString { it.label }}."
+                // Build description in a local var — reading contentDescription back from
+                // the semantics receiver throws UnsupportedOperationException (Crash #3).
+                var desc = "${item.severity.name.lowercase()}: ${item.title}. ${item.body}"
+                if (item.dedupCount > 1) desc = "$desc ${item.dedupCount} occurrences."
+                if (item.actions.isNotEmpty()) desc = "$desc Actions: ${item.actions.joinToString { it.label }}."
+                contentDescription = desc
             }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.Top,

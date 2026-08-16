@@ -18672,3 +18672,23 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 32. 🔲 TypeScript 7 as default LSP with vtsls
 33. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 34. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+---
+
+### [2026-08-16 08:42 WAT] — AI Agent: Elowen (Claude Sonnet 4), Commit 10127208, CI Build pending
+
+**What was fixed:**
+1. Preview refresh button not showing pasted HTML — added `refreshTrigger` state to force re-read from disk on refresh tap
+2. SVG/HTML/Markdown mode switching — `defaultModeForFile` was dead code, now applied via `LaunchedEffect(activeFilePath)`
+3. Top white find bar disconnected from editor — added `externalFindQuery` + find options params to CodeEditor, threaded through EditorPane from ProjectShellScreen; toggle buttons (Aa/\\b/.*) now clickable with active state
+4. Terminal exit code 9 false "crash" notification — suppressed for exit codes 0/9/130; made `01-essential-tools.sh` suppress apt-get errors and always exit 0
+
+**Files touched:**
+- PreviewPane.kt (refresh trigger, SVG/HTML mode fix)
+- TerminalPane.kt (exit code 9 notification suppression)
+- EditorPane.kt (external find params threaded)
+- CodeEditor.kt (externalFindQuery, externalFindBarOpen, externalCaseSensitive, externalWholeWord, externalUseRegex + LaunchedEffect syncs)
+- ProjectShellScreen.kt (find toggle state, clickable toggle buttons, pass find state to EditorPane)
+- ProotInstaller.kt (01-essential-tools.sh robustness)
+
+**Next:** CI build check → device testing of find bar + preview refresh + SVG mode switch
