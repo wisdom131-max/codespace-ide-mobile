@@ -18736,3 +18736,50 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 - 🔲 TypeScript 7 as default LSP with vtsls
 - 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 - ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+---
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+
+---
+
+### [2026-08-16 11:20 WAT] — AI Agent: Elowen (Claude Sonnet 4, Base44 Superagent)
+**Commit:** d3e061e9 | **CI Build:** pending (last green #2346)
+**Tags:** [UI] [LSP]
+
+**What was fixed:**
+Settings → LSP Servers → "Available Language Servers" list now shows per-server live status indicators using `LspManager.getServerState()`. Each server row displays a `{ }` bracket icon with a colored status:
+- **Running** (STARTING, INITIALIZING, READY, RESTARTING): green `{ }` + green dot
+- **Error** (UNHEALTHY): red `{ }` + red ✕
+- **Stopped** (STOPPED or null): dim `{ }` + dim ✕
+
+When a server transitions from running → STOPPED or UNHEALTHY, the row shakes/vibrates for 3 seconds (6 oscillations via `Animatable`). State is polled every 2s via `LaunchedEffect`. Added `languageEnum: Language?` field to `LspServerInfo` data class to map each server entry to its `Language` enum for `getServerState()` queries.
+
+**Files touched:**
+- InProjectSettingsDialog.kt (LspServerStatusRow composable, LspServerInfo updated, imports: Animatable/tween/LspManager/LspState/offset)
+
+**Next on roadmap:**
+- 🔲 Notification restructure (awaiting Goodluck's plan)
+- 🔲 Device testing of all SCM features (E1–E18)
+- 🔲 YouTube Test 51 fix
+- 🔲 Phase N — Advanced Notification System (awaiting user plan)
+- 🔲 Portrait settings device test
+- 🔲 LSP server status indicators device test (new)
+- 🔲 Split editor pane wiring (currently placeholder "coming soon")
+- 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+- 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+- 🔲 TypeScript 7 as default LSP with vtsls
+- 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+- ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
