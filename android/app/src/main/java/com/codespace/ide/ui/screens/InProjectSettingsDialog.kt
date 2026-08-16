@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -40,6 +41,10 @@ import com.codespace.ide.editor.FlowMode
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.TypeScriptVersion
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import com.codespace.ide.lsp.LspManager
+import com.codespace.ide.lsp.LspState
 
 /**
  * In-Project Settings — VS Code-style settings dialog with search bar,
@@ -1388,32 +1393,33 @@ private data class LspServerInfo(
     val language: String,
     val serverName: String,
     val installMethod: String,
+    val languageEnum: Language?,
 )
 
 private val lspServerList = listOf(
-    LspServerInfo("TypeScript", "typescript-language-server", "npm"),
-    LspServerInfo("JavaScript", "typescript-language-server", "npm"),
-    LspServerInfo("Python", "pylsp (default) / pyright", "pip3 / npm"),
-    LspServerInfo("Kotlin", "kotlin-language-server", "GitHub release"),
-    LspServerInfo("Go", "gopls", "go install"),
-    LspServerInfo("Java", "jdtls (eclipse.jdt.ls)", "curl + tar"),
-    LspServerInfo("C", "clangd", "apt"),
-    LspServerInfo("C++", "clangd", "apt"),
-    LspServerInfo("Rust", "rust-analyzer", "rustup"),
-    LspServerInfo("PHP", "intelephense", "npm"),
-    LspServerInfo("HTML", "vscode-html-language-server", "npm"),
-    LspServerInfo("CSS", "vscode-css-language-server", "npm"),
-    LspServerInfo("JSON", "vscode-json-language-server", "npm"),
-    LspServerInfo("Ruby", "solargraph", "gem"),
-    LspServerInfo("C#", "OmniSharp", "curl + tar"),
-    LspServerInfo("Lua", "lua-language-server", "curl + tar"),
-    LspServerInfo("Dart", "dart language-server", "curl + unzip"),
-    LspServerInfo("SQL", "sql-language-server", "npm"),
-    LspServerInfo("PowerShell", "PowerShellEditorServices", "curl + tar"),
-    LspServerInfo("Scala", "metals", "curl"),
-    LspServerInfo("R", "languageserver", "apt + R"),
-    LspServerInfo("Swift", "sourcekit-lsp", "curl + tar"),
-    LspServerInfo("Universal", "ctags-lsp (fallback)", "go install"),
+    LspServerInfo("TypeScript", "typescript-language-server", "npm", Language.TYPESCRIPT),
+    LspServerInfo("JavaScript", "typescript-language-server", "npm", Language.JAVASCRIPT),
+    LspServerInfo("Python", "pylsp (default) / pyright", "pip3 / npm", Language.PYTHON),
+    LspServerInfo("Kotlin", "kotlin-language-server", "GitHub release", Language.KOTLIN),
+    LspServerInfo("Go", "gopls", "go install", Language.GO),
+    LspServerInfo("Java", "jdtls (eclipse.jdt.ls)", "curl + tar", Language.JAVA),
+    LspServerInfo("C", "clangd", "apt", Language.C),
+    LspServerInfo("C++", "clangd", "apt", Language.CPP),
+    LspServerInfo("Rust", "rust-analyzer", "rustup", Language.RUST),
+    LspServerInfo("PHP", "intelephense", "npm", Language.PHP),
+    LspServerInfo("HTML", "vscode-html-language-server", "npm", Language.HTML),
+    LspServerInfo("CSS", "vscode-css-language-server", "npm", Language.CSS),
+    LspServerInfo("JSON", "vscode-json-language-server", "npm", Language.JSON),
+    LspServerInfo("Ruby", "solargraph", "gem", Language.RUBY),
+    LspServerInfo("C#", "OmniSharp", "curl + tar", Language.CSHARP),
+    LspServerInfo("Lua", "lua-language-server", "curl + tar", Language.LUA),
+    LspServerInfo("Dart", "dart language-server", "curl + unzip", Language.DART),
+    LspServerInfo("SQL", "sql-language-server", "npm", Language.SQL),
+    LspServerInfo("PowerShell", "PowerShellEditorServices", "curl + tar", Language.POWERSHELL),
+    LspServerInfo("Scala", "metals", "curl", Language.SCALA),
+    LspServerInfo("R", "languageserver", "apt + R", Language.R),
+    LspServerInfo("Swift", "sourcekit-lsp", "curl + tar", Language.SWIFT),
+    LspServerInfo("Universal", "ctags-lsp (fallback)", "go install", null),
 )
 
 @Composable
@@ -1423,19 +1429,94 @@ private fun LspServerListRow(accent: Color, textPri: Color, textSec: Color, surf
         Text("Auto-install when you open a matching file type", color = textSec, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         lspServerList.forEach { server ->
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(server.language, color = textPri, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.width(90.dp))
-                Text(server.serverName, color = textSec, fontSize = 11.sp,
-                    modifier = Modifier.weight(1f))
-                Text(server.installMethod, color = accent, fontSize = 10.sp)
-            }
+            LspServerStatusRow(server, accent, textPri, textSec)
         }
     }
     HorizontalDivider(color = divider)
+}
+
+/**
+ * Per-server row with live status indicator:
+ * - Running states (STARTING, INITIALIZING, READY, RESTARTING): green dot inside { } brackets
+ * - Stopped/error (STOPPED, UNHEALTHY): red X, row shakes for 3s on transition to error
+ */
+@Composable
+private fun LspServerStatusRow(
+    server: LspServerInfo,
+    accent: Color,
+    textPri: Color,
+    textSec: Color,
+) {
+    // Poll LspManager for live server state (every 2s)
+    var serverState by remember { mutableStateOf<LspState?>(null) }
+    LaunchedEffect(server.languageEnum) {
+        if (server.languageEnum != null) {
+            while (true) {
+                serverState = LspManager.getServerState(server.languageEnum)
+                kotlinx.coroutines.delay(2000)
+            }
+        }
+    }
+
+    val isRunning = serverState != null && serverState !in setOf(
+        LspState.STOPPED, LspState.UNHEALTHY, LspState.STOPPING, LspState.IDLE_CLOSE
+    )
+    val isError = serverState == LspState.UNHEALTHY
+    val isStopped = serverState == LspState.STOPPED || serverState == null
+
+    // Shake animation: triggers for 3s when server transitions to STOPPED or UNHEALTHY
+    val shakeOffset = remember { Animatable(0f) }
+    var wasRunning by remember { mutableStateOf(false) }
+    LaunchedEffect(serverState) {
+        val justFailed = wasRunning && (serverState == LspState.STOPPED || serverState == LspState.UNHEALTHY)
+        if (justFailed) {
+            // Shake for 3 seconds (6 oscillations, 500ms each)
+            repeat(6) {
+                shakeOffset.animateTo(
+                    targetValue = if (it % 2 == 0) 6f else -6f,
+                    animationSpec = tween(250),
+                )
+            }
+            shakeOffset.animateTo(0f, animationSpec = tween(100))
+        }
+        wasRunning = isRunning
+    }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .offset(x = shakeOffset.value.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Status bracket icon — { } with colored dot, or { } with red X
+        when {
+            isRunning -> {
+                Text("{ }", fontSize = 11.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Medium)
+                Spacer(Modifier.width(2.dp))
+                Box(Modifier.size(6.dp).background(Color(0xFF4CAF50), RoundedCornerShape(3.dp)))
+            }
+            isError -> {
+                Text("{ }", fontSize = 11.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.Medium)
+                Spacer(Modifier.width(2.dp))
+                Text("✕", fontSize = 10.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+            }
+            isStopped -> {
+                Text("{ }", fontSize = 11.sp, color = textSec.copy(alpha = 0.4f), fontWeight = FontWeight.Medium)
+                Spacer(Modifier.width(2.dp))
+                Text("✕", fontSize = 10.sp, color = textSec.copy(alpha = 0.4f), fontWeight = FontWeight.Bold)
+            }
+            else -> {
+                Text("{ }", fontSize = 11.sp, color = textSec.copy(alpha = 0.4f), fontWeight = FontWeight.Medium)
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(server.language, color = textPri, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(80.dp))
+        Text(server.serverName, color = textSec, fontSize = 11.sp,
+            modifier = Modifier.weight(1f))
+        Text(server.installMethod, color = accent, fontSize = 10.sp)
+    }
 }
 
 // ── Item 4: Reusable checkbox row for simple boolean settings ─────────────────
