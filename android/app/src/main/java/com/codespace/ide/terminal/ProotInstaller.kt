@@ -199,6 +199,30 @@ object ProotInstaller {
             Log.w(TAG, "ensureShimInstalled: failed to write 00-ld-preload-shim.sh: ${e.message}")
             com.codespace.ide.diagnostics.AppOutputLog.log("[proot] WARNING: Could not write 00-ld-preload-shim.sh: ${e.message}", "lsp")
         }
+
+        // Self-heal 01-essential-tools.sh: ensure the git auto-install script doesn't
+        // have 'exit 0' (or any 'exit') that would kill the login shell when sourced.
+        // Profile.d scripts are sourced by /etc/profile, so 'exit' in them exits the
+        // parent bash process — this was the root cause of the terminal dying
+        // immediately after locale-gen output (commit 10127208 added exit 0).
+        // Always overwrite to guarantee the fixed version is on the device.
+        val essentialScript = File(profileDDir, "01-essential-tools.sh")
+        val essentialContent = "#!/bin/sh\n" +
+            "# Auto-install essential dev tools if missing (self-healing)\n" +
+            "# Suppress all errors — useradd/groupadd exit 9 for 'already exists' which is\n" +
+            "# harmless. Never let apt-get exit codes propagate to the login shell.\n" +
+            "# CRITICAL: never use 'exit' in a profile.d script — it kills the login shell.\n" +
+            "if ! command -v git >/dev/null 2>&1; then\n" +
+            "    (apt-get update -qq && apt-get install -y --no-install-recommends git curl) >/dev/null 2>&1 || true\n" +
+            "fi\n"
+        try {
+            essentialScript.writeText(essentialContent)
+            essentialScript.setExecutable(true, false)
+            essentialScript.setReadable(true, false)
+            Log.i(TAG, "ensureShimInstalled: wrote 01-essential-tools.sh (self-heal, no exit)")
+        } catch (e: Exception) {
+            Log.w(TAG, "ensureShimInstalled: failed to write 01-essential-tools.sh: ${e.message}")
+        }
     }
 
     /** Download + unpack the Ubuntu rootfs tarball. */
