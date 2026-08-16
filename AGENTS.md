@@ -18981,3 +18981,9 @@ Four fixes to the Command Palette:
 **What was fixed:** Removed Dashboard preview mode entirely (~400 lines deleted: DashboardPreview, generateDefaultDashboard, generateDashboardFromJson, DASHBOARD_STYLES, DASHBOARD_DRAG_SCRIPT, enum entry, guide row). Added live content polling to PreviewPane — produceState now polls file lastModified every 500ms, so edits/pastes made in the editor appear in the preview instantly without pressing the refresh button. Updated guide dialog text. Updated Markdown guide to note offline rendering.
 **Files touched:** PreviewPane.kt
 **Next on roadmap:** Fix editor extra keys/toolbar (Test 16); Fix file visibility in explorer (Test 78); UI interaction fixes (Tests 12, 30, 33, 40)
+
+### [2026-08-16 16:50 WAT] — AI Agent: Claude (Superagent), Commit: 7f4353dc, CI Build: pending
+**Tags:** [FIX] [TEST-78] [EXPLORER]
+**What was fixed:** Closed file not findable in Explorer tree afterward (Test 78). When a file tab is closed, all ancestor directories are now auto-expanded and the tree scrolls to highlight the file — matching VS Code behavior. Added `revealFilePath` + `revealFileTrigger` params to ExplorerSidePanel with a LaunchedEffect that expands ancestors, refreshes the tree, scrolls to the file, and briefly selects it. Counter-based trigger ensures re-fire even if the same file is closed twice.
+**Files touched:** ExplorerPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** UI interaction fixes (Tests 12, 30, 33, 40); YouTube Shorts browser (Test 130)
