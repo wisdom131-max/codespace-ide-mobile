@@ -1957,33 +1957,59 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                         // Multi-cursor fan-out: replay same edit at each extra cursor
+                        // CRASH/BUG-FIX: properly account for primary edit position relative
+                        // to each extra cursor. Old code used ec+shift without adjusting
+                        // for the primary insertion/deletion happening before the cursor,
+                        // causing text to be inserted at wrong positions and cursors to jump.
                         if (extraCursors.isNotEmpty()) {
                             val delta = updatedValue.text.length - value.text.length
                             if (delta != 0) {
                                 val primaryAt = value.selection.start
-                                val inserted = if (delta > 0) updatedValue.text.substring(primaryAt, primaryAt + delta) else ""
+                                val inserted: String = if (delta > 0) {
+                                    updatedValue.text.substring(primaryAt, (primaryAt + delta).coerceAtMost(updatedValue.text.length))
+                                } else ""
                                 val deletedLen = if (delta < 0) -delta else 0
                                 var composed = updatedValue.text
-                                var shift = 0
                                 val newExtras = mutableListOf<Int>()
+                                // The primary cursor's position in composed (after primary edit)
+                                val primaryNewPos = updatedValue.selection.start
+                                var fanShift = 0  // cumulative shift from fan-out edits
+                                var primaryAdjust = 0  // shift to apply to primary cursor
                                 for (ec in extraCursors.sorted()) {
-                                    val pos = (ec + shift).coerceIn(0, composed.length)
+                                    // Adjust extra cursor for the PRIMARY edit:
+                                    // If primary insertion was before this cursor, it's now at ec+delta
+                                    val primaryShift = if (delta > 0) {
+                                        if (primaryAt <= ec) delta else 0
+                                    } else {
+                                        val delStart = (primaryAt - deletedLen).coerceAtLeast(0)
+                                        if (delStart < ec) {
+                                            -minOf(deletedLen, ec - delStart)
+                                        } else 0
+                                    }
+                                    val pos = (ec + primaryShift + fanShift).coerceIn(0, composed.length)
                                     if (delta > 0) {
                                         composed = composed.substring(0, pos) + inserted + composed.substring(pos)
-                                        shift += inserted.length
+                                        fanShift += inserted.length
                                         newExtras.add(pos + inserted.length)
+                                        // If this fan-out insertion was before the primary cursor, shift it
+                                        if (pos < primaryNewPos) primaryAdjust += inserted.length
                                     } else {
                                         val from = (pos - deletedLen).coerceAtLeast(0)
                                         val to = pos.coerceAtMost(composed.length)
                                         if (from < to) {
                                             composed = composed.substring(0, from) + composed.substring(to)
-                                            shift -= (to - from)
+                                            fanShift -= (to - from)
                                             newExtras.add(from)
-                                        } else newExtras.add(from)
+                                            if (to <= primaryNewPos) primaryAdjust -= (to - from)
+                                        } else {
+                                            newExtras.add(from)
+                                        }
                                     }
                                 }
                                 extraCursors = newExtras
-                                updatedValue = updatedValue.copy(text = composed)
+                                val primStart = (updatedValue.selection.start + primaryAdjust).coerceIn(0, composed.length)
+                                val primEnd = (updatedValue.selection.end + primaryAdjust).coerceIn(0, composed.length)
+                                updatedValue = updatedValue.copy(text = composed, selection = TextRange(primStart, primEnd))
                             }
                         }
 
