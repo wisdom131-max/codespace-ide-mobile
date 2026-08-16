@@ -18830,3 +18830,15 @@ Four fixes to the Command Palette:
 - 🔲 TypeScript 7 as default LSP with vtsls
 - 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 - ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### [2026-08-16 13:48 WAT] — AI Agent: Claude (Superagent), Commit `19ef3320`, CI Build: pending
+**What was fixed:**
+1. **CursorOverlay crash (Test 19)** — clamped `selection.end` to `0..text.length` to prevent `IllegalArgumentException` in `getHorizontalPosition` after multi-cursor edits
+2. **LSP executor crash** — `memoryMonitorExecutor` and `healthCheckExecutor` changed from `val` to `var`, recreated if `isShutdown/isTerminated` in `ensureMemoryMonitorStarted()` / `ensureHealthCheckStarted()` to fix `RejectedExecutionException` after server teardown + restart
+3. **AndroidView reattach crash (Tests 70/72/130)** — added `onRelease = { wv -> (wv.parent as? ViewGroup)?.removeView(wv) }` to all 6 `AndroidView` calls in PreviewPane.kt (HTML, Browser, SVG, Dashboard, Remotion, YouTube)
+4. **Find bar white background (Test 17)** — changed `Color(0xFFF5F5F5)` → `Color(0xFF252526)` with dark borders, dark-themed `OutlinedTextField` colors for both Find and Replace inputs
+5. **Find bar prev/next navigation** — wired empty click handlers to cycle through regex matches with match counter (`X/Y` display)
+6. **Regex word boundary** — fixed `\b` → `\\b` in Kotlin string literal for `findWholeWord` pattern
+
+**Files touched:** CursorOverlay.kt, LspManager.kt, PreviewPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** CI build check, device testing of all fixes, continue Phase V — LSP Reliability Upgrade
