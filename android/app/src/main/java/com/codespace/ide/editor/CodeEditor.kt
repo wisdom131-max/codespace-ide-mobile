@@ -150,6 +150,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 
@@ -1422,8 +1423,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // ── Keyboard toolbar insert handler ──────────────────────────────────────
     // Registers a function that the coding toolbar (Tab, Esc, {, }, etc.) can call
     // to insert text at the cursor position, as if the user typed it on a real keyboard.
-    LaunchedEffect(onInsertHandler) {
-        onInsertHandler?.invoke { text ->
+    // P-EXTRAKEYS: Use rememberUpdatedState so the insert handler lambda always
+    // calls the LATEST onContentChange — even though LaunchedEffect(Unit) only runs
+    // once. Without this, switching tabs could cause the handler to call a stale
+    // onContentChange that updates the wrong tab, and LaunchedEffect(content) would
+    // then reset value back to the old text, making the inserted character vanish.
+    val currentOnContentChange by rememberUpdatedState(onContentChange)
+    val currentOnInsertHandler by rememberUpdatedState(onInsertHandler)
+    LaunchedEffect(Unit) {
+        currentOnInsertHandler?.invoke { text ->
+            // P-EXTRAKEYS: Ensure editor has focus so BasicTextField processes the
+            // programmatic value update. Without focus, BasicTextField in Compose
+            // 1.6.x may not render programmatic value changes.
+            if (text != "Esc") {
+                try { focusRequester.requestFocus() } catch (_: Exception) {}
+            }
             when (text) {
                 "Esc" -> {
                     snippetSession = null
@@ -1465,12 +1479,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val indented = linesToIndent.split("\n").map { "\t" + it }.joinToString("\n")
                                 val newText = value.text.substring(0, lineStart) + indented + value.text.substring(selEnd)
                                 value = TextFieldValue(text = newText, selection = TextRange(lineStart, lineStart + indented.length))
-                                onContentChange(newText)
+                                currentOnContentChange(newText)
                             } else {
                                 // Single-line selection: replace with tab
                                 val newText = value.text.substring(0, selStart) + "\t" + value.text.substring(selEnd)
                                 value = TextFieldValue(text = newText, selection = TextRange(selStart + 1))
-                                onContentChange(newText)
+                                currentOnContentChange(newText)
                             }
                         } else {
                             val cursor = selStart
@@ -1518,21 +1532,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                         }
                                         value = TextFieldValue(text = finalText, selection = selRange)
-                                        onContentChange(finalText)
+                                        currentOnContentChange(finalText)
                                     } else {
                                         val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
                                         value = TextFieldValue(text = newText, selection = TextRange(expandStart + snippetText.length))
-                                        onContentChange(newText)
+                                        currentOnContentChange(newText)
                                     }
                                 } else {
                                     val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
                                     value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
-                                    onContentChange(newText)
+                                    currentOnContentChange(newText)
                                 }
                             } else {
                                 val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
                                 value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
-                                onContentChange(newText)
+                                currentOnContentChange(newText)
                             }
                         }
                     }
@@ -1555,11 +1569,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val newText = value.text.substring(0, selStart) + text + closing + value.text.substring(selEnd)
                         // Place cursor between the pair (e.g. between ( and ))
                         value = TextFieldValue(text = newText, selection = TextRange(selStart + 1))
-                        onContentChange(newText)
+                        currentOnContentChange(newText)
                     } else {
                         val newText = value.text.substring(0, selStart) + text + value.text.substring(selEnd)
                         value = TextFieldValue(text = newText, selection = TextRange(selStart + text.length))
-                        onContentChange(newText)
+                        currentOnContentChange(newText)
                     }
                 }
             }
