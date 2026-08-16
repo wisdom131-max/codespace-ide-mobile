@@ -19111,3 +19111,23 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 - `ProjectFileSearchPanel.kt` — Added `imePadding()` import and modifier
 
 **Next on roadmap:** Test 16 (editor extra keys/toolbar), Test 130 (YouTube Shorts browser), remaining test regressions.
+
+### Test Verification — All Fixes Confirmed
+**Date:** 2026-08-16 18:18 WAT
+**Commit:** f7555720 | **CI Build:** pending (last known green: #1998)
+
+**Status:** User confirmed all recent test fixes are working on device:
+- Test 17 (Find bar): match highlighting, next/prev, replace — ✅ CONFIRMED
+- Find in Files: line navigation, IME padding — ✅ CONFIRMED
+- Test 69 (Trash deletion persistence): ✅ CONFIRMED (earlier fix)
+- Test 47 (Git identity auto-setup): ✅ CONFIRMED (earlier fix)
+- Test 125 (Connectors Hub in menu): ✅ CONFIRMED (earlier fix)
+- Tests 70/72 (SVG/HTML/Markdown rendering + zoom): ✅ CONFIRMED (commits 4cd11525, d0de184b)
+
+**Remaining test items from the 130-test report:**
+- Test 16 (editor extra keys/toolbar)
+- Test 19 (multi-cursor typing/placement)
+- Test 130 (YouTube Shorts browser reconstruction)
+- Tests 12, 30, 33, 40, 78, 84, 95 (various UI polish)
+
+**Next on roadmap:** Test 16 (editor extra keys/toolbar) is the highest-priority remaining item.
