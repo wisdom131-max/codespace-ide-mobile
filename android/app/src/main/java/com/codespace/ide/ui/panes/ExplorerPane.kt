@@ -2137,28 +2137,9 @@ fun ExplorerSidePanel(
                 Button(onClick = {
                     if (nameInput.isNotBlank()) {
                         val oldPath = contextFile!!.absolutePath
-                        val newFile = File(contextFile!!.parent, nameInput.trim())
-                        if (newFile.exists()) {
-                            android.widget.Toast.makeText(context, "A file with that name already exists", android.widget.Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
+                        val newFile = File(contextFile!!.parent, nameInput)
                         if (contextFile!!.renameTo(newFile)) {
                             onFileRenamed?.invoke(oldPath, newFile.absolutePath)
-                            onShowNotification?.invoke("Renamed to ${nameInput.trim()}", "success")
-                        } else {
-                            // renameTo() can fail on FUSE/scoped-storage filesystems.
-                            // Fallback: copy + delete via java.nio.file if available.
-                            try {
-                                java.nio.file.Files.move(
-                                    contextFile!!.toPath(),
-                                    newFile.toPath(),
-                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
-                                )
-                                onFileRenamed?.invoke(oldPath, newFile.absolutePath)
-                                onShowNotification?.invoke("Renamed to ${nameInput.trim()}", "success")
-                            } catch (e: Exception) {
-                                android.widget.Toast.makeText(context, "Rename failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                            }
                         }
                         refresh++
                     }
@@ -2243,26 +2224,12 @@ fun ExplorerSidePanel(
                                     scope.launch {
                                         trashProjectDir?.let { pd ->
                                             withContext(Dispatchers.IO) {
-                                                val trashFile = File(File(pd, ".ide-trash"), entry.trashedName)
-                                                var deleted = trashFile.deleteRecursively()
-                                                if (!deleted && trashFile.exists()) {
-                                                    // Fallback: use Runtime.exec("rm") for stubborn FUSE files
-                                                    try {
-                                                        val proc = Runtime.getRuntime().exec(arrayOf("rm", "-rf", trashFile.absolutePath))
-                                                        proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
-                                                        deleted = !trashFile.exists()
-                                                    } catch (_: Exception) {}
-                                                }
+                                                WorkspaceManager.purgeTrashEntry(pd, entry)
                                                 trashEntries = WorkspaceManager.listTrash(pd)
-                                                if (!deleted && trashEntries.any { it.trashedName == entry.trashedName }) {
-                                                    withContext(Dispatchers.Main) {
-                                                        android.widget.Toast.makeText(context, "Could not permanently delete file", android.widget.Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
                                             }
                                         }
                                     }
-                                }) { Text("Delete forever", fontSize = 11.sp, color = Color(0xFFCC0000)) }
+                                }) { Text("Delete", fontSize = 11.sp, color = Color(0xFFCC0000)) }
                             }
                             HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                         }

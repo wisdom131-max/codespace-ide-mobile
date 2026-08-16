@@ -242,21 +242,9 @@ object WorkspaceManager {
         return src.renameTo(dest)
     }
 
-    /** Permanently deletes a single trash entry. Returns true if deleted. */
-    fun purgeTrashEntry(projectDir: File, entry: TrashEntry): Boolean {
-        val f = File(trashDir(projectDir), entry.trashedName)
-        var ok = f.deleteRecursively()
-        if (!ok && f.exists()) {
-            // Fallback for FUSE/scoped-storage where deleteRecursively() fails silently
-            try {
-                val proc = Runtime.getRuntime().exec(arrayOf("rm", "-rf", f.absolutePath))
-                proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
-                ok = !f.exists()
-            } catch (_: Exception) {
-                ok = false
-            }
-        }
-        return ok
+    /** Permanently deletes a single trash entry. */
+    fun purgeTrashEntry(projectDir: File, entry: TrashEntry) {
+        File(trashDir(projectDir), entry.trashedName).deleteRecursively()
     }
 
     /** Empties the entire trash for [projectDir]. */
