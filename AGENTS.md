@@ -18975,3 +18975,9 @@ Four fixes to the Command Palette:
 
 **Files touched:** PreviewPane.kt (5 preview functions), EditorPane.kt (split markdown preview)
 **Next on roadmap:** File visibility in explorer (Test 78); UI interaction fixes (Tests 12, 30, 33, 40)
+
+### [2026-08-16 16:41 WAT] — AI Agent: Claude (Superagent), Commit: 1154928a, CI Build: pending
+**Tags:** [REMOVE] [ENHANCE] [DASHBOARD] [LIVE-PREVIEW]
+**What was fixed:** Removed Dashboard preview mode entirely (~400 lines deleted: DashboardPreview, generateDefaultDashboard, generateDashboardFromJson, DASHBOARD_STYLES, DASHBOARD_DRAG_SCRIPT, enum entry, guide row). Added live content polling to PreviewPane — produceState now polls file lastModified every 500ms, so edits/pastes made in the editor appear in the preview instantly without pressing the refresh button. Updated guide dialog text. Updated Markdown guide to note offline rendering.
+**Files touched:** PreviewPane.kt
+**Next on roadmap:** Fix editor extra keys/toolbar (Test 16); Fix file visibility in explorer (Test 78); UI interaction fixes (Tests 12, 30, 33, 40)
