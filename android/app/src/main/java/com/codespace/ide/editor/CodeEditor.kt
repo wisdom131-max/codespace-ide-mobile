@@ -1556,7 +1556,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // ── Find & Replace state ────────────────────────────────────────────
     var findQuery by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
-    // Sync external find bar (top white bar) to internal find state
+    var useRegex by remember { mutableStateOf(false) }
+    var caseSensitive by remember { mutableStateOf(false) }
+    var wholeWord by remember { mutableStateOf(false) }
+    var matchIndex by remember { mutableStateOf(0) }
+    // Sync external find bar (top white bar) to internal find state — must come AFTER the
+    // vars above are declared (Kotlin local properties must be declared before use).
     LaunchedEffect(externalFindQuery) {
         if (externalFindQuery != null && externalFindQuery != findQuery) {
             findQuery = externalFindQuery
@@ -1572,10 +1577,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(externalUseRegex) {
         if (externalUseRegex != null) useRegex = externalUseRegex
     }
-    var useRegex by remember { mutableStateOf(false) }
-    var caseSensitive by remember { mutableStateOf(false) }
-    var wholeWord by remember { mutableStateOf(false) }
-    var matchIndex by remember { mutableStateOf(0) }
 
     // ── Lint state ───────────────────────────────────────────────────────
     var lintErrors by remember { mutableStateOf<List<LintError>>(emptyList()) }

@@ -4355,7 +4355,7 @@ private fun PssEditorColumn(
                     onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
                     formatOnSaveTrigger = formatOnSaveTrigger,
                     udm = udm,
-                    externalFindQuery = if (showFindBar) _findQuery else null,
+                    externalFindQuery = if (showFindBar) findQuery else null,
                     externalFindBarOpen = showFindBar,
                     externalCaseSensitive = if (showFindBar) findCaseSensitive else null,
                     externalWholeWord = if (showFindBar) findWholeWord else null,
