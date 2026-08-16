@@ -148,6 +148,10 @@ fun EditorPane(
     externalCaseSensitive: Boolean? = null,
     externalWholeWord: Boolean? = null,
     externalUseRegex: Boolean? = null,
+    /** External match index from top find bar next/prev. -1 = don't override. */
+    externalFindMatchIndex: Int = -1,
+    /** Increment to force reload of active tab's file content (used by external replace). */
+    reloadTrigger: Int = 0,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -155,6 +159,19 @@ fun EditorPane(
     val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
+    // External reload trigger — re-reads the active file from disk (used by external replace)
+    LaunchedEffect(reloadTrigger) {
+        if (reloadTrigger > 0) {
+            val activeTab = tabs.firstOrNull { it.id == activeId }
+            if (activeTab != null && activeTab.path.startsWith("/")) {
+                try {
+                    val fileContent = java.io.File(activeTab.path).readText()
+                    val idx = tabs.indexOf(activeTab)
+                    if (idx >= 0) tabs[idx] = activeTab.copy(content = fileContent, isDirty = false)
+                } catch (_: Exception) {}
+            }
+        }
+    }
     // P20-A: Git Blame
     var showBlame by remember { mutableStateOf(false) }
     var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.BlameLine>?>(null) }

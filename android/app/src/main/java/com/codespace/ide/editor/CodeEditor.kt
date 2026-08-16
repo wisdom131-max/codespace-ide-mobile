@@ -516,6 +516,8 @@ fun CodeEditor(
     externalCaseSensitive: Boolean? = null,
     externalWholeWord: Boolean? = null,
     externalUseRegex: Boolean? = null,
+    /** External match index from the top find bar for next/prev navigation. -1 = don't override. */
+    externalFindMatchIndex: Int = -1,
     goToLineOpen: Boolean = false,
     onGoToLineClose: () -> Unit = {},
     /** P2-9 Bookmarks: initial set of bookmarked line indices (0-based). */
@@ -1639,6 +1641,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(externalUseRegex) {
         if (externalUseRegex != null) useRegex = externalUseRegex
     }
+    // Sync external match index (next/prev from top find bar) to internal matchIndex
+    LaunchedEffect(externalFindMatchIndex) {
+        if (externalFindMatchIndex >= 0 && externalFindMatchIndex != matchIndex) {
+            matchIndex = externalFindMatchIndex
+        }
+    }
 
     // ── Lint state ───────────────────────────────────────────────────────
     var lintErrors by remember { mutableStateOf<List<LintError>>(emptyList()) }
@@ -1684,6 +1692,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     LaunchedEffect(matches.size, findQuery) {
         if (matchIndex >= matches.size) matchIndex = 0
+    }
+    // Scroll to current match when matchIndex changes (driven by external find bar next/prev)
+    LaunchedEffect(matchIndex, matches, externalFindBarOpen) {
+        if (externalFindBarOpen && matches.isNotEmpty() && matchIndex < matches.size) {
+            val matchStart = matches[matchIndex].first
+            val targetLine = lineFromOffset(matchStart)
+            val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
+            vScroll.animateScrollTo((targetLine * lineHeightPx).toInt())
+        }
     }
 
     // Bracket matching
@@ -2405,7 +2422,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         MergeConflictOverlay(toggles, conflictData, lineHeightDp, onResolveConflict)
 
-        SearchMatchOverlay(findReplaceOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) })
+        SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) })
 
         ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) }, colors)
 

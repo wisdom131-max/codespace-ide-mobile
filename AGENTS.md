@@ -19092,3 +19092,22 @@ Tests 1-8, 10-11, 13-14, 20-29, 31, 36-37, 39, 41-42, 44-45, 57-68, 71, 73-77, 7
 ### NOTE: Test 126 (user doesn't want this for now)
 Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't want it for the now" — deprioritized indefinitely.
 
+
+### Test 17 + Find in Files Fix
+**Date:** 2026-08-16 18:12 WAT
+**Commit:** (pending) | **CI Build:** #1998 (last known green, new build pending)
+
+**What was fixed:**
+1. **Test 17 (Find bar)** — Match highlighting now renders when the external top find bar is open (`externalFindBarOpen` was a dead parameter). `SearchMatchOverlay` now triggers on `findReplaceOpen || externalFindBarOpen`.
+2. **Test 17 (Find bar)** — Next/prev match navigation from the top bar now works. Added `externalFindMatchIndex` parameter to CodeEditor, synced via `LaunchedEffect` to internal `matchIndex`. Editor now scrolls to the current match when index changes.
+3. **Test 17 (Find bar)** — Replace single/all from the top find bar now updates the editor. Added `reloadTrigger` to EditorPane that re-reads file content from disk after replace writes. Both replace buttons increment `editorReloadTrigger`.
+4. **Find in Files** — `onOpenFileAtLine` was discarding the line number (`_` → `line`). Now sets `scrollTargetLine` so clicking a text search result jumps to the matching line.
+5. **Find in Files** — Added `imePadding()` to the panel (standing instruction: all popups need IME-insets-aware padding).
+
+**Files touched:**
+- `CodeEditor.kt` — Added `externalFindMatchIndex` param, `SearchMatchOverlay` render fix, match-index sync + scroll-to-match
+- `EditorPane.kt` — Added `externalFindMatchIndex` + `reloadTrigger` params, LaunchedEffect for file reload
+- `ProjectShellScreen.kt` — Wired `externalFindMatchIndex` + `reloadTrigger` to EditorPane, fixed `onOpenFileAtLine` line number, replace buttons trigger reload
+- `ProjectFileSearchPanel.kt` — Added `imePadding()` import and modifier
+
+**Next on roadmap:** Test 16 (editor extra keys/toolbar), Test 130 (YouTube Shorts browser), remaining test regressions.

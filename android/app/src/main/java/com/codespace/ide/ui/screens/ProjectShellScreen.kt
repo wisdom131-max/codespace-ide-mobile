@@ -765,6 +765,7 @@ fun ProjectShellScreen(
     val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
     var goToLineInput      by remember { mutableStateOf("") }
     val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
+    val editorReloadTriggerMs = remember { mutableStateOf(0) }; var editorReloadTrigger by editorReloadTriggerMs
     val buildProblemsMs = remember { mutableStateOf<List<Problem>>(emptyList()) }; var buildProblems by buildProblemsMs
     val findQueryMs = remember { mutableStateOf("") }; var _findQuery by findQueryMs
     val replaceQueryMs = remember { mutableStateOf("") }; var _replaceQuery by replaceQueryMs
@@ -1696,9 +1697,10 @@ fun ProjectShellScreen(
                 activeEditorTab = path
                 showFileSearch = false
             },
-            onOpenFileAtLine = { path, _ ->
+            onOpenFileAtLine = { path, line ->
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
+                scrollTargetLine = line
                 showFileSearch = false
             },
             onDismiss = { showFileSearch = false },
@@ -4578,6 +4580,7 @@ private fun PssEditorColumn(
                                     if (idx >= 0) {
                                         val newContent = content.substring(0, idx) + replaceQuery + content.substring(idx + findQuery.length)
                                         java.io.File(active).writeText(newContent)
+                                        editorReloadTrigger++
                                         showNotification("Replaced 1 occurrence", "info")
                                     }
                                 } catch (e: Exception) {
@@ -4593,6 +4596,7 @@ private fun PssEditorColumn(
                                     val content = java.io.File(active).readText()
                                     val newContent = content.replace(findQuery, replaceQuery)
                                     java.io.File(active).writeText(newContent)
+                                    editorReloadTrigger++
                                     showNotification("Replaced ${content.split(findQuery).size - 1} occurrences", "info")
                                 } catch (e: Exception) {
                                     showNotification("Replace failed: ${e.message}", "error")
@@ -4630,6 +4634,8 @@ private fun PssEditorColumn(
                     externalCaseSensitive = if (showFindBar) findCaseSensitive else null,
                     externalWholeWord = if (showFindBar) findWholeWord else null,
                     externalUseRegex = if (showFindBar) findUseRegex else null,
+                    externalFindMatchIndex = if (showFindBar) findMatchIndex else -1,
+                    reloadTrigger = editorReloadTrigger,
                 )
             } else {
                 Box(

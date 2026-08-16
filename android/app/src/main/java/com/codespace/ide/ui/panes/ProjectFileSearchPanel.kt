@@ -3,6 +3,7 @@ package com.codespace.ide.ui.panes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -214,6 +215,7 @@ fun ProjectFileSearchPanel(
                 .align(Alignment.TopCenter)
                 .padding(top = 48.dp)
                 .background(SCard, RoundedCornerShape(8.dp))
+                .imePadding()
                 .clickable(enabled = false, onClick = {}),
         ) {
             // ── Header ────────────────────────────────────────────────────
