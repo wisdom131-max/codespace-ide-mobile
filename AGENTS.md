@@ -19011,3 +19011,9 @@ Four fixes to the Command Palette:
 **What was fixed:** Fixed CI build failure — LaunchedEffect for Test 78 was placed before `var refresh` and `var selected` declarations, causing "Unresolved reference: refresh" and "Unresolved reference: selected" compilation errors. Moved the LaunchedEffect block to after all variable declarations. Build confirmed green via GitHub API.
 **Files touched:** ExplorerPane.kt (moved LaunchedEffect block from line ~311 to line ~333)
 **Next on roadmap:** UI interaction fixes (Tests 12, 30, 33, 40); YouTube Shorts browser (Test 130)
+
+### [2026-08-16 17:27 WAT] — AI Agent: Claude (Superagent), Commit: pending, CI Build: pending
+**Tags:** [FIX] [TEST-30] [TEST-33] [TEST-40] [CURSOR] [EDITOR]
+**What was fixed:** Three issues: (1) Test 30 — SOLID and EXPAND cursor styles were invisible because they set alpha=0f expecting a custom drawWithContent cursor that was never implemented. SOLID now uses full-opacity baseColor (always visible, no blink). EXPAND now uses a pulse animation between 1.0 and 0.4 alpha to simulate block expand/contract. Removed unused drawWithContent import. (2) Test 33/40 — scrollToLine in CodeEditor only scrolled to the line but never moved the cursor. Now the LaunchedEffect also computes the character offset from the line number using newlineOffsets and sets the TextFieldValue selection to that offset, positioning the cursor on the target line. (3) Test 33 — Code Analysis panel's onJumpToLine callback was an empty stub ("// Jump to line in current file"). Now wired to scrollTargetLine + closes bottom panel. Also reverted a notification bell badge change (Test 12) since notifications were already working.
+**Files touched:** CodeEditor.kt, ProjectShellScreen.kt
+**Next on roadmap:** Fix SVG/HTML/Markdown rendering + zoom (Tests 70/72); Fix git author identity/staging errors (Tests 47+); Restore file visibility in explorer (Test 78); Reconstruct YouTube Shorts browser (Test 130)

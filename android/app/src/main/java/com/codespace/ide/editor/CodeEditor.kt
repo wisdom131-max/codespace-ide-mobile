@@ -82,7 +82,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.SpanStyle
@@ -698,6 +697,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
             vScroll.animateScrollTo(((scrollToLine - 1) * lineHeightPx).toInt())
             highlightTargetLine = scrollToLine
+            // Test 33/40 fix: Also move the cursor to the target line so that
+            // clicking an error or outline entry positions the cursor there,
+            // not just scrolling to it.
+            val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
+            if (targetLineIdx >= 0) {
+                val offset = if (targetLineIdx == 0) 0
+                    else newlineOffsets.getOrNull(targetLineIdx - 1)?.let { it + 1 } ?: value.text.length
+                val clampedOffset = offset.coerceIn(0, value.text.length)
+                value = value.copy(selection = androidx.compose.ui.text.TextRange(clampedOffset))
+            }
             // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
             coroutineScope.launch {
                 kotlinx.coroutines.delay(2500)
@@ -5732,16 +5741,17 @@ private fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
 
 
 // P-CURSOR: Animated cursor brush composable — handles different blink styles
-// SOLID + EXPAND use transparent built-in cursor; custom cursor drawn via drawWithContent
-// on the BasicTextField (BasicTextField always blinks its built-in cursor, so we hide it
-// and draw our own for non-blinking styles).
-// Uses LaunchedEffect + kotlinx.delay to avoid animation-core dependency issues
+// Test 30 fix: SOLID and EXPAND previously set alpha=0f (invisible) expecting a
+// custom drawWithContent cursor that was never implemented. Now SOLID uses the
+// base color at full opacity (always visible, no blink). EXPAND animates between
+// full and reduced alpha with a slight pulse, simulating block expand/contract.
+// Uses LaunchedEffect + kotlinx.delay to avoid animation-core dependency issues.
 @Composable
 private fun animatedCursorBrush(baseColor: Color): Brush {
     val style = ProjectSettingsStore.cursorBlinkStyle.value
     return when (style) {
         CursorBlinkStyle.BLINK -> androidx.compose.ui.graphics.SolidColor(baseColor)
-        CursorBlinkStyle.SOLID -> androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = 0f))
+        CursorBlinkStyle.SOLID -> androidx.compose.ui.graphics.SolidColor(baseColor)
         CursorBlinkStyle.PHASE -> {
             var alpha by remember { mutableStateOf(1f) }
             LaunchedEffect(Unit) {
@@ -5762,6 +5772,17 @@ private fun animatedCursorBrush(baseColor: Color): Brush {
             }
             androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = alpha))
         }
-        CursorBlinkStyle.EXPAND -> androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = 0f))
+        CursorBlinkStyle.EXPAND -> {
+            // Expand: pulse between full opacity and ~40% to simulate
+            // block-style expand/contract animation
+            var alpha by remember { mutableStateOf(1f) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(300)
+                    alpha = if (alpha > 0.7f) 0.4f else 1f
+                }
+            }
+            androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = alpha))
+        }
     }
 }
