@@ -3960,14 +3960,12 @@ private fun StatusBarContent(
         Spacer(Modifier.width(4.dp))
         Text(branchName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
         Spacer(Modifier.width(8.dp))
-        // P-STATUS-LANG-ICON: Show the language icon for the currently open file,
-        // like VS Code shows { } for JS, etc. Uses the same fileIcon() as the Explorer.
+        // P-STATUS-LANG: VS Code-style language indicator — shows the language
+        // name (e.g. "TypeScript", "JSON") in white when a file is open.
         if (activeEditorTab != null) {
-            val fileName = activeEditorTab.substringAfterLast("/")
-            val langIcon = fileIcon(fileName)
-            val iconTint = fileIconColor(fileName)
-            Icon(langIcon, null, tint = iconTint, modifier = Modifier.size(12.dp))
-            Spacer(Modifier.width(4.dp))
+            val lang = com.codespace.ide.domain.Language.fromPath(activeEditorTab)
+            Text(lang.displayName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+            Spacer(Modifier.width(8.dp))
         }
         // P9-5: Live file metrics
         if (activeEditorTab != null) {

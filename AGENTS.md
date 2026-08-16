@@ -18692,3 +18692,18 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 - ProotInstaller.kt (01-essential-tools.sh robustness)
 
 **Next:** CI build check → device testing of find bar + preview refresh + SVG mode switch
+
+---
+
+### [2026-08-16 11:10 WAT] — AI Agent: Elowen (Claude Sonnet 4), Commit b791fc87 + pending, CI Build pending
+
+**What was fixed:**
+1. Status bar Git branch was hardcoded "main" — now dynamically reads `.git/HEAD` to show actual current branch name. Shows short SHA (7 chars) for detached HEAD. Falls back to "main" if not a git repo.
+2. Status bar language indicator — replaced Material icons with VS Code-style text label showing language name (e.g. "TypeScript", "JSON", "Kotlin") in white when a file is open. Uses `Language.fromPath()` for detection.
+3. In-Project Settings portrait layout — was always fixed 200dp sidebar + content side-by-side, which cramped badly in portrait. Now responsive: portrait (< 600dp width) uses horizontal scrolling category tab strip on top + content below; landscape keeps the original VS Code-style sidebar layout.
+
+**Files touched:**
+- ProjectShellScreen.kt (StatusBarContent: added projectRootPath param, dynamic branch via .git/HEAD, Language.fromPath() text label)
+- InProjectSettingsDialog.kt (responsive portrait/landscape layout, horizontalScroll category tabs, LocalConfiguration import)
+
+**Next:** Notification restructure (awaiting user plan), portrait settings device test

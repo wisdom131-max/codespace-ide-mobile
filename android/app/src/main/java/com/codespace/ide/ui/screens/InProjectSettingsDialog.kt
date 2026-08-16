@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -17,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -116,135 +119,238 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                 }
                 HorizontalDivider(color = divider)
 
-                // ── Body: sidebar + content ────────────────────────────
-                Row(Modifier.fillMaxSize()) {
-                    // Sidebar
-                    val allRowsForSearch = remember { buildAllSettingsRows() }
-                    // Per-category match counts when searching
-                    val categoryCounts = remember(searchQuery, allRowsForSearch) {
-                        if (searchQuery.isEmpty()) emptyMap()
-                        else {
-                            val q = searchQuery.lowercase()
-                            allRowsForSearch.filter {
-                                it.label.lowercase().contains(q) ||
-                                it.description.lowercase().contains(q) ||
-                                it.category.label.lowercase().contains(q)
-                            }.groupBy { it.category }.mapValues { it.value.size }
-                        }
-                    }
-
-                    LazyColumn(
-                        Modifier.width(200.dp).background(sidebarBg).fillMaxHeight(),
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                    ) {
-                        items(categories) { category ->
-                            val isActive = activeCategory == category && searchQuery.isEmpty()
-                            val matchCount = categoryCounts[category]
-                            // P-SETTINGS-RESTRUCTURE: dim categories with 0 matches during search
-                            val dimmed = searchQuery.isNotEmpty() && (matchCount == null || matchCount == 0)
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .background(if (isActive) activeCatBg else Color.Transparent)
-                                    .clickable(enabled = !dimmed) {
-                                        activeCategory = category; searchQuery = ""
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(category.label,
-                                    color = when {
-                                        dimmed -> textSec.copy(alpha = 0.4f)
-                                        isActive -> accent
-                                        else -> textPri
-                                    },
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
-                                // P-SETTINGS-RESTRUCTURE (Item 2): per-category match count badge
-                                if (searchQuery.isNotEmpty() && matchCount != null && matchCount > 0) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        matchCount.toString(),
-                                        color = accent.copy(alpha = 0.7f),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.background(
-                                            accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp)
-                                        ).padding(horizontal = 5.dp, vertical = 1.dp),
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    VerticalDivider(color = divider, modifier = Modifier.fillMaxHeight())
-
-                    // Content
-                    val allRows = remember { buildAllSettingsRows() }
-                    // P-SETTINGS-RESTRUCTURE (Item 1): "Commonly Used" shows all settings
-                    // ranked by usage count (most-interacted first). Other categories show
-                    // their own rows. Search filters across everything.
-                    val filteredRows = if (searchQuery.isNotEmpty()) {
+                // ── Body: responsive layout ─────────────────────────────
+                // P-SETTINGS-PORTRAIT: In portrait (width < 600dp), use horizontal
+                // scrolling category tabs on top + content below. In landscape,
+                // keep the VS Code-style sidebar + content side-by-side.
+                val isPortrait = LocalConfiguration.current.screenWidthDp < 600
+                val allRowsForSearch = remember { buildAllSettingsRows() }
+                val categoryCounts = remember(searchQuery, allRowsForSearch) {
+                    if (searchQuery.isEmpty()) emptyMap()
+                    else {
                         val q = searchQuery.lowercase()
-                        allRows.filter {
+                        allRowsForSearch.filter {
                             it.label.lowercase().contains(q) ||
                             it.description.lowercase().contains(q) ||
                             it.category.label.lowercase().contains(q)
-                        }
-                    } else if (activeCategory == SettingsCategory.COMMONLY_USED) {
-                        // Sort by usage count descending; unused settings keep their original order
-                        val ranked = SettingsUsageTracker.rankedIds()
-                        val used = allRows.filter { it.id in ranked }
-                            .sortedByDescending { SettingsUsageTracker.count(it.id) }
-                        val unused = allRows.filter { it.id !in ranked }
-                        used + unused
-                    } else {
-                        allRows.filter { it.category == activeCategory }
+                        }.groupBy { it.category }.mapValues { it.value.size }
                     }
+                }
 
-                    // P-SETTINGS-RESTRUCTURE (Item 2): total match count header
-                    if (searchQuery.isNotEmpty() && filteredRows.isNotEmpty()) {
-                        Text(
-                            "${filteredRows.size} Setting${if (filteredRows.size > 1) "s" else ""} Found",
-                            color = textSec, fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                        )
-                    }
-                    // P-SETTINGS-RESTRUCTURE (Item 1): "Commonly Used" hint when empty
-                    if (searchQuery.isEmpty() && activeCategory == SettingsCategory.COMMONLY_USED && filteredRows.isEmpty()) {
-                        Text(
-                            "Settings you interact with most will appear here. Tap a setting to start tracking usage.",
-                            color = textSec, fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        )
-                    }
-
-                    LazyColumn(
-                        Modifier.weight(1f).fillMaxHeight(),
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                    ) {
-                        if (filteredRows.isEmpty() && searchQuery.isNotEmpty()) {
-                            item {
-                                Text("No settings found",
-                                    color = textSec, fontSize = 14.sp,
-                                    modifier = Modifier.padding(24.dp))
-                            }
-                        } else {
-                            var lastCategory: SettingsCategory? = null
-                            for (row in filteredRows) {
-                                // Show category headers in search mode and in "Commonly Used" mode
-                                val showHeader = (searchQuery.isNotEmpty() || activeCategory == SettingsCategory.COMMONLY_USED) && row.category != lastCategory
-                                if (showHeader) {
-                                    item(key = "header_${row.category}") {
-                                        SectionHeader(row.category.label, textPri)
+                if (isPortrait) {
+                    // ── Portrait: horizontal tab strip + content below ──
+                    Column(Modifier.fillMaxSize()) {
+                        // Category tab strip
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .background(sidebarBg),
+                        ) {
+                            categories.forEach { category ->
+                                val isActive = activeCategory == category && searchQuery.isEmpty()
+                                val matchCount = categoryCounts[category]
+                                val dimmed = searchQuery.isNotEmpty() && (matchCount == null || matchCount == 0)
+                                Row(
+                                    Modifier
+                                        .background(if (isActive) activeCatBg else Color.Transparent)
+                                        .clickable(enabled = !dimmed) {
+                                            activeCategory = category; searchQuery = ""
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(category.label,
+                                        color = when {
+                                            dimmed -> textSec.copy(alpha = 0.4f)
+                                            isActive -> accent
+                                            else -> textPri
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
+                                    if (searchQuery.isNotEmpty() && matchCount != null && matchCount > 0) {
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            matchCount.toString(),
+                                            color = accent.copy(alpha = 0.7f),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.background(
+                                                accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp)
+                                            ).padding(horizontal = 4.dp, vertical = 1.dp),
+                                        )
                                     }
-                                    lastCategory = row.category
-                                }
-                                item(key = row.id) {
-                                    SettingsRowRenderer(row, accent, textPri, textSec, surface, divider)
                                 }
                             }
                         }
-                    }
+                        HorizontalDivider(color = divider)
+
+                        // Content (portrait)
+                        val allRows = remember { buildAllSettingsRows() }
+                        val filteredRows = if (searchQuery.isNotEmpty()) {
+                            val q = searchQuery.lowercase()
+                            allRows.filter {
+                                it.label.lowercase().contains(q) ||
+                                it.description.lowercase().contains(q) ||
+                                it.category.label.lowercase().contains(q)
+                            }
+                        } else if (activeCategory == SettingsCategory.COMMONLY_USED) {
+                            val ranked = SettingsUsageTracker.rankedIds()
+                            val used = allRows.filter { it.id in ranked }
+                                .sortedByDescending { SettingsUsageTracker.count(it.id) }
+                            val unused = allRows.filter { it.id !in ranked }
+                            used + unused
+                        } else {
+                            allRows.filter { it.category == activeCategory }
+                        }
+
+                        if (searchQuery.isNotEmpty() && filteredRows.isNotEmpty()) {
+                            Text(
+                                "${filteredRows.size} Setting${if (filteredRows.size > 1) "s" else ""} Found",
+                                color = textSec, fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            )
+                        }
+                        if (searchQuery.isEmpty() && activeCategory == SettingsCategory.COMMONLY_USED && filteredRows.isEmpty()) {
+                            Text(
+                                "Settings you interact with most will appear here. Tap a setting to start tracking usage.",
+                                color = textSec, fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                            )
+                        }
+
+                        LazyColumn(
+                            Modifier.weight(1f).fillMaxHeight(),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                        ) {
+                            if (filteredRows.isEmpty() && searchQuery.isNotEmpty()) {
+                                item {
+                                    Text("No settings found",
+                                        color = textSec, fontSize = 14.sp,
+                                        modifier = Modifier.padding(24.dp))
+                                }
+                            } else {
+                                var lastCategory: SettingsCategory? = null
+                                for (row in filteredRows) {
+                                    val showHeader = (searchQuery.isNotEmpty() || activeCategory == SettingsCategory.COMMONLY_USED) && row.category != lastCategory
+                                    if (showHeader) {
+                                        item(key = "header_p_${row.category}") {
+                                            SectionHeader(row.category.label, textPri)
+                                        }
+                                        lastCategory = row.category
+                                    }
+                                    item(key = "p_${row.id}") {
+                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider)
+                                    }
+                                }
+                            }
+                        }
+                    } // end portrait Column
+                } else {
+                    // ── Landscape: sidebar + content side-by-side ──
+                    Row(Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            Modifier.width(200.dp).background(sidebarBg).fillMaxHeight(),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                        ) {
+                            items(categories) { category ->
+                                val isActive = activeCategory == category && searchQuery.isEmpty()
+                                val matchCount = categoryCounts[category]
+                                val dimmed = searchQuery.isNotEmpty() && (matchCount == null || matchCount == 0)
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .background(if (isActive) activeCatBg else Color.Transparent)
+                                        .clickable(enabled = !dimmed) {
+                                            activeCategory = category; searchQuery = ""
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(category.label,
+                                        color = when {
+                                            dimmed -> textSec.copy(alpha = 0.4f)
+                                            isActive -> accent
+                                            else -> textPri
+                                        },
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal)
+                                    if (searchQuery.isNotEmpty() && matchCount != null && matchCount > 0) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            matchCount.toString(),
+                                            color = accent.copy(alpha = 0.7f),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.background(
+                                                accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp)
+                                            ).padding(horizontal = 5.dp, vertical = 1.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        VerticalDivider(color = divider, modifier = Modifier.fillMaxHeight())
+
+                        val allRows = remember { buildAllSettingsRows() }
+                        val filteredRows = if (searchQuery.isNotEmpty()) {
+                            val q = searchQuery.lowercase()
+                            allRows.filter {
+                                it.label.lowercase().contains(q) ||
+                                it.description.lowercase().contains(q) ||
+                                it.category.label.lowercase().contains(q)
+                            }
+                        } else if (activeCategory == SettingsCategory.COMMONLY_USED) {
+                            val ranked = SettingsUsageTracker.rankedIds()
+                            val used = allRows.filter { it.id in ranked }
+                                .sortedByDescending { SettingsUsageTracker.count(it.id) }
+                            val unused = allRows.filter { it.id !in ranked }
+                            used + unused
+                        } else {
+                            allRows.filter { it.category == activeCategory }
+                        }
+
+                        if (searchQuery.isNotEmpty() && filteredRows.isNotEmpty()) {
+                            Text(
+                                "${filteredRows.size} Setting${if (filteredRows.size > 1) "s" else ""} Found",
+                                color = textSec, fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            )
+                        }
+                        if (searchQuery.isEmpty() && activeCategory == SettingsCategory.COMMONLY_USED && filteredRows.isEmpty()) {
+                            Text(
+                                "Settings you interact with most will appear here. Tap a setting to start tracking usage.",
+                                color = textSec, fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                            )
+                        }
+
+                        LazyColumn(
+                            Modifier.weight(1f).fillMaxHeight(),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                        ) {
+                            if (filteredRows.isEmpty() && searchQuery.isNotEmpty()) {
+                                item {
+                                    Text("No settings found",
+                                        color = textSec, fontSize = 14.sp,
+                                        modifier = Modifier.padding(24.dp))
+                                }
+                            } else {
+                                var lastCategory: SettingsCategory? = null
+                                for (row in filteredRows) {
+                                    val showHeader = (searchQuery.isNotEmpty() || activeCategory == SettingsCategory.COMMONLY_USED) && row.category != lastCategory
+                                    if (showHeader) {
+                                        item(key = "header_l_${row.category}") {
+                                            SectionHeader(row.category.label, textPri)
+                                        }
+                                        lastCategory = row.category
+                                    }
+                                    item(key = "l_${row.id}") {
+                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider)
+                                    }
+                                }
+                            }
+                        }
+                    } // end landscape Row
                 }
             }
         }
