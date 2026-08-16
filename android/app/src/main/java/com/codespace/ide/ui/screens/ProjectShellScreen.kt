@@ -32,6 +32,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -1780,6 +1784,8 @@ fun ProjectShellScreen(
             editorFontSize = editorFontSize,
             onEditorFontSizeChange = { editorFontSize = it },
             activeFilePath = activeEditorTab,
+            recentFiles = editorTabs,
+            onOpenRecentFile = { path -> activeEditorTab = path; showCommandPalette = false; commandQuery = "" },
             onSymbolNavigate = { line ->
                 scrollTargetLine = line
                 showCommandPalette = false
@@ -1855,6 +1861,9 @@ private fun PssOverlays(
     // vscode.dev Test #18: active file path for @ symbol search in command palette
     activeFilePath: String?,
     onSymbolNavigate: (Int) -> Unit,
+    // P-CMDPAL-RECENT: currently open tabs shown as "recently opened" in the palette
+    recentFiles: List<String>,
+    onOpenRecentFile: (String) -> Unit,
     // P34-NOTIF: notifList param removed
     // Colors
     BgColor: Color,
@@ -1943,11 +1952,31 @@ private fun PssOverlays(
                     try { cmdFocusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                 }
             }
+            // P-CMDPAL-FIX-2: track the card's on-screen bounds so the outside-tap
+            // detector below can tell "inside card" from "outside card" without
+            // needing to consume/swallow the touch.
+            var cmdCardBounds by remember { mutableStateOf<Rect?>(null) }
             Box(
                 Modifier.fillMaxSize()
-                    .background(Color(0x88000000))
+                    // P-CMDPAL-FIX-3: NO dark scrim — real VS Code doesn't dim the
+                    // background behind the command palette, keep it fully transparent.
                     .pointerInput(Unit) {
-                        detectTapGestures { onShowCommandPaletteChange(false); onCommandQueryChange("") }
+                        // Observe the first-down position during the Initial pass
+                        // (top-down, before children see it) WITHOUT consuming it.
+                        // Not calling change.consume() lets the same tap continue on
+                        // to whatever is actually underneath (e.g. an editor tab), so
+                        // one tap both dismisses the palette AND performs that tap's
+                        // real action — fixes "opening another tab closes the palette
+                        // instead of switching to it".
+                        awaitEachGesture {
+                            val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                            val bounds = cmdCardBounds
+                            val insideCard = bounds != null && bounds.contains(down.position)
+                            if (!insideCard) {
+                                onShowCommandPaletteChange(false)
+                                onCommandQueryChange("")
+                            }
+                        }
                     }
             ) {
                 Card(
@@ -1957,9 +1986,9 @@ private fun PssOverlays(
                         .fillMaxWidth(0.75f)
                         .widthIn(max = 380.dp)
                         .heightIn(max = 240.dp)
-                        .pointerInput(Unit) {
-                            detectTapGestures { /* swallow taps so they don't reach the dismiss layer behind */ }
-                        },
+                        .onGloballyPositioned { coords -> cmdCardBounds = coords.boundsInWindow() }
+                        // P-CMDPAL-FIX-4: black outline around the command palette card
+                        .border(1.dp, Color.Black, androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
                     colors = CardDefaults.cardColors(containerColor = MenuBg),
                     elevation = CardDefaults.cardElevation(12.dp),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -2065,6 +2094,46 @@ private fun PssOverlays(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                                    }
+                                }
+                                // P-CMDPAL-RECENT: "recently opened" section — VS Code shows
+                                // currently/recently opened files below a demarcating divider,
+                                // only when there's no active search query. Divider uses the
+                                // SAME color as the card's black outline border.
+                                if (commandQuery.isBlank() && recentFiles.isNotEmpty()) {
+                                    item {
+                                        HorizontalDivider(color = Color.Black, thickness = 1.dp)
+                                    }
+                                    item {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.End,
+                                        ) {
+                                            Text("recently opened", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f))
+                                        }
+                                    }
+                                    items(recentFiles.reversed()) { path ->
+                                        val fileName = path.substringAfterLast("/")
+                                        val lang = com.codespace.ide.domain.Language.fromPath(path)
+                                        val symbol = when (lang) {
+                                            com.codespace.ide.domain.Language.HTML,
+                                            com.codespace.ide.domain.Language.XML -> "< >"
+                                            com.codespace.ide.domain.Language.MARKDOWN -> "#"
+                                            com.codespace.ide.domain.Language.PLAINTEXT,
+                                            com.codespace.ide.domain.Language.PLAIN -> "Aa"
+                                            else -> "{ }"
+                                        }
+                                        Row(
+                                            Modifier.fillMaxWidth()
+                                                .clickable { onOpenRecentFile(path) }
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(symbol, fontSize = 11.sp, color = MenuText.copy(alpha = 0.6f))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(fileName, fontSize = 13.sp, color = MenuText, maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                        }
                                     }
                                 }
                             }
