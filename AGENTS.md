@@ -18936,3 +18936,14 @@ Four fixes to the Command Palette:
 
 **Files touched:** none (code audit only)
 **Next on roadmap:** Next easiest items: Test 47 (git config auto-setup, unblocks 10 tests), Test 69 (trash delete persistence), Tests 124/125 (missing menu entries).
+
+### [2026-08-16 15:20 WAT] — AI Agent: Claude (Superagent), Commit: pending, CI Build: pending
+**Tags:** [FIX] [TEST-47] [TEST-69] [TEST-124] [TEST-125]
+**What was fixed:**
+- **Test 47 (git config auto-setup):** Added `ensureIdentity()` to `GitService` — auto-sets `user.name` and `user.email` if not configured. Called before `commit()` and after `init()` and `clone()`. Unblocks Tests 48-56 (all commit/push operations that needed author identity).
+- **Test 69 (trash delete bug):** File trash dialog in `ExplorerPane.kt` was using `findTrashProjectDir(contextFile)` in delete/restore handlers, which could return null or wrong dir after the context file became stale. Now stores `trashProjectDir` when dialog opens and uses that. Also moved `listTrash()` inside `withContext(Dispatchers.IO)` to avoid filesystem timing issues.
+- **Test 125 (Connectors Hub):** Added "Connectors Hub" to File menu and wired `showConnectorsSheet = true` handler. The `ConnectorsHubSheet` composable already existed but had no menu entry to trigger it.
+- **Test 124 (Diagnostics Report):** Verified already present in File menu with working handler.
+
+**Files touched:** GitService.kt, ExplorerPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** Device test all SCM features (E1-E18), YouTube Test 51 fix, Phase N notification system.

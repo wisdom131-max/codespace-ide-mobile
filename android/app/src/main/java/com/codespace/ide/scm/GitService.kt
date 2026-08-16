@@ -165,6 +165,7 @@ class GitService(private val context: Context) {
      * @param workdir guest-side path to the repository
      */
     fun commit(message: String, workdir: String): GitResult {
+        ensureIdentity(workdir)
         return GitCommandExecutor.run(
             context,
             listOf("commit", "-m", message),
@@ -476,7 +477,27 @@ class GitService(private val context: Context) {
      * Initialize a new git repository.
      */
     fun init(workdir: String): GitResult {
-        return GitCommandExecutor.run(context, listOf("init"), workdir, timeoutSeconds = 15)
+        val result = GitCommandExecutor.run(context, listOf("init"), workdir, timeoutSeconds = 15)
+        if (result is GitResult.Ok) {
+            ensureIdentity(workdir)
+        }
+        return result
+    }
+
+    /**
+     * Ensure git user.name and user.email are configured.
+     * If not set, auto-configures sensible defaults so commits don't fail
+     * with "Author identity unknown" (Test 47 fix — unblocks Tests 48-56).
+     */
+    fun ensureIdentity(workdir: String) {
+        val nameResult = GitCommandExecutor.run(context, listOf("config", "user.name"), workdir)
+        if (nameResult !is GitResult.Ok || nameResult.output.isBlank()) {
+            GitCommandExecutor.run(context, listOf("config", "user.name", "CodeSpace User"), workdir)
+        }
+        val emailResult = GitCommandExecutor.run(context, listOf("config", "user.email"), workdir)
+        if (emailResult !is GitResult.Ok || emailResult.output.isBlank()) {
+            GitCommandExecutor.run(context, listOf("config", "user.email", "user@codespace.local"), workdir)
+        }
     }
 
     /**

@@ -312,6 +312,7 @@ fun ExplorerSidePanel(
     var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
     var showTrashDialog    by remember { mutableStateOf(false) }
     var trashEntries       by remember { mutableStateOf<List<WorkspaceManager.TrashEntry>>(emptyList()) }
+    var trashProjectDir    by remember { mutableStateOf<File?>(null) }
     // P17-B Compress
     var showCompressDialog by remember { mutableStateOf(false) }
     // P17-C Permissions
@@ -1463,6 +1464,7 @@ fun ExplorerSidePanel(
                                                 p
                                             }
                                             if (projectDir != null) {
+                                                trashProjectDir = projectDir
                                                 trashEntries = WorkspaceManager.listTrash(projectDir)
                                             }
                                             showTrashDialog = true
@@ -2140,9 +2142,9 @@ fun ExplorerSidePanel(
                                 }
                                 TextButton(onClick = {
                                     scope.launch {
-                                        findTrashProjectDir(contextFile)?.let { pd ->
+                                        trashProjectDir?.let { pd ->
                                             withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(pd, entry) }
-                                            trashEntries = WorkspaceManager.listTrash(pd)
+                                            withContext(Dispatchers.IO) { trashEntries = WorkspaceManager.listTrash(pd) }
                                             refresh++
                                         }
                                     }
@@ -2150,9 +2152,11 @@ fun ExplorerSidePanel(
                                 Spacer(Modifier.width(4.dp))
                                 TextButton(onClick = {
                                     scope.launch {
-                                        findTrashProjectDir(contextFile)?.let { pd ->
-                                            withContext(Dispatchers.IO) { WorkspaceManager.purgeTrashEntry(pd, entry) }
-                                            trashEntries = WorkspaceManager.listTrash(pd)
+                                        trashProjectDir?.let { pd ->
+                                            withContext(Dispatchers.IO) {
+                                                WorkspaceManager.purgeTrashEntry(pd, entry)
+                                                trashEntries = WorkspaceManager.listTrash(pd)
+                                            }
                                         }
                                     }
                                 }) { Text("Delete", fontSize = 11.sp, color = Color(0xFFCC0000)) }

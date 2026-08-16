@@ -406,7 +406,7 @@ private val MENU_BAR = listOf(
         MenuAction("Open File","Ctrl+O"), MenuAction("Open Folder"),
         MenuAction("",divider=true),
         MenuAction("Save","Ctrl+S"), MenuAction("Save As","Ctrl+Shift+S"), MenuAction("Auto Save"),
-        MenuAction("",divider=true), MenuAction("Create Snapshot"), MenuAction("Diagnostics Report"), MenuAction("",divider=true), MenuAction("Preferences"), MenuAction("Exit"),
+        MenuAction("",divider=true), MenuAction("Create Snapshot"), MenuAction("Diagnostics Report"), MenuAction("Connectors Hub"), MenuAction("",divider=true), MenuAction("Preferences"), MenuAction("Exit"),
     )),
     MenuBarItem("Edit", listOf(
         MenuAction("Undo","Ctrl+Z"), MenuAction("Redo","Ctrl+Y"),
@@ -1070,6 +1070,9 @@ fun ProjectShellScreen(
                         showNotification("Diagnostics failed: ${e.message}", "error")
                     }
                 }
+            }
+            "Connectors Hub" -> {
+                showConnectorsSheet = true
             }
             "Run Program", "Start Debugging" -> {
                 showBottomPanel = true; activeBottomTab = BottomTab.DEBUG
