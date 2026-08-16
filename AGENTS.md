@@ -17156,3 +17156,13 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 **Next on roadmap:** Continue Section 3 tests (Terminal: Tests 11-20).
 
 ---
+
+### [2026-08-16 23:04 WAT] — AI Agent: Claude (Superagent), Commit: pending, CI Build: #2398 pending
+**Tags:** [TEST-26] [TEST-30] [FILE-EXPLORER]
+**What was fixed:**
+1. Test 26 (File rename): File.renameTo() can silently fail on FUSE/scoped-storage filesystems. Added: (a) duplicate-name check before rename, (b) NIO Files.move() fallback when renameTo() fails, (c) user-visible error toast on failure, (d) success notification. Also fixed: terminal now cds to project workspace so files created via 'echo > file.txt' actually appear in the explorer (from previous commit).
+2. Test 30 (Permanent delete from trash): deleteRecursively() can silently fail on FUSE storage, causing the trashed file to reappear. Added: (a) rm -rf fallback when deleteRecursively() fails, (b) return value from purgeTrashEntry(), (c) user-visible error toast if deletion fails, (d) button label changed to "Delete forever" per test spec, (e) trash list re-check after deletion.
+**Files touched:** ExplorerPane.kt, WorkspaceManager.kt
+**Next on roadmap:** Continue with next section of tests.
+
+---
