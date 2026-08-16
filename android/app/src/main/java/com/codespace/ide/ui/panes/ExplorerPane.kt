@@ -323,26 +323,31 @@ fun ExplorerSidePanel(
             dir = dir.parentFile
         }
         refresh++
-        // Wait for recomposition, then scroll to the file's position in the tree
-        kotlinx.coroutines.delay(150)
+        // Wait for recomposition, then scroll to the file's position in the tree.
+        // Use a retry loop: on slow devices the first recomposition may not be ready yet.
         val localWorkspaceRoot = workspacePath?.let { java.io.File(it) } ?: return@LaunchedEffect
-        var idx = 0
         var found = false
-        fun walk(f: java.io.File, depth: Int) {
-            if (found) return
-            idx++
-            if (f.absolutePath == targetPath) { found = true; return }
-            if (expanded[f.absolutePath] == true && f.isDirectory) {
-                f.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-                    ?.forEach { child -> if (!found) walk(child, depth + 1) }
+        var foundIdx = 0
+        repeat(3) { attempt ->
+            if (found) return@repeat
+            kotlinx.coroutines.delay(if (attempt == 0) 150L else 100L)
+            var idx = 0
+            fun walk(f: java.io.File, depth: Int) {
+                if (found) return
+                idx++
+                if (f.absolutePath == targetPath) { found = true; foundIdx = idx; return }
+                if (expanded[f.absolutePath] == true && f.isDirectory) {
+                    f.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                        ?.forEach { child -> if (!found) walk(child, depth + 1) }
+                }
             }
+            localWorkspaceRoot.listFiles()
+                ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                ?.forEach { if (!found) walk(it, 0) }
         }
-        localWorkspaceRoot.listFiles()
-            ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-            ?.forEach { if (!found) walk(it, 0) }
         if (found) {
-            treeListState.animateScrollToItem((idx - 1).coerceAtLeast(0))
-            // Highlight the file briefly so the user can spot it
+            treeListState.animateScrollToItem((foundIdx - 1).coerceAtLeast(0))
+            // Highlight the file so the user can spot it
             selected = targetPath
         }
     }
