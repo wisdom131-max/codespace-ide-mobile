@@ -816,6 +816,9 @@ fun ProjectShellScreen(
     val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var _keyboardInsert by keyboardInsertMs
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
     val breadcrumbNavDirMs = remember { mutableStateOf<String?>(null) }; var breadcrumbNavDir by breadcrumbNavDirMs
+    /** Test 78: When a file tab is closed, set this to reveal the file in the Explorer tree. Uses a counter to ensure the key changes even if the same file is closed twice. */
+    val revealFileMs = remember { mutableStateOf<String?>(null) }; var revealFile by revealFileMs
+    var revealFileTrigger by remember { mutableStateOf(0) }
 
     // P2-10 Jump back/forward navigation history
     val navBackStack  = remember { mutableStateListOf<NavEntry>() }
@@ -1461,12 +1464,16 @@ fun ProjectShellScreen(
                                 openTabs = editorTabs.toList(),
                                 activeFilePath = activeEditorTab,
                                 onCloseTab = { tabPath ->
+                                    revealFile = tabPath
+                                    revealFileTrigger++
                                     editorTabs.remove(tabPath)
                                     if (activeEditorTab == tabPath) activeEditorTab = editorTabs.lastOrNull()
                                 },
                                 tokenStore = tokenStore,
                             
                                 navigateToDir = breadcrumbNavDir,
+                                revealFilePath = revealFile,
+                                revealFileTrigger = revealFileTrigger,
                                 onShowNotification = { msg, type -> showNotification(msg, type) },
                                 triggerNewFile = triggerNewFileCounter,
                                 triggerNewFolder = triggerNewFolderCounter,

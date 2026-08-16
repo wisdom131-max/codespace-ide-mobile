@@ -199,6 +199,10 @@ fun ExplorerSidePanel(
     tokenStore: com.codespace.ide.data.SecureTokenStore? = null,
     /** Breadcrumb navigation: when set, auto-expand and scroll to this directory path. */
     navigateToDir: String? = null,
+    /** Reveal a file in the tree: expands all parent dirs and scrolls to it. Used when a tab is closed so the file remains findable. */
+    revealFilePath: String? = null,
+    /** Counter that increments each time a file is revealed, ensuring the LaunchedEffect re-fires even for the same file path. */
+    revealFileTrigger: Int = 0,
     /** Notification callback for file operations (errors, success). */
     onShowNotification: ((String, String) -> Unit)? = null,
     /** External trigger: when set to a non-null value, opens the New File dialog. */
@@ -304,6 +308,45 @@ fun ExplorerSidePanel(
             ?.forEach { walk(it, 0) }
         treeListState.animateScrollToItem(idx.coerceAtLeast(0))
     }
+
+    // Test 78 fix: When a file tab is closed, reveal the file in the workspace tree
+    // by expanding all ancestor directories and scrolling to it. This ensures the
+    // file is findable in the Explorer after its tab is removed from OPEN EDITORS.
+    LaunchedEffect(revealFileTrigger) {
+        val targetPath = revealFilePath ?: return@LaunchedEffect
+        val targetFile = java.io.File(targetPath)
+        if (!targetFile.exists()) return@LaunchedEffect
+        // Expand all ancestor directories so the file becomes visible in the tree
+        var dir = targetFile.parentFile
+        while (dir != null) {
+            expanded[dir.absolutePath] = true
+            dir = dir.parentFile
+        }
+        refresh++
+        // Wait for recomposition, then scroll to the file's position in the tree
+        kotlinx.coroutines.delay(150)
+        val localWorkspaceRoot = workspacePath?.let { java.io.File(it) } ?: return@LaunchedEffect
+        var idx = 0
+        var found = false
+        fun walk(f: java.io.File, depth: Int) {
+            if (found) return
+            idx++
+            if (f.absolutePath == targetPath) { found = true; return }
+            if (expanded[f.absolutePath] == true && f.isDirectory) {
+                f.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                    ?.forEach { child -> if (!found) walk(child, depth + 1) }
+            }
+        }
+        localWorkspaceRoot.listFiles()
+            ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            ?.forEach { if (!found) walk(it, 0) }
+        if (found) {
+            treeListState.animateScrollToItem((idx - 1).coerceAtLeast(0))
+            // Highlight the file briefly so the user can spot it
+            selected = targetPath
+        }
+    }
+
     var selected      by remember { mutableStateOf<String?>(null) }
     var contextFile   by remember { mutableStateOf<File?>(null) }
     var showCtxMenu   by remember { mutableStateOf(false) }
