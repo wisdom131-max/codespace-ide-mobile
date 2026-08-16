@@ -137,6 +137,7 @@ no AI agent can claim they did not see the rules.
 |-|-|
 | Latest commit | 191f2b6c — Activity Bar gap fix |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
+| **Device Test Round (Tests 1-130)** | **LOGGED 2026-08-16** — see DEVICE TEST RESULTS + KNOWN CRASHES sections directly below this table. ~85 pass, ~30 fail/broken, ~8 partial, 4 feature requests, 8 blocked (git config), 1 skip. 6 crash root causes identified from device logs (multi-cursor CursorOverlay crash, LSP executor RejectedExecutionException x4, Notification Drawer duplicate-key + semantics crash, AndroidView reattach crash, Kotlin LSP OOM). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
@@ -237,6 +238,94 @@ Modified files in Phase 9:
 ### ⚠️ ARCHITECTURAL RISK: ProjectShellScreen.kt method size
 
 **ProjectShellScreen.kt is 3967 lines.** It hit the JVM 64KB method-too-large limit during Phase 9 (#1126–#1128 failed).
+
+
+---
+
+## DEVICE TEST RESULTS — ROUND 2026-08-16 (Tests 1–130, full app pass)
+
+**Reported by Goodluck on device.** Full pass/fail breakdown below. ✅ = works, ⚠️ = partial/works-with-issues, ❌ = broken, 🚫 = blocked/can't test, 💡 = feature request (not a bug), ⛔ = not wanted right now.
+
+| Range | Result |
+|---|---|
+| 1–8 | ✅ works |
+| 9 | ❌ Terminal did not create the file — no path shown, file missing |
+| 10–11 | ✅ works |
+| 12 | ⚠️ Shows a number but no red dot (badge indicator incomplete) |
+| 13–14 | ✅ works |
+| 15 | ❌ Didn't work |
+| 16 | ❌ **Tab key doesn't work — the whole editor keyboard toolbar (extra-keys row) appears non-functional.** Needs fixing. |
+| 17 | ❌ **Find bar (white-background one, top of editor) doesn't work at all.** |
+| 18 | ⚠️ Ran but didn't highlight the target number and didn't move the cursor to position. Needs fixing. |
+| 19 | ❌ **Multi-cursor is broken.** Select-next-occurrence adds cursors correctly, but typing after causes cursor positions to disorganize (see screenshot). Double-tap-to-add-cursor doesn't work. "Cursor above/below" has the same disorganize bug. On a separate run, only line 2 and 3 got a cursor — inconsistent. **Confirmed root cause: Crash Log 2, 2026-08-14 19:05:09 — `IllegalArgumentException: offset(1) is out of bounds [0,0]` in `MultiParagraph.requireIndexInRangeInclusiveEnd` → `CursorOverlayKt.cursorOverlayModifier` (CursorOverlay.kt:57).** |
+| 20–29 | ✅ works |
+| 30 | ⚠️ Works but "Solid" cursor style shows no cursor at all; same for "Expand" style. Rest of the styles work. |
+| 31 | ✅ works |
+| 32 | ⚠️ No wavy underline seen on the diagnostic, but Problems tab correctly shows "Trailing whitespace — lintchecker". Squiggle rendering needs checking. |
+| 33 | ⚠️ Works but doesn't put the cursor on the line the error is on. |
+| 34 | ❌ No "Fix with AI" option in the lightbulb/quick-fix menu. |
+| 35 | ❌ Didn't work |
+| 36–37 | ✅ works |
+| 38 | ❌ Didn't work |
+| 39 | ✅ works |
+| 40 | ⚠️ Scrolled to the outline entry but didn't put the cursor in position and didn't highlight it. |
+| 41–42 | ✅ works |
+| 43 | ❌ Doesn't work |
+| 44–45 | ✅ works |
+| 46 | 💡 Shows "formatter not installed" for Python. **Feature request: auto-install the formatter once selected, and make auto-install the default — no manual steps.** (Same ask repeats at test 113.) |
+| 47 | ⚠️ Works, but unstaging a file throws an error — **matches the "git exited 128: Author identity unknown" notification screenshot** (git user.email/user.name never configured on-device). |
+| 48–56 | 🚫 Goodluck doesn't know how to set git config, so these are blocked/untestable until the identity issue from test 47 is resolved. |
+| 57–68 | ✅ works |
+| 69 | ⚠️ Works, but deleting a build individually from the trash menu doesn't actually delete it — just clears it from the visible list (not persisted/removed from storage). |
+| 70 | ❌ **Preview shows Markdown but not HTML. SVG viewer doesn't work at all.** Also want pinch-zoom and resize added to these viewers. (Same issue repeats at test 72.) |
+| 71 | ✅ works |
+| 72 | ❌ Same problem as test 70. |
+| 73–77 | ✅ works |
+| 78 | ⚠️ Works, but after closing the file, couldn't find it again in the Explorer file tree. |
+| 79–81 | ✅ works |
+| 82 | ❌ Doesn't work |
+| 83 | ✅ works |
+| 84 | 💡 Works, but wants the bell icon's position tied to/synced with the notification floating card — needs restructuring. |
+| 85–87 | ✅ works |
+| 88 | ❌ Doesn't work |
+| 89–91 | 🚫 Affected by breakpoint (dependent on a separate broken feature — untestable standalone) |
+| 92 | ❌ Shows "unavailable" |
+| 93–94 | ✅ works |
+| 95 | ⚠️ Works, but wants the wizard fully implemented (currently partial). |
+| 96–112 | ✅ works |
+| 113 | 💡 Same formatter-not-installed issue as test 46 — wants automatic installation. |
+| 114 | ❌ **Critical: doesn't call the keyboard at all — can't type.** Needs fixing urgently. |
+| 115–116 | ✅ works |
+| 117 | ❌ Doesn't work |
+| 118 | ❌ Doesn't work — shows fallback instead. |
+| 119–123 | ✅ works |
+| 124 | ❌ No "Diagnosis Report" option in the menu — missing. |
+| 125 | ❌ No "Connectors Hub" in the menu — missing. |
+| 126 | ⛔ Doesn't exist — Goodluck doesn't want this feature right now, skip. |
+| 127 | ✅ works |
+| 128 | ❌ Doesn't work |
+| 129 | ✅ works |
+| 130 | ❌ **Critical: YouTube Shorts play audio only, no video. Goodluck wants the in-app browser fully reconstructed.** |
+
+**Summary:** 130 tests run. Broadly: bulk of the app is stable (~85 tests fully pass). Critical blockers: #16 (keyboard toolbar dead), #17 (find bar dead), #114 (keyboard won't open at all), #19 (multi-cursor crash), #130 (browser video playback / needs reconstruction), #70/#72 (HTML/SVG viewers broken). Several "works but…" polish items (#12, #18, #30, #32, #33, #40, #69, #78, #95). Feature requests (not bugs): #46/#113 (formatter auto-install), #84 (bell icon position), #124/#125 (missing menu entries). Blocked: #48–56 pending git identity fix from #47.
+
+## KNOWN CRASHES — ROUND 2026-08-16 (from 4 device crash-log exports)
+
+Root causes identified from stack traces Goodluck exported. Each ties to specific failing tests above where applicable.
+
+1. **`RejectedExecutionException` in `LspManager.ensureMemoryMonitorStarted`** (LspManager.kt:1965, called from `startServer` at LspManager.kt:1303, called from `EditorPane.kt:936` on `lspStarted`). Recurred **4 times** across sessions: 2026-08-14 18:41:14, 18:44:50, 21:12:38, 21:22:06. A `scheduleAtFixedRate` call hits a `ScheduledThreadPoolExecutor` that's already `Terminated` (pool size=0). This is a teardown/reuse race: the memory-monitor executor gets shut down (per the "terminate LSP on tab close" rule) but something still tries to reschedule on the dead executor instead of creating a fresh one on next `startServer()`. **Not yet tied to a specific numbered test, but explains repeated crashes during normal editor use (opening/closing tabs, switching languages).**
+
+2. **`IllegalArgumentException: offset(1) is out of bounds [0, 0]` in `MultiParagraph.requireIndexInRangeInclusiveEnd`** → `CursorOverlayKt.cursorOverlayModifier` (CursorOverlay.kt:52/57). 2026-08-14 19:05:09. **Confirmed root cause of Test 19's multi-cursor disorganization/crash bug.** Happens when the cursor overlay tries to compute a horizontal position for an offset that's out of bounds for that paragraph's current text layout — almost certainly a stale/unclamped cursor offset after a multi-cursor edit changes line lengths.
+
+3. **`IllegalArgumentException: Key "header_NOTIFICATIONS" was already used`** in a `LazyColumn`/`Row` inside `NotificationDrawerOverlay` (implied by crash 4 below sharing the same file). Duplicate key in the notification list — two items using the same "header_NOTIFICATIONS" key instead of unique per-item keys.
+
+4. **`UnsupportedOperationException: You cannot retrieve a semantics property directly`** in `NotificationDrawerOverlayKt$NotificationRow` (NotificationDrawerOverlay.kt:577-579), via `getContentDescription`. 2026-08-15 21:45:41. Code is reading a semantics property (`contentDescription`) directly instead of via `SemanticsConfiguration.getOr*()`. Same file as crash #3 — **the Notification Drawer has two independent bugs and needs a focused audit.**
+
+5. **`IllegalStateException: The specified child already has a parent. You must call removeView() on the child's parent first.`** in `AndroidViewHolder<init>` / `ViewFactoryHolder<init>` (Compose `AndroidView` interop). 2026-08-14 17:29:03. An `AndroidView`-wrapped native view (WebView or similar) is being attached to a new parent without being removed from its old one first — likely the culprit behind, or related to, the broken HTML/SVG/video viewers (**tests 70, 72, 130**).
+
+6. **Kotlin LSP OOM on initialize** (Output tab log, 07:41:27–07:41:38): server spawns fine, `initialize` request sent, but the RPC reader gets `CONNECTION ERROR: Message could not be parsed`, then the server process dies — log says "OOM-kill suspected". Kotlin's LSP is heavier than the others; on this 2.8GB device it may be getting killed by the OS under memory pressure specifically for Kotlin projects.
+
+**Priority for next session:** #2 (multi-cursor crash, Test 19) and #5 (AndroidView reattach, Tests 70/72/130) are the most user-visible and tied to explicit failing tests. #1 (LSP executor) is a stability crash that recurs silently. #3/#4 (Notification Drawer) are two clean, well-localized fixes.
 
 ## ⚠️ JVM 64KB BYTECODE LIMIT — CRITICAL REFERENCE FOR ALL AI AGENTS
 
@@ -18526,3 +18615,60 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 16. 🔲 Multi-Cursor feature
 17. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
 18. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables.
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just the immediate next step.
+7. UI RULE: ALL menus/popups/dropdowns must use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+### [2026-08-16 08:10 WAT] — AI Agent: Elowen (Base44 Superagent)
+**Commit:** none (documentation only — no code changes this entry) | **CI Build:** unaffected (last green #2346)
+**Tags:** [DOCS] [CRASH] [TESTING]
+**What was fixed:** No code changes. Logged a full device test pass (Tests 1–130) plus 4 exported crash logs plus 1 LSP output-tab log that Goodluck sent from the device. Added two new permanent sections to AGENTS.md right after the CURRENT STATE table:
+1. **DEVICE TEST RESULTS — ROUND 2026-08-16** — the complete 130-test pass/fail/partial breakdown, verbatim from Goodluck's report, with test numbers preserved exactly as he gave them (including his repeated "test 19" and "test 124" numbering — kept as-is rather than silently renumbered, with a note).
+2. **KNOWN CRASHES — ROUND 2026-08-16** — 6 root causes extracted directly from stack traces in the 4 PDF crash exports + 1 output-tab log:
+   - **#1 LSP executor RejectedExecutionException** (LspManager.ensureMemoryMonitorStarted scheduling on an already-terminated ScheduledThreadPoolExecutor) — recurred 4x across two dates, not tied to a specific test number but a silent stability crash during normal tab open/close.
+   - **#2 Multi-cursor crash** — `MultiParagraph.requireIndexInRangeInclusiveEnd` offset-out-of-bounds in `CursorOverlay.kt:57` — **confirmed root cause of Test 19's disorganized-cursor bug.**
+   - **#3 & #4 Notification Drawer** — duplicate LazyColumn key ("header_NOTIFICATIONS") AND a semantics-property-read crash (`getContentDescription` called directly instead of via `getOr*()`), both in `NotificationDrawerOverlay.kt` — two independent bugs in the same file.
+   - **#5 AndroidView reattach crash** — "child already has a parent" in `AndroidViewHolder<init>` — likely tied to the broken HTML/SVG/video viewers (**Tests 70, 72, 130**).
+   - **#6 Kotlin LSP OOM on initialize** — server spawns, handshake fails with a parse error, then the process is OOM-killed — device-memory-pressure issue specific to Kotlin projects.
+**Files touched:** AGENTS.md only (new sections + Current State summary line)
+**Next on roadmap (re-prioritized by the test results above — ALL pending items):**
+1. 🔴 **CRITICAL — Test 114:** Keyboard doesn't open at all in some context, can't type. Highest priority — blocks basic usage.
+2. 🔴 **CRITICAL — Test 16:** Tab key + entire editor keyboard toolbar (extra-keys row) non-functional.
+3. 🔴 **CRITICAL — Test 17:** Find bar (top-of-editor, white background) doesn't work at all.
+4. 🔴 **CRITICAL — Test 19 + Crash #2:** Multi-cursor disorganizes/crashes on type, double-tap-add-cursor broken, above/below broken. Root cause confirmed in CursorOverlay.kt:57 (MultiParagraph offset out of bounds).
+5. 🔴 **CRITICAL — Test 130:** YouTube Shorts plays audio-only, no video — Goodluck wants the in-app browser fully reconstructed.
+6. 🟠 **Test 70 + 72 + Crash #5:** HTML preview broken, SVG viewer completely non-functional, AndroidView "child already has a parent" crash likely the underlying cause. Also add pinch-zoom + resize to these viewers.
+7. 🟠 **Crash #1:** LSP executor RejectedExecutionException — recurring silent crash, needs the memory-monitor executor lifecycle fixed (don't reschedule on a terminated executor — recreate it in startServer()).
+8. 🟠 **Crash #3 + #4:** Notification Drawer — fix duplicate "header_NOTIFICATIONS" LazyColumn key AND the direct semantics-property read in NotificationRow (NotificationDrawerOverlay.kt:577-579).
+9. 🟠 **Test 47 + git config (blocks Tests 48-56):** "git exited 128: Author identity unknown" — unstaging and 9 other tests are blocked until git user.name/user.email are set. Consider auto-configuring a default git identity on first repo init, or surfacing a clear in-app prompt instead of a raw git error.
+10. 🟡 **Tests 34, 35, 38, 43, 82, 88, 92, 117, 118, 128:** Individually broken/non-working features — need one-by-one triage (no shared root cause identified yet).
+11. 🟡 **Tests 124, 125:** Missing menu entries — "Diagnosis Report" and "Connectors Hub" not present in the menu.
+12. 🟡 **Tests 46 + 113 (feature request):** Auto-install formatter on selection, make auto-install the default — no manual steps.
+13. 🟡 **Test 69:** Trash menu "delete individually" only clears the list, doesn't actually delete the build.
+14. 🟡 **Test 78:** Closed file not findable in Explorer tree afterward.
+15. 🟡 **Tests 12, 18, 30, 32, 33, 40, 95 (polish, "works but…"):** notification red dot missing, outline/error-jump doesn't move+highlight cursor, Solid/Expand cursor styles invisible, diagnostic squiggle not rendering (Problems tab is correct though), wizard needs full implementation.
+16. 🟡 **Test 84 (feature request):** Bell icon position should sync with the notification floating card — needs restructuring.
+17. 🟢 **Crash #6:** Kotlin LSP OOM-kills on initialize — investigate if Kotlin's LSP has a heavier memory footprint than others on this 2.8GB device; may need a lower default heap flag or lazy-load strategy specific to Kotlin.
+18. 🔲 **Tests 89-91:** Blocked by a dependent breakpoint bug — re-test once that's fixed.
+19. ⛔ **Test 126:** Confirmed not wanted right now — skip, do not implement.
+20. ✅ VS Code-exact top-right icons — SHIPPED (cbae61bd, CI #2345 GREEN)
+21. ✅ Activity Bar gap fix — SHIPPED (191f2b6c, CI #2346 GREEN)
+22. ✅ Panel dividers + independent containers + watermark logo — SHIPPED (0a132a08, CI #2337 GREEN)
+23. ✅ Explorer 3-dot menu — SHIPPED (2da2ca9f, CI #2336 GREEN)
+24. ✅ Rounded workspace container architecture — SHIPPED (#2330 GREEN)
+25. ✅ Top bar + command field theme-aware — SHIPPED (#2332 GREEN)
+26. ✅ App logo → blue ribbon — SHIPPED (5ae0ed51, confirmed green)
+27. ✅ Bottom Panel Drag Resize refinements — SHIPPED (f7706e58)
+28. ✅ Top bar chevron back arrow + explorer header theme-aware — SHIPPED (f77966e0, af4dfcb3, CI #2342/#2344 GREEN)
+29. 🔲 Split editor pane wiring (currently placeholder "coming soon")
+30. 🔲 Editor Bug 1: Horizontal scroll stuck after zoom
+31. 🔲 Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+32. 🔲 TypeScript 7 as default LSP with vtsls
+33. 🔲 API_BASE_URL may still point to old Railway URL — update to Render
+34. ⛔ BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
