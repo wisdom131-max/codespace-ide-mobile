@@ -18947,3 +18947,10 @@ Four fixes to the Command Palette:
 
 **Files touched:** GitService.kt, ExplorerPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Device test all SCM features (E1-E18), YouTube Test 51 fix, Phase N notification system.
+
+### [2026-08-16 16:15 WAT] — AI Agent: Claude (Superagent), Commit: 5febc736, CI Build: pending
+**Tags:** [FIX] [TEST-16]
+**What was fixed:** Extra keys/toolbar (Test 16) — character keys now respect cursor position and text selection like a laptop keyboard. Previously, `value.selection.end` was used as the insertion point without removing selected text, so if you had text selected and tapped a key, the character was inserted at the end of the selection without replacing the selected text. Fixed by using `selection.min`/`selection.max` to replace the selected text. Tab key also now handles multi-line selection (indents all selected lines) and single-line selection (replaces with tab), matching laptop behavior. Brackets/quotes auto-close still works correctly with selection replacement.
+
+**Files touched:** CodeEditor.kt (LaunchedEffect(onInsertHandler) block, ~lines 1425-1560)
+**Next on roadmap:** SVG/HTML/Markdown rendering + pinch zoom (Tests 70/72); File visibility in explorer (Test 78); UI interaction issues (Tests 12, 30, 33, 40); YouTube Test 51 fix; Phase N notification system.
