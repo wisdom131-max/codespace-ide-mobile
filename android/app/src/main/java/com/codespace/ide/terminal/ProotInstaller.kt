@@ -615,8 +615,7 @@ object ProotInstaller {
                     "# harmless. Never let apt-get exit codes propagate to the login shell.\n" +
                     "if ! command -v git >/dev/null 2>&1; then\n" +
                     "    (apt-get update -qq && apt-get install -y --no-install-recommends git curl) >/dev/null 2>&1 || true\n" +
-                    "fi\n" +
-                    "exit 0\n"
+                    "fi\n"
                 )
                 File(profileDDir, "01-essential-tools.sh").setExecutable(true, false)
                 File(profileDDir, "99-dpkg-fix.sh").writeText(
