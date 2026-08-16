@@ -18842,3 +18842,11 @@ Four fixes to the Command Palette:
 
 **Files touched:** CursorOverlay.kt, LspManager.kt, PreviewPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** CI build check, device testing of all fixes, continue Phase V — LSP Reliability Upgrade
+
+### [2026-08-16 13:58 WAT] — AI Agent: Claude (Superagent), Commit `36ead956`, CI Build: pending
+**What was fixed:**
+1. **Multi-cursor typing bug** — the fan-out logic was not adjusting extra cursor positions for the primary edit already applied to `updatedValue.text`. When the primary insertion happened *before* an extra cursor, that cursor's position needed to shift by `delta` before the fan-out could insert at the correct spot. Without this fix, typing with multiple cursors inserted text at wrong positions and caused cursors to jump.
+2. **Primary cursor not adjusted for fan-out** — after fan-out insertions at positions before the primary cursor, the primary cursor's selection was not shifted, causing it to point at the wrong position in the new text.
+
+**Files touched:** CodeEditor.kt
+**Next on roadmap:** CI build check, device testing of multi-cursor + all previous fixes, continue Phase V — LSP Reliability Upgrade
