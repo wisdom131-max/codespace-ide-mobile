@@ -1624,6 +1624,7 @@ fun ProjectShellScreen(
                     splitTerminalWidthMs = splitTerminalWidthMs,
                     terminalCommandToRunMs = terminalCommandToRunMs,
                     buildProblemsMs = buildProblemsMs,
+                    editorReloadTriggerMs = editorReloadTriggerMs,
                     formatOnSaveTrigger = formatOnSaveTrigger,
                     udm = com.codespace.ide.debug.UniversalDebugManager,
                     fullScreen = fullScreen,
@@ -4219,6 +4220,7 @@ private fun PssEditorColumn(
     splitTerminalWidthMs: MutableState<Float>,
     terminalCommandToRunMs: MutableState<String?>,
     buildProblemsMs: MutableState<List<Problem>>,
+    editorReloadTriggerMs: MutableState<Int>,
     formatOnSaveTrigger: Int,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
     fullScreen: Boolean = false,
@@ -4263,6 +4265,7 @@ private fun PssEditorColumn(
     var _showFileSearch by showFileSearchMs
     var showFindBar by showFindBarMs
     var showReplaceRow by showReplaceRowMs
+    var editorReloadTrigger by editorReloadTriggerMs
     // Find bar toggle states (Aa = case sensitive, \b = whole word, .* = regex)
     var findCaseSensitive by remember { mutableStateOf(false) }
     var findWholeWord by remember { mutableStateOf(false) }
