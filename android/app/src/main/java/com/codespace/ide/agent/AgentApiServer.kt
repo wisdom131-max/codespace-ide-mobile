@@ -33,6 +33,13 @@ object AgentApiServer {
     @Volatile private var running = false
     private var serverContext: Context? = null
 
+    // P-MCP-INDICATOR-FIX: `running` only means "the socket is listening" — it stays true
+    // for the whole terminal session even when no AI agent is actually talking to it. The
+    // status bar needs to know when an agent is ACTIVELY connected, so we track the last
+    // time any request came in and treat "active" as "a request landed recently."
+    @Volatile private var lastRequestAtMs: Long = 0L
+    private const val ACTIVE_WINDOW_MS = 12_000L
+
     fun start(context: Context) {
         if (running) {
             Log.d(TAG, "Server already running on port $PORT")
@@ -72,7 +79,14 @@ object AgentApiServer {
 
     fun isRunning(): Boolean = running
 
+    /** True only while an AI agent is actively making requests (not just "server listening"). */
+    fun isAgentActive(): Boolean =
+        running && (System.currentTimeMillis() - lastRequestAtMs) < ACTIVE_WINDOW_MS
+
     private fun handleRequest(client: java.net.Socket) {
+        // Any inbound request (tool call, health check, system-prompt fetch, etc.) means
+        // an agent is actively using this API right now — refresh the activity timestamp.
+        lastRequestAtMs = System.currentTimeMillis()
         try {
             client.soTimeout = 30000
             val reader = BufferedReader(InputStreamReader(client.inputStream))

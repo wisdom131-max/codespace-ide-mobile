@@ -73,6 +73,11 @@ object ProjectSettingsStore {
     /** Show the floating exit button in Zen Mode. If false, use menu to exit. */
     val zenModeExitButtonEnabled: MutableState<Boolean> = mutableStateOf(true)
 
+    // P-MCP-INDICATOR-FIX: toggle for whether the MCP status dot + label shows in the
+    // status bar at all. Even when enabled, it only actually renders while an AI agent
+    // is actively connected (see AgentApiServer.isAgentActive()).
+    val mcpIndicatorEnabled: MutableState<Boolean> = mutableStateOf(true)
+
     // ── Formatting (Phase R) ─────────────────────────────────────────────
     /** Format on Save — when enabled, formatting runs before saving the file. */
     val formatOnSaveEnabled: MutableState<Boolean> = mutableStateOf(true)
@@ -171,6 +176,7 @@ object ProjectSettingsStore {
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
         extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
+        mcpIndicatorEnabled.value = prefs.getBoolean("mcp_indicator_enabled", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
         lspIdleTimeoutSeconds.value = prefs.getLong("lsp_idle_timeout_seconds", 10L)
@@ -218,6 +224,10 @@ object ProjectSettingsStore {
     fun setZenModeExitButtonEnabled(value: Boolean) {
         zenModeExitButtonEnabled.value = value
         prefs.edit().putBoolean("zen_mode_exit_button", value).apply()
+    }
+    fun setMcpIndicatorEnabled(value: Boolean) {
+        mcpIndicatorEnabled.value = value
+        prefs.edit().putBoolean("mcp_indicator_enabled", value).apply()
     }
     fun setFormatOnSaveEnabled(value: Boolean) {
         formatOnSaveEnabled.value = value

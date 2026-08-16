@@ -323,6 +323,7 @@ enum class RowType {
     TERMINAL_COMMANDS_TO_SKIP_SHELL_INPUT,
     EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX,
     TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
+    MCP_INDICATOR_CHECKBOX,
 }
 
 // ── Usage tracking for "Commonly Used" ranking ───────────────────────
@@ -366,6 +367,9 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
     add(SettingsRow("verbose_tool", SettingsCategory.AI_AGENT, "Verbose Tool Output",
         "Show full JSON args/results in agent chat",
         RowType.VERBOSE_TOOL_CHECKBOX))
+    add(SettingsRow("mcp_indicator", SettingsCategory.AI_AGENT, "Show MCP Agent Indicator",
+        "Show the MCP status dot + label in the status bar — only appears while an AI agent is actively connected and running",
+        RowType.MCP_INDICATOR_CHECKBOX))
 
     FeatureToggleStore.toggles.forEachIndexed { idx, toggle ->
         add(SettingsRow("toggle_$idx", SettingsCategory.EDITOR,
@@ -611,6 +615,7 @@ private fun SettingsRowRenderer(
         RowType.EXTRA_KEYS_CHECKBOX -> ExtraKeysRow(textPri, textSec, divider)
         RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
         RowType.ZEN_MODE_EXIT_CHECKBOX -> ZenModeExitRow(textPri, textSec, divider)
+        RowType.MCP_INDICATOR_CHECKBOX -> McpIndicatorRow(textPri, textSec, divider)
         RowType.FORMAT_ON_SAVE_CHECKBOX -> FormatOnSaveRow(textPri, textSec, divider)
         RowType.FORMATTER_DROPDOWN -> FormatterDropdownRow(row, accent, textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
@@ -709,6 +714,26 @@ private fun ZenModeExitRow(textPri: Color, textSec: Color, divider: Color) {
         Switch(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setZenModeExitButtonEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun McpIndicatorRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.mcpIndicatorEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Show MCP Agent Indicator", color = textPri, fontSize = 13.sp)
+            Text("Show the MCP status dot + label in the status bar — only appears while an AI agent is actively connected and running",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setMcpIndicatorEnabled(it) },
         )
     }
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))

@@ -3978,21 +3978,24 @@ private fun StatusBarContent(
             fontSize = 9.sp,
             color = if (memInfo.value.isLowRam) Color(0xFFFF6B6B) else Color.White.copy(alpha = 0.6f),
         )
-        Spacer(Modifier.width(8.dp))
-        // MCP Agent API status indicator
-        val mcpConnected = remember { mutableStateOf(com.codespace.ide.agent.AgentApiServer.isRunning()) }
-        LaunchedEffect(Unit) {
-            while (true) {
-                mcpConnected.value = com.codespace.ide.agent.AgentApiServer.isRunning()
-                kotlinx.coroutines.delay(3000)
+        // P-MCP-INDICATOR-FIX: only show the dot + "MCP" label while an AI agent is
+        // ACTIVELY connected and making requests (not just "server socket listening" —
+        // that stayed true for the whole terminal session before, so the indicator used
+        // to show constantly). Also gated by the In-Project Settings toggle.
+        val mcpIndicatorPref = ProjectSettingsStore.mcpIndicatorEnabled.value
+        val mcpAgentActive = remember { mutableStateOf(com.codespace.ide.agent.AgentApiServer.isAgentActive()) }
+        LaunchedEffect(mcpIndicatorPref) {
+            while (mcpIndicatorPref) {
+                mcpAgentActive.value = com.codespace.ide.agent.AgentApiServer.isAgentActive()
+                kotlinx.coroutines.delay(2000)
             }
         }
-        Box(Modifier.size(7.dp).background(
-            if (mcpConnected.value) Color(0xFF4CAF50) else Color(0xFFF44336),
-            CircleShape
-        ))
-        Spacer(Modifier.width(3.dp))
-        Text("MCP", fontSize = 9.sp, color = Color.White.copy(alpha = 0.7f))
+        if (mcpIndicatorPref && mcpAgentActive.value) {
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.size(7.dp).background(Color(0xFF4CAF50), CircleShape))
+            Spacer(Modifier.width(3.dp))
+            Text("MCP", fontSize = 9.sp, color = Color.White.copy(alpha = 0.7f))
+        }
         // P16-F: Sync status indicator
         val syncState by SyncStatusMonitor.syncState.collectAsState()
         when (val s = syncState) {
