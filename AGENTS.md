@@ -18968,3 +18968,10 @@ Four fixes to the Command Palette:
 
 **Files touched:** PreviewPane.kt (HtmlPreview, SvgPreview, MarkdownPreview), EditorPane.kt (split markdown preview WebView), MarkdownRenderer.kt (viewport meta tag)
 **Next on roadmap:** File visibility in explorer (Test 78); UI interaction fixes (Tests 12, 30, 33, 40)
+
+### [2026-08-16 16:55 WAT] — AI Agent: Claude (Superagent), Commit: d0de184b, CI Build: pending
+**Tags:** [FIX] [TEST-70] [TEST-72] [CRITICAL]
+**What was fixed:** SVG/HTML/Markdown rendering root cause — stale WebView reload key. All preview WebViews used `html.take(64)` as a stable reload guard, but the first 64 chars are always the HTML template header (`<!DOCTYPE html><html><head>...`), NOT the content (which is embedded at the end). When `produceState` delivered actual file content after the initial empty state, the key never changed, so the WebView NEVER reloaded — permanently showing a blank page. Fixed by using `content.take(128)` as the key in SvgPreview, MarkdownPreview, HtmlPreview (inline), DashboardPreview, and EditorPane split markdown preview. Also completed the MarkdownPreview CDN→local renderer migration that the previous commit partially missed (marked.js CDN script was still in use).
+
+**Files touched:** PreviewPane.kt (5 preview functions), EditorPane.kt (split markdown preview)
+**Next on roadmap:** File visibility in explorer (Test 78); UI interaction fixes (Tests 12, 30, 33, 40)
