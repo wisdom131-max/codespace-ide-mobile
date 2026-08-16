@@ -1698,6 +1698,7 @@ fun ProjectShellScreen(
                 activeEditorTab = activeEditorTab,
                 cursorLine = cursorLine,
                 cursorCol = cursorCol,
+                projectRootPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
                 onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
             ) }
     } // end Editor Column
@@ -3931,16 +3932,43 @@ private fun StatusBarContent(
     activeEditorTab: String?,
     cursorLine: Int,
     cursorCol: Int,
+    projectRootPath: String,
     onToggleNotif: () -> Unit = {},  // P34-NOTIF: bell in status bar
 ) {
     Row(
         Modifier.fillMaxWidth().height(22.dp).background(statusBarBg).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // P-STATUS-BRANCH: Dynamic Git branch detection — reads .git/HEAD instead
+        // of hardcoding "main". Falls back to "main" if not a git repo.
+        val branchName = remember(projectRootPath) {
+            try {
+                val headFile = java.io.File(projectRootPath, ".git/HEAD")
+                if (headFile.exists()) {
+                    val content = headFile.readText().trim()
+                    if (content.startsWith("ref:")) {
+                        content.substringAfterLast('/')
+                    } else {
+                        content.take(7) // detached HEAD, show short SHA
+                    }
+                } else {
+                    "main"
+                }
+            } catch (_: Exception) { "main" }
+        }
         Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(4.dp))
-        Text("main", fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+        Text(branchName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
         Spacer(Modifier.width(8.dp))
+        // P-STATUS-LANG-ICON: Show the language icon for the currently open file,
+        // like VS Code shows { } for JS, etc. Uses the same fileIcon() as the Explorer.
+        if (activeEditorTab != null) {
+            val fileName = activeEditorTab.substringAfterLast("/")
+            val langIcon = fileIcon(fileName)
+            val iconTint = fileIconColor(fileName)
+            Icon(langIcon, null, tint = iconTint, modifier = Modifier.size(12.dp))
+            Spacer(Modifier.width(4.dp))
+        }
         // P9-5: Live file metrics
         if (activeEditorTab != null) {
             val fileStats = remember(activeEditorTab) {
