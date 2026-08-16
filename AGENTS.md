@@ -18850,3 +18850,27 @@ Four fixes to the Command Palette:
 
 **Files touched:** CodeEditor.kt
 **Next on roadmap:** CI build check, device testing of multi-cursor + all previous fixes, continue Phase V — LSP Reliability Upgrade
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with:
+   - [YYYY-MM-DD HH:MM TZ] — AI Agent: <model>
+   - Commit SHA | CI Build number + pass/fail
+   - What was fixed (specific, not vague)
+   - Files touched
+   - Next on roadmap (with ALL pending items, not just immediate next)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLISENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], etc.
+4. CURRENT STATE: Update the "Current State" table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done in CHANGE LOG or phase tables
+6. ROADMAP CONTINUITY: Every "Next on roadmap" MUST list ALL pending items — not just
+   the immediate next step. Copy from previous entry, update statuses. Never silently drop items.
+
+### [2026-08-16 14:10 WAT] — AI Agent: Claude (Superagent), Commit `8bc56750`/`f7fdccf8`, CI Build: pending (fixing #2361-2365 failures)
+**What was fixed:**
+1. **CursorOverlay.kt:58** — `layout.text.length` → `layout.layoutInput.text.length`. `TextLayoutResult` has no direct `.text` property in Compose BOM 2024.06.00; the text is accessible via `layoutInput.text`.
+2. **ProjectShellScreen.kt:1992** — `coords.boundsInWindow()` → `coords.positionInWindow()` + `coords.size` to construct a `Rect`. `boundsInWindow()` is not available in Compose BOM 2024.06.00.
+3. **ProjectShellScreen.kt:4520/4526/4532** — `findMatchIndex` was used inside `PssEditorColumn` but was never passed as a parameter. Added `findMatchIndexMs: MutableState<Int>` to the function signature and call site.
+4. **Cleanup** — removed accidentally committed build log files, added `.gitignore` rule.
+
+**Files touched:** CursorOverlay.kt, ProjectShellScreen.kt, .gitignore
+**Next on roadmap:** CI build check (expecting green); Device testing of multi-cursor + all previous fixes; YouTube Test 51 fix; Phase V — LSP Reliability Upgrade; Phase N — Advanced Notification System (awaiting user plan)
