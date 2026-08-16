@@ -135,14 +135,14 @@ no AI agent can claim they did not see the rules.
 
 | | |
 |-|-|
-| Latest commit | ed0cc547 — Test 78 fix: Move to Root Folder + reveal-on-close |
+| Latest commit | 37200067 — Test 30/33/40 cursor + jump fix: Move to Root Folder + reveal-on-close |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Device Test Round (Tests 1-130)** | **LOGGED 2026-08-16** — see DEVICE TEST RESULTS + KNOWN CRASHES sections directly below this table. ~85 pass, ~30 fail/broken, ~8 partial, 4 feature requests, 8 blocked (git config), 1 skip. 6 crash root causes identified from device logs (multi-cursor CursorOverlay crash, LSP executor RejectedExecutionException x4, Notification Drawer duplicate-key + semantics crash, AndroidView reattach crash, Kotlin LSP OOM). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last confirmed green | #2349 (ed0cc547) ✅. #2346 (191f2b6c) ✅ — confirmed via GitHub API. |
+| Last confirmed green | #2349 (37200067) ✅. #2346 (191f2b6c) ✅ — confirmed via GitHub API. |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -18937,7 +18937,7 @@ Four fixes to the Command Palette:
 **Files touched:** none (code audit only)
 **Next on roadmap:** Next easiest items: Test 47 (git config auto-setup, unblocks 10 tests), Test 69 (trash delete persistence), Tests 124/125 (missing menu entries).
 
-### [2026-08-16 15:20 WAT] — AI Agent: Claude (Superagent), Commit: pending, CI Build: pending
+### [2026-08-16 15:20 WAT] — AI Agent: Claude (Superagent), Commit: 37200067, CI Build: pending
 **Tags:** [FIX] [TEST-47] [TEST-69] [TEST-124] [TEST-125]
 **What was fixed:**
 - **Test 47 (git config auto-setup):** Added `ensureIdentity()` to `GitService` — auto-sets `user.name` and `user.email` if not configured. Called before `commit()` and after `init()` and `clone()`. Unblocks Tests 48-56 (all commit/push operations that needed author identity).
@@ -19012,7 +19012,7 @@ Four fixes to the Command Palette:
 **Files touched:** ExplorerPane.kt (moved LaunchedEffect block from line ~311 to line ~333)
 **Next on roadmap:** UI interaction fixes (Tests 12, 30, 33, 40); YouTube Shorts browser (Test 130)
 
-### [2026-08-16 17:27 WAT] — AI Agent: Claude (Superagent), Commit: pending, CI Build: pending
+### [2026-08-16 17:27 WAT] — AI Agent: Claude (Superagent), Commit: 37200067, CI Build: pending
 **Tags:** [FIX] [TEST-30] [TEST-33] [TEST-40] [CURSOR] [EDITOR]
 **What was fixed:** Three issues: (1) Test 30 — SOLID and EXPAND cursor styles were invisible because they set alpha=0f expecting a custom drawWithContent cursor that was never implemented. SOLID now uses full-opacity baseColor (always visible, no blink). EXPAND now uses a pulse animation between 1.0 and 0.4 alpha to simulate block expand/contract. Removed unused drawWithContent import. (2) Test 33/40 — scrollToLine in CodeEditor only scrolled to the line but never moved the cursor. Now the LaunchedEffect also computes the character offset from the line number using newlineOffsets and sets the TextFieldValue selection to that offset, positioning the cursor on the target line. (3) Test 33 — Code Analysis panel's onJumpToLine callback was an empty stub ("// Jump to line in current file"). Now wired to scrollTargetLine + closes bottom panel. Also reverted a notification bell badge change (Test 12) since notifications were already working.
 **Files touched:** CodeEditor.kt, ProjectShellScreen.kt
