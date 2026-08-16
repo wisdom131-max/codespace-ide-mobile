@@ -18961,3 +18961,10 @@ Four fixes to the Command Palette:
 
 **Files touched:** CodeEditor.kt (LaunchedEffect insert handler block, new import)
 **Next on roadmap:** SVG/HTML/Markdown rendering + pinch zoom (Tests 70/72); File visibility in explorer (Test 78); UI interaction issues (Tests 12, 30, 33, 40)
+
+### [2026-08-16 16:45 WAT] — AI Agent: Claude (Superagent), Commit: 4cd11525, CI Build: pending
+**Tags:** [FIX] [TEST-70] [TEST-72]
+**What was fixed:** SVG/HTML/Markdown rendering + pinch-to-zoom (Tests 70/72). (1) MarkdownPreview was using marked.js from CDN — blank page with no internet. Replaced with local MarkdownRenderer (already in codebase) — works fully offline. (2) None of the preview WebViews had setSupportZoom(true)/builtInZoomControls enabled — viewport meta alone is NOT enough for Android WebView pinch-to-zoom. Added to HtmlPreview, SvgPreview, MarkdownPreview, and EditorPane split markdown preview. (3) SVG preview had max-width:100%/max-height:80vh CSS constraints preventing zoom — removed them, added overflow:auto for panning, widened scale range to 0.3–8.0.
+
+**Files touched:** PreviewPane.kt (HtmlPreview, SvgPreview, MarkdownPreview), EditorPane.kt (split markdown preview WebView), MarkdownRenderer.kt (viewport meta tag)
+**Next on roadmap:** File visibility in explorer (Test 78); UI interaction fixes (Tests 12, 30, 33, 40)
