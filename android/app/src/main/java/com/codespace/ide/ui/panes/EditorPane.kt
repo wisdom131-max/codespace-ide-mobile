@@ -1458,15 +1458,16 @@ fun EditorPane(
                                         settings.displayZoomControls = false
                                         webViewClient = android.webkit.WebViewClient()
                                         loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
-                                        // Tag with content hash to prevent reload on recomposition
-                                        tag = htmlContent.take(64)
+                                        // P-RENDER: Use mdContent-based key — htmlContent.take(64)
+                                        // is always the template header, never changes with content
+                                        tag = mdContent.take(128)
                                     }
                                 },
                                 update = { wv ->
                                     // P48: Only reload when content actually changes (tag guard)
                                     val currentTag = wv.tag as? String
-                                    if (currentTag != htmlContent.take(64)) {
-                                        wv.tag = htmlContent.take(64)
+                                    if (currentTag != mdContent.take(128)) {
+                                        wv.tag = mdContent.take(128)
                                         wv.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },

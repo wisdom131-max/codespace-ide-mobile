@@ -803,10 +803,10 @@ private fun HtmlPreview(
             }
         },
         update = { wv ->
-            // P25-4: stable key — compare liveUrl OR a hash of inline html so
-            // content edits trigger reload but recompositions without edits do not
+            // P-RENDER: Use content-based key for inline HTML — html.take(64) was
+            // always the template header for CSS/JS, so the WebView never reloaded.
             val lastTag = wv.tag as? String
-            val currentTag = if (liveUrl != null) liveUrl else html.take(64)
+            val currentTag = if (liveUrl != null) liveUrl else content.take(128)
             if (lastTag != currentTag) {
                 wv.tag = currentTag
                 if (liveUrl != null) {
@@ -824,7 +824,7 @@ private fun HtmlPreview(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Markdown Preview — renders via marked.js (bundled inline, no internet needed)
+// Markdown Preview — uses local MarkdownRenderer (offline, no CDN dependency)
 // ─────────────────────────────────────────────────────────────────────────────
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -833,52 +833,24 @@ private fun MarkdownPreview(
     onWebView: (WebView) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
-    // Escape backticks and backslashes for JS template literal
-    val escaped = content
-        .replace("\\", "\\\\")
-        .replace("`", "\\`")
-        .replace("$", "\\$")
-
-    val html = """
-        <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=6.0, user-scalable=yes">
-        <style>
-          body { background:#1e1e1e; color:#d4d4d4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-                 padding:20px; line-height:1.7; max-width:800px; margin:0 auto; }
-          h1,h2,h3,h4 { color:#569cd6; border-bottom:1px solid #3c3c3c; padding-bottom:6px; }
-          code { background:#2d2d2d; color:#ce9178; padding:2px 6px; border-radius:3px; font-family:monospace; font-size:0.9em; }
-          pre  { background:#2d2d2d; padding:16px; border-radius:6px; overflow-x:auto; }
-          pre code { background:none; padding:0; }
-          blockquote { border-left:4px solid #007acc; margin:0; padding-left:16px; color:#9cdcfe; }
-          a { color:#4ec9b0; }
-          table { border-collapse:collapse; width:100%; }
-          th,td { border:1px solid #3c3c3c; padding:8px 12px; }
-          th { background:#252526; }
-          img { max-width:100%; }
-          hr { border-color:#3c3c3c; }
-        </style>
-        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-        </head><body>
-        <div id="content"></div>
-        <script>
-          const md = `$escaped`;
-          document.getElementById('content').innerHTML = marked.parse(md);
-        </script>
-        </body></html>
-    """.trimIndent()
+    // P-RENDER: Use local MarkdownRenderer instead of CDN marked.js — works offline.
+    val html = remember(content) {
+        com.codespace.ide.editor.MarkdownRenderer.render(content)
+    }
 
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
+                settings.javaScriptEnabled = false  // No JS needed — pure HTML output
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
+                // P-ZOOM: Enable pinch-to-zoom
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
-                        // P45-3: Inject UA override early, before page scripts run
-                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
                     }
                     override fun onPageFinished(view: WebView?, url: String?) { onLoading(false) }
                 }
@@ -886,11 +858,12 @@ private fun MarkdownPreview(
             }
         },
         update = { wv ->
-            // P25-4: stable load key — only reload when content actually changes
-            val tag = wv.tag as? String
-            if (tag != html.take(64)) {
-                wv.tag = html.take(64)
-                wv.loadDataWithBaseURL("https://cdn.jsdelivr.net", html, "text/html", "UTF-8", null)
+            // P-RENDER: Use content-based key — html.take(64) was always the template
+            // header, so the WebView never reloaded when markdown content arrived.
+            val contentKey = content.take(128)
+            if (wv.tag as? String != contentKey) {
+                wv.tag = contentKey
+                wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
             }
             onWebView(wv)
         },
@@ -932,10 +905,12 @@ private fun SvgPreview(
             }
         },
         update = { wv ->
-            // P25-4: stable key to avoid SVG reload on every recomposition
-            val tag = wv.tag as? String
-            if (tag != html.take(64)) {
-                wv.tag = html.take(64)
+            // P-RENDER: Use content-based key, NOT html.take(64) — the first 64 chars
+            // are always the HTML template header, so the key never changed when SVG
+            // content arrived from produceState, and the WebView never reloaded.
+            val contentKey = content.take(128)
+            if (wv.tag as? String != contentKey) {
+                wv.tag = contentKey
                 wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
             }
             onWebView(wv)
@@ -1535,9 +1510,10 @@ private fun DashboardPreview(
             // P25-4: only reload when HTML actually changed — prevents constant recomposition
             // re-loading which caused blank flashes during drag or any state change
             val tag = wv.tag as? String
-            if (tag != dashboardHtml.take(64)) {
-                wv.tag = dashboardHtml.take(64)
-                wv.loadDataWithBaseURL("https://cdn.jsdelivr.net", dashboardHtml, "text/html", "UTF-8", null)
+            val contentKey = dashboardHtml.take(128)
+            if (tag != contentKey) {
+                wv.tag = contentKey
+                wv.loadDataWithBaseURL("about:blank", dashboardHtml, "text/html", "UTF-8", null)
             }
             onWebView(wv)
         },
