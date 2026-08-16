@@ -347,9 +347,16 @@ class TerminalService : Service() {
             if (prootWorkspace != null) {
                 session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
                 session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
-                if (workDir.startsWith("/root") && workDir != "/root") {
-                    session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
-                }
+                // Fix Test 16/17: cd into the project workspace so files created via
+                // terminal (echo > file.txt) land in the project dir the explorer shows.
+                // /sdcard is bind-mounted in proot, so /sdcard/... paths work fine.
+                session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
+                // Fix Test 20: Flush bash history after each command so the shell
+                // history search overlay shows commands typed in the terminal.
+                session.write("export PROMPT_COMMAND='history -a'\n")
+                session.write("export HISTFILE=~/.bash_history\n")
+                session.write("export HISTSIZE=500\n")
+                session.write("export HISTFILESIZE=500\n")
             }
             return Pair(session, client)
         }

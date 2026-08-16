@@ -395,6 +395,14 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false, 
         if (prootWorkspace != null) {
             session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
             session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
+            // Fix Test 16/17: cd into project workspace so terminal-created files
+            // land in the project directory the file explorer shows.
+            session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
+            // Fix Test 20: Flush bash history after each command.
+            session.write("export PROMPT_COMMAND='history -a'\n")
+            session.write("export HISTFILE=~/.bash_history\n")
+            session.write("export HISTSIZE=500\n")
+            session.write("export HISTFILESIZE=500\n")
         }
         return Pair(session, client)
     }

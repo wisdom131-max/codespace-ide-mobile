@@ -17122,3 +17122,37 @@ Tests 1-8, 10-11, 13-14, 20-29, 31, 36-37, 39, 41-42, 44-45, 57-68, 71, 73-77, 7
 Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't want it for the now" — deprioritized indefinitely.
 
 
+
+### ⚠️ RULES REMINDER (read before doing ANY work in this repo):
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with: [YYYY-MM-DD HH:MM TZ] — AI Agent, Commit SHA, CI Build # + pass/fail, what was fixed, files, next
+3. @Suppress("UNUSED_PARAMETER") not renaming to `_`
+4. Don't babysit builds unless asked
+5. Don't display 'Unsupported' for unsupported file types
+6. All popups need IME-insets-aware padding
+7. Debug UI panels use listener-list pattern in UDM
+8. Maintain Activity Bar Debugger vs Terminal Panel Debugger separation, both share UDM backend
+
+### [2026-08-16 18:28 WAT] — AI Agent: Claude (Superagent), Commit: 6d5e7259, CI Build: #2396 ✅ GREEN
+**Tags:** [BUILD-FIX] [FIND-BAR]
+**What was fixed:** Build #2395 failed — `editorReloadTrigger` was referenced inside `PssEditorColumn` (extracted composable) but `editorReloadTriggerMs` was never passed as a parameter. The find bar replace buttons (Replace / Replace All) and the `reloadTrigger` argument to `EditorPane` all referenced it. Root cause: during the PssEditorColumn extraction, the MutableState was left behind in the parent composable. Added `editorReloadTriggerMs: MutableState<Int>` to PssEditorColumn's parameter list, added `var editorReloadTrigger by editorReloadTriggerMs` delegation in the body, and passed `editorReloadTriggerMs = editorReloadTriggerMs` at the call site.
+**Files touched:** ProjectShellScreen.kt
+**Next on roadmap:** Fix terminal dying immediately (commit f721f17c, build #2397 pending).
+
+---
+
+### [2026-08-16 18:28 WAT] — AI Agent: Claude (Superagent), Commit: f721f17c, CI Build: #2397 pending
+**Tags:** [TERMINAL] [CRITICAL-FIX]
+**What was fixed:** Terminal was dying immediately on open — showing locale generation output then "[Process completed - press Enter]" with exit code 0. ROOT CAUSE: Commit 10127208 added `exit 0` at the end of `01-essential-tools.sh` (a profile.d script). Profile.d scripts are SOURCED by bash --login (via /etc/profile), so `exit 0` in a sourced script kills the PARENT shell, not just the script. The sequence was: 00-locale.sh runs (prints "Generating locales... done"), then 01-essential-tools.sh hits `exit 0` and the entire bash process exits. FIX: Removed the `exit 0` line. The `|| true` on the apt-get line already prevents error propagation. Verified no other profile.d scripts (00-locale.sh, 99-dpkg-fix.sh, mcp-profile.sh) have exit statements.
+**Files touched:** ProotInstaller.kt
+**Next on roadmap:** User is running 160-test guide v2. Awaiting test results section by section.
+
+### [2026-08-16 22:47 WAT] — AI Agent: Claude (Superagent), Commit: pending, CI Build: #2398 pending
+**Tags:** [TERMINAL] [TEST-16] [TEST-17] [TEST-20]
+**What was fixed:**
+1. Test 16/17: Files created via terminal (echo > file.txt) didn't appear in file explorer. Root cause: terminal started in /root (proot home) instead of project workspace. The cd condition in TerminalService.createSession() only fired for /root paths, skipping /sdcard paths (which are bind-mounted and valid in proot). Fixed: cd to workspace for ALL valid prootWorkspace paths.
+2. Test 20: Shell history search didn't show commands typed in terminal (ls, pwd, whoami). Root cause: bash only writes to .bash_history on shell exit, but the history overlay reads .bash_history at display time. Fixed: injected PROMPT_COMMAND='history -a' via session.write() AND added a 02-bash-history.sh profile.d script that runs for every login shell, ensuring history is flushed after each command.
+**Files touched:** TerminalService.kt, TerminalPane.kt, ProotInstaller.kt
+**Next on roadmap:** Continue Section 3 tests (Terminal: Tests 11-20).
+
+---

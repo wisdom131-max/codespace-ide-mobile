@@ -223,6 +223,25 @@ object ProotInstaller {
         } catch (e: Exception) {
             Log.w(TAG, "ensureShimInstalled: failed to write 01-essential-tools.sh: ${e.message}")
         }
+
+        // Fix Test 20: Write a profile.d script that flushes bash history after each
+        // command. Without this, .bash_history is only written when the shell exits,
+        // so the shell history search overlay never sees commands typed in the terminal.
+        val histScript = File(profileDDir, "02-bash-history.sh")
+        val histContent = "#!/bin/sh\n" +
+            "# Auto-generated: flush bash history after each command so history search works.\n" +
+            "export HISTFILE=~/.bash_history\n" +
+            "export HISTSIZE=500\n" +
+            "export HISTFILESIZE=500\n" +
+            "export PROMPT_COMMAND='history -a'\n"
+        try {
+            histScript.writeText(histContent)
+            histScript.setExecutable(true, false)
+            histScript.setReadable(true, false)
+            Log.i(TAG, "ensureShimInstalled: wrote 02-bash-history.sh (history flush)")
+        } catch (e: Exception) {
+            Log.w(TAG, "ensureShimInstalled: failed to write 02-bash-history.sh: ${e.message}")
+        }
     }
 
     /** Download + unpack the Ubuntu rootfs tarball. */
