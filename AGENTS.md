@@ -18954,3 +18954,10 @@ Four fixes to the Command Palette:
 
 **Files touched:** CodeEditor.kt (LaunchedEffect(onInsertHandler) block, ~lines 1425-1560)
 **Next on roadmap:** SVG/HTML/Markdown rendering + pinch zoom (Tests 70/72); File visibility in explorer (Test 78); UI interaction issues (Tests 12, 30, 33, 40); YouTube Test 51 fix; Phase N notification system.
+
+### [2026-08-16 16:30 WAT] — AI Agent: Claude (Superagent), Commit: 43a60bb1, CI Build: pending
+**Tags:** [FIX] [TEST-16]
+**What was fixed:** Extra keys toolbar (Test 16) — characters were not appearing in the editor when tapping extra keys. Two root causes found and fixed: (1) BasicTextField in Compose 1.6.x doesn't render programmatic value updates without focus — added focusRequester.requestFocus() before each insertion. (2) LaunchedEffect(onInsertHandler) was re-running on every recomposition (lambda instability), capturing a potentially stale onContentChange callback — if it updated the wrong tab, LaunchedEffect(content) would immediately reset value back to old text, making the inserted character vanish. Fixed by switching to LaunchedEffect(Unit) + rememberUpdatedState(onContentChange) so the handler runs once but always calls the latest callback.
+
+**Files touched:** CodeEditor.kt (LaunchedEffect insert handler block, new import)
+**Next on roadmap:** SVG/HTML/Markdown rendering + pinch zoom (Tests 70/72); File visibility in explorer (Test 78); UI interaction issues (Tests 12, 30, 33, 40)
