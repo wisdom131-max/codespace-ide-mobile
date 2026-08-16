@@ -309,6 +309,27 @@ fun ExplorerSidePanel(
         treeListState.animateScrollToItem(idx.coerceAtLeast(0))
     }
 
+
+
+    var selected      by remember { mutableStateOf<String?>(null) }
+    var contextFile   by remember { mutableStateOf<File?>(null) }
+    var showCtxMenu   by remember { mutableStateOf(false) }
+    var showHistoryDialog  by remember { mutableStateOf(false) }
+    var historyFile        by remember { mutableStateOf<File?>(null) }
+    var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
+    var showTrashDialog    by remember { mutableStateOf(false) }
+    var trashEntries       by remember { mutableStateOf<List<WorkspaceManager.TrashEntry>>(emptyList()) }
+    var trashProjectDir    by remember { mutableStateOf<File?>(null) }
+    // P17-B Compress
+    var showCompressDialog by remember { mutableStateOf(false) }
+    // P17-C Permissions
+    var showPermDialog     by remember { mutableStateOf(false) }
+    var showNewFile   by remember { mutableStateOf(false) }
+    var showNewFolder by remember { mutableStateOf(false) }
+    var showRename    by remember { mutableStateOf(false) }
+    var showDelete    by remember { mutableStateOf(false) }
+    var nameInput     by remember { mutableStateOf("") }
+    var refresh       by remember { mutableStateOf(0) }
     // Test 78 fix: When a file tab is closed, reveal the file in the workspace tree
     // by expanding all ancestor directories and scrolling to it. This ensures the
     // file is findable in the Explorer after its tab is removed from OPEN EDITORS.
@@ -351,26 +372,6 @@ fun ExplorerSidePanel(
             selected = targetPath
         }
     }
-
-    var selected      by remember { mutableStateOf<String?>(null) }
-    var contextFile   by remember { mutableStateOf<File?>(null) }
-    var showCtxMenu   by remember { mutableStateOf(false) }
-    var showHistoryDialog  by remember { mutableStateOf(false) }
-    var historyFile        by remember { mutableStateOf<File?>(null) }
-    var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
-    var showTrashDialog    by remember { mutableStateOf(false) }
-    var trashEntries       by remember { mutableStateOf<List<WorkspaceManager.TrashEntry>>(emptyList()) }
-    var trashProjectDir    by remember { mutableStateOf<File?>(null) }
-    // P17-B Compress
-    var showCompressDialog by remember { mutableStateOf(false) }
-    // P17-C Permissions
-    var showPermDialog     by remember { mutableStateOf(false) }
-    var showNewFile   by remember { mutableStateOf(false) }
-    var showNewFolder by remember { mutableStateOf(false) }
-    var showRename    by remember { mutableStateOf(false) }
-    var showDelete    by remember { mutableStateOf(false) }
-    var nameInput     by remember { mutableStateOf("") }
-    var refresh       by remember { mutableStateOf(0) }
     var filterQuery   by remember { mutableStateOf("") }
     var sortByType    by remember { mutableStateOf(false) }
     var sortMode      by remember { mutableStateOf(0) } // 0=Name, 1=Date, 2=Size, 3=Type
