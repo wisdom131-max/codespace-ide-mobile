@@ -42,7 +42,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.codespace.ide.domain.Language
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import org.json.JSONObject
 import org.json.JSONArray
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -60,7 +59,6 @@ enum class PreviewMode(val label: String) {
     MARKDOWN("Markdown"),
     SVG("SVG"),
     BROWSER("Browser"),
-    DASHBOARD("Dashboard"),
     REMOTION("Remotion"),
 }
 
@@ -125,11 +123,28 @@ fun PreviewPane(
     // re-read from disk. Without this, produceState only re-reads when activeFilePath
     // changes, so editing the file in the editor + pressing refresh shows stale content.
     var refreshTrigger by remember { mutableStateOf(0) }
-    // Read file content from disk whenever path changes OR refresh is triggered
+    // P-LIVE: Read file content from disk whenever path changes OR refresh is triggered.
+    // Also polls file lastModified every 500ms so edits made in the editor (which
+    // writes to disk on every keystroke) show up in the preview instantly — no
+    // manual refresh button press needed.
     val content by produceState(initialValue = "", key1 = activeFilePath, key2 = refreshTrigger) {
-        value = if (activeFilePath.isNotBlank()) {
-            try { java.io.File(activeFilePath).readText() } catch (e: Exception) { "" }
-        } else ""
+        if (activeFilePath.isNotBlank()) {
+            var lastMod = 0L
+            value = try { java.io.File(activeFilePath).readText() } catch (_: Exception) { "" }
+            lastMod = try { java.io.File(activeFilePath).lastModified() } catch (_: Exception) { 0L }
+            // Poll for file changes — editor writes to disk on every keystroke, so
+            // we pick up changes within 500ms without needing a manual refresh.
+            while (true) {
+                kotlinx.coroutines.delay(500)
+                val currentMod = try { java.io.File(activeFilePath).lastModified() } catch (_: Exception) { 0L }
+                if (currentMod != lastMod) {
+                    lastMod = currentMod
+                    value = try { java.io.File(activeFilePath).readText() } catch (_: Exception) { "" }
+                }
+            }
+        } else {
+            value = ""
+        }
     }
     val language = remember(activeFilePath) {
         when {
@@ -415,14 +430,12 @@ fun PreviewPane(
                         PreviewGuideRow("HTML", Color(0xFF4EC9B0),
                             "Open any .html, .htm file. Full JS + CSS rendering. CSS files preview against demo elements. JS files capture console.log output.")
                         PreviewGuideRow("Markdown", Color(0xFF569CD6),
-                            "Open any .md file. Rendered with dark-mode styling (h1–h4, code blocks, tables, blockquotes). Requires internet for marked.js.")
+                            "Open any .md file. Rendered with dark-mode styling (h1–h4, code blocks, tables, blockquotes). Offline rendering with bundled marked.js.")
                         PreviewGuideRow("SVG", Color(0xFFF1FA8C),
                             "Open any .svg file. Rendered centered on a dark background. No JS.")
                         PreviewGuideRow("Browser", Color(0xFFFF79C6),
                             "Type any URL in the address bar and tap Go. Default is localhost:3000 — start your dev server in the terminal first, then switch here to see it live.")
-                        PreviewGuideRow("Dashboard", Color(0xFF4EC9B0),
-                            "Interactive dashboard builder with drag-and-drop components. AI generates charts, stat cards, tables, and widgets. Tap any component palette item to add it. Drag elements to reposition. Includes Chart.js for live data visualization.")
-                        PreviewGuideRow("Remotion", Color(0xFFCE9178),
+                                                PreviewGuideRow("Remotion", Color(0xFFCE9178),
                             "Connects to Remotion Studio running in Ubuntu proot. Start it with 'npx remotion studio' in the terminal, then tap Go to preview video compositions, render clips, and see live previews.")
                         HorizontalDivider(color = Color(0xFF3C3C3C))
                         Row(
@@ -435,7 +448,7 @@ fun PreviewPane(
                             verticalAlignment = Alignment.Top,
                         ) {
                             Icon(Icons.Default.Lightbulb, null, tint = Color(0xFFF1FA8C), modifier = Modifier.size(14.dp))
-                            Text("Tap ↺ to manually refresh. The preview auto-updates when you switch files.", fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp)
+                            Text("Tap ↺ to manually refresh. The preview auto-updates as you type — no refresh needed.", fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp)
                         }
                     }
                 },
@@ -474,7 +487,7 @@ fun PreviewPane(
     // ── Fullscreen overlay ───────────────────────────────────────────────────
     // Tapping the fullscreen icon opens the SAME preview content in a window-filling Dialog —
     // centered, with its own back/X so there's always a clear way out. Works identically for
-    // every sub-tab (HTML, Markdown, SVG, Browser, Dashboard, Remotion) since it just re-renders
+    // every sub-tab (HTML, Markdown, SVG, Browser, Remotion) since it just re-renders
     // the shared PreviewBody at fillMaxSize.
     if (isFullscreen) {
         key(orientation) {
@@ -637,8 +650,7 @@ private fun PreviewBody(
         PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
-        PreviewMode.DASHBOARD -> DashboardPreview(activeFilePath, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading)
-        // Independent from Browser's URL now — each mode has its own connection (this is the
+                // Independent from Browser's URL now — each mode has its own connection (this is the
         // fix for the "Browser and Remotion port mirroring" bug).
         PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
     }
@@ -648,7 +660,7 @@ private fun PreviewBody(
 // Shared file-chooser bridge for every preview WebView (#9 hard-bucket fix).
 // WebView never implements onShowFileChooser out of the box, so any
 // <input type="file"> anywhere — a user-built upload form in HtmlPreview,
-// a real site with an upload form in BrowserPreview, a generated dashboard
+// a real site with an upload form in BrowserPreview
 // with a CSV import, Remotion Studio's asset import — silently does nothing
 // when tapped. This bridges WebView's chooser callback to a real Android
 // document picker and feeds the result back into the page's JS callback.
@@ -1436,396 +1448,3 @@ private fun PreviewGuideRow(mode: String, accent: Color, description: String) {
         Text(description, fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp, modifier = Modifier.weight(1f))
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Dashboard Preview — Interactive drag-and-drop dashboard builder
-// AI can generate dashboards, user can drag components, charts via Chart.js
-// ─────────────────────────────────────────────────────────────────────────────
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun DashboardPreview(
-    activeFilePath: String,
-    onWebView: (WebView) -> Unit,
-    onTitle: (String) -> Unit,
-    onLoading: (Boolean) -> Unit,
-) {
-    val fileChooserHandler = rememberOnShowFileChooser()
-    // Support: .html files with dashboard content, .json dashboard specs, or default template
-    val dashboardHtml by produceState(initialValue = "", key1 = activeFilePath) {
-        val dashFile = java.io.File(activeFilePath)
-        val dashContent = if (activeFilePath.isNotBlank() && dashFile.exists()) {
-            val content = try { dashFile.readText() } catch (_: Exception) { "" }
-            if (content.contains("<html") || content.contains("<div id=\"dashboard\"")) {
-                // Full HTML dashboard file — render as-is
-                content
-            } else if (activeFilePath.endsWith(".json") && content.trimStart().startsWith("{")) {
-                // JSON dashboard spec — convert to HTML
-                try {
-                    val spec = JSONObject(content)
-                    generateDashboardFromJson(spec)
-                } catch (_: Exception) {
-                    generateDefaultDashboard()
-                }
-            } else {
-                generateDefaultDashboard()
-            }
-        } else {
-            generateDefaultDashboard()
-        }
-        value = dashContent
-    }
-
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                settings.allowFileAccess = true
-                settings.allowContentAccess = true
-                webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        onLoading(true)
-                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
-                    }
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        onLoading(false)
-                        onTitle("Dashboard")
-                    }
-                }
-                webChromeClient = object : WebChromeClient() {
-                    override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
-                        return true
-                    }
-                    override fun onShowFileChooser(
-                        view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
-                        fileChooserParams: WebChromeClient.FileChooserParams?,
-                    ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
-                }
-                onWebView(this)
-            }
-        },
-        update = { wv ->
-            // P25-4: only reload when HTML actually changed — prevents constant recomposition
-            // re-loading which caused blank flashes during drag or any state change
-            val tag = wv.tag as? String
-            val contentKey = dashboardHtml.take(128)
-            if (tag != contentKey) {
-                wv.tag = contentKey
-                wv.loadDataWithBaseURL("about:blank", dashboardHtml, "text/html", "UTF-8", null)
-            }
-            onWebView(wv)
-        },
-        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
-        modifier = Modifier.fillMaxSize(),
-    )
-}
-
-// ── Shared dashboard CSS — used by both the interactive default builder and AI-generated specs ──
-private val DASHBOARD_STYLES = """
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#1a1a2e; color:#eee; font-family:'Segoe UI',system-ui,sans-serif; overflow-x:hidden; min-height:100vh; -webkit-user-select:none; }
-.dashboard-title { text-align:center; padding:14px; font-size:16px; font-weight:700; color:#e94560; }
-#toolbar { position:sticky; top:0; z-index:100; background:#16213e; padding:8px 12px; display:flex; gap:8px; overflow-x:auto; border-bottom:1px solid #0f3460; align-items:center; }
-#toolbar label { font-size:11px; color:#888; white-space:nowrap; margin-right:4px; }
-.palette-btn { background:#0f3460; color:#e94560; border:1px solid #e94560; border-radius:6px; padding:6px 12px; font-size:12px; cursor:pointer; white-space:nowrap; }
-.palette-btn:active { transform:scale(0.95); }
-.palette-btn.green { border-color:#4ecca3; color:#4ecca3; }
-#dashboard { display:flex; flex-wrap:wrap; align-content:flex-start; gap:12px; padding:16px; min-height:calc(100vh - 50px); }
-.widget { background:#16213e; border:1px solid #0f3460; border-radius:10px; padding:10px; position:relative; transition:box-shadow 0.2s; width:170px; height:150px; min-width:110px; min-height:90px; max-width:96vw; max-height:80vh; resize:both; overflow:auto; display:flex; flex-direction:column; }
-.widget:hover { box-shadow:0 4px 20px rgba(233,69,96,0.3); border-color:#e94560; }
-.widget.dragging { opacity:0.6; }
-.widget-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-shrink:0; cursor:move; touch-action:none; }
-.widget-title { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:1px; }
-.widget-close { color:#e94560; cursor:pointer; font-size:15px; line-height:1; padding:2px 6px; border-radius:4px; }
-.widget-body { flex:1; min-height:0; overflow:auto; }
-.stat-value { font-size:22px; font-weight:700; color:#e94560; }
-.stat-label { font-size:11px; color:#aaa; margin-top:3px; }
-.stat-trend { font-size:10px; margin-top:5px; }
-.stat-trend.up { color:#4ecca3; }
-.stat-trend.down { color:#e94560; }
-.chart-container { position:relative; height:100%; min-height:60px; }
-.icon-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(50px,1fr)); gap:6px; }
-.icon-item { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:9px; color:#aaa; }
-.icon-item .icon-circle { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; transition:transform 0.2s; }
-.icon-item .icon-circle:active { transform:scale(0.9); }
-.progress-bar { height:6px; background:#0f3460; border-radius:3px; margin-top:6px; overflow:hidden; }
-.progress-fill { height:100%; border-radius:3px; transition:width 0.5s ease; }
-.table-widget { width:100%; font-size:11px; }
-.table-widget th { text-align:left; color:#888; padding:3px 6px; border-bottom:1px solid #0f3460; }
-.table-widget td { padding:4px 6px; border-bottom:1px solid rgba(15,52,96,0.5); color:#ccc; }
-.activity-item { display:flex; gap:6px; align-items:center; padding:5px 0; border-bottom:1px solid rgba(15,52,96,0.3); font-size:11px; }
-.activity-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.empty-state { text-align:center; padding:40px; color:#555; }
-.empty-state h3 { font-size:16px; margin-bottom:8px; }
-.empty-state p { font-size:13px; }
-.empty-state .hint { margin-top:16px; font-size:11px; color:#e94560; }
-"""
-
-// ── Shared drag-to-reorder script — attaches to .widget-header (the drag handle). Actual
-// resizing is native CSS `resize:both` on .widget, no JS needed for that. ──
-private val DASHBOARD_DRAG_SCRIPT = """
-(function(){
-function mk(handle){
-  var el=handle.closest('.widget');
-  var sx,sy,ox,oy,dr=false;
-  function dn(e){
-    if(e.target.classList.contains('widget-close'))return;
-    dr=true; el.classList.add('dragging');
-    var t=e.touches?e.touches[0]:e; sx=t.clientX; sy=t.clientY;
-    var r=el.getBoundingClientRect(), p=el.parentElement.getBoundingClientRect();
-    ox=r.left-p.left; oy=r.top-p.top;
-    el.style.position='absolute'; el.style.left=ox+'px'; el.style.top=oy+'px'; el.style.zIndex=999;
-    e.preventDefault();
-  }
-  function mv(e){
-    if(!dr)return;
-    var t=e.touches?e.touches[0]:e;
-    el.style.left=(ox+t.clientX-sx)+'px'; el.style.top=(oy+t.clientY-sy)+'px';
-    e.preventDefault();
-  }
-  function up(){
-    if(!dr)return;
-    dr=false; el.classList.remove('dragging');
-    el.style.zIndex=''; el.style.position=''; el.style.left=''; el.style.top='';
-    var dash=el.parentElement;
-    var ws=Array.from(dash.querySelectorAll('.widget'));
-    ws.sort(function(a,b){var ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();return ar.top-br.top||ar.left-br.left;});
-    ws.forEach(function(w){dash.appendChild(w);});
-  }
-  handle.addEventListener('mousedown',dn);
-  handle.addEventListener('touchstart',dn,{passive:false});
-  document.addEventListener('mousemove',mv);
-  document.addEventListener('touchmove',mv,{passive:false});
-  document.addEventListener('mouseup',up);
-  document.addEventListener('touchend',up);
-}
-document.querySelectorAll('.widget-header').forEach(mk);
-})();
-"""
-
-// ── JSON spec to dashboard HTML converter ──
-private fun generateDashboardFromJson(spec: JSONObject): String {
-    val title = spec.optString("title", "AI Dashboard")
-    val widgets = spec.optJSONArray("widgets") ?: return generateDefaultDashboard()
-
-    val widgetHtml = StringBuilder()
-    for (i in 0 until widgets.length()) {
-        val w = widgets.getJSONObject(i)
-        val type = w.optString("type", "stat")
-        val wTitle = w.optString("title", "Widget")
-        val bodyHtml = StringBuilder()
-        var extraScript = ""
-        when (type) {
-            "stat" -> {
-                val value = w.optString("value", "0")
-                val label = w.optString("label", "")
-                val trend = w.optString("trend", "")
-                val trendDir = w.optString("trendDirection", "up")
-                val arrow = if (trendDir == "up") "&#9650;" else "&#9660;"
-                bodyHtml.append("<div class=\"stat-value\">").append(value).append("</div>")
-                    .append("<div class=\"stat-label\">").append(label).append("</div>")
-                    .append("<div class=\"stat-trend ").append(trendDir).append("\">").append(arrow).append(" ").append(trend).append("</div>")
-            }
-            "chart" -> {
-                val chartType = w.optString("chartType", "bar")
-                val color = w.optString("color", "#e94560")
-                val labelsArr = mutableListOf<String>()
-                w.optJSONArray("labels")?.let { arr -> for (j in 0 until arr.length()) labelsArr.add(arr.getString(j)) }
-                if (labelsArr.isEmpty()) labelsArr.addAll(listOf("Mon", "Tue", "Wed", "Thu", "Fri"))
-                val dataArr = mutableListOf<Double>()
-                w.optJSONArray("data")?.let { arr -> for (j in 0 until arr.length()) dataArr.add(arr.getDouble(j)) }
-                if (dataArr.isEmpty()) dataArr.addAll(listOf(30.0, 50.0, 45.0, 60.0, 40.0))
-                val jsLabels = labelsArr.joinToString(",") { "'$it'" }
-                val jsData = dataArr.joinToString(",")
-                bodyHtml.append("<div class=\"chart-container\"><canvas id=\"chart_").append(i).append("\"></canvas></div>")
-                extraScript = "<script>setTimeout(function(){var ctx=document.getElementById('chart_" + i + "');if(ctx){ctx.closest('.widget')._chart=new Chart(ctx,{type:'" + chartType +
-                    "',data:{labels:[" + jsLabels + "],datasets:[{data:[" + jsData +
-                    "],backgroundColor:'" + color + "',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#888'}},y:{grid:{color:'#0f3460'},ticks:{color:'#888'}}}}});}},100);</script>"
-            }
-            "progress" -> {
-                val pct = w.optInt("percent", 50)
-                val label = w.optString("label", "Progress")
-                val color = w.optString("color", "#e94560")
-                bodyHtml.append("<div class=\"stat-value\" style=\"color:").append(color).append("\">").append(pct).append("%</div>")
-                    .append("<div class=\"progress-bar\"><div class=\"progress-fill\" style=\"width:").append(pct).append("%;background:").append(color).append("\"></div></div>")
-                    .append("<div class=\"stat-label\" style=\"margin-top:6px\">").append(label).append("</div>")
-            }
-            "table" -> {
-                val headers = mutableListOf<String>()
-                w.optJSONArray("headers")?.let { arr -> for (j in 0 until arr.length()) headers.add(arr.getString(j)) }
-                if (headers.isEmpty()) headers.addAll(listOf("Name", "Value"))
-                val rows = w.optJSONArray("rows") ?: JSONArray()
-                val headerHtml = headers.joinToString("") { "<th>$it</th>" }
-                val rowsHtml = StringBuilder()
-                for (r in 0 until rows.length()) {
-                    val row = rows.getJSONArray(r)
-                    val cells = StringBuilder()
-                    for (c in 0 until row.length()) cells.append("<td>").append(row.getString(c)).append("</td>")
-                    rowsHtml.append("<tr>").append(cells).append("</tr>")
-                }
-                bodyHtml.append("<table class=\"table-widget\"><tr>").append(headerHtml).append("</tr>").append(rowsHtml).append("</table>")
-            }
-            "icons" -> {
-                val icons = w.optJSONArray("icons") ?: JSONArray()
-                val iconHtml = StringBuilder()
-                for (ic in 0 until icons.length()) {
-                    val icon = icons.getJSONObject(ic)
-                    val emoji = icon.optString("icon", "&#128204;")
-                    val label = icon.optString("label", "")
-                    val color = icon.optString("color", "#3a86ff")
-                    iconHtml.append("<div class=\"icon-item\"><div class=\"icon-circle\" style=\"background:")
-                        .append(color).append("22;color:").append(color).append("\" onclick=\"this.style.transform='scale(1.3)';setTimeout(()=>this.style.transform='',150)\">")
-                        .append(emoji).append("</div><span>").append(label).append("</span></div>")
-                }
-                bodyHtml.append("<div class=\"icon-grid\">").append(iconHtml).append("</div>")
-            }
-            else -> {
-                bodyHtml.append(w.optString("html", ""))
-            }
-        }
-        widgetHtml.append("<div class=\"widget\">")
-            .append("<div class=\"widget-header\"><span class=\"widget-title\">").append(wTitle).append("</span>")
-            .append("<span class=\"widget-close\" onclick=\"var w=this.closest('.widget');if(w._chart){w._chart.destroy();}w.remove();\">&times;</span></div>")
-            .append("<div class=\"widget-body\">").append(bodyHtml).append("</div></div>")
-            .append(extraScript)
-    }
-
-    return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0,minimum-scale=0.5,maximum-scale=6.0,user-scalable=yes\">" +
-        "<title>" + title + "</title>" +
-        "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js\"></script>" +
-        "<style>" + DASHBOARD_STYLES + "</style></head><body>" +
-        "<div class=\"dashboard-title\">" + title + "</div>" +
-        "<div id=\"dashboard\">" + widgetHtml + "</div>" +
-        "<script>" + DASHBOARD_DRAG_SCRIPT + "</script>" +
-        "</body></html>"
-}
-
-// ── Default dashboard template ──
-private fun generateDefaultDashboard(): String {
-    val js = """
-(function(){
-var wid=0;
-var dash=document.getElementById('dashboard'), es=document.getElementById('emptyState');
-function hideE(){ if(es) es.style.display='none'; }
-function showE(){ if(es && dash.children.length===0) es.style.display='block'; }
-function mkDrag(handle){
-  var el=handle.closest('.widget');
-  var sx,sy,ox,oy,dr=false;
-  function dn(e){
-    if(e.target.classList.contains('widget-close'))return;
-    dr=true; el.classList.add('dragging');
-    var t=e.touches?e.touches[0]:e; sx=t.clientX; sy=t.clientY;
-    var r=el.getBoundingClientRect(), p=el.parentElement.getBoundingClientRect();
-    ox=r.left-p.left; oy=r.top-p.top;
-    el.style.position='absolute'; el.style.left=ox+'px'; el.style.top=oy+'px'; el.style.zIndex=999;
-    e.preventDefault();
-  }
-  function mv(e){
-    if(!dr)return;
-    var t=e.touches?e.touches[0]:e;
-    el.style.left=(ox+t.clientX-sx)+'px'; el.style.top=(oy+t.clientY-sy)+'px';
-    e.preventDefault();
-  }
-  function up(){
-    if(!dr)return;
-    dr=false; el.classList.remove('dragging');
-    el.style.zIndex=''; el.style.position=''; el.style.left=''; el.style.top='';
-    var ws=Array.from(dash.querySelectorAll('.widget'));
-    ws.sort(function(a,b){var ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();return ar.top-br.top||ar.left-br.left;});
-    ws.forEach(function(w){dash.appendChild(w);});
-  }
-  handle.addEventListener('mousedown',dn);
-  handle.addEventListener('touchstart',dn,{passive:false});
-  document.addEventListener('mousemove',mv);
-  document.addEventListener('touchmove',mv,{passive:false});
-  document.addEventListener('mouseup',up);
-  document.addEventListener('touchend',up);
-}
-function addW(type){
-  hideE();
-  var id='w'+(++wid);
-  var el=document.createElement('div'); el.className='widget'; el.id=id;
-  var titleText='Widget';
-  if(type==='stat')titleText='Revenue';
-  else if(type==='chart')titleText='Weekly Activity';
-  else if(type==='progress')titleText='Project Progress';
-  else if(type==='table')titleText='Recent Files';
-  else if(type==='activity')titleText='Activity Feed';
-  else if(type==='icons')titleText='Quick Actions';
-  el.innerHTML='<div class="widget-header"><span class="widget-title">'+titleText+'</span><span class="widget-close">&times;</span></div><div class="widget-body"></div>';
-  dash.appendChild(el);
-  var header=el.querySelector('.widget-header');
-  var closeBtn=el.querySelector('.widget-close');
-  var ct=el.querySelector('.widget-body');
-  closeBtn.onclick=function(e){ e.stopPropagation(); if(el._chart){el._chart.destroy();} el.remove(); showE(); };
-  mkDrag(header);
-  if(type==='stat'){
-    var v=Math.floor(Math.random()*90000+10000).toString().replace(/\B(?=(\d{3})+(?!\d))/g,',');
-    var tr=(Math.random()*20+5).toFixed(1);
-    ct.innerHTML='<div class="stat-value">$'+v+'</div><div class="stat-label">Total this month</div><div class="stat-trend up">&#9650; '+tr+'% vs last month</div>';
-  } else if(type==='chart'){
-    ct.innerHTML='<div class="chart-container"><canvas></canvas></div>';
-    setTimeout(function(){
-      var cv=el.querySelector('canvas');
-      if(cv){ el._chart=new Chart(cv,{type:'bar',data:{labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],datasets:[{data:Array.from({length:7},function(){return Math.floor(Math.random()*100)}),backgroundColor:'#e94560',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#888'}},y:{grid:{color:'#0f3460'},ticks:{color:'#888'}}}}}); }
-    },50);
-  } else if(type==='progress'){
-    var p=Math.floor(Math.random()*80+20);
-    var c=['#e94560','#4ecca3','#f9a826','#3a86ff'][Math.floor(Math.random()*4)];
-    ct.innerHTML='<div class="stat-value" style="color:'+c+'">'+p+'%</div><div class="progress-bar"><div class="progress-fill" style="width:'+p+'%;background:'+c+'"></div></div><div class="stat-label" style="margin-top:6px">'+Math.floor(Math.random()*15+5)+' tasks remaining</div>';
-  } else if(type==='table'){
-    ct.innerHTML='<table class="table-widget"><tr><th>Name</th><th>Size</th><th>Mod</th></tr><tr><td>Main.kt</td><td>12KB</td><td>2h</td></tr><tr><td>styles.css</td><td>4KB</td><td>5h</td></tr><tr><td>index.html</td><td>8KB</td><td>1d</td></tr></table>';
-  } else if(type==='activity'){
-    var acts=[{c:'#4ecca3',t:'Build #854 succeeded',tm:'2m ago'},{c:'#e94560',t:'Build #853 failed',tm:'1h ago'},{c:'#f9a826',t:'New branch created',tm:'3h ago'},{c:'#3a86ff',t:'Commit pushed',tm:'5h ago'}];
-    ct.innerHTML=acts.map(function(a){return '<div class="activity-item"><div class="activity-dot" style="background:'+a.c+'"></div><span style="flex:1">'+a.t+'</span><span style="color:#555">'+a.tm+'</span></div>'}).join('');
-  } else if(type==='icons'){
-    var ics=[{e:'\uD83D\uDCC1',l:'Files',c:'#3a86ff'},{e:'\uD83D\uDD27',l:'Settings',c:'#f9a826'},{e:'\uD83D\uDCCA',l:'Stats',c:'#4ecca3'},{e:'\uD83D\uDD12',l:'Security',c:'#e94560'},{e:'\uD83C\uDFA8',l:'Themes',c:'#a855f7'},{e:'\uD83D\uDCE6',l:'Packages',c:'#3a86ff'},{e:'\uD83D\uDE80',l:'Deploy',c:'#4ecca3'},{e:'\uD83D\uDCAC',l:'Chat',c:'#e94560'}];
-    ct.innerHTML='<div class="icon-grid">'+ics.map(function(i){return '<div class="icon-item"><div class="icon-circle" style="background:'+i.c+'22;color:'+i.c+'" onclick="this.style.transform=\'scale(1.3)\';setTimeout(()=>this.style.transform=\'\',150)">'+i.e+'</div><span>'+i.l+'</span></div>'}).join('')+'</div>';
-  }
-  el.style.opacity='0'; el.style.transform='scale(0.8)';
-  requestAnimationFrame(function(){
-    el.style.transition='opacity 0.3s,transform 0.3s';
-    el.style.opacity='1'; el.style.transform='scale(1)';
-    setTimeout(function(){ el.style.transition='box-shadow 0.2s'; },300);
-  });
-}
-window.addWidget=addW;
-window.clearAll=function(){
-  dash.querySelectorAll('.widget').forEach(function(w){ if(w._chart)w._chart.destroy(); w.remove(); });
-  showE();
-};
-window.exportDashboard=function(){
-  var html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
-  var b=new Blob([html],{type:'text/html'});
-  var u=URL.createObjectURL(b);
-  var a=document.createElement('a'); a.href=u; a.download='dashboard.html'; a.click();
-  URL.revokeObjectURL(u);
-};
-setTimeout(function(){
-  if(dash.querySelectorAll('.widget').length===0){
-    addW('stat'); setTimeout(function(){addW('chart');},100); setTimeout(function(){addW('progress');},200);
-  }
-},300);
-})();
-"""
-    return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0,minimum-scale=0.5,maximum-scale=6.0,user-scalable=yes\">" +
-        "<title>Dashboard</title>" +
-        "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js\"></script>" +
-        "<style>" + DASHBOARD_STYLES + "</style></head><body>" +
-        "<div id=\"toolbar\"><label>Add:</label>" +
-        "<button class=\"palette-btn\" onclick=\"addWidget('stat')\">+ Stat Card</button>" +
-        "<button class=\"palette-btn\" onclick=\"addWidget('chart')\">+ Chart</button>" +
-        "<button class=\"palette-btn\" onclick=\"addWidget('progress')\">+ Progress</button>" +
-        "<button class=\"palette-btn\" onclick=\"addWidget('table')\">+ Table</button>" +
-        "<button class=\"palette-btn\" onclick=\"addWidget('activity')\">+ Activity</button>" +
-        "<button class=\"palette-btn\" onclick=\"addWidget('icons')\">+ Icon Grid</button>" +
-        "<button class=\"palette-btn\" onclick=\"clearAll()\" style=\"border-color:#666;color:#666;margin-left:auto\">Clear All</button>" +
-        "<button class=\"palette-btn green\" onclick=\"exportDashboard()\">Export HTML</button></div>" +
-        "<div id=\"dashboard\"></div>" +
-        "<div class=\"empty-state\" id=\"emptyState\" style=\"display:none\"><h3>No widgets yet</h3><p>Tap a button above to add a widget, or ask the AI to generate a dashboard.</p><div class=\"hint\">Drag a widget's header to reorder it — drag the bottom-right corner to resize it.</div></div>" +
-        "<script>" + js + "</script>" +
-        "</body></html>"
-}
-
