@@ -18707,3 +18707,13 @@ Row itself — Goodluck confirmed that "long line across" isn't the issue.
 - InProjectSettingsDialog.kt (responsive portrait/landscape layout, horizontalScroll category tabs, LocalConfiguration import)
 
 **Next:** Notification restructure (awaiting user plan), portrait settings device test
+
+### [2026-08-16 11:15 WAT] — AI Agent: Elowen (Claude Sonnet 4), Commit pending, CI Build pending
+
+**What was fixed:**
+Status bar language indicator refined — now shows VS Code-style bracket symbol + language name, all white. Bracket symbols map by language type: `{ }` for code langs (TS/JS/Kotlin/Python/CSS/JSON), `< >` for markup (HTML/XML), `#` for Markdown, `Aa` for plain text. Example: "{ } TypeScript".
+
+**Files touched:**
+- ProjectShellScreen.kt (StatusBarContent: bracket symbol + lang.displayName text)
+
+**Next:** Notification restructure (awaiting user plan)

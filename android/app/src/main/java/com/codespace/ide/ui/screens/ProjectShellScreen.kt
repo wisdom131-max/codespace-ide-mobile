@@ -3960,10 +3960,21 @@ private fun StatusBarContent(
         Spacer(Modifier.width(4.dp))
         Text(branchName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
         Spacer(Modifier.width(8.dp))
-        // P-STATUS-LANG: VS Code-style language indicator — shows the language
-        // name (e.g. "TypeScript", "JSON") in white when a file is open.
+        // P-STATUS-LANG: VS Code-style language indicator — shows a bracket
+        // symbol representing the language type + the language name, all white.
+        // e.g. "{ } TypeScript", "< > HTML", "# Markdown"
         if (activeEditorTab != null) {
             val lang = com.codespace.ide.domain.Language.fromPath(activeEditorTab)
+            val symbol = when (lang) {
+                com.codespace.ide.domain.Language.HTML,
+                com.codespace.ide.domain.Language.XML -> "< >"
+                com.codespace.ide.domain.Language.MARKDOWN -> "#"
+                com.codespace.ide.domain.Language.PLAINTEXT,
+                com.codespace.ide.domain.Language.PLAIN -> "Aa"
+                else -> "{ }"
+            }
+            Text(symbol, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Normal)
+            Spacer(Modifier.width(2.dp))
             Text(lang.displayName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
             Spacer(Modifier.width(8.dp))
         }
