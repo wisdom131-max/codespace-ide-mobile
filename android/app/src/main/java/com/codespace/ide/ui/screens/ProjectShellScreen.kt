@@ -3454,9 +3454,7 @@ private fun PssBottomPanelContent(
                     duplicates = duplicates,
                     complexity = complexity,
                     onJumpToLine = { line ->
-                        // Test 33 fix: Wire code analysis jump-to-line to scrollTargetLine
-                        scrollTargetLine = line
-                        showBottomPanel = false
+                        onJumpToSource(line)
                     },
                 )
             }

@@ -702,9 +702,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // not just scrolling to it.
             val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
             if (targetLineIdx >= 0) {
-                val offset = if (targetLineIdx == 0) 0
-                    else newlineOffsets.getOrNull(targetLineIdx - 1)?.let { it + 1 } ?: value.text.length
-                val clampedOffset = offset.coerceIn(0, value.text.length)
+                // Compute offset inline — newlineOffsets list isn't declared yet at this point
+                var lineStart = 0
+                var linesFound = 0
+                val text = value.text
+                for (i in text.indices) {
+                    if (text[i] == '\n') {
+                        linesFound++
+                        if (linesFound == targetLineIdx) {
+                            lineStart = i + 1
+                            break
+                        }
+                    }
+                }
+                if (linesFound < targetLineIdx) lineStart = text.length
+                val clampedOffset = lineStart.coerceIn(0, text.length)
                 value = value.copy(selection = androidx.compose.ui.text.TextRange(clampedOffset))
             }
             // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
