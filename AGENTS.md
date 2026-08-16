@@ -18987,3 +18987,9 @@ Four fixes to the Command Palette:
 **What was fixed:** Closed file not findable in Explorer tree afterward (Test 78). When a file tab is closed, all ancestor directories are now auto-expanded and the tree scrolls to highlight the file — matching VS Code behavior. Added `revealFilePath` + `revealFileTrigger` params to ExplorerSidePanel with a LaunchedEffect that expands ancestors, refreshes the tree, scrolls to the file, and briefly selects it. Counter-based trigger ensures re-fire even if the same file is closed twice.
 **Files touched:** ExplorerPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** UI interaction fixes (Tests 12, 30, 33, 40); YouTube Shorts browser (Test 130)
+
+### [2026-08-16 17:02 WAT] — AI Agent: Claude (Superagent), Commit: 954afc4b, CI Build: pending
+**Tags:** [FEAT] [TEST-78] [EXPLORER]
+**What was fixed:** Added "Move to Root Folder" context menu option for files in subdirectories. When long-pressing a file that's not in the workspace root, the context menu now offers to move it to the root folder for easy access. Checks for name collisions, shows success/error notifications, and highlights the moved file in the tree afterward. Also improved the reveal-on-close retry loop (3 attempts with 150+100+100ms delays) for slow devices.
+**Files touched:** ExplorerPane.kt
+**Next on roadmap:** UI interaction fixes (Tests 12, 30, 33, 40); YouTube Shorts browser (Test 130)
