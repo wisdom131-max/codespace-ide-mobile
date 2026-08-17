@@ -152,6 +152,12 @@ fun EditorPane(
     externalFindMatchIndex: Int = -1,
     /** Increment to force reload of active tab's file content (used by external replace). */
     reloadTrigger: Int = 0,
+    /** Fix Test 45: notifies the caller (ProjectShellScreen) when the find bar's open
+     * state changes locally (e.g. user tapped the X to close it), so the outer
+     * showFindBar state (driven by Edit menu / toolbar icons) stays in sync with the
+     * ACTUAL working find bar rendered inside CodeEditor. Without this, closing via X
+     * would leave outer state stuck "open", breaking the next Edit>Find tap. */
+    onFindBarOpenChanged: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -349,6 +355,17 @@ fun EditorPane(
     // P26-1: LSP Workspace Symbol search results
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
+    // Fix Test 45: Edit menu Find/Replace and the top toolbar Search/Replace icons used to
+    // open a SEPARATE, buggy find UI in ProjectShellScreen (read stale content from disk,
+    // Next/Previous didn't highlight). That UI has been removed — externalFindBarOpen now
+    // just drives THIS SAME findReplaceOpen state, which renders CodeEditor's own working
+    // find bar (the one that already highlighted matches and worked correctly). Two-way so
+    // toggling the outer icon closed also closes this bar, and vice versa.
+    LaunchedEffect(externalFindBarOpen) {
+        if (externalFindBarOpen != findReplaceOpen) {
+            findReplaceOpen = externalFindBarOpen
+        }
+    }
     var goToLineOpen by remember { mutableStateOf(false) }
     // Pinned tab paths set
     val pinnedPaths = remember { mutableStateListOf<String>() }
@@ -704,7 +721,10 @@ fun EditorPane(
                     Box(Modifier.width(1.dp).height(28.dp).background(DividerColor))
                 }
                 // Split view button
-                IconButton(onClick = { findReplaceOpen = !findReplaceOpen }, modifier = Modifier.size(35.dp)) {
+                IconButton(onClick = {
+                    findReplaceOpen = !findReplaceOpen
+                    onFindBarOpenChanged?.invoke(findReplaceOpen)
+                }, modifier = Modifier.size(35.dp)) {
                     Icon(
                         androidx.compose.material.icons.Icons.Default.FindReplace,
                         contentDescription = "Find & Replace",
@@ -1339,7 +1359,7 @@ fun EditorPane(
                         formatSelectionTrigger = formatSelectionTrigger,
                         scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
-                        onFindReplaceClose = { findReplaceOpen = false },
+                        onFindReplaceClose = { findReplaceOpen = false; onFindBarOpenChanged?.invoke(false) },
                         externalFindQuery = externalFindQuery,
                         externalFindBarOpen = externalFindBarOpen,
                         externalCaseSensitive = externalCaseSensitive,

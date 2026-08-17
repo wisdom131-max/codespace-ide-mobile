@@ -2040,6 +2040,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // to each extra cursor. Old code used ec+shift without adjusting
                         // for the primary insertion/deletion happening before the cursor,
                         // causing text to be inserted at wrong positions and cursors to jump.
+                        // BUG-FIX (Test 51): a cursor could end up added at the EXACT same
+                        // offset as the primary/real cursor (e.g. double-tapping right where the
+                        // caret already sits). If left in extraCursors, the fan-out below replays
+                        // the SAME edit a second time at that spot — the primary cursor's own line
+                        // gets the typed text TWICE while every genuinely distinct extra cursor
+                        // works correctly. Strip any such duplicate before fanning out.
+                        if (value.selection.start in extraCursors) {
+                            extraCursors = extraCursors.filter { it != value.selection.start }
+                        }
                         if (extraCursors.isNotEmpty()) {
                             val delta = updatedValue.text.length - value.text.length
                             if (delta != 0) {
@@ -2158,7 +2167,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         // Double tap — add/remove extra cursor at this position
                                         textLayoutResult?.let { layout ->
                                             val charOffset = layout.getOffsetForPosition(offset)
-                                            extraCursors = if (charOffset in extraCursors)
+                                            // BUG-FIX (Test 51): never add a duplicate cursor exactly
+                                            // where the real/primary cursor already is — that caused
+                                            // whatever gets typed to be inserted twice on that line.
+                                            extraCursors = if (charOffset == value.selection.start) {
+                                                extraCursors
+                                            } else if (charOffset in extraCursors)
                                                 extraCursors.filter { it != charOffset }
                                             else
                                                 (extraCursors + charOffset).distinct().sorted()

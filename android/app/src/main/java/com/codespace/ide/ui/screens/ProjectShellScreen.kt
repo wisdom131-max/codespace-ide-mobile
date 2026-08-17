@@ -990,8 +990,8 @@ fun ProjectShellScreen(
                         "Problems"           -> { showBottomPanel = true; activeBottomTab = BottomTab.PROBLEMS }
             "Output"             -> { showBottomPanel = true; activeBottomTab = BottomTab.OUTPUT }
             "New Terminal"       -> { showBottomPanel = true; activeBottomTab = BottomTab.TERMINAL }
-            "Find"               -> { showFindBar = true; showReplaceRow = false }
-            "Replace"            -> { showFindBar = true; showReplaceRow = true }
+            "Find"               -> { showFindBar = true }
+            "Replace"            -> { showFindBar = true }
             "Go to Line"         -> { showGoToLine = true }
             "Explorer"           -> activePanel = SidePanel.EXPLORER
             "Search"             -> activePanel = SidePanel.SEARCH
@@ -1017,7 +1017,7 @@ fun ProjectShellScreen(
             "Keyboard Shortcuts" -> { showCommandPalette = true }
             "Preferences"        -> { showColorTheme = true }
             "Color Theme"        -> { showColorTheme = true }
-            "Replace"            -> { showFindBar = true; showReplaceRow = true }
+            "Replace"            -> { showFindBar = true }
             "Find in Files"      -> { showFileSearch = true }
             "Go to File"         -> showCommandPalette = true
             "Change Color Theme" -> showColorTheme = true
@@ -4411,13 +4411,13 @@ private fun PssEditorColumn(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Find
-                Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar; showReplaceRow = false }, contentAlignment = Alignment.Center) {
+                // Find (Fix Test 45: opens CodeEditor's own working find bar — see EditorPane.onFindBarOpenChanged)
+                Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Search, null, tint = if (showFindBar) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
                 }
-                // Replace
-                Box(Modifier.size(28.dp).clickable { showFindBar = true; showReplaceRow = !showReplaceRow }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.FindReplace, null, tint = if (showReplaceRow) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
+                // Replace — same working find bar; it always shows the Replace row too.
+                Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.FindReplace, null, tint = if (showFindBar) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
                 }
                 Spacer(Modifier.width(4.dp))
                 Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
@@ -4465,153 +4465,24 @@ private fun PssEditorColumn(
                         color = if (navFwdStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
                 }
                 Spacer(Modifier.weight(1f))
-                // Match count for find
-                if (showFindBar && findQuery.isNotEmpty()) {
-                    val active = activeEditorTab
-                    if (active != null) {
-                        val content = try { java.io.File(active).readText() } catch (_: Exception) { "" }
-                        val count = content.split(findQuery).size - 1
-                        val matchWord = if (count == 1) "match" else "matches"
-                        Text(count.toString() + " " + matchWord, fontSize = 10.sp, color = TabTextInactive)
-                        Spacer(Modifier.width(8.dp))
-                    }
-                }
+                // Fix Test 45: The "Match count for find" text block that used to live
+                // here has been removed — it re-read the file from DISK on every
+                // recomposition just to show a number. showFindBar now opens
+                // CodeEditor's OWN working find bar (see EditorPane's
+                // externalFindBarOpen sync), which already shows its own live
+                // match count ("2/3" etc.) right next to its Find field.
             }
             HorizontalDivider(color = DividerColor)
         }
 
-        // Find & Replace bar
-        if (showFindBar) {
-            Column(
-                Modifier.fillMaxWidth().background(Color(0xFF252526))
-                    .border(1.dp, Color(0xFF3C3C3C), RoundedCornerShape(0.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = findQuery, onValueChange = { findQuery = it },
-                        placeholder = { Text("Find", fontSize = 12.sp, color = Color(0xFF666666)) },
-                        singleLine = true, modifier = Modifier.weight(1f).height(36.dp),
-                        textStyle = TextStyle(color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF007ACC),
-                            unfocusedBorderColor = Color(0xFF3C3C3C),
-                            cursorColor = Color(0xFFAEAFAD),
-                            focusedTextColor = Color(0xFFCCCCCC),
-                            unfocusedTextColor = Color(0xFFCCCCCC),
-                        ),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    val toggleBg = androidx.compose.ui.graphics.Color(0xFF007ACC)
-                    Box(
-                        Modifier.border(1.dp, if (findCaseSensitive) toggleBg else DividerColor, RoundedCornerShape(3.dp))
-                            .background(if (findCaseSensitive) toggleBg.copy(alpha = 0.15f) else Color.Transparent)
-                            .padding(4.dp).clickable { findCaseSensitive = !findCaseSensitive }
-                    ) {
-                        Text("Aa", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                            color = if (findCaseSensitive) toggleBg else Color(0xFF888888))
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Box(
-                        Modifier.border(1.dp, if (findWholeWord) toggleBg else DividerColor, RoundedCornerShape(3.dp))
-                            .background(if (findWholeWord) toggleBg.copy(alpha = 0.15f) else Color.Transparent)
-                            .padding(4.dp).clickable { findWholeWord = !findWholeWord }
-                    ) {
-                        Text("\\b", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                            color = if (findWholeWord) toggleBg else Color(0xFF888888))
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Box(
-                        Modifier.border(1.dp, if (findUseRegex) toggleBg else DividerColor, RoundedCornerShape(3.dp))
-                            .background(if (findUseRegex) toggleBg.copy(alpha = 0.15f) else Color.Transparent)
-                            .padding(4.dp).clickable { findUseRegex = !findUseRegex }
-                    ) {
-                        Text(".*", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                            color = if (findUseRegex) toggleBg else Color(0xFF888888))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    val _findMatches = remember(findQuery, activeEditorTab) {
-                        if (findQuery.isEmpty() || activeEditorTab == null) emptyList()
-                        else try {
-                            val content = java.io.File(activeEditorTab).readText()
-                            val opts = if (findCaseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                            val rawPattern = if (findUseRegex) findQuery else Regex.escape(findQuery)
-                            val finalPattern = if (findWholeWord && !findUseRegex) "\\b${rawPattern}\\b" else rawPattern
-                            Regex(finalPattern, opts).findAll(content).map { it.range.first }.toList()
-                        } catch (_: Exception) { emptyList() }
-                    }
-                    val _safeIdx = findMatchIndex.coerceIn(0, (_findMatches.size - 1).coerceAtLeast(0))
-                    Text(if (_findMatches.isEmpty()) "0/0" else "${_safeIdx + 1}/${_findMatches.size}",
-                        fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 4.dp))
-                    Icon(Icons.Default.KeyboardArrowUp, null, tint = TabTextInactive,
-                        modifier = Modifier.size(20.dp).clickable {
-                            if (_findMatches.isNotEmpty()) {
-                                findMatchIndex = (_safeIdx - 1 + _findMatches.size) % _findMatches.size
-                            }
-                        })
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = TabTextInactive,
-                        modifier = Modifier.size(20.dp).clickable {
-                            if (_findMatches.isNotEmpty()) {
-                                findMatchIndex = (_safeIdx + 1) % _findMatches.size
-                            }
-                        })
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                        modifier = Modifier.size(18.dp).clickable { showFindBar = false; findQuery = ""; replaceQuery = "" })
-                }
-                if (showReplaceRow) {
-                    Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(value = replaceQuery, onValueChange = { replaceQuery = it },
-                            placeholder = { Text("Replace", fontSize = 12.sp, color = Color(0xFF666666)) },
-                            singleLine = true, modifier = Modifier.weight(1f).height(36.dp),
-                            textStyle = TextStyle(color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF007ACC),
-                                unfocusedBorderColor = Color(0xFF3C3C3C),
-                                cursorColor = Color(0xFFAEAFAD),
-                                focusedTextColor = Color(0xFFCCCCCC),
-                                unfocusedTextColor = Color(0xFFCCCCCC),
-                            ))
-                        Spacer(Modifier.width(4.dp))
-                        OutlinedButton(onClick = {
-                            val active = activeEditorTab
-                            if (active != null && findQuery.isNotEmpty()) {
-                                try {
-                                    val content = java.io.File(active).readText()
-                                    val idx = content.indexOf(findQuery)
-                                    if (idx >= 0) {
-                                        val newContent = content.substring(0, idx) + replaceQuery + content.substring(idx + findQuery.length)
-                                        java.io.File(active).writeText(newContent)
-                                        editorReloadTrigger++
-                                        showNotification("Replaced 1 occurrence", "info")
-                                    }
-                                } catch (e: Exception) {
-                                    showNotification("Replace failed: ${e.message}", "error")
-                                }
-                            }
-                        }, modifier = Modifier.height(36.dp)) { Text("Replace", fontSize = 11.sp) }
-                        Spacer(Modifier.width(4.dp))
-                        OutlinedButton(onClick = {
-                            val active = activeEditorTab
-                            if (active != null && findQuery.isNotEmpty()) {
-                                try {
-                                    val content = java.io.File(active).readText()
-                                    val newContent = content.replace(findQuery, replaceQuery)
-                                    java.io.File(active).writeText(newContent)
-                                    editorReloadTrigger++
-                                    showNotification("Replaced ${content.split(findQuery).size - 1} occurrences", "info")
-                                } catch (e: Exception) {
-                                    showNotification("Replace failed: ${e.message}", "error")
-                                }
-                            }
-                        }, modifier = Modifier.height(36.dp)) { Text("All", fontSize = 11.sp) }
-                    }
-                } else {
-                    TextButton(onClick = { showReplaceRow = true }) { Text("Replace", fontSize = 12.sp) }
-                }
-            }
-        }
+        // Fix Test 45: Removed — this used to render a SEPARATE, buggy find/replace
+        // UI here that read file content from DISK (stale vs in-memory editor
+        // buffer), computed its own match list independently from CodeEditor's real
+        // matches, and its Next/Previous buttons never highlighted anything.
+        // showFindBar now just opens CodeEditor's OWN working find bar (see
+        // EditorPane's externalFindBarOpen sync) — the one previously reachable only
+        // via the magnifying-glass icon inside the editor, which already worked
+        // correctly (highlights + Next/Prev).
 
         // Editor area
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -4639,6 +4510,7 @@ private fun PssEditorColumn(
                     externalUseRegex = if (showFindBar) findUseRegex else null,
                     externalFindMatchIndex = if (showFindBar) findMatchIndex else -1,
                     reloadTrigger = editorReloadTrigger,
+                    onFindBarOpenChanged = { open -> showFindBar = open },
                 )
             } else {
                 Box(

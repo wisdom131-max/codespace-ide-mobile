@@ -97,6 +97,22 @@ private fun loadWorkspacePath(context: Context, projectId: String): String? =
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
         .getString("${KEY_WORKSPACE}_$projectId", null)
 
+// BUG-FIX (Test 49): Find in Files query used to live only in Compose `remember` state,
+// which is discarded the moment the Search panel is closed (its `when` branch unmounts
+// it). Reopening always started blank. Persist the last query per project so it's
+// pre-filled again — same pattern as the workspace-path memory above.
+private const val PREFS_SEARCH_HISTORY = "codespace_search_history"
+private const val KEY_LAST_SEARCH = "last_search_query"
+
+private fun saveLastSearchQuery(context: Context, projectId: String, query: String) {
+    context.getSharedPreferences(PREFS_SEARCH_HISTORY, Context.MODE_PRIVATE)
+        .edit().putString("${KEY_LAST_SEARCH}_$projectId", query).apply()
+}
+
+private fun loadLastSearchQuery(context: Context, projectId: String): String =
+    context.getSharedPreferences(PREFS_SEARCH_HISTORY, Context.MODE_PRIVATE)
+        .getString("${KEY_LAST_SEARCH}_$projectId", "") ?: ""
+
 // ── Multi-root workspace support ──
 private fun saveWorkspaceRoots(context: Context, projectId: String, roots: List<String>) {
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
@@ -2647,7 +2663,9 @@ fun fileIconColor(name: String): Color {
 private data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
 
 @Composable fun SearchPanel(projectId: String, onOpenFileAtLine: ((String, Int) -> Unit)? = null) {
-    var searchQuery  by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    // Test 49 fix: pre-fill with the last query searched in this project.
+    var searchQuery  by remember { mutableStateOf(loadLastSearchQuery(context, projectId)) }
     var replaceQuery by remember { mutableStateOf("") }
     var caseSensitive by remember { mutableStateOf(false) }
     var useRegex      by remember { mutableStateOf(false) }
@@ -2659,7 +2677,6 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var excludePattern by remember { mutableStateOf("") }
     var showFilters by remember { mutableStateOf(false) }
     var totalReplaced by remember { mutableStateOf(0) }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
@@ -2671,6 +2688,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         // field/dialog released focus in the same frame this one requests it.
         try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
         keyboardController?.show()
+        // Test 49 fix: searchQuery is pre-filled from the last search (see
+        // loadLastSearchQuery below) — the debounced LaunchedEffect(searchQuery, ...)
+        // further down already auto-runs performSearch() on initial composition when
+        // it's non-blank, so results are ready without any extra call here.
     }
 
     fun performSearch(query: String) {
@@ -2730,6 +2751,18 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             results = allResults
             searching = false
         }
+    }
+
+    // BUG-FIX (Tests 47/48): search only ran when the user tapped the small "Search"
+    // text link, which is easy to miss — typing a query and expecting real-time
+    // results (like every other search box in the app) silently produced "No results
+    // found" because performSearch() was simply never invoked. Auto-run it (debounced)
+    // whenever the query or any filter/toggle changes, same as VS Code's Find in Files.
+    LaunchedEffect(searchQuery, caseSensitive, useRegex, matchWholeWord, includePattern, excludePattern) {
+        if (searchQuery.isBlank()) { results = emptyList(); return@LaunchedEffect }
+        kotlinx.coroutines.delay(400)
+        saveLastSearchQuery(context, projectId, searchQuery)
+        performSearch(searchQuery)
     }
 
     val grouped = results.groupBy { it.file }
