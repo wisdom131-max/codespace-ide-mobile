@@ -1452,7 +1452,7 @@ fun ProjectShellScreen(
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
-                                    scrollTargetLine = line
+                                    scrollTargetLine = line + 1  // Phase V-FIX: convert 0-based to 1-based
                                     activePanel = null
                                 },
                                 onMoreMenu = { showExplorerMore = true },
@@ -1701,7 +1701,7 @@ fun ProjectShellScreen(
             onOpenFileAtLine = { path, line ->
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
-                scrollTargetLine = line
+                scrollTargetLine = line + 1  // Phase V-FIX: convert 0-based to 1-based
                 showFileSearch = false
             },
             onDismiss = { showFileSearch = false },
@@ -1802,10 +1802,11 @@ fun ProjectShellScreen(
             editorFontSize = editorFontSize,
             onEditorFontSizeChange = { editorFontSize = it },
             activeFilePath = activeEditorTab,
+            projectRoot = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
             recentFiles = editorTabs,
             onOpenRecentFile = { path -> activeEditorTab = path; showCommandPalette = false; commandQuery = "" },
             onSymbolNavigate = { line ->
-                scrollTargetLine = line
+                scrollTargetLine = line + 1  // Phase V-FIX: convert 0-based to 1-based
                 showCommandPalette = false
                 commandQuery = ""
             },
@@ -1882,6 +1883,7 @@ private fun PssOverlays(
     // P-CMDPAL-RECENT: currently open tabs shown as "recently opened" in the palette
     recentFiles: List<String>,
     onOpenRecentFile: (String) -> Unit,
+    projectRoot: String,
     // P34-NOTIF: notifList param removed
     // Colors
     BgColor: Color,
@@ -2026,7 +2028,7 @@ private fun PssOverlays(
                                 .focusRequester(cmdFocusRequester),
                             decorationBox = { inner ->
                                 Box {
-                                    if (commandQuery.isEmpty()) Text("> Type a command or @ for symbols…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
+                                    if (commandQuery.isEmpty()) Text("> Type a command, @ for symbols, or search files…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
                                     inner()
                                 }
                             },
@@ -2089,7 +2091,9 @@ private fun PssOverlays(
                                     }
                                 }
                             }
-                        } else {
+                        } else if (commandQuery.startsWith(">")) {
+                            // ">" prefix → command search (VS Code style)
+                            val cmdQuery = commandQuery.removePrefix(">")
                             val filtered = listOf(
                                 "New File", "New Folder", "Save File", "Open File",
                                 "Toggle Sidebar", "Toggle Terminal", "Toggle Zen Mode", "Select Color Theme",
@@ -2105,17 +2109,68 @@ private fun PssOverlays(
                                 "Close All Editors", "Close Editor",
                                 "Open Folder", "Refresh Explorer", "Collapse All in Explorer",
                                 "Toggle Word Wrap", "Go to Line",
-                            ).filter { commandQuery.isEmpty() || it.contains(commandQuery, ignoreCase = true) }
+                            ).filter { cmdQuery.isEmpty() || it.contains(cmdQuery, ignoreCase = true) }
                             LazyColumn(Modifier.heightIn(max = 260.dp)) {
                                 items(filtered) { item ->
                                     Row(
                                         Modifier.fillMaxWidth()
-                                            .background(if (item == filtered.firstOrNull() && commandQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
+                                            .background(if (item == filtered.firstOrNull() && cmdQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
                                             .clickable { handleMenuAction(item); onShowCommandPaletteChange(false); onCommandQueryChange("") }
                                             .padding(horizontal = 16.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(item, fontSize = 13.sp, color = MenuText, modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        } else {
+                            // Phase V-FIX (Test 54): No prefix → file search (VS Code Ctrl+P style)
+                            val fileQuery = commandQuery.lowercase()
+                            val projectDir = java.io.File(projectRoot)
+                            val matchedFiles = remember(commandQuery) {
+                                if (fileQuery.isBlank() || !projectDir.exists()) emptyList()
+                                else {
+                                    try {
+                                        projectDir.walkTopDown()
+                                            .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") }
+                                            .filter { it.name.lowercase().contains(fileQuery) || it.path.substringAfter(projectDir.absolutePath).lowercase().contains(fileQuery) }
+                                            .take(50)
+                                            .map { it.absolutePath }
+                                            .toList()
+                                    } catch (_: Exception) { emptyList() }
+                                }
+                            }
+                            LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                                if (matchedFiles.isNotEmpty()) {
+                                    items(matchedFiles) { path ->
+                                        val fileName = path.substringAfterLast("/")
+                                        val relPath = path.substringAfter(projectRoot).removePrefix("/")
+                                        val lang = com.codespace.ide.domain.Language.fromPath(path)
+                                        val symbol = when (lang) {
+                                            com.codespace.ide.domain.Language.HTML,
+                                            com.codespace.ide.domain.Language.XML -> "< >"
+                                            com.codespace.ide.domain.Language.MARKDOWN -> "#"
+                                            com.codespace.ide.domain.Language.PLAINTEXT,
+                                            com.codespace.ide.domain.Language.PLAIN -> "Aa"
+                                            else -> "{ }"
+                                        }
+                                        Row(
+                                            Modifier.fillMaxWidth()
+                                                .clickable { onOpenRecentFile(path); onShowCommandPaletteChange(false); onCommandQueryChange("") }
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(symbol, fontSize = 11.sp, color = MenuText.copy(alpha = 0.6f))
+                                            Spacer(Modifier.width(8.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(fileName, fontSize = 13.sp, color = MenuText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(relPath, fontSize = 10.sp, color = MenuText.copy(alpha = 0.4f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
+                                        }
+                                    }
+                                } else if (commandQuery.isNotBlank()) {
+                                    item {
+                                        Text("No matching files", fontSize = 12.sp, color = MenuText.copy(alpha = 0.4f), modifier = Modifier.padding(16.dp, 8.dp))
                                     }
                                 }
                                 // P-CMDPAL-RECENT: "recently opened" section — VS Code shows

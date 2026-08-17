@@ -2698,7 +2698,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         if (query.isBlank()) { results = emptyList(); return }
         searching = true
         scope.launch {
+            // Phase V-FIX (Tests 47/48): Fall back to default project dir when
+            // workspace path isn't saved in prefs — same pattern as SourceControlPane.
             val wsPath = loadWorkspacePath(context, projectId)
+                ?: java.io.File(context.filesDir, "projects/$projectId").absolutePath
             val wsRoot = wsPath?.let { File(it) }
             val allResults = mutableListOf<SearchResult>()
             if (wsRoot != null && wsRoot.exists()) {

@@ -291,9 +291,16 @@ fun EditorPane(
                 val alive = LspManager.isServerRunning(active.language)
                 val wasAlive = lspLastKnownAlive[active.language] ?: false
                 if (wasAlive && !alive) {
-                    // Server died after being alive — likely OOM-kill
-                    lspStatusMessage = "${active.language.displayName} language server was terminated (possibly out of memory). Save and reopen the file to restart it."
-                    AppOutputLog.log("[LSP] ${active.language.displayName} server died (OOM-kill suspected) — was alive, now dead", "lsp")
+                    // Phase V-FIX: Check if this was an intentional idle-close, not OOM.
+                    val serverState = LspManager.getServerState(active.language)
+                    if (serverState == com.codespace.ide.lsp.LspState.IDLE_CLOSE) {
+                        // Server was intentionally closed after idle timeout — not an OOM kill
+                        AppOutputLog.log("[LSP] ${active.language.displayName} server idle-closed (normal) — not OOM", "lsp")
+                    } else {
+                        // Server died unexpectedly — likely OOM-kill
+                        lspStatusMessage = "${active.language.displayName} language server was terminated (possibly out of memory). Save and reopen the file to restart it."
+                        AppOutputLog.log("[LSP] ${active.language.displayName} server died (OOM-kill suspected) — was alive, now dead (state=$serverState)", "lsp")
+                    }
                 }
                 if (alive && !wasAlive) {
                     // Server came back (e.g., after restart)

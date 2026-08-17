@@ -2049,6 +2049,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         if (value.selection.start in extraCursors) {
                             extraCursors = extraCursors.filter { it != value.selection.start }
                         }
+                        // Phase V-FIX (Test 51): Also remove any extra cursor that, after the
+                        // primary edit, would land at the SAME position as the new primary
+                        // cursor. Without this, two cursors at adjacent offsets on line 1
+                        // (e.g. offsets 0 and 1) both insert at the same spot after the
+                        // primary edit — doubling every typed character on that line.
+                        val newPrimaryPos = updatedValue.selection.start
+                        extraCursors = extraCursors.filter { ec ->
+                            val adjusted = if (ec < value.selection.start) ec else ec + (updatedValue.text.length - value.text.length)
+                            adjusted != newPrimaryPos
+                        }
                         if (extraCursors.isNotEmpty()) {
                             val delta = updatedValue.text.length - value.text.length
                             if (delta != 0) {
@@ -4141,9 +4151,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             vScrollValue = vScroll.value,
             onJumpToLine = { offset, line ->
                 value = value.copy(selection = TextRange(offset))
+                // Phase V-FIX (Test 53): Highlight the target line so the user can
+                // SEE where they jumped — same mechanism as scrollToLine.
+                highlightTargetLine = line
                 coroutineScope.launch {
-                    val localLineHeightPx = fontSize * 2.0f
+                    val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
                     vScroll.animateScrollTo(((line - 1) * localLineHeightPx).toInt())
+                    // Auto-clear highlight after 2.5s (same as scrollToLine)
+                    kotlinx.coroutines.delay(2500)
+                    highlightTargetLine = 0
                 }
                 goToLineInput = ""
                 onGoToLineClose()

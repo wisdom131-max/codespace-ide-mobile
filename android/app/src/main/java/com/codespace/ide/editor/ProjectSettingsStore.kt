@@ -89,7 +89,7 @@ object ProjectSettingsStore {
     // ── LSP Idle Auto-Close Timeout (Phase V-I) ───────────────────────────
     /** LSP server idle auto-close timeout in seconds. 0 = Never auto-close.
      *  Options: 30, 60, 300, 600, 1800, 0 (Never). Default: 10 (backward compat). */
-    val lspIdleTimeoutSeconds: MutableState<Long> = mutableStateOf(10L)
+    val lspIdleTimeoutSeconds: MutableState<Long> = mutableStateOf(300L)
 
     // ── Smart Completion Toggle ─────────────────────────────────────────
     /** When enabled, LSP completions take priority. If LSP doesn't respond within 5s,
@@ -179,7 +179,7 @@ object ProjectSettingsStore {
         mcpIndicatorEnabled.value = prefs.getBoolean("mcp_indicator_enabled", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
-        lspIdleTimeoutSeconds.value = prefs.getLong("lsp_idle_timeout_seconds", 10L)
+        lspIdleTimeoutSeconds.value = prefs.getLong("lsp_idle_timeout_seconds", 300L)
         smartCompletionEnabled.value = prefs.getBoolean("smart_completion_enabled", true)
         customCursorOverlayEnabled.value = prefs.getBoolean("custom_cursor_overlay", false)
         cursorMode.value = try {

@@ -686,7 +686,7 @@ object LspManager {
     private var memoryMonitorScheduled = false
 
     // Phase V-I: Configurable idle timeout (seconds). 0 = never auto-close.
-    @Volatile var idleTimeoutSeconds: Long = 10_000L // default 10s for backward compat
+    @Volatile var idleTimeoutSeconds: Long = 300_000L // default 300s (5 min)
 
     // Phase V-G: Health check executor
     private var healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
@@ -1836,7 +1836,9 @@ object LspManager {
                     server.lastDeathWasCrash = true
                     server.initialized = false
                     // Phase V-F: Detect OOM (exit code 137 = SIGKILL, commonly OOM killer)
-                    val oomIndicator = if (exitCode == 137 || exitCode == 9) {
+                    // Phase V-FIX: Exit code 9 removed — in proot it's useradd/groupadd
+                    // "already exists", not SIGKILL. Only 137 is a reliable OOM indicator.
+                    val oomIndicator = if (exitCode == 137) {
                         val memSnap = server.memorySnapshot
                         if (memSnap != null && memSnap.state == MemoryState.CRITICAL) {
                             " POSSIBLE_OOM"
