@@ -17185,3 +17185,18 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 4. Test 49 (Recent search history, was FAIL): The Find in Files query lived only in Compose `remember` state, discarded whenever the Search panel was closed (its `when` branch unmounts it) — reopening always started blank. Persisted the last searched query per project via SharedPreferences (same pattern as the workspace-path memory) so it's pre-filled and auto-re-searched on reopen.
 **Files touched:** CodeEditor.kt, EditorPane.kt, ExplorerPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Verify Kotlin LSP init fix from previous commit on device. Then re-verify Tests 45, 47, 48, 49, 51 on device. Continue Section 4 File Explorer remaining items and Section 7/8 remaining tests.
+
+### [2026-08-17 11:10 WAT] — AI Agent: Claude (Superagent), Commit: bc51c9d, CI Build: pending
+**Tags:** [LSP] [OOM-FIX] [TEST-51] [TEST-53] [TEST-54] [TEST-55] [TEST-56] [FIND-IN-FILES]
+**What was fixed:**
+1. LSP idle timeout 10s→300s (ROOT CAUSE of LSP features not working): The idle auto-close timer was set to 10 seconds — after 10s of no LSP activity, the server was killed. This made completions, hover, diagnostics, and all LSP features unreliable. Default changed to 300s (5 min) in both LspManager.kt and ProjectSettingsStore.kt.
+2. OOM false-positive detection: EditorPane health check now checks LspState.IDLE_CLOSE before reporting "server was terminated (possibly out of memory)" — idle close is intentional, not a crash. Also removed exit code 9 from OOM indicators (in proot, exit code 9 = useradd/groupadd "already exists", not SIGKILL).
+3. Test 53 (Go to Line): Added highlightTargetLine so user can SEE where they jumped. Fixed line height calculation to use scrollDensity (fontSize * 1.25f dp.toPx()) instead of raw fontSize * 2.0f which was wrong.
+4. Test 54 (Command Palette): Added VS Code-style file search — no prefix = file search (Ctrl+P), '>' prefix = commands (Ctrl+Shift+P). Files walked from project dir, excludes .git/build. Shows filename + relative path.
+5. Test 55 (Symbol search): Fixed 0-based→1-based line conversion — symbol search was off by one line.
+6. Test 56 (Outline tap): Fixed 0-based→1-based line conversion — outline tree navigation was off by one line.
+7. Test 51 (double-typing): Additional fix — strips extra cursors that, after the primary edit, would land at the SAME position as the new primary cursor. Prevents adjacent-offset collapse doubling characters.
+8. Find in Files (Tests 47/48): Added workspace path fallback to context.filesDir/projects/$projectId when loadWorkspacePath returns null — previously search silently returned no results if workspace path wasn't saved in prefs.
+9. Find in Files navigation: Fixed 0-based→1-based line offset in onOpenFileAtLine callbacks.
+**Files touched:** CodeEditor.kt, ProjectSettingsStore.kt, LspManager.kt, EditorPane.kt, ExplorerPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** Verify all fixes on device. Continue with remaining UI polish items and any outstanding test failures.
