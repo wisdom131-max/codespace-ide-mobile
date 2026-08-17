@@ -3305,7 +3305,27 @@ private fun PssBottomPanelContent(
                 projectId = projectId,
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
-                onJumpToSource = { filePath, line, _ -> onJumpToSource(line) },
+                onJumpToSource = { filePath, line, col ->
+                    // TEST-64-FIX: Convert guest path to host path and open the file
+                    val hostPath = if (filePath.startsWith("/host-files/")) {
+                        val filesDir = context.filesDir.absolutePath
+                        "$filesDir/" + filePath.removePrefix("/host-files/")
+                    } else if (filePath.startsWith(context.filesDir.absolutePath)) {
+                        filePath
+                    } else {
+                        // Try LspManager's conversion as fallback
+                        val uri = "file://$filePath"
+                        LspManager.hostPathFromFileUri(context, uri) ?: filePath
+                    }
+                    // Open the file if not already active
+                    if (hostPath != activeEditorTab) {
+                        if (!editorTabs.contains(hostPath)) editorTabs.add(hostPath)
+                        activeEditorTab = hostPath
+                    }
+                    // Set scroll target and hide bottom panel
+                    scrollTargetLine = line
+                    showBottomPanel = false
+                },
                 panelBg = panelBg,
                 dividerColor = dividerColor,
                 tabTextInactive = tabTextInactive,

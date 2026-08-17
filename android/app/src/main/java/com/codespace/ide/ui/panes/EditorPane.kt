@@ -121,6 +121,26 @@ fun loadFileContent(path: String): String = try {
  * Actual file content is read from disk and displayed in [CodeEditor].
  * Saving writes back to disk.
  */
+// TEST-60-FIX: Recursively find a file by name in a directory tree (max depth 10)
+fun findFileByName(root: java.io.File, name: String, maxDepth: Int = 10): java.io.File? {
+    if (!root.isDirectory) return null
+    val stack = ArrayDeque<Pair<java.io.File, Int>>()
+    stack.addLast(root to 0)
+    while (stack.isNotEmpty()) {
+        val (dir, depth) = stack.removeLast()
+        if (depth > maxDepth) continue
+        val children = dir.listFiles() ?: continue
+        for (child in children) {
+            if (child.name == name) return child
+            if (child.isDirectory && !child.name.startsWith(".") && child.name != "node_modules" && child.name != "__pycache__") {
+                stack.addLast(child to depth + 1)
+            }
+        }
+    }
+    return null
+}
+
+
 @Composable
 fun EditorPane(
     openFilePath: String? = null,
@@ -953,6 +973,26 @@ fun EditorPane(
 
         val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
 
+        // TEST-70-FIX: Watch master LSP toggle — restart server when re-enabled
+        LaunchedEffect(ProjectSettingsStore.lspEnabled.value) {
+            if (ProjectSettingsStore.lspEnabled.value && active != null) {
+                val snap = active
+                if (LspManager.isSupported(snap.language) && projectRootPath != null) {
+                    if (!LspManager.isServerRunning(snap.language)) {
+                        AppOutputLog.log("[LSP] Master toggle re-enabled — restarting ${snap.language.displayName} server", "lsp")
+                        val uri = LspManager.fileUriFromHostPath(context, snap.path)
+                        val started = withContext(Dispatchers.IO) {
+                            LspManager.startServer(context, snap.language, projectRootPath)
+                        }
+                        if (started && uri != null) {
+                            delay(300)
+                            LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content)
+                            lspOpenedFiles[snap.path] = true
+                        }
+                    }
+                }
+            }
+        }
         // P22-G / LSP-FIX: Split into two effects.
         // Effect A: keyed on (id, language) ONLY — starts the server and sends didOpen.
         // NOT keyed on content: prevents keystroke-triggered recomposition from cancelling
@@ -1031,7 +1071,11 @@ fun EditorPane(
                 // return %20 for spaces while our URI has raw spaces (or vice versa).
                 val normDiag = LspManager.normalizeFileUri(diagUri)
                 val normUri  = LspManager.normalizeFileUri(uri)
-                if (normDiag == normUri) {
+                // TEST-63-FIX: Also match by filename as fallback — some servers return
+                // URIs with different path prefixes (e.g. /tmp vs /host-files)
+                val diagFile = diagUri.substringAfterLast("/")
+                val ourFile = uri.substringAfterLast("/")
+                if (normDiag == normUri || diagFile == ourFile) {
                     lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
                 }
             }
@@ -1850,8 +1894,11 @@ fun EditorPane(
                                         (0 until arr.length()).mapNotNull { i ->
                                             val loc = arr.optJSONObject(i) ?: return@mapNotNull null
                                             val refUri = loc.optString("uri", "")
-                                            val refPathRaw = if (refUri.startsWith("file://")) refUri.removePrefix("file://") else refUri
-                                            val refPath = try { java.net.URLDecoder.decode(refPathRaw, "UTF-8") } catch (_: Exception) { refPathRaw }
+                                            // TEST-62-FIX: Convert guest URI to host path
+                                            val refPath = LspManager.hostPathFromFileUri(context, refUri) ?: run {
+                                                val raw = if (refUri.startsWith("file://")) refUri.removePrefix("file://") else refUri
+                                                try { java.net.URLDecoder.decode(raw, "UTF-8") } catch (_: Exception) { raw }
+                                            }
                                             val line = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
                                             val snippet = try { java.io.File(refPath).readLines().getOrElse(line) { "" } } catch (_: Exception) { "" }
                                             Triple(refPath, line, snippet)
@@ -1959,7 +2006,16 @@ fun EditorPane(
                                             val defUri = loc.optString("uri", "")
                                             val defLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
                                             // BUG-4 FIX: use proper URI-to-host-path conversion
-                                            val defPath = LspManager.hostPathFromFileUri(context, defUri)
+                                            var defPath = LspManager.hostPathFromFileUri(context, defUri)
+                                            // TEST-60-FIX: Fallback — if URI conversion fails, try finding
+                                            // the file by basename in the project root
+                                            if (defPath == null && projectRootPath != null) {
+                                                val defFileName = defUri.substringAfterLast("/").let {
+                                                    try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { it }
+                                                }
+                                                val found = findFileByName(java.io.File(projectRootPath), defFileName)
+                                                if (found != null) defPath = found.absolutePath
+                                            }
                                             if (defPath != null && java.io.File(defPath).exists()) {
                                                 if (defPath == active.path) {
                                                     // Same file — scroll to the definition line

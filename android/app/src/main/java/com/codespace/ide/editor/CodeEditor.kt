@@ -945,7 +945,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(value.selection.start, editorEvent) {
         if (lspCodeActionProvider != null) {
             if (!editorEvent.shouldTriggerCodeActions) return@LaunchedEffect
-            kotlinx.coroutines.delay(500L)
+            kotlinx.coroutines.delay(300L)
             val cursorLine = lineFromOffset(value.selection.start)
             try {
                 val actions = lspCodeActionProvider.invoke(cursorLine)
@@ -3794,9 +3794,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 currentFilePath = filePath,
                 onNavigate = { fp, ln ->
                     if (fp == filePath) {
+                        // TEST-62-FIX: Also set highlight + cursor, not just scroll
                         coroutineScope.launch {
                             val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                             vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
+                        }
+                        highlightTargetLine = ln + 1
+                        // Place cursor at start of the reference line
+                        val targetLineIdx = ln
+                        if (targetLineIdx >= 0) {
+                            var lineStart = 0
+                            var linesFound = 0
+                            val text = value.text
+                            for (i in text.indices) {
+                                if (text[i] == '\n') {
+                                    linesFound++
+                                    if (linesFound == targetLineIdx) {
+                                        lineStart = i + 1
+                                        break
+                                    }
+                                }
+                            }
+                            if (linesFound < targetLineIdx) lineStart = text.length
+                            value = value.copy(selection = androidx.compose.ui.text.TextRange(lineStart.coerceIn(0, text.length)))
+                        }
+                        coroutineScope.launch {
+                            kotlinx.coroutines.delay(2500)
+                            highlightTargetLine = 0
                         }
                     } else {
                         onOpenFileAtLine?.invoke(fp, ln)
@@ -3812,9 +3836,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 currentFilePath = filePath,
                 onNavigate = { fp, ln ->
                     if (fp == filePath) {
+                        // TEST-62-FIX: Also set highlight + cursor, not just scroll
                         coroutineScope.launch {
                             val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                             vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
+                        }
+                        highlightTargetLine = ln + 1
+                        // Place cursor at start of the reference line
+                        val targetLineIdx = ln
+                        if (targetLineIdx >= 0) {
+                            var lineStart = 0
+                            var linesFound = 0
+                            val text = value.text
+                            for (i in text.indices) {
+                                if (text[i] == '\n') {
+                                    linesFound++
+                                    if (linesFound == targetLineIdx) {
+                                        lineStart = i + 1
+                                        break
+                                    }
+                                }
+                            }
+                            if (linesFound < targetLineIdx) lineStart = text.length
+                            value = value.copy(selection = androidx.compose.ui.text.TextRange(lineStart.coerceIn(0, text.length)))
+                        }
+                        coroutineScope.launch {
+                            kotlinx.coroutines.delay(2500)
+                            highlightTargetLine = 0
                         }
                     } else {
                         onOpenFileAtLine?.invoke(fp, ln)
@@ -3830,9 +3878,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 currentFilePath = filePath,
                 onNavigate = { fp, ln ->
                     if (fp == filePath) {
+                        // TEST-62-FIX: Also set highlight + cursor, not just scroll
                         coroutineScope.launch {
                             val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                             vScroll.animateScrollTo((ln * localLineHeightPx).toInt())
+                        }
+                        highlightTargetLine = ln + 1
+                        // Place cursor at start of the reference line
+                        val targetLineIdx = ln
+                        if (targetLineIdx >= 0) {
+                            var lineStart = 0
+                            var linesFound = 0
+                            val text = value.text
+                            for (i in text.indices) {
+                                if (text[i] == '\n') {
+                                    linesFound++
+                                    if (linesFound == targetLineIdx) {
+                                        lineStart = i + 1
+                                        break
+                                    }
+                                }
+                            }
+                            if (linesFound < targetLineIdx) lineStart = text.length
+                            value = value.copy(selection = androidx.compose.ui.text.TextRange(lineStart.coerceIn(0, text.length)))
+                        }
+                        coroutineScope.launch {
+                            kotlinx.coroutines.delay(2500)
+                            highlightTargetLine = 0
                         }
                     } else {
                         onOpenFileAtLine?.invoke(fp, ln)

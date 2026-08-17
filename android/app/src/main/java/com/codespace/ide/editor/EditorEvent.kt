@@ -61,9 +61,11 @@ sealed class EditorEvent {
     val shouldTriggerSignatureHelp: Boolean
         get() = this is UserTyping || this is UserCursorMove
 
-    /** UserTyping, UserCursorMove, and UserSelection trigger code actions. */
+    /** UserTyping, UserCursorMove, UserSelection, and InitialCursorPlacement trigger code actions.
+     *  TEST-65/66-FIX: Also trigger on file open so the lightbulb appears immediately
+     *  when the cursor lands on a line with errors. */
     val shouldTriggerCodeActions: Boolean
-        get() = this is UserTyping || this is UserCursorMove || this is UserSelection
+        get() = this is UserTyping || this is UserCursorMove || this is UserSelection || this is InitialCursorPlacement
 
     /** Short tag for logging. */
     val logTag: String

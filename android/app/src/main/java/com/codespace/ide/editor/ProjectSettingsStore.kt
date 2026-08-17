@@ -236,6 +236,11 @@ object ProjectSettingsStore {
     fun setLspEnabled(value: Boolean) {
         lspEnabled.value = value
         prefs.edit().putBoolean("lsp_enabled", value).apply()
+        if (!value) {
+            // TEST-70-FIX: Stop all running LSP servers immediately when toggle is turned off
+            com.codespace.ide.lsp.LspManager.stopAllServers()
+        }
+        // When re-enabled, EditorPane's LaunchedEffect watches lspEnabled and restarts servers
     }
     fun setLspIdleTimeoutSeconds(value: Long) {
         lspIdleTimeoutSeconds.value = value
