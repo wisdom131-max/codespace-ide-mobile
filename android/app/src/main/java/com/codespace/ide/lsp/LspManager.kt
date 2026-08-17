@@ -1258,6 +1258,14 @@ object LspManager {
             val idx = kv.indexOf('=')
             if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
         }
+        // JVM-based LSP servers (kotlin-language-server, jdtls) need a heap limit
+        // on this 2.8GB device — without -Xmx, the JVM grabs too much memory and gets
+        // OOM-killed by the Android low-memory killer before initialization completes.
+        // 512m is enough for indexing small projects while leaving room for the IDE.
+        if (config.command == "kotlin-language-server" || config.command == "/opt/jdtls/bin/jdtls") {
+            envMap["JAVA_TOOL_OPTIONS"] = "-Xmx512m"
+            AppOutputLog.log("[LSP] Setting JAVA_TOOL_OPTIONS=-Xmx512m for ${language.displayName} (JVM heap limit)", "lsp")
+        }
 
         val process = try {
             pb.start()
@@ -1374,26 +1382,29 @@ object LspManager {
                 put("name", "CodeSpace IDE")
                 put("version", "1.0")
             })
-            put("initializationOptions", if (config.command == "vtsls") {
-                // vtsls only: pass tsdk path and config options.
-                // vtsls bundles TS 5.9.3 — tsdk points to its own install, not TS7.
-                JSONObject().apply {
+            // Kotlin LSP (fwcd/kotlin-language-server) has a custom InitializationOptions
+            // class — sending an empty {} causes LSP4J's Gson to throw "Message could
+            // not be parsed" because it can't deserialize {} into the specific class.
+            // Fix: omit initializationOptions entirely for Kotlin (server uses defaults).
+            // vtsls needs specific options. Other servers accept {} fine.
+            if (config.command == "kotlin-language-server") {
+                // Omit initializationOptions — Kotlin LSP uses its own defaults
+            } else if (config.command == "vtsls") {
+                put("initializationOptions", JSONObject().apply {
                     put("vtsls", JSONObject().apply {
                         put("autoUseConfigFile", true)
                     })
-                }
+                })
             } else {
-                // Native TS7 LSP and other servers: empty initializationOptions.
-                // The native TS7 server (tsc --lsp) does not accept tsserver-specific
-                // options like tsdk — it discovers tsconfig.json automatically.
-                JSONObject()
-            })
+                put("initializationOptions", JSONObject())
+            }
         }
 
         // Phase V-A: Transition to INITIALIZING
         setServerState(language, LspState.INITIALIZING)
         Log.d(TAG, "startServer: sending initialize to ${language.displayName} (30s timeout)...")
         AppOutputLog.log("[LSP] Sending initialize to ${language.displayName} server (rootUri=$rootUri, 30s timeout)…", "lsp")
+        AppOutputLog.log("[LSP] Initialize params (${initParams.toString().length} chars): ${initParams.toString().take(500)}", "lsp")
         val response = client.request("initialize", initParams, timeoutSeconds = 30)
         if (response == null) {
             Log.e(TAG, "startServer: LSP initialize TIMED OUT for ${language.displayName}")

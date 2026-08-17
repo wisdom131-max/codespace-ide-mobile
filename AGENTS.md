@@ -17166,3 +17166,12 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 4. Crash "specified child already has a parent": Shared WebView reused across two AndroidView composables (normal preview + fullscreen mirror) — Compose can call factory for new parent before onRelease detaches old parent. Fixed: force-detach WebView from any existing parent at the start of each factory block in PreviewPane.kt.
 **Files touched:** CodeEditor.kt, MainActivity.kt, PreviewPane.kt
 **Next on roadmap:** Rebuild, retest 37/38/39/40 on device. Continue terminal session optimization (locale-gen runs on every new tab — should run once like Termux).
+
+### [2026-08-17 01:15 WAT] — AI Agent: Claude (Superagent), Commit: 71d11428, CI Build: pending
+**Tags:** [LSP] [KOTLIN] [OOM-FIX] [PARSE-ERROR]
+**What was fixed:**
+1. Kotlin LSP "Message could not be parsed" error: The fwcd/kotlin-language-server v1.3.13 uses LSP4J 0.21.2 with a custom InitializationOptions class for the `initializationOptions` field. Sending an empty `{}` caused LSP4J's Gson deserializer to fail because it couldn't map `{}` to the specific class. Fix: omit `initializationOptions` entirely for the Kotlin LSP — the server uses its own defaults. Other servers (Python, JS/TS, etc.) still get `{}` as before.
+2. Kotlin/Java LSP OOM-kill: JVM-based LSP servers (kotlin-language-server, jdtls) were getting OOM-killed on the 2.8GB device because the JVM had no heap limit. Fix: set `JAVA_TOOL_OPTIONS=-Xmx512m` in the process environment for JVM-based LSP servers. 512m is enough for indexing small projects while leaving room for the IDE.
+3. Added logging of the actual initialize params JSON (first 500 chars) for future debugging.
+**Files touched:** LspManager.kt
+**Next on roadmap:** Test Kotlin LSP on device — verify "Message could not be parsed" is resolved and the server initializes successfully. If it still fails, check the logged JSON for type mismatches in LSP4J 0.21.2.
