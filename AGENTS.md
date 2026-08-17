@@ -17200,3 +17200,17 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 9. Find in Files navigation: Fixed 0-based→1-based line offset in onOpenFileAtLine callbacks.
 **Files touched:** CodeEditor.kt, ProjectSettingsStore.kt, LspManager.kt, EditorPane.kt, ExplorerPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Verify all fixes on device. Continue with remaining UI polish items and any outstanding test failures.
+
+---
+
+### [2026-08-17 18:55 WAT] — AI Agent: Elowen, Commit 10ea370, CI Build #TBD (pending)
+**What was fixed:**
+1. Test 70 (LSP toggle): `setLspEnabled` now calls `stopAllServers()` to properly shut down servers; EditorPane adds a `LaunchedEffect` to restart LSP when toggle changes from off→on.
+2. Test 64 (Problems panel click): Problems tab callback now opens the file and sets `scrollTargetLine` + `highlightTargetLine` to navigate to the error location.
+3. Test 63 (Wavy underline): Diagnostics handler now falls back to filename matching when normalized URI comparison fails — handles servers that return different path prefixes.
+4. Test 60 (Cross-file Go-to-Definition): Added `findFileByName()` recursive search fallback when `hostPathFromFileUri` returns null — finds the target file by basename in project root. Same fix applied to Go-to-Declaration.
+5. Test 62 (Find References): Converted reference URIs via `hostPathFromFileUri` instead of raw `file://` prefix strip — guest paths now properly resolve to host paths. Peek References navigation now sets highlight + cursor on same-file reference click.
+6. Tests 65/66 (Lightbulb): `shouldTriggerCodeActions` now includes `InitialCursorPlacement` so the bulb appears on file open. Reduced debounce from 500ms to 300ms for faster feedback.
+
+**Files touched:** CodeEditor.kt, EditorEvent.kt, ProjectSettingsStore.kt, EditorPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** Verify all fixes on device. Remaining items: Test 16 (editor extra keys), Test 19 (multi-cursor), Test 130 (YouTube Shorts browser), UI polish (Tests 12/30/33/40/78/84/95).
