@@ -1187,6 +1187,12 @@ private fun BrowserPreview(
         factory = { ctx ->
             // P48: Reuse shared WebView if available (fullscreen mirror), else create new
             val wv = sharedWebView?.value ?: WebView(ctx)
+            // CRASH-FIX 2026-08-17: When a shared WebView is reused across two
+            // AndroidView composables (e.g. normal preview + fullscreen mirror),
+            // Compose can call this factory for the NEW parent before onRelease
+            // detaches the OLD parent, throwing "specified child already has a
+            // parent". Force-detach here so re-attachment always succeeds.
+            (wv.parent as? android.view.ViewGroup)?.removeView(wv)
             if (sharedWebView?.value == null) {
                 // First time — configure the WebView with all security + desktop + video fixes
                 configureSecureWebView(wv)
@@ -1358,6 +1364,12 @@ private fun RemotionPreview(
     AndroidView(
         factory = { ctx ->
             val wv = sharedWebView?.value ?: WebView(ctx)
+            // CRASH-FIX 2026-08-17: When a shared WebView is reused across two
+            // AndroidView composables (e.g. normal preview + fullscreen mirror),
+            // Compose can call this factory for the NEW parent before onRelease
+            // detaches the OLD parent, throwing "specified child already has a
+            // parent". Force-detach here so re-attachment always succeeds.
+            (wv.parent as? android.view.ViewGroup)?.removeView(wv)
             if (sharedWebView?.value == null) {
                 configureSecureWebView(wv)
                 wv.webViewClient = object : WebViewClient() {

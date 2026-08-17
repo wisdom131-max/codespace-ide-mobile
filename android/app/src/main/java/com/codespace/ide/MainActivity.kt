@@ -16,6 +16,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.KeyEvent
+import android.util.Log
 import androidx.fragment.app.FragmentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
@@ -282,7 +283,19 @@ class MainActivity : FragmentActivity() {
             }
             return true
         }
-        return super.dispatchKeyEvent(event)
+        return try {
+            super.dispatchKeyEvent(event)
+        } catch (e: IllegalStateException) {
+            // CRASH-FIX 2026-08-17: Compose's FocusOwnerImpl throws "Event can't be
+            // processed because we do not have an active focus target" when a real
+            // KeyEvent (soft keyboard action, hardware key, IME callback) arrives at
+            // exactly the moment Compose's focus system has no active focus node —
+            // e.g. right after requestFocus() from the extra-keys toolbar races with
+            // a tab switch or field recomposition. This is a known Compose focus-owner
+            // edge case, not a real app bug — swallow it instead of crashing the app.
+            Log.w("MainActivity", "Swallowed Compose focus-owner KeyEvent exception: ${e.message}")
+            true
+        }
     }
 
     private fun updateSystemUIForOrientation(orientation: Int) {

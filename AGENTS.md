@@ -17156,3 +17156,13 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 **Next on roadmap:** Continue Section 3 tests (Terminal: Tests 11-20).
 
 ---
+
+### [2026-08-17 01:05 WAT] — AI Agent: Claude (Superagent), Commit: ef465966, CI Build: pending
+**Tags:** [SNIPPETS] [CRASH-FIX] [TEST-38] [TEST-39] [TEST-40]
+**What was fixed:**
+1. Test 38/39 (Python/Kotlin snippets): All language snippets (Kotlin, JS/TS, Python, Java, Rust, Go) inserted plain text with default insertTextFormat=1, so the cursor landed at the END of the inserted snippet instead of on the placeholder name. Fixed: rewrote all snippets with proper LSP tab-stop syntax ($1, $2, $0) and set insertTextFormat=2 on every snippet Completion. Now when you type "fun" + Tab, cursor jumps to the function name placeholder, then Tab advances to body.
+2. Test 40 (auto-indent): Was already implemented (CodeEditor.kt line ~2009) — copies previous line's leading whitespace on Enter. Added `:` to the extra-indent triggers for Python (was only `{` and `[`).
+3. Crash "Event can't be processed because we do not have an active focus target": Compose's FocusOwnerImpl throws IllegalStateException when a KeyEvent arrives at the exact moment Compose has no active focus node (race between extra-keys toolbar requestFocus and tab switch/recomposition). Fixed: wrapped MainActivity.dispatchKeyEvent super call in try/catch to swallow the known Compose focus-owner edge case.
+4. Crash "specified child already has a parent": Shared WebView reused across two AndroidView composables (normal preview + fullscreen mirror) — Compose can call factory for new parent before onRelease detaches old parent. Fixed: force-detach WebView from any existing parent at the start of each factory block in PreviewPane.kt.
+**Files touched:** CodeEditor.kt, MainActivity.kt, PreviewPane.kt
+**Next on roadmap:** Rebuild, retest 37/38/39/40 on device. Continue terminal session optimization (locale-gen runs on every new tab — should run once like Termux).
