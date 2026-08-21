@@ -2475,7 +2475,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .padding(start = gutterDpHl.dp, top = topDpHl.dp)
+                    .offset(x = gutterDpHl.dp, y = topDpHl.dp)
                     .height(lineHeightDp)
                     .background(Color(0xFFFFD700).copy(alpha = 0.15f))
                     .zIndex(3.5f),
@@ -2484,7 +2484,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = gutterDpHl.dp, top = topDpHl.dp)
+                    .offset(x = gutterDpHl.dp, y = topDpHl.dp)
                     .width(3.dp)
                     .height(lineHeightDp)
                     .background(Color(0xFFFFD700))
