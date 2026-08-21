@@ -106,7 +106,7 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .padding(start = gutterDp.dp, top = topDp.dp)
+                    .offset(x = gutterDp.dp, y = topDp.dp)
                     .height(lineHeightDp)
                     .background(Color(0xFFE5C07B).copy(alpha = 0.08f))
                     .zIndex(4f),
@@ -114,7 +114,7 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = startDp.dp, top = topDp.dp)
+                    .offset(x = startDp.dp, y = topDp.dp)
                     .width(2.dp)
                     .height(lineHeightDp)
                     .background(Color(0xFFE5C07B))
@@ -163,7 +163,7 @@ internal fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = startDpM.dp, top = topDpM.dp)
+                    .offset(x = startDpM.dp, y = topDpM.dp)
                     .width(widthDpM.dp)
                     .height(lineHeightDp)
                     .background(
