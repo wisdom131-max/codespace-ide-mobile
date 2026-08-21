@@ -17238,3 +17238,21 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 7. Test 13 (Select All Occurrences cursor drift): Updated `ExtraCursorOverlay` to use `textLayoutResult.getLineTop(lineIdx)` for accurate Y positioning when text layout is available, instead of calculated `lineHeight * lineIdx` which drifts due to font metrics differences.
 **Files touched:** CodeEditor.kt, EditorOverlays.kt, EditorPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Verify build #2410 green. Continue batch 3 of LSP/IntelliSense device tests. Remaining pending items: (1) Device retest of batch 2 fixes. (2) Batch 3 LSP tests (auto-completion, signature help, code actions, hover, semantic highlighting, code lens, document links). (3) Full editor audit (gutter sync, cursor positioning, scroll behavior, line number accuracy, .dp vs .sp repo-wide search). (4) Editor Bug 1: Horizontal scroll stuck after zoom. (5) Editor Bug 2: Diagnostic overlap. (6) TypeScript 7 as default LSP with vtsls. (7) Multi-Cursor feature. (8) API_BASE_URL update to Render. (9) Codicon activity bar icons.
+
+### [2026-08-21 14:35 WAT] — AI Agent: Claude (Superagent), Commit: 0703e485, CI Build: #2412 (pending)
+**Tags:** [EDITOR] [LSP] [INLAY-HINTS]
+**What was fixed:**
+1. Inlay hints scroll offset bug: Inlay hints at CodeEditor.kt:2619 used `(line * lineHeightPxIH)` without subtracting `vScrollDp`, causing hints to render at absolute Y position instead of scrolling with text. Document links already had this fix but inlay hints were missed. Now subtracts `vScrollDp`.
+**Files touched:** CodeEditor.kt
+**Next on roadmap:** All items listed below.
+
+---
+
+### [2026-08-21 14:40 WAT] — AI Agent: Claude (Superagent), Commit: e45a3ae7, CI Build: #2413 (pending)
+**Tags:** [LSP] [KOTLIN] [CRASH-FIX]
+**What was fixed:**
+1. Kotlin LSP "Message could not be parsed" root cause: kotlin-language-server 1.3.13 uses an older LSP4J that cannot deserialize newer LSP capability fields (callHierarchy, typeHierarchy, linkedEditingRange, moniker, inlayHint, semanticTokens with empty arrays, codeAction.resolveProvider). Gson throws parse error and returns error response, causing initialize to fail. Fix: Added `buildMinimalClientCapabilities()` with only LSP 3.14 base-spec fields — used for kotlin-language-server only; all other servers still get full capabilities.
+2. Reduced JVM heap from -Xmx512m to -Xmx384m for Kotlin LSP to reduce memory pressure on TECNO KL4 (2.8GB RAM).
+3. Added error code+message logging in JsonRpcClient.handleMessage so future LSP error responses show full error code + message in logs.
+**Files touched:** LspManager.kt, JsonRpcClient.kt
+**Next on roadmap:** (1) Verify build #2413 green on device — test Kotlin LSP initializes. (2) Device retest of batch 2 LSP fixes (tests 7-14). (3) Batch 3 LSP tests (15-28): auto-completion, signature help, code actions, hover, inlay hints, code lens, document links, diagnostics, format, rename. (4) Editor Bug 1: Horizontal scroll stuck after zoom. (5) Editor Bug 2: Diagnostic overlap. (6) TypeScript 7 as default LSP with vtsls. (7) API_BASE_URL update to Render. (8) Codicon activity bar icons.
