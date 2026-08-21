@@ -1236,7 +1236,7 @@ fun ProjectShellScreen(
                 projectName = projectName,
                 currentTheme = currentTheme,
                 openMenuBar = openMenuBar,
-                bgColor = BgColor,
+                bgColor = ActivityBarBg,
                 tabTextInactive = TabTextInactive,
                 dividerColor = DividerColor,
                 menuText = MenuText,

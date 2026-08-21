@@ -696,7 +696,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val coroutineScope = rememberCoroutineScope()
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
-            val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
+            val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
             vScroll.animateScrollTo(((scrollToLine - 1) * lineHeightPx).toInt())
             highlightTargetLine = scrollToLine
             // Test 33/40 fix: Also move the cursor to the target line so that
@@ -1698,7 +1698,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if (externalFindBarOpen && matches.isNotEmpty() && matchIndex < matches.size) {
             val matchStart = matches[matchIndex].first
             val targetLine = lineFromOffset(matchStart)
-            val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
+            val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
             vScroll.animateScrollTo((targetLine * lineHeightPx).toInt())
         }
     }
@@ -2414,7 +2414,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             inlayHints.forEach { hint ->
                 val displayIdx = displayLines.indexOfFirst { it.first == hint.line }
                 if (displayIdx < 0) return@forEach
-                val yOffset = lineHeightDpInlay * displayIdx
+                val yOffset = lineHeightDpInlay * displayIdx - vScrollDp.dp
                 val hintColor = when (hint.kind) {
                     InlayHint.Kind.TYPE   -> androidx.compose.ui.graphics.Color(0xFF888888)
                     InlayHint.Kind.RETURN -> androidx.compose.ui.graphics.Color(0xFF7A9EC2)
@@ -2658,7 +2658,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val target = link.optString("target", "")
                 val tooltip = link.optString("tooltip", target)
                 if (target.isBlank()) continue
-                val topDpDL = (startLine * lineHeightPxDL).coerceAtLeast(0f)
+                val topDpDL = (startLine * lineHeightPxDL - vScrollDp).coerceAtLeast(0f)
                 val leftDpDL = gutterDpDL + startChar * charWidthPxDL
                 val widthDp = (endChar - startChar) * charWidthPxDL
                 Box(
@@ -4227,7 +4227,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 // SEE where they jumped — same mechanism as scrollToLine.
                 highlightTargetLine = line
                 coroutineScope.launch {
-                    val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).dp.toPx() }
+                    val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
                     vScroll.animateScrollTo(((line - 1) * localLineHeightPx).toInt())
                     // Auto-clear highlight after 2.5s (same as scrollToLine)
                     kotlinx.coroutines.delay(2500)
