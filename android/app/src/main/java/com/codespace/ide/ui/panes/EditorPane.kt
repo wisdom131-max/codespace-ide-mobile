@@ -1884,11 +1884,11 @@ fun EditorPane(
                         lspDiagnosticErrors = lspSquiggles,
                         // P24-3: Find References via LSP
                         onFindReferences = if (LspManager.isServerRunning(active.language)) {
-                            { word ->
+                            { word, refLine, refCol ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
                                     val refs = try {
-                                        LspManager.getReferences(active.language, uri, lspCursorLine, lspCursorCol)
+                                        LspManager.getReferences(active.language, uri, refLine, refCol)
                                     } catch (_: Exception) { null }
                                     refs?.let { arr ->
                                         (0 until arr.length()).mapNotNull { i ->
@@ -2200,11 +2200,11 @@ fun EditorPane(
                         } else null,
                         // P26-1: LSP Implementation (context menu)
                         onLspImplementation = if (LspManager.isServerRunning(active.language)) {
-                            {
+                            { implLine, implCol ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 var succeeded = false
                                 if (uri != null) {
-                                    val impls = try { LspManager.getImplementation(active.language, uri, lspCursorLine, lspCursorCol) } catch (_: Exception) { null }
+                                    val impls = try { LspManager.getImplementation(active.language, uri, implLine, implCol) } catch (_: Exception) { null }
                                     val results = mutableListOf<Triple<String, Int, String>>()
                                     if (impls != null && impls.length() > 0) {
                                         for (i in 0 until impls.length()) {

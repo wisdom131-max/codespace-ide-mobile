@@ -4564,6 +4564,12 @@ private fun PssEditorColumn(
                     showInlayHints     = showInlayHints,
                     toggles            = FeatureToggleStore.toEditorFeatureToggles(),
                     scrollToLineParam  = scrollTargetLine,
+                    onOpenFileAtLine = { path, line ->
+                        if (!editorTabs.contains(path)) editorTabs.add(path)
+                        pushNavEntry(activeEditorTab, scrollTargetLine)
+                        activeEditorTab = path
+                        scrollTargetLine = line
+                    },
                     projectId          = projectId,
                     sessionStateStore  = sessionStateStore,
                     // P39: AI code actions (Explain/Optimize/etc) open the chat panel and

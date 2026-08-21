@@ -552,7 +552,7 @@ fun CodeEditor(
     /** P26-1: LSP Type Definition — called from context menu to peek type definition. */
     onLspTypeDefinition: (() -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
     /** P26-1: LSP Implementation — called from context menu to find implementations. */
-    onLspImplementation: (() -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
+    onLspImplementation: ((Int, Int) -> Boolean)? = null,  // P37-3fix: returns true if LSP succeeded
     /** P26-1: LSP Selection Range — expand selection to semantic boundary (line, col). */
     onLspSelectionRange: ((Int, Int) -> org.json.JSONArray?)? = null,
     /** P26-1: LSP Prepare Rename — check if symbol at position can be renamed (line, col). */
@@ -596,7 +596,7 @@ fun CodeEditor(
     lspDiagnosticErrors: List<LintError> = emptyList(),
     toggles: EditorFeatureToggles = EditorFeatureToggles(),
     /** P24-3: Find References — called with word at cursor, returns list of (filePath, line, snippet) */
-    onFindReferences: ((String) -> List<Triple<String, Int, String>>)? = null,
+    onFindReferences: ((String, Int, Int) -> List<Triple<String, Int, String>>)? = null,
     /** P24-3: Rename Symbol — called with (word, newName) to apply workspace rename */
     onRenameSymbol: ((String, String) -> Unit)? = null,
     /** P41-M: Call hierarchy — prepares call hierarchy at cursor position (returns raw JSON array) */
@@ -2448,7 +2448,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) })
 
-        ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) }, colors)
+        ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, { lineFromOffset(it) }, colors, textLayoutResult, vScroll.value)
 
         // P54: Debug current-line background highlight (yellow tint, like VS Code)
         if (debugCurrentLine > 0) {
@@ -2949,7 +2949,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val selWord = remember(value.selection.start, value.selection.end) {
                 currentWord(value.text, value.selection.start)
             }
-            if (selWord != null && selWord.length >= 2) {
+            if (selWord != null && selWord.length >= 1) {
                 Popup(
                     alignment = androidx.compose.ui.Alignment.TopEnd,
                     offset = androidx.compose.ui.unit.IntOffset(0, 0),
@@ -3224,7 +3224,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             )
 
-                            // P41-O5: Go to Declaration
+                            // P41-O5: Go to Declaration (LSP + regex fallback)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3233,12 +3233,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
+                                    var lspDeclSucceeded = false
                                     if (onLspDeclaration != null) {
                                         val cOff = value.selection.start
                                         val cLine = value.text.take(cOff).count { it == '\n' }
                                         val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
                                         val cCol = cOff - cLineStart
-                                        onLspDeclaration!!.invoke(cLine, cCol)
+                                        lspDeclSucceeded = onLspDeclaration!!.invoke(cLine, cCol)
+                                    }
+                                    if (!lspDeclSucceeded) {
+                                        val lines = value.text.split("\n")
+                                        val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
+                                        val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+                                        val found = lines.mapIndexedNotNull { idx, ln ->
+                                            if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
+                                        }
+                                        gotoResults = found
+                                        crossFileResults = if (projectRoot != null) {
+                                            FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
+                                                .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
+                                        } else null
                                     }
                                     showLspMenu = false
                                 }
@@ -3272,7 +3286,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     if (found.isNotEmpty()) {
                                         val f = found.first()
                                         peekDefResult = PeekDefResult(
-                                            filePath = "(current)",
+                                            filePath = filePath ?: "(current)",
                                             line = f.line,
                                             lines = lines,
                                             defLine = f.line
@@ -3299,7 +3313,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 )
                             }
 
-                            // Find Implementations
+                            // Find Implementations (LSP + regex fallback)
                             if (onLspImplementation != null) {
                                 DropdownMenuItem(
                                     text = {
@@ -3309,7 +3323,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         }
                                     },
                                     onClick = {
-                                        implUsedLsp = onLspImplementation.invoke()
+                                        val cOff = value.selection.start
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        implUsedLsp = onLspImplementation.invoke(cLine, cCol)
+                                        if (!implUsedLsp) {
+                                            val lines = value.text.split("\n")
+                                            val implPat = Regex("(?:class|object|struct|impl|enum)\\s+" + Regex.escape(word) + "\\b")
+                                            val found = lines.mapIndexedNotNull { idx, ln ->
+                                                if (implPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
+                                            }
+                                            gotoResults = found
+                                        }
                                         showLspMenu = false
                                     }
                                 )
@@ -3416,7 +3442,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         findRefLoading = true
                                         findRefResults = emptyList()
                                         findRefUsedLsp = false
-                                        val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
+                                        val cOff = value.selection.start
+                                        val cLine = value.text.take(cOff).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (cOff - 1).coerceAtLeast(0)) + 1
+                                        val cCol = cOff - cLineStart
+                                        val refs = try { onFindReferences.invoke(word, cLine, cCol) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
                                         findRefResults = refs
                                         findRefLoading = false
                                         findRefUsedLsp = onFindReferences != null && refs.isNotEmpty()
@@ -3434,7 +3464,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         }
                                     },
                                     onClick = {
-                                        val refs = try { onFindReferences.invoke(word) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
+                                        val cOff2 = value.selection.start
+                                        val cLine2 = value.text.take(cOff2).count { it == '\n' }
+                                        val cLineStart2 = value.text.lastIndexOf('\n', (cOff2 - 1).coerceAtLeast(0)) + 1
+                                        val cCol2 = cOff2 - cLineStart2
+                                        val refs = try { onFindReferences.invoke(word, cLine2, cCol2) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
                                         peekRefsResult = PeekRefsResult(word, refs, refs.isNotEmpty())
                                         showLspMenu = false
                                     }

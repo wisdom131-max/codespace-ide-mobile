@@ -80,6 +80,8 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
     value: androidx.compose.ui.text.input.TextFieldValue,
     lineFromOffset: (Int) -> Int,
     colors: EditorColors,
+    textLayoutResult: androidx.compose.ui.text.TextLayoutResult? = null,
+    vScrollPx: Int = 0,
 ) {
     if (extraCursors.isNotEmpty()) {
         val lineHeightPx = lineHeightDp.value
@@ -92,7 +94,12 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
             val lineStart = (value.text.lastIndexOf('\n', (clamped - 1).coerceAtLeast(0)) + 1)
                                 .coerceAtLeast(0)
             val col      = (clamped - lineStart).coerceAtLeast(0)
-            val topDp    = (lineIdx * lineHeightPx - scrollOffsetPx).coerceAtLeast(0f)
+            // Use actual text layout position when available for accurate Y positioning
+            val topDp = if (textLayoutResult != null && lineIdx < textLayoutResult.lineCount) {
+                (textLayoutResult.getLineTop(lineIdx) - vScrollPx) / androidx.compose.ui.platform.LocalDensity.current.density
+            } else {
+                (lineIdx * lineHeightPx - scrollOffsetPx).coerceAtLeast(0f)
+            }
             val startDp  = gutterDp + col * charWidthPx
 
             Box(
