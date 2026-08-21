@@ -5526,14 +5526,13 @@ private fun androidx.compose.foundation.layout.BoxScope.GotoLineBar(
             )
             Spacer(modifier = androidx.compose.ui.Modifier.weight(1f))
             // FIX: Add a Go button so mobile users can trigger jump without IME Go key
-            val lineCountGL = remember(text) { text.count { it == '\n' } + 1 }
             Box(
                 modifier = androidx.compose.ui.Modifier
                     .background(Color(0xFF007ACC), RoundedCornerShape(4.dp))
                     .clickable {
                         val target = goToLineInput.toIntOrNull()
                         if (target != null && target > 0) {
-                            val clamped = target.coerceIn(1, lineCountGL)
+                            val clamped = target.coerceIn(1, lineCount2)
                             val lines2 = text.split("\n")
                             val offset = lines2.take(clamped - 1).sumOf { it.length + 1 }
                             val safeOffset = offset.coerceAtMost(text.length)
