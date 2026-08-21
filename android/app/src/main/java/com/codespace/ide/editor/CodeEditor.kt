@@ -1471,6 +1471,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     overloadIndex = 0
                     findRefWord = null
                     peekDefResult = null
+                    // FIX: Esc must also clear multi-cursors (mobile equivalent of Escape)
+                    extraCursors = emptyList()
                 }
                 "Tab" -> {
                     if (snippetSession != null) {
@@ -2167,12 +2169,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .padding(end = 24.dp)
                         .focusRequester(focusRequester)
                         .pointerInput(Unit) {
-                            // Multi-cursor: manual double-tap detection (tap within 300ms = add cursor)
+                            // Multi-cursor: manual double-tap detection (tap within 500ms = add cursor)
                             var lastTapTimeMs = 0L
                             detectTapGestures(
                                 onTap = { offset ->
                                     val now = System.currentTimeMillis()
-                                    val isDoubleTap = now - lastTapTimeMs < 300
+                                    val isDoubleTap = now - lastTapTimeMs < 500
                                     if (isDoubleTap) {
                                         // Double tap — add/remove extra cursor at this position
                                         textLayoutResult?.let { layout ->
@@ -5523,6 +5525,26 @@ private fun androidx.compose.foundation.layout.BoxScope.GotoLineBar(
                 fontSize = 11.sp,
             )
             Spacer(modifier = androidx.compose.ui.Modifier.weight(1f))
+            // FIX: Add a Go button so mobile users can trigger jump without IME Go key
+            val lineCountGL = remember(text) { text.count { it == '\n' } + 1 }
+            Box(
+                modifier = androidx.compose.ui.Modifier
+                    .background(Color(0xFF007ACC), RoundedCornerShape(4.dp))
+                    .clickable {
+                        val target = goToLineInput.toIntOrNull()
+                        if (target != null && target > 0) {
+                            val clamped = target.coerceIn(1, lineCountGL)
+                            val lines2 = text.split("\n")
+                            val offset = lines2.take(clamped - 1).sumOf { it.length + 1 }
+                            val safeOffset = offset.coerceAtMost(text.length)
+                            onJumpToLine(safeOffset, clamped)
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Go", color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
             IconButton(
                 onClick = { onGoToLineInputChange(""); },
                 modifier = androidx.compose.ui.Modifier.size(28.dp),
