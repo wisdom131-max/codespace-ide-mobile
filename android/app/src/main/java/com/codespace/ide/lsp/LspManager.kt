@@ -1261,10 +1261,10 @@ object LspManager {
         // JVM-based LSP servers (kotlin-language-server, jdtls) need a heap limit
         // on this 2.8GB device — without -Xmx, the JVM grabs too much memory and gets
         // OOM-killed by the Android low-memory killer before initialization completes.
-        // 512m is enough for indexing small projects while leaving room for the IDE.
+        // 384m is enough for indexing small projects while leaving room for the IDE.
         if (config.command == "kotlin-language-server" || config.command == "/opt/jdtls/bin/jdtls") {
-            envMap["JAVA_TOOL_OPTIONS"] = "-Xmx512m"
-            AppOutputLog.log("[LSP] Setting JAVA_TOOL_OPTIONS=-Xmx512m for ${language.displayName} (JVM heap limit)", "lsp")
+            envMap["JAVA_TOOL_OPTIONS"] = "-Xmx384m"
+            AppOutputLog.log("[LSP] Setting JAVA_TOOL_OPTIONS=-Xmx384m for ${language.displayName} (JVM heap limit)", "lsp")
         }
 
         val process = try {
@@ -1371,7 +1371,16 @@ object LspManager {
         }
         val workspaceFoldersArray = JSONArray().apply { put(workspaceFolder) }
 
-        val capabilities = buildClientCapabilities()
+        // Kotlin LSP (fwcd/kotlin-language-server 1.3.13) uses an older LSP4J that
+        // cannot deserialize many newer capability fields (callHierarchy, typeHierarchy,
+        // linkedEditingRange, moniker, inlayHint, semanticTokens with empty arrays,
+        // codeAction.resolveProvider). Sending full caps causes "Message could not be parsed."
+        // Fix: send minimal capabilities for Kotlin — only well-established LSP 3.14 fields.
+        val capabilities = if (config.command == "kotlin-language-server") {
+            buildMinimalClientCapabilities()
+        } else {
+            buildClientCapabilities()
+        }
 
         val initParams = JSONObject().apply {
             put("processId", android.os.Process.myPid())
@@ -1617,6 +1626,84 @@ object LspManager {
             AppOutputLog.log("[LSP] Sent workspace/didChangeConfiguration for ${language.displayName}", "lsp")
         } catch (e: Exception) {
             AppOutputLog.log("[LSP] Warning: didChangeConfiguration failed for ${language.displayName}: ${e.message}", "lsp")
+        }
+    }
+
+    /**
+     * Minimal client capabilities for LSP4J-based servers (kotlin-language-server 1.3.13)
+     * that use older LSP4J versions which can't deserialize newer LSP capability fields.
+     * Only includes LSP 3.14 (base spec) fields to avoid Gson "Message could not be parsed."
+     */
+    private fun buildMinimalClientCapabilities(): JSONObject {
+        val textDocument = JSONObject().apply {
+            put("synchronization", JSONObject().apply {
+                put("didSave", true)
+                put("dynamicRegistration", false)
+            })
+            put("completion", JSONObject().apply {
+                put("completionItem", JSONObject().apply {
+                    put("snippetSupport", false)
+                    put("documentationFormat", JSONArray().apply { put("plaintext"); put("markdown") })
+                })
+                put("dynamicRegistration", false)
+            })
+            put("hover", JSONObject().apply {
+                put("contentFormat", JSONArray().apply { put("plaintext"); put("markdown") })
+                put("dynamicRegistration", false)
+            })
+            put("signatureHelp", JSONObject().apply {
+                put("signatureInformation", JSONObject().apply {
+                    put("documentationFormat", JSONArray().apply { put("plaintext") })
+                })
+                put("dynamicRegistration", false)
+            })
+            put("definition", JSONObject().apply { put("dynamicRegistration", false) })
+            put("declaration", JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) })
+            put("typeDefinition", JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) })
+            put("implementation", JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) })
+            put("references", JSONObject().apply { put("dynamicRegistration", false) })
+            put("rename", JSONObject().apply {
+                put("dynamicRegistration", false)
+                put("prepareSupport", true)
+            })
+            put("publishDiagnostics", JSONObject().apply {
+                put("relatedInformation", false)
+            })
+            put("codeAction", JSONObject().apply {
+                put("dynamicRegistration", false)
+                put("codeActionLiteralSupport", JSONObject().apply {
+                    put("codeActionKind", JSONObject().apply {
+                        put("valueSet", JSONArray().apply {
+                            put(""); put("quickfix"); put("refactor"); put("refactor.extract")
+                            put("refactor.inline"); put("refactor.rewrite"); put("source")
+                            put("source.organizeImports"); put("source.fixAll")
+                        })
+                    })
+                })
+            })
+            put("documentSymbol", JSONObject().apply {
+                put("dynamicRegistration", false)
+                put("hierarchicalDocumentSymbolSupport", true)
+            })
+            put("foldingRange", JSONObject().apply {
+                put("dynamicRegistration", false)
+                put("lineFoldingOnly", true)
+            })
+            put("selectionRange", JSONObject().apply { put("dynamicRegistration", false) })
+            put("documentHighlight", JSONObject().apply { put("dynamicRegistration", false) })
+            put("formatting", JSONObject().apply { put("dynamicRegistration", false) })
+            put("rangeFormatting", JSONObject().apply { put("dynamicRegistration", false) })
+            put("codeLens", JSONObject().apply { put("dynamicRegistration", false) })
+            put("documentLink", JSONObject().apply { put("dynamicRegistration", false) })
+        }
+        val workspace = JSONObject().apply {
+            put("applyEdit", false)
+            put("workspaceFolders", true)
+            put("symbol", JSONObject().apply { put("dynamicRegistration", false) })
+        }
+        return JSONObject().apply {
+            put("textDocument", textDocument)
+            put("workspace", workspace)
         }
     }
 

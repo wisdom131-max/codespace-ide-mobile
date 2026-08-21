@@ -211,6 +211,8 @@ class JsonRpcClient(private val process: Process) {
                 if (message.has("error")) {
                     val errorObj = message.optJSONObject("error")
                     val errorMsg = errorObj?.optString("message", "LSP error") ?: "LSP error"
+                    val errorCode = errorObj?.optInt("code", -1) ?: -1
+                    log("[LSP][rpc] ERROR response for id=$id: code=$errorCode msg=$errorMsg")
                     future.completeExceptionally(RuntimeException(errorMsg))
                 } else {
                     future.complete(message.opt("result"))
