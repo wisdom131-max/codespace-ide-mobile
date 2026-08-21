@@ -1453,6 +1453,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // then reset value back to the old text, making the inserted character vanish.
     val currentOnContentChange by rememberUpdatedState(onContentChange)
     val currentOnInsertHandler by rememberUpdatedState(onInsertHandler)
+    // ── Multi-cursor state ───────────────────────────────────────────────
+    // Moved here (before LaunchedEffect) so the Esc key handler can reference it.
+    var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
+    // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
+    androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
+        extraCursors = emptyList()
+    }
     LaunchedEffect(Unit) {
         currentOnInsertHandler?.invoke { text ->
             // P-EXTRAKEYS: Ensure editor has focus so BasicTextField processes the
@@ -1673,12 +1680,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         inlayHints = InlayHintAnalyzer.analyze(value.text, language)
     }
 
-    // ── Multi-cursor state ───────────────────────────────────────────────
-    var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
-    // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
-    androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
-        extraCursors = emptyList()
-    }
 
     // ── Go to Line state ─────────────────────────────────────────────────
     var goToLineInput by remember { mutableStateOf("") }
