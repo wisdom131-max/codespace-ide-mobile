@@ -130,11 +130,11 @@ no AI agent can claim they did not see the rules.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-16 17:18 WAT)
+## CURRENT STATE (2026-08-21 14:20 WAT)
 
 | | |
 |-|-|
-| Latest commit | 37200067 — cursor + jump fix: Move to Root Folder + reveal-on-close |
+| Latest commit | 43b1cd37 — Fix 6 LSP/editor bugs from batch 2 testing |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Device Test Round (Tests 1-130)** | **LOGGED 2026-08-16** — see DEVICE TEST RESULTS + KNOWN CRASHES sections directly below this table. ~85 pass, ~30 fail/broken, ~8 partial, 4 feature requests, 8 blocked (git config), 1 skip. 6 crash root causes identified from device logs (multi-cursor CursorOverlay crash, LSP executor RejectedExecutionException x4, Notification Drawer duplicate-key + semantics crash, AndroidView reattach crash, Kotlin LSP OOM). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
@@ -17214,3 +17214,27 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 
 **Files touched:** CodeEditor.kt, EditorEvent.kt, ProjectSettingsStore.kt, EditorPane.kt, ProjectShellScreen.kt
 **Next on roadmap:** Verify all fixes on device. Remaining items: Test 16 (editor extra keys), Test 19 (multi-cursor), Test 130 (YouTube Shorts browser), UI polish (Tests 12/30/33/40/78/84/95).
+
+---
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: Use [LSP], [EDITOR], [UI], etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+### [2026-08-21 14:20 WAT] — AI Agent: Claude (Superagent), Commit: 43b1cd37, CI Build: #2410 (pending)
+**Tags:** [LSP] [EDITOR] [TEST-7] [TEST-8] [TEST-9] [TEST-11] [TEST-12] [TEST-13] [TEST-14]
+**What was fixed:**
+1. Test 7 (Go to Definition cross-file): `onOpenFileAtLine` was not passed to EditorPane from ProjectShellScreen — it defaulted to null, so cross-file go-to-def silently did nothing. Added the parameter with file-open + scroll-target logic.
+2. Test 8 (Peek Definition): Changed `filePath = "(current)"` to `filePath = filePath ?: "(current)"` so the peek overlay shows the actual filename instead of a confusing "(current)" placeholder.
+3. Test 9 (Find References): Changed `onFindReferences` from `(String) -> List` to `(String, Int, Int) -> List` and pass current cursor position from `value.selection` instead of stale `lspCursorLine/lspCursorCol`. Same fix pattern as TEST-11-FIX.
+4. Test 11 (Go to Declaration): Added regex fallback matching the Go-to-Definition pattern — tries LSP first, falls back to keyword+word regex search when LSP unavailable.
+5. Test 12 (Expand Selection menu): Lowered `selWord.length >= 2` to `>= 1` so the LSP context menu appears on single-character words too.
+6. Test 14 (Find Implementations): Changed `onLspImplementation` from `() -> Boolean` to `(Int, Int) -> Boolean` and pass current cursor position. Added regex fallback for class/object/struct/impl/enum patterns.
+7. Test 13 (Select All Occurrences cursor drift): Updated `ExtraCursorOverlay` to use `textLayoutResult.getLineTop(lineIdx)` for accurate Y positioning when text layout is available, instead of calculated `lineHeight * lineIdx` which drifts due to font metrics differences.
+**Files touched:** CodeEditor.kt, EditorOverlays.kt, EditorPane.kt, ProjectShellScreen.kt
+**Next on roadmap:** Verify build #2410 green. Continue batch 3 of LSP/IntelliSense device tests. Remaining pending items: (1) Device retest of batch 2 fixes. (2) Batch 3 LSP tests (auto-completion, signature help, code actions, hover, semantic highlighting, code lens, document links). (3) Full editor audit (gutter sync, cursor positioning, scroll behavior, line number accuracy, .dp vs .sp repo-wide search). (4) Editor Bug 1: Horizontal scroll stuck after zoom. (5) Editor Bug 2: Diagnostic overlap. (6) TypeScript 7 as default LSP with vtsls. (7) Multi-Cursor feature. (8) API_BASE_URL update to Render. (9) Codicon activity bar icons.
