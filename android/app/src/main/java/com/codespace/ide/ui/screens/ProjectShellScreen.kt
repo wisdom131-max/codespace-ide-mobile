@@ -3176,6 +3176,7 @@ private fun PssBottomPanelContent(
     onBuildProblemsChange: (List<Problem>) -> Unit = {},
     onJumpToSource: (Int) -> Unit = {},
     onOpenFile: (String) -> Unit = {},
+    onJumpToSourceWithPath: (String, Int) -> Unit = { _, _ -> },
     fullScreen: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -3306,25 +3307,17 @@ private fun PssBottomPanelContent(
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
                 onJumpToSource = { filePath, line, col ->
-                    // TEST-64-FIX: Convert guest path to host path and open the file
+                    // TEST-64-FIX: Convert guest path to host path and delegate
                     val hostPath = if (filePath.startsWith("/host-files/")) {
                         val filesDir = context.filesDir.absolutePath
                         "$filesDir/" + filePath.removePrefix("/host-files/")
                     } else if (filePath.startsWith(context.filesDir.absolutePath)) {
                         filePath
                     } else {
-                        // Try LspManager's conversion as fallback
                         val uri = "file://$filePath"
                         LspManager.hostPathFromFileUri(context, uri) ?: filePath
                     }
-                    // Open the file if not already active
-                    if (hostPath != activeEditorTab) {
-                        if (!editorTabs.contains(hostPath)) editorTabs.add(hostPath)
-                        activeEditorTab = hostPath
-                    }
-                    // Set scroll target and hide bottom panel
-                    scrollTargetLine = line
-                    showBottomPanel = false
+                    onJumpToSourceWithPath(hostPath, line)
                 },
                 panelBg = panelBg,
                 dividerColor = dividerColor,
@@ -4685,6 +4678,14 @@ private fun PssEditorColumn(
             buildProblems = buildProblems,
             onBuildProblemsChange = { problems -> buildProblems = problems },
             onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
+            onJumpToSourceWithPath = { filePath, line ->
+                if (filePath != activeEditorTab) {
+                    if (!editorTabs.contains(filePath)) editorTabs.add(filePath)
+                    activeEditorTab = filePath
+                }
+                scrollTargetLine = line
+                showBottomPanel = false
+            },
             fullScreen = fullScreen,
         )
 

@@ -238,7 +238,7 @@ object ProjectSettingsStore {
         prefs.edit().putBoolean("lsp_enabled", value).apply()
         if (!value) {
             // TEST-70-FIX: Stop all running LSP servers immediately when toggle is turned off
-            com.codespace.ide.lsp.LspManager.stopAllServers()
+            com.codespace.ide.lsp.LspManager.stopAll()
         }
         // When re-enabled, EditorPane's LaunchedEffect watches lspEnabled and restarts servers
     }
