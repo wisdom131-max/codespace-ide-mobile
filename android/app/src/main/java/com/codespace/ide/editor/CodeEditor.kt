@@ -2625,7 +2625,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     else -> ""
                 }
                 if (label.isBlank()) continue
-                val topDpIH = (line * lineHeightPxIH).coerceAtLeast(0f)
+                val topDpIH = (line * lineHeightPxIH - vScrollDp).coerceAtLeast(0f)
                 val leftDpIH = gutterDpIH + character * charWidthPx
                 val paddingLeft = if (hint.optBoolean("paddingLeft", false)) 2f else 0f
                 val paddingRight = if (hint.optBoolean("paddingRight", false)) 2f else 0f
