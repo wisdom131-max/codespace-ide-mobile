@@ -17276,7 +17276,12 @@ Four fixes to the Command Palette:
 6. ROADMAP CONTINUITY: All pending items listed.
 7. UI RULE: Rounded corners (8-12dp), padding (12dp horiz, 10dp vert).
 
-**Commit:** (pending push) | **CI Build:** (pending)
+**Commit:** dc18c2f5 | **CI Build:** #2434 ❌ (MethodTooLargeException — CodeEditor composable exceeded 64KB limit due to 6 new gen counters)
+**Fix commit:** (pending push) | **CI Build:** (pending)
+
+**Fix:**
+- Extracted 8 individual `var x by remember { mutableStateOf(0L) }` gen counters into a single `LspRequestGens` class — one `remember` call instead of 8 saves ~300 bytes of bytecode.
+- Extracted multi-line indent + single-line tab logic into `EditorActions.kt` — saves ~400 bytes of bytecode from the CodeEditor composable body.
 
 **What was fixed:**
 - Phase B (Position auto-shifting): Added `shiftOnInsert()`, `shiftOnDelete()`, `shiftPositionOnInsert()`, `shiftPositionOnDelete()`, `shiftOffsetsOnInsert()`, `shiftOffsetsOnDelete()` to `PositionMapper`. These allow cached positions (LSP responses, diagnostic ranges, search matches) to be adjusted when text is edited without full re-computation. Inspired by sora-editor's `MappedSpans.adjustOnInsert()/adjustOnDelete()`.

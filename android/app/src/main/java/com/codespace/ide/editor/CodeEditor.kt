@@ -639,16 +639,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Phase X-2: EditorEvent — tags the source of every value change.
     // Only UserTyping/UserCursorMove/UserSelection have trigger authority.
     var editorEvent by remember { mutableStateOf<EditorEvent>(EditorEvent.InitialCursorPlacement(0)) }
-    // Phase X-8: Generation counters for stale-response protection.
-    var completionRequestGen by remember { mutableStateOf(0L) }
-    var signatureHelpRequestGen by remember { mutableStateOf(0L) }
-    // Phase D: Extended gen counters for all async LSP requests.
-    var hoverRequestGen by remember { mutableStateOf(0L) }
-    var definitionRequestGen by remember { mutableStateOf(0L) }
-    var referencesRequestGen by remember { mutableStateOf(0L) }
-    var codeActionRequestGen by remember { mutableStateOf(0L) }
-    var formatRequestGen by remember { mutableStateOf(0L) }
-    var renameRequestGen by remember { mutableStateOf(0L) }
+    // Phase D: Consolidated LSP request gen counters (saves bytecode vs 8 individual remembers)
+    val lspGens = remember { LspRequestGens() }
     // FIX: Focus + keyboard management — the transparent overlay intercepts taps
     // before BasicTextField sees them, so we must explicitly request focus + show
     // keyboard on every tap. Without this, the keyboard never appears after the
@@ -1046,8 +1038,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
             // P41-K: Cancel any previous in-flight completion request before sending new one
             // Phase X-8: Also increment generation counter for stale-response protection
-            completionRequestGen++
-            val myCompGen = completionRequestGen
+            lspGens.completion++
+            val myCompGen = lspGens.completion
             if (lspRequestId >= 0 && lspCancellationProvider != null) {
                 try { lspCancellationProvider.invoke(lspRequestId) } catch (_: Exception) {}
                 lspRequestId = -1L
@@ -1083,7 +1075,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
                 if (results != null) {
                     // Phase X-8: Stale check — discard if a newer completion request was made
-                    if (myCompGen != completionRequestGen) {
+                    if (myCompGen != lspGens.completion) {
                         com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION stale_response_discarded", "lsp")
                         return@LaunchedEffect
                     }
@@ -1106,7 +1098,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     Pair(lsp, ws)
                 }
                 // Phase X-8: Stale check for legacy path too
-                if (myCompGen != completionRequestGen) {
+                if (myCompGen != lspGens.completion) {
                     com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION stale_response_discarded", "lsp")
                     return@LaunchedEffect
                 }
@@ -1396,8 +1388,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         kotlinx.coroutines.delay(200) // debounce
         // Phase X-8: Stale response protection
-        signatureHelpRequestGen++
-        val myGen = signatureHelpRequestGen
+        lspGens.signatureHelp++
+        val myGen = lspGens.signatureHelp
         val cOff = value.selection.end
         val cPos = positionMapper.offsetToPosition(cOff)
         val cLine = cPos.line
@@ -1409,7 +1401,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             SignatureHelpAnalyzer.findActiveCall(value.text, cOff, language)
         }
         // Stale check: if generation changed while we were waiting, discard
-        if (myGen != signatureHelpRequestGen) {
+        if (myGen != lspGens.signatureHelp) {
             AppOutputLog.log("[LSP] SIGNATURE_HELP stale_response_discarded", "lsp")
             return@LaunchedEffect
         }
@@ -1508,20 +1500,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val selStart = value.selection.min
                         val selEnd = value.selection.max
                         if (selStart != selEnd) {
-                            val selectedText = value.text.substring(selStart, selEnd)
-                            if (selectedText.contains("\n")) {
-                                // Multi-line indent: prepend tab to each line in the selection
-                                val lineStart = positionMapper.lineStart(positionMapper.offsetToLine(selStart))
-                                val linesToIndent = value.text.substring(lineStart, selEnd)
-                                val indented = linesToIndent.split("\n").map { "\t" + it }.joinToString("\n")
-                                val newText = value.text.substring(0, lineStart) + indented + value.text.substring(selEnd)
-                                value = TextFieldValue(text = newText, selection = TextRange(lineStart, lineStart + indented.length))
-                                currentOnContentChange(newText)
+                            val multiResult = applyMultiLineIndent(value, positionMapper)
+                            if (multiResult != null) {
+                                value = multiResult.first
+                                currentOnContentChange(multiResult.second)
                             } else {
-                                // Single-line selection: replace with tab
-                                val newText = value.text.substring(0, selStart) + "\t" + value.text.substring(selEnd)
-                                value = TextFieldValue(text = newText, selection = TextRange(selStart + 1))
-                                currentOnContentChange(newText)
+                                val singleResult = applySingleLineTab(value)
+                                if (singleResult != null) {
+                                    value = singleResult.first
+                                    currentOnContentChange(singleResult.second)
+                                }
                             }
                         } else {
                             val cursor = selStart
