@@ -696,6 +696,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var highlightBlinkStart by remember { mutableStateOf(0L) }
     var blinkTick by remember { mutableStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
+    // DEBUG: Visual indicator for Go to Line and Multi-cursor
+    var debugJumpMsg by remember { mutableStateOf("") }
+    var debugDoubleTapMsg by remember { mutableStateOf("") }
     // Blink animation: tick every 150ms while highlight is active
     LaunchedEffect(highlightBlinkStart) {
         if (highlightBlinkStart > 0) {
@@ -2186,6 +2189,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onDoubleTap = { offset ->
+                                    // DEBUG: Show that onDoubleTap was called
+                                    android.util.Log.d("MultiCursor", "onDoubleTap fired at " + offset.toString())
+                                    debugDoubleTapMsg = "DBLTAP offset=" + offset.toString()
                                     // Double tap — add/remove extra cursor at this position
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
@@ -4272,6 +4278,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             fontSize = fontSize,
             vScrollValue = vScroll.value,
             onJumpToLine = { offset, line ->
+                // DEBUG: Show that onJumpToLine was called
+                debugJumpMsg = "JUMP line=$line offset=$offset"
                 value = value.copy(selection = TextRange(offset))
                 // Phase V-FIX (Test 53): Highlight the target line so the user can
                 // SEE where they jumped — same mechanism as scrollToLine.
@@ -4292,6 +4300,39 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             },
         )
 
+        // DEBUG: Visual indicators
+        if (debugJumpMsg.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 60.dp, top = 4.dp)
+                    .background(Color(0xFFFF0000).copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .zIndex(100f),
+            ) {
+                Text(debugJumpMsg, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            }
+            LaunchedEffect(debugJumpMsg) {
+                kotlinx.coroutines.delay(3000)
+                debugJumpMsg = ""
+            }
+        }
+        if (debugDoubleTapMsg.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 60.dp, top = 30.dp)
+                    .background(Color(0xFF00AA00).copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .zIndex(100f),
+            ) {
+                Text(debugDoubleTapMsg, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            }
+            LaunchedEffect(debugDoubleTapMsg) {
+                kotlinx.coroutines.delay(3000)
+                debugDoubleTapMsg = ""
+            }
+        }
         FindReplaceBar(
             findReplaceOpen = findReplaceOpen,
             findQuery = findQuery,
@@ -5510,7 +5551,9 @@ private fun androidx.compose.foundation.layout.BoxScope.GotoLineBar(
                 ),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                     onGo = {
-                        val target = goToLineInput.toIntOrNull() ?: return@KeyboardActions
+                        val target = goToLineInput.toIntOrNull()
+                        android.util.Log.d("GotoLine", "IME Go key, input=" + goToLineInput + " target=" + target)
+                        if (target == null) return@KeyboardActions
                         val clamped = target.coerceIn(1, lineCount2)
                         val lines2 = text.split("\n")
                         val offset = lines2.take(clamped - 1).sumOf { it.length + 1 }
@@ -5549,6 +5592,7 @@ private fun androidx.compose.foundation.layout.BoxScope.GotoLineBar(
                     .background(Color(0xFF007ACC), RoundedCornerShape(4.dp))
                     .clickable {
                         val target = goToLineInput.toIntOrNull()
+                        android.util.Log.d("GotoLine", "Go button clicked, input=" + goToLineInput + " target=" + target)
                         if (target != null && target > 0) {
                             val clamped = target.coerceIn(1, lineCount2)
                             val lines2 = text.split("\n")
