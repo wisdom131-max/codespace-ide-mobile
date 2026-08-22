@@ -121,6 +121,7 @@ fun SourceControlPane(projectId: String) {
     var diffData by remember { mutableStateOf<ScmFileDiff?>(null) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
     var isRepo by remember { mutableStateOf<Boolean?>(null) }
+    var showHidden by remember { mutableStateOf(false) }
 
     // ── Load status ──
     fun refresh() {
@@ -383,6 +384,31 @@ fun SourceControlPane(projectId: String) {
 
         HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
 
+        // ── Show Hidden toggle ──
+        if (isRepo == true && repoState != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (showHidden) "Showing all files" else "Showing project files only",
+                    color = MutedColor,
+                    fontSize = 10.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (showHidden) "Hide dotfiles" else "Show dotfiles",
+                    color = IconColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { showHidden = !showHidden },
+                )
+            }
+            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+        }
+
         // ── File changes list ──
         if (operation is ScmOperation.Loading) {
             Box(
@@ -398,6 +424,7 @@ fun SourceControlPane(projectId: String) {
         } else {
             FileChangesList(
                 repoState = repoState,
+                showHidden = showHidden,
                 onResolveConflict = { file ->
                     if (operation !is ScmOperation.Idle) {
                         snackbarMsg = "Wait for current operation to finish"
@@ -845,12 +872,19 @@ private fun CommitInputSection(
 @Composable
 private fun FileChangesList(
     repoState: ScmRepoState?,
+    showHidden: Boolean,
     onResolveConflict: (String) -> Unit,
     onShowDiff: (String) -> Unit,
     onStage: (String) -> Unit,
     onStageAll: () -> Unit,
     onUnstage: (String) -> Unit,
 ) {
+    // Filter helper: hide dotfiles and internal metadata by default
+    fun isHidden(path: String): Boolean {
+        val parts = path.split("/")
+        return parts.any { it.startsWith(".") }
+    }
+    fun isVisible(path: String): Boolean = showHidden || !isHidden(path)
     val scrollState = rememberScrollState()
 
     if (repoState == null) {
@@ -863,8 +897,6 @@ private fun FileChangesList(
         return
     }
 
-    val hasStaged = repoState.staged.isNotEmpty() || repoState.conflicted.isNotEmpty()
-    val hasUnstaged = repoState.unstaged.isNotEmpty() || repoState.untracked.isNotEmpty()
 
     Column(
         modifier = Modifier
@@ -872,9 +904,10 @@ private fun FileChangesList(
             .verticalScroll(scrollState)
     ) {
         // ── Conflicted files (if any) ──
-        if (repoState.conflicted.isNotEmpty()) {
-            SectionHeader("Conflicts (${repoState.conflicted.size})", ConflictColor)
-            repoState.conflicted.forEach { file ->
+        val visibleConflicted = repoState.conflicted.filter { isVisible(it.path) }
+        if (visibleConflicted.isNotEmpty()) {
+            SectionHeader("Conflicts (${visibleConflicted.size})", ConflictColor)
+            visibleConflicted.forEach { file ->
                 FileRow(
                     file = file,
                     isStaged = false,
@@ -887,9 +920,10 @@ private fun FileChangesList(
         }
 
         // ── Staged changes ──
-        if (repoState.staged.isNotEmpty()) {
-            SectionHeader("Staged Changes (${repoState.staged.size})", IconColor)
-            repoState.staged.forEach { file ->
+        val visibleStaged = repoState.staged.filter { isVisible(it.path) }
+        if (visibleStaged.isNotEmpty()) {
+            SectionHeader("Staged Changes (${visibleStaged.size})", IconColor)
+            visibleStaged.forEach { file ->
                 FileRow(
                     file = file,
                     isStaged = true,
@@ -903,7 +937,9 @@ private fun FileChangesList(
         }
 
         // ── Unstaged changes ──
-        if (repoState.unstaged.isNotEmpty() || repoState.untracked.isNotEmpty()) {
+        val visibleUnstaged = repoState.unstaged.filter { isVisible(it.path) }
+        val visibleUntracked = repoState.untracked.filter { isVisible(it.path) }
+        if (visibleUnstaged.isNotEmpty() || visibleUntracked.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -911,13 +947,13 @@ private fun FileChangesList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Changes (${repoState.unstaged.size + repoState.untracked.size})",
+                    "Changes (${visibleUnstaged.size + visibleUntracked.size})",
                     color = MutedColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                if (repoState.unstaged.isNotEmpty()) {
+                if (visibleUnstaged.isNotEmpty()) {
                     Text(
                         "+ Stage All",
                         color = IconColor,
@@ -926,7 +962,7 @@ private fun FileChangesList(
                     )
                 }
             }
-            repoState.unstaged.forEach { file ->
+            visibleUnstaged.forEach { file ->
                 FileRow(
                     file = file,
                     isStaged = false,
@@ -936,13 +972,13 @@ private fun FileChangesList(
                     onShowDiff = { onShowDiff(file.path) },
                 )
             }
-            repoState.untracked.forEach { file ->
+            visibleUntracked.forEach { file ->
                 FileRow(file, isStaged = false, isConflicted = false, onStage = { onStage(file.path) }, onUnstage = {})
             }
         }
 
         // ── Empty state ──
-        if (!hasStaged && !hasUnstaged && repoState.conflicted.isEmpty()) {
+        if (visibleConflicted.isEmpty() && visibleStaged.isEmpty() && visibleUnstaged.isEmpty() && visibleUntracked.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -952,7 +988,9 @@ private fun FileChangesList(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Filled.Check, contentDescription = null, tint = UntrackedColor, modifier = Modifier.size(32.dp))
                     Spacer(Modifier.height(8.dp))
-                    Text("No changes", color = MutedColor, fontSize = 12.sp)
+                    Text("No uncommitted changes", color = MutedColor, fontSize = 12.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("All files are committed. See Explorer for your file tree.", color = MutedColor, fontSize = 10.sp)
                 }
             }
         }
