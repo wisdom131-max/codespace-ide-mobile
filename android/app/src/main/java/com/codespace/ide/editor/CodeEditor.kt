@@ -4863,6 +4863,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             val cPos = positionMapper.offsetToPosition(cursor)
                                             val cLine = cPos.line
                                             val cCol = cPos.column
+                                            coroutineScope.launch {
                                                 val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                                     try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
                                                 }
