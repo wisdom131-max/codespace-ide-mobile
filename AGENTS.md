@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 9df6044d |
-| CI build | (pending) |
+| Latest commit | 9015a332 |
+| CI build | 9015a332 (pending CI) |
 | Active phase | R3-B: Search Polish (done) -> R3-I next |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
@@ -75,7 +75,7 @@
 
 **Model:** Base44 Superagent (Claude)
 
-**Commit:** (pending)
+**Commit:** 9015a332
 
 **[EDITOR]** R3-B — 4 items implemented:
 
