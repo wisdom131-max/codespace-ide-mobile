@@ -863,7 +863,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
 
     // Phase F: Sync decoration store layers with current state
-    LaunchedEffect(lintErrors) { decorationStore.updateDiagnostics(lintErrors) }
     LaunchedEffect(semanticTokens) { decorationStore.updateSemanticTokens(semanticTokens) }
     LaunchedEffect(bookmarkedLines) { decorationStore.updateBookmarks(bookmarkedLines) }
     LaunchedEffect(foldedRanges) { decorationStore.updateFoldedLines(foldedRanges) }
@@ -1688,6 +1687,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(lspDiagnosticErrors) {
         val localErrors = LintAnalyzer.analyze(value.text, language)
         lintErrors = (localErrors + lspDiagnosticErrors).distinctBy { Triple(it.start, it.end, it.message) }.sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))
+    // Phase F: Sync lintErrors to decoration store (declared here because lintErrors is above)
+    LaunchedEffect(lintErrors) { decorationStore.updateDiagnostics(lintErrors) }
     }
 
     // ── P2-11 Inlay hints state ─────────────────────────────────────────
