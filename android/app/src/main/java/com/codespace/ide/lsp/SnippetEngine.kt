@@ -47,12 +47,43 @@ data class SnippetContext(
 )
 
 /** A single tab-stop in a parsed snippet. */
+data class SnippetTransform(
+    val regex: String,
+    val replacement: String,
+    val flags: String = "",
+) {
+    /**
+     * R5-2: Apply this transform to the given value.
+     * LSP snippet transform syntax: ${N/regex/replacement/flags}
+     * Supports $1, $2 for capture groups and ${1:/upcase}, ${1:/capitalize} etc.
+     */
+    fun apply(value: String): String {
+        return try {
+            val options = mutableSetOf<RegexOption>()
+            if (flags.contains("i")) options.add(RegexOption.IGNORE_CASE)
+            if (flags.contains("m")) options.add(RegexOption.MULTILINE)
+            if (flags.contains("s")) options.add(RegexOption.DOT_MATCHES_ALL)
+            val pattern = Regex(regex, options)
+            pattern.replace(value) { matchResult ->
+                var result = replacement
+                for (groupIdx in 0..matchResult.groupValues.size) {
+                    result = result.replace("$$groupIdx", matchResult.groupValues.getOrElse(groupIdx) { "" })
+                }
+                result
+            }
+        } catch (_: Exception) {
+            value
+        }
+    }
+}
+
 data class SnippetTabStop(
-    val index: Int,          // Tab-stop number (1, 2, 3...). $0 is the final position (Int.MAX_VALUE).
-    val startOffset: Int,    // Start position in the cleaned text
-    val endOffset: Int,      // End position in the cleaned text (start == end for empty tab-stops)
-    val defaultText: String, // Default text at this tab-stop (may be empty)
-    val choices: List<String> = emptyList(), // For ${1|a,b,c|} syntax
+    val index: Int,
+    val startOffset: Int,
+    val endOffset: Int,
+    val defaultText: String,
+    val choices: List<String> = emptyList(),
+    val transform: SnippetTransform? = null,
 )
 
 /** Result of parsing a snippet string. */
@@ -160,14 +191,43 @@ fun parseSnippet(snippet: String, context: SnippetContext = SnippetContext()): S
                     var choices = emptyList<String>()
 
                     if (pipeIdx != -1 && (colonIdx == -1 || pipeIdx < colonIdx)) {
-                        // ${1|a,b,c|} — choices
+                        // ${1|a,b,c|} -- choices
                         val choicesStr = content.substring(pipeIdx + 1)
                         val cleanedChoices = choicesStr.removeSuffix("|")
                         choices = cleanedChoices.split(",").map { it.trim() }
                         defaultText = choices.firstOrNull() ?: ""
                     } else if (colonIdx != -1) {
-                        // ${1:default} — default text
+                        // ${1:default} -- default text
                         defaultText = content.substring(colonIdx + 1)
+                    }
+
+                    // R5-2: Check for transform syntax ${N/regex/replacement/flags}
+                    var transform: SnippetTransform? = null
+                    val slashIdx = content.indexOf('/')
+                    if (slashIdx != -1 && slashIdx < (colonIdx.takeIf { it != -1 } ?: content.length)) {
+                        // Could be a transform: ${N/regex/replacement/flags}
+                        val transformContent = content.substring(slashIdx + 1)
+                        // Find the closing / -- need to find unescaped /
+                        var lastSlash = -1
+                        var esc = false
+                        for (ci in transformContent.indices) {
+                            val ch = transformContent[ci]
+                            if (esc) { esc = false; continue }
+                            if (ch == '\\') { esc = true; continue }
+                            if (ch == '/') lastSlash = ci
+                        }
+                        if (lastSlash > 0) {
+                            val regex = transformContent.substring(0, lastSlash)
+                            val rest = transformContent.substring(lastSlash + 1)
+                            // Split replacement and flags
+                            val nextSlash = rest.indexOf('/')
+                            val (replacement, flags) = if (nextSlash != -1) {
+                                rest.substring(0, nextSlash) to rest.substring(nextSlash + 1)
+                            } else {
+                                rest to ""
+                            }
+                            transform = SnippetTransform(regex, replacement, flags)
+                        }
                     }
 
                     cleaned.append(defaultText)
@@ -177,6 +237,7 @@ fun parseSnippet(snippet: String, context: SnippetContext = SnippetContext()): S
                         endOffset = stopOffset + defaultText.length,
                         defaultText = defaultText,
                         choices = choices,
+                        transform = transform,
                     ))
                     i = closeIdx + 1
                     continue

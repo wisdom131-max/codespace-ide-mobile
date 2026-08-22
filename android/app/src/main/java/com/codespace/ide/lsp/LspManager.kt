@@ -1634,221 +1634,11 @@ object LspManager {
      * that use older LSP4J versions which can't deserialize newer LSP capability fields.
      * Only includes LSP 3.14 (base spec) fields to avoid Gson "Message could not be parsed."
      */
-    private fun buildMinimalClientCapabilities(): JSONObject {
-        val textDocument = JSONObject().apply {
-            put("synchronization", JSONObject().apply {
-                put("didSave", true)
-                put("dynamicRegistration", false)
-            })
-            put("completion", JSONObject().apply {
-                put("completionItem", JSONObject().apply {
-                    put("snippetSupport", false)
-                    put("documentationFormat", JSONArray().apply { put("plaintext"); put("markdown") })
-                })
-                put("dynamicRegistration", false)
-            })
-            put("hover", JSONObject().apply {
-                put("contentFormat", JSONArray().apply { put("plaintext"); put("markdown") })
-                put("dynamicRegistration", false)
-            })
-            put("signatureHelp", JSONObject().apply {
-                put("signatureInformation", JSONObject().apply {
-                    put("documentationFormat", JSONArray().apply { put("plaintext") })
-                })
-                put("dynamicRegistration", false)
-            })
-            put("definition", JSONObject().apply { put("dynamicRegistration", false) })
-            put("declaration", JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) })
-            put("typeDefinition", JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) })
-            put("implementation", JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) })
-            put("references", JSONObject().apply { put("dynamicRegistration", false) })
-            put("rename", JSONObject().apply {
-                put("dynamicRegistration", false)
-                put("prepareSupport", true)
-            })
-            put("publishDiagnostics", JSONObject().apply {
-                put("relatedInformation", false)
-            })
-            put("codeAction", JSONObject().apply {
-                put("dynamicRegistration", false)
-                put("codeActionLiteralSupport", JSONObject().apply {
-                    put("codeActionKind", JSONObject().apply {
-                        put("valueSet", JSONArray().apply {
-                            put(""); put("quickfix"); put("refactor"); put("refactor.extract")
-                            put("refactor.inline"); put("refactor.rewrite"); put("source")
-                            put("source.organizeImports"); put("source.fixAll")
-                        })
-                    })
-                })
-            })
-            put("documentSymbol", JSONObject().apply {
-                put("dynamicRegistration", false)
-                put("hierarchicalDocumentSymbolSupport", true)
-            })
-            put("foldingRange", JSONObject().apply {
-                put("dynamicRegistration", false)
-                put("lineFoldingOnly", true)
-            })
-            put("selectionRange", JSONObject().apply { put("dynamicRegistration", false) })
-            put("documentHighlight", JSONObject().apply { put("dynamicRegistration", false) })
-            put("formatting", JSONObject().apply { put("dynamicRegistration", false) })
-            put("rangeFormatting", JSONObject().apply { put("dynamicRegistration", false) })
-            put("codeLens", JSONObject().apply { put("dynamicRegistration", false) })
-            put("documentLink", JSONObject().apply { put("dynamicRegistration", false) })
-        }
-        val workspace = JSONObject().apply {
-            put("applyEdit", false)
-            put("workspaceFolders", true)
-            put("symbol", JSONObject().apply { put("dynamicRegistration", false) })
-        }
-        return JSONObject().apply {
-            put("textDocument", textDocument)
-            put("workspace", workspace)
-        }
-    }
+    private fun buildMinimalClientCapabilities(): JSONObject =
+        LspServerLifecycle.buildMinimalClientCapabilities()
 
-    private fun buildClientCapabilities(): JSONObject {
-        // textDocument.synchronization
-        val sync = JSONObject().apply {
-            put("didSave", true)
-            put("willSave", false)
-            put("dynamicRegistration", false)
-        }
-        // textDocument.completion
-        val completionItem = JSONObject().apply {
-            put("snippetSupport", false)          // we strip snippets in parseLspCompletions
-            put("documentationFormat", JSONArray().apply { put("plaintext"); put("markdown") })
-        }
-        val completion = JSONObject().apply {
-            put("completionItem", completionItem)
-            put("dynamicRegistration", false)
-        }
-        // textDocument.hover
-        val hover = JSONObject().apply {
-            put("contentFormat", JSONArray().apply { put("plaintext"); put("markdown") })
-            put("dynamicRegistration", false)
-        }
-        // textDocument.signatureHelp
-        val signatureInformation = JSONObject().apply {
-            put("documentationFormat", JSONArray().apply { put("plaintext") })
-        }
-        val signatureHelp = JSONObject().apply {
-            put("signatureInformation", signatureInformation)
-            put("dynamicRegistration", false)
-        }
-        // textDocument.definition, references, rename
-        val basic = JSONObject().apply { put("dynamicRegistration", false) }
-        // textDocument.publishDiagnostics
-        val publishDiagnostics = JSONObject().apply {
-            put("relatedInformation", false)
-            put("versionSupport", false)
-        }
-        // textDocument.codeAction
-        val codeAction = JSONObject().apply {
-            put("dynamicRegistration", false)
-            put("codeActionLiteralSupport", JSONObject().apply {
-                put("codeActionKind", JSONObject().apply {
-                    put("valueSet", JSONArray().apply {
-                        put(""); put("quickfix"); put("refactor"); put("refactor.extract")
-                        put("refactor.inline"); put("refactor.rewrite"); put("source")
-                        put("source.organizeImports"); put("source.fixAll")
-                        put("source.removeUnused")
-                    })
-                })
-            })
-            // P39-FULL: Advertise resolve support so servers return data-only actions
-            // that need resolving to get the actual WorkspaceEdit
-            put("resolveProvider", true)
-        }
-        // textDocument.semanticTokens (declared as supported but minimal)
-        val semanticTokens = JSONObject().apply {
-            put("dynamicRegistration", false)
-            put("requests", JSONObject().apply { put("full", true) })
-            put("tokenTypes", JSONArray())
-            put("tokenModifiers", JSONArray())
-            put("formats", JSONArray().apply { put("relative") })
-        }
-        // textDocument.formatting, rangeFormatting, onTypeFormatting
-        val formatting = JSONObject().apply { put("dynamicRegistration", false) }
-        // textDocument.documentSymbol
-        val documentSymbol = JSONObject().apply {
-            put("dynamicRegistration", false)
-            put("hierarchicalDocumentSymbolSupport", true)
-            put("labelSupport", JSONObject().apply { put("labelDetailsSupport", true) })
-        }
-        // textDocument.foldingRange
-        val foldingRange = JSONObject().apply {
-            put("dynamicRegistration", false)
-            put("rangeLimit", 5000)
-            put("lineFoldingOnly", true)
-        }
-        // textDocument.selectionRange
-        val selectionRange = JSONObject().apply { put("dynamicRegistration", false) }
-        // textDocument.documentHighlight
-        val documentHighlight = JSONObject().apply { put("dynamicRegistration", false) }
-        // textDocument.declaration
-        val declaration = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
-        // textDocument.typeDefinition
-        val typeDefinition = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
-        // textDocument.implementation
-        val implementation = JSONObject().apply { put("dynamicRegistration", false); put("linkSupport", true) }
-        // textDocument.prepareRename
-        val prepareSupport = JSONObject().apply { put("prepareSupport", true) }
-
-        val textDocument = JSONObject().apply {
-            put("synchronization", sync)
-            put("completion", completion)
-            put("hover", hover)
-            put("signatureHelp", signatureHelp)
-            put("definition", basic)
-            put("declaration", declaration)
-            put("typeDefinition", typeDefinition)
-            put("implementation", implementation)
-            put("references", basic)
-            put("rename", JSONObject().apply {
-                put("dynamicRegistration", false)
-                put("prepareSupport", true)
-            })
-            put("publishDiagnostics", publishDiagnostics)
-            put("codeAction", codeAction)
-            put("semanticTokens", semanticTokens)
-            put("documentSymbol", documentSymbol)
-            put("foldingRange", foldingRange)
-            put("selectionRange", selectionRange)
-            put("documentHighlight", documentHighlight)
-            put("formatting", formatting)
-            put("rangeFormatting", formatting)
-            put("onTypeFormatting", formatting)
-            put("codeLens", JSONObject().apply { put("dynamicRegistration", false) })
-            put("inlayHint", JSONObject().apply { put("dynamicRegistration", false) })
-            put("documentLink", JSONObject().apply { put("dynamicRegistration", false); put("tooltipSupport", true) })
-            // P41-M: Call Hierarchy
-            put("callHierarchy", JSONObject().apply { put("dynamicRegistration", false) })
-            // P41-M: Type Hierarchy
-            put("typeHierarchy", JSONObject().apply { put("dynamicRegistration", false) })
-            // P41-S: Linked Editing Range — allows simultaneous editing of matching tags (HTML/XML)
-            put("linkedEditingRange", JSONObject().apply { put("dynamicRegistration", false) })
-            // P41-S: Moniker — stable identifiers for symbols across workspace
-            put("moniker", JSONObject().apply { put("dynamicRegistration", false) })
-            // P41-S: Document Color + Color Presentation — color picker support for CSS/SCSS/Less
-            put("documentColor", JSONObject().apply { put("dynamicRegistration", false) })
-        }
-        // workspace capabilities
-        val workspace = JSONObject().apply {
-            put("applyEdit", false)
-            put("workspaceFolders", true)
-            put("symbol", JSONObject().apply { put("dynamicRegistration", false) })
-            // P39-FULL: Advertise fileOperations support for willRenameFiles/didRenameFiles
-            put("fileOperations", JSONObject().apply {
-                put("willRename", true)
-                put("didRename", true)
-            })
-        }
-        return JSONObject().apply {
-            put("textDocument", textDocument)
-            put("workspace", workspace)
-        }
-    }
+    private fun buildClientCapabilities(): JSONObject =
+        LspServerLifecycle.buildClientCapabilities()
 
     /**
      * P39-FULL: Send workspace/willRenameFiles notification before a file rename.
@@ -2241,16 +2031,8 @@ object LspManager {
     ): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
-
-        val td = JSONObject().apply {
-            put("uri", uri)
-            put("languageId", languageId)
-            put("version", version)
-            put("text", text)
-        }
-        val params = JSONObject().apply { put("textDocument", td) }
+        val params = LspDocumentSync.buildDidOpenParams(uri, languageId, text, version)
         server.client.notify("textDocument/didOpen", params)
-        // Phase V-D: Track document for workspace recovery
         trackDocument(language, uri, languageId, text, version)
         touchActivity(language)
         AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId)", "lsp")
@@ -2265,19 +2047,8 @@ object LspManager {
     ): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
-
-        val td = JSONObject().apply {
-            put("uri", uri)
-            put("version", version)
-        }
-        val change = JSONObject().apply { put("text", text) }
-        val changes = JSONArray().apply { put(change) }
-        val params = JSONObject().apply {
-            put("textDocument", td)
-            put("contentChanges", changes)
-        }
+        val params = LspDocumentSync.buildDidChangeParams(uri, text, version)
         server.client.notify("textDocument/didChange", params)
-        // Phase V-D: Update tracked document content
         updateTrackedDocument(language, uri, text, version)
         touchActivity(language)
         return true
@@ -2286,11 +2057,8 @@ object LspManager {
     fun didClose(language: Language, uri: String): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
-
-        val td = JSONObject().apply { put("uri", uri) }
-        val params = JSONObject().apply { put("textDocument", td) }
+        val params = LspDocumentSync.buildDidCloseParams(uri)
         server.client.notify("textDocument/didClose", params)
-        // Phase V-D: Untrack document
         untrackDocument(language, uri)
         return true
     }
@@ -2307,15 +2075,9 @@ object LspManager {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
-        val params = positionParams(uri, line, character)
-        val completionContext = JSONObject()
-        if (triggerCharacter != null) {
-            completionContext.put("triggerKind", 2) // TriggerCharacter
-            completionContext.put("triggerCharacter", triggerCharacter)
-        } else {
-            completionContext.put("triggerKind", 1) // Invoked
-        }
-        params.put("context", completionContext)
+        // R3-A: Delegate param building to LspCompletionHandler
+        val triggerKind = if (triggerCharacter != null) 2 else 1
+        val params = LspCompletionHandler.buildCompletionParams(uri, line, character, triggerCharacter, triggerKind)
         val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
         return when (response) {
@@ -2341,20 +2103,14 @@ object LspManager {
         val server = servers[language] ?: return Pair(null, false)
         if (!server.initialized) return Pair(null, false)
 
-        val params = positionParams(uri, line, character)
-        val completionContext = JSONObject()
-        if (triggerCharacter != null) {
-            completionContext.put("triggerKind", 2)
-            completionContext.put("triggerCharacter", triggerCharacter)
-        } else {
-            completionContext.put("triggerKind", 1)
-        }
-        params.put("context", completionContext)
+        // R3-A: Delegate param building to LspCompletionHandler
+        val triggerKind = if (triggerCharacter != null) 2 else 1
+        val params = LspCompletionHandler.buildCompletionParams(uri, line, character, triggerCharacter, triggerKind)
         val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
         return when (response) {
             null -> Pair(null, false)
-            is JSONArray -> Pair(response, false) // CompletionItem[] format: isIncomplete defaults to false
+            is JSONArray -> Pair(response, false)
             is JSONObject -> Pair(response.optJSONArray("items"), response.optBoolean("isIncomplete", false))
             else -> Pair(null, false)
         }
@@ -2370,7 +2126,8 @@ object LspManager {
         if (!hasCapability(language, "hoverProvider")) return null
         if (!server.initialized) return null
 
-        val params = positionParams(uri, line, character)
+        // R3-A: Delegate param building to LspHoverHandler
+        val params = LspHoverHandler.buildHoverParams(uri, line, character)
         // C-5 FIX: Scale timeout for large files
         val hoverTimeout = if (line > 5000) 15L else if (line > 1000) 12L else 10L
         val response = server.client.request("textDocument/hover", params, timeoutSeconds = hoverTimeout)
@@ -2392,7 +2149,8 @@ object LspManager {
         if (!server.initialized) return null
         if (!hasCapability(language, "signatureHelpProvider")) return null
 
-        val params = positionParams(uri, line, character)
+        // R3-A: Delegate param building to LspSignatureHandler
+        val params = LspSignatureHandler.buildSignatureHelpParams(uri, line, character)
         // C-5 FIX: Scale timeout for large files — pylsp needs more time to analyze big files
         val timeout = if (line > 5000) 15L else if (line > 1000) 10L else 5L
         val response = server.client.request("textDocument/signatureHelp", params, timeoutSeconds = timeout)
@@ -2479,17 +2237,8 @@ object LspManager {
 
         val td = JSONObject().put("uri", uri)
         val pos = JSONObject().put("line", line).put("character", character)
-        val range = JSONObject().put("start", pos).put("end", pos)
-        val context = JSONObject().put("diagnostics", diagnostics ?: JSONArray())
-        // P39-FULL: Pass `only` filter so the server returns only the requested action kinds
-        // (e.g. ["refactor"] for "Show Available Refactorings", ["source"] for source actions)
-        if (only != null && only.isNotEmpty()) {
-            context.put("only", JSONArray(only))
-        }
-        val params = JSONObject()
-            .put("textDocument", td)
-            .put("range", range)
-            .put("context", context)
+        // R4-6: Delegate param building to LspCodeActionHandler
+        val params = LspCodeActionHandler.buildCodeActionParams(uri, pos.line, pos.character, pos.line, pos.character, only)
         val response = server.client.request("textDocument/codeAction", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -2709,13 +2458,11 @@ object LspManager {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
         if (!hasCapability(language, "documentFormattingProvider")) return null
-        val params = JSONObject().apply {
-            put("textDocument", JSONObject().apply { put("uri", uri) })
-            put("options", JSONObject().apply {
-                put("tabSize", tabSize)
-                put("insertSpaces", insertSpaces)
-            })
-        }
+        // R4-7: Delegate param building to LspFormattingHandler
+        val params = LspFormattingHandler.buildFormattingParams(uri, LspFormattingHandler.buildDefaultFormattingOptions().apply {
+            put("tabSize", tabSize)
+            put("insertSpaces", insertSpaces)
+        })
         val response = server.client.request("textDocument/formatting", params, timeoutSeconds = 10)
         return response as? JSONArray
     }
@@ -2763,15 +2510,13 @@ object LspManager {
     ): JSONArray? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
-        val params = JSONObject().apply {
-            put("textDocument", JSONObject().apply { put("uri", uri) })
-            put("position", JSONObject().apply { put("line", line); put("character", character) })
-            put("ch", ch)
-            put("options", JSONObject().apply {
+        // R4-7: Delegate to LspFormattingHandler
+        val params = LspFormattingHandler.buildOnTypeFormattingParams(
+            uri, line, character, ch,
+            LspFormattingHandler.buildDefaultFormattingOptions().apply {
                 put("tabSize", tabSize)
                 put("insertSpaces", insertSpaces)
             })
-        }
         val response = server.client.request("textDocument/onTypeFormatting", params, timeoutSeconds = 5)
         return response as? JSONArray
     }
@@ -3138,13 +2883,11 @@ object LspManager {
         return servers[language]?.diagnostics?.get(uri)
     }
 
-    fun setDiagnosticsHandler(language: Language, handler: (String, JSONArray) -> Unit) {
-        diagnosticsHandlers[language] = handler
-    }
+    fun setDiagnosticsHandler(language: Language, handler: (String, JSONArray) -> Unit) =
+        LspDiagnosticsHandler.setHandler(language, handler)
 
-    fun clearDiagnosticsHandler(language: Language) {
-        diagnosticsHandlers.remove(language)
-    }
+    fun clearDiagnosticsHandler(language: Language) =
+        LspDiagnosticsHandler.clearHandler(language)
 
     // ── Utility ────────────────────────────────────────────────────
 
@@ -3223,17 +2966,8 @@ object LspManager {
 
     // ── Private helpers ────────────────────────────────────────────
 
-    private fun positionParams(uri: String, line: Int, character: Int): JSONObject {
-        val td = JSONObject().apply { put("uri", uri) }
-        val pos = JSONObject().apply {
-            put("line", line)
-            put("character", character)
-        }
-        return JSONObject().apply {
-            put("textDocument", td)
-            put("position", pos)
-        }
-    }
+    private fun positionParams(uri: String, line: Int, character: Int): JSONObject =
+        LspServerLifecycle.buildPositionParams(uri, line, character)}
 
     // P26-1: LSP Code Lens — inline annotations (references count, test/run, etc.)
     fun getCodeLens(language: Language, uri: String): JSONArray? {

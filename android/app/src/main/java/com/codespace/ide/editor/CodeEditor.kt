@@ -153,6 +153,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import com.codespace.ide.editor.ui.HoverPopup
 
 /** Standard gutter width in dp — ALL overlays must use this constant to stay aligned with the text.
  *  Previously: hardcoded values of 64f, 66.dp, 72.dp, 74f, 74.dp, 80f were used inconsistently,
@@ -883,11 +884,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P15-C: Sticky scroll — derives the "current scope" line from the scroll position.
     // Uses the line height formula: lineIdx = scrollPx / (fontSize * 1.25f).
     // Finds the nearest non-blank, non-folded ancestor line above the visible top.
-    val stickyLine: String? = remember(vScroll.value, rawLines, foldedLineIndices, fontSize) {
+    val stickyLine: String? = remember(vScroll.value, rawLines, foldedLineIndices, fontSize, lspDocumentSymbols) {
         if (rawLines.size < 3) return@remember null
         val lineHeightPx = editorMetrics.lineHeightPx
         val topLineIdx = (vScroll.value / lineHeightPx).toInt()
-        // Walk upward from topLineIdx to find the nearest scope-opening line
+        // R3-5: Use LSP document symbols for sticky scroll (falls back to heuristic)
+        if (lspDocumentSymbols != null && lspDocumentSymbols.length() > 0) {
+            val stickySymbol = findStickySymbolFromLSP(lspDocumentSymbols, topLineIdx, rawLines)
+            if (stickySymbol != null) return@remember stickySymbol
+        }
+        // Fallback: heuristic — walk upward to find nearest scope-opening line
         var i = (topLineIdx - 1).coerceIn(0, rawLines.lastIndex)
         while (i >= 0) {
             if (!foldedLineIndices.contains(i)) {
@@ -1048,6 +1054,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         if ((prefix.length >= 2 || isDotContext || (completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT && prefix.length >= 1)) && lspCompletionProvider != null) {  // TEST-14-FIX: also trigger LSP for 1-char import context
             kotlinx.coroutines.delay(150)  // debounce
+            kotlinx.coroutines.delay(70)   // R3-A: show delay — reduce flicker on rapid typing
 
             // P41-K: Cancel any previous in-flight completion request before sending new one
             // Phase X-8: Also increment generation counter for stale-response protection
@@ -1669,6 +1676,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // ── Lint state ───────────────────────────────────────────────────────
     var lintErrors by remember { mutableStateOf<List<LintError>>(emptyList()) }
+    // R3-4: Diagnostic tooltip state
+    var showDiagnosticTooltip by remember { mutableStateOf(false) }
+    var diagnosticTooltipLine by remember { mutableStateOf(-1) }
     LaunchedEffect(value.text, language) {
         kotlinx.coroutines.delay(500)   // debounce — only lint after 500 ms idle
         val localErrors = LintAnalyzer.analyze(value.text, language)
@@ -1696,14 +1706,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // ── Go to Line state ─────────────────────────────────────────────────
     var goToLineInput by remember { mutableStateOf("") }
 
-    val matches = remember(value.text, findQuery, useRegex, caseSensitive, wholeWord) {
-        if (findQuery.isEmpty()) emptyList()
-        else try {
-            val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-            val rawPattern = if (useRegex) findQuery else Regex.escape(findQuery)
-            val finalPattern = if (wholeWord && !useRegex) "\\b${rawPattern}\\b" else rawPattern
-            Regex(finalPattern, opts).findAll(value.text).map { it.range }.toList()
-        } catch (e: Exception) { emptyList() }
+    // R1-2: Background-thread search with 300ms debounce — prevents jank on large files
+    var matches by remember { mutableStateOf(emptyList<IntRange>()) }
+    LaunchedEffect(value.text, findQuery, useRegex, caseSensitive, wholeWord) {
+        if (findQuery.isEmpty()) { matches = emptyList(); return@LaunchedEffect }
+        kotlinx.coroutines.delay(300)
+        val result = withContext(Dispatchers.Default) {
+            try {
+                val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+                val rawPattern = if (useRegex) findQuery else Regex.escape(findQuery)
+                val finalPattern = if (wholeWord && !useRegex) "\b${rawPattern}\b" else rawPattern
+                Regex(finalPattern, opts).findAll(value.text).map { it.range }.toList()
+            } catch (e: Exception) { emptyList() }
+        }
+        matches = result
     }
     LaunchedEffect(matches.size, findQuery) {
         if (matchIndex >= matches.size) matchIndex = 0
@@ -1757,7 +1773,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     Box(modifier = modifier.fillMaxSize()) {
 
         // P15-C: Sticky scroll header — shows current scope line pinned at top
-        if (toggles.showStickyScroll && stickyLine != null) {
+        // R3-A: Disable sticky scroll when word wrap is enabled — line positions are unreliable
+        if (toggles.showStickyScroll && stickyLine != null && !wordWrap) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -1967,7 +1984,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 var precomputedForText by remember { mutableStateOf("") }
                 val textLineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
                 LaunchedEffect(value.text, language, colors) {
-                    if (textLineCount < 500) return@LaunchedEffect
+                    if (textLineCount < 200) return@LaunchedEffect
                     delay(100)
                     val result = withContext(Dispatchers.Default) {
                         SyntaxHighlighter.highlight(value.text, language, colors)
@@ -2301,6 +2318,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val cLine = cPos.line
                                         val cCol = cPos.column
                                         onCursorChange?.invoke(cLine, cCol)
+                                        // R3-4: Check if tapped line has diagnostics
+                                        val hasDiagnostic = lintErrors.any { err ->
+                                            val errLine = value.text.substring(0, err.start.coerceIn(0, value.text.length)).count { it == '\n' }
+                                            errLine == cLine
+                                        }
+                                        if (hasDiagnostic) {
+                                            showDiagnosticTooltip = !showDiagnosticTooltip
+                                            diagnosticTooltipLine = cLine
+                                        } else {
+                                            showDiagnosticTooltip = false
+                                        }
                                     }
                                     try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                                 },
@@ -2331,8 +2359,38 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // P41-I: Intercept Tab/Shift+Tab for snippet tab-stop navigation
                         // P46-A5: Also intercept Tab to expand local snippets when no session is active
                         .onPreviewKeyEvent { event ->
+                            // R3-A: TAB to accept completion when popup is visible (before snippet expansion)
+                            if (showCompletions && event.key == Key.Tab && event.type == KeyEventType.KeyDown &&
+                                !event.nativeKeyEvent.isShiftPressed && snippetSession == null &&
+                                allCompletions.isNotEmpty()) {
+                                // Find the selected completion (by selectedLabel, or default to first)
+                                val comp = if (selectedLabel != null) {
+                                    allCompletions.find { it.label == selectedLabel } ?: allCompletions[0]
+                                } else {
+                                    allCompletions[0]
+                                }
+                                val text = value.text
+                                val cursor = value.selection.end
+                                // Compute prefix the same way as the rest of the code
+                                var wordStart = cursor
+                                while (wordStart > 0 && (text[wordStart - 1].isLetterOrDigit() || text[wordStart - 1] == '_' || text[wordStart - 1] == '.')) {
+                                    wordStart--
+                                }
+                                val start = wordStart
+                                val end = cursor
+                                val insertText = comp.insertText
+                                val newText = text.substring(0, start) + insertText + text.substring(end)
+                                val newCursor = start + insertText.length
+                                value = TextFieldValue(text = newText, selection = TextRange(newCursor))
+                                onContentChange(newText)
+                                CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
+                                showCompletions = false
+                                selectedLabel = null
+                                completionFilter = null
+                                true
+                            }
                             // P46-A5: Tab expansion for local snippets (when no snippet session active)
-                            if (snippetSession == null && event.key == Key.Tab && event.type == KeyEventType.KeyDown &&
+                            else if (snippetSession == null && event.key == Key.Tab && event.type == KeyEventType.KeyDown &&
                                 !event.nativeKeyEvent.isShiftPressed && !showCompletions) {
                                 val cursor = value.selection.end
                                 // P46-A5: Find the word (or two-word combo) before the cursor for snippet expansion
@@ -2494,8 +2552,135 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         }
                                         true
                                     }
+                                    // R5-1: Ctrl+D -- duplicate current line
+                                    event.key == Key.D -> {
+                                        val cursor = value.selection.end
+                                        val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                        val lineEnd = value.text.indexOf('\n', cursor)
+                                        val endIdx = if (lineEnd == -1) value.text.length else lineEnd
+                                        val currentLine = value.text.substring(lineStart, endIdx)
+                                        val insertText = currentLine + if (lineEnd == -1) "\n" else ""
+                                        val newText = value.text.substring(0, endIdx) + insertText + value.text.substring(endIdx)
+                                        undoRedoInProgress = true
+                                        undoRedoManager.recordInsert(endIdx, insertText)
+                                        value = TextFieldValue(text = newText, selection = TextRange(endIdx + insertText.length))
+                                        onContentChange(newText)
+                                        undoRedoInProgress = false
+                                        true
+                                    }
+                                    // R5-1: Ctrl+/ -- toggle line comment
+                                    event.key == Key.Slash -> {
+                                        val cursor = value.selection.end
+                                        val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                        val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
+                                        val lineText = value.text.substring(lineStart, lineEnd)
+                                        val commentPrefix = when (language) {
+                                            Language.PYTHON, Language.SHELL -> "# "
+                                            Language.KOTLIN, Language.JAVA, Language.JAVASCRIPT,
+                                            Language.TYPESCRIPT, Language.GO, Language.RUST,
+                                            Language.CPP, Language.C -> "// "
+                                            Language.HTML, Language.XML -> "<!-- "
+                                            Language.CSS -> "/* "
+                                            else -> "// "
+                                        }
+                                        val commentTrim = commentPrefix.trim()
+                                        val newText: String
+                                        val newCursor: Int
+                                        if (lineText.trimStart().startsWith(commentTrim)) {
+                                            val cidx = lineText.indexOf(commentTrim)
+                                            newText = value.text.substring(0, lineStart) + lineText.removeRange(cidx, cidx + commentTrim.length) + value.text.substring(lineEnd)
+                                            newCursor = (cursor - commentTrim.length).coerceAtLeast(lineStart)
+                                        } else {
+                                            newText = value.text.substring(0, lineStart) + commentPrefix + lineText + value.text.substring(lineEnd)
+                                            newCursor = cursor + commentPrefix.length
+                                        }
+                                        undoRedoInProgress = true
+                                        if (lineText.trimStart().startsWith(commentTrim)) {
+                                            val cidx = lineText.indexOf(commentTrim)
+                                            undoRedoManager.recordDelete(lineStart + cidx, commentTrim)
+                                        } else {
+                                            undoRedoManager.recordInsert(lineStart, commentPrefix)
+                                        }
+                                        value = TextFieldValue(text = newText, selection = TextRange(newCursor))
+                                        onContentChange(newText)
+                                        undoRedoInProgress = false
+                                        true
+                                    }
+                                    // R5-1: Ctrl+Shift+K -- delete current line
+                                    event.key == Key.K && event.nativeKeyEvent.isShiftPressed -> {
+                                        val cursor = value.selection.end
+                                        val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                        val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it + 1 }
+                                        val deletedText = value.text.substring(lineStart, lineEnd)
+                                        val newText = value.text.removeRange(lineStart, lineEnd)
+                                        undoRedoInProgress = true
+                                        undoRedoManager.recordDelete(lineStart, deletedText)
+                                        value = TextFieldValue(text = newText, selection = TextRange(lineStart))
+                                        onContentChange(newText)
+                                        undoRedoInProgress = false
+                                        true
+                                    }
+                                    // R5-1: Ctrl+F -- find
+                                    event.key == Key.F -> {
+                                        showFindReplace = true
+                                        true
+                                    }
+                                    // R5-1: Ctrl+G -- go to line
+                                    event.key == Key.G -> {
+                                        showGoToLine = true
+                                        true
+                                    }
+                                    // R5-1: Ctrl+S -- save
+                                    event.key == Key.S -> {
+                                        onSave?.invoke()
+                                        true
+                                    }
+
                                     else -> false
                                 }
+                            } else if (event.type == KeyEventType.KeyDown &&
+                                       event.nativeKeyEvent.isAltPressed) {
+                                // R5-1: Alt+Up/Down -- move line up/down
+                                when {
+                                    event.key == Key.DirectionUp -> {
+                                        val cursor = value.selection.end
+                                        val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                        val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
+                                        if (lineStart == 0) return@onKeyEvent true
+                                        val prevLineEnd = lineStart - 1
+                                        val prevLineStart = value.text.lastIndexOf('\n', (prevLineEnd - 1).coerceAtLeast(0)) + 1
+                                        val currentLine = value.text.substring(lineStart, lineEnd)
+                                        val prevLine = value.text.substring(prevLineStart, prevLineEnd)
+                                        val newText = value.text.substring(0, prevLineStart) + currentLine + "\n" + prevLine + value.text.substring(lineEnd)
+                                        undoRedoInProgress = true
+                                        undoRedoManager.recordReplace(prevLineStart, prevLine + "\n" + currentLine, currentLine + "\n" + prevLine)
+                                        val newCursor = prevLineStart + currentLine.length
+                                        value = TextFieldValue(text = newText, selection = TextRange(newCursor))
+                                        onContentChange(newText)
+                                        undoRedoInProgress = false
+                                        true
+                                    }
+                                    event.key == Key.DirectionDown -> {
+                                        val cursor = value.selection.end
+                                        val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                                        val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
+                                        val nextLineStart = lineEnd + 1
+                                        val nextLineEnd = value.text.indexOf('\n', nextLineStart).let { if (it == -1) value.text.length else it }
+                                        if (nextLineStart > value.text.length) return@onKeyEvent true
+                                        val currentLine = value.text.substring(lineStart, lineEnd)
+                                        val nextLine = value.text.substring(nextLineStart, nextLineEnd)
+                                        val newText = value.text.substring(0, lineStart) + nextLine + "\n" + currentLine + value.text.substring(nextLineEnd)
+                                        undoRedoInProgress = true
+                                        undoRedoManager.recordReplace(lineStart, currentLine + "\n" + nextLine, nextLine + "\n" + currentLine)
+                                        val newCursor = lineStart + nextLine.length
+                                        value = TextFieldValue(text = newText, selection = TextRange(newCursor))
+                                        onContentChange(newText)
+                                        undoRedoInProgress = false
+                                        true
+                                    }
+                                    else -> false
+                                }
+
                             } else {
                                 false // let BasicTextField handle normally
                             }
@@ -2573,9 +2758,32 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
 
+        // R3-4: Diagnostic tooltip popup
+        if (showDiagnosticTooltip && diagnosticTooltipLine >= 0) {
+            val tooltipErrors = lintErrors.filter { err ->
+                val errLine = value.text.substring(0, err.start.coerceIn(0, value.text.length)).count { it == '
+' }
+                errLine == diagnosticTooltipLine
+            }
+            if (tooltipErrors.isNotEmpty()) {
+                val tooltipTop = (diagnosticTooltipLine * lineHeightDp.value - vScrollDp + lineHeightDp.value).coerceAtLeast(0f)
+                DiagnosticTooltip(
+                    errors = tooltipErrors,
+                    topDp = tooltipTop,
+                    onStartDp = GUTTER_WIDTH + 4f,
+                    onDismiss = { showDiagnosticTooltip = false },
+                )
+            }
+        }
+
         BlameLineOverlay(blameData, lineHeightDp, colors, vScroll)
 
         MergeConflictOverlay(toggles, conflictData, lineHeightDp, onResolveConflict)
+
+        // R3-2: Indent guide overlay
+        val visibleStartLine = (vScrollDp / lineHeightDp.value).toInt().coerceAtLeast(0)
+        val visibleEndLine = visibleStartLine + (screenHeightDp / lineHeightDp.value).toInt() + 5
+        BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors)
 
         SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper)
 
@@ -5763,52 +5971,6 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
-    lspHoverContent: String?,
-    showCompletions: Boolean,
-    fontSize: Int,
-    vScrollValue: Int,
-    cursorOffset: Int,
-    text: String,
-    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
-) {
-    val colors = LocalEditorColors.current
-    if (lspHoverContent != null && !showCompletions) {
-        val hoverScrollState = rememberScrollState()
-        var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
-        val hoverPos = PositionMapper(text).offsetToPosition(cursorOffset)
-        val cursorLineIdxHover = hoverPos.line  // Phase A
-        val densityBulb = androidx.compose.ui.platform.LocalDensity.current
-                val vScrollDpHover = with(densityBulb) { vScrollValue.toDp() }.value
-                val lineHeightDpHover = with(densityBulb) { (fontSize * EditorMetrics.LINE_HEIGHT_MULTIPLIER).sp.toDp() }.value  // Phase E
-                val hoverTopDp = (((cursorLineIdxHover + 1) * lineHeightDpHover) - vScrollDpHover).coerceAtLeast(0f)
-        if (hoverTopDp > 0) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = GUTTER_WIDTH.dp, top = hoverTopDp.dp)
-                    .widthIn(max = 300.dp)
-                    .zIndex(12f)
-                    .background(colors.background, RoundedCornerShape(6.dp))
-                    .border(1.dp, colors.function.copy(alpha = 0.6f), RoundedCornerShape(6.dp)),
-            ) {
-                Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clickable { hoverExpanded = !hoverExpanded },
-                            contentAlignment = androidx.compose.ui.Alignment.Center,
-                        ) {
-                            Text(
-                                text = if (hoverExpanded) "▾" else "▸",
-                                color = Color(0xFF888888),
-                                fontSize = 11.sp,
-                            )
-                        }
                         Spacer(Modifier.width(2.dp))
                         Box(
                             modifier = Modifier
@@ -5830,12 +5992,30 @@ private fun androidx.compose.foundation.layout.BoxScope.HoverPopup(
                             .padding(horizontal = 4.dp)
                             .then(if (hoverExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(hoverScrollState) else Modifier)
                     ) {
+                        // R3-3: Markdown-aware hover popup rendering
+                        val hoverAnnotated = remember(lspHoverContent) {
+                            val raw = lspHoverContent ?: ""
+                            val builder = androidx.compose.ui.text.AnnotatedString.Builder(raw)
+                            // Inline code: `code` — monospace + dark bg
+                            Regex("`[^`\n]+`").findAll(raw).forEach { match ->
+                                builder.addStyle(
+                                    androidx.compose.ui.text.SpanStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        background = Color(0xFF2D2D2D),
+                                        fontSize = 10.sp,
+                                    ),
+                                    match.range.first,
+                                    match.range.last + 1,
+                                )
+                            }
+                            builder.toAnnotatedString()
+                        }
                         Text(
-                            text = lspHoverContent ?: "",
+                            text = hoverAnnotated,
                             color = Color(0xFFCCCCCC),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
-                            maxLines = if (hoverExpanded) Int.MAX_VALUE else 2,
+                            maxLines = if (hoverExpanded) Int.MAX_VALUE else 4,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
@@ -5966,4 +6146,48 @@ private fun isInsideStringValue(text: String, cursor: Int): Boolean {
         i++
     }
     return inString || inChar
+
+/**
+ * R3-5: Find the sticky scroll symbol from LSP document symbols.
+ * Returns the name of the deepest symbol whose range contains the current top line.
+ * Uses LSP range (0-based lines) to determine which scope contains the visible top.
+ */
+private fun findStickySymbolFromLSP(
+    symbols: org.json.JSONArray,
+    topLineIdx: Int,
+    rawLines: List<String>,
+): String? {
+    var bestSymbol: String? = null
+    var bestDepth = -1
+
+    fun searchSymbol(sym: org.json.JSONObject, depth: Int) {
+        val name = sym.optString("name", "")
+        if (name.isBlank()) return
+        val range = sym.optJSONObject("range") ?: return
+        val startLine = range.optJSONObject("start")?.optInt("line", 0) ?: 0
+        val endLine = range.optJSONObject("end")?.optInt("line", 0) ?: Int.MAX_VALUE
+        // Check if topLineIdx is within this symbol's range
+        if (topLineIdx in startLine..endLine) {
+            // This symbol contains the top line — prefer deeper (more specific) symbols
+            if (depth > bestDepth) {
+                bestDepth = depth
+                bestSymbol = name
+            }
+            // Search children for more specific containing symbols
+            val children = sym.optJSONArray("children")
+            if (children != null) {
+                for (i in 0 until children.length()) {
+                    val child = children.optJSONObject(i) ?: continue
+                    searchSymbol(child, depth + 1)
+                }
+            }
+        }
+    }
+
+    for (i in 0 until symbols.length()) {
+        val sym = symbols.optJSONObject(i) ?: continue
+        searchSymbol(sym, 0)
+    }
+    return bestSymbol
+}
 }

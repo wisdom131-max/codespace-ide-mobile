@@ -1,6 +1,7 @@
 package com.codespace.ide.editor
 
 import androidx.compose.runtime.Immutable
+import java.text.BreakIterator
 import androidx.compose.runtime.Stable
 
 /**
@@ -90,6 +91,8 @@ class VisualLineMapper(
 
     // Reverse index: maps document line → first visual line index (for forward lookup)
     private val docToVisualIndex: IntArray
+    // R3-1: Per-line wrap break positions (character offsets within each line)
+    private val wrapBreakMap: MutableMap<Int, List<IntArray>> = mutableMapOf()
 
     init {
         // Build line starts array
@@ -125,14 +128,15 @@ class VisualLineMapper(
             } else {
                 d2v[docLine] = vLines.size
                 if (wrapWidthPx > 0 && charWidthPx > 0) {
-                    // Word-wrap: split this line into segments
+                    // R3-1: Word-wrap with BreakIterator — break at word boundaries, not mid-word
                     val lineText = getLineText(docLine)
-                    val visualWidth = computeVisualWidth(lineText)
-                    val segments = if (visualWidth <= wrapWidthPx) 1
-                    else maxOf(1, ((visualWidth / wrapWidthPx).toInt() + 1))
+                    val breakPositions = computeWordWrapBreaks(lineText)
+                    val segments = breakPositions.size
                     for (seg in 0 until segments) {
                         vLines.add(VisualLine.DocLine(docLine, seg, segments))
                     }
+                    // Store break positions for this line
+                    wrapBreakMap[docLine] = breakPositions
                 } else {
                     // No wrap: one visual line per document line
                     vLines.add(VisualLine.DocLine(docLine, 0, 1))
@@ -194,12 +198,17 @@ class VisualLineMapper(
                 if (vl.totalSegments <= 1) {
                     getLineText(vl.docLine)
                 } else {
-                    // Wrapped line: return the segment text
-                    val fullLine = getLineText(vl.docLine)
-                    val charsPerSegment = (wrapWidthPx / charWidthPx).toInt().coerceAtLeast(1)
-                    val start = vl.wrapSegment * charsPerSegment
-                    val end = minOf(start + charsPerSegment, fullLine.length)
-                    if (start < fullLine.length) fullLine.substring(start, end) else ""
+                    // R3-1: Use BreakIterator-based break positions
+                    val breaks = wrapBreakMap[vl.docLine]
+                    if (breaks != null && vl.wrapSegment < breaks.size) {
+                        val seg = breaks[vl.wrapSegment]
+                        val fullLine = getLineText(vl.docLine)
+                        val start = seg[0]
+                        val end = if (vl.wrapSegment + 1 < breaks.size) breaks[vl.wrapSegment + 1][0] else fullLine.length
+                        fullLine.substring(start, end).trimEnd()
+                    } else {
+                        getLineText(vl.docLine)
+                    }
                 }
             }
         }
@@ -294,5 +303,45 @@ class VisualLineMapper(
             }
         }
         return l
+    }
+
+    /**
+     * R3-1: Compute word-wrap break positions using BreakIterator.
+     * Returns a list of [start, end] character offsets for each visual segment.
+     * Breaks at word boundaries (not mid-word) when possible.
+     * Falls back to character-level breaking if a single word exceeds the wrap width.
+     */
+    private fun computeWordWrapBreaks(lineText: String): List<IntArray> {
+        if (lineText.isEmpty()) return listOf(intArrayOf(0, 0))
+        val maxChars = (wrapWidthPx / charWidthPx).toInt().coerceAtLeast(1)
+        val visualWidth = computeVisualWidth(lineText)
+        if (visualWidth <= wrapWidthPx) return listOf(intArrayOf(0, lineText.length))
+
+        val breaks = mutableListOf<IntArray>()
+        val iterator = BreakIterator.getLineInstance()
+        iterator.setText(lineText)
+
+        var segStart = 0
+        while (segStart < lineText.length) {
+            // Target end position based on available width
+            val targetEnd = minOf(segStart + maxChars, lineText.length)
+            if (targetEnd >= lineText.length) {
+                breaks.add(intArrayOf(segStart, lineText.length))
+                break
+            }
+            // Find the word boundary at or before targetEnd
+            var boundary = iterator.following(targetEnd)
+            if (boundary == BreakIterator.DONE || boundary <= segStart) {
+                // No word boundary found — break at character level
+                boundary = targetEnd
+            } else if (boundary > targetEnd + maxChars / 2) {
+                // Word boundary is too far past target — break at previous boundary
+                val prev = iterator.previous()
+                boundary = if (prev > segStart) prev else targetEnd
+            }
+            breaks.add(intArrayOf(segStart, boundary))
+            segStart = boundary
+        }
+        return breaks
     }
 }
