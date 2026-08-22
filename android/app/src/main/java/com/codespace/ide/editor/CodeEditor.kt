@@ -845,28 +845,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
 
 
-    // Phase F: Decoration store — centralized decoration layers with independent invalidation
-    val decorationStore = remember { DecorationStore() }
-
-    // Phase G: Visual line mapper — replaces the displayLines list for proper
-    // folding + word-wrap support. displayLines above is kept for backward compat;
-    // the mapper provides canonical visual-line <-> document-line mapping.
-    val visualLineMapper = remember(value.text, foldedLineIndices, wordWrap, fontSize) {
-        val charWidthPx = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
-        VisualLineMapper(
-            text = value.text,
-            foldedLineIndices = foldedLineIndices,
-            wrapWidthPx = 0f,
-            charWidthPx = charWidthPx,
-            tabSize = EditorMetrics.DEFAULT_TAB_SIZE,
-        )
-    }
-
-    // Phase F: Sync decoration store layers with current state
-    LaunchedEffect(semanticTokens) { decorationStore.updateSemanticTokens(semanticTokens) }
-    LaunchedEffect(bookmarkedLines) { decorationStore.updateBookmarks(bookmarkedLines) }
-    LaunchedEffect(foldedRanges) { decorationStore.updateFoldedLines(foldedRanges) }
-    LaunchedEffect(lspFoldingRanges) { decorationStore.updateFoldRanges(lspFoldingRanges.map { FoldRange(it.first, it.second) }) }
+    // Phase F+G: Extracted to EditorDecorations.kt to stay under 64KB bytecode limit
+    val (decorationStore, visualLineMapper) = rememberDecorationSetup(
+        text = value.text,
+        foldedLineIndices = foldedLineIndices,
+        wordWrap = wordWrap,
+        fontSize = fontSize,
+        semanticTokens = semanticTokens,
+        bookmarkedLines = bookmarkedLines,
+        foldedRanges = foldedRanges,
+        lspFoldingRanges = lspFoldingRanges,
+    )
     val _lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
     // C-5 FIX: Cached newline offsets for O(log n) line lookup instead of O(n) take().count()
