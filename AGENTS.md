@@ -17194,3 +17194,27 @@ Four fixes to the Command Palette:
 9. Project Wizard 3-step flow — shipped #2421
 10. Source Control dotfile/metadata filtering — shipped #2421
 11. BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
+
+---
+
+### CHANGE LOG — 2026-08-22 14:35 WAT
+- **Agent:** Base44 Superagent (Claude)
+- **Commit:** 04640746 | CI Build #2427 (in_progress)
+- **Tags:** [UI] [EDITOR] [GO-TO-LINE] [FIND-REPLACE] [MULTI-CURSOR]
+
+#### What was fixed:
+1. **Test 6 — Find & Replace dot issue:** Mobile keyboard auto-correct was altering `console.` to `console.` + trailing space/period. Added `keyboardOptions = KeyboardOptions(autoCorrect = false)` to both find and replace BasicTextFields. Also trim trailing whitespace from find query to prevent invisible chars from breaking match results.
+2. **Test 7 — Go to Line highlight not visible:** Three root causes found and fixed:
+   - (a) **Conditional `remember()` Compose violation** — the old blink code called `remember()` inside an `if (isBlinking)` block, which is illegal in Compose and caused the highlight to never render. Replaced with a top-level `blinkTick` state + `LaunchedEffect(highlightBlinkStart)` that ticks every 150ms.
+   - (b) **Alpha too faint** — old highlight used static `alpha = 0.15f` (barely visible gold on dark bg). New code blinks between 0.45 and 0.10 alpha every 600ms for 6 seconds total.
+   - (c) **Scroll not clamped** — `animateScrollTo` was not clamped to `vScroll.maxValue`, causing scroll to fail on long files. Added `.coerceAtMost(vScroll.maxValue)`.
+3. **Test 8 — Multi-cursor double-tap not working:** Manual 500ms double-tap detection was unreliable on mobile (timing too tight). Replaced with Compose `detectTapGestures`'s built-in `onDoubleTap` parameter, which uses the system's native double-tap recognition.
+
+#### Files touched:
+- `CodeEditor.kt`
+
+#### Next on roadmap:
+- Install build #2427 on device after CI passes
+- Re-test Tests 6, 7, 8 (Go to Line highlight, Find & Replace dot, Multi-cursor double-tap)
+- Test 12 (Terminal auto-refresh) — feature is in #2422, cannot test on current build
+- Continue with remaining UI audit batches
