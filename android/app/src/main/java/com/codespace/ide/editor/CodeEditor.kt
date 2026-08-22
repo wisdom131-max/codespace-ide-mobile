@@ -1687,9 +1687,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(lspDiagnosticErrors) {
         val localErrors = LintAnalyzer.analyze(value.text, language)
         lintErrors = (localErrors + lspDiagnosticErrors).distinctBy { Triple(it.start, it.end, it.message) }.sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))
-    // Phase F: Sync lintErrors to decoration store (declared here because lintErrors is above)
-    LaunchedEffect(lintErrors) { decorationStore.updateDiagnostics(lintErrors) }
     }
+    // Phase F: Sync lintErrors to decoration store
+    LaunchedEffect(lintErrors) { decorationStore.updateDiagnostics(lintErrors) }
 
     // ── P2-11 Inlay hints state ─────────────────────────────────────────
     var inlayHints by remember { mutableStateOf<List<InlayHint>>(emptyList()) }
