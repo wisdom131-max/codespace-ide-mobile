@@ -47,6 +47,8 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -860,6 +862,7 @@ internal fun TerminalPane(
     onCommandConsumed: () -> Unit = {},
     externalState: TerminalState? = null,          // if provided, uses shared state
     projectId: String = "default",                 // fix #12: scopes session tracking/reattach
+    onFileSystemChanged: () -> Unit = {},          // notify explorer of fs changes
 ) {
     val context      = LocalContext.current
     val scope        = androidx.compose.runtime.rememberCoroutineScope()
@@ -998,7 +1001,19 @@ internal fun TerminalPane(
         tab?.client?.onTextChanged = {
             if (isActivityVisible) currentView.value?.post { currentView.value?.onScreenUpdated() }
         }
-        onDispose { tab?.client?.onTextChanged = null }
+        // Debounced file-system change notification: wait 1.5s after terminal output
+        // settles, then notify the explorer to re-scan. This catches `echo > file.txt`,
+        // `mkdir`, `touch`, `git checkout`, etc. without spamming on every keystroke.
+        var fsNotifyJob: kotlinx.coroutines.Job? = null
+        tab?.client?.onTextChanged = {
+            if (isActivityVisible) currentView.value?.post { currentView.value?.onScreenUpdated() }
+            fsNotifyJob?.cancel()
+            fsNotifyJob = scope.launch {
+                kotlinx.coroutines.delay(1500L)
+                onFileSystemChanged()
+            }
+        }
+        onDispose { tab?.client?.onTextChanged = null; fsNotifyJob?.cancel() }
     }
 
     fun renameTab(id: String, newName: String) {
@@ -2319,8 +2334,9 @@ internal fun TerminalPane(
 // • The pinned session is fully interactive (same PTY, real input/output)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-internal fun SplitTerminalPanel(sharedState: TerminalState) {
+internal fun SplitTerminalPanel(sharedState: TerminalState, onFileSystemChanged: () -> Unit = {}) {
     val context  = androidx.compose.ui.platform.LocalContext.current
+    val scope    = androidx.compose.runtime.rememberCoroutineScope()
     val prefs    = remember { context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE) }
     var terminalFontSize by remember { mutableStateOf(prefs.getInt("KEY_FONTSIZE", SimpleTerminalViewClient.DEFAULT_FONTSIZE).coerceIn(SimpleTerminalViewClient.MIN_FONTSIZE, SimpleTerminalViewClient.MAX_FONTSIZE)) }
     // Observe rotation / config changes
@@ -2438,8 +2454,14 @@ internal fun SplitTerminalPanel(sharedState: TerminalState) {
                         view.post { view.onScreenUpdated() }
                         if (view.mTermSession != mirrorTab.session) {
                             view.attachSession(mirrorTab.session)
+                            var fsJob: kotlinx.coroutines.Job? = null
                             mirrorTab.client.onTextChanged = {
                                 if (view.isShown) view.post { view.onScreenUpdated() }
+                                fsJob?.cancel()
+                                fsJob = scope.launch {
+                                    kotlinx.coroutines.delay(1500L)
+                                    onFileSystemChanged()
+                                }
                             }
                             view.requestFocus()
                         }

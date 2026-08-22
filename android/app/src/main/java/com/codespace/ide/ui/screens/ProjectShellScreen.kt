@@ -726,6 +726,8 @@ fun ProjectShellScreen(
     // was the sole miss. key(projectId) forces a fresh TerminalState per project, matching the
     // now project-tagged session tracking in TerminalService. See AGENTS.md #12 for the writeup.
     val sharedTerminalState = androidx.compose.runtime.key(projectId) { rememberTerminalState(context) }
+    // Bumped when terminal produces output, so the Explorer re-scans the file tree.
+    var terminalActivityCounter by remember { mutableStateOf(0) }
     // Lifted up here (not inside PreviewPane) so switching to Terminal/Problems/etc. and back
     // to Preview doesn't reset the active sub-tab or the connected Browser/Remotion URL.
     val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()
@@ -1345,6 +1347,7 @@ fun ProjectShellScreen(
                         when (activePanel) {
                             SidePanel.EXPLORER -> ExplorerSidePanel(
                                 projectId = projectId,
+                                externalRefreshTrigger = terminalActivityCounter,
                                 onOpenFile = { path ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
@@ -3304,6 +3307,7 @@ private fun PssBottomPanelContent(
                 onCommandConsumed = onCommandConsumed,
                 externalState = sharedTerminalState,
                 projectId = projectId,
+                onFileSystemChanged = { terminalActivityCounter++ },
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
                 onJumpToSource = { filePath, line, col ->
@@ -3378,7 +3382,7 @@ private fun PssBottomPanelContent(
                 onPreviewPortChange(port)
                 onActiveBottomTabChange(BottomTab.PREVIEW)
             })
-            BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState)
+            BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState, onFileSystemChanged = { terminalActivityCounter++ })
             BottomTab.PREVIEW  -> PreviewPane(
                 activeFilePath = activeEditorTab ?: "",
                 initialPort = previewPort,  // P25-4: pass null (not 0) — 0 was triggering BROWSER mode on every cold open
@@ -4730,7 +4734,7 @@ private fun PssEditorColumn(
                         modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
                 }
                 HorizontalDivider(color = DividerColor)
-                TerminalPane(externalState = sharedTerminalState, projectId = projectId)
+                TerminalPane(externalState = sharedTerminalState, projectId = projectId, onFileSystemChanged = { terminalActivityCounter++ })
             }
         }
     }

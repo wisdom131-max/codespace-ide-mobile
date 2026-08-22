@@ -227,6 +227,9 @@ fun ExplorerSidePanel(
     triggerNewFolder: Any? = null,
     /** Theme-aware panel background for section headers (from ideColors). */
     panelBg: Color = Color(0xFF252526),
+    /** External refresh trigger: when this changes, the explorer re-scans the file tree.
+     *  Used by terminal to notify explorer of file system changes (e.g. after `echo > file.txt`). */
+    externalRefreshTrigger: Int = 0,
 ) {
     val context = LocalContext.current
     // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
@@ -346,6 +349,10 @@ fun ExplorerSidePanel(
     var showDelete    by remember { mutableStateOf(false) }
     var nameInput     by remember { mutableStateOf("") }
     var refresh       by remember { mutableStateOf(0) }
+    // External refresh (e.g. from terminal file system changes)
+    LaunchedEffect(externalRefreshTrigger) {
+        if (externalRefreshTrigger > 0) refresh++
+    }
     // Test 78 fix: When a file tab is closed, reveal the file in the workspace tree
     // by expanding all ancestor directories and scrolling to it. This ensures the
     // file is findable in the Explorer after its tab is removed from OPEN EDITORS.
