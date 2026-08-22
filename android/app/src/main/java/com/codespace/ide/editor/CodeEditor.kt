@@ -1958,6 +1958,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             Box(
                 modifier = (if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll))
             ) {
+                // R1-1: Pre-compute syntax highlighting on background thread for large files.
+                // Small files (<500 lines) use synchronous path. Staleness protection:
+                // precomputedForText tracks exactly which text was highlighted; if the
+                // user keeps typing during the 100ms debounce, the VisualTransformation
+                // will NOT apply the stale highlight (it checks precomputedForText == text.text).
+                var precomputedHighlight by remember { mutableStateOf<androidx.compose.ui.text.AnnotatedString?>(null) }
+                var precomputedForText by remember { mutableStateOf("") }
+                val textLineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
+                LaunchedEffect(value.text, language, colors) {
+                    if (textLineCount < 500) return@LaunchedEffect
+                    delay(100)
+                    val result = withContext(Dispatchers.Default) {
+                        SyntaxHighlighter.highlight(value.text, language, colors)
+                    }
+                    precomputedForText = value.text
+                    precomputedHighlight = result
+                }
                 BasicTextField(
                     value = value,
                     onValueChange = { newValue ->
@@ -2241,24 +2258,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     ),
                     // P-CURSOR: Animated cursor brush based on In-Project Settings > Text Editor > Cursor Blinking
                     cursorBrush = animatedCursorBrush(colors.cursor),
-                    // R1-1: Pre-compute syntax highlighting on background thread for large files.
-                    // Small files (<500 lines) use synchronous path. Staleness protection:
-                    // precomputedForText tracks exactly which text was highlighted; if the
-                    // user keeps typing during the 100ms debounce, the VisualTransformation
-                    // will NOT apply the stale highlight (it checks precomputedForText == text.text).
-                    var precomputedHighlight by remember { mutableStateOf<androidx.compose.ui.text.AnnotatedString?>(null) }
-                    var precomputedForText by remember { mutableStateOf("") }
-                    val textLineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
-                    LaunchedEffect(value.text, language, colors) {
-                        if (textLineCount < 500) return@LaunchedEffect
-                        delay(100)
-                        val result = withContext(Dispatchers.Default) {
-                            SyntaxHighlighter.highlight(value.text, language, colors)
-                        }
-                        precomputedForText = value.text
-                        precomputedHighlight = result
-                    }
-                    visualTransformation = remember(language, colors, lintErrors, foldedLineIndices, semanticTokens) {
+                    visualTransformation = remember(language, colors, lintErrors, foldedLineIndices, semanticTokens, precomputedHighlight, precomputedForText) {
                         SyntaxTransformation(
                             language = language,
                             colors = colors,
