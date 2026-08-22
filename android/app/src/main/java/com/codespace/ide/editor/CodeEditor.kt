@@ -693,12 +693,25 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
     var highlightTargetLine by remember { mutableStateOf(0) }
+    var highlightBlinkStart by remember { mutableStateOf(0L) }
+    var blinkTick by remember { mutableStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
+    // Blink animation: tick every 150ms while highlight is active
+    LaunchedEffect(highlightBlinkStart) {
+        if (highlightBlinkStart > 0) {
+            while (System.currentTimeMillis() - highlightBlinkStart < 6000) {
+                blinkTick++
+                kotlinx.coroutines.delay(150)
+            }
+        }
+    }
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
             val lineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
-            vScroll.animateScrollTo(((scrollToLine - 1) * lineHeightPx).toInt())
+            val scrollTarget = ((scrollToLine - 1) * lineHeightPx).toInt()
+            vScroll.animateScrollTo(scrollTarget.coerceAtMost(vScroll.maxValue))
             highlightTargetLine = scrollToLine
+            highlightBlinkStart = System.currentTimeMillis()
             // Test 33/40 fix: Also move the cursor to the target line so that
             // clicking an error or outline entry positions the cursor there,
             // not just scrolling to it.
@@ -723,8 +736,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
             // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
             coroutineScope.launch {
-                kotlinx.coroutines.delay(2500)
+                kotlinx.coroutines.delay(6000)
                 highlightTargetLine = 0
+                highlightBlinkStart = 0L
             }
         }
     }
@@ -2170,41 +2184,31 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .padding(end = 24.dp)
                         .focusRequester(focusRequester)
                         .pointerInput(Unit) {
-                            // Multi-cursor: manual double-tap detection (tap within 500ms = add cursor)
-                            var lastTapTimeMs = 0L
                             detectTapGestures(
-                                onTap = { offset ->
-                                    val now = System.currentTimeMillis()
-                                    val isDoubleTap = now - lastTapTimeMs < 500
-                                    if (isDoubleTap) {
-                                        // Double tap — add/remove extra cursor at this position
-                                        textLayoutResult?.let { layout ->
-                                            val charOffset = layout.getOffsetForPosition(offset)
-                                            // BUG-FIX (Test 51): never add a duplicate cursor exactly
-                                            // where the real/primary cursor already is — that caused
-                                            // whatever gets typed to be inserted twice on that line.
-                                            extraCursors = if (charOffset == value.selection.start) {
-                                                extraCursors
-                                            } else if (charOffset in extraCursors)
-                                                extraCursors.filter { it != charOffset }
-                                            else
-                                                (extraCursors + charOffset).distinct().sorted()
-                                        }
-                                    } else {
-                                        // Single tap — place cursor at tap position + request focus
-                                        textLayoutResult?.let { layout ->
-                                            val pos = layout.getOffsetForPosition(offset)
-                                            value = value.copy(selection = TextRange(pos))
-                                            // Phase X-5: Tag as user cursor move + fire onCursorChange for hover
-                                            editorEvent = EditorEvent.UserCursorMove(pos)
-                                            val cLine = value.text.take(pos).count { it == '\n' }
-                                            val cLineStart = value.text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)) + 1
-                                            val cCol = pos - cLineStart
-                                            onCursorChange?.invoke(cLine, cCol)
-                                        }
-                                        try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
+                                onDoubleTap = { offset ->
+                                    // Double tap — add/remove extra cursor at this position
+                                    textLayoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(offset)
+                                        extraCursors = if (charOffset == value.selection.start) {
+                                            extraCursors
+                                        } else if (charOffset in extraCursors)
+                                            extraCursors.filter { it != charOffset }
+                                        else
+                                            (extraCursors + charOffset).distinct().sorted()
                                     }
-                                    lastTapTimeMs = now
+                                },
+                                onTap = { offset ->
+                                    // Single tap — place cursor at tap position + request focus
+                                    textLayoutResult?.let { layout ->
+                                        val pos = layout.getOffsetForPosition(offset)
+                                        value = value.copy(selection = TextRange(pos))
+                                        editorEvent = EditorEvent.UserCursorMove(pos)
+                                        val cLine = value.text.take(pos).count { it == '\n' }
+                                        val cLineStart = value.text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)) + 1
+                                        val cCol = pos - cLineStart
+                                        onCursorChange?.invoke(cLine, cCol)
+                                    }
+                                    try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                                 },
                                 onLongPress = { offset ->
                                     // P38-FIX: Long-press selects the word and opens LSP menu
@@ -2466,19 +2470,28 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .zIndex(2.5f),
             )
         }
-        // PROBLEMS-TAB FIX: Gold highlight on the problem target line (fades after 2.5s)
+        // BLINKING highlight on the target line — blinks for 6s then fades
         if (highlightTargetLine > 0) {
-            val lineHeightPxHl = lineHeightDp.value  // P50-FIX: density-corrected line height
+            // Read blinkTick to trigger recomposition for blink animation
+            @Suppress("UNUSED_VARIABLE") val tick = blinkTick
+            val lineHeightPxHl = lineHeightDp.value
             val gutterDpHl = GUTTER_WIDTH
             val scrollOffsetPxHl = vScrollDp
             val topDpHl = ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
+            // Compute blink alpha from elapsed time
+            val blinkElapsed = if (highlightBlinkStart > 0) (System.currentTimeMillis() - highlightBlinkStart) / 1000f else 0f
+            val isBlinking = blinkElapsed < 6f
+            val phase = (blinkElapsed * 1000f) % 600f / 600f
+            val blinkAlpha = if (isBlinking) {
+                if (phase < 0.5f) 0.45f - (phase * 2f * 0.35f) else 0.10f + ((phase - 0.5f) * 2f * 0.35f)
+            } else 0.12f
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
                     .offset(x = gutterDpHl.dp, y = topDpHl.dp)
                     .height(lineHeightDp)
-                    .background(Color(0xFFFFD700).copy(alpha = 0.15f))
+                    .background(Color(0xFFFFD700).copy(alpha = blinkAlpha))
                     .zIndex(3.5f),
             )
             // Thin gold bar on the left edge of the highlighted line
@@ -2488,7 +2501,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .offset(x = gutterDpHl.dp, y = topDpHl.dp)
                     .width(3.dp)
                     .height(lineHeightDp)
-                    .background(Color(0xFFFFD700))
+                    .background(Color(0xFFFFD700).copy(alpha = if (isBlinking) 0.9f else 0.4f))
                     .zIndex(4.5f),
             )
         }
@@ -4263,12 +4276,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 // Phase V-FIX (Test 53): Highlight the target line so the user can
                 // SEE where they jumped — same mechanism as scrollToLine.
                 highlightTargetLine = line
+                highlightBlinkStart = System.currentTimeMillis()
                 coroutineScope.launch {
                     val localLineHeightPx = with(scrollDensity) { (fontSize * 1.25f).sp.toPx() }
-                    vScroll.animateScrollTo(((line - 1) * localLineHeightPx).toInt())
-                    // Auto-clear highlight after 2.5s (same as scrollToLine)
-                    kotlinx.coroutines.delay(2500)
+                    val scrollTarget = ((line - 1) * localLineHeightPx).toInt()
+                    val maxScroll = vScroll.maxValue
+                    vScroll.animateScrollTo(scrollTarget.coerceAtMost(maxScroll))
+                    // Auto-clear highlight after 6s (blink animation)
+                    kotlinx.coroutines.delay(6000)
                     highlightTargetLine = 0
+                    highlightBlinkStart = 0L
                 }
                 goToLineInput = ""
                 onGoToLineClose()
@@ -5610,13 +5627,14 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                 }
                 androidx.compose.foundation.text.BasicTextField(
                     value = findQuery,
-                    onValueChange = { onFindQueryChange(it) },
+                    onValueChange = { onFindQueryChange(it.trimEnd()) },
                     singleLine = true,
                     textStyle = TextStyle(
                         color = Color(0xFFCCCCCC),
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
+                    keyboardOptions = KeyboardOptions(autoCorrect = false),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFFAEAFAD)),
                     decorationBox = { inner ->
                         Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -5742,6 +5760,7 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
+                    keyboardOptions = KeyboardOptions(autoCorrect = false),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFFAEAFAD)),
                     decorationBox = { inner ->
                         Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
