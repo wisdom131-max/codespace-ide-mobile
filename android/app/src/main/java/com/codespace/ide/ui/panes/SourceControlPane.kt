@@ -3,6 +3,7 @@ package com.codespace.ide.ui.panes
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -122,6 +123,7 @@ fun SourceControlPane(projectId: String) {
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
     var isRepo by remember { mutableStateOf<Boolean?>(null) }
     var showHidden by remember { mutableStateOf(false) }
+    var discardTarget by remember { mutableStateOf<ScmFileStatus?>(null) }
 
     // ── Load status ──
     fun refresh() {
@@ -425,6 +427,7 @@ fun SourceControlPane(projectId: String) {
             FileChangesList(
                 repoState = repoState,
                 showHidden = showHidden,
+                onDiscard = { file -> discardTarget = file },
                 onResolveConflict = { file ->
                     if (operation !is ScmOperation.Idle) {
                         snackbarMsg = "Wait for current operation to finish"
@@ -472,6 +475,40 @@ fun SourceControlPane(projectId: String) {
                         operation = ScmOperation.Idle
                         if (ok) refresh()
                     }
+                },
+            )
+        }
+
+        // ── Discard confirmation dialog ──
+        discardTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { discardTarget = null },
+                shape = RoundedCornerShape(12.dp),
+                title = { Text(if (target.isUntracked) "Delete file?" else "Discard changes?") },
+                text = {
+                    Text(
+                        if (target.isUntracked)
+                            "\"${target.path}\" is untracked (never committed). This will permanently delete it from disk."
+                        else
+                            "This will discard all uncommitted changes to \"${target.path}\" and revert it to the last commit. This cannot be undone."
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val file = target
+                            discardTarget = null
+                            scope.launch {
+                                val (ok, msg) = scmState.discardFile(hostPath, file.path, file.isUntracked)
+                                snackbarMsg = msg
+                                if (ok) refresh()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    ) { Text(if (target.isUntracked) "Delete" else "Discard") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { discardTarget = null }) { Text("Cancel") }
                 },
             )
         }
@@ -873,6 +910,7 @@ private fun CommitInputSection(
 private fun FileChangesList(
     repoState: ScmRepoState?,
     showHidden: Boolean,
+    onDiscard: (ScmFileStatus) -> Unit,
     onResolveConflict: (String) -> Unit,
     onShowDiff: (String) -> Unit,
     onStage: (String) -> Unit,
@@ -970,10 +1008,18 @@ private fun FileChangesList(
                     onStage = { onStage(file.path) },
                     onUnstage = {},
                     onShowDiff = { onShowDiff(file.path) },
+                    onDiscard = { onDiscard(file) },
                 )
             }
             visibleUntracked.forEach { file ->
-                FileRow(file, isStaged = false, isConflicted = false, onStage = { onStage(file.path) }, onUnstage = {})
+                FileRow(
+                    file = file,
+                    isStaged = false,
+                    isConflicted = false,
+                    onStage = { onStage(file.path) },
+                    onUnstage = {},
+                    onDiscard = { onDiscard(file) },
+                )
             }
         }
 
@@ -1011,6 +1057,7 @@ private fun SectionHeader(title: String, color: Color) {
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun FileRow(
     file: ScmFileStatus,
     isStaged: Boolean,
@@ -1018,16 +1065,22 @@ private fun FileRow(
     onStage: () -> Unit,
     onUnstage: () -> Unit,
     onShowDiff: (() -> Unit)? = null,
+    onDiscard: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isStaged) StagedBg else Color.Transparent)
-            .clickable {
-                if (isConflicted) onStage()  // resolve conflict
-                else if (isStaged) onUnstage()
-                else onStage()
-            }
+            .combinedClickable(
+                onClick = {
+                    if (isConflicted) onStage()  // resolve conflict
+                    else if (isStaged) onUnstage()
+                    else onStage()
+                },
+                onLongClick = if (!isStaged && !isConflicted && onDiscard != null) {
+                    { onDiscard() }
+                } else null,
+            )
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

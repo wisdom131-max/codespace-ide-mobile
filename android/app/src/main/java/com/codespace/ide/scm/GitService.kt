@@ -41,6 +41,23 @@ class GitService(private val context: Context) {
         return if (result is GitResult.Ok) result.output.trim().ifBlank { null } else null
     }
 
+    /**
+     * Resolve the git repo root for [workdir], falling back to [workdir] itself
+     * if the root can't be determined.
+     *
+     * CRITICAL: `git status --porcelain` always reports paths relative to the
+     * repo ROOT, regardless of which subdirectory it's invoked from. But
+     * pathspec-based commands (add, reset, diff -- <path>, blame <path>) resolve
+     * their path arguments relative to the CURRENT WORKING DIRECTORY, not the
+     * repo root. If the app's "current project" is a subdirectory of the actual
+     * git repo (e.g. multiple projects share one outer .git), running
+     * `git add "ProjectName/file.txt"` from inside "ProjectName" fails with
+     * "did not match any files" because git looks for "ProjectName/ProjectName/file.txt".
+     * Any function that takes a repo-root-relative path (as reported by status())
+     * MUST execute from the repo root, not the raw project workdir.
+     */
+    private fun rootFor(workdir: String): String = repoRoot(workdir) ?: workdir
+
     // ── Status ───────────────────────────────────────────────────────────
 
     /**
@@ -132,7 +149,7 @@ class GitService(private val context: Context) {
         return GitCommandExecutor.run(
             context,
             listOf("add") + files,
-            workdir,
+            rootFor(workdir),
             timeoutSeconds = 30,
         )
     }
@@ -151,10 +168,25 @@ class GitService(private val context: Context) {
         if (files.isEmpty()) return GitResult.Ok("")
         return GitCommandExecutor.run(
             context,
-            listOf("reset", "HEAD") + files,
-            workdir,
+            listOf("reset", "HEAD", "--") + files,
+            rootFor(workdir),
             timeoutSeconds = 30,
         )
+    }
+
+    /**
+     * Discard changes to a file — reverts it to its last committed state.
+     * - Tracked file with modifications: `git checkout -- <path>` (restores HEAD version).
+     * - Untracked file (never committed): deletes it from disk via `git clean -f -- <path>`.
+     * Runs from the repo root (see [rootFor]) since [path] is repo-root-relative.
+     */
+    fun discardFile(path: String, isUntracked: Boolean, workdir: String): GitResult {
+        val root = rootFor(workdir)
+        return if (isUntracked) {
+            GitCommandExecutor.run(context, listOf("clean", "-f", "--", path), root, timeoutSeconds = 30)
+        } else {
+            GitCommandExecutor.run(context, listOf("checkout", "--", path), root, timeoutSeconds = 30)
+        }
     }
 
     // ── Commit ───────────────────────────────────────────────────────────
@@ -306,7 +338,10 @@ class GitService(private val context: Context) {
             listOf("log", format, "-$maxCount")
         }
 
-        val result = GitCommandExecutor.run(context, baseArgs, workdir, timeoutSeconds = 30)
+        // If a specific file path is given, it's repo-root-relative (from status()),
+        // so this must run from the repo root — same pathspec-mismatch fix as add/unstage.
+        val execDir = if (file != null) rootFor(workdir) else workdir
+        val result = GitCommandExecutor.run(context, baseArgs, execDir, timeoutSeconds = 30)
         if (result !is GitResult.Ok) return emptyList()
 
         return result.lines.mapNotNull { line ->
@@ -332,7 +367,7 @@ class GitService(private val context: Context) {
     fun diffFile(path: String, workdir: String): ScmFileDiff {
         val result = GitCommandExecutor.run(context, listOf(
             "diff", "--unified=3", "--", path
-        ), workdir, timeoutSeconds = 30)
+        ), rootFor(workdir), timeoutSeconds = 30)
 
         if (result !is GitResult.Ok) {
             return ScmFileDiff(path = path, hunks = emptyList())
@@ -347,7 +382,7 @@ class GitService(private val context: Context) {
     fun diffStaged(path: String, workdir: String): ScmFileDiff {
         val result = GitCommandExecutor.run(context, listOf(
             "diff", "--cached", "--unified=3", "--", path
-        ), workdir, timeoutSeconds = 30)
+        ), rootFor(workdir), timeoutSeconds = 30)
 
         if (result !is GitResult.Ok) {
             return ScmFileDiff(path = path, hunks = emptyList())
@@ -417,7 +452,7 @@ class GitService(private val context: Context) {
      * Same as stageFiles but named for clarity in conflict resolution flow.
      */
     fun resolveConflict(filePath: String, workdir: String): GitResult {
-        return GitCommandExecutor.run(context, listOf("add", filePath), workdir)
+        return GitCommandExecutor.run(context, listOf("add", "--", filePath), rootFor(workdir))
     }
 
     // ── Tags ──────────────────────────────────────────────────────────────
@@ -663,8 +698,8 @@ class GitService(private val context: Context) {
     fun blame(filePath: String, workdir: String): Map<Int, BlameLine> {
         val result = GitCommandExecutor.run(
             context,
-            listOf("blame", "--line-porcelain", filePath),
-            workdir,
+            listOf("blame", "--line-porcelain", "--", filePath),
+            rootFor(workdir),
             timeoutSeconds = 30
         )
         if (result !is GitResult.Ok) return emptyMap()

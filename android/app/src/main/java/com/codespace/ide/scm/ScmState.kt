@@ -76,6 +76,19 @@ class ScmState(private val context: Context) {
         }
 
     /**
+     * Discard changes to a file (revert to last commit, or delete if untracked).
+     * Destructive — caller should confirm with the user before calling this.
+     */
+    suspend fun discardFile(hostPath: String, path: String, isUntracked: Boolean): Pair<Boolean, String> =
+        withContext(Dispatchers.IO) {
+            val workdir = resolveWorkdir(hostPath) ?: return@withContext false to "Path not reachable"
+            when (val r = service.discardFile(path, isUntracked, workdir)) {
+                is GitResult.Ok -> true to "Discarded changes to $path"
+                is GitResult.Err -> false to r.error.message
+            }
+        }
+
+    /**
      * Commit staged changes.
      */
     suspend fun commit(hostPath: String, message: String): Pair<Boolean, String> =
