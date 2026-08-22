@@ -844,6 +844,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         list
     }
 
+
+    // Phase F: Decoration store — centralized decoration layers with independent invalidation
+    val decorationStore = remember { DecorationStore() }
+
+    // Phase G: Visual line mapper — replaces the displayLines list for proper
+    // folding + word-wrap support. displayLines above is kept for backward compat;
+    // the mapper provides canonical visual-line <-> document-line mapping.
+    val visualLineMapper = remember(value.text, foldedLineIndices, wordWrap, fontSize) {
+        val charWidthPx = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
+        VisualLineMapper(
+            text = value.text,
+            foldedLineIndices = foldedLineIndices,
+            wrapWidthPx = 0f,
+            charWidthPx = charWidthPx,
+            tabSize = EditorMetrics.DEFAULT_TAB_SIZE,
+        )
+    }
+
+    // Phase F: Sync decoration store layers with current state
+    LaunchedEffect(lintErrors) { decorationStore.updateDiagnostics(lintErrors) }
+    LaunchedEffect(semanticTokens) { decorationStore.updateSemanticTokens(semanticTokens) }
+    LaunchedEffect(bookmarkedLines) { decorationStore.updateBookmarks(bookmarkedLines) }
+    LaunchedEffect(foldedRanges) { decorationStore.updateFoldedLines(foldedRanges) }
+    LaunchedEffect(lspFoldingRanges) { decorationStore.updateFoldRanges(lspFoldingRanges.map { FoldRange(it.first, it.second) }) }
     val _lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
     // C-5 FIX: Cached newline offsets for O(log n) line lookup instead of O(n) take().count()
@@ -1780,16 +1804,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val viewportHeightPx = vScroll.viewportSize.toFloat().coerceAtLeast(1f)
             val visibleCount = ((viewportHeightPx / with(scrollDensity) { lineHeightDp.toPx() }).toInt() + 8) // +8 buffer for smooth scroll
             val topVisibleIdx = (vScroll.value / with(scrollDensity) { lineHeightDp.toPx() }).toInt().coerceAtLeast(0)
-            val bottomVisibleIdx = (topVisibleIdx + visibleCount).coerceAtMost(displayLines.size)
+            val bottomVisibleIdx = (topVisibleIdx + visibleCount).coerceAtMost(visualLineMapper.visualLineCount)
             val topSpacerLines = topVisibleIdx.coerceAtLeast(0)
-            val bottomSpacerLines = (displayLines.size - bottomVisibleIdx).coerceAtLeast(0)
+            val bottomSpacerLines = (visualLineMapper.visualLineCount - bottomVisibleIdx).coerceAtLeast(0)
 
             Column(modifier = Modifier.padding(horizontal = 4.dp).width(72.dp)) {
                 // P50-VIRT: Spacer for lines above viewport — avoids composing off-screen rows
                 if (topSpacerLines > 0) {
                     Spacer(Modifier.height((topSpacerLines * lineHeightDp.value).dp))
                 }
-                displayLines.subList(topVisibleIdx.coerceAtMost(displayLines.size), bottomVisibleIdx).forEachIndexed { vi, (lineNum, _) ->
+                displayLines.subList(topVisibleIdx.coerceAtMost(visualLineMapper.visualLineCount), bottomVisibleIdx).forEachIndexed { vi, (lineNum, _) ->
                     if (lineNum == -1) {
                         // Visual placeholder row in gutter
                         Row(
@@ -2401,7 +2425,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val lineHeightDpInlay = lineHeightDp  // use the shared density-corrected value
             val gutterWidthDp = if (blameData != null) 72.dp + 120.dp else 72.dp
             inlayHints.forEach { hint ->
-                val displayIdx = displayLines.indexOfFirst { it.first == hint.line }
+                val displayIdx = visualLineMapper.docToVisualLine(hint.line)
                 if (displayIdx < 0) return@forEach
                 val yOffset = lineHeightDpInlay * displayIdx - vScrollDp.dp
                 val hintColor = when (hint.kind) {
@@ -2533,7 +2557,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 )
                 val swatchTopDp = startLine * lineHeightPxCS - vScrollDp
                 val swatchLeftDp = gutterDpCS + (startChar * charWidthPxCS) - 4f
-                if (swatchTopDp >= 0 && swatchTopDp < (displayLines.size + 5) * lineHeightPxCS) {
+                if (swatchTopDp >= 0 && swatchTopDp < (visualLineMapper.visualLineCount + 5) * lineHeightPxCS) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -2558,7 +2582,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             vScrollDp = vScrollDp,
             fontSize = fontSize,
             GUTTER_WIDTH = GUTTER_WIDTH,
-            displayLineCount = displayLines.size,
+            displayLineCount = visualLineMapper.visualLineCount,
         )
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (toggles.showCodeLens && lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
@@ -4345,7 +4369,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             showCompletions = showCompletions,
             fontSize = fontSize,
             vScrollValue = vScroll.value,
-            displayLinesSize = displayLines.size,
+            displayLinesSize = visualLineMapper.visualLineCount,
             showLightbulbMenu = showLightbulbMenu,
             onShowLightbulbMenu = { showLightbulbMenu = it },
         )
