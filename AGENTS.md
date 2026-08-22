@@ -134,14 +134,14 @@ no AI agent can claim they did not see the rules.
 
 | | |
 |-|-|
-| Latest commit | 43b1cd37 — Fix 6 LSP/editor bugs from batch 2 testing |
+| Latest commit | 71113c8f — Fix git pathspec mismatch + add Discard changes (long-press) |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Device Test Round (Tests 1-130)** | **LOGGED 2026-08-16** — see DEVICE TEST RESULTS + KNOWN CRASHES sections directly below this table. ~85 pass, ~30 fail/broken, ~8 partial, 4 feature requests, 8 blocked (git config), 1 skip. 6 crash root causes identified from device logs (multi-cursor CursorOverlay crash, LSP executor RejectedExecutionException x4, Notification Drawer duplicate-key + semantics crash, AndroidView reattach crash, Kotlin LSP OOM). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last confirmed green | #2349 (37200067) ✅. #2346 (191f2b6c) ✅ — confirmed via GitHub API. |
+| Last confirmed green | #2422 (71113c8f) ✅ — git pathspec fix + discard feature. |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -17256,3 +17256,21 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 3. Added error code+message logging in JsonRpcClient.handleMessage so future LSP error responses show full error code + message in logs.
 **Files touched:** LspManager.kt, JsonRpcClient.kt
 **Next on roadmap:** (1) Verify build #2413 green on device — test Kotlin LSP initializes. (2) Device retest of batch 2 LSP fixes (tests 7-14). (3) Batch 3 LSP tests (15-28): auto-completion, signature help, code actions, hover, inlay hints, code lens, document links, diagnostics, format, rename. (4) Editor Bug 1: Horizontal scroll stuck after zoom. (5) Editor Bug 2: Diagnostic overlap. (6) TypeScript 7 as default LSP with vtsls. (7) API_BASE_URL update to Render. (8) Codicon activity bar icons.
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: Use [BUILD-FIX], [LSP], etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+### [2026-08-22 12:40 WAT] — AI Agent: Claude (Superagent), Commit: 71113c8f, CI Build: #2422 (GREEN ✅)
+**Tags:** [GIT] [BUILD-FIX] [UI]
+**What was fixed:**
+1. Git pathspec mismatch (root cause of staging failures): `git status --porcelain` reports paths relative to repo ROOT, but `git add`/`git reset`/`git diff`/`git blame` resolve pathspecs relative to CWD. When the app's active project dir is a subdirectory of the actual git repo, `git add "ProjectName/file.js"` fails with "pathspec did not match any files" because git looks for `ProjectName/ProjectName/file.js`. Fix: Added `rootFor(workdir)` helper that resolves the true repo root via `git rev-parse --show-toplevel`, then used it as the working directory for all pathspec-based commands (add, unstage, diffFile, diffStaged, blame, log-for-file, resolveConflict). Also added `--` pathspec separator to reset, resolveConflict, and blame for safety.
+2. Missing Discard changes feature: Long-press on an unstaged or untracked file in Source Control now shows a confirmation dialog. For tracked files: `git checkout -- <path>` (revert to last commit). For untracked files: `git clean -f -- <path>` (delete from disk). Dialog uses RoundedCornerShape(12.dp) and error-colored confirm button per UI rules.
+3. Unstage fix: Added `--` separator to `git reset HEAD -- <files>` to prevent ambiguous argument errors on repos with no commits yet (where HEAD doesn't exist as a branch name).
+**Files touched:** GitService.kt, ScmState.kt, SourceControlPane.kt
+**Next on roadmap:** (1) Batch 3 device tests — staging/unstaging/discard with the pathspec fix. (2) Full project wizard with template scaffolding (folder creation for Android/Flutter/React/etc). (3) Editor Bug 1: Horizontal scroll stuck after zoom. (4) Editor Bug 2: Diagnostic overlap. (5) TypeScript 7 as default LSP with vtsls. (6) API_BASE_URL update to Render. (7) Codicon activity bar icons. (8) Device retest of remaining 43-55 tests.
