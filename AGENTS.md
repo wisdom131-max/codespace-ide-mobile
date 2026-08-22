@@ -130,17 +130,17 @@ no AI agent can claim they did not see the rules.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-22 19:30 WAT)
+## CURRENT STATE (2026-08-22 21:55 WAT)
 
 | | |
 |-|-|
-| Latest commit | dfb4b081 — Phase F+G: DecorationStore + VisualLineMapper + lintErrors forward-reference fix |
+| Latest commit | 1403c059 — R1+R2: Background syntax highlighting, undo/redo, auto-close improvements |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last confirmed green | ee5c4a7a ✅ — MinimapSection extraction build fix (Phase F+G included) |
+| Last confirmed green | 1403c059 ✅ — R1+R2: Background syntax, undo/redo, auto-close (#2448) |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -999,3 +999,47 @@ NO background integrity validators — these do NOT exist yet.
 - TypeScript 7 as default LSP with vtsls
 - API_BASE_URL update to Render
 - Codicon activity bar icons verification
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build, what fixed, files touched, next on roadmap
+3. TAGS: Use [BUILD-FIX], [LSP], [PERF], [EDITOR], etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert) minimum
+
+### [2026-08-22 21:55 WAT] — AI Agent: Claude Opus 4.6 (Superagent)
+
+**Commit:** 1403c059 | **CI Build:** #2448 ✅ GREEN
+
+**Tags:** [PERF] [EDITOR] [BUILD-FIX]
+
+**What was fixed:**
+1. **R1-1: Background syntax highlighting** — Large files (>500 lines) now compute syntax highlighting on Dispatchers.Default with 100ms debounce. Staleness protection via precomputedForText equality check. Small files use synchronous path unchanged.
+2. **R1-3: shiftOnEdit()** — DecorationStore.shiftOnEdit() shifts lint/diagnostic/highlight positions when text changes, preventing stale decorations after edits.
+3. **R2-1: UndoRedoManager** — New diff-based undo/redo stack (UndoRedoManager.kt) with insert/delete/replace actions + batch coalescing (100ms window). Records diffs, not full snapshots — memory efficient.
+4. **R2-2: Undo/redo shortcuts** — Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts wired into onPreviewKeyEvent.
+5. **R2-3: Skip-over** — Typing a closer char (e.g. `)`) when the next char is already that closer just moves cursor forward instead of inserting a duplicate.
+6. **R2-4: No auto-close in strings** — Brackets (`()[]{}`) no longer auto-close inside string literals. Quotes still auto-close everywhere.
+7. **R2-5: Surround selection** — Typing a bracket/quote with text selected wraps the selection instead of replacing it.
+8. **Build fix:** Extra closing brace in DecorationStore.kt caused compilation error (#2446, #2447 failed). Replaced 0x27.toChar() with standard Kotlin char literal `'\' '`.
+
+**Files touched:**
+- `android/app/src/main/java/com/codespace/ide/editor/undo/UndoRedoManager.kt` (NEW)
+- `android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt` (R1-1 precomputed highlight, R1-3 shiftOnEdit call, R2-2 diff recording + shortcuts, R2-3/4/5 auto-close improvements, isInsideStringValue helper)
+- `android/app/src/main/java/com/codespace/ide/editor/SyntaxTransformation.kt` (precomputedHighlight/precomputedForText params, applyLintAndSemantic method, caching)
+- `android/app/src/main/java/com/codespace/ide/editor/DecorationStore.kt` (extra brace fix)
+
+**Next on roadmap:**
+- ✅ R1+R2 shipped (#2448 GREEN)
+- Phase B: Position auto-shifting — partially done (R1-3 shiftOnEdit), verify coverage
+- Phase C: Thread PositionMapper through to EditorOverlays.kt
+- Phase D: Replace lineFromOffset() callers with positionMapper.offsetToLine()
+- Editor Bug 1: Horizontal scroll stuck after zoom
+- Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+- TypeScript 7 as default LSP with vtsls
+- API_BASE_URL update to Render (may still point to old Railway)
+- Codicon activity bar icons — waiting for Wisdom's screenshots
+- Complete UI testing batches (Batch 5-6 pending)
+- BLOCKED: Google OAuth Client Secret (need GCP), Flow Mode (no mobile data)
