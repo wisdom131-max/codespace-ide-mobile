@@ -27,6 +27,10 @@ class SyntaxTransformation(
     private val foldedLineIndices: Set<Int> = emptySet(),
     /** P41-W: LSP semantic token ranges overlaid on top of regex highlighting */
     private val semanticTokens: List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange> = emptyList(),
+    // R1-1: Pre-computed highlight from background thread. Tracks the exact text
+    // it was computed from to prevent applying stale highlights to newer text.
+    private val precomputedHighlight: AnnotatedString? = null,
+    private val precomputedForText: String? = null,
 ) : VisualTransformation {
 
     // P50-PERF: Cache the last transformed result so we don't rebuild the AnnotatedString
@@ -42,6 +46,15 @@ class SyntaxTransformation(
         }
         // ── Step 1: build folding map ─────────────────────────────────────
         if (foldedLineIndices.isEmpty()) {
+            // R1-1: Use pre-computed highlight if it was computed for the EXACT current text.
+            // This prevents wrong-color flicker when user types during the 100ms debounce.
+            if (precomputedHighlight != null && precomputedForText == text.text) {
+                val result = applyLintAndSemantic(precomputedHighlight, text.text, OffsetMapping.Identity)
+                cachedText = text.text
+                cachedResult = result
+                return result
+            }
+            // Fallback: synchronous highlighting (small files or precomputed not ready yet)
             val result = applyHighlightAndLint(text, OffsetMapping.Identity)
             cachedText = text.text
             cachedResult = result
@@ -163,6 +176,48 @@ class SyntaxTransformation(
                             background = Color(0x22FF0000),
                         ),
                         tStart, tEnd,
+                    )
+                }
+            }
+        }
+        return TransformedText(withLint, offsetMapping)
+    }
+
+    // R1-1: Apply lint squiggles + semantic tokens to a pre-computed AnnotatedString.
+    // Used when precomputedHighlight is available and matches the current text.
+    private fun applyLintAndSemantic(
+        highlight: AnnotatedString,
+        textStr: String,
+        offsetMapping: OffsetMapping,
+    ): TransformedText {
+        val withSemantic = if (semanticTokens.isNotEmpty()) {
+            buildAnnotatedString {
+                append(highlight)
+                for (tok in semanticTokens) {
+                    val s = tok.startOffset.coerceIn(0, textStr.length)
+                    val e = tok.endOffset.coerceIn(s, textStr.length)
+                    if (s < e) {
+                        addStyle(SpanStyle(color = tok.color), s, e)
+                    }
+                }
+            }
+        } else highlight
+
+        if (lintErrors.isEmpty()) return TransformedText(withSemantic, offsetMapping)
+
+        val withLint = buildAnnotatedString {
+            append(withSemantic)
+            for (err in lintErrors) {
+                val start = err.start.coerceIn(0, textStr.length)
+                val end = err.end.coerceIn(start, textStr.length)
+                if (start < end) {
+                    addStyle(
+                        SpanStyle(
+                            color = Color(0xFFFF4444),
+                            textDecoration = TextDecoration.Underline,
+                            background = Color(0x22FF0000),
+                        ),
+                        start, end,
                     )
                 }
             }

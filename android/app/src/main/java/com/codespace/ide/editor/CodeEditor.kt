@@ -144,6 +144,7 @@ import com.codespace.ide.ui.LocalEditorColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.File
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.WindowInsets
@@ -1638,6 +1639,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var caseSensitive by remember { mutableStateOf(false) }
     var wholeWord by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
+
+    // R2-1/R2-2: Undo/redo manager — diff-based undo/redo stack
+    val undoRedoManager = remember { com.codespace.ide.editor.undo.UndoRedoManager() }
+    var undoRedoInProgress by remember { mutableStateOf(false) }
     // Sync external find bar (top white bar) to internal find state — must come AFTER the
     // vars above are declared (Kotlin local properties must be declared before use).
     LaunchedEffect(externalFindQuery) {
@@ -1961,6 +1966,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val insertedChars = newValue.text.length - value.text.length
                         if (newValue.text != value.text) {
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
+                            // R2-2: Record diff for undo/redo (skip when undo/redo is causing the change)
+                            if (!undoRedoInProgress) {
+                                val oStart: Int
+                                val oEnd: Int
+                                val nEnd: Int
+                                var cs = 0
+                                val minLen = minOf(value.text.length, newValue.text.length)
+                                while (cs < minLen && value.text[cs] == newValue.text[cs]) cs++
+                                var eo = value.text.length
+                                var en = newValue.text.length
+                                while (eo > cs && en > cs && value.text[eo - 1] == newValue.text[en - 1]) { eo--; en-- }
+                                val oldDeleted = value.text.substring(cs, eo)
+                                val newInserted = newValue.text.substring(cs, en)
+                                if (oldDeleted.isNotEmpty() && newInserted.isNotEmpty()) {
+                                    undoRedoManager.recordReplace(cs, oldDeleted, newInserted)
+                                } else if (newInserted.isNotEmpty()) {
+                                    undoRedoManager.recordInsert(cs, newInserted)
+                                } else if (oldDeleted.isNotEmpty()) {
+                                    undoRedoManager.recordDelete(cs, oldDeleted)
+                                }
+                            }
                         } else if (newValue.selection != value.selection) {
                             editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
                         }
@@ -1992,8 +2018,37 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             } else false
                         } else false
                         if (!commitCharMatch) {
+                        // R2-5: Surround selection — when text is selected and user types
+                        // a bracket/quote, wrap the selection instead of replacing it.
+                        if (newValue.text.length == value.text.length + 1 &&
+                            value.selection.start != value.selection.end) {
+                            val typedChar = newValue.text.getOrNull(newValue.selection.end - 1)
+                            val pair = when (typedChar) {
+                                '(' -> '(' to ')'
+                                '[' -> '[' to ']'
+                                '{' -> '{' to '}'
+                                '"' -> '"' to '"'
+                                0x27.toChar() -> 0x27.toChar() to 0x27.toChar()
+                                else -> null to null
+                            }
+                            val openChar = pair.first
+                            val closeChar = pair.second
+                            if (openChar != null && closeChar != null) {
+                                val selStart = value.selection.start
+                                val selEnd = value.selection.end
+                                val selectedText = value.text.substring(selStart, selEnd)
+                                val before = value.text.substring(0, selStart)
+                                val after = value.text.substring(selEnd)
+                                val wrappedText = before + openChar + selectedText + closeChar + after
+                                updatedValue = TextFieldValue(
+                                    text = wrappedText,
+                                    selection = TextRange(selStart + 1, selStart + 1 + selectedText.length)
+                                )
+                            }
+                        }
                         // 1. Auto-close brackets & quotes
-                        if (newValue.text.length == value.text.length + 1) {
+                        if (newValue.text.length == value.text.length + 1 &&
+                            updatedValue === newValue) {
                             val cursor = newValue.selection.end
                             if (cursor > 0 && cursor <= newValue.text.length) {
                                 val insertedChar = newValue.text[cursor - 1]
@@ -2002,16 +2057,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     '[' -> ']'
                                     '{' -> '}'
                                     '"' -> '"'
-                                    '\'' -> '\''
+                                    0x27.toChar() -> 0x27.toChar()
                                     else -> null
                                 }
                                 if (closer != null) {
-                                    val leftText = newValue.text.substring(0, cursor)
-                                    val rightText = newValue.text.substring(cursor)
-                                    updatedValue = TextFieldValue(
-                                        text = leftText + closer + rightText,
-                                        selection = androidx.compose.ui.text.TextRange(cursor)
-                                    )
+                                    // R2-3: Skip-over if the next char is already the closer
+                                    if (cursor < newValue.text.length && newValue.text[cursor] == closer) {
+                                        updatedValue = TextFieldValue(
+                                            text = newValue.text,
+                                            selection = androidx.compose.ui.text.TextRange(cursor + 1)
+                                        )
+                                    } else {
+                                        // R2-4: Don't auto-close brackets inside strings
+                                        // (quotes are always allowed to close strings)
+                                        // Known limitation: does not account for comments (# or //)
+                                        val inString = isInsideStringValue(newValue.text, cursor)
+                                        if (!inString || insertedChar == '"' || insertedChar == 0x27.toChar()) {
+                                            val leftText = newValue.text.substring(0, cursor)
+                                            val rightText = newValue.text.substring(cursor)
+                                            updatedValue = TextFieldValue(
+                                                text = leftText + closer + rightText,
+                                                selection = androidx.compose.ui.text.TextRange(cursor)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2148,6 +2217,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 showSnippetChoices = snippetSession?.activeStop()?.choices?.isNotEmpty() == true
                             }
                         }
+                        // R1-3: Shift decoration positions to prevent stale diagnostics/highlights
+                        if (value.text != updatedValue.text) {
+                            decorationStore.shiftOnEdit(value.text, updatedValue.text)
+                        }
                         value = updatedValue
                         onContentChange(updatedValue.text)
                         // P22-G: Report cursor position for LSP hover
@@ -2168,8 +2241,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     ),
                     // P-CURSOR: Animated cursor brush based on In-Project Settings > Text Editor > Cursor Blinking
                     cursorBrush = animatedCursorBrush(colors.cursor),
+                    // R1-1: Pre-compute syntax highlighting on background thread for large files.
+                    // Small files (<500 lines) use synchronous path. Staleness protection:
+                    // precomputedForText tracks exactly which text was highlighted; if the
+                    // user keeps typing during the 100ms debounce, the VisualTransformation
+                    // will NOT apply the stale highlight (it checks precomputedForText == text.text).
+                    var precomputedHighlight by remember { mutableStateOf<androidx.compose.ui.text.AnnotatedString?>(null) }
+                    var precomputedForText by remember { mutableStateOf("") }
+                    val textLineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
+                    LaunchedEffect(value.text, language, colors) {
+                        if (textLineCount < 500) return@LaunchedEffect
+                        delay(100)
+                        val result = withContext(Dispatchers.Default) {
+                            SyntaxHighlighter.highlight(value.text, language, colors)
+                        }
+                        precomputedForText = value.text
+                        precomputedHighlight = result
+                    }
                     visualTransformation = remember(language, colors, lintErrors, foldedLineIndices, semanticTokens) {
-                        SyntaxTransformation(language, colors, lintErrors, foldedLineIndices, semanticTokens)
+                        SyntaxTransformation(
+                            language = language,
+                            colors = colors,
+                            lintErrors = lintErrors,
+                            foldedLineIndices = foldedLineIndices,
+                            semanticTokens = semanticTokens,
+                            precomputedHighlight = precomputedHighlight,
+                            precomputedForText = precomputedForText,
+                        )
                     },
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
@@ -2364,6 +2462,36 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     Key.DirectionDown -> {
                                         val max = activeSignature!!.allSignatures.size - 1
                                         overloadIndex = (overloadIndex + 1).coerceAtMost(max)
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            } else if (event.type == KeyEventType.KeyDown &&
+                                       (event.nativeKeyEvent.isCtrlPressed || event.nativeKeyEvent.isMetaPressed)) {
+                                // R2-2: Undo/redo keyboard shortcuts
+                                when {
+                                    event.key == Key.Z && !event.nativeKeyEvent.isShiftPressed -> {
+                                        if (undoRedoManager.canUndo()) {
+                                            undoRedoInProgress = true
+                                            val result = undoRedoManager.undo(value.text)
+                                            if (result != null) {
+                                                value = TextFieldValue(text = result.first, selection = TextRange(result.second))
+                                                onContentChange(result.first)
+                                            }
+                                            undoRedoInProgress = false
+                                        }
+                                        true
+                                    }
+                                    (event.key == Key.Z && event.nativeKeyEvent.isShiftPressed) || event.key == Key.Y -> {
+                                        if (undoRedoManager.canRedo()) {
+                                            undoRedoInProgress = true
+                                            val result = undoRedoManager.redo(value.text)
+                                            if (result != null) {
+                                                value = TextFieldValue(text = result.first, selection = TextRange(result.second))
+                                                onContentChange(result.first)
+                                            }
+                                            undoRedoInProgress = false
+                                        }
                                         true
                                     }
                                     else -> false
@@ -5802,4 +5930,40 @@ private fun animatedCursorBrush(baseColor: Color): Brush {
             androidx.compose.ui.graphics.SolidColor(baseColor.copy(alpha = alpha))
         }
     }
+}
+
+/**
+ * R2-4: Heuristic check for whether cursor is inside a string literal.
+ * Used to suppress auto-close brackets inside strings.
+ *
+ * Known limitation: Does not account for comments (e.g., `#` or `//` before a
+ * quote would misread it as being inside a string). This is acceptable as a
+ * first pass — auto-close inside comments is harmless (the closer is inserted
+ * but rarely causes issues in comment text).
+ */
+private fun isInsideStringValue(text: String, cursor: Int): Boolean {
+    var i = 0
+    var inString = false
+    var inChar = false
+    var stringChar = '"'
+    while (i < cursor && i < text.length) {
+        val c = text[i]
+        if (c == '\\' && i + 1 < text.length) {
+            i += 2
+            continue
+        }
+        val isDouble = c == '"'
+        val isSingle = c == 0x27.toChar()
+        if (!inString && !inChar && (isDouble || isSingle)) {
+            inString = isDouble
+            inChar = isSingle
+            stringChar = c
+        } else if (inString && c == stringChar) {
+            inString = false
+        } else if (inChar && c == stringChar) {
+            inChar = false
+        }
+        i++
+    }
+    return inString || inChar
 }

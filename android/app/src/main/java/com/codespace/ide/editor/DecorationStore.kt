@@ -187,6 +187,43 @@ class DecorationStore {
         _cursor = _cursor.update(_cursor.data)
         _inlayHints = _inlayHints.update(_inlayHints.data)
         _foldRanges = _foldRanges.update(_foldRanges.data)
+
+    /**
+     * R1-3: Shift offset-based decoration positions when text changes.
+     * Prevents stale diagnostics and selection highlights after typing.
+     * InlayHint is line-based (not offset) so it is NOT shifted here —
+     * it will be refreshed by the next LSP inlay hint request.
+     */
+    fun shiftOnEdit(oldText: String, newText: String) {
+        if (oldText == newText) return
+        var changeStart = 0
+        val minLen = minOf(oldText.length, newText.length)
+        while (changeStart < minLen && oldText[changeStart] == newText[changeStart]) changeStart++
+        val delta = newText.length - oldText.length
+        if (delta == 0) return
+
+        if (_diagnostics.data.isNotEmpty()) {
+            _diagnostics = _diagnostics.update(
+                _diagnostics.data.mapNotNull { err ->
+                    val ns = if (err.start >= changeStart) err.start + delta else err.start
+                    val ne = if (err.end >= changeStart) err.end + delta else err.end
+                    if (ns < 0 || ne < 0 || ns > newText.length || ne > newText.length) null
+                    else LintError(ns, ne, err.message, err.code, err.severity)
+                }
+            )
+        }
+
+        if (_selectionHighlights.data.isNotEmpty()) {
+            _selectionHighlights = _selectionHighlights.update(
+                _selectionHighlights.data.mapNotNull { r ->
+                    val ns = if (r.start >= changeStart) r.start + delta else r.start
+                    val ne = if (r.end >= changeStart) r.end + delta else r.end
+                    if (ns < 0 || ne < 0 || ns > newText.length || ne > newText.length) null
+                    else HighlightRange(ns, ne, r.kind)
+                }
+            )
+        }
+    }
     }
 }
 
