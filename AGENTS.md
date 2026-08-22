@@ -134,7 +134,7 @@ no AI agent can claim they did not see the rules.
 
 | | |
 |-|-|
-| Latest commit | 55248a1e — Terminal→Explorer auto-refresh (debounced fs watcher) |
+| Latest commit | 04640746 — Go to Line highlight blink + Find/Replace autoCorrect + Multi-cursor onDoubleTap |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
@@ -586,7 +586,7 @@ KSP preprocessing caught this before kotlinc. Fixed in commit 0111924526f3.
 - Provides `agent` CLI binary at `/usr/local/bin/agent`
 - Shell functions: `agent_read`, `agent_write`, `agent_ls`, `agent_search`, `agent_run`, `agent_git`, `agent_ask`, `agent_session_save`
 - Configures `AGENT_API_URL` and `AGENT_TOKEN` env vars
-- **Build #1007 fix**: L120 triple-quoted to avoid Kotlin escape crash
+- **Build #2427 fix**: L120 triple-quoted to avoid Kotlin escape crash
 
 #### Terminal features
 - Color scheme picker (Dark, Light, Solarized, Dracula, Nord, Monokai, etc.)
@@ -1022,7 +1022,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped HOVER_DOCS (60+ keywords), rich snippets, sticky scroll, P2-1 Rename Symbol. Fixed #1028 (raw newlines) and #1035 (unescaped double-quote in Text string). |
 | 2026-07-13 | Added Future Feature Evaluation Policy. Added Phase 4 Background Safe Startup & Recovery directive (do not build until Phase 3 done). Audited existing systems: crash logger, BackupManager, AppOutputLog, WorkManager all present. |
 | 2026-07-13 | Shipped P2-2 Find & Replace — bottom bar with search, replace, prev/next arrows, regex toggle, replace-one, replace-all, match counter. Fixed missing FindReplace import (#1039 GREEN). |
-| 2026-07-14 | Shipped P2-4 Go to Definition — long-press now shows context sheet with two actions: "Go to Def" (scans current file for decl keywords across 6 languages, scrolls to match, multi-result list if ambiguous) and "Rename Symbol". Build #1064 failed (AlertDialog key= param not valid here — removed in #1066). P2-5 also fixed same session. Fixed blocking SSH bug (SshManagerSheet.kt:66 missing launch import) breaking builds #1070 and #1071. |
+| 2026-07-14 | Shipped P2-4 Go to Definition — long-press now shows context sheet with two actions: "Go to Def" (scans current file for decl keywords across 6 languages, scrolls to match, multi-result list if ambiguous) and "Rename Symbol". Build #2427 failed (AlertDialog key= param not valid here — removed in #1066). P2-5 also fixed same session. Fixed blocking SSH bug (SshManagerSheet.kt:66 missing launch import) breaking builds #1070 and #1071. |
 | 2026-07-13 | Shipped P2-6 Git diff gutter — new `GitDiffAnalyzer.kt` (LCS diff, capped at 2 000 lines). Gutter bar: green=added, yellow=modified, red ▶ triangle=deleted lines. Replaced old heuristic isDirty/isAdded in CodeEditor.kt. |
 | 2026-07-13 | Shipped P2-7 Code Folding — SyntaxTransformation now accepts foldedLineIndices, collapses folded blocks into ··· with correct OffsetMapping so cursor positions stay valid. BasicTextField finally shows the folded view (was showing full text before). |
 | 2026-07-13 | Shipped Workspace Memory System — expanded `SessionStateStore` (cursor offsets, scroll positions, pinned tabs, split path, terminal state, per-project isolation, restore toggle, clearAll). `EditorPane` now accepts `projectId`+`sessionStateStore`, saves/restores per-project session including cursors, scroll lines, pinned+split tabs. `SettingsScreen` has new "Workspace Memory" section (restore toggle + clear button). One-time legacy `editor_session` migration included. |
@@ -1031,7 +1031,7 @@ Status as of 2026-07-13:
 | 2026-07-13 | Shipped P2-10 Jump back/forward history — `NavEntry(path, line)` back/fwd stacks, ← → toolbar buttons, push on Explorer open / Search jump / tab click. |
 | 2026-07-14 | Phase 3 Explorer audit complete — outline jump-to-line, Paste conditional, Duplicate folder fix, Rename→tab sync, onOpenFileAtLine wired. |
 | 2026-07-14 | Phase 3 Source Control audit — all git ops verified real. Added inline expandable diff viewer (tap file to expand, green/red/blue unified diff). Fixed HexViewerDialog call site parameter mismatch. Fixed PDF: DPI-aware render resolution, clamped pan, zoom indicator + reset. |
-| 2026-07-13 | Shipped P2-12 Parameter hints / signature help — new `SignatureHelpAnalyzer.kt`, backward paren+comma scanner, floating popup 1 line above cursor with active param teal+bold, hides while autocomplete open. Build #1059 failed (missing `withStyle` import — extension fn needs explicit import even when `buildAnnotatedString` is imported). Fixed in #1060 (green). |
+| 2026-07-13 | Shipped P2-12 Parameter hints / signature help — new `SignatureHelpAnalyzer.kt`, backward paren+comma scanner, floating popup 1 line above cursor with active param teal+bold, hides while autocomplete open. Build #2427 failed (missing `withStyle` import — extension fn needs explicit import even when `buildAnnotatedString` is imported). Fixed in #1060 (green). |
 | 2026-07-13 | Shipped P2-11 Inlay Hints — new `InlayHintAnalyzer.kt`, regex-based (no AST), type/return/param label overlay in `CodeEditor.kt`, toolbar ⊕ toggle. Picked up mid-session after a prior AI ran out of tokens right after triggering build #1055 (it landed GREEN). Found and fixed a real bug left behind: `VAL_CHAR` regex had a missing `\\s` escape (`'.'s*$` instead of `'.'\\s*$`) so it could never match, AND it was never referenced in the type-hint `when` block at all — char literals (`val c = 'a'`) silently got no hint. Fixed both in #1056 (green). |
 
 ---
