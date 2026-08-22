@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 9015a332 |
-| CI build | 9015a332 (pending CI) |
+| Latest commit | daad9f09 |
+| CI build | daad9f09 (pending CI) |
 | Active phase | R3-B: Search Polish (done) -> R3-I next |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
@@ -95,3 +95,36 @@
 - R3-F: Bracket refactor + theme color slots (G1-G4)
 - R3-G: Rendering polish (H1-H4, optional)
 - R3-H: Minimap polish (F1-F2, optional)
+
+
+---
+
+### CHANGE LOG ENTRY — R3-I
+
+**[2026-08-22 23:20 WAT] — AI Agent: Claude Sonnet 4**
+
+**Commit:** ' + sha + ' | CI Build: pending
+
+**[RESTRUCTURE]** R3-I: CodeEditor.kt extraction — 5 composables moved to separate files
+
+**What was done:**
+- Extracted FindReplaceBar (+ preserveCaseReplace helper) to FindReplaceBar.kt (338 lines)
+- Extracted GotoLineBar to GotoLineBar.kt (138 lines)
+- Extracted GotoDefinitionDialog to GotoDefinitionDialog.kt (93 lines)
+- Extracted LightbulbIndicator to LightbulbIndicator.kt (52 lines)
+- Extracted GhostTextOverlay to GhostTextOverlay.kt (85 lines)
+- All extracted functions made public, same package, call sites unchanged
+- CodeEditor.kt: 6260 -> 5661 lines (599 lines extracted)
+
+**Files touched:**
+- CodeEditor.kt (modified)
+- FindReplaceBar.kt, GotoLineBar.kt, GotoDefinitionDialog.kt, LightbulbIndicator.kt, GhostTextOverlay.kt (NEW)
+
+**Next on roadmap:**
+- R3-C: Event system + completion polish
+- R3-D: Incremental syntax highlighting (O(affected lines))
+- R3-E: Multi-file workspace analysis
+- R3-F: DAP debugger integration
+- R3-G: Performance profiling + optimization
+- R3-H: Documentation + final integration testing
+- BottomPanels.kt extraction (deferred)
