@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | (pending push) |
+| Latest commit | 9df6044d |
 | CI build | (pending) |
 | Active phase | R3-A: LSP Cleanup + Quick Wins (implementing) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
@@ -44,7 +44,7 @@
 
 **Model:** Base44 Superagent (Claude)
 
-**Commit:** (pending)
+**Commit:** 9df6044d
 
 **[LSP] [EDITOR] [PERF]** R3-A — 7 items implemented:
 
