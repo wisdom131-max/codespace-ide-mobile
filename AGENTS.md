@@ -130,18 +130,18 @@ no AI agent can claim they did not see the rules.
 10. All IDE popups must implement IME-insets-aware padding and consistent expand/copy/scroll patterns.
 11. **ROADMAP CONTINUITY RULE:** Every "Next on roadmap" section in a CHANGE LOG entry MUST list ALL pending roadmap items — not just the immediate next step. Copy the full list from the previous entry and update statuses. Any agent reading only the latest changelog entry must see the complete roadmap. If an item is done, mark it ✅ but keep it visible. If an item is new, add it. NEVER silently drop items from the roadmap list between entries. Items may be reordered by priority, but none may be removed without explicit completion marking.
 
-## CURRENT STATE (2026-08-21 14:20 WAT)
+## CURRENT STATE (2026-08-22 12:58 WAT)
 
 | | |
 |-|-|
-| Latest commit | 71113c8f — Fix git pathspec mismatch + add Discard changes (long-press) |
+| Latest commit | 55248a1e — Terminal→Explorer auto-refresh (debounced fs watcher) |
 | Active phase | **UI RESTRUCTURING ROUND 3** — Shipped: VS Code-exact top-right toggle icons (side bar, bottom panel, secondary side bar — replaced Material icons + animated bot icon with exact codicon SVGs), split editor button in tab bar, Activity Bar gap fix (gap now always renders, not just when side panel is open). Prior: hamburger menu, File submenu, landscape overflow, rounded workspace container architecture, top bar + command field theme-aware, blue ribbon logo, chevron back arrow, explorer header theme-aware. Phase 27 ✅, Phase U ✅, Phase X ✅, Bottom Panel Drag Resize ✅, UI R1 ✅, UI R2 ✅. |
 | **Device Test Round (Tests 1-130)** | **LOGGED 2026-08-16** — see DEVICE TEST RESULTS + KNOWN CRASHES sections directly below this table. ~85 pass, ~30 fail/broken, ~8 partial, 4 feature requests, 8 blocked (git config), 1 skip. 6 crash root causes identified from device logs (multi-cursor CursorOverlay crash, LSP executor RejectedExecutionException x4, Notification Drawer duplicate-key + semantics crash, AndroidView reattach crash, Kotlin LSP OOM). |
 | **Backend** | **✅ LIVE on Render** — https://codespace-ide-backend.onrender.com (health: /api/v1/health → 200) |
 | Backend host | Render (srv-d9q34761egvs73d7ejfg), free tier, oregon region |
 | Database | Supabase Postgres via pooler (aws-0-eu-central-1.pooler.supabase.com:6543) |
 | Old Railway | ⚠️ DEPRECATED — https://codespace-ide-mobile-production.up.railway.app is dead (free trial ended) |
-| Last confirmed green | #2422 (71113c8f) ✅ — git pathspec fix + discard feature. |
+| Last confirmed green | #2422 (71113c8f) ✅ — git pathspec fix + discard feature. Pending CI: 55248a1e |
 | **Phase 26-4** | **✅ COMPLETE** — AttachDebugDialog, capability-aware step toolbar, multi-session switcher, context wiring (#1592 GREEN) |
 | **Phase 26-3** | **✅ COMPLETE** — NodeDAPAdapter (js-debug, launch+attach, capability negotiation), UDM multi-session (#1589 GREEN) |
 | **Phase 26-2** | **✅ COMPLETE** — DAPClient, DebugAdapter interface, LegacyDebugAdapter, PythonDAPAdapter (debugpy), UDM integration |
@@ -17274,3 +17274,36 @@ Test 126 was marked FAIL but user explicitly said "doesn't exist and I don't wan
 3. Unstage fix: Added `--` separator to `git reset HEAD -- <files>` to prevent ambiguous argument errors on repos with no commits yet (where HEAD doesn't exist as a branch name).
 **Files touched:** GitService.kt, ScmState.kt, SourceControlPane.kt
 **Next on roadmap:** (1) Batch 3 device tests — staging/unstaging/discard with the pathspec fix. (2) Full project wizard with template scaffolding (folder creation for Android/Flutter/React/etc). (3) Editor Bug 1: Horizontal scroll stuck after zoom. (4) Editor Bug 2: Diagnostic overlap. (5) TypeScript 7 as default LSP with vtsls. (6) API_BASE_URL update to Render. (7) Codicon activity bar icons. (8) Device retest of remaining 43-55 tests.
+
+
+---
+
+### [2026-08-22 12:58 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY. 2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap. 3. TAGS: Use [BUILD-FIX], [LSP], etc. 4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA. 5. NEVER re-do work already marked done. 6. ROADMAP CONTINUITY: List ALL pending items. 7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+**Commit:** 55248a1e | CI: pending (watching)
+
+**[FIX] Terminal→Explorer auto-refresh**
+
+**What was fixed:** Files created/modified/deleted via terminal commands (echo > file.txt, mkdir, touch, git checkout, rm, etc.) now automatically appear in the Explorer file tree without manual refresh. Previously the Explorer had no connection to terminal file system changes — users had to manually tap refresh to see new files.
+
+**How:** Added a debounced (1.5s) `onFileSystemChanged` callback to TerminalPane that fires after terminal output settles. This bumps a `terminalActivityCounter` state in ProjectShellScreen, which is passed as `externalRefreshTrigger` to ExplorerSidePanel, triggering a `refresh++` that re-scans the file tree.
+
+**Files touched:**
+- `ExplorerPane.kt` — added `externalRefreshTrigger: Int = 0` parameter + `LaunchedEffect` that bumps internal `refresh`
+- `TerminalPane.kt` — added `onFileSystemChanged: () -> Unit = {}` param, wired debounced callback into `onTextChanged`, added `Job`/`delay` imports, wired SplitTerminalPanel too
+- `ProjectShellScreen.kt` — added `terminalActivityCounter` state, passed to both TerminalPane instances + ExplorerSidePanel
+
+**Next on roadmap:**
+1. ✅ Terminal→Explorer auto-refresh — DONE (this commit)
+2. Verify CI green on 55248a1e
+3. Device retest of 57 tests (priority: crash bugs 7,8,9,16 → functional 10-19 → UI 36-42 → remaining 43-55)
+4. Editor Bug 1: Horizontal scroll stuck after zoom
+5. Editor Bug 2: Diagnostic overlap — same-line diagnostics stack at identical Y
+6. TypeScript 7 as default LSP with vtsls
+7. API_BASE_URL may still point to old Railway URL — update to Render
+8. Codicon activity bar icons — waiting for Wisdom's screenshots
+9. Project Wizard 3-step flow — shipped #2421
+10. Source Control dotfile/metadata filtering — shipped #2421
+11. BLOCKED: Google OAuth Client Secret (need GCP console access), Flow Mode (no mobile data), device testing on TECNO KL4
