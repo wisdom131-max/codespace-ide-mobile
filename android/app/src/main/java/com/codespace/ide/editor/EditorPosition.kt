@@ -41,6 +41,11 @@ data class EditorPosition(
  * The mapper caches newline offsets for O(log n) lookups and is rebuilt when
  * the text changes (via Compose remember or manual construction).
  *
+ * Phase B: Added shiftOnInsert / shiftOnDelete for cached-position adjustment.
+ * When text is edited, positions that were computed against the old text can
+ * be adjusted without a full re-computation — positions after the edit point
+ * shift by the delta, positions before stay put.
+ *
  * Inspired by sora-editor's CachedIndexer (io.github.rosemoe.sora.text.CachedIndexer),
  * which is the single path between offset and (line, column) in that editor.
  */
@@ -64,7 +69,8 @@ class PositionMapper(text: String) {
     /** Get the document line (0-based) for a character offset. O(log n). */
     fun offsetToLine(offset: Int): Int {
         val safeOffset = offset.coerceIn(0, textLength)
-        if (newlineOffsets.isEmpty() || safeOffset <= 0) return 0
+        if (newlineOffsets.isEmpty() || safeOffset == 0) return 0
+        if (safeOffset > newlineOffsets.last()) return newlineOffsets.size
         var lo = 0
         var hi = newlineOffsets.size - 1
         while (lo <= hi) {
@@ -158,5 +164,76 @@ class PositionMapper(text: String) {
         val safeOffset = offset.coerceIn(0, textLength)
         if (safeOffset == 0) return true
         return newlineOffsets.contains(safeOffset - 1)
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase B: Position auto-shifting on text edits
+    // -------------------------------------------------------------------------
+
+    /**
+     * Phase B: Shift an offset to account for text inserted at [insertPos].
+     *
+     * Offsets before the insertion point are unchanged.
+     * Offsets at or after the insertion point shift by [insertLength].
+     *
+     * Inspired by sora-editor's MappedSpans.adjustOnInsert() which shifts
+     * span positions when text is inserted.
+     */
+    fun shiftOnInsert(offset: Int, insertPos: Int, insertLength: Int): Int {
+        if (insertLength == 0) return offset
+        return if (offset >= insertPos) offset + insertLength else offset
+    }
+
+    /**
+     * Phase B: Shift an EditorPosition to account for text inserted at [insertPos].
+     */
+    fun shiftPositionOnInsert(pos: EditorPosition, insertPos: Int, insertLength: Int): EditorPosition {
+        val newOffset = shiftOnInsert(pos.offset, insertPos, insertLength)
+        return offsetToPosition(newOffset)
+    }
+
+    /**
+     * Phase B: Shift an offset to account for text deleted at [deletePos].
+     *
+     * Offsets before the deletion point are unchanged.
+     * Offsets inside the deleted range clamp to [deletePos].
+     * Offsets after the deleted range shift back by [deleteLength].
+     *
+     * Inspired by sora-editor's MappedSpans.adjustOnDelete().
+     */
+    fun shiftOnDelete(offset: Int, deletePos: Int, deleteLength: Int): Int {
+        if (deleteLength == 0) return offset
+        val deleteEnd = deletePos + deleteLength
+        return when {
+            offset <= deletePos -> offset
+            offset >= deleteEnd -> offset - deleteLength
+            else -> deletePos
+        }
+    }
+
+    /**
+     * Phase B: Shift an EditorPosition to account for text deleted at [deletePos].
+     */
+    fun shiftPositionOnDelete(pos: EditorPosition, deletePos: Int, deleteLength: Int): EditorPosition {
+        val newOffset = shiftOnDelete(pos.offset, deletePos, deleteLength)
+        return offsetToPosition(newOffset)
+    }
+
+    /**
+     * Phase B: Batch-shift a list of offsets for an insertion.
+     * Returns a new list with shifted offsets.
+     */
+    fun shiftOffsetsOnInsert(offsets: List<Int>, insertPos: Int, insertLength: Int): List<Int> {
+        if (insertLength == 0) return offsets
+        return offsets.map { shiftOnInsert(it, insertPos, insertLength) }
+    }
+
+    /**
+     * Phase B: Batch-shift a list of offsets for a deletion.
+     * Returns a new list with shifted offsets.
+     */
+    fun shiftOffsetsOnDelete(offsets: List<Int>, deletePos: Int, deleteLength: Int): List<Int> {
+        if (deleteLength == 0) return offsets
+        return offsets.map { shiftOnDelete(it, deletePos, deleteLength) }
     }
 }

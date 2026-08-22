@@ -78,22 +78,21 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
     GUTTER_WIDTH: Float,
     vScrollDp: Float,
     value: androidx.compose.ui.text.input.TextFieldValue,
-    lineFromOffset: (Int) -> Int,
+    positionMapper: PositionMapper,
     colors: EditorColors,
     textLayoutResult: androidx.compose.ui.text.TextLayoutResult? = null,
     vScrollPx: Int = 0,
 ) {
     if (extraCursors.isNotEmpty()) {
         val lineHeightPx = lineHeightDp.value
-        val charWidthPx  = fontSize * 0.6f
+        val charWidthPx  = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
         val gutterDp = GUTTER_WIDTH
         val scrollOffsetPx = vScrollDp
         extraCursors.forEach { off ->
             val clamped  = off.coerceIn(0, value.text.length)
-            val lineIdx  = lineFromOffset(clamped)
-            val lineStart = (value.text.lastIndexOf('\n', (clamped - 1).coerceAtLeast(0)) + 1)
-                                .coerceAtLeast(0)
-            val col      = (clamped - lineStart).coerceAtLeast(0)
+            val pos = positionMapper.offsetToPosition(clamped)
+            val lineIdx  = pos.line
+            val col      = pos.column
             // Use actual text layout position when available for accurate Y positioning
             val topDp = if (textLayoutResult != null && lineIdx < textLayoutResult.lineCount) {
                 (textLayoutResult.getLineTop(lineIdx) - vScrollPx) / androidx.compose.ui.platform.LocalDensity.current.density
@@ -142,19 +141,18 @@ internal fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
     GUTTER_WIDTH: Float,
     vScrollDp: Float,
     value: androidx.compose.ui.text.input.TextFieldValue,
-    lineFromOffset: (Int) -> Int,
+    positionMapper: PositionMapper,
 ) {
     if (findReplaceOpen && matches.isNotEmpty() && matches.size <= 200) {
         val lineHeightPxM = lineHeightDp.value
-        val charWidthPxM  = fontSize * 0.6f
+        val charWidthPxM  = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
         val gutterDpM = GUTTER_WIDTH
         val scrollOffsetPxM = vScrollDp
         matches.forEachIndexed { idx, range ->
             val matchStart = range.first
-            val lineIdx = lineFromOffset(matchStart)
-            val lineStart = value.text.lastIndexOf('\n', (matchStart - 1).coerceAtLeast(0))
-                .let { if (it < 0) 0 else it + 1 }
-            val col = matchStart - lineStart
+            val pos = positionMapper.offsetToPosition(matchStart)
+            val lineIdx = pos.line
+            val col = pos.column
             val matchLen = range.last - range.first + 1
             val topDpM = (lineIdx * lineHeightPxM - scrollOffsetPxM).coerceAtLeast(0f)
             val startDpM = gutterDpM + col * charWidthPxM

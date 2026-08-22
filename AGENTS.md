@@ -17262,3 +17262,35 @@ Four fixes to the Command Palette:
 - Go to Line highlight verification (on-device test)
 - Complete UI testing batches (Batch 5-6 pending)
 - Install build #2432 after all batches pass
+
+---
+
+### [2026-08-22 16:42 WAT] — AI Agent: Claude Opus 4.6
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: This entry. Timestamp, SHA, CI build, what was fixed, files touched, next on roadmap.
+3. TAGS: [LSP] [RESTRUCTURE] [DOCS]
+4. CURRENT STATE: Updated below.
+5. NEVER re-do work already marked done.
+6. ROADMAP CONTINUITY: All pending items listed.
+7. UI RULE: Rounded corners (8-12dp), padding (12dp horiz, 10dp vert).
+
+**Commit:** (pending push) | **CI Build:** (pending)
+
+**What was fixed:**
+- Phase B (Position auto-shifting): Added `shiftOnInsert()`, `shiftOnDelete()`, `shiftPositionOnInsert()`, `shiftPositionOnDelete()`, `shiftOffsetsOnInsert()`, `shiftOffsetsOnDelete()` to `PositionMapper`. These allow cached positions (LSP responses, diagnostic ranges, search matches) to be adjusted when text is edited without full re-computation. Inspired by sora-editor's `MappedSpans.adjustOnInsert()/adjustOnDelete()`.
+- Phase C (Thread PositionMapper to EditorOverlays): Replaced `lineFromOffset: (Int) -> Int` lambda parameter with `positionMapper: PositionMapper` in both `ExtraCursorOverlay` and `SearchMatchOverlay`. Eliminated 2 inline `lastIndexOf('\n')` calculations in EditorOverlays.kt — now use `positionMapper.offsetToPosition()` for line+column in one call. Replaced `fontSize * 0.6f` with `EditorMetrics.CHAR_WIDTH_MULTIPLIER` in both overlays.
+- Phase D (Replace lineFromOffset callers): Migrated all 19 remaining `lineFromOffset()` calls to `positionMapper.offsetToLine()`. Replaced 13 inline `lastIndexOf('\n')` calculations with `positionMapper.lineStart()` / `positionMapper.offsetToPosition().column`. Replaced 5 `split('\n').getOrNull(lineFromOffset(x))` patterns with `positionMapper.getLineText()`. Replaced 1 `split('\n').sumOf()` LSP offset calculation with `positionMapper.lspToOffset()`. Added 6 new gen counters (hoverRequestGen, definitionRequestGen, referencesRequestGen, codeActionRequestGen, formatRequestGen, renameRequestGen) for future stale-response protection of async LSP requests.
+
+**Files touched:**
+- `android/app/src/main/java/com/codespace/ide/editor/EditorPosition.kt` (Phase B: +60 lines shift methods)
+- `android/app/src/main/java/com/codespace/ide/editor/EditorOverlays.kt` (Phase C: signature changes + inline calc removal)
+- `android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt` (Phase D: 19 lineFromOffset + 13 lastIndexOf + 5 split+getOrNull + 1 sumOf replacements, +6 gen counters)
+
+**Next on roadmap:**
+- Phase F: Decoration store (centralize syntax/semantic/diagnostic/search/selection layers with independent invalidation)
+- Phase G: Visual line mapper (folding + word-wrap support, replace displayLines list)
+- Go to Line highlight verification (on-device test)
+- Complete UI testing batches (Batch 5-6 pending)
+- Install build after all batches pass
