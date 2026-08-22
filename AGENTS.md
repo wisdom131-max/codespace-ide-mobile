@@ -31,7 +31,7 @@
 |---|---|
 | Latest commit | 9df6044d |
 | CI build | (pending) |
-| Active phase | R3-A: LSP Cleanup + Quick Wins (implementing) |
+| Active phase | R3-B: Search Polish (done) -> R3-I next |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | ~6,170 (pre-R3-I extraction) |
@@ -63,6 +63,31 @@
 
 **Next on roadmap:**
 - R3-B: Search Polish (D3 cyclic nav, D4 auto-scroll, D1 preserve-case, D2 regex backrefs)
+- R3-I: CodeEditor.kt extraction (5 composables -> separate files)
+- R3-C: Event system + completion polish (C1 scroll event, C2 focus event, I1 loading indicator, I4 positioning modes)
+- R3-D: Incremental syntax highlighting (B1 per-line, B3 hash cache)
+- R3-E: LSP enhancements (A5 resolve, A4 inlay hints, E1 multi-line sticky)
+- R3-F: Bracket refactor + theme color slots (G1-G4)
+- R3-G: Rendering polish (H1-H4, optional)
+- R3-H: Minimap polish (F1-F2, optional)
+
+### [2026-08-22 23:30 WAT] — R3-B: Search Polish
+
+**Model:** Base44 Superagent (Claude)
+
+**Commit:** (pending)
+
+**[EDITOR]** R3-B — 4 items implemented:
+
+1. D3: Cyclic next/prev match navigation — already implemented (modulo wrap-around existed in FindReplaceBar prev/next buttons).
+2. D4: Auto-scroll to match — added findReplaceOpen to the LaunchedEffect guard so scrolling works for both external find bar AND internal find/replace panel.
+3. D1: Preserve Case toggle — new "AB" toggle button in FindReplaceBar. When enabled, replace matches the case pattern of the matched text (all-caps -> uppercase, first-char-caps -> capitalize, lowercase -> as-is). Helper function preserveCaseReplace() added.
+4. D2: Regex backreference support — single Replace and Replace All now convert \1 \2 syntax to $1 $2 (Kotlin regex format) before substitution. Works with and without Preserve Case.
+
+**Files touched:**
+- android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt (D1, D2, D4)
+
+**Next on roadmap:**
 - R3-I: CodeEditor.kt extraction (5 composables -> separate files)
 - R3-C: Event system + completion polish (C1 scroll event, C2 focus event, I1 loading indicator, I4 positioning modes)
 - R3-D: Incremental syntax highlighting (B1 per-line, B3 hash cache)

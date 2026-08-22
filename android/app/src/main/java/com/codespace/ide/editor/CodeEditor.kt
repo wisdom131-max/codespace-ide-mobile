@@ -1645,6 +1645,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var useRegex by remember { mutableStateOf(false) }
     var caseSensitive by remember { mutableStateOf(false) }
     var wholeWord by remember { mutableStateOf(false) }
+    var preserveCase by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
 
     // R2-1/R2-2: Undo/redo manager — diff-based undo/redo stack
@@ -1724,9 +1725,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(matches.size, findQuery) {
         if (matchIndex >= matches.size) matchIndex = 0
     }
-    // Scroll to current match when matchIndex changes (driven by external find bar next/prev)
-    LaunchedEffect(matchIndex, matches, externalFindBarOpen) {
-        if (externalFindBarOpen && matches.isNotEmpty() && matchIndex < matches.size) {
+    // R3-B/D4: Scroll to current match when matchIndex changes (works for both find bars)
+    LaunchedEffect(matchIndex, matches, externalFindBarOpen, findReplaceOpen) {
+        if ((externalFindBarOpen || findReplaceOpen) && matches.isNotEmpty() && matchIndex < matches.size) {
             val matchStart = matches[matchIndex].first
             val targetLine = positionMapper.offsetToLine(matchStart)
             val lineHeightPx = editorMetrics.lineHeightPx
@@ -4449,6 +4450,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onToggleCaseSensitive = { caseSensitive = !caseSensitive },
             wholeWord = wholeWord,
             onToggleWholeWord = { wholeWord = !wholeWord },
+            preserveCase = preserveCase,
+            onTogglePreserveCase = { preserveCase = !preserveCase },
             matches = matches,
             matchIndex = matchIndex,
             onMatchIndexChange = { matchIndex = it },
@@ -5735,6 +5738,8 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
     onToggleCaseSensitive: () -> Unit,
     wholeWord: Boolean,
     onToggleWholeWord: () -> Unit,
+    preserveCase: Boolean,
+    onTogglePreserveCase: () -> Unit,
     matches: List<IntRange>,
     matchIndex: Int,
     onMatchIndexChange: (Int) -> Unit,
@@ -5845,6 +5850,19 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+                // R3-B/D1: Preserve Case toggle
+                IconButton(
+                    onClick = { onTogglePreserveCase() },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Text(
+                        "AB",
+                        color = if (preserveCase) Color(0xFF007ACC) else Color(0xFF888888),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 IconButton(
                     onClick = {
                         if (matches.isNotEmpty()) {
@@ -5929,9 +5947,22 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                     onClick = {
                         if (matches.isNotEmpty()) {
                             val range = matches[matchIndex]
+                            val matchedText = text.substring(range.first, range.last + 1)
+                            // R3-B/D2: Expand backreferences (convert \1 to $1 for Kotlin regex)
+                            val expandedReplace = if (useRegex) {
+                                replaceQuery.replace("\\(", "$(")  // \1 -> $1, \2 -> $2
+                            } else {
+                                replaceQuery
+                            }
+                            // R3-B/D1: Case-preserving replace
+                            val finalReplace = if (preserveCase) {
+                                preserveCaseReplace(matchedText, expandedReplace)
+                            } else {
+                                expandedReplace
+                            }
                             val newText = text.substring(0, range.first) +
-                                replaceQuery + text.substring(range.last + 1)
-                            val cursor = range.first + replaceQuery.length
+                                finalReplace + text.substring(range.last + 1)
+                            val cursor = range.first + finalReplace.length
                             onTextChange(newText, cursor)
                         }
                     },
@@ -5951,7 +5982,23 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                                 val opts = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
                                 val rawPat = if (useRegex) findQuery else Regex.escape(findQuery)
                                 val finalPat = if (wholeWord && !useRegex) "\\b${rawPat}\\b" else rawPat
-                                Regex(finalPat, opts).replace(text, replaceQuery)
+                                // R3-B/D2: Convert \1 to $1 for Kotlin regex backreferences
+                                val expandedReplace = replaceQuery.replace("\\(", "$(")
+                                if (preserveCase) {
+                                    // R3-B/D1: Case-preserving replace all
+                                    val regex = Regex(finalPat, opts)
+                                    val sb = StringBuilder()
+                                    var lastEnd = 0
+                                    for (m in regex.findAll(text)) {
+                                        sb.append(text, lastEnd, m.range.first)
+                                        sb.append(preserveCaseReplace(m.value, expandedReplace))
+                                        lastEnd = m.range.last + 1
+                                    }
+                                    sb.append(text, lastEnd, text.length)
+                                    sb.toString()
+                                } else {
+                                    Regex(finalPat, opts).replace(text, expandedReplace)
+                                }
                             } catch (e: Exception) { text }
                             onTextChange(newText, 0)
                         }
@@ -5969,6 +6016,26 @@ private fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
         }
     }
 }
+
+/**
+ * R3-B/D1: Case-preserving replace — matches the case pattern of the original text.
+ * - All uppercase -> uppercase replacement
+ * - First char uppercase -> capitalize first char of replacement
+ * - All lowercase -> keep replacement as-is (already lowercase or mixed)
+ */
+private fun preserveCaseReplace(matched: String, replacement: String): String {
+    if (matched.isEmpty() || replacement.isEmpty()) return replacement
+    return when {
+        matched.all { it.isUpperCase() || !it.isLetter() } && matched.any { it.isUpperCase() } -> {
+            replacement.uppercase()
+        }
+        matched.first().isUpperCase() -> {
+            replacement.replaceFirstChar { if (it.isLowerCase()) it.uppercaseChar() else it }
+        }
+        else -> replacement
+    }
+}
+
 
 @Composable
                         Spacer(Modifier.width(2.dp))
