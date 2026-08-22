@@ -2045,7 +2045,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 '[' -> '[' to ']'
                                 '{' -> '{' to '}'
                                 '"' -> '"' to '"'
-                                0x27.toChar() -> 0x27.toChar() to 0x27.toChar()
+                                '\'' -> '\'' to '\''
                                 else -> null to null
                             }
                             val openChar = pair.first
@@ -2074,7 +2074,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     '[' -> ']'
                                     '{' -> '}'
                                     '"' -> '"'
-                                    0x27.toChar() -> 0x27.toChar()
+                                    '\'' -> '\''
                                     else -> null
                                 }
                                 if (closer != null) {
@@ -2089,7 +2089,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         // (quotes are always allowed to close strings)
                                         // Known limitation: does not account for comments (# or //)
                                         val inString = isInsideStringValue(newValue.text, cursor)
-                                        if (!inString || insertedChar == '"' || insertedChar == 0x27.toChar()) {
+                                        if (!inString || insertedChar == '"' || insertedChar == '\'') {
                                             val leftText = newValue.text.substring(0, cursor)
                                             val rightText = newValue.text.substring(cursor)
                                             updatedValue = TextFieldValue(
@@ -5953,7 +5953,7 @@ private fun isInsideStringValue(text: String, cursor: Int): Boolean {
             continue
         }
         val isDouble = c == '"'
-        val isSingle = c == 0x27.toChar()
+        val isSingle = c == '\''
         if (!inString && !inChar && (isDouble || isSingle)) {
             inString = isDouble
             inChar = isSingle

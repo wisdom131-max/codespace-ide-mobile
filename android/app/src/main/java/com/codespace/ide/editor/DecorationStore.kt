@@ -187,6 +187,7 @@ class DecorationStore {
         _cursor = _cursor.update(_cursor.data)
         _inlayHints = _inlayHints.update(_inlayHints.data)
         _foldRanges = _foldRanges.update(_foldRanges.data)
+    }
 
     /**
      * R1-3: Shift offset-based decoration positions when text changes.
@@ -223,7 +224,6 @@ class DecorationStore {
                 }
             )
         }
-    }
     }
 }
 
