@@ -1580,6 +1580,7 @@ fun ProjectShellScreen(
                     navBackStack = navBackStack,
                     navFwdStack = navFwdStack,
                     sharedTerminalState = sharedTerminalState,
+                    onFileSystemChanged = { terminalActivityCounter++ },
                     sharedPreviewState = sharedPreviewState,
                     debugMessages = debugMessages,
                     debugInput = debugInput,
@@ -3162,6 +3163,7 @@ private fun PssBottomPanelContent(
     terminalCommandToRun: String?,
     onCommandConsumed: () -> Unit,
     sharedTerminalState: TerminalState,
+    onFileSystemChanged: () -> Unit = {},
     activeEditorTab: String?,
     debugMessages: androidx.compose.runtime.snapshots.SnapshotStateList<String>,
     debugInput: androidx.compose.runtime.MutableState<String>,
@@ -3307,7 +3309,7 @@ private fun PssBottomPanelContent(
                 onCommandConsumed = onCommandConsumed,
                 externalState = sharedTerminalState,
                 projectId = projectId,
-                onFileSystemChanged = { terminalActivityCounter++ },
+                onFileSystemChanged = onFileSystemChanged,
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
                 onJumpToSource = { filePath, line, col ->
@@ -3382,7 +3384,7 @@ private fun PssBottomPanelContent(
                 onPreviewPortChange(port)
                 onActiveBottomTabChange(BottomTab.PREVIEW)
             })
-            BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState, onFileSystemChanged = { terminalActivityCounter++ })
+            BottomTab.SPLIT    -> SplitTerminalPanel(sharedState = sharedTerminalState, onFileSystemChanged = onFileSystemChanged)
             BottomTab.PREVIEW  -> PreviewPane(
                 activeFilePath = activeEditorTab ?: "",
                 initialPort = previewPort,  // P25-4: pass null (not 0) — 0 was triggering BROWSER mode on every cold open
@@ -4244,6 +4246,7 @@ private fun PssEditorColumn(
     navBackStack: SnapshotStateList<NavEntry>,
     navFwdStack: SnapshotStateList<NavEntry>,
     sharedTerminalState: TerminalState,
+    onFileSystemChanged: () -> Unit = {},
     sharedPreviewState: com.codespace.ide.ui.panes.PreviewState,
     debugMessages: SnapshotStateList<String>,
     debugInput: MutableState<String>,
@@ -4672,6 +4675,7 @@ private fun PssEditorColumn(
             terminalCommandToRun = terminalCommandToRun,
             onCommandConsumed = { terminalCommandToRun = null },
             sharedTerminalState = sharedTerminalState,
+            onFileSystemChanged = onFileSystemChanged,
             activeEditorTab = activeEditorTab,
             debugMessages = debugMessages,
             debugInput = debugInput,
@@ -4734,7 +4738,7 @@ private fun PssEditorColumn(
                         modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
                 }
                 HorizontalDivider(color = DividerColor)
-                TerminalPane(externalState = sharedTerminalState, projectId = projectId, onFileSystemChanged = { terminalActivityCounter++ })
+                TerminalPane(externalState = sharedTerminalState, projectId = projectId, onFileSystemChanged = onFileSystemChanged)
             }
         }
     }
