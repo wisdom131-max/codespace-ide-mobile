@@ -36,8 +36,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.codespace.ide.ui.EditorColors
 import kotlinx.coroutines.launch
-import kotlin.math.maxOf
-import kotlin.math.minOf
 
 /**
  * Extracted from CodeEditor.kt to stay under the 64KB JVM bytecode limit.
