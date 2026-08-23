@@ -2967,7 +2967,7 @@ object LspManager {
     // ── Private helpers ────────────────────────────────────────────
 
     private fun positionParams(uri: String, line: Int, character: Int): JSONObject =
-        LspServerLifecycle.buildPositionParams(uri, line, character)}
+        LspServerLifecycle.buildPositionParams(uri, line, character)
 
     // P26-1: LSP Code Lens — inline annotations (references count, test/run, etc.)
     fun getCodeLens(language: Language, uri: String): JSONArray? {
