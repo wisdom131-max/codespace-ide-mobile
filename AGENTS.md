@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 760e8fe |
-| CI build | #2474 ✅ GREEN |
+| Latest commit | 9cec34b |
+| CI build | #2477 ✅ GREEN (#2478 pending) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,740 |
@@ -130,3 +130,44 @@
 - Extensible/pluggable bracket pairs (per-language rules)
 - Wire 4 dead LSP feature methods (getColorPresentations, getOnTypeFormatting, getLinkedEditingRanges, getMonikers) — deferred, niche
 - Remaining LSP test fixes (Tests 60, 62-66, 70)
+
+---
+
+### [2026-08-23 10:10 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit ff9cd67 | CI #2477 ✅ GREEN**
+- [UI] Pinch-to-zoom for editor font size — detectTransformGestures with accumulated zoom
+- [UI] Word boundary detection — camelCase, snake_case, kebab-case, dot notation support
+- Files: CodeEditor.kt (+18/-5), WordBoundary.kt (new, 105 lines), ProjectShellScreen.kt (+2), EditorPane.kt (+4)
+- Build #2476 FAILED: onFontSizeChange added to wrong call site (PssEditorColumn didn't have param). Fixed by threading param through PssEditorColumn → EditorPane → CodeEditor.
+
+**Commit 9cec34b | CI #2478 (pending)**
+- [RESTRUCTURE] KeyBindingRegistry foundation — data model + VS Code default bindings
+- KeyCombination data class, EditorAction enum (35 actions), KeyBindingRegistry singleton
+- match() function to resolve KeyEvent → EditorAction
+- Foundation only — not yet wired into CodeEditor key handling
+- File: KeyBindingRegistry.kt (new, 177 lines)
+
+**Build failure history #2467-#2476:**
+- #2467: Unresolved `smartCompletion` ref (pushed completion indicator before Smart Enter that defines it)
+- #2469: Same + type mismatch Int vs String in Smart Enter coerceIn
+- #2470: Same errors (incremental highlighter code itself was fine)
+- #2472: Duplicate `smartCompletion` val (fix added without removing ref) + nullable String? in IncrementalHighlighter
+- #2476: `onFontSizeChange` added to PssEditorColumn call without adding param to function definition
+- Root cause: dependency ordering (pushing code before its prerequisites) + incomplete patches
+
+**Next on roadmap:**
+1. Wire KeyBindingRegistry.match() into CodeEditor onPreviewKeyEvent — replace hardcoded key checks
+2. Format-on-save (Ctrl+Shift+I → format trigger)
+3. Incremental syntax highlighting (per-line cache, avoid full O(n) re-highlight) — IncrementalHighlighter.kt exists, needs wiring
+4. Completion loading indicators (spinner during LSP completion requests)
+5. Extensible/pluggable bracket pairs per language
+6. Snippet transform application (Tab stops with placeholder transforms)
+7. Keybinding settings UI (view/edit/reset bindings)
