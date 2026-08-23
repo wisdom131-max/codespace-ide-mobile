@@ -99,7 +99,12 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
             } else {
                 (lineIdx * lineHeightPx - scrollOffsetPx).coerceAtLeast(0f)
             }
-            val startDp  = gutterDp + col * charWidthPx
+            val startDp = if (textLayoutResult != null) {
+                val density = androidx.compose.ui.platform.LocalDensity.current.density
+                (textLayoutResult.getHorizontalPosition(clamped, true) / density) + gutterDp
+            } else {
+                gutterDp + col * charWidthPx
+            }
 
             Box(
                 modifier = Modifier

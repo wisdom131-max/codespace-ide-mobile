@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.zIndex
 
 /**
@@ -43,6 +44,8 @@ internal fun BoxScope.ErrorLensOverlay(
     fontSize: Int,
     GUTTER_WIDTH: Float,
     displayLineCount: Int,
+    textLayoutResult: TextLayoutResult? = null,
+    positionMapper: PositionMapper? = null,
 ) {
     if (!showErrorLens || lintErrors.isEmpty() || hasCompletions) return
 
@@ -72,7 +75,14 @@ internal fun BoxScope.ErrorLensOverlay(
         val stackOffsetDp = slotIndex * stackedHeight
         val lineTopDp = (baseLineTopDp + stackOffsetDp).coerceAtLeast(0f)
 
-        val lineLeftDp = (lineLength * charWidthPxEL) + GUTTER_WIDTH + 8f
+        val lineLeftDp = if (textLayoutResult != null && positionMapper != null) {
+            val lineEndOffset = positionMapper.lineEnd(errorLine)
+            val clampedEnd = lineEndOffset.coerceIn(0, textLayoutResult.layoutInput.text.length)
+            val density = androidx.compose.ui.platform.LocalDensity.current.density
+            (textLayoutResult.getHorizontalPosition(clampedEnd, true) / density) + GUTTER_WIDTH + 8f
+        } else {
+            (lineLength * charWidthPxEL) + GUTTER_WIDTH + 8f
+        }
 
         // Only render if visible in viewport
         if (lineTopDp >= -stackedHeight && lineTopDp < (displayLineCount + 5) * lineHeightPxEL) {

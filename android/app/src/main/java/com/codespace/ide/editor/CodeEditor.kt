@@ -3062,6 +3062,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             fontSize = fontSize,
             GUTTER_WIDTH = GUTTER_WIDTH,
             displayLineCount = visualLineMapper.visualLineCount,
+            textLayoutResult = textLayoutResult,
+            positionMapper = positionMapper,
         )
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (toggles.showCodeLens && lspCodeLenses != null && lspCodeLenses!!.length() > 0) {
@@ -4864,7 +4866,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     ghostTextLines = remainingLines
                     ghostText = remainingLines.firstOrNull() ?: ""
                 },
-                onDismiss = { ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false }
+                onDismiss = { ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false },
+                textLayoutResult = textLayoutResult
             )
         }
 

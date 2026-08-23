@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.zIndex
 
 @Composable
@@ -26,6 +27,7 @@ fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
     onAcceptFull: (String) -> Unit,
     onAcceptWord: (String, List<String>) -> Unit,
     onDismiss: () -> Unit,
+    textLayoutResult: TextLayoutResult? = null,
 ) {
     val ghostLines = ghostTextLines.ifEmpty { listOf(ghostText) }
     val ghostPos = PositionMapper(text).offsetToPosition(cursorPos)
@@ -36,11 +38,20 @@ fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
     ghostLines.forEachIndexed { lineIdx, _ ->
         val line = if (lineIdx == 0) ghostText else ghostLines[lineIdx]
         if (line.isBlank() && lineIdx > 0) return@forEachIndexed
-        val topDp = ((cursorLine + lineIdx) * lineHeightDp - vScrollValue).coerceAtLeast(0f)
-        val startDp = if (lineIdx == 0) {
-            64f + cursorCol * (fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER)  // Phase E
+        val topDp = if (textLayoutResult != null && (cursorLine + lineIdx) < textLayoutResult.lineCount) {
+            (textLayoutResult.getLineTop(cursorLine + lineIdx) - vScrollValue).coerceAtLeast(0f)
         } else {
-            64f
+            ((cursorLine + lineIdx) * lineHeightDp - vScrollValue).coerceAtLeast(0f)
+        }
+        val startDp = if (lineIdx == 0) {
+            if (textLayoutResult != null) {
+                val density = androidx.compose.ui.platform.LocalDensity.current.density
+                (textLayoutResult.getHorizontalPosition(cursorPos.coerceIn(0, textLayoutResult.layoutInput.text.length), true) / density) + 72f
+            } else {
+                64f + cursorCol * (fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER)  // Phase E
+            }
+        } else {
+            72f
         }
         if (topDp < -lineHeightDp || topDp > 2000f) return@forEachIndexed
 
