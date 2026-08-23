@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | a1f8478 |
+| Latest commit | 8a84afa |
 | CI build | pending |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,732 |
+| CodeEditor.kt lines | 5,740 |
 
 ---
 
@@ -90,13 +90,36 @@
    - Disappears when LSP responds, times out, or completions become available
    - Files: CodeEditor.kt (+48)
 
+5. **[EDITOR] Smart Enter: auto-close brackets on Enter — 9f8d607**
+   - When user presses Enter after unmatched opener (`{`, `[`, `(`):
+     - Adds extra indent (4 spaces) on new line
+     - Inserts matching closing bracket on next line at original indent level
+     - Cursor left on indented line between opener and closer
+   - When user presses Enter after `:` in Python: adds extra indent (4 spaces)
+   - Extends extra indent to `(` (was only `{` and `[` before)
+   - Files: CodeEditor.kt (+25, -3)
+
+6. **[PERF] Incremental syntax highlighting — 8a84afa**
+   - Created IncrementalHighlighter.kt (313 lines): per-line caching with bracket depth + block comment state tracking
+   - On text change: only re-highlights changed lines; stops when bracket depth + comment state match cache
+   - Single-char edits: O(1) — just the changed line (was O(n) full-file scan)
+   - Multi-line block comments (`/* */`) handled via per-line state tracking
+   - Wired into SyntaxTransformation.kt synchronous path (falls back to full highlighter when null)
+   - Folded display path still uses full SyntaxHighlighter (different display string)
+   - Files: IncrementalHighlighter.kt (new, 313 lines), SyntaxTransformation.kt (+12), CodeEditor.kt (+6)
+
+**LSP Method Audit (final):**
+- 74 total public methods in LspManager.kt
+- 56 genuinely wired end-to-end (real callers in editor/UI code)
+- 9 internal helpers (called within LspManager)
+- 9 truly dead (defined but never called: getColorPresentations, getOnTypeFormatting, getLinkedEditingRanges, getMonikers, getCompletionWithMeta, getDiagnostics, clearDiagnosticsHandler, clearTrackedDocuments, getIdleTimeoutMs)
+- 4 dead LSP feature methods skipped (niche, not requested)
+
 **Next on roadmap (ALL pending items):**
-- Smart Enter per-language patterns (e.g., auto-close brace, auto-indent after `{`)
-- Incremental syntax highlighting (currently full O(n) re-highlight on every change)
 - Format-on-save wiring verification (verify ProjectSettingsStore.formatOnSaveEnabled is correct)
 - Pinch-to-zoom for editor font size
 - Word boundary detection for double-click select
 - Configurable keybindings
 - Extensible/pluggable bracket pairs (per-language rules)
-- LSP: verify all 37 methods are genuinely wired end-to-end (not just defined)
+- Wire 4 dead LSP feature methods (getColorPresentations, getOnTypeFormatting, getLinkedEditingRanges, getMonikers) — deferred, niche
 - Remaining LSP test fixes (Tests 60, 62-66, 70)
