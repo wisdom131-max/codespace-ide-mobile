@@ -669,8 +669,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(content) {
         if (value.text != content) {
             value = TextFieldValue(content, TextRange(content.length))
-            extraCursors = emptyList()
-            decorationStore.shiftOnEdit(value.text, content)
             editorEvent = EditorEvent.ProgrammaticCursorMove(content.length, "content_reload")
         }
     }
@@ -686,8 +684,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 context = context,
             )
             if (result != null) {
-                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
-                decorationStore.shiftOnEdit(value.text, result.first)
                 value = TextFieldValue(result.first, TextRange(result.second, result.third))
                 editorEvent = EditorEvent.ProgrammaticTextChange(result.first, result.second)
                 onContentChange(result.first)
@@ -2225,12 +2221,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     // Adjust extra cursor for the PRIMARY edit:
                                     // If primary insertion was before this cursor, it's now at ec+delta
                                     val primaryShift = if (delta > 0) {
-                                        if (primaryAt <= ec) delta else 0
+                                        positionMapper.shiftOnInsert(ec, primaryAt, delta) - ec
                                     } else {
                                         val delStart = (primaryAt - deletedLen).coerceAtLeast(0)
-                                        if (delStart < ec) {
-                                            -minOf(deletedLen, ec - delStart)
-                                        } else 0
+                                        positionMapper.shiftOnDelete(ec, delStart, deletedLen) - ec
                                     }
                                     val pos = (ec + primaryShift + fanShift).coerceIn(0, composed.length)
                                     if (delta > 0) {
