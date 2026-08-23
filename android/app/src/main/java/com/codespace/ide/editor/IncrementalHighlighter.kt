@@ -7,7 +7,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.EditorColors
 import com.codespace.ide.editor.textmate.TextMateEngineHolder
-import com.codespace.ide.editor.textmate.TmIntegration
+
+private val tmHighlighter = IncrementalTmHighlighter()
 
 /**
  * Incremental syntax highlighter that caches per-line highlighting results
@@ -42,16 +43,11 @@ class IncrementalHighlighter {
         language: Language,
         colors: EditorColors
     ): AnnotatedString {
-        // If TextMate highlighting is enabled and a grammar is available, use it directly
+        // If TextMate highlighting is enabled and a grammar is available,
+        // use the incremental TextMate highlighter (per-line caching, O(1) for single edits)
         if (TextMateEngineHolder.isActive()) {
-            val engine = TextMateEngineHolder.getIfInitialized()
-            if (engine != null) {
-                val scopeName = TmIntegration.languageToScope(language)
-                if (scopeName != null && engine.hasGrammar(scopeName)) {
-                    val tmResult = TmIntegration.highlight(engine, scopeName, text, colors)
-                    if (tmResult != null) return tmResult
-                }
-            }
+            val tmResult = tmHighlighter.highlight(text, language, colors)
+            if (tmResult != null) return tmResult
         }
 
         // Fallback: incremental regex highlighter
@@ -350,5 +346,6 @@ class IncrementalHighlighter {
         lineCaches.clear()
         cachedLanguage = null
         cachedColors = null
+        tmHighlighter.reset()
     }
 }
