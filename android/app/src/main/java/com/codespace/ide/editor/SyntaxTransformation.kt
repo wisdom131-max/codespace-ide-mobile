@@ -41,6 +41,23 @@ class SyntaxTransformation(
     private var cachedText: String? = null
     private var cachedResult: TransformedText? = null
 
+    // SAFETY NET: OffsetMapping.Identity requires the transformed AnnotatedString to have
+    // EXACTLY the same length as the original text. If any highlighter has a bug that
+    // produces a shorter/longer AnnotatedString (as IncrementalHighlighter once did — see
+    // the 2026-08-23 crash fix), using Identity mapping crashes CoreTextField's focus-rect
+    // notification with "OffsetMapping.originalToTransformed returned invalid mapping".
+    // This guard falls back to the plain, unstyled original text (still editable, just
+    // temporarily unhighlighted) instead of crashing when a length mismatch is detected.
+    private fun safeguardIdentityResult(
+        result: TransformedText,
+        original: AnnotatedString,
+    ): TransformedText {
+        if (result.text.length != original.text.length) {
+            return TransformedText(original, OffsetMapping.Identity)
+        }
+        return result
+    }
+
     override fun filter(text: AnnotatedString): TransformedText {
         // Return cached result if text hasn't changed
         if (cachedText == text.text && cachedResult != null) {
@@ -52,9 +69,10 @@ class SyntaxTransformation(
             // This prevents wrong-color flicker when user types during the 100ms debounce.
             if (precomputedHighlight != null && precomputedForText == text.text) {
                 val result = applyLintAndSemantic(precomputedHighlight, text.text, OffsetMapping.Identity)
+                val safeResult = safeguardIdentityResult(result, text)
                 cachedText = text.text
-                cachedResult = result
-                return result
+                cachedResult = safeResult
+                return safeResult
             }
             // Fallback: synchronous highlighting (small files or precomputed not ready yet)
             // Use incremental highlighter if available to avoid O(n) full re-highlight
@@ -64,9 +82,10 @@ class SyntaxTransformation(
             } else {
                 applyHighlightAndLint(text, OffsetMapping.Identity)
             }
+            val safeResult = safeguardIdentityResult(result, text)
             cachedText = text.text
-            cachedResult = result
-            return result
+            cachedResult = safeResult
+            return safeResult
         }
 
         val raw = text.text

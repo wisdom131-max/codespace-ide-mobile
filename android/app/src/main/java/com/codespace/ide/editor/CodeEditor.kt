@@ -3070,7 +3070,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     startLine * lineHeightPxCS - vScrollDp
                 }
                 val swatchLeftDp = if (layoutCS != null) {
-                    (layoutCS.getHorizontalPosition(startOffsetCS, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpCS - 4f
+                    val safeStartOffsetCS = startOffsetCS.coerceIn(0, layoutCS.layoutInput.text.length)
+                    (layoutCS.getHorizontalPosition(safeStartOffsetCS, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpCS - 4f
                 } else {
                     gutterDpCS + (startChar * charWidthPxCS) - 4f
                 }
@@ -3225,13 +3226,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 } else {
                     (startLine * lineHeightPxDL - vScrollDp).coerceAtLeast(0f)
                 }
+                val safeStartOffsetDL = startOffsetDL.coerceIn(0, layoutDL?.layoutInput?.text?.length ?: 0)
+                val safeEndOffsetDL = endOffsetDL.coerceIn(0, layoutDL?.layoutInput?.text?.length ?: 0)
                 val leftDpDL = if (layoutDL != null) {
-                    (layoutDL.getHorizontalPosition(startOffsetDL, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpDL
+                    (layoutDL.getHorizontalPosition(safeStartOffsetDL, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpDL
                 } else {
                     gutterDpDL + startChar * charWidthPxDL
                 }
-                val widthDp = if (layoutDL != null && endOffsetDL > startOffsetDL) {
-                    ((layoutDL.getHorizontalPosition(endOffsetDL, true) - layoutDL.getHorizontalPosition(startOffsetDL, true)) / androidx.compose.ui.platform.LocalDensity.current.density).coerceAtLeast(20f)
+                val widthDp = if (layoutDL != null && safeEndOffsetDL > safeStartOffsetDL) {
+                    ((layoutDL.getHorizontalPosition(safeEndOffsetDL, true) - layoutDL.getHorizontalPosition(safeStartOffsetDL, true)) / androidx.compose.ui.platform.LocalDensity.current.density).coerceAtLeast(20f)
                 } else {
                     (endChar - startChar) * charWidthPxDL
                 }
@@ -5044,8 +5047,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val layoutLI = textLayoutResult
             val screenDensity = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
+            val safeCursorOffLI = cursorOff.coerceIn(0, layoutLI?.layoutInput?.text?.length ?: 0)
             var popupOffsetX = if (layoutLI != null) {
-                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + layoutLI.getHorizontalPosition(cursorOff, true)).roundToInt()
+                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + layoutLI.getHorizontalPosition(safeCursorOffLI, true)).roundToInt()
             } else {
                 val charWidthPx = editorMetrics.charWidthPx
                 (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
@@ -5105,8 +5109,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val screenDensity = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
             val popupWidthPx = with(screenDensity) { 280.dp.toPx() }
+            val safeCursorOffCP = cursorOff.coerceIn(0, layoutCP?.layoutInput?.text?.length ?: 0)
             var popupOffsetX = if (layoutCP != null) {
-                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + layoutCP.getHorizontalPosition(cursorOff, true)).roundToInt()
+                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + layoutCP.getHorizontalPosition(safeCursorOffCP, true)).roundToInt()
             } else {
                 val charWidthPx = editorMetrics.charWidthPx
                 (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
