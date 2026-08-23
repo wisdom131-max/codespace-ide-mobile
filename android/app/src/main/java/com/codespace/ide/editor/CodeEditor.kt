@@ -2309,16 +2309,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     ),
                     // P-CURSOR: Animated cursor brush based on In-Project Settings > Text Editor > Cursor Blinking
                     cursorBrush = animatedCursorBrush(colors.cursor),
-                    visualTransformation = remember(language, colors, lintErrors, foldedLineIndices, semanticTokens, precomputedHighlight, precomputedForText) {
-                        SyntaxTransformation(
-                            language = language,
-                            colors = colors,
-                            lintErrors = lintErrors,
-                            foldedLineIndices = foldedLineIndices,
-                            semanticTokens = semanticTokens,
-                            precomputedHighlight = precomputedHighlight,
-                            precomputedForText = precomputedForText,
-                        )
+                    visualTransformation = run {
+                        val incrHighlighter = remember { IncrementalHighlighter() }
+                        remember(language, colors, lintErrors, foldedLineIndices, semanticTokens, precomputedHighlight, precomputedForText) {
+                            SyntaxTransformation(
+                                language = language,
+                                colors = colors,
+                                lintErrors = lintErrors,
+                                foldedLineIndices = foldedLineIndices,
+                                semanticTokens = semanticTokens,
+                                precomputedHighlight = precomputedHighlight,
+                                precomputedForText = precomputedForText,
+                                incrementalHighlighter = incrHighlighter,
+                            )
+                        }
                     },
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier

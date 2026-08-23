@@ -31,6 +31,8 @@ class SyntaxTransformation(
     // it was computed from to prevent applying stale highlights to newer text.
     private val precomputedHighlight: AnnotatedString? = null,
     private val precomputedForText: String? = null,
+    // Incremental highlighter for synchronous path (avoids O(n) full re-highlight)
+    private val incrementalHighlighter: IncrementalHighlighter? = null,
 ) : VisualTransformation {
 
     // P50-PERF: Cache the last transformed result so we don't rebuild the AnnotatedString
@@ -55,7 +57,13 @@ class SyntaxTransformation(
                 return result
             }
             // Fallback: synchronous highlighting (small files or precomputed not ready yet)
-            val result = applyHighlightAndLint(text, OffsetMapping.Identity)
+            // Use incremental highlighter if available to avoid O(n) full re-highlight
+            val result = if (incrementalHighlighter != null) {
+                val incrHighlight = incrementalHighlighter.highlight(text.text, language, colors)
+                applyLintAndSemantic(incrHighlight, text.text, OffsetMapping.Identity)
+            } else {
+                applyHighlightAndLint(text, OffsetMapping.Identity)
+            }
             cachedText = text.text
             cachedResult = result
             return result
