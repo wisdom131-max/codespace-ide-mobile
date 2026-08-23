@@ -8,7 +8,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalDensity
-import com.codespace.ide.editor.EditorColors
+import com.codespace.ide.ui.EditorColors
 
 /**
  * R3-2: Block line / indent guide overlay.

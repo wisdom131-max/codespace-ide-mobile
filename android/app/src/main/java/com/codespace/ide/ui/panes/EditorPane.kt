@@ -242,6 +242,15 @@ fun EditorPane(
             }
         }
     }
+    // R3-A: Save current file — called by Ctrl+S from CodeEditor
+    val saveCurrentFile: () -> Unit = {
+        val activeTab = tabs.firstOrNull { it.id == activeId }
+        if (activeTab != null && activeTab.path.startsWith("/")) {
+            try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+            val idx = tabs.indexOfFirst { it.id == activeId }
+            if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+        }
+    }
     // P22-G: LSP diagnostics + hover
     val lspOpenedFiles = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -1411,6 +1420,7 @@ fun EditorPane(
                         scrollToLine = scrollToLine,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false; onFindBarOpenChanged?.invoke(false) },
+                        onFindReplaceOpen = { findReplaceOpen = true },
                         externalFindQuery = externalFindQuery,
                         externalFindBarOpen = externalFindBarOpen,
                         externalCaseSensitive = externalCaseSensitive,
@@ -1418,6 +1428,8 @@ fun EditorPane(
                         externalUseRegex = externalUseRegex,
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
+                        onGoToLineOpen = { goToLineOpen = true },
+                        onSave = saveCurrentFile,
                         breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
                         debugCurrentLine = debugCurrentLine,
                         onBreakpointToggle = { line ->
@@ -1445,8 +1457,11 @@ fun EditorPane(
                         formatSelectionTrigger = formatSelectionTrigger,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
+                        onFindReplaceOpen = { findReplaceOpen = true },
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
+                        onGoToLineOpen = { goToLineOpen = true },
+                        onSave = saveCurrentFile,
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
                     )
@@ -1484,8 +1499,11 @@ fun EditorPane(
                             showInlayHints = false,
                             findReplaceOpen = findReplaceOpen,
                             onFindReplaceClose = { findReplaceOpen = false },
+                            onFindReplaceOpen = { findReplaceOpen = true },
                             goToLineOpen = goToLineOpen,
                             onGoToLineClose = { goToLineOpen = false },
+                        onGoToLineOpen = { goToLineOpen = true },
+                        onSave = saveCurrentFile,
                             projectRoot = projectRootPath,
                             currentFilePath = active.path,
                         )
@@ -1615,8 +1633,11 @@ fun EditorPane(
                         formatSelectionTrigger = formatSelectionTrigger,
                         findReplaceOpen = findReplaceOpen,
                         onFindReplaceClose = { findReplaceOpen = false },
+                        onFindReplaceOpen = { findReplaceOpen = true },
                         goToLineOpen = goToLineOpen,
                         onGoToLineClose = { goToLineOpen = false },
+                        onGoToLineOpen = { goToLineOpen = true },
+                        onSave = saveCurrentFile,
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,

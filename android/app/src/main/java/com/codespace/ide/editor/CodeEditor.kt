@@ -154,6 +154,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import com.codespace.ide.editor.ui.HoverPopup
+import com.codespace.ide.editor.ui.DiagnosticTooltip
+import com.codespace.ide.editor.decorations.BlockLineOverlay
 
 /** Standard gutter width in dp — ALL overlays must use this constant to stay aligned with the text.
  *  Previously: hardcoded values of 64f, 66.dp, 72.dp, 74f, 74.dp, 80f were used inconsistently,
@@ -518,6 +520,12 @@ fun CodeEditor(
     externalFindMatchIndex: Int = -1,
     goToLineOpen: Boolean = false,
     onGoToLineClose: () -> Unit = {},
+    /** R3-A: Ctrl+F opens find/replace from keyboard */
+    onFindReplaceOpen: () -> Unit = {},
+    /** R3-A: Ctrl+G opens go-to-line from keyboard */
+    onGoToLineOpen: () -> Unit = {},
+    /** R3-A: Ctrl+S saves the current file */
+    onSave: (() -> Unit)? = null,
     /** P2-9 Bookmarks: initial set of bookmarked line indices (0-based). */
     initialBookmarks: Set<Int> = emptySet(),
     /** P2-9 Bookmarks: called whenever the bookmark set changes. */
@@ -2623,12 +2631,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                     // R5-1: Ctrl+F -- find
                                     event.key == Key.F -> {
-                                        showFindReplace = true
+                                        onFindReplaceOpen()
                                         true
                                     }
                                     // R5-1: Ctrl+G -- go to line
                                     event.key == Key.G -> {
-                                        showGoToLine = true
+                                        onGoToLineOpen()
                                         true
                                     }
                                     // R5-1: Ctrl+S -- save
@@ -2647,7 +2655,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val cursor = value.selection.end
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
-                                        if (lineStart == 0) return@onKeyEvent true
+                                        if (lineStart == 0) return@onPreviewKeyEvent true
                                         val prevLineEnd = lineStart - 1
                                         val prevLineStart = value.text.lastIndexOf('\n', (prevLineEnd - 1).coerceAtLeast(0)) + 1
                                         val currentLine = value.text.substring(lineStart, lineEnd)
@@ -2667,7 +2675,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
                                         val nextLineStart = lineEnd + 1
                                         val nextLineEnd = value.text.indexOf('\n', nextLineStart).let { if (it == -1) value.text.length else it }
-                                        if (nextLineStart > value.text.length) return@onKeyEvent true
+                                        if (nextLineStart > value.text.length) return@onPreviewKeyEvent true
                                         val currentLine = value.text.substring(lineStart, lineEnd)
                                         val nextLine = value.text.substring(nextLineStart, nextLineEnd)
                                         val newText = value.text.substring(0, lineStart) + nextLine + "\n" + currentLine + value.text.substring(nextLineEnd)
@@ -2782,7 +2790,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // R3-2: Indent guide overlay
         val visibleStartLine = (vScrollDp / lineHeightDp.value).toInt().coerceAtLeast(0)
-        val visibleEndLine = visibleStartLine + (screenHeightDp / lineHeightDp.value).toInt() + 5
+        val visibleEndLine = visibleStartLine + (LocalConfiguration.current.screenHeightDp / lineHeightDp.value).toInt() + 5
         BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors)
 
         SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper)

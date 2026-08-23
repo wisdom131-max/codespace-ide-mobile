@@ -2238,7 +2238,7 @@ object LspManager {
         val td = JSONObject().put("uri", uri)
         val pos = JSONObject().put("line", line).put("character", character)
         // R4-6: Delegate param building to LspCodeActionHandler
-        val params = LspCodeActionHandler.buildCodeActionParams(uri, pos.line, pos.character, pos.line, pos.character, only)
+        val params = LspCodeActionHandler.buildCodeActionParams(uri, line, character, line, character, only)
         val response = server.client.request("textDocument/codeAction", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
