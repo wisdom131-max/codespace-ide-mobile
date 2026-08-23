@@ -2537,6 +2537,69 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 snippetSession = null
                                 showSnippetChoices = false
                                 true
+                            } else if (snippetSession == null && !showCompletions &&
+                                       event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
+                                // Tab / Shift+Tab with multi-line selection — indent / unindent
+                                val isShift = event.nativeKeyEvent.isShiftPressed
+                                val selStart = value.selection.start
+                                val selEnd = value.selection.end
+                                val startLine = positionMapper.offsetToLine(selStart)
+                                val endLine = positionMapper.offsetToLine(selEnd)
+                                if (selStart != selEnd && endLine > startLine) {
+                                    val lines = value.text.split("\n")
+                                    val indentUnit = "    " // 4 spaces
+                                    if (isShift) {
+                                        // Unindent: remove one indent level from each selected line
+                                        val firstLineOffset = positionMapper.lineStart(startLine)
+                                        val newText = StringBuilder(value.text.substring(0, firstLineOffset))
+                                        var totalRemoved = 0
+                                        var firstLineRemoved = 0
+                                        for (lineIdx in startLine..endLine) {
+                                            val line = lines[lineIdx]
+                                            val removed = if (line.startsWith(indentUnit)) {
+                                                indentUnit.length
+                                            } else if (line.startsWith("\t")) {
+                                                1
+                                            } else {
+                                                0
+                                            }
+                                            val newLine = line.substring(removed)
+                                            newText.append(newLine)
+                                            if (lineIdx < endLine) newText.append("\n")
+                                            totalRemoved += removed
+                                            if (lineIdx == startLine) firstLineRemoved = removed
+                                        }
+                                        newText.append(value.text.substring(positionMapper.lineStart(endLine) + lines[endLine].length + 1).coerceAtMost(value.text.length))
+                                        val finalText = newText.toString()
+                                        val newStart = (selStart - firstLineRemoved).coerceAtLeast(positionMapper.lineStart(startLine))
+                                        val newEnd = (selEnd - totalRemoved).coerceAtLeast(newStart)
+                                        value = TextFieldValue(text = finalText, selection = TextRange(newStart, newEnd))
+                                        onContentChange(finalText)
+                                        true
+                                    } else {
+                                        // Indent: add one indent level to each selected line
+                                        val firstLineOffset = positionMapper.lineStart(startLine)
+                                        val newText = StringBuilder(value.text.substring(0, firstLineOffset))
+                                        var totalAdded = 0
+                                        var firstLineAdded = 0
+                                        for (lineIdx in startLine..endLine) {
+                                            newText.append(indentUnit)
+                                            newText.append(lines[lineIdx])
+                                            if (lineIdx < endLine) newText.append("\n")
+                                            totalAdded += indentUnit.length
+                                            if (lineIdx == startLine) firstLineAdded = indentUnit.length
+                                        }
+                                        newText.append(value.text.substring(positionMapper.lineStart(endLine) + lines[endLine].length + 1).coerceAtMost(value.text.length))
+                                        val finalText = newText.toString()
+                                        val newStart = selStart + firstLineAdded
+                                        val newEnd = selEnd + totalAdded
+                                        value = TextFieldValue(text = finalText, selection = TextRange(newStart, newEnd))
+                                        onContentChange(finalText)
+                                        true
+                                    }
+                                } else {
+                                    false
+                                }
                             } else if (activeSignature != null && activeSignature!!.allSignatures.size > 1 &&
                                        event.type == KeyEventType.KeyDown) {
                                 // P41-OV: Up/Down arrow to cycle through signature overloads
