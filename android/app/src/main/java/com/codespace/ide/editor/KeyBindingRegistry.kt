@@ -192,8 +192,8 @@ object KeyBindingRegistry {
             try {
                 val action = EditorAction.valueOf(key)
                 val parts = (value as String).split('|')
-                val keyName = parts[0]
-                val composeKey = runCatching { Key.valueOf(keyName) }.getOrNull() ?: return@forEach
+                val keyCode = parts[0].toIntOrNull() ?: return@forEach
+                val composeKey = Key(keyCode)
                 bindings[action] = KeyCombination(
                     key = composeKey,
                     ctrl = parts.getOrNull(1) == "true",
@@ -209,7 +209,7 @@ object KeyBindingRegistry {
      */
     fun persistBinding(action: EditorAction) {
         val combo = bindings[action] ?: return
-        val value = "${combo.key}|${combo.ctrl}|${combo.shift}|${combo.alt}"
+        val value = "${combo.key.keyCode}|${combo.ctrl}|${combo.shift}|${combo.alt}"
         prefs?.edit()?.putString(action.name, value)?.apply()
     }
 
@@ -219,7 +219,7 @@ object KeyBindingRegistry {
     fun persistAll() {
         val editor = prefs?.edit() ?: return
         for ((action, combo) in bindings) {
-            val value = "${combo.key}|${combo.ctrl}|${combo.shift}|${combo.alt}"
+            val value = "${combo.key.keyCode}|${combo.ctrl}|${combo.shift}|${combo.alt}"
             editor.putString(action.name, value)
         }
         editor.apply()
