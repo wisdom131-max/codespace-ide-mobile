@@ -120,6 +120,7 @@ import com.codespace.ide.lsp.advance
 import com.codespace.ide.lsp.retreat
 import com.codespace.ide.lsp.containsCursor
 import com.codespace.ide.lsp.shiftAfterEdit
+import com.codespace.ide.lsp.applyActiveStopTransform
 import com.codespace.ide.editor.PathCompletionProvider
 import com.codespace.ide.editor.PeekCodeWidget
 import com.codespace.ide.editor.PeekReferencesWidget
@@ -2475,7 +2476,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val isShift = event.nativeKeyEvent.isShiftPressed
                                 if (isShift) {
                                     // Shift+Tab — go to previous tab-stop
-                                    val prev = session.retreat()
+                                    // Apply transform to current stop's text before leaving it
+                                    val (transformedTextPrev, transformedSessionPrev) = session.applyActiveStopTransform(value.text)
+                                    val sessionToRetreat = if (transformedTextPrev != value.text) {
+                                        value = value.copy(text = transformedTextPrev)
+                                        onContentChange(transformedTextPrev)
+                                        transformedSessionPrev
+                                    } else {
+                                        session
+                                    }
+                                    val prev = sessionToRetreat.retreat()
                                     if (prev != null) {
                                         snippetSession = prev
                                         showSnippetChoices = prev.activeStop()?.choices?.isNotEmpty() == true
@@ -2492,7 +2502,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 } else {
                                     // Tab — go to next tab-stop
-                                    val next = session.advance()
+                                    // Apply transform to current stop's text before leaving it
+                                    val (transformedText, transformedSession) = session.applyActiveStopTransform(value.text)
+                                    val sessionToAdvance = if (transformedText != value.text) {
+                                        value = value.copy(text = transformedText)
+                                        onContentChange(transformedText)
+                                        transformedSession
+                                    } else {
+                                        session
+                                    }
+                                    val next = sessionToAdvance.advance()
                                     if (next != null) {
                                         snippetSession = next
                                         showSnippetChoices = next.activeStop()?.choices?.isNotEmpty() == true
@@ -2506,9 +2525,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     } else {
                                         // Last stop — move to final cursor ($0) and exit
                                         value = value.copy(
-                                            selection = TextRange(session.finalCursorOffset)
+                                            selection = TextRange(sessionToAdvance.finalCursorOffset)
                                         )
-                                        editorEvent = EditorEvent.ProgrammaticCursorMove(session.finalCursorOffset, "snippet_final")
+                                        editorEvent = EditorEvent.ProgrammaticCursorMove(sessionToAdvance.finalCursorOffset, "snippet_final")
                                         snippetSession = null
                                     }
                                 }

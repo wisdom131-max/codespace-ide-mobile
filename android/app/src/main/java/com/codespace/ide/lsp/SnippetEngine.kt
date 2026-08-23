@@ -375,6 +375,50 @@ fun SnippetSession.activeStop(): SnippetTabStop? {
 }
 
 /**
+ * Apply the active tab-stop's transform to the text at its range.
+ * Called when the user navigates away from a tab-stop (Tab or Shift+Tab).
+ * If the active stop has no transform, returns the inputs unchanged.
+ *
+ * Returns (updatedText, updatedSession) where:
+ * - updatedText has the transformed text at the stop's range
+ * - updatedSession has adjusted offsets if the text length changed
+ */
+fun SnippetSession.applyActiveStopTransform(currentText: String): Pair<String, SnippetSession> {
+    val stop = activeStop() ?: return currentText to this
+    val transform = stop.transform ?: return currentText to this
+
+    val start = stop.startOffset.coerceIn(0, currentText.length)
+    val end = stop.endOffset.coerceIn(start, currentText.length)
+    val stopText = currentText.substring(start, end)
+
+    val transformed = transform.apply(stopText)
+    if (transformed == stopText) return currentText to this
+
+    val newText = currentText.substring(0, start) + transformed + currentText.substring(end)
+    val delta = transformed.length - (end - start)
+
+    val newTabStops = tabStops.map { s ->
+        when {
+            s.index == stop.index -> s.copy(endOffset = s.startOffset + transformed.length)
+            s.startOffset > stop.endOffset -> s.copy(
+                startOffset = s.startOffset + delta,
+                endOffset = s.endOffset + delta,
+            )
+            else -> s
+        }
+    }
+
+    val newFinalCursor = if (finalCursorOffset > stop.endOffset) finalCursorOffset + delta else finalCursorOffset
+    val newSession = copy(
+        tabStops = newTabStops,
+        snippetEnd = snippetEnd + delta,
+        finalCursorOffset = newFinalCursor,
+    )
+    return newText to newSession
+}
+
+
+/**
  * Advance to the next tab-stop. Returns a new session with activeStopIndex incremented,
  * or null if we've passed the last tab-stop (session should end).
  */
