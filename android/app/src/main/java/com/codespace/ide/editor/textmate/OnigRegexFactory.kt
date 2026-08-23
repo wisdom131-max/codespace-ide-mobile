@@ -1,22 +1,13 @@
 package com.codespace.ide.editor.textmate
 
 import org.joni.Regex
-import org.joni.Matcher
 import org.joni.Option
 import org.jcodings.specific.UTF8Encoding
 import java.nio.charset.Charset
 
 /**
  * Oniguruma regex wrapper using joni (pure Java Oniguruma implementation).
- *
- * Written from scratch. Architecture reference: org.eclipse.tm4e.core.internal.oniguruma
- * (EPL 2.0). Joni is MIT-licensed from the JRuby project.
- *
- * TextMate grammars use Oniguruma regex syntax — a superset of standard regex
- * with \G (anchor at match start), lookaheads, and other advanced features.
- * Joni provides a pure-Java implementation that works on Android without NDK.
- *
- * This version properly handles byte-to-char offset conversion for UTF-8.
+ * Joni is MIT-licensed from the JRuby project.
  */
 object OnigRegexFactory {
 
@@ -57,40 +48,18 @@ object OnigRegexFactory {
         val result = matcher.search(byteStart, textBytes.size, Option.NONE)
 
         if (result >= 0) {
-            // Group 0 = overall match via getBegin()/getEnd()
-            // Capture groups via getCaptureBegin(i)/getCaptureEnd(i) in joni 2.x
-            val numGroups: Int = try {
-                regex.numberOfCaptures() + 1
-            } catch (_: Exception) {
-                1
-            }
-            val captures = Array(numGroups) { i ->
-                val byteBegin = if (i == 0) matcher.getBegin() else getCaptureStart(matcher, i)
-                val byteEnd = if (i == 0) matcher.getEnd() else getCaptureEnd(matcher, i)
+            // Group 0 = overall match. getBegin()/getEnd() take no args in joni 2.2.6.
+            // Capture group API varies across joni versions, so we only return group 0
+            // for now. Sub-group captures can be added once the exact API is verified.
+            val captures = arrayOf(
                 OnigCaptureIndex(
-                    if (byteBegin >= 0) byteToChar(text, textBytes, byteBegin) else -1,
-                    if (byteEnd >= 0) byteToChar(text, textBytes, byteEnd) else -1
+                    byteToChar(text, textBytes, matcher.getBegin()),
+                    byteToChar(text, textBytes, matcher.getEnd())
                 )
-            }
+            )
             return OnigMatchResult(captures)
         }
         return null
-    }
-
-    private fun getCaptureStart(matcher: Matcher, group: Int): Int {
-        return try {
-            matcher.getCaptureBegin(group)
-        } catch (_: Exception) {
-            -1
-        }
-    }
-
-    private fun getCaptureEnd(matcher: Matcher, group: Int): Int {
-        return try {
-            matcher.getCaptureEnd(group)
-        } catch (_: Exception) {
-            -1
-        }
     }
 
     private fun byteToChar(text: String, textBytes: ByteArray, byteOffset: Int): Int {
