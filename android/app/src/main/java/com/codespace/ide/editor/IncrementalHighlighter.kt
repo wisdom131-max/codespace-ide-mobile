@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.EditorColors
 import com.codespace.ide.editor.textmate.TextMateEngineHolder
@@ -61,14 +62,6 @@ class IncrementalHighlighter {
         val lines = text.split('\n')
         val spec = LanguageSpecs.forLanguage(language)
 
-        // Precompute line start offsets (O(n) once, not O(n^2))
-        val lineStarts = IntArray(lines.size)
-        var pos = 0
-        for (i in lines.indices) {
-            lineStarts[i] = pos
-            pos += lines[i].length + 1 // +1 for newline
-        }
-
         // Find which lines changed
         val changedLines = findChangedLines(lines)
 
@@ -95,18 +88,30 @@ class IncrementalHighlighter {
         while (lineCaches.size > lines.size) lineCaches.removeAt(lineCaches.lastIndex)
 
         // Build the full AnnotatedString from cached segments
+        // MUST use withStyle+append (not addStyle) so spans are always within
+        // the actual appended text. Using addStyle with absolute offsets creates
+        // AnnotatedStrings with spans beyond text length, crashing the
+        // accessibility (TalkBack) layer: IndexOutOfBoundsException setSpan.
         return buildAnnotatedString {
             for (i in lines.indices) {
                 val cache = if (i < lineCaches.size) lineCaches[i] else null
                 if (cache != null) {
-                    val lineStart = lineStarts[i]
+                    val lineText = lines[i]
+                    var lastEnd = 0
                     for ((start, end, color) in cache.segments) {
-                        val absStart = lineStart + start
-                        val absEnd = lineStart + end
-                        if (absStart < absEnd && absEnd <= text.length) {
-                            addStyle(SpanStyle(color = color), absStart, absEnd)
+                        if (start > lastEnd) {
+                            append(lineText.substring(lastEnd, start))
                         }
+                        withStyle(SpanStyle(color = color)) {
+                            append(lineText.substring(start, end))
+                        }
+                        lastEnd = end
                     }
+                    if (lastEnd < lineText.length) {
+                        append(lineText.substring(lastEnd))
+                    }
+                } else {
+                    append(lines[i])
                 }
                 if (i < lines.size - 1) append('\n')
             }
