@@ -669,6 +669,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     LaunchedEffect(content) {
         if (value.text != content) {
             value = TextFieldValue(content, TextRange(content.length))
+            extraCursors = emptyList()
+            decorationStore.shiftOnEdit(value.text, content)
             editorEvent = EditorEvent.ProgrammaticCursorMove(content.length, "content_reload")
         }
     }
@@ -684,6 +686,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 context = context,
             )
             if (result != null) {
+                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
+                decorationStore.shiftOnEdit(value.text, result.first)
                 value = TextFieldValue(result.first, TextRange(result.second, result.third))
                 editorEvent = EditorEvent.ProgrammaticTextChange(result.first, result.second)
                 onContentChange(result.first)
@@ -1591,21 +1595,29 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         } else {
                                             TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                         }
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, finalText)
                                         value = TextFieldValue(text = finalText, selection = selRange)
                                         currentOnContentChange(finalText)
                                     } else {
                                         val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
-                                        value = TextFieldValue(text = newText, selection = TextRange(expandStart + snippetText.length))
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, newText)
+                                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length)))
                                         currentOnContentChange(newText)
                                     }
                                 } else {
                                     val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
-                                    value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                    decorationStore.shiftOnEdit(value.text, newText)
+                                    value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)))
                                     currentOnContentChange(newText)
                                 }
                             } else {
                                 val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
-                                value = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                decorationStore.shiftOnEdit(value.text, newText)
+                                value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)))
                                 currentOnContentChange(newText)
                             }
                         }
@@ -1624,11 +1636,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     if (closing != null) {
                         val newText = value.text.substring(0, selStart) + text + closing + value.text.substring(selEnd)
                         // Place cursor between the pair (e.g. between ( and ))
-                        value = TextFieldValue(text = newText, selection = TextRange(selStart + 1))
+                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                        decorationStore.shiftOnEdit(value.text, newText)
+                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(selStart, selStart, 1)))
                         currentOnContentChange(newText)
                     } else {
                         val newText = value.text.substring(0, selStart) + text + value.text.substring(selEnd)
-                        value = TextFieldValue(text = newText, selection = TextRange(selStart + text.length))
+                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                        decorationStore.shiftOnEdit(value.text, newText)
+                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(selStart, selStart, text.length)))
                         currentOnContentChange(newText)
                     }
                 }
@@ -2079,7 +2095,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val wrappedText = before + openChar + selectedText + closeChar + after
                                 updatedValue = TextFieldValue(
                                     text = wrappedText,
-                                    selection = TextRange(selStart + 1, selStart + 1 + selectedText.length)
+                                    selection = TextRange(positionMapper.shiftOnInsert(selStart, selStart, 1), positionMapper.shiftOnInsert(selEnd, selStart, 1))
                                 )
                             }
                         }
@@ -2095,7 +2111,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     if (cursor < newValue.text.length && newValue.text[cursor] == closer) {
                                         updatedValue = TextFieldValue(
                                             text = newValue.text,
-                                            selection = androidx.compose.ui.text.TextRange(cursor + 1)
+                                            selection = androidx.compose.ui.text.TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1))
                                         )
                                     } else {
                                         // R2-4: Don't auto-close brackets inside strings
@@ -2415,6 +2431,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val insertText = comp.insertText
                                 val newText = text.substring(0, start) + insertText + text.substring(end)
                                 val newCursor = start + insertText.length
+                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                decorationStore.shiftOnEdit(value.text, newText)
                                 value = TextFieldValue(text = newText, selection = TextRange(newCursor))
                                 onContentChange(newText)
                                 CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
@@ -2477,14 +2495,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             } else {
                                                 TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                             }
+                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
+                                            decorationStore.shiftOnEdit(value.text, finalText)
                                             value = TextFieldValue(text = finalText, selection = selRange)
                                             editorEvent = EditorEvent.ProgrammaticTextChange(finalText, (selRange?.start ?: 0))
                                             onContentChange(finalText)
                                         } else {
                                             // Plain text snippet — place cursor at end of inserted text
+                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                            decorationStore.shiftOnEdit(value.text, newText)
                                             value = TextFieldValue(
                                                 text = newText,
-                                                selection = TextRange(expandStart + snippetText.length)
+                                                selection = TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length))
                                             )
                                             onContentChange(newText)
                                         }
@@ -2597,6 +2619,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val finalText = newText.toString()
                                         val newStart = (selStart - firstLineRemoved).coerceAtLeast(positionMapper.lineStart(startLine))
                                         val newEnd = (selEnd - totalRemoved).coerceAtLeast(newStart)
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, finalText)
                                         value = TextFieldValue(text = finalText, selection = TextRange(newStart, newEnd))
                                         onContentChange(finalText)
                                         true
@@ -2617,6 +2641,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val finalText = newText.toString()
                                         val newStart = selStart + firstLineAdded
                                         val newEnd = selEnd + totalAdded
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, finalText)
                                         value = TextFieldValue(text = finalText, selection = TextRange(newStart, newEnd))
                                         onContentChange(finalText)
                                         true
@@ -2654,6 +2680,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             undoRedoInProgress = true
                                             val result = undoRedoManager.undo(value.text)
                                             if (result != null) {
+                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
+                                                decorationStore.shiftOnEdit(value.text, result.first)
                                                 value = TextFieldValue(text = result.first, selection = TextRange(result.second))
                                                 onContentChange(result.first)
                                             }
@@ -2666,6 +2694,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             undoRedoInProgress = true
                                             val result = undoRedoManager.redo(value.text)
                                             if (result != null) {
+                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
+                                                decorationStore.shiftOnEdit(value.text, result.first)
                                                 value = TextFieldValue(text = result.first, selection = TextRange(result.second))
                                                 onContentChange(result.first)
                                             }
@@ -2683,7 +2713,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val newText = value.text.substring(0, endIdx) + insertText + value.text.substring(endIdx)
                                         undoRedoInProgress = true
                                         undoRedoManager.recordInsert(endIdx, insertText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(endIdx + insertText.length))
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, newText)
+                                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)))
                                         onContentChange(newText)
                                         undoRedoInProgress = false
                                         true
@@ -2720,6 +2752,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         } else {
                                             undoRedoManager.recordInsert(lineStart, commentPrefix)
                                         }
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, newText)
                                         value = TextFieldValue(text = newText, selection = TextRange(newCursor))
                                         onContentChange(newText)
                                         undoRedoInProgress = false
@@ -2733,6 +2767,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val newText = value.text.removeRange(lineStart, lineEnd)
                                         undoRedoInProgress = true
                                         undoRedoManager.recordDelete(lineStart, deletedText)
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, newText)
                                         value = TextFieldValue(text = newText, selection = TextRange(lineStart))
                                         onContentChange(newText)
                                         undoRedoInProgress = false
@@ -2775,6 +2811,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = true
                                         undoRedoManager.recordReplace(prevLineStart, prevLine + "\n" + currentLine, currentLine + "\n" + prevLine)
                                         val newCursor = prevLineStart + currentLine.length
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, newText)
                                         value = TextFieldValue(text = newText, selection = TextRange(newCursor))
                                         onContentChange(newText)
                                         undoRedoInProgress = false
@@ -2793,6 +2831,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = true
                                         undoRedoManager.recordReplace(lineStart, currentLine + "\n" + nextLine, nextLine + "\n" + currentLine)
                                         val newCursor = lineStart + nextLine.length
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, newText)
                                         value = TextFieldValue(text = newText, selection = TextRange(newCursor))
                                         onContentChange(newText)
                                         undoRedoInProgress = false
@@ -3359,6 +3399,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                                 fix.edit, value.text, null
                                                             )
                                                             if (newText != null && newText != value.text) {
+                                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                                                decorationStore.shiftOnEdit(value.text, newText)
                                                                 value = TextFieldValue(newText, TextRange(value.selection.start))
                                                                 onContentChange(newText)
                                                             }
@@ -3939,6 +3981,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
                                     if (result != null) {
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, result)
                                         value = TextFieldValue(result, value.selection)
                                         editorEvent = EditorEvent.ProgrammaticTextChange(result, value.selection.start)
                                         onContentChange(result)
@@ -3961,6 +4005,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedImports(value.text, language)
                                     if (result != null) {
+                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
+                                        decorationStore.shiftOnEdit(value.text, result)
                                         value = TextFieldValue(result, value.selection)
                                         editorEvent = EditorEvent.ProgrammaticTextChange(result, value.selection.start)
                                         onContentChange(result)
@@ -3980,6 +4026,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onClick = {
                                 val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedCode(value.text, language)
                                 if (result != null) {
+                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
+                                    decorationStore.shiftOnEdit(value.text, result)
                                     value = TextFieldValue(result, value.selection)
                                     onContentChange(result)
                                 }
@@ -4347,6 +4395,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             if (wsEdit != null) {
                                                 val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                                                 if (appliedAny) {
+                                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                                    decorationStore.shiftOnEdit(value.text, newText)
                                                     value = TextFieldValue(
                                                         text = newText,
                                                         selection = value.selection,
@@ -4366,6 +4416,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     renameUsedLsp = false
                                     val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
                                     val newText = pattern.replace(value.text, newName)
+                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                    decorationStore.shiftOnEdit(value.text, newText)
                                     value = TextFieldValue(
                                         text = newText,
                                         selection = value.selection,
@@ -4440,6 +4492,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val wsEdit = renamePreviewEdit!!
                         val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                         if (appliedAny) {
+                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                            decorationStore.shiftOnEdit(value.text, newText)
                             value = TextFieldValue(newText, TextRange(value.selection.start))
                             onContentChange(newText)
                         }
@@ -4575,6 +4629,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onMatchIndexChange = { matchIndex = it },
             text = value.text,
             onTextChange = { newText, cursor ->
+                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                decorationStore.shiftOnEdit(value.text, newText)
                 value = TextFieldValue(text = newText, selection = TextRange(cursor))
                 onContentChange(newText)
             },
@@ -4687,6 +4743,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             fix.edit, value.text, null
                                         )
                                         if (newText != null && newText != value.text) {
+                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                            decorationStore.shiftOnEdit(value.text, newText)
                                             value = TextFieldValue(newText, TextRange(value.selection.start))
                                             onContentChange(newText)
                                         }
@@ -4792,7 +4850,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onAcceptFull = { fullText ->
                     val cursor = value.selection.end
                     val newText = value.text.substring(0, cursor) + fullText + value.text.substring(cursor)
-                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(cursor + fullText.length))
+                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                    decorationStore.shiftOnEdit(value.text, newText)
+                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(positionMapper.shiftOnInsert(cursor, cursor, fullText.length)))
                     onContentChange(newText)
                     if (!ghostTextIsAi) {
                         val ghostLabel = allCompletions.firstOrNull()?.label
@@ -4803,7 +4863,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onAcceptWord = { word, remainingLines ->
                     val cursor = value.selection.end
                     val newText = value.text.substring(0, cursor) + word + value.text.substring(cursor)
-                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(cursor + word.length))
+                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                    decorationStore.shiftOnEdit(value.text, newText)
+                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(positionMapper.shiftOnInsert(cursor, cursor, word.length)))
                     onContentChange(newText)
                     ghostTextLines = remainingLines
                     ghostText = remainingLines.firstOrNull() ?: ""
@@ -4861,6 +4923,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             // Update session offsets
                                             snippetSession = session.shiftAfterEdit(activeStop, oldLen, newLen)
                                             // Update editor value
+                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                            decorationStore.shiftOnEdit(value.text, newText)
                                             value = TextFieldValue(
                                                 text = newText,
                                                 selection = TextRange(stopStart, stopStart + newLen),
@@ -5125,6 +5189,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             } else {
                                                 androidx.compose.ui.text.TextRange(result.second)
                                             }
+                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
+                                            decorationStore.shiftOnEdit(value.text, result.first)
                                             value = TextFieldValue(
                                                 text = result.first,
                                                 selection = selRange,
@@ -5169,8 +5235,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                         } else {
                                                             androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                                         }
+                                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, patched, extraCursors)
+                                                        decorationStore.shiftOnEdit(value.text, patched)
                                                         value = TextFieldValue(text = patched, selection = sel)
                                                     } else {
+                                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, patched, extraCursors)
+                                                        decorationStore.shiftOnEdit(value.text, patched)
                                                         value = TextFieldValue(
                                                             text = patched,
                                                             selection = androidx.compose.ui.text.TextRange(newCursor + importDelta),
@@ -5189,8 +5259,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                         } else {
                                                             androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                                         }
+                                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                                        decorationStore.shiftOnEdit(value.text, newText)
                                                         value = TextFieldValue(text = newText, selection = sel)
                                                     } else {
+                                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                                        decorationStore.shiftOnEdit(value.text, newText)
                                                         value = TextFieldValue(
                                                             text = newText,
                                                             selection = androidx.compose.ui.text.TextRange(newCursor),
@@ -5227,12 +5301,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 } else {
                                                     androidx.compose.ui.text.TextRange(cursorPos)
                                                 }
+                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                                decorationStore.shiftOnEdit(value.text, newText)
                                                 value = TextFieldValue(
                                                     text = newText,
                                                     selection = selectionRange,
                                                 )
                                                 onContentChange(newText)
                                             } else {
+                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
+                                                decorationStore.shiftOnEdit(value.text, newText)
                                                 value = TextFieldValue(
                                                     text = newText,
                                                     selection = androidx.compose.ui.text.TextRange(newCursor),
