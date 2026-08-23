@@ -6,6 +6,7 @@ import org.json.JSONObject
 import com.codespace.ide.diagnostics.AppOutputLog
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.Key
@@ -642,6 +643,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     onInsertHandler: (((String) -> Unit) -> Unit)? = null,
     /** Phase R: Format Selection trigger — when incremented, formats the selected text range. */
     formatSelectionTrigger: Int = 0,
+    /** Pinch-to-zoom: called with new font size when user pinches on the editor. */
+    onFontSizeChange: ((Int) -> Unit)? = null,
 ) {
     val colors = LocalEditorColors.current
     val context = LocalContext.current
@@ -2394,6 +2397,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 }
                             )
+                        }
+                        // Pinch-to-zoom: separate pointerInput so it doesn't conflict with detectTapGestures
+                        .pointerInput(fontSize, onFontSizeChange) {
+                            var accumulatedZoom = 1f
+                            detectTransformGestures { _, _, zoom, _ ->
+                                if (zoom != 1f && onFontSizeChange != null) {
+                                    accumulatedZoom *= zoom
+                                    val newSize = (fontSize * accumulatedZoom).roundToInt().coerceIn(8, 32)
+                                    if (newSize != fontSize) {
+                                        onFontSizeChange.invoke(newSize)
+                                        accumulatedZoom = newSize.toFloat() / fontSize
+                                    }
+                                }
+                            }
                         }
                         // P41-I: Intercept Tab/Shift+Tab for snippet tab-stop navigation
                         // P46-A5: Also intercept Tab to expand local snippets when no session is active

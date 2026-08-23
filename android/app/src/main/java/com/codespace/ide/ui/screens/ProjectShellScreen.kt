@@ -1630,6 +1630,7 @@ fun ProjectShellScreen(
                     buildProblemsMs = buildProblemsMs,
                     editorReloadTriggerMs = editorReloadTriggerMs,
                     formatOnSaveTrigger = formatOnSaveTrigger,
+                    onFontSizeChange = { editorFontSize = it.coerceIn(8, 32) },
                     udm = com.codespace.ide.debug.UniversalDebugManager,
                     fullScreen = fullScreen,
                 )

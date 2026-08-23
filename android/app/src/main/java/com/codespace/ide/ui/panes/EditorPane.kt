@@ -161,6 +161,8 @@ fun EditorPane(
     onAiGhostTextRequest: ((contextBefore: String, contextAfter: String, language: String) -> String?)? = null,
     /** P41-O2: Format on Save trigger — increments when user clicks Save. EditorPane formats then saves. */
     formatOnSaveTrigger: Int = 0,
+    /** Pinch-to-zoom: propagated to CodeEditor for font size adjustment. */
+    onFontSizeChange: ((Int) -> Unit)? = null,
     /** External find query from the top white find bar in ProjectShellScreen. */
     externalFindQuery: String? = null,
     /** When true, the top find bar is open — drive CodeEditor's find highlighting. */
@@ -1456,6 +1458,7 @@ fun EditorPane(
                         onAiFixRequest = onAiFixRequest,
                         onAiGhostTextRequest = onAiGhostTextRequest,
                         semanticTokens = lspSemanticRanges,
+                        onFontSizeChange = onFontSizeChange,
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
                     CodeEditor(
@@ -1478,6 +1481,7 @@ fun EditorPane(
                         onSave = saveCurrentFile,
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
+                        onFontSizeChange = onFontSizeChange,
                     )
                 }
             } else if (showMdPreview && active.language == Language.MARKDOWN) {
@@ -1520,6 +1524,7 @@ fun EditorPane(
                         onSave = saveCurrentFile,
                             projectRoot = projectRootPath,
                             currentFilePath = active.path,
+                            onFontSizeChange = onFontSizeChange,
                         )
                         // Middle: Draggable divider (horizontal, drag up/down)
                         Box(
