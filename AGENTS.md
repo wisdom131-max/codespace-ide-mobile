@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-23 16:45 WAT
+> Last updated: 2026-08-23 20:35 WAT
 
 ---
 
@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 7ed32c2 |
-| CI build | #2508 (green) |
+| Latest commit | 4855d94 |
+| CI build | #2511 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,661 |
+| CodeEditor.kt lines | 5,938 |
 
 ---
 
@@ -465,3 +465,33 @@ IncrementalTmHighlighter.kt (new), IncrementalHighlighter.kt
 **Next on roadmap:**
 - Settings architecture (JSON-based settings with migration)
 - No other pending items from original 45-feature audit (all complete)
+
+---
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit 69007ed7 → 4855d94 | CI #2510 ❌ → #2511 ✅ GREEN**
+
+**[RESTRUCTURE] JSON-based settings architecture + [BUILD-FIX] import corruption**
+
+New unified settings architecture (3 new files, 626 lines):
+- SettingsSchema.kt: Single source of truth for all 40 settings + 11 toggles with key, type, default, category, label, description
+- SettingsMigration.kt: One-time migration from 3 old SharedPreferences stores (project_settings, feature_toggles, keybindings) with migrated flag to prevent re-run
+- JsonSettingsStore.kt: Unified JSON store with versioned schema, export/import, debounced save (500ms), schema-validated reads
+- Backward-compatible: ProjectSettingsStore (40 setters), FeatureToggleStore, KeyBindingRegistry all sync to JsonSettingsStore
+- Old SharedPreferences left intact for 7-day rollback safety
+
+Build #2510 failure root cause: Python str.replace() matched 'import ...KeyEvent' inside 'KeyEventType', corrupting it to 'KeyEvent' + 'JsonSettingsStoreType'. Cascaded as 'Unresolved reference: extraCursors/decorationStore' in CodeEditor.kt. Fixed in #2511.
+
+**Files touched (8):**
+SettingsSchema.kt (new), SettingsMigration.kt (new), JsonSettingsStore.kt (new), ProjectSettingsStore.kt, FeatureToggleStore.kt, KeyBindingRegistry.kt, CodeSpaceApplication.kt, AGENTS.md
+
+**Next on roadmap:**
+- All items from original 45-feature audit are complete
+- Settings architecture: ✅ DONE (this commit)
+- No pending items remain
