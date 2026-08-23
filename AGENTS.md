@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 4855d94 |
-| CI build | #2511 (green) |
+| Latest commit | 49f632f |
+| CI build | #2515 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,938 |
+| CodeEditor.kt lines | 5,661 |
 
 ---
 
@@ -495,3 +495,56 @@ SettingsSchema.kt (new), SettingsMigration.kt (new), JsonSettingsStore.kt (new),
 - All items from original 45-feature audit are complete
 - Settings architecture: ✅ DONE (this commit)
 - No pending items remain
+
+
+---
+
+### [2026-08-23 21:30 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], [CRASH], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+6. NO RE-DO: Never re-do work already marked done.
+7. KOTLIN PITFALLS: See rules block at top.
+8. JVM 64KB LIMIT: Extract new UI to separate files.
+
+**Commits 09b99e3 → 53f3715 → 49f632f | CI #2513 ✅ → #2514 ✅ → #2515 ✅ GREEN**
+
+**[CRASH] Three crash types fixed — app launch + editing now stable**
+
+Three distinct crash types from bug report (bugreport-KL4-OP-S2-UP1A.231005.007):
+
+**Crash 1: `offset(1) is out of bounds [0, 0]`** (09b99e3, #2513)
+- IncrementalHighlighter.kt: `addStyle()` was called without `append()` — produced AnnotatedString
+  of just newlines (length 2) but spans at [0,5) → accessibility layer crash when converting
+  to SpannableString. Fixed: replaced addStyle with withStyle + append pattern.
+
+**Crash 2: `getHorizontalPosition` with stale layout** (53f3715, #2514)
+- CodeEditor.kt: 6 call sites used cursor offsets from current TextFieldValue but
+  textLayoutResult was stale from previous recomposition frame. Fixed: coerceIn(0,
+  layout.layoutInput.text.length) on all 6 call sites.
+- SyntaxTransformation.kt: Added safeguardIdentityResult() — falls back to plain text
+  if transformed AnnotatedString length != original text length.
+
+**Crash 3: `setSpan (10 ... 16) ends beyond length 13`** (49f632f, #2515)
+- SyntaxTransformation.kt: addStyle() calls for lint/semantic tokens and folding offset
+  mapping created spans beyond AnnotatedString text length. Added bulletproof
+  sanitizeSpans() that rebuilds AnnotatedString stripping any span where
+  start >= len || end > len || start >= end. Applied to ALL return paths in filter(),
+  applyLintAndSemantic(), applyHighlightAndLint().
+- EditorOverlays.kt: 3 unclamped getHorizontalPosition calls (extra cursor startDp,
+  find/replace match startDpM, widthDpM) — all clamped to layoutInput.text.length.
+- BlockLineOverlay.kt: 1 unclamped getHorizontalPosition call — clamped.
+
+**Files touched (5):**
+IncrementalHighlighter.kt, CodeEditor.kt, SyntaxTransformation.kt, EditorOverlays.kt,
+BlockLineOverlay.kt (decorations/)
+
+**Next on roadmap:**
+- All 45 audit features complete
+- Settings architecture: ✅ DONE
+- Crash fixes: ✅ DONE (this commit)
+- No pending items remain — ready for device testing
