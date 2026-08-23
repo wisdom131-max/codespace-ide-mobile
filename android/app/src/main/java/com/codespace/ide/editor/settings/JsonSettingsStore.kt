@@ -153,7 +153,7 @@ object JsonSettingsStore {
 
             val settingsObj = JSONObject()
             for ((key, state) in settingsState) {
-                json.putOpt(key, state.value)
+                settingsObj.putOpt(key, state.value)
             }
             json.put("settings", settingsObj)
 

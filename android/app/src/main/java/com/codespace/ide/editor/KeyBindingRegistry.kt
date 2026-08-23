@@ -1,8 +1,7 @@
 package com.codespace.ide.editor
 
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import com.codespace.ide.editor.settings.JsonSettingsStoreType
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.isAltPressed
