@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,7 @@ internal fun BoxScope.HoverPopup(
     cursorOffset: Int,
     text: String,
     clipboardManager: ClipboardManager,
+    textLayoutResult: TextLayoutResult? = null,
 ) {
     val colors = LocalEditorColors.current
     if (lspHoverContent != null && !showCompletions) {
@@ -58,7 +60,11 @@ internal fun BoxScope.HoverPopup(
         val densityBulb = LocalDensity.current
         val vScrollDpHover = with(densityBulb) { vScrollValue.toDp() }.value
         val lineHeightDpHover = with(densityBulb) { (fontSize * EditorMetrics.LINE_HEIGHT_MULTIPLIER).sp.toDp() }.value
-        val hoverTopDp = (((cursorLineIdxHover + 1) * lineHeightDpHover) - vScrollDpHover).coerceAtLeast(0f)
+        val hoverTopDp = if (textLayoutResult != null && (cursorLineIdxHover + 1) < textLayoutResult.lineCount) {
+            ((textLayoutResult.getLineTop(cursorLineIdxHover + 1) - vScrollValue).coerceAtLeast(0f)) / densityBulb.density
+        } else {
+            (((cursorLineIdxHover + 1) * lineHeightDpHover) - vScrollDpHover).coerceAtLeast(0f)
+        }
         if (hoverTopDp > 0) {
             Box(
                 modifier = Modifier

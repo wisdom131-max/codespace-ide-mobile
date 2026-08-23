@@ -2884,7 +2884,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             inlayHints.forEach { hint ->
                 val displayIdx = visualLineMapper.docToVisualLine(hint.line)
                 if (displayIdx < 0) return@forEach
-                val yOffset = lineHeightDpInlay * displayIdx - vScrollDp.dp
+                val yOffset = if (textLayoutResult != null && displayIdx < textLayoutResult.lineCount) {
+                    androidx.compose.ui.unit.Dp((textLayoutResult.getLineTop(displayIdx) - vScroll.value) / density.density)
+                } else {
+                    lineHeightDpInlay * displayIdx - vScrollDp.dp
+                }
                 val hintColor = when (hint.kind) {
                     InlayHint.Kind.TYPE   -> androidx.compose.ui.graphics.Color(0xFF888888)
                     InlayHint.Kind.RETURN -> androidx.compose.ui.graphics.Color(0xFF7A9EC2)
@@ -2919,7 +2923,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 errLine == diagnosticTooltipLine
             }
             if (tooltipErrors.isNotEmpty()) {
-                val tooltipTop = (diagnosticTooltipLine * lineHeightDp.value - vScrollDp + lineHeightDp.value).coerceAtLeast(0f)
+                val tooltipTop = if (textLayoutResult != null && (diagnosticTooltipLine + 1) < textLayoutResult.lineCount) {
+                    ((textLayoutResult.getLineTop(diagnosticTooltipLine + 1) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                } else {
+                    (diagnosticTooltipLine * lineHeightDp.value - vScrollDp + lineHeightDp.value).coerceAtLeast(0f)
+                }
                 DiagnosticTooltip(
                     errors = tooltipErrors,
                     topDp = tooltipTop,
@@ -3128,8 +3136,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     else -> ""
                 }
                 if (label.isBlank()) continue
-                val topDpIH = (line * lineHeightPxIH - vScrollDp).coerceAtLeast(0f)
-                val leftDpIH = gutterDpIH + character * charWidthPx
+                val topDpIH = if (textLayoutResult != null && line < textLayoutResult.lineCount) {
+                    ((textLayoutResult.getLineTop(line) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                } else {
+                    (line * lineHeightPxIH - vScrollDp).coerceAtLeast(0f)
+                }
+                val leftDpIH = if (textLayoutResult != null) {
+                    val lineStartOff = positionMapper.lineStart(line)
+                    val charOffset = (lineStartOff + character).coerceIn(0, textLayoutResult.layoutInput.text.length)
+                    (textLayoutResult.getHorizontalPosition(charOffset, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpIH
+                } else {
+                    gutterDpIH + character * charWidthPx
+                }
                 val paddingLeft = if (hint.optBoolean("paddingLeft", false)) 2f else 0f
                 val paddingRight = if (hint.optBoolean("paddingRight", false)) 2f else 0f
                 Text(
@@ -4649,6 +4667,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             displayLinesSize = visualLineMapper.visualLineCount,
             showLightbulbMenu = showLightbulbMenu,
             onShowLightbulbMenu = { showLightbulbMenu = it },
+            textLayoutResult = textLayoutResult,
         )
         // P39: Lightbulb menu categorized action menu triggered by tapping the bulb
         DropdownMenu(
@@ -4879,6 +4898,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             cursorOffset = value.selection.end,
             text = value.text,
             clipboardManager = clipboardManager,
+            textLayoutResult = textLayoutResult,
         )
 
         // P41-I: Snippet choice dropdown — appears when active tab-stop has choices (${1|a,b,c|})

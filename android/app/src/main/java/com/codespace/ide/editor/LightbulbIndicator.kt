@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -22,13 +23,18 @@ fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
     displayLinesSize: Int,
     showLightbulbMenu: Boolean,
     onShowLightbulbMenu: (Boolean) -> Unit,
+    textLayoutResult: TextLayoutResult? = null,
 ) {
     if (lightbulbLine >= 0 && lspCodeActionProvider != null && !showCompletions) {
         // P46-D5 FIX v2: Stay in pixel space throughout to avoid px→dp→px rounding
         // that accumulates over hundreds of lines and causes drift after extended use.
         val density = LocalDensity.current
         val lineHeightPx = with(density) { (fontSize * 1.25f).sp.toPx() }
-        val bulbTopPx = ((lightbulbLine * lineHeightPx) - vScrollValue).coerceAtLeast(0f)
+        val bulbTopPx = if (textLayoutResult != null && lightbulbLine < textLayoutResult.lineCount) {
+            (textLayoutResult.getLineTop(lightbulbLine) - vScrollValue).coerceAtLeast(0f)
+        } else {
+            ((lightbulbLine * lineHeightPx) - vScrollValue).coerceAtLeast(0f)
+        }
         val bulbHeightPx = lineHeightPx
         val viewportEndPx = (displayLinesSize + 5) * lineHeightPx
         if (bulbTopPx >= 0f && bulbTopPx < viewportEndPx) {
