@@ -1,6 +1,6 @@
 # 01 — Complete Application Architecture
 
-CodeSpace IDE Mobile is built as an **offline-first, modular, multi-layer system**. The
+VN Code is built as an **offline-first, modular, multi-layer system**. The
 Android app is the primary runtime and can do most work fully on-device; a thin cloud
 backend handles things a phone cannot or should not do directly (secret-safe AI proxying,
 multi-device sync, long-lived PTY sessions, OAuth token exchange).

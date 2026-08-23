@@ -1014,7 +1014,7 @@ fun ProjectShellScreen(
             "New File"           -> { activePanel = SidePanel.EXPLORER; triggerNewFileCounter++ }
             "New Folder"         -> { activePanel = SidePanel.EXPLORER; triggerNewFolderCounter++ }
             "Save"               -> { showNotification("File saved", "success") }
-            "About Visual Node Code" -> { showNotification("CodeSpace IDE v1.0.0 — VS Code for Android", "info") }
+            "About Visual Node Code" -> { showNotification("VN Code v1.0.0 — VS Code for Android", "info") }
             "Documentation"      -> { showNotification("Opening docs...", "info") }
             "Keyboard Shortcuts" -> { showCommandPalette = true }
             "Preferences"        -> { showColorTheme = true }
@@ -1184,7 +1184,7 @@ fun ProjectShellScreen(
                 }
             }
             "Go to Definition" -> showNotification("Tap a symbol in the editor to go to definition", "info")
-            "Release Notes" -> showNotification("CodeSpace IDE v1.0.0 — see GitHub releases", "info")
+            "Release Notes" -> showNotification("VN Code v1.0.0 — see GitHub releases", "info")
             else   -> {}
         }
     }

@@ -128,7 +128,7 @@ object WorkspaceManager {
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
         val sb    = StringBuilder()
 
-        sb.appendLine("=== CodeSpace IDE Diagnostics Report ===")
+        sb.appendLine("=== VN Code Diagnostics Report ===")
         sb.appendLine("Generated : $stamp")
         sb.appendLine()
         sb.appendLine("--- Device ---")
@@ -177,7 +177,7 @@ object WorkspaceManager {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type     = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "CodeSpace IDE Diagnostics $stamp")
+            putExtra(Intent.EXTRA_SUBJECT, "VN Code Diagnostics $stamp")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         Pair(outFile, intent)

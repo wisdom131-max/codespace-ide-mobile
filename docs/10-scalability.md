@@ -1,6 +1,6 @@
 # 10 — Scalability Plan
 
-How CodeSpace IDE Mobile scales from one developer to millions, on both the device and
+How VN Code scales from one developer to millions, on both the device and
 the cloud.
 
 ---

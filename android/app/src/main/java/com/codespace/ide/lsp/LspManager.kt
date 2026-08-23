@@ -1388,7 +1388,7 @@ object LspManager {
             put("workspaceFolders", workspaceFoldersArray)
             put("capabilities", capabilities)
             put("clientInfo", JSONObject().apply {
-                put("name", "CodeSpace IDE")
+                put("name", "VN Code")
                 put("version", "1.0")
             })
             // Kotlin LSP (fwcd/kotlin-language-server) has a custom InitializationOptions

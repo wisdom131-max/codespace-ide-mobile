@@ -1,4 +1,4 @@
-# CodeSpace IDE Mobile
+# VN Code
 
 > A mobile-first VS Code alternative for Android. Code, build, and ship entirely from your phone.
 
@@ -7,7 +7,7 @@
 [![Backend](https://img.shields.io/badge/backend-NestJS%20%7C%20PostgreSQL-red)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
-CodeSpace IDE Mobile is a production-grade IDE that adapts the VS Code experience to
+VN Code is a production-grade IDE that adapts the VS Code experience to
 Android phones. It connects to GitHub, GitHub Codespaces, Docker containers, and
 remote Linux servers over SSH, ships a real terminal, a multi-tab code editor with
 syntax highlighting, full Git workflows, and an AI assistant that supports OpenAI,

@@ -690,7 +690,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
             HorizontalDivider()
             Text(
-                "CodeSpace IDE Mobile",
+                "VN Code",
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp),
             )

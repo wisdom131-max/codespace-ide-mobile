@@ -57,7 +57,7 @@ internal fun ConnectorsHubSheet(
 
     LaunchedEffect(refreshKey) {
         if (accessToken.isBlank()) {
-            loadError = "Sign in to CodeSpace IDE first to manage connectors."
+            loadError = "Sign in to VN Code first to manage connectors."
             loading = false
             return@LaunchedEffect
         }

@@ -338,10 +338,10 @@ private suspend fun chat(
     val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
     
     val systemPrompt = when (mode) {
-        ChatMode.ASK   -> "You are a helpful coding assistant inside CodeSpace IDE. Answer concisely." + 
+        ChatMode.ASK   -> "You are a helpful coding assistant inside VN Code. Answer concisely." + 
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
         ChatMode.AGENT -> """
-You are an autonomous coding agent running inside CodeSpace IDE — a VS Code-style
+You are an autonomous coding agent running inside VN Code — a VS Code-style
 Android IDE with a built-in Ubuntu Linux terminal (no root needed).
 
 ## APP VOCABULARY — what the user calls things vs what they actually are
@@ -397,7 +397,7 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
 
 """ + AgentTools.TOOLS_DESCRIPTION +
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
-        ChatMode.PLAN  -> "You are a planning assistant inside CodeSpace IDE. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." +
+        ChatMode.PLAN  -> "You are a planning assistant inside VN Code. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." +
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
     }
 

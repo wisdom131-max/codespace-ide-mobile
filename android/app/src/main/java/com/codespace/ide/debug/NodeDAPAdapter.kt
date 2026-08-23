@@ -330,7 +330,7 @@ class NodeDAPAdapter : DebugAdapter {
         // 6. initialize
         val initArgs = JSONObject().apply {
             put("clientID", "codespace-ide")
-            put("clientName", "CodeSpace IDE")
+            put("clientName", "VN Code")
             put("adapterID", "node")
             put("locale", "en-US")
             put("linesStartAt1", true)

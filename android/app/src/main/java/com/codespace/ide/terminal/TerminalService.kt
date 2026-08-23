@@ -288,7 +288,7 @@ class TerminalService : Service() {
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("CodeSpace IDE")
+            .setContentTitle("VN Code")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)

@@ -234,7 +234,7 @@ class PythonDAPAdapter : DebugAdapter {
         // 5. Initialize handshake
         val initArgs = JSONObject().apply {
             put("clientID", "codespace-ide")
-            put("clientName", "Codespace IDE")
+            put("clientName", "VN Code")
             put("adapterID", "python")
             put("locale", "en-US")
             put("linesStartAt1", true)

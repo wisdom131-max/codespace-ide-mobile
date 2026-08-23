@@ -130,7 +130,7 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
 
             // ── Logo / Title ─────────────────────────────────────────────────
             Text(
-                text       = "Codespace IDE",
+                text       = "VN Code",
                 fontSize   = 30.sp,
                 fontWeight = FontWeight.Bold,
                 color      = MaterialTheme.colorScheme.onBackground,

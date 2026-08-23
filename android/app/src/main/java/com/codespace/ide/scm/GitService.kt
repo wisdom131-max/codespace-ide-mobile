@@ -527,7 +527,7 @@ class GitService(private val context: Context) {
     fun ensureIdentity(workdir: String) {
         val nameResult = GitCommandExecutor.run(context, listOf("config", "user.name"), workdir)
         if (nameResult !is GitResult.Ok || nameResult.output.isBlank()) {
-            GitCommandExecutor.run(context, listOf("config", "user.name", "CodeSpace User"), workdir)
+            GitCommandExecutor.run(context, listOf("config", "user.name", "VN Code User"), workdir)
         }
         val emailResult = GitCommandExecutor.run(context, listOf("config", "user.email"), workdir)
         if (emailResult !is GitResult.Ok || emailResult.output.isBlank()) {
