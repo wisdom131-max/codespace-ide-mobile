@@ -240,6 +240,13 @@ fun EditorPane(
                     if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                 }
             }
+            // Notify LSP that the file was saved
+            try {
+                val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
+                if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
+                    LspManager.didSave(activeTab.language, saveUri, activeTab.content)
+                }
+            } catch (_: Exception) {}
         }
     }
     // R3-A: Save current file — called by Ctrl+S from CodeEditor
@@ -249,6 +256,13 @@ fun EditorPane(
             try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
             val idx = tabs.indexOfFirst { it.id == activeId }
             if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+            // Notify LSP that the file was saved
+            try {
+                val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
+                if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
+                    LspManager.didSave(activeTab.language, saveUri, activeTab.content)
+                }
+            } catch (_: Exception) {}
         }
     }
     // P22-G: LSP diagnostics + hover
