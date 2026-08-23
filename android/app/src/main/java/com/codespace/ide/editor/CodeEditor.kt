@@ -2147,10 +2147,32 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val prevLineStart = if (prevNewline < 0) 0 else prevNewline + 1
                                 val prevLine = newValue.text.substring(prevLineStart, lineStart - 1)
                                 val indent = prevLine.takeWhile { it == ' ' || it == '\t' }
-                                // Extra indent after { ( [ or : (for Python)
-                                val extraIndent = if (prevLine.trimEnd().endsWith("{") || prevLine.trimEnd().endsWith("[")) "    " else ""
+                                // Smart Enter: auto-indent + auto-close after { [ ( and Python :
+                                val trimmedPrev = prevLine.trimEnd()
+                                val endsWithBrace = trimmedPrev.endsWith("{")
+                                val endsWithBracket = trimmedPrev.endsWith("[")
+                                val endsWithParen = trimmedPrev.endsWith("(")
+                                val endsWithColon = trimmedPrev.endsWith(":") && language == com.codespace.ide.domain.Language.PYTHON
+                                val needsExtraIndent = endsWithBrace || endsWithBracket || endsWithParen || endsWithColon
+                                val extraIndent = if (needsExtraIndent) "    " else ""
                                 val fullIndent = indent + extraIndent
-                                if (fullIndent.isNotEmpty()) {
+                                // Smart Enter: if prevLine ends with an unmatched opener, add closing bracket below
+                                val closer = when {
+                                    endsWithBrace -> "}"
+                                    endsWithBracket -> "]"
+                                    endsWithParen -> ")"
+                                    else -> null
+                                }
+                                if (closer != null && fullIndent.isNotEmpty()) {
+                                    // Insert: indent + extraIndent + newline + indent + closer
+                                    val insertPos = lineStart + currentLine.length
+                                    val blockText = fullIndent + "\n" + indent + closer
+                                    val newText = newValue.text.substring(0, insertPos) + blockText + newValue.text.substring(insertPos)
+                                    updatedValue = TextFieldValue(
+                                        text = newText,
+                                        selection = TextRange(insertPos + fullIndent.length)
+                                    )
+                                } else if (fullIndent.isNotEmpty()) {
                                     val insertPos = lineStart + currentLine.length
                                     val newText = newValue.text.substring(0, insertPos) + fullIndent + newValue.text.substring(insertPos)
                                     updatedValue = TextFieldValue(
