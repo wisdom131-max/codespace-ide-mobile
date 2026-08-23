@@ -109,7 +109,7 @@ data class TmStateStack(
         while (a != null && a !== NULL) {
             if (b != null && b !== NULL && a.ruleId == b.ruleId) return true
             a = a.parent
-            b = b.parent
+            b = b?.parent
         }
         return false
     }

@@ -68,10 +68,10 @@ object OnigRegexFactory {
 
         if (byteStart > textBytes.size) return null
 
-        val matcher = Matcher(textBytes, 0, textBytes.size, regex)
+        val matcher = regex.matcher(textBytes, 0, textBytes.size)
         val result = matcher.search(byteStart, textBytes.size, Option.NONE)
 
-        if (result == Matcher.MATCH_SUCCESS) {
+        if (result >= 0) {
             val numGroups = matcher.getCaptureGroupCount() + 1
             val captures = Array(numGroups) { i ->
                 val byteBegin = matcher.getBegin(i)

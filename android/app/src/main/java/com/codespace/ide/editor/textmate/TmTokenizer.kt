@@ -79,7 +79,7 @@ class TmTokenizer(
         var s: TmStateStack? = stack
         val tempScopes = mutableListOf<String>()
         while (s != null && s !== TmStateStack.NULL) {
-            if (s.contentName != null) tempScopes.add(0, s.contentName)
+            s.contentName?.let { tempScopes.add(0, it) }
             s = s.parent
         }
         scopePath.addAll(tempScopes)
@@ -186,7 +186,7 @@ class TmTokenizer(
                         handleCaptures(lineText, stack, rule.beginCaptures, captureIndices, tokens, scopePath)
 
                         // Push content name onto scope path
-                        if (rule.contentName != null) scopePath.add(rule.contentName)
+                        rule.contentName?.let { scopePath.add(it) }
 
                         anchorPosition = matchEnd
                         linePos = matchEnd
@@ -222,7 +222,7 @@ class TmTokenizer(
                         }
                         handleCaptures(lineText, stack, rule.beginCaptures, captureIndices, tokens, scopePath)
 
-                        if (rule.contentName != null) scopePath.add(rule.contentName)
+                        rule.contentName?.let { scopePath.add(it) }
 
                         anchorPosition = matchEnd
                         linePos = matchEnd
@@ -236,6 +236,11 @@ class TmTokenizer(
 
                     is TmRule.CaptureRule -> {
                         // Capture rules are handled in handleCaptures, not directly
+                        linePos = if (matchEnd > linePos) matchEnd else linePos + 1
+                    }
+
+                    else -> {
+                        // Unknown rule type — advance to avoid infinite loop
                         linePos = if (matchEnd > linePos) matchEnd else linePos + 1
                     }
                 }
@@ -384,7 +389,7 @@ class TmTokenizer(
             val idx = captureIndices[cap.groupIndex]
             if (idx.start < 0 || idx.end <= idx.start) continue
             if (cap.name != null) {
-                tokens.add(TmToken(idx.start, idx.end, scopePath + cap.name))
+                tokens.add(TmToken(idx.start, idx.end, scopePath + (cap.name!!)))
             }
         }
     }
