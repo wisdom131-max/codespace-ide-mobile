@@ -1037,6 +1037,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lspHasResponded by remember { mutableStateOf(false) }
     // Smart completion: track whether the current LSP request timed out
     var lspTimedOut by remember { mutableStateOf(false) }
+    // Loading indicator: true while waiting for LSP completion response
+    val lspCompletionLoading by remember { derivedStateOf { smartCompletion && !lspHasResponded && !lspTimedOut } }
     // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
     var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
     // P41-Q: Completion caching — cache LSP results to avoid redundant requests when prefix extends
@@ -4865,6 +4867,52 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val imeHeightPx = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
         val imeHeightDpVal = with(androidx.compose.ui.platform.LocalDensity.current) { imeHeightPx.toDp() }.value.toInt().toInt()
         val availableHeightDp = LocalConfiguration.current.screenHeightDp - imeHeightDpVal
+        // Completion loading indicator — shows when LSP is still fetching
+        if (lspCompletionLoading && !showCompletions && prefix.isNotEmpty()) {
+            val cursorLine = positionMapper.offsetToLine(value.selection.end)
+            val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }
+            val cursorCol = positionMapper.offsetToPosition(value.selection.end).column
+            val charWidthPx = editorMetrics.charWidthPx
+            val screenDensity = androidx.compose.ui.platform.LocalDensity.current
+            val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
+            var popupOffsetX = (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
+            val popupWidthPx = with(screenDensity) { 120.dp.toPx() }
+            if (popupOffsetX + popupWidthPx > screenWidthPx) {
+                popupOffsetX = (screenWidthPx - popupWidthPx).roundToInt().coerceAtLeast(0)
+            }
+            var popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            val screenHeightPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
+            val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
+            if (popupOffsetY + popupMaxHeightPx > screenHeightPx) {
+                popupOffsetY = ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+            }
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(popupOffsetX, popupOffsetY),
+                properties = PopupProperties(focusable = false),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .widthIn(min = 80.dp, max = 120.dp)
+                        .background(colors.background, RoundedCornerShape(6.dp))
+                        .border(1.dp, colors.function.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                        color = colors.function,
+                    )
+                    Text(
+                        text = "Loading...",
+                        fontSize = 11.sp,
+                        color = colors.foreground.copy(alpha = 0.7f),
+                    )
+                }
+            }
+        }
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = positionMapper.offsetToLine(value.selection.end)
             val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }  // P50-FIX: density-corrected, convert to px
