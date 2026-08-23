@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-23 08:35 WAT
+> Last updated: 2026-08-23 12:30 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 568c9de |
-| CI build | #2484 (pending) |
+| Latest commit | e86194b |
+| CI build | #3263 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,740 |
@@ -271,3 +271,51 @@ Cause: Listed from a stale audit checklist instead of git log. Corrected going f
   3. ✅ Keybinding settings UI (view/reset bindings)
   4. ✅ Smart Enter (per-language patterns)
   5. ✅ Shift+Tab unindent (already existed via KeyCombination(Key.Tab, shift=true))
+
+
+### [2026-08-23 12:30 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commits c296ca8, e4a198e, e86194b | CI #3261, #3262, #3263 (all GREEN)**
+- [UI-FIX] TextLayoutResult-based overlay/popup positioning — eliminated charWidthPx estimation
+- All editor overlays and popups now use TextLayoutResult.getHorizontalPosition() for X
+  and getLineTop()/getLineBottom() for Y, with visual line mapping for soft-wrap support.
+- charWidthPx = fontSize * 0.6f is now fallback ONLY (when textLayoutResult is null).
+
+**Batch 1 (c296ca8):**
+- ExtraCursorOverlay: getHorizontalPosition for X, getLineTop for Y
+- GhostTextOverlay: getLineTop for Y
+- Error squiggles: already using AnnotatedString (Compose native, already aligned)
+
+**Batch 2 (e4a198e):**
+- SearchMatchOverlay: getHorizontalPosition for X start + width, getLineTop for Y
+- LSP Document Links: getHorizontalPosition for X/width, visualLine mapping for Y
+- Color Swatch: getHorizontalPosition for X, visualLine mapping for Y
+- Code Lens: visualLine mapping for Y (TopEnd alignment, no X needed)
+- Highlight overlay: visualLine mapping for Y
+- LSP Document Highlight: getLineTop/getLineBottom for Y + height
+
+**Batch 3 (e86194b):**
+- Autocomplete popup: getHorizontalPosition for X, getLineBottom/getLineTop for Y with flip-above
+- Completion loading indicator popup: same pattern
+- Snippet choices popup: getLineBottom for Y
+- BlockLineOverlay (Canvas indent guides): getHorizontalPosition for X, getLineTop for Y with visual line mapping
+
+**Files:** CodeEditor.kt, EditorOverlays.kt, BlockLineOverlay.kt
+
+**Verification:** Confirmed in code that Snippet Transform, Shift+Tab unindent, and Smart Enter
+are all already implemented and will NOT be redone:
+- Snippet Transform: applyActiveStopTransform() at CodeEditor.kt:2520,2546
+- Shift+Tab unindent: multi-line selection unindent at CodeEditor.kt:2582
+- Smart Enter: auto-indent + auto-close for { [ ( and Python : at CodeEditor.kt:2146
+
+**Next on roadmap:**
+- ALL IDENTIFIED ROADMAP ITEMS COMPLETE. The 45-feature audit identified 5 missing features,
+  all 5 have been implemented. Overlay positioning fix was a quality improvement, not a
+  missing feature. No pending items remain from the original audit.
