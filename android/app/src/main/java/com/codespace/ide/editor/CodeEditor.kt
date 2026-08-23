@@ -5467,72 +5467,6 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomPanels(
 
 
 
-
-/**
- * R3-B/D1: Case-preserving replace — matches the case pattern of the original text.
- * - All uppercase -> uppercase replacement
- * - First char uppercase -> capitalize first char of replacement
- * - All lowercase -> keep replacement as-is (already lowercase or mixed)
- */
-
-
-@Composable
-                        Spacer(Modifier.width(2.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clickable {
-                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(lspHoverContent ?: ""))
-                                },
-                            contentAlignment = androidx.compose.ui.Alignment.Center,
-                        ) {
-                            Text(
-                                text = "⧉",
-                                color = Color(0xFF888888),
-                                fontSize = 11.sp,
-                            )
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .then(if (hoverExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(hoverScrollState) else Modifier)
-                    ) {
-                        // R3-3: Markdown-aware hover popup rendering
-                        val hoverAnnotated = remember(lspHoverContent) {
-                            val raw = lspHoverContent ?: ""
-                            val builder = androidx.compose.ui.text.AnnotatedString.Builder(raw)
-                            // Inline code: `code` — monospace + dark bg
-                            Regex("`[^`\n]+`").findAll(raw).forEach { match ->
-                                builder.addStyle(
-                                    androidx.compose.ui.text.SpanStyle(
-                                        fontFamily = FontFamily.Monospace,
-                                        background = Color(0xFF2D2D2D),
-                                        fontSize = 10.sp,
-                                    ),
-                                    match.range.first,
-                                    match.range.last + 1,
-                                )
-                            }
-                            builder.toAnnotatedString()
-                        }
-                        Text(
-                            text = hoverAnnotated,
-                            color = Color(0xFFCCCCCC),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = if (hoverExpanded) Int.MAX_VALUE else 4,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-
 // P-CURSOR: Animated cursor brush composable — handles different blink styles
 // Test 30 fix: SOLID and EXPAND previously set alpha=0f (invisible) expecting a
 // custom drawWithContent cursor that was never implemented. Now SOLID uses the
@@ -5614,6 +5548,7 @@ private fun isInsideStringValue(text: String, cursor: Int): Boolean {
         i++
     }
     return inString || inChar
+}
 
 /**
  * R3-5: Find the sticky scroll symbol from LSP document symbols.
@@ -5657,5 +5592,4 @@ private fun findStickySymbolFromLSP(
         searchSymbol(sym, 0)
     }
     return bestSymbol
-}
 }
