@@ -38,6 +38,7 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FlowMode
+import com.codespace.ide.ui.panes.KeybindingSettingsPanel
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.TypeScriptVersion
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -190,6 +191,16 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                         HorizontalDivider(color = divider)
 
                         // Content (portrait)
+                        if (activeCategory == SettingsCategory.KEYBINDINGS && searchQuery.isEmpty()) {
+                            KeybindingSettingsPanel(
+                                bgColor = bg,
+                                surfaceColor = surface,
+                                textPrimary = textPri,
+                                textSecondary = textSec,
+                                accentColor = accent,
+                                dividerColor = divider,
+                            )
+                        } else {
                         val allRows = remember { buildAllSettingsRows() }
                         val filteredRows = if (searchQuery.isNotEmpty()) {
                             val q = searchQuery.lowercase()
@@ -249,6 +260,7 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                                 }
                             }
                         }
+                        }
                     } // end portrait Column
                 } else {
                     // ── Landscape: sidebar + content side-by-side ──
@@ -296,6 +308,16 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
 
                         VerticalDivider(color = divider, modifier = Modifier.fillMaxHeight())
 
+                        if (activeCategory == SettingsCategory.KEYBINDINGS && searchQuery.isEmpty()) {
+                            KeybindingSettingsPanel(
+                                bgColor = bg,
+                                surfaceColor = surface,
+                                textPrimary = textPri,
+                                textSecondary = textSec,
+                                accentColor = accent,
+                                dividerColor = divider,
+                            )
+                        } else {
                         val allRows = remember { buildAllSettingsRows() }
                         val filteredRows = if (searchQuery.isNotEmpty()) {
                             val q = searchQuery.lowercase()
@@ -355,6 +377,7 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                                 }
                             }
                         }
+                        }
                     } // end landscape Row
                 }
             }
@@ -380,6 +403,7 @@ enum class SettingsCategory(val label: String) {
     TS_JS_WORKSPACE_SYMBOLS("JS / TS Workspace Symbols"),
     WINDOW("Window"),
     TERMINAL("Terminal"),
+    KEYBINDINGS("Keybindings"),
     EXTENSIONS("Extensions"),
     TASK("Task"),
 }

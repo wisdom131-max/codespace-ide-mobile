@@ -85,51 +85,58 @@ enum class EditorAction {
  */
 object KeyBindingRegistry {
     private val bindings = mutableMapOf<EditorAction, KeyCombination>()
+    private val defaults = mutableMapOf<EditorAction, KeyCombination>()
 
-    init {
+    private fun registerDefaults() {
         // File operations
-        bindings[EditorAction.SAVE] = KeyCombination(Key.S, ctrl = true)
-        bindings[EditorAction.OPEN_FILE] = KeyCombination(Key.O, ctrl = true)
-        bindings[EditorAction.CLOSE_TAB] = KeyCombination(Key.W, ctrl = true)
-        bindings[EditorAction.NEXT_TAB] = KeyCombination(Key.Tab, ctrl = true)
-        bindings[EditorAction.PREV_TAB] = KeyCombination(Key.Tab, ctrl = true, shift = true)
+        defaults[EditorAction.SAVE] = KeyCombination(Key.S, ctrl = true)
+        defaults[EditorAction.OPEN_FILE] = KeyCombination(Key.O, ctrl = true)
+        defaults[EditorAction.CLOSE_TAB] = KeyCombination(Key.W, ctrl = true)
+        defaults[EditorAction.NEXT_TAB] = KeyCombination(Key.Tab, ctrl = true)
+        defaults[EditorAction.PREV_TAB] = KeyCombination(Key.Tab, ctrl = true, shift = true)
 
         // Search
-        bindings[EditorAction.FIND] = KeyCombination(Key.F, ctrl = true)
-        bindings[EditorAction.REPLACE] = KeyCombination(Key.H, ctrl = true)
-        bindings[EditorAction.FIND_NEXT] = KeyCombination(Key.F3)
-        bindings[EditorAction.FIND_PREVIOUS] = KeyCombination(Key.F3, shift = true)
-        bindings[EditorAction.GO_TO_LINE] = KeyCombination(Key.G, ctrl = true)
+        defaults[EditorAction.FIND] = KeyCombination(Key.F, ctrl = true)
+        defaults[EditorAction.REPLACE] = KeyCombination(Key.H, ctrl = true)
+        defaults[EditorAction.FIND_NEXT] = KeyCombination(Key.F3)
+        defaults[EditorAction.FIND_PREVIOUS] = KeyCombination(Key.F3, shift = true)
+        defaults[EditorAction.GO_TO_LINE] = KeyCombination(Key.G, ctrl = true)
 
         // Editing
-        bindings[EditorAction.UNDO] = KeyCombination(Key.Z, ctrl = true)
-        bindings[EditorAction.REDO] = KeyCombination(Key.Y, ctrl = true)
-        bindings[EditorAction.COPY] = KeyCombination(Key.C, ctrl = true)
-        bindings[EditorAction.PASTE] = KeyCombination(Key.V, ctrl = true)
-        bindings[EditorAction.CUT] = KeyCombination(Key.X, ctrl = true)
-        bindings[EditorAction.SELECT_ALL] = KeyCombination(Key.A, ctrl = true)
-        bindings[EditorAction.FORMAT] = KeyCombination(Key.I, ctrl = true, shift = true)
-        bindings[EditorAction.COMMENT_TOGGLE] = KeyCombination(Key.Slash, ctrl = true)
-        bindings[EditorAction.DUPLICATE_LINE] = KeyCombination(Key.D, ctrl = true, shift = true)
-        bindings[EditorAction.DELETE_LINE] = KeyCombination(Key.K, ctrl = true, shift = true)
-        bindings[EditorAction.INDENT] = KeyCombination(Key.Tab)
-        bindings[EditorAction.UNINDENT] = KeyCombination(Key.Tab, shift = true)
-        bindings[EditorAction.SMART_ENTER] = KeyCombination(Key.Enter)
+        defaults[EditorAction.UNDO] = KeyCombination(Key.Z, ctrl = true)
+        defaults[EditorAction.REDO] = KeyCombination(Key.Y, ctrl = true)
+        defaults[EditorAction.COPY] = KeyCombination(Key.C, ctrl = true)
+        defaults[EditorAction.PASTE] = KeyCombination(Key.V, ctrl = true)
+        defaults[EditorAction.CUT] = KeyCombination(Key.X, ctrl = true)
+        defaults[EditorAction.SELECT_ALL] = KeyCombination(Key.A, ctrl = true)
+        defaults[EditorAction.FORMAT] = KeyCombination(Key.I, ctrl = true, shift = true)
+        defaults[EditorAction.COMMENT_TOGGLE] = KeyCombination(Key.Slash, ctrl = true)
+        defaults[EditorAction.DUPLICATE_LINE] = KeyCombination(Key.D, ctrl = true, shift = true)
+        defaults[EditorAction.DELETE_LINE] = KeyCombination(Key.K, ctrl = true, shift = true)
+        defaults[EditorAction.INDENT] = KeyCombination(Key.Tab)
+        defaults[EditorAction.UNINDENT] = KeyCombination(Key.Tab, shift = true)
+        defaults[EditorAction.SMART_ENTER] = KeyCombination(Key.Enter)
 
         // Navigation
-        bindings[EditorAction.GO_TO_DEFINITION] = KeyCombination(Key.F12)
-        bindings[EditorAction.SHOW_HOVER] = KeyCombination(Key.K, ctrl = true)
-        bindings[EditorAction.QUICK_FIX] = KeyCombination(Key.Period, ctrl = true)
-        bindings[EditorAction.RENAME] = KeyCombination(Key.F2)
-        bindings[EditorAction.COMMAND_PALETTE] = KeyCombination(Key.P, ctrl = true, shift = true)
+        defaults[EditorAction.GO_TO_DEFINITION] = KeyCombination(Key.F12)
+        defaults[EditorAction.SHOW_HOVER] = KeyCombination(Key.K, ctrl = true)
+        defaults[EditorAction.QUICK_FIX] = KeyCombination(Key.Period, ctrl = true)
+        defaults[EditorAction.RENAME] = KeyCombination(Key.F2)
+        defaults[EditorAction.COMMAND_PALETTE] = KeyCombination(Key.P, ctrl = true, shift = true)
 
         // View
-        bindings[EditorAction.TOGGLE_WORD_WRAP] = KeyCombination(Key.Z, alt = true)
-        bindings[EditorAction.ZOOM_IN] = KeyCombination(Key.Equals, ctrl = true)
-        bindings[EditorAction.ZOOM_OUT] = KeyCombination(Key.Minus, ctrl = true)
-        bindings[EditorAction.ZOOM_RESET] = KeyCombination(Key.Zero, ctrl = true)
-        bindings[EditorAction.MOVE_LINE_UP] = KeyCombination(Key.DirectionUp, alt = true)
-        bindings[EditorAction.MOVE_LINE_DOWN] = KeyCombination(Key.DirectionDown, alt = true)
+        defaults[EditorAction.TOGGLE_WORD_WRAP] = KeyCombination(Key.Z, alt = true)
+        defaults[EditorAction.ZOOM_IN] = KeyCombination(Key.Equals, ctrl = true)
+        defaults[EditorAction.ZOOM_OUT] = KeyCombination(Key.Minus, ctrl = true)
+        defaults[EditorAction.ZOOM_RESET] = KeyCombination(Key.Zero, ctrl = true)
+        defaults[EditorAction.MOVE_LINE_UP] = KeyCombination(Key.DirectionUp, alt = true)
+        defaults[EditorAction.MOVE_LINE_DOWN] = KeyCombination(Key.DirectionDown, alt = true)
+    }
+
+    init {
+        registerDefaults()
+        // Copy defaults into active bindings
+        bindings.putAll(defaults)
     }
 
     /**
@@ -142,22 +149,89 @@ object KeyBindingRegistry {
      */
     fun setBinding(action: EditorAction, combination: KeyCombination) {
         bindings[action] = combination
+        persistBinding(action)
     }
 
     /**
      * Reset a binding to its default.
      */
     fun resetBinding(action: EditorAction) {
-        // Re-init just this action by re-creating the default
-        val defaults = mutableMapOf<EditorAction, KeyCombination>()
-        // The defaults are set in init(), so we can't easily re-init just one.
-        // For now, just leave the current binding.
+        defaults[action]?.let { bindings[action] = it }
+        prefs?.edit()?.remove(action.name)?.apply()
     }
 
     /**
      * Get all current bindings.
      */
     fun getAllBindings(): Map<EditorAction, KeyCombination> = bindings.toMap()
+
+    /**
+     * Reset all bindings to their defaults.
+     */
+    fun resetAllBindings() {
+        bindings.clear()
+        bindings.putAll(defaults)
+        prefs?.edit()?.clear()?.apply()
+    }
+
+    /**
+     * Get the default binding for an action (for UI display).
+     */
+    fun getDefaultBinding(action: EditorAction): KeyCombination? = defaults[action]
+
+    // ── Persistence ─────────────────────────────────────────────────
+    private const val PREFS_NAME = "keybindings"
+    private var prefs: android.content.SharedPreferences? = null
+
+    /**
+     * Load saved bindings from SharedPreferences. Call once at app startup.
+     */
+    fun init(context: android.content.Context) {
+        prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        prefs?.all?.forEach { (key, value) ->
+            try {
+                val action = EditorAction.valueOf(key)
+                val parts = (value as String).split('|')
+                val keyName = parts[0]
+                val composeKey = runCatching { Key.valueOf(keyName) }.getOrNull() ?: return@forEach
+                bindings[action] = KeyCombination(
+                    key = composeKey,
+                    ctrl = parts.getOrNull(1) == "true",
+                    shift = parts.getOrNull(2) == "true",
+                    alt = parts.getOrNull(3) == "true",
+                )
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * Persist a single binding to SharedPreferences.
+     */
+    fun persistBinding(action: EditorAction) {
+        val combo = bindings[action] ?: return
+        val value = "${combo.key}|${combo.ctrl}|${combo.shift}|${combo.alt}"
+        prefs?.edit()?.putString(action.name, value)?.apply()
+    }
+
+    /**
+     * Persist all bindings.
+     */
+    fun persistAll() {
+        val editor = prefs?.edit() ?: return
+        for ((action, combo) in bindings) {
+            val value = "${combo.key}|${combo.ctrl}|${combo.shift}|${combo.alt}"
+            editor.putString(action.name, value)
+        }
+        editor.apply()
+    }
+
+    /**
+     * Clear persisted overrides and reset to defaults.
+     */
+    fun clearPersisted() {
+        prefs?.edit()?.clear()?.apply()
+        resetAllBindings()
+    }
 
     /**
      * Match a key event against all bindings and return the matching action, if any.

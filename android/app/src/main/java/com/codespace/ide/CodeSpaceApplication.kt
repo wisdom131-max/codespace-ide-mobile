@@ -21,6 +21,7 @@ import java.util.Locale
 import javax.inject.Inject
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.ProjectSettingsStore
+import com.codespace.ide.editor.KeyBindingRegistry
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.ui.screens.SettingsUsageTracker
@@ -48,6 +49,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             AppOutputLog.log("[Notification] Restart action triggered", "system")
         }
         SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
+        KeyBindingRegistry.init(this) // Load persisted keybinding overrides
         super.onCreate()
         // X7 fix: Start Agent API server on app launch so the MCP status indicator
         // is green from startup, not just when a terminal session is created.
