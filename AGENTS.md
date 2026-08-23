@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | c259945 |
-| CI build | #2504 (green) |
+| Latest commit | 0be8de4 |
+| CI build | #2506 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,661 |
@@ -403,5 +403,32 @@ OnigRegexFactory.kt, TmStateStack.kt, TmTokenizer.kt
 **Next on roadmap:**
 - TextMate capture group support (need to verify exact joni 2.2.6 API for sub-groups)
 - Incremental highlighting transition (currently O(n) full re-highlight, want per-line caching)
+- Settings architecture (JSON-based settings with migration)
+- No other pending items from original 45-feature audit (all complete)
+
+### [2026-08-23 19:30 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit 0be8de4 | CI #2506 ✅ GREEN**
+
+**[BUILD-FIX] Fix joni capture group API — full capture group support now working**
+
+Read the actual joni 2.2.6 source from github.com/jruby/joni:
+- `Region` is an abstract class with `getBeg(int)` / `getEnd(int)` / `getNumRegs()` methods
+- `matcher.getEagerRegion()` returns a `Region` object
+- Earlier failures used field access (`region.beg` / `region.end`) — WRONG, must use method calls
+- Now uses `region.numRegs` (Kotlin property syntax for `getNumRegs()`) and `region.getBeg(i)` / `region.getEnd(i)`
+- TextMate capture groups fully supported for begin/end captures and pattern captures
+
+**Files touched (1):** OnigRegexFactory.kt
+
+**Next on roadmap:**
+- Incremental highlighting transition (O(n) full re-highlight → per-line caching with TextMate)
 - Settings architecture (JSON-based settings with migration)
 - No other pending items from original 45-feature audit (all complete)
