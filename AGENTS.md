@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 9cec34b |
-| CI build | #2477 ✅ GREEN (#2478 pending) |
+| Latest commit | fc6e036 |
+| CI build | #2479 (pending) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,740 |
@@ -171,3 +171,35 @@
 5. Extensible/pluggable bracket pairs per language
 6. Snippet transform application (Tab stops with placeholder transforms)
 7. Keybinding settings UI (view/edit/reset bindings)
+
+---
+
+### [2026-08-23 10:30 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit fc6e036 | CI #2479 (pending)**
+- [RESTRUCTURE] Wire KeyBindingRegistry into CodeEditor onPreviewKeyEvent
+- Ctrl+key shortcuts (undo, redo, duplicate line, toggle comment, delete line, find, go to line, save) now dispatched via KeyBindingRegistry.match() instead of hardcoded when{} checks
+- Alt+Up/Down (move line up/down) also dispatched via KeyBindingRegistry
+- Added match(key, ctrl, shift, alt) overload for compatibility with event.nativeKeyEvent pattern
+- Added MOVE_LINE_UP/DOWN default bindings
+- All existing behavior preserved — only the dispatch mechanism changed
+- Files: CodeEditor.kt (+26/-21), KeyBindingRegistry.kt (+15)
+
+**ROADMAP RECONCILIATION (2026-08-23):**
+The previous "next on roadmap" list incorrectly included 4 items that were already done:
+- Snippet transform: DONE in commit c6a6bd1 (applyActiveStopTransform at CodeEditor.kt:2523,2549)
+- Completion loading indicator: DONE in commit a1f8478 (CircularProgressIndicator at CodeEditor.kt:5541)
+- Incremental highlighting: DONE in commit 8a84afa (IncrementalHighlighter wired at CodeEditor.kt:2317)
+- Format-on-save: Was already working (ProjectSettingsStore.formatOnSaveEnabled, EditorPane LaunchedEffect at line 214)
+Cause: Listed from a stale audit checklist instead of git log. Corrected going forward.
+
+**Updated roadmap (genuinely remaining):**
+1. Pluggable bracket pairs per language (BracketPairs config, not hardcoded)
+2. Keybinding settings UI (view/edit/reset bindings in settings panel)
