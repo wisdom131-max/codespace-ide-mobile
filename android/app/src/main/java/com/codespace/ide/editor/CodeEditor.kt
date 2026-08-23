@@ -1758,7 +1758,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val bracketPos = if (before != null && bracket in allBrackets) pos - 1
                           else if (at != null && bracket in allBrackets) pos
                           else -1
-            if (bracketPos >= 0) {
+            if (bracketPos >= 0 && bracket != null) {
                 val match = BracketPairConfig.getMatchingBracket(language, bracket)
                 if (match != null) {
                     val dir = if (BracketPairConfig.isOpener(language, bracket)) 1 else -1
