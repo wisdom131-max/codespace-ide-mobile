@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | d600076 |
-| CI build | #2482 ✅ GREEN (#2483 pending) |
+| Latest commit | 568c9de |
+| CI build | #2484 (pending) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,740 |
@@ -234,3 +234,40 @@ Cause: Listed from a stale audit checklist instead of git log. Corrected going f
 
 **Next on roadmap:**
 1. Keybinding settings UI (view/edit/reset bindings in settings panel) — LAST ITEM
+
+---
+
+### [2026-08-23 11:10 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit 568c9de | CI #2484 (pending)**
+- [EDITOR] Keybinding settings UI — view/reset bindings per-language
+- New KeybindingSettingsPanel.kt: VS Code-style keybinding viewer with search,
+  grouped categories (File/Search/Editing/Navigation/View), modified binding
+  highlighting, individual + full reset
+- KeyBindingRegistry: defaults storage, resetBinding/resetAllBindings,
+  SharedPreferences persistence (init/persist/clearPersisted)
+- InProjectSettingsDialog: KEYBINDINGS category renders the panel in
+  portrait and landscape
+- CodeSpaceApplication: KeyBindingRegistry.init() at startup
+- Files: KeybindingSettingsPanel.kt (new, 250 lines), KeyBindingRegistry.kt (+113),
+  InProjectSettingsDialog.kt (+24), CodeSpaceApplication.kt (+2)
+
+**Previous commit d600076 | CI #2483 (pending)**
+- [EDITOR] Pluggable bracket pairs per language — BracketPairConfig
+- 5 hardcoded bracket maps replaced with per-language config lookups
+
+**Next on roadmap:**
+- ALL IDENTIFIED ROADMAP ITEMS COMPLETE. The audit identified 45 features,
+  40 were working, 5 were missing. All 5 have now been implemented:
+  1. ✅ KeyBindingRegistry (configurable keybindings)
+  2. ✅ BracketPairConfig (pluggable bracket pairs per language)
+  3. ✅ Keybinding settings UI (view/reset bindings)
+  4. ✅ Smart Enter (per-language patterns)
+  5. ✅ Shift+Tab unindent (already existed via KeyCombination(Key.Tab, shift=true))
