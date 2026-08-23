@@ -2762,8 +2762,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // R3-4: Diagnostic tooltip popup
         if (showDiagnosticTooltip && diagnosticTooltipLine >= 0) {
             val tooltipErrors = lintErrors.filter { err ->
-                val errLine = value.text.substring(0, err.start.coerceIn(0, value.text.length)).count { it == '
-' }
+                val errLine = value.text.substring(0, err.start.coerceIn(0, value.text.length)).count { it == '\n' }
                 errLine == diagnosticTooltipLine
             }
             if (tooltipErrors.isNotEmpty()) {
@@ -5592,6 +5591,4 @@ private fun findStickySymbolFromLSP(
         searchSymbol(sym, 0)
     }
     return bestSymbol
-}
-
 }
