@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-23 12:30 WAT
+> Last updated: 2026-08-23 16:45 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | e86194b |
-| CI build | #3263 (green) |
+| Latest commit | 92737f5 |
+| CI build | #2498 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,740 |
@@ -319,3 +319,57 @@ are all already implemented and will NOT be redone:
 - ALL IDENTIFIED ROADMAP ITEMS COMPLETE. The 45-feature audit identified 5 missing features,
   all 5 have been implemented. Overlay positioning fix was a quality improvement, not a
   missing feature. No pending items remain from the original audit.
+
+---
+
+### [2026-08-23 16:45 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit 92737f5 | CI #2498 ✅ GREEN**
+
+**[DOCS] Rename all user-facing "Codespace IDE"/"CodeSpace IDE" references to "VN Code"**
+
+28 string changes across 16 files — Part C rename audit implementation:
+
+- AuthScreen.kt: login title "Codespace IDE" → "VN Code"
+- ProjectShellScreen.kt: 2 notification strings (about dialog, release notes)
+- SettingsScreen.kt: settings header "CodeSpace IDE Mobile" → "VN Code"
+- ConnectorsHubSheet.kt: connectors prompt
+- TerminalService.kt: notification title (2 occurrences: channel + content)
+- CopilotChatPanelOverlay.kt: 3 AI chat system prompts (ASK/AGENT/PLAN modes)
+- PythonDAPAdapter.kt: DAP clientName
+- NodeDAPAdapter.kt: DAP clientName
+- LspManager.kt: LSP client name (initialize request)
+- ProjectTemplates.kt: 8 generated project README strings
+- WorkspaceManager.kt: 2 diagnostics report strings (header + email subject)
+- GitService.kt: default git user.name "CodeSpace User" → "VN Code User"
+- ProotInstaller.kt: codebase map heading inside rootfs
+- README.md: repo title + description (2)
+- docs/01-architecture.md: architecture doc header
+- docs/10-scalability.md: scalability doc header
+
+**NOT changed (intentionally):**
+- Package name (com.codespace.ide) — would break existing installs
+- Repository name (codespace-ide-mobile) — would break CI/clone URLs
+- Class names (CodeSpaceApp, CodeSpaceApplication, CodeSpaceTheme) — internal
+- CI workflow names, logcat tags, Gradle identifiers — internal
+- Test files (DAPClientTest.kt) — internal
+- Filesystem folder (CodespaceIDE/) — renaming breaks existing user backups on device
+
+**Files touched (16):**
+AuthScreen.kt, ProjectShellScreen.kt, SettingsScreen.kt, ConnectorsHubSheet.kt,
+TerminalService.kt, CopilotChatPanelOverlay.kt, PythonDAPAdapter.kt,
+NodeDAPAdapter.kt, LspManager.kt, ProjectTemplates.kt, WorkspaceManager.kt,
+GitService.kt, ProotInstaller.kt, README.md, docs/01-architecture.md,
+docs/10-scalability.md
+
+**Next on roadmap:**
+- ALL IDENTIFIED ROADMAP ITEMS COMPLETE. The 45-feature audit identified 5 missing features,
+  all 5 have been implemented. Rename audit (Part C) is now complete.
+- No pending items remain from the original audit or the rename audit.
