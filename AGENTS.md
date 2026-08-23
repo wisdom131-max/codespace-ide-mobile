@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 92737f5 |
-| CI build | #2498 (green) |
+| Latest commit | c259945 |
+| CI build | #2504 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,740 |
+| CodeEditor.kt lines | 5,661 |
 
 ---
 
@@ -373,3 +373,35 @@ docs/10-scalability.md
 - ALL IDENTIFIED ROADMAP ITEMS COMPLETE. The 45-feature audit identified 5 missing features,
   all 5 have been implemented. Rename audit (Part C) is now complete.
 - No pending items remain from the original audit or the rename audit.
+
+### [2026-08-23 19:12 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit c259945 | CI #2504 ✅ GREEN**
+
+**[BUILD-FIX] TextMate compilation fixes across 4 builds (#2500→#2504)**
+
+Fixed all compilation errors in the TextMate syntax highlighting system:
+- OnigRegexFactory.kt: Use `regex.matcher()` instead of `Matcher()` constructor (joni 2.x API)
+- OnigRegexFactory.kt: Replace `Matcher.MATCH_SUCCESS` with `result >= 0` (constant doesn't exist)
+- OnigRegexFactory.kt: Use `regex.numberOfCaptures()` as function call, not property
+- OnigRegexFactory.kt: Simplified to group-0 only (`getBegin()`/`getEnd()` no args) — joni 2.2.6 has no `getCaptureBegin`/`getCaptureEnd` or accessible `Region.beg`/`Region.end`
+- TmStateStack.kt: Safe call `?.parent` for nullable receiver
+- TmTokenizer.kt: Use `?.let{}` for smart cast on nullable/mutable `contentName`
+- TmTokenizer.kt: Add `else` branch to `when` expression for exhaustiveness
+- TmTokenizer.kt: Fix `resolveBackRefs` nullable String with `!!` assertion after null check
+
+**Files touched (3):**
+OnigRegexFactory.kt, TmStateStack.kt, TmTokenizer.kt
+
+**Next on roadmap:**
+- TextMate capture group support (need to verify exact joni 2.2.6 API for sub-groups)
+- Incremental highlighting transition (currently O(n) full re-highlight, want per-line caching)
+- Settings architecture (JSON-based settings with migration)
+- No other pending items from original 45-feature audit (all complete)
