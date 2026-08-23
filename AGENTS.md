@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | fc6e036 |
-| CI build | #2479 (pending) |
+| Latest commit | d600076 |
+| CI build | #2482 ✅ GREEN (#2483 pending) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,740 |
@@ -203,3 +203,34 @@ Cause: Listed from a stale audit checklist instead of git log. Corrected going f
 **Updated roadmap (genuinely remaining):**
 1. Pluggable bracket pairs per language (BracketPairs config, not hardcoded)
 2. Keybinding settings UI (view/edit/reset bindings in settings panel)
+
+---
+
+### [2026-08-23 10:50 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit d600076 | CI #2483 (pending)**
+- [EDITOR] Pluggable bracket pairs per language
+- New BracketPairConfig.kt: per-language bracket/quote pair definitions
+- 5 hardcoded bracket maps in CodeEditor.kt replaced with config lookups:
+  1. Auto-close brackets: getCloser(language, char)
+  2. Surround selection: getPairByOpen(language, char) + .surround flag
+  3. Smart Enter closer: getCloser(language, '{'/[/'(')
+  4. Bracket match highlighter: getAllBracketChars + getMatchingBracket + isOpener
+  5. Extra keys toolbar: getCloser(language, char)
+- Language-specific: JS/TS/Vue/Svelte get backtick (template literals), HTML/XML get angle brackets (wrap-only), Plain text disables auto-close, Markdown gets backtick
+- Files: BracketPairConfig.kt (new, 209 lines), CodeEditor.kt (+16/-35)
+
+**Build fix history since last entry:**
+- #2478-#2481: All failed on Key.Numpad0 (doesn't exist in Compose BOM 2024.06)
+- Fixed in db56d4b: Key.Numpad0 → Key.Zero
+- #2482: ✅ GREEN (db56d4b)
+
+**Next on roadmap:**
+1. Keybinding settings UI (view/edit/reset bindings in settings panel) — LAST ITEM
