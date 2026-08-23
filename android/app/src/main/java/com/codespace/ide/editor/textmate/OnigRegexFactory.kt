@@ -23,10 +23,6 @@ object OnigRegexFactory {
     private val encoding = UTF8Encoding.INSTANCE
     private val utf8: Charset = Charsets.UTF_8
 
-    /**
-     * Compile an Oniguruma regex pattern.
-     * Returns null if the pattern cannot be compiled.
-     */
     fun compile(pattern: String): Regex? {
         return try {
             val bytes = pattern.toByteArray(utf8)
@@ -36,9 +32,6 @@ object OnigRegexFactory {
         }
     }
 
-    /**
-     * Compile with case-insensitive flag.
-     */
     fun compileIgnoreCase(pattern: String): Regex? {
         return try {
             val bytes = pattern.toByteArray(utf8)
@@ -48,18 +41,10 @@ object OnigRegexFactory {
         }
     }
 
-    /**
-     * Search for a pattern in text starting at a given position.
-     * Returns a MatchResult if found, null if no match.
-     *
-     * Joni works on byte arrays, so we must convert char positions to byte
-     * positions before searching and byte results back to char positions.
-     */
     fun search(regex: Regex, text: String, startChar: Int): OnigMatchResult? {
         if (startChar >= text.length) return null
         val textBytes = text.toByteArray(utf8)
 
-        // Convert char start to byte start
         var byteStart = 0
         for (i in 0 until startChar.coerceAtMost(text.length)) {
             val c = text[i]
@@ -72,41 +57,42 @@ object OnigRegexFactory {
         val result = matcher.search(byteStart, textBytes.size, Option.NONE)
 
         if (result >= 0) {
-            // joni Matcher: getBegin()/getEnd() give group 0 (overall match)
-            // For capture groups, use the Region object
-            val numGroups = try { regex.numberOfCaptures + 1 } catch (_: Exception) { 1 }
-            val captures = if (numGroups <= 1) {
-                arrayOf(OnigCaptureIndex(
-                    byteToChar(text, textBytes, matcher.getBegin()),
-                    byteToChar(text, textBytes, matcher.getEnd())
-                ))
-            } else {
-                // Try to get capture group positions via Region
-                val region = try { matcher.getEagerRegion() } catch (_: Exception) { null }
-                if (region != null && region.beg != null && region.end != null) {
-                    Array(numGroups) { i ->
-                        val byteBegin = region.beg[i]
-                        val byteEnd = region.end[i]
-                        OnigCaptureIndex(
-                            if (byteBegin >= 0) byteToChar(text, textBytes, byteBegin) else -1,
-                            if (byteEnd >= 0) byteToChar(text, textBytes, byteEnd) else -1
-                        )
-                    }
-                } else {
-                    arrayOf(OnigCaptureIndex(
-                        byteToChar(text, textBytes, matcher.getBegin()),
-                        byteToChar(text, textBytes, matcher.getEnd())
-                    ))
-                }
+            // Group 0 = overall match via getBegin()/getEnd()
+            // Capture groups via getCaptureBegin(i)/getCaptureEnd(i) in joni 2.x
+            val numGroups: Int = try {
+                regex.numberOfCaptures() + 1
+            } catch (_: Exception) {
+                1
+            }
+            val captures = Array(numGroups) { i ->
+                val byteBegin = if (i == 0) matcher.getBegin() else getCaptureStart(matcher, i)
+                val byteEnd = if (i == 0) matcher.getEnd() else getCaptureEnd(matcher, i)
+                OnigCaptureIndex(
+                    if (byteBegin >= 0) byteToChar(text, textBytes, byteBegin) else -1,
+                    if (byteEnd >= 0) byteToChar(text, textBytes, byteEnd) else -1
+                )
             }
             return OnigMatchResult(captures)
         }
         return null
     }
 
-    /**
-     * Convert a byte offset back to a character offset in the original string.
-     */
+    private fun getCaptureStart(matcher: Matcher, group: Int): Int {
+        return try {
+            matcher.getCaptureBegin(group)
+        } catch (_: Exception) {
+            -1
+        }
+    }
+
+    private fun getCaptureEnd(matcher: Matcher, group: Int): Int {
+        return try {
+            matcher.getCaptureEnd(group)
+        } catch (_: Exception) {
+            -1
+        }
+    }
+
     private fun byteToChar(text: String, textBytes: ByteArray, byteOffset: Int): Int {
         if (byteOffset < 0) return -1
         if (byteOffset == 0) return 0
@@ -124,17 +110,14 @@ object OnigRegexFactory {
     }
 }
 
-/** A capture group match result. */
 data class OnigCaptureIndex(
     val start: Int,
     val end: Int,
 )
 
-/** A full match result with all capture groups. */
 data class OnigMatchResult(
     val captures: Array<OnigCaptureIndex>,
 ) {
-    /** The full match span (capture group 0). */
     val matchStart: Int get() = if (captures.isNotEmpty()) captures[0].start else -1
     val matchEnd: Int get() = if (captures.isNotEmpty()) captures[0].end else -1
     val length: Int get() = matchEnd - matchStart
