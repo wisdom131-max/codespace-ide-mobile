@@ -239,14 +239,14 @@ fun EditorPane(
                     val idx = tabs.indexOfFirst { it.id == activeId }
                     if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                 }
+                // Notify LSP that the file was saved
+                try {
+                    val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
+                    if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
+                        LspManager.didSave(activeTab.language, saveUri, activeTab.content)
+                    }
+                } catch (_: Exception) {}
             }
-            // Notify LSP that the file was saved
-            try {
-                val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
-                if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
-                    LspManager.didSave(activeTab.language, saveUri, activeTab.content)
-                }
-            } catch (_: Exception) {}
         }
     }
     // R3-A: Save current file — called by Ctrl+S from CodeEditor

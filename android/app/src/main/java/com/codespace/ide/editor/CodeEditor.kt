@@ -1037,6 +1037,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lspHasResponded by remember { mutableStateOf(false) }
     // Smart completion: track whether the current LSP request timed out
     var lspTimedOut by remember { mutableStateOf(false) }
+    // smartCompletion defined here so lspCompletionLoading can reference it
+    val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
     // Loading indicator: true while waiting for LSP completion response
     val lspCompletionLoading by remember { derivedStateOf { smartCompletion && !lspHasResponded && !lspTimedOut } }
     // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
@@ -2597,7 +2599,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             totalRemoved += removed
                                             if (lineIdx == startLine) firstLineRemoved = removed
                                         }
-                                        newText.append(value.text.substring(positionMapper.lineStart(endLine) + lines[endLine].length + 1).coerceAtMost(value.text.length))
+                                        newText.append(value.text.substring((positionMapper.lineStart(endLine) + lines[endLine].length + 1).coerceAtMost(value.text.length)))
                                         val finalText = newText.toString()
                                         val newStart = (selStart - firstLineRemoved).coerceAtLeast(positionMapper.lineStart(startLine))
                                         val newEnd = (selEnd - totalRemoved).coerceAtLeast(newStart)
@@ -2617,7 +2619,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             totalAdded += indentUnit.length
                                             if (lineIdx == startLine) firstLineAdded = indentUnit.length
                                         }
-                                        newText.append(value.text.substring(positionMapper.lineStart(endLine) + lines[endLine].length + 1).coerceAtMost(value.text.length))
+                                        newText.append(value.text.substring((positionMapper.lineStart(endLine) + lines[endLine].length + 1).coerceAtMost(value.text.length)))
                                         val finalText = newText.toString()
                                         val newStart = selStart + firstLineAdded
                                         val newEnd = selEnd + totalAdded
@@ -4934,7 +4936,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     Text(
                         text = "Loading...",
                         fontSize = 11.sp,
-                        color = colors.foreground.copy(alpha = 0.7f),
+                        color = colors.text.copy(alpha = 0.7f),
                     )
                 }
             }
