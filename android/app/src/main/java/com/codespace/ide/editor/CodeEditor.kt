@@ -1047,7 +1047,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var cachedLspPrefix by remember { mutableStateOf("") }
     var cachedLspResults by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
     var cachedLspCursorLine by remember { mutableStateOf(-1) }
-    val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
     // Phase X-3: Completion trigger gated by editorEvent — only UserTyping can trigger.
     // Context detection (prefix, isDotContext, completionContext) still recomputes freely
     // (pure, cheap) — they feed display/filtering. But the LSP request only fires when

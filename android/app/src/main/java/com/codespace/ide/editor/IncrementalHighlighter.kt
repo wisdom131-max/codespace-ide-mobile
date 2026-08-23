@@ -226,7 +226,7 @@ class IncrementalHighlighter {
                     i = n
                     continue
                 }
-                val end = close + spec.blockCommentEnd.length
+                val end = close + spec.blockCommentEnd!!.length
                 segments.add(Triple(i, end, colors.comment))
                 i = end
                 inBlockComment = false
@@ -234,15 +234,15 @@ class IncrementalHighlighter {
             }
 
             // Line comments
-            if (spec.lineComment != null && line.startsWith(spec.lineComment, i)) {
+            if (spec.lineComment != null && line.startsWith(spec.lineComment!!, i)) {
                 segments.add(Triple(i, n, colors.comment))
                 i = n
                 continue
             }
 
             // Block comment start
-            if (spec.blockCommentStart != null && line.startsWith(spec.blockCommentStart, i)) {
-                val close = if (spec.blockCommentEnd != null) line.indexOf(spec.blockCommentEnd, i + spec.blockCommentStart.length) else -1
+            if (spec.blockCommentStart != null && line.startsWith(spec.blockCommentStart!!, i)) {
+                val close = if (spec.blockCommentEnd != null && spec.blockCommentStart != null) line.indexOf(spec.blockCommentEnd!!, i + spec.blockCommentStart!!.length) else -1
                 if (close == -1) {
                     // Block comment spans to end of line (continues on next line)
                     segments.add(Triple(i, n, colors.comment))
@@ -250,7 +250,7 @@ class IncrementalHighlighter {
                     i = n
                     continue
                 }
-                val end = close + spec.blockCommentEnd.length
+                val end = close + spec.blockCommentEnd!!.length
                 segments.add(Triple(i, end, colors.comment))
                 i = end
                 continue
