@@ -2946,7 +2946,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // R3-2: Indent guide overlay
         val visibleStartLine = (vScrollDp / lineHeightDp.value).toInt().coerceAtLeast(0)
         val visibleEndLine = visibleStartLine + (LocalConfiguration.current.screenHeightDp / lineHeightDp.value).toInt() + 5
-        BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors)
+        BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors, textLayoutResult, visualLineMapper, vScroll.value)
 
         SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper, textLayoutResult, vScroll.value)
 
@@ -4961,7 +4961,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             if (activeStop != null && activeStop.choices.isNotEmpty()) {
                 val cursorLine = positionMapper.offsetToLine(activeStop.startOffset)
                 val lineHeightPxPopup = editorMetrics.lineHeightPx
-                val popupOffsetY = ((cursorLine + 1) * lineHeightPxPopup - vScroll.value).roundToInt().coerceAtLeast(0)
+                val visualLineSP = visualLineMapper.docToVisualLine(cursorLine)
+                val layoutSP = textLayoutResult
+                val popupOffsetY = if (layoutSP != null && visualLineSP < layoutSP.lineCount) {
+                    (layoutSP.getLineBottom(visualLineSP) - vScroll.value).roundToInt().coerceAtLeast(0)
+                } else {
+                    ((cursorLine + 1) * lineHeightPxPopup - vScroll.value).roundToInt().coerceAtLeast(0)
+                }
                 val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
                 Popup(
                     alignment = Alignment.TopStart,
@@ -5033,19 +5039,34 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val cursorLine = positionMapper.offsetToLine(value.selection.end)
             val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }
             val cursorCol = positionMapper.offsetToPosition(value.selection.end).column
-            val charWidthPx = editorMetrics.charWidthPx
+            val cursorOff = value.selection.end
+            val visualLineLI = visualLineMapper.docToVisualLine(cursorLine)
+            val layoutLI = textLayoutResult
             val screenDensity = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
-            var popupOffsetX = (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
+            var popupOffsetX = if (layoutLI != null) {
+                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + layoutLI.getHorizontalPosition(cursorOff, true)).roundToInt()
+            } else {
+                val charWidthPx = editorMetrics.charWidthPx
+                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
+            }
             val popupWidthPx = with(screenDensity) { 120.dp.toPx() }
             if (popupOffsetX + popupWidthPx > screenWidthPx) {
                 popupOffsetX = (screenWidthPx - popupWidthPx).roundToInt().coerceAtLeast(0)
             }
-            var popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            var popupOffsetY = if (layoutLI != null && visualLineLI < layoutLI.lineCount) {
+                (layoutLI.getLineBottom(visualLineLI) - vScroll.value).roundToInt().coerceAtLeast(0)
+            } else {
+                ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            }
             val screenHeightPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
             val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
             if (popupOffsetY + popupMaxHeightPx > screenHeightPx) {
-                popupOffsetY = ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+                popupOffsetY = if (layoutLI != null && visualLineLI < layoutLI.lineCount) {
+                    (layoutLI.getLineTop(visualLineLI) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+                } else {
+                    ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+                }
             }
             Popup(
                 alignment = Alignment.TopStart,
@@ -5076,26 +5097,36 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         if (showCompletions && allCompletions.isNotEmpty()) {
             val cursorLine = positionMapper.offsetToLine(value.selection.end)
-            val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }  // P50-FIX: density-corrected, convert to px
-            // BUG-2 FIX: subtract scroll offset so dropdown appears at the visible cursor position
-            // Fix: position popup at cursor column (like VS Code), with flip-above + right-edge clamp
+            val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }
             val cursorCol = positionMapper.offsetToPosition(value.selection.end).column
-            val charWidthPx = editorMetrics.charWidthPx  // Phase E
+            val cursorOff = value.selection.end
+            val visualLineCP = visualLineMapper.docToVisualLine(cursorLine)
+            val layoutCP = textLayoutResult
             val screenDensity = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
-            val popupWidthPx = with(screenDensity) { 280.dp.toPx() } // max popup width
-            var popupOffsetX = (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
-            // Clamp X so popup doesn't go off the right edge
+            val popupWidthPx = with(screenDensity) { 280.dp.toPx() }
+            var popupOffsetX = if (layoutCP != null) {
+                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + layoutCP.getHorizontalPosition(cursorOff, true)).roundToInt()
+            } else {
+                val charWidthPx = editorMetrics.charWidthPx
+                (with(screenDensity) { GUTTER_WIDTH.dp.toPx() } + cursorCol * charWidthPx).roundToInt()
+            }
             if (popupOffsetX + popupWidthPx > screenWidthPx) {
                 popupOffsetX = (screenWidthPx - popupWidthPx).roundToInt().coerceAtLeast(0)
             }
-            // Flip popup above cursor if not enough space below (VS Code behavior)
             val screenHeightPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
             val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
-            var popupOffsetY = ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            var popupOffsetY = if (layoutCP != null && visualLineCP < layoutCP.lineCount) {
+                (layoutCP.getLineBottom(visualLineCP) - vScroll.value).roundToInt().coerceAtLeast(0)
+            } else {
+                ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
+            }
             if (popupOffsetY + popupMaxHeightPx > screenHeightPx) {
-                // Flip above: place popup above the cursor line
-                popupOffsetY = ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+                popupOffsetY = if (layoutCP != null && visualLineCP < layoutCP.lineCount) {
+                    (layoutCP.getLineTop(visualLineCP) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+                } else {
+                    ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
+                }
             }
             
             // P41-J: Apply filter if active
