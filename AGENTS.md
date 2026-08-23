@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 0be8de4 |
-| CI build | #2506 (green) |
+| Latest commit | 7ed32c2 |
+| CI build | #2508 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,661 |
@@ -430,5 +430,38 @@ Read the actual joni 2.2.6 source from github.com/jruby/joni:
 
 **Next on roadmap:**
 - Incremental highlighting transition (O(n) full re-highlight → per-line caching with TextMate)
+- Settings architecture (JSON-based settings with migration)
+- No other pending items from original 45-feature audit (all complete)
+
+### [2026-08-23 19:46 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+
+**Commit 7ed32c2 | CI #2508 ✅ GREEN**
+
+**[PERF] Incremental TextMate highlighting — O(1) for single-char edits**
+
+New IncrementalTmHighlighter.kt (265 lines) with per-line tokenization state caching:
+- Caches per-line: content string, token list, and TmStateStack after line
+- On text change: finds first changed line, re-tokenizes forward until state converges
+- Single-character edits: O(1) — only current line re-tokenized
+- Multi-line edits: only affected lines + lines until TmStateStack.equals() matches
+- IncrementalHighlighter now routes TextMate through incremental path (was full O(n))
+- TmIntegration.highlight() still available for one-shot full highlighting
+
+Architecture:
+- TmStateStack.equals(a, b) detects state convergence → stop re-tokenizing
+- Per-line cache: TmLineCache(content, tokens, stateAfter)
+- Cache reset propagates from IncrementalHighlighter.reset() → tmHighlighter.reset()
+
+**Files touched (2):**
+IncrementalTmHighlighter.kt (new), IncrementalHighlighter.kt
+
+**Next on roadmap:**
 - Settings architecture (JSON-based settings with migration)
 - No other pending items from original 45-feature audit (all complete)
