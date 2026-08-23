@@ -128,6 +128,8 @@ object KeyBindingRegistry {
         bindings[EditorAction.ZOOM_IN] = KeyCombination(Key.Equals, ctrl = true)
         bindings[EditorAction.ZOOM_OUT] = KeyCombination(Key.Minus, ctrl = true)
         bindings[EditorAction.ZOOM_RESET] = KeyCombination(Key.Numpad0, ctrl = true)
+        bindings[EditorAction.MOVE_LINE_UP] = KeyCombination(Key.DirectionUp, alt = true)
+        bindings[EditorAction.MOVE_LINE_DOWN] = KeyCombination(Key.DirectionDown, alt = true)
     }
 
     /**
@@ -169,6 +171,19 @@ object KeyBindingRegistry {
 
         for ((action, combo) in bindings) {
             if (combo.key == k && combo.ctrl == ctrl && combo.shift == shift && combo.alt == alt) {
+                return action
+            }
+        }
+        return null
+    }
+
+    /**
+     * Match using explicit modifier flags (for compatibility with
+     * event.nativeKeyEvent.isCtrlPressed pattern used elsewhere in CodeEditor).
+     */
+    fun match(key: Key, ctrl: Boolean, shift: Boolean, alt: Boolean): EditorAction? {
+        for ((action, combo) in bindings) {
+            if (combo.key == key && combo.ctrl == ctrl && combo.shift == shift && combo.alt == alt) {
                 return action
             }
         }

@@ -2660,9 +2660,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             } else if (event.type == KeyEventType.KeyDown &&
                                        (event.nativeKeyEvent.isCtrlPressed || event.nativeKeyEvent.isMetaPressed)) {
-                                // R2-2: Undo/redo keyboard shortcuts
-                                when {
-                                    event.key == Key.Z && !event.nativeKeyEvent.isShiftPressed -> {
+                                // KeyBindingRegistry-driven dispatch (replaces hardcoded when{} checks)
+                                val kbAction = KeyBindingRegistry.match(
+                                    event.key,
+                                    ctrl = true,
+                                    shift = event.nativeKeyEvent.isShiftPressed,
+                                    alt = false
+                                )
+                                when (kbAction) {
+                                    EditorAction.UNDO -> {
                                         if (undoRedoManager.canUndo()) {
                                             undoRedoInProgress = true
                                             val result = undoRedoManager.undo(value.text)
@@ -2674,7 +2680,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         }
                                         true
                                     }
-                                    (event.key == Key.Z && event.nativeKeyEvent.isShiftPressed) || event.key == Key.Y -> {
+                                    EditorAction.REDO -> {
                                         if (undoRedoManager.canRedo()) {
                                             undoRedoInProgress = true
                                             val result = undoRedoManager.redo(value.text)
@@ -2686,8 +2692,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         }
                                         true
                                     }
-                                    // R5-1: Ctrl+D -- duplicate current line
-                                    event.key == Key.D -> {
+                                    EditorAction.DUPLICATE_LINE -> {
                                         val cursor = value.selection.end
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor)
@@ -2702,8 +2707,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = false
                                         true
                                     }
-                                    // R5-1: Ctrl+/ -- toggle line comment
-                                    event.key == Key.Slash -> {
+                                    EditorAction.COMMENT_TOGGLE -> {
                                         val cursor = value.selection.end
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
@@ -2740,8 +2744,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = false
                                         true
                                     }
-                                    // R5-1: Ctrl+Shift+K -- delete current line
-                                    event.key == Key.K && event.nativeKeyEvent.isShiftPressed -> {
+                                    EditorAction.DELETE_LINE -> {
                                         val cursor = value.selection.end
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it + 1 }
@@ -2754,29 +2757,31 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = false
                                         true
                                     }
-                                    // R5-1: Ctrl+F -- find
-                                    event.key == Key.F -> {
+                                    EditorAction.FIND -> {
                                         onFindReplaceOpen()
                                         true
                                     }
-                                    // R5-1: Ctrl+G -- go to line
-                                    event.key == Key.G -> {
+                                    EditorAction.GO_TO_LINE -> {
                                         onGoToLineOpen()
                                         true
                                     }
-                                    // R5-1: Ctrl+S -- save
-                                    event.key == Key.S -> {
+                                    EditorAction.SAVE -> {
                                         onSave?.invoke()
                                         true
                                     }
-
                                     else -> false
                                 }
                             } else if (event.type == KeyEventType.KeyDown &&
                                        event.nativeKeyEvent.isAltPressed) {
-                                // R5-1: Alt+Up/Down -- move line up/down
-                                when {
-                                    event.key == Key.DirectionUp -> {
+                                // Alt+Up/Down via KeyBindingRegistry
+                                val altAction = KeyBindingRegistry.match(
+                                    event.key,
+                                    ctrl = false,
+                                    shift = false,
+                                    alt = true
+                                )
+                                when (altAction) {
+                                    EditorAction.MOVE_LINE_UP -> {
                                         val cursor = value.selection.end
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
@@ -2794,7 +2799,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = false
                                         true
                                     }
-                                    event.key == Key.DirectionDown -> {
+                                    EditorAction.MOVE_LINE_DOWN -> {
                                         val cursor = value.selection.end
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
