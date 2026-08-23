@@ -2881,11 +2881,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val density = androidx.compose.ui.platform.LocalDensity.current
             val lineHeightDpInlay = lineHeightDp  // use the shared density-corrected value
             val gutterWidthDp = if (blameData != null) 72.dp + 120.dp else 72.dp
+            val layoutInlay = textLayoutResult
             inlayHints.forEach { hint ->
                 val displayIdx = visualLineMapper.docToVisualLine(hint.line)
                 if (displayIdx < 0) return@forEach
-                val yOffset = if (textLayoutResult != null && displayIdx < textLayoutResult.lineCount) {
-                    androidx.compose.ui.unit.Dp((textLayoutResult.getLineTop(displayIdx) - vScroll.value) / density.density)
+                val yOffset = if (layoutInlay != null && displayIdx < layoutInlay.lineCount) {
+                    ((layoutInlay.getLineTop(displayIdx) - vScroll.value) / density.density).dp
                 } else {
                     lineHeightDpInlay * displayIdx - vScrollDp.dp
                 }
@@ -2923,8 +2924,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 errLine == diagnosticTooltipLine
             }
             if (tooltipErrors.isNotEmpty()) {
-                val tooltipTop = if (textLayoutResult != null && (diagnosticTooltipLine + 1) < textLayoutResult.lineCount) {
-                    ((textLayoutResult.getLineTop(diagnosticTooltipLine + 1) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                val layoutDiag = textLayoutResult
+                val tooltipTop = if (layoutDiag != null && (diagnosticTooltipLine + 1) < layoutDiag.lineCount) {
+                    ((layoutDiag.getLineTop(diagnosticTooltipLine + 1) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
                 } else {
                     (diagnosticTooltipLine * lineHeightDp.value - vScrollDp + lineHeightDp.value).coerceAtLeast(0f)
                 }
@@ -3136,15 +3138,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     else -> ""
                 }
                 if (label.isBlank()) continue
-                val topDpIH = if (textLayoutResult != null && line < textLayoutResult.lineCount) {
-                    ((textLayoutResult.getLineTop(line) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                val layoutLsp = textLayoutResult
+                val topDpIH = if (layoutLsp != null && line < layoutLsp.lineCount) {
+                    ((layoutLsp.getLineTop(line) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
                 } else {
                     (line * lineHeightPxIH - vScrollDp).coerceAtLeast(0f)
                 }
-                val leftDpIH = if (textLayoutResult != null) {
+                val leftDpIH = if (layoutLsp != null) {
                     val lineStartOff = positionMapper.lineStart(line)
-                    val charOffset = (lineStartOff + character).coerceIn(0, textLayoutResult.layoutInput.text.length)
-                    (textLayoutResult.getHorizontalPosition(charOffset, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpIH
+                    val charOffset = (lineStartOff + character).coerceIn(0, layoutLsp.layoutInput.text.length)
+                    (layoutLsp.getHorizontalPosition(charOffset, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpIH
                 } else {
                     gutterDpIH + character * charWidthPx
                 }
