@@ -40,3 +40,16 @@
 ## CHANGE LOG
 
 (empty — all old phases and changelogs purged on 2026-08-22)
+
+### [2026-08-23 07:15 WAT] — AI Agent: Claude, Commit e0cf91a, CI Build pending
+**Fixed:** 24 R3 restructuring compile errors across 7 files that blocked builds since #2450.
+**Files:** CodeEditor.kt, GotoLineBar.kt, BlockLineOverlay.kt, DiagnosticTooltip.kt, LspDiagnosticsHandler.kt, LspManager.kt, EditorPane.kt
+**Details:**
+- Added missing imports (DiagnosticTooltip, BlockLineOverlay, clickable, height, Language)
+- Fixed EditorColors import path in BlockLineOverlay (com.codespace.ide.editor → com.codespace.ide.ui)
+- Added onFindReplaceOpen/onGoToLineOpen/onSave callback params to CodeEditor, wired at all 4 call sites in EditorPane
+- Fixed return@onKeyEvent → return@onPreviewKeyEvent (wrong lambda label)
+- Fixed screenHeightDp → LocalConfiguration.current.screenHeightDp
+- Fixed LspManager.getCodeActions: pos.line/pos.character → line/character params directly
+- Added saveCurrentFile lambda in EditorPane for Ctrl+S keyboard shortcut
+**Next:** Verify CI build passes, then resume LSP test fixes (Tests 60, 62-66, 70)
