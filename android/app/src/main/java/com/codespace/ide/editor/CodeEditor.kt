@@ -5593,3 +5593,5 @@ private fun findStickySymbolFromLSP(
     }
     return bestSymbol
 }
+
+}
