@@ -2,6 +2,7 @@ package com.codespace.ide.editor.textmate
 
 import org.joni.Regex
 import org.joni.Option
+import org.joni.Region
 import org.jcodings.specific.UTF8Encoding
 import java.nio.charset.Charset
 
@@ -48,15 +49,15 @@ object OnigRegexFactory {
         val result = matcher.search(byteStart, textBytes.size, Option.NONE)
 
         if (result >= 0) {
-            // Group 0 = overall match. getBegin()/getEnd() take no args in joni 2.2.6.
-            // Capture group API varies across joni versions, so we only return group 0
-            // for now. Sub-group captures can be added once the exact API is verified.
-            val captures = arrayOf(
+            // joni API: getEagerRegion() returns a Region with getBeg(i)/getEnd(i)
+            val region: Region = matcher.getEagerRegion()
+            val numRegs = region.numRegs
+            val captures = Array(numRegs) { i ->
                 OnigCaptureIndex(
-                    byteToChar(text, textBytes, matcher.getBegin()),
-                    byteToChar(text, textBytes, matcher.getEnd())
+                    if (region.getBeg(i) >= 0) byteToChar(text, textBytes, region.getBeg(i)) else -1,
+                    if (region.getEnd(i) >= 0) byteToChar(text, textBytes, region.getEnd(i)) else -1
                 )
-            )
+            }
             return OnigMatchResult(captures)
         }
         return null
