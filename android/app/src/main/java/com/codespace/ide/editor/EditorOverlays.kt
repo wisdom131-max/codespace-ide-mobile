@@ -147,21 +147,37 @@ internal fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
     vScrollDp: Float,
     value: androidx.compose.ui.text.input.TextFieldValue,
     positionMapper: PositionMapper,
+    textLayoutResult: androidx.compose.ui.text.TextLayoutResult? = null,
+    vScrollPx: Int = 0,
 ) {
     if (findReplaceOpen && matches.isNotEmpty() && matches.size <= 200) {
         val lineHeightPxM = lineHeightDp.value
         val charWidthPxM  = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
         val gutterDpM = GUTTER_WIDTH
         val scrollOffsetPxM = vScrollDp
+        val density = androidx.compose.ui.platform.LocalDensity.current.density
         matches.forEachIndexed { idx, range ->
             val matchStart = range.first
+            val matchEnd = range.last
             val pos = positionMapper.offsetToPosition(matchStart)
             val lineIdx = pos.line
             val col = pos.column
-            val matchLen = range.last - range.first + 1
-            val topDpM = (lineIdx * lineHeightPxM - scrollOffsetPxM).coerceAtLeast(0f)
-            val startDpM = gutterDpM + col * charWidthPxM
-            val widthDpM = (matchLen * charWidthPxM).coerceAtLeast(3f)
+            val matchLen = matchEnd - matchStart + 1
+            val topDpM = if (textLayoutResult != null && lineIdx < textLayoutResult.lineCount) {
+                (textLayoutResult.getLineTop(lineIdx) - vScrollPx).coerceAtLeast(0f) / density
+            } else {
+                (lineIdx * lineHeightPxM - scrollOffsetPxM).coerceAtLeast(0f)
+            }
+            val startDpM = if (textLayoutResult != null) {
+                (textLayoutResult.getHorizontalPosition(matchStart, true) / density) + gutterDpM
+            } else {
+                gutterDpM + col * charWidthPxM
+            }
+            val widthDpM = if (textLayoutResult != null && (matchEnd + 1) <= value.text.length) {
+                ((textLayoutResult.getHorizontalPosition(matchEnd + 1, true) - textLayoutResult.getHorizontalPosition(matchStart, true)) / density).coerceAtLeast(3f)
+            } else {
+                (matchLen * charWidthPxM).coerceAtLeast(3f)
+            }
             val isCurrent = idx == matchIndex
             Box(
                 modifier = Modifier

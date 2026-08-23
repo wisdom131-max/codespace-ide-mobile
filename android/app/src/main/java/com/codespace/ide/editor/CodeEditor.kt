@@ -2948,7 +2948,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val visibleEndLine = visibleStartLine + (LocalConfiguration.current.screenHeightDp / lineHeightDp.value).toInt() + 5
         BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors)
 
-        SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper)
+        SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper, textLayoutResult, vScroll.value)
 
         ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper, colors, textLayoutResult, vScroll.value)
 
@@ -2972,7 +2972,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val lineHeightPxHl = lineHeightDp.value
             val gutterDpHl = GUTTER_WIDTH
             val scrollOffsetPxHl = vScrollDp
-            val topDpHl = ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
+            val layoutHl = textLayoutResult
+            val visualLineHl = visualLineMapper.docToVisualLine(highlightTargetLine - 1)
+            val topDpHl = if (layoutHl != null && visualLineHl < layoutHl.lineCount) {
+                ((layoutHl.getLineTop(visualLineHl) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+            } else {
+                ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
+            }
             // Compute blink alpha from elapsed time
             val blinkElapsed = if (highlightBlinkStart > 0) (System.currentTimeMillis() - highlightBlinkStart) / 1000f else 0f
             val isBlinking = blinkElapsed < 6f
@@ -3007,9 +3013,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val gutterDpHighlight = GUTTER_WIDTH
             // BUG-3 FIX: subtract scroll offset so highlights track the correct lines on scroll
             val scrollOffsetPx = vScrollDp
+            val layoutDH = textLayoutResult
             lspHighlightLines.forEach { (startLine, endLine) ->
-                val topDp = (startLine * lineHeightPxHighlight - scrollOffsetPx).coerceAtLeast(0f)
-                val heightDp = ((endLine - startLine + 1) * lineHeightPxHighlight).coerceAtLeast(0f)
+                val visualStartDH = visualLineMapper.docToVisualLine(startLine)
+                val visualEndDH = visualLineMapper.docToVisualLine(endLine)
+                val topDp = if (layoutDH != null && visualStartDH < layoutDH.lineCount) {
+                    ((layoutDH.getLineTop(visualStartDH) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                } else {
+                    (startLine * lineHeightPxHighlight - scrollOffsetPx).coerceAtLeast(0f)
+                }
+                val heightDp = if (layoutDH != null && visualEndDH < layoutDH.lineCount && visualEndDH >= visualStartDH) {
+                    ((layoutDH.getLineBottom(visualEndDH) - layoutDH.getLineTop(visualStartDH)) / androidx.compose.ui.platform.LocalDensity.current.density).coerceAtLeast(0f)
+                } else {
+                    ((endLine - startLine + 1) * lineHeightPxHighlight).coerceAtLeast(0f)
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -3044,8 +3061,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     blue = b.toFloat(),
                     alpha = a.toFloat()
                 )
-                val swatchTopDp = startLine * lineHeightPxCS - vScrollDp
-                val swatchLeftDp = gutterDpCS + (startChar * charWidthPxCS) - 4f
+                val layoutCS = textLayoutResult
+                val visualLineCS = visualLineMapper.docToVisualLine(startLine)
+                val startOffsetCS = positionMapper.lineColumnToOffset(startLine, startChar)
+                val swatchTopDp = if (layoutCS != null && visualLineCS < layoutCS.lineCount) {
+                    ((layoutCS.getLineTop(visualLineCS) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                } else {
+                    startLine * lineHeightPxCS - vScrollDp
+                }
+                val swatchLeftDp = if (layoutCS != null) {
+                    (layoutCS.getHorizontalPosition(startOffsetCS, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpCS - 4f
+                } else {
+                    gutterDpCS + (startChar * charWidthPxCS) - 4f
+                }
                 if (swatchTopDp >= 0 && swatchTopDp < (visualLineMapper.visualLineCount + 5) * lineHeightPxCS) {
                     Box(
                         modifier = Modifier
@@ -3088,7 +3116,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val title = command?.optString("title", "") ?: lens.optString("title", "")
                 if (title.isBlank()) continue
                 // BUG-3 FIX: subtract scroll offset
-                val topDpCL = (startLine * lineHeightPxCL - vScrollDp).coerceAtLeast(0f)
+                val layoutCL = textLayoutResult
+                val visualLineCL = visualLineMapper.docToVisualLine(startLine)
+                val topDpCL = if (layoutCL != null && visualLineCL < layoutCL.lineCount) {
+                    ((layoutCL.getLineTop(visualLineCL) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                } else {
+                    (startLine * lineHeightPxCL - vScrollDp).coerceAtLeast(0f)
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -3182,9 +3216,25 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val target = link.optString("target", "")
                 val tooltip = link.optString("tooltip", target)
                 if (target.isBlank()) continue
-                val topDpDL = (startLine * lineHeightPxDL - vScrollDp).coerceAtLeast(0f)
-                val leftDpDL = gutterDpDL + startChar * charWidthPxDL
-                val widthDp = (endChar - startChar) * charWidthPxDL
+                val layoutDL = textLayoutResult
+                val visualLineDL = visualLineMapper.docToVisualLine(startLine)
+                val startOffsetDL = positionMapper.lineColumnToOffset(startLine, startChar)
+                val endOffsetDL = positionMapper.lineColumnToOffset(startLine, endChar)
+                val topDpDL = if (layoutDL != null && visualLineDL < layoutDL.lineCount) {
+                    ((layoutDL.getLineTop(visualLineDL) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                } else {
+                    (startLine * lineHeightPxDL - vScrollDp).coerceAtLeast(0f)
+                }
+                val leftDpDL = if (layoutDL != null) {
+                    (layoutDL.getHorizontalPosition(startOffsetDL, true) / androidx.compose.ui.platform.LocalDensity.current.density) + gutterDpDL
+                } else {
+                    gutterDpDL + startChar * charWidthPxDL
+                }
+                val widthDp = if (layoutDL != null && endOffsetDL > startOffsetDL) {
+                    ((layoutDL.getHorizontalPosition(endOffsetDL, true) - layoutDL.getHorizontalPosition(startOffsetDL, true)) / androidx.compose.ui.platform.LocalDensity.current.density).coerceAtLeast(20f)
+                } else {
+                    (endChar - startChar) * charWidthPxDL
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
