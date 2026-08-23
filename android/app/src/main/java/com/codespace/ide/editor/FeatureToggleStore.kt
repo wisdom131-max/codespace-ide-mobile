@@ -3,6 +3,7 @@ package com.codespace.ide.editor
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
+import com.codespace.ide.editor.settings.JsonSettingsStore
 
 /**
  * Persisted feature toggles for the editor — stored in SharedPreferences.
@@ -48,6 +49,7 @@ object FeatureToggleStore {
     fun set(key: String, value: Boolean) {
         states[key]?.value = value
         prefs.edit().putBoolean(key, value).apply()
+        try { JsonSettingsStore.setToggle(key, value) } catch (_: Exception) { }
     }
 
     fun state(key: String): MutableState<Boolean> {

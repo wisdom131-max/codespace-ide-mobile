@@ -1,13 +1,15 @@
 package com.codespace.ide.editor
 
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.KeyEvent
+import com.codespace.ide.editor.settings.JsonSettingsStoreType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEvent
+import com.codespace.ide.editor.settings.JsonSettingsStore
 
 /**
  * Represents a keyboard shortcut combination.
@@ -150,6 +152,9 @@ object KeyBindingRegistry {
     fun setBinding(action: EditorAction, combination: KeyCombination) {
         bindings[action] = combination
         persistBinding(action)
+        // Sync to unified JSON store
+        val value = "${combination.key.keyCode}|${combination.ctrl}|${combination.shift}|${combination.alt}"
+        try { JsonSettingsStore.setKeybinding(action.name, value) } catch (_: Exception) { }
     }
 
     /**
@@ -158,6 +163,7 @@ object KeyBindingRegistry {
     fun resetBinding(action: EditorAction) {
         defaults[action]?.let { bindings[action] = it }
         prefs?.edit()?.remove(action.name)?.apply()
+        try { JsonSettingsStore.removeKeybinding(action.name) } catch (_: Exception) { }
     }
 
     /**
@@ -172,6 +178,7 @@ object KeyBindingRegistry {
         bindings.clear()
         bindings.putAll(defaults)
         prefs?.edit()?.clear()?.apply()
+        try { JsonSettingsStore.clearKeybindings() } catch (_: Exception) { }
     }
 
     /**
@@ -202,6 +209,23 @@ object KeyBindingRegistry {
                 )
             } catch (_: Exception) { }
         }
+        // Also load any overrides from the unified JSON store that aren't in SharedPreferences
+        try {
+            for ((actionName, value) in JsonSettingsStore.getKeybindingOverrides()) {
+                if (!prefs!!.contains(actionName)) {
+                    val action = EditorAction.valueOf(actionName)
+                    val parts = value.split('|')
+                    val keyCode = parts[0].toIntOrNull() ?: continue
+                    val composeKey = Key(keyCode)
+                    bindings[action] = KeyCombination(
+                        key = composeKey,
+                        ctrl = parts.getOrNull(1) == "true",
+                        shift = parts.getOrNull(2) == "true",
+                        alt = parts.getOrNull(3) == "true",
+                    )
+                }
+            }
+        } catch (_: Exception) { }
     }
 
     /**

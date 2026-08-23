@@ -22,6 +22,7 @@ import javax.inject.Inject
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.KeyBindingRegistry
+import com.codespace.ide.editor.settings.JsonSettingsStore
 import com.codespace.ide.editor.textmate.TextMateEngineHolder
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.AppOutputLog
@@ -37,6 +38,8 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // Initialize unified JSON settings store first — other stores delegate to it
+        JsonSettingsStore.init(this)
         FeatureToggleStore.init(this)
         ProjectSettingsStore.init(this)
         // Initialize TextMate engine (loads bundled grammars from assets)

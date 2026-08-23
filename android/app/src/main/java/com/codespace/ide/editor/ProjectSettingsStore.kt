@@ -3,6 +3,7 @@ package com.codespace.ide.editor
 import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import com.codespace.ide.editor.settings.JsonSettingsStore
 
 /**
  * P-FLOW: Settings backing the "In-Project Settings" floating page (gear menu).
@@ -161,6 +162,14 @@ object ProjectSettingsStore {
     // Task
     val taskNotifyWindowOnCompletion: MutableState<Boolean> = mutableStateOf(true)
 
+    /**
+     * Sync a setting value to the JSON store (fire-and-forget).
+     * The MutableState is already updated by the caller.
+     */
+    private fun syncToJson(key: String, value: Any?) {
+        try { JsonSettingsStore.setValue(key, value) } catch (_: Exception) { }
+    }
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         flowMode.value = try {
@@ -220,30 +229,37 @@ object ProjectSettingsStore {
     fun setFlowMode(mode: FlowMode) {
         flowMode.value = mode
         prefs.edit().putString("flow_mode", mode.name).apply()
+        syncToJson("flow_mode", mode.name)
     }
     fun setVerboseToolOutput(value: Boolean) {
         verboseToolOutput.value = value
         prefs.edit().putBoolean("verbose_tool_output", value).apply()
+        syncToJson("verbose_tool_output", value)
     }
     fun setExtraKeysEnabled(value: Boolean) {
         extraKeysEnabled.value = value
         prefs.edit().putBoolean("extra_keys_enabled", value).apply()
+        syncToJson("extra_keys_enabled", value)
     }
     fun setZenModeExitButtonEnabled(value: Boolean) {
         zenModeExitButtonEnabled.value = value
         prefs.edit().putBoolean("zen_mode_exit_button", value).apply()
+        syncToJson("zen_mode_exit_button", value)
     }
     fun setMcpIndicatorEnabled(value: Boolean) {
         mcpIndicatorEnabled.value = value
         prefs.edit().putBoolean("mcp_indicator_enabled", value).apply()
+        syncToJson("mcp_indicator_enabled", value)
     }
     fun setFormatOnSaveEnabled(value: Boolean) {
         formatOnSaveEnabled.value = value
         prefs.edit().putBoolean("format_on_save", value).apply()
+        syncToJson("format_on_save", value)
     }
     fun setLspEnabled(value: Boolean) {
         lspEnabled.value = value
         prefs.edit().putBoolean("lsp_enabled", value).apply()
+        syncToJson("lsp_enabled", value)
         if (!value) {
             // TEST-70-FIX: Stop all running LSP servers immediately when toggle is turned off
             com.codespace.ide.lsp.LspManager.stopAll()
@@ -253,73 +269,85 @@ object ProjectSettingsStore {
     fun setLspIdleTimeoutSeconds(value: Long) {
         lspIdleTimeoutSeconds.value = value
         prefs.edit().putLong("lsp_idle_timeout_seconds", value).apply()
+        syncToJson("lsp_idle_timeout_seconds", value)
         // Phase V-I: Propagate to LspManager immediately
         com.codespace.ide.lsp.LspManager.setIdleTimeout(value)
     }
     fun setSmartCompletionEnabled(value: Boolean) {
         smartCompletionEnabled.value = value
         prefs.edit().putBoolean("smart_completion_enabled", value).apply()
+        syncToJson("smart_completion_enabled", value)
     }
     fun setCustomCursorOverlayEnabled(value: Boolean) {
         customCursorOverlayEnabled.value = value
         prefs.edit().putBoolean("custom_cursor_overlay", value).apply()
+        syncToJson("custom_cursor_overlay", value)
     }
     fun setCursorMode(mode: CursorMode) {
         cursorMode.value = mode
         prefs.edit().putString("cursor_mode", mode.name).apply()
+        syncToJson("cursor_mode", mode.name)
     }
     fun setTaskNotifyThresholdMs(value: Int) {
         taskNotifyThresholdMs.value = value
         prefs.edit().putInt("task_notify_threshold_ms", value).apply()
+        syncToJson("task_notify_threshold_ms", value)
     }
     fun setTerminalNotifications(value: Boolean) {
         terminalNotifications.value = value
         prefs.edit().putBoolean("terminal_notifications", value).apply()
+        syncToJson("terminal_notifications", value)
     }
     fun setVerboseDownloadNotify(value: Boolean) {
         verboseDownloadNotify.value = value
         prefs.edit().putBoolean("verbose_download_notify", value).apply()
+        syncToJson("verbose_download_notify", value)
     }
     fun setCursorBlinkStyle(style: CursorBlinkStyle) {
         cursorBlinkStyle.value = style
         prefs.edit().putString("cursor_blink_style", style.name).apply()
+        syncToJson("cursor_blink_style", style.name)
     }
     fun setDiagnosticsSource(source: DiagnosticsSource) {
         diagnosticsSource.value = source
         prefs.edit().putString("diagnostics_source", source.name).apply()
+        syncToJson("diagnostics_source", source.name)
     }
     fun setTypeScriptVersion(version: TypeScriptVersion) {
         typescriptVersion.value = version
         prefs.edit().putString("typescript_version", version.name).apply()
+        syncToJson("typescript_version", version.name)
     }
     fun setPyrightVersion(version: String) {
         pyrightVersion.value = version
         prefs.edit().putString("pyright_version", version).apply()
+        syncToJson("pyright_version", version)
     }
     fun setPyrightNodeArgs(args: String) {
         pyrightNodeArgs.value = args
         prefs.edit().putString("pyright_node_args", args).apply()
+        syncToJson("pyright_node_args", args)
     }
 
     // ── Item 4 setters ──────────────────────────────────────────────────
-    fun setAccSignalPositionWarning(v: Boolean) { accSignalPositionWarning.value = v; prefs.edit().putBoolean("acc_signal_position_warning", v).apply() }
-    fun setAccSignalProgress(v: Boolean) { accSignalProgress.value = v; prefs.edit().putBoolean("acc_signal_progress", v).apply() }
-    fun setTsFormatEnabled(v: Boolean) { tsFormatEnabled.value = v; prefs.edit().putBoolean("ts_format_enabled", v).apply() }
-    fun setTsFormatIndentSwitchCase(v: Boolean) { tsFormatIndentSwitchCase.value = v; prefs.edit().putBoolean("ts_format_indent_switch_case", v).apply() }
-    fun setTsFormatSpaceAfterComma(v: Boolean) { tsFormatSpaceAfterComma.value = v; prefs.edit().putBoolean("ts_format_space_after_comma", v).apply() }
-    fun setTsFormatSpaceAfterConstructor(v: Boolean) { tsFormatSpaceAfterConstructor.value = v; prefs.edit().putBoolean("ts_format_space_after_constructor", v).apply() }
-    fun setTsFormatSpaceAfterFunctionKeyword(v: Boolean) { tsFormatSpaceAfterFunctionKeyword.value = v; prefs.edit().putBoolean("ts_format_space_after_function_keyword", v).apply() }
-    fun setTsFormatSpaceAfterControlFlow(v: Boolean) { tsFormatSpaceAfterControlFlow.value = v; prefs.edit().putBoolean("ts_format_space_after_control_flow", v).apply() }
-    fun setTsServerLog(v: Boolean) { tsServerLog.value = v; prefs.edit().putBoolean("ts_server_log", v).apply() }
-    fun setTsUseSyntaxServer(v: Boolean) { tsUseSyntaxServer.value = v; prefs.edit().putBoolean("ts_use_syntax_server", v).apply() }
-    fun setTsInlayHintSuppressMatchName(v: Boolean) { tsInlayHintSuppressMatchName.value = v; prefs.edit().putBoolean("ts_inlay_hint_suppress_match_name", v).apply() }
-    fun setTsInlayHintParamTypes(v: Boolean) { tsInlayHintParamTypes.value = v; prefs.edit().putBoolean("ts_inlay_hint_param_types", v).apply() }
-    fun setTsWsSymbolsExcludeLib(v: Boolean) { tsWsSymbolsExcludeLib.value = v; prefs.edit().putBoolean("ts_ws_symbols_exclude_lib", v).apply() }
-    fun setTsWsSymbolsScope(v: String) { tsWsSymbolsScope.value = v; prefs.edit().putString("ts_ws_symbols_scope", v).apply() }
-    fun setWindowTitle(v: String) { windowTitle.value = v; prefs.edit().putString("window_title", v).apply() }
-    fun setTerminalIntegratedNotifications(v: Boolean) { terminalIntegratedNotifications.value = v; prefs.edit().putBoolean("terminal_integrated_notifications", v).apply() }
-    fun setTerminalCommandsToSkipShell(v: String) { terminalCommandsToSkipShell.value = v; prefs.edit().putString("terminal_commands_to_skip_shell", v).apply() }
-    fun setExtensionsIgnoreRecommendations(v: Boolean) { extensionsIgnoreRecommendations.value = v; prefs.edit().putBoolean("extensions_ignore_recommendations", v).apply() }
-    fun setTaskNotifyWindowOnCompletion(v: Boolean) { taskNotifyWindowOnCompletion.value = v; prefs.edit().putBoolean("task_notify_window_on_completion", v).apply() }
-    fun setTextMateHighlightingEnabled(v: Boolean) { textMateHighlightingEnabled.value = v; prefs.edit().putBoolean("textmate_highlighting_enabled", v).apply() }
+    fun setAccSignalPositionWarning(v: Boolean) { accSignalPositionWarning.value = v; prefs.edit().putBoolean("acc_signal_position_warning", v).apply(); syncToJson("acc_signal_position_warning", v) }
+    fun setAccSignalProgress(v: Boolean) { accSignalProgress.value = v; prefs.edit().putBoolean("acc_signal_progress", v).apply(); syncToJson("acc_signal_progress", v) }
+    fun setTsFormatEnabled(v: Boolean) { tsFormatEnabled.value = v; prefs.edit().putBoolean("ts_format_enabled", v).apply(); syncToJson("ts_format_enabled", v) }
+    fun setTsFormatIndentSwitchCase(v: Boolean) { tsFormatIndentSwitchCase.value = v; prefs.edit().putBoolean("ts_format_indent_switch_case", v).apply(); syncToJson("ts_format_indent_switch_case", v) }
+    fun setTsFormatSpaceAfterComma(v: Boolean) { tsFormatSpaceAfterComma.value = v; prefs.edit().putBoolean("ts_format_space_after_comma", v).apply(); syncToJson("ts_format_space_after_comma", v) }
+    fun setTsFormatSpaceAfterConstructor(v: Boolean) { tsFormatSpaceAfterConstructor.value = v; prefs.edit().putBoolean("ts_format_space_after_constructor", v).apply(); syncToJson("ts_format_space_after_constructor", v) }
+    fun setTsFormatSpaceAfterFunctionKeyword(v: Boolean) { tsFormatSpaceAfterFunctionKeyword.value = v; prefs.edit().putBoolean("ts_format_space_after_function_keyword", v).apply(); syncToJson("ts_format_space_after_function_keyword", v) }
+    fun setTsFormatSpaceAfterControlFlow(v: Boolean) { tsFormatSpaceAfterControlFlow.value = v; prefs.edit().putBoolean("ts_format_space_after_control_flow", v).apply(); syncToJson("ts_format_space_after_control_flow", v) }
+    fun setTsServerLog(v: Boolean) { tsServerLog.value = v; prefs.edit().putBoolean("ts_server_log", v).apply(); syncToJson("ts_server_log", v) }
+    fun setTsUseSyntaxServer(v: Boolean) { tsUseSyntaxServer.value = v; prefs.edit().putBoolean("ts_use_syntax_server", v).apply(); syncToJson("ts_use_syntax_server", v) }
+    fun setTsInlayHintSuppressMatchName(v: Boolean) { tsInlayHintSuppressMatchName.value = v; prefs.edit().putBoolean("ts_inlay_hint_suppress_match_name", v).apply(); syncToJson("ts_inlay_hint_suppress_match_name", v) }
+    fun setTsInlayHintParamTypes(v: Boolean) { tsInlayHintParamTypes.value = v; prefs.edit().putBoolean("ts_inlay_hint_param_types", v).apply(); syncToJson("ts_inlay_hint_param_types", v) }
+    fun setTsWsSymbolsExcludeLib(v: Boolean) { tsWsSymbolsExcludeLib.value = v; prefs.edit().putBoolean("ts_ws_symbols_exclude_lib", v).apply(); syncToJson("ts_ws_symbols_exclude_lib", v) }
+    fun setTsWsSymbolsScope(v: String) { tsWsSymbolsScope.value = v; prefs.edit().putString("ts_ws_symbols_scope", v).apply(); syncToJson("ts_ws_symbols_scope", v) }
+    fun setWindowTitle(v: String) { windowTitle.value = v; prefs.edit().putString("window_title", v).apply(); syncToJson("window_title", v) }
+    fun setTerminalIntegratedNotifications(v: Boolean) { terminalIntegratedNotifications.value = v; prefs.edit().putBoolean("terminal_integrated_notifications", v).apply(); syncToJson("terminal_integrated_notifications", v) }
+    fun setTerminalCommandsToSkipShell(v: String) { terminalCommandsToSkipShell.value = v; prefs.edit().putString("terminal_commands_to_skip_shell", v).apply(); syncToJson("terminal_commands_to_skip_shell", v) }
+    fun setExtensionsIgnoreRecommendations(v: Boolean) { extensionsIgnoreRecommendations.value = v; prefs.edit().putBoolean("extensions_ignore_recommendations", v).apply(); syncToJson("extensions_ignore_recommendations", v) }
+    fun setTaskNotifyWindowOnCompletion(v: Boolean) { taskNotifyWindowOnCompletion.value = v; prefs.edit().putBoolean("task_notify_window_on_completion", v).apply(); syncToJson("task_notify_window_on_completion", v) }
+    fun setTextMateHighlightingEnabled(v: Boolean) { textMateHighlightingEnabled.value = v; prefs.edit().putBoolean("textmate_highlighting_enabled", v).apply(); syncToJson("textmate_highlighting_enabled", v) }
 }
