@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 8a84afa |
+| Latest commit | 5fc44d1 |
 | CI build | pending |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
@@ -114,6 +114,13 @@
 - 9 internal helpers (called within LspManager)
 - 9 truly dead (defined but never called: getColorPresentations, getOnTypeFormatting, getLinkedEditingRanges, getMonikers, getCompletionWithMeta, getDiagnostics, clearDiagnosticsHandler, clearTrackedDocuments, getIdleTimeoutMs)
 - 4 dead LSP feature methods skipped (niche, not requested)
+
+7. **[BUILD-FIX] Fix 3 compile errors blocking builds #2467-#2469 — 5fc44d1**
+   - CodeEditor.kt:1041 — smartCompletion val used before definition (moved above lspCompletionLoading)
+   - CodeEditor.kt:2596,2622 — substring().coerceAtMost() type mismatch (coerceAtMost now clamps start index, not String result)
+   - CodeEditor.kt:4933 — colors.foreground unresolved (EditorColors has `text`, not `foreground`)
+   - EditorPane.kt:245-247 — LSP didSave called on nullable EditorTab? (moved inside activeTab null check)
+   - Files: CodeEditor.kt, EditorPane.kt
 
 **Next on roadmap (ALL pending items):**
 - Format-on-save wiring verification (verify ProjectSettingsStore.formatOnSaveEnabled is correct)
