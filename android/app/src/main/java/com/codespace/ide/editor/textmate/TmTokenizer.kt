@@ -404,7 +404,7 @@ class TmTokenizer(
         lineText: String,
     ): String? {
         if (endPattern == null) return null
-        var result = endPattern
+        var result: String = endPattern!!
         // Replace $1, $2, etc.
         for (i in beginCaptures.indices.reversed()) {
             if (beginCaptures[i].start < 0) continue

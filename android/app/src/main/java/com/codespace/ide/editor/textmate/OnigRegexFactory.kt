@@ -72,14 +72,32 @@ object OnigRegexFactory {
         val result = matcher.search(byteStart, textBytes.size, Option.NONE)
 
         if (result >= 0) {
-            val numGroups = matcher.getCaptureGroupCount() + 1
-            val captures = Array(numGroups) { i ->
-                val byteBegin = matcher.getBegin(i)
-                val byteEnd = matcher.getEnd(i)
-                OnigCaptureIndex(
-                    byteToChar(text, textBytes, byteBegin),
-                    byteToChar(text, textBytes, byteEnd)
-                )
+            // joni Matcher: getBegin()/getEnd() give group 0 (overall match)
+            // For capture groups, use the Region object
+            val numGroups = try { regex.numberOfCaptures + 1 } catch (_: Exception) { 1 }
+            val captures = if (numGroups <= 1) {
+                arrayOf(OnigCaptureIndex(
+                    byteToChar(text, textBytes, matcher.getBegin()),
+                    byteToChar(text, textBytes, matcher.getEnd())
+                ))
+            } else {
+                // Try to get capture group positions via Region
+                val region = try { matcher.getEagerRegion() } catch (_: Exception) { null }
+                if (region != null && region.beg != null && region.end != null) {
+                    Array(numGroups) { i ->
+                        val byteBegin = region.beg[i]
+                        val byteEnd = region.end[i]
+                        OnigCaptureIndex(
+                            if (byteBegin >= 0) byteToChar(text, textBytes, byteBegin) else -1,
+                            if (byteEnd >= 0) byteToChar(text, textBytes, byteEnd) else -1
+                        )
+                    }
+                } else {
+                    arrayOf(OnigCaptureIndex(
+                        byteToChar(text, textBytes, matcher.getBegin()),
+                        byteToChar(text, textBytes, matcher.getEnd())
+                    ))
+                }
             }
             return OnigMatchResult(captures)
         }
