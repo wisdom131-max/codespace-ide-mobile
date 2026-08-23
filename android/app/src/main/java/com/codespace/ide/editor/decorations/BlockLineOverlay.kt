@@ -72,7 +72,8 @@ fun BlockLineOverlay(
                 val colOffset = (level * tabSize).coerceAtMost(line.length)
                 val textOffset = lineStartOffset + colOffset
                 val x = if (textLayoutResult != null && textOffset <= text.length) {
-                    textLayoutResult.getHorizontalPosition(textOffset, true)
+                    val safeTextOffset = textOffset.coerceIn(0, textLayoutResult.layoutInput.text.length)
+                    textLayoutResult.getHorizontalPosition(safeTextOffset, true)
                 } else {
                     gutterPx + level * tabSize * charWidthPx
                 }

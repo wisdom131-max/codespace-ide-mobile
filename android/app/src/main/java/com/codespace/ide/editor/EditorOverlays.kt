@@ -101,7 +101,8 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
             }
             val startDp = if (textLayoutResult != null) {
                 val density = androidx.compose.ui.platform.LocalDensity.current.density
-                (textLayoutResult.getHorizontalPosition(clamped, true) / density) + gutterDp
+                val safeClamped = clamped.coerceIn(0, textLayoutResult.layoutInput.text.length)
+                (textLayoutResult.getHorizontalPosition(safeClamped, true) / density) + gutterDp
             } else {
                 gutterDp + col * charWidthPx
             }
@@ -168,13 +169,15 @@ internal fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
             } else {
                 (lineIdx * lineHeightPxM - scrollOffsetPxM).coerceAtLeast(0f)
             }
+            val safeMatchStart = matchStart.coerceIn(0, textLayoutResult?.layoutInput?.text?.length ?: 0)
+            val safeMatchEnd = (matchEnd + 1).coerceIn(0, textLayoutResult?.layoutInput?.text?.length ?: 0)
             val startDpM = if (textLayoutResult != null) {
-                (textLayoutResult.getHorizontalPosition(matchStart, true) / density) + gutterDpM
+                (textLayoutResult.getHorizontalPosition(safeMatchStart, true) / density) + gutterDpM
             } else {
                 gutterDpM + col * charWidthPxM
             }
             val widthDpM = if (textLayoutResult != null && (matchEnd + 1) <= value.text.length) {
-                ((textLayoutResult.getHorizontalPosition(matchEnd + 1, true) - textLayoutResult.getHorizontalPosition(matchStart, true)) / density).coerceAtLeast(3f)
+                ((textLayoutResult.getHorizontalPosition(safeMatchEnd, true) - textLayoutResult.getHorizontalPosition(safeMatchStart, true)) / density).coerceAtLeast(3f)
             } else {
                 (matchLen * charWidthPxM).coerceAtLeast(3f)
             }

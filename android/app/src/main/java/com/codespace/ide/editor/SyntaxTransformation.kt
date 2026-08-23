@@ -41,21 +41,69 @@ class SyntaxTransformation(
     private var cachedText: String? = null
     private var cachedResult: TransformedText? = null
 
-    // SAFETY NET: OffsetMapping.Identity requires the transformed AnnotatedString to have
-    // EXACTLY the same length as the original text. If any highlighter has a bug that
-    // produces a shorter/longer AnnotatedString (as IncrementalHighlighter once did — see
-    // the 2026-08-23 crash fix), using Identity mapping crashes CoreTextField's focus-rect
-    // notification with "OffsetMapping.originalToTransformed returned invalid mapping".
-    // This guard falls back to the plain, unstyled original text (still editable, just
-    // temporarily unhighlighted) instead of crashing when a length mismatch is detected.
-    private fun safeguardIdentityResult(
+    // SAFETY NET: Two crash modes are guarded here:
+    //
+    // 1. Length mismatch (OffsetMapping.Identity): If any highlighter produces an
+    //    AnnotatedString whose length differs from the original text, Identity mapping
+    //    crashes CoreTextField with "OffsetMapping.originalToTransformed returned
+    //    invalid mapping". Fix: fall back to plain unstyled text (still editable).
+    //
+    // 2. Span range overflow (Accessibility/TalkBack): addStyle() can create spans
+    //    that exceed the AnnotatedString's text length (e.g. folding offset mapping
+    //    bugs, stale lint/semantic tokens). Compose's accessibility layer crashes
+    //    with "setSpan (N ... M) ends beyond length L" when converting to
+    //    SpannableString. Fix: rebuild the AnnotatedString with only valid spans.
+    private fun sanitizeResult(
         result: TransformedText,
         original: AnnotatedString,
+        isIdentityMapping: Boolean,
     ): TransformedText {
-        if (result.text.length != original.text.length) {
+        val text = result.text
+        val len = text.length
+
+        // Guard 1: length mismatch for Identity mapping
+        if (isIdentityMapping && len != original.text.length) {
             return TransformedText(original, OffsetMapping.Identity)
         }
-        return result
+
+        // Guard 2: strip spans that exceed text length
+        val hasBadSpans = text.spanStyles.any { range ->
+            range.start >= len || range.end > len || range.start >= range.end
+        }
+        if (!hasBadSpans) return result  // fast path — all spans valid
+
+        val sanitized = buildAnnotatedString {
+            append(text.text)
+            for (range in text.spanStyles) {
+                val s = range.start.coerceIn(0, len)
+                val e = range.end.coerceIn(s, len)
+                if (s < e) {
+                    addStyle(range.item, s, e)
+                }
+            }
+        }
+        return TransformedText(sanitized, result.offsetMapping)
+    }
+
+    // Convenience for non-Identity mappings (folding path) — only sanitize spans
+    private fun sanitizeSpans(result: TransformedText): TransformedText {
+        val text = result.text
+        val len = text.length
+        val hasBadSpans = text.spanStyles.any { range ->
+            range.start >= len || range.end > len || range.start >= range.end
+        }
+        if (!hasBadSpans) return result
+        val sanitized = buildAnnotatedString {
+            append(text.text)
+            for (range in text.spanStyles) {
+                val s = range.start.coerceIn(0, len)
+                val e = range.end.coerceIn(s, len)
+                if (s < e) {
+                    addStyle(range.item, s, e)
+                }
+            }
+        }
+        return TransformedText(sanitized, result.offsetMapping)
     }
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -69,7 +117,7 @@ class SyntaxTransformation(
             // This prevents wrong-color flicker when user types during the 100ms debounce.
             if (precomputedHighlight != null && precomputedForText == text.text) {
                 val result = applyLintAndSemantic(precomputedHighlight, text.text, OffsetMapping.Identity)
-                val safeResult = safeguardIdentityResult(result, text)
+                val safeResult = sanitizeResult(result, text, isIdentityMapping = true)
                 cachedText = text.text
                 cachedResult = safeResult
                 return safeResult
@@ -82,7 +130,7 @@ class SyntaxTransformation(
             } else {
                 applyHighlightAndLint(text, OffsetMapping.Identity)
             }
-            val safeResult = safeguardIdentityResult(result, text)
+            val safeResult = sanitizeResult(result, text, isIdentityMapping = true)
             cachedText = text.text
             cachedResult = safeResult
             return safeResult
@@ -186,7 +234,7 @@ class SyntaxTransformation(
         } else highlighted
 
         // ── Step 3: overlay lint squiggles (re-mapped to display offsets) ──
-        if (lintErrors.isEmpty()) return TransformedText(withSemantic, offsetMapping)
+        if (lintErrors.isEmpty()) return sanitizeSpans(TransformedText(withSemantic, offsetMapping))
 
         val withLint = buildAnnotatedString {
             append(withSemantic)
@@ -207,7 +255,7 @@ class SyntaxTransformation(
                 }
             }
         }
-        return TransformedText(withLint, offsetMapping)
+        return sanitizeSpans(TransformedText(withLint, offsetMapping))
     }
 
     // R1-1: Apply lint squiggles + semantic tokens to a pre-computed AnnotatedString.
@@ -230,7 +278,7 @@ class SyntaxTransformation(
             }
         } else highlight
 
-        if (lintErrors.isEmpty()) return TransformedText(withSemantic, offsetMapping)
+        if (lintErrors.isEmpty()) return sanitizeSpans(TransformedText(withSemantic, offsetMapping))
 
         val withLint = buildAnnotatedString {
             append(withSemantic)
@@ -249,7 +297,7 @@ class SyntaxTransformation(
                 }
             }
         }
-        return TransformedText(withLint, offsetMapping)
+        return sanitizeSpans(TransformedText(withLint, offsetMapping))
     }
 
     // ── No-fold path (original logic) ─────────────────────────────────────
@@ -274,7 +322,7 @@ class SyntaxTransformation(
             }
         } else highlighted
 
-        if (lintErrors.isEmpty()) return TransformedText(withSemantic, offsetMapping)
+        if (lintErrors.isEmpty()) return sanitizeSpans(TransformedText(withSemantic, offsetMapping))
 
         val withLint = buildAnnotatedString {
             append(withSemantic)
@@ -293,6 +341,6 @@ class SyntaxTransformation(
                 }
             }
         }
-        return TransformedText(withLint, offsetMapping)
+        return sanitizeSpans(TransformedText(withLint, offsetMapping))
     }
 }
