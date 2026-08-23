@@ -2378,12 +2378,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     // P38-FIX: Long-press selects the word and opens LSP menu
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
-                                        // Find word boundaries at the long-pressed position
+                                        // Word boundary detection: camelCase, snake_case, kebab-case, dot notation
                                         val text = value.text
-                                        var wordStart = charOffset
-                                        var wordEnd = charOffset
-                                        while (wordStart > 0 && (text[wordStart - 1].isLetterOrDigit() || text[wordStart - 1] == '_')) wordStart--
-                                        while (wordEnd < text.length && (text[wordEnd].isLetterOrDigit() || text[wordEnd] == '_')) wordEnd++
+                                        val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(text, charOffset)
                                         // Select the word (VS Code behavior)
                                         value = value.copy(selection = TextRange(wordStart, wordEnd))
                                         // Phase X-5/X-10: Tag as user selection + fire onCursorChange

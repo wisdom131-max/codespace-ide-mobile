@@ -4298,6 +4298,7 @@ private fun PssEditorColumn(
     buildProblemsMs: MutableState<List<Problem>>,
     editorReloadTriggerMs: MutableState<Int>,
     formatOnSaveTrigger: Int,
+    onFontSizeChange: ((Int) -> Unit)? = null,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
     fullScreen: Boolean = false,
 ) {
@@ -4584,6 +4585,7 @@ private fun PssEditorColumn(
                     // auto-send the generated prompt.
                     onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
                     formatOnSaveTrigger = formatOnSaveTrigger,
+                    onFontSizeChange = onFontSizeChange,
                     udm = udm,
                     externalFindQuery = if (showFindBar) findQuery else null,
                     externalFindBarOpen = showFindBar,
