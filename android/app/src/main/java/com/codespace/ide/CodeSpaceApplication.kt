@@ -22,6 +22,7 @@ import javax.inject.Inject
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.KeyBindingRegistry
+import com.codespace.ide.editor.textmate.TextMateEngineHolder
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.ui.screens.SettingsUsageTracker
@@ -38,6 +39,8 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         FeatureToggleStore.init(this)
         ProjectSettingsStore.init(this)
+        // Initialize TextMate engine (loads bundled grammars from assets)
+        TextMateEngineHolder.get(this)
         NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
         // Phase N: Register notification action handlers
         NotificationStore.registerActionHandler("view_logs") { _, _ ->

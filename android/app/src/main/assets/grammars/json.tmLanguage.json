@@ -1,0 +1,13 @@
+{
+  "scopeName": "source.json",
+  "name": "JSON",
+  "fileTypes": ["json", "jsonc"],
+  "patterns": [
+    { "begin": "\".*?\"\\s*:", "end": "", "name": "keyword.json",
+      "patterns": [] },
+    { "match": "\"(.*?)\"", "name": "string.quoted.double.json" },
+    { "match": "\\b(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?)\\b", "name": "constant.numeric.json" },
+    { "match": "\\b(true|false)\\b", "name": "constant.language.json" },
+    { "match": "\\b(null)\\b", "name": "constant.language.json" }
+  ]
+}

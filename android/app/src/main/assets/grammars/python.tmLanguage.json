@@ -1,0 +1,103 @@
+{
+  "scopeName": "source.python",
+  "name": "Python",
+  "fileTypes": ["py", "pyw"],
+  "patterns": [
+    {
+      "comment": "Line comment",
+      "match": "#.*$",
+      "name": "comment.line.number-sign.python"
+    },
+    {
+      "comment": "Docstring / triple-quoted string",
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "name": "string.quoted.triple.python",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.python" }
+      ]
+    },
+    {
+      "comment": "Docstring / triple-quoted string (single quotes)",
+      "begin": "'''",
+      "end": "'''",
+      "name": "string.quoted.triple.python",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.python" }
+      ]
+    },
+    {
+      "comment": "String (double quoted)",
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.python",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.python" },
+        { "match": "\\{[^}]*\\}", "name": "constant.other.placeholder.python" }
+      ]
+    },
+    {
+      "comment": "String (single quoted)",
+      "begin": "'",
+      "end": "'",
+      "name": "string.quoted.single.python",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.python" },
+        { "match": "\\{[^}]*\\}", "name": "constant.other.placeholder.python" }
+      ]
+    },
+    {
+      "comment": "Numeric literal",
+      "match": "\\b(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?[jJ]?)\\b",
+      "name": "constant.numeric.python"
+    },
+    {
+      "comment": "Boolean / None",
+      "match": "\\b(True|False|None)\\b",
+      "name": "constant.language.python"
+    },
+    {
+      "comment": "Keywords",
+      "match": "\\b(def|class|return|if|elif|else|for|while|break|continue|import|from|as|try|except|finally|raise|with|lambda|yield|global|nonlocal|pass|and|or|not|is|in|async|await|del|assert)\\b",
+      "name": "keyword.python"
+    },
+    {
+      "comment": "Decorator",
+      "match": "@[A-Za-z_][A-Za-z0-9_.]*",
+      "name": "entity.other.attribute-name.python"
+    },
+    {
+      "comment": "Function definition",
+      "match": "\\b(def)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "keyword.python" },
+        "2": { "name": "entity.name.function.python" }
+      }
+    },
+    {
+      "comment": "Class definition",
+      "match": "\\b(class)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.python" },
+        "2": { "name": "entity.name.type.python" }
+      }
+    },
+    {
+      "comment": "Self",
+      "match": "\\b(self|cls)\\b",
+      "name": "variable.language.python"
+    },
+    {
+      "comment": "Builtin functions",
+      "match": "\\b(print|len|range|enumerate|zip|map|filter|sorted|reversed|type|isinstance|hasattr|getattr|setattr|delattr|dir|repr|str|int|float|bool|list|dict|set|tuple|bytes|open|input|format|abs|round|min|max|sum|any|all|next|iter|super)\\b",
+      "name": "support.function.python"
+    },
+    {
+      "comment": "Function call",
+      "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "entity.name.function.python" }
+      }
+    }
+  ]
+}

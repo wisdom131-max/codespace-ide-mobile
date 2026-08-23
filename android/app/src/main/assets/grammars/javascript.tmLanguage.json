@@ -1,0 +1,26 @@
+{
+  "scopeName": "source.js",
+  "name": "JavaScript",
+  "fileTypes": ["js", "jsx", "mjs", "cjs"],
+  "patterns": [
+    { "match": "//.*$", "name": "comment.line.double-slash.js" },
+    { "begin": "/\\*", "end": "\\*/", "name": "comment.block.js",
+      "patterns": [{ "match": "\\*.*$", "name": "comment.block.js" }] },
+    { "begin": "\"", "end": "\"", "name": "string.quoted.double.js",
+      "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.js" }] },
+    { "begin": "'", "end": "'", "name": "string.quoted.single.js",
+      "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.js" }] },
+    { "begin": "`", "end": "`", "name": "string.template.js",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.js" },
+        { "begin": "\\$\\{", "end": "\\}", "name": "string.interpolation.js" }
+      ] },
+    { "match": "\\b(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?)\\b", "name": "constant.numeric.js" },
+    { "match": "\\b(true|false|null|undefined)\\b", "name": "constant.language.js" },
+    { "match": "\\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|class|extends|new|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|this|super|yield|interface|type|enum|implements|public|private|readonly|static|as|in|of|void)\\b", "name": "keyword.js" },
+    { "match": "\\b(string|number|boolean|any|unknown|never|object|Promise|Array)\\b", "name": "entity.name.type.js" },
+    { "match": "\\b(function)\\s+([a-zA-Z_][a-zA-Z0-9_]*)", "captures": { "1": {"name": "keyword.js"}, "2": {"name": "entity.name.function.js"} } },
+    { "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(", "captures": { "1": {"name": "entity.name.function.js"} } },
+    { "match": "(/[A-Za-z0-9_\\-+*.?()\\[\\]{}|\\\\^$~,:!<>]+/[gimsuy]*)", "name": "string.regexp.js" }
+  ]
+}

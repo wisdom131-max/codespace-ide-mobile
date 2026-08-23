@@ -1,0 +1,96 @@
+{
+  "scopeName": "source.kotlin",
+  "name": "Kotlin",
+  "fileTypes": ["kt", "kts"],
+  "patterns": [
+    {
+      "comment": "Line comment",
+      "match": "//.*$",
+      "name": "comment.line.double-slash.kotlin"
+    },
+    {
+      "comment": "Block comment",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "name": "comment.block.kotlin",
+      "patterns": [
+        { "match": "\\*.*$", "name": "comment.block.kotlin" }
+      ]
+    },
+    {
+      "comment": "String (double quoted)",
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.kotlin",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.kotlin" },
+        { "match": "\\$\\{[^}]*\\}", "name": "variable.interpolation.kotlin" },
+        { "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*", "name": "variable.interpolation.kotlin" }
+      ]
+    },
+    {
+      "comment": "String (single quoted / char)",
+      "begin": "'",
+      "end": "'",
+      "name": "string.quoted.single.kotlin",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.kotlin" }
+      ]
+    },
+    {
+      "comment": "Triple-quoted string",
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "name": "string.quoted.triple.kotlin",
+      "patterns": [
+        { "match": "\\$\\{[^}]*\\}", "name": "variable.interpolation.kotlin" },
+        { "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*", "name": "variable.interpolation.kotlin" }
+      ]
+    },
+    {
+      "comment": "Numeric literal",
+      "match": "\\b(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?[fFlL]?)\\b",
+      "name": "constant.numeric.kotlin"
+    },
+    {
+      "comment": "Boolean literal",
+      "match": "\\b(true|false)\\b",
+      "name": "constant.language.kotlin"
+    },
+    {
+      "comment": "Null literal",
+      "match": "\\b(null)\\b",
+      "name": "constant.language.kotlin"
+    },
+    {
+      "comment": "Keywords",
+      "match": "\\b(fun|val|var|class|object|interface|enum|sealed|data|return|if|else|when|for|while|do|break|continue|import|package|try|catch|finally|throw|this|super|companion|override|private|public|protected|internal|abstract|open|final|lateinit|by|in|is|as|suspend|inline|reified|typealias|init|constructor|operator|infix|tailrec|external|annotation|crossinline|noinline|vararg|where|field|file|property|get|set|param|setparam|delegate|out|vararg|annotation)\\b",
+      "name": "keyword.kotlin"
+    },
+    {
+      "comment": "Type names (Capitalized identifiers)",
+      "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b",
+      "name": "entity.name.type.kotlin"
+    },
+    {
+      "comment": "Function definition",
+      "match": "\\b(fun)\\s+([a-zA-Z_][a-zA-Z0-9_<>, \\[\\]?:]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "keyword.kotlin" },
+        "2": { "name": "entity.name.function.kotlin" }
+      }
+    },
+    {
+      "comment": "Function call",
+      "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "entity.name.function.kotlin" }
+      }
+    },
+    {
+      "comment": "Annotation",
+      "match": "@[A-Za-z][A-Za-z0-9_.]*",
+      "name": "entity.other.attribute-name.kotlin"
+    }
+  ]
+}

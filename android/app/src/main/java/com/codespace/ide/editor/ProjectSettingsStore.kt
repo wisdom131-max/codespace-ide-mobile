@@ -151,6 +151,13 @@ object ProjectSettingsStore {
     // Extensions
     val extensionsIgnoreRecommendations: MutableState<Boolean> = mutableStateOf(false)
 
+    // ── TextMate Highlighting ─────────────────────────────────────────
+    /** Use TextMate grammar-based highlighting instead of the built-in regex highlighter.
+     *  When enabled, loads .tmLanguage.json grammars from assets/grammars/ for richer
+     *  syntax highlighting with proper scope-based colors. Falls back to the built-in
+     *  highlighter when no grammar is available for the current language. */
+    val textMateHighlightingEnabled: MutableState<Boolean> = mutableStateOf(false)
+
     // Task
     val taskNotifyWindowOnCompletion: MutableState<Boolean> = mutableStateOf(true)
 
@@ -205,6 +212,7 @@ object ProjectSettingsStore {
         terminalIntegratedNotifications.value = prefs.getBoolean("terminal_integrated_notifications", true)
         terminalCommandsToSkipShell.value = prefs.getString("terminal_commands_to_skip_shell", "") ?: ""
         extensionsIgnoreRecommendations.value = prefs.getBoolean("extensions_ignore_recommendations", false)
+        textMateHighlightingEnabled.value = prefs.getBoolean("textmate_highlighting_enabled", false)
         taskNotifyWindowOnCompletion.value = prefs.getBoolean("task_notify_window_on_completion", true)
     }
 
@@ -313,4 +321,5 @@ object ProjectSettingsStore {
     fun setTerminalCommandsToSkipShell(v: String) { terminalCommandsToSkipShell.value = v; prefs.edit().putString("terminal_commands_to_skip_shell", v).apply() }
     fun setExtensionsIgnoreRecommendations(v: Boolean) { extensionsIgnoreRecommendations.value = v; prefs.edit().putBoolean("extensions_ignore_recommendations", v).apply() }
     fun setTaskNotifyWindowOnCompletion(v: Boolean) { taskNotifyWindowOnCompletion.value = v; prefs.edit().putBoolean("task_notify_window_on_completion", v).apply() }
+    fun setTextMateHighlightingEnabled(v: Boolean) { textMateHighlightingEnabled.value = v; prefs.edit().putBoolean("textmate_highlighting_enabled", v).apply() }
 }

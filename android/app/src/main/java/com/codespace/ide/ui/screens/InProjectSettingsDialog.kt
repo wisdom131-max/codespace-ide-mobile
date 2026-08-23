@@ -427,6 +427,7 @@ enum class RowType {
     CURSOR_BLINK_DROPDOWN,
     ZEN_MODE_EXIT_CHECKBOX,
     FORMAT_ON_SAVE_CHECKBOX,
+    TEXTMATE_HIGHLIGHT_CHECKBOX,
     FORMATTER_DROPDOWN,      // Phase R — per-language formatter selection
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
@@ -542,6 +543,11 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Custom Cursor Overlay",
         "A draggable, touch-friendly cursor overlay that summons the keyboard on tap. Replaces the thin default text cursor.",
         RowType.CUSTOM_CURSOR_CHECKBOX))
+
+    add(SettingsRow("textmate_highlight", SettingsCategory.TEXT_EDITOR,
+        "TextMate Highlighting",
+        "Use TextMate grammar-based syntax highlighting for richer colors. Falls back to built-in highlighter when no grammar is available.",
+        RowType.TEXTMATE_HIGHLIGHT_CHECKBOX))
 
     add(SettingsRow("zen_mode_exit", SettingsCategory.TEXT_EDITOR,
         "Zen Mode Exit Button",
@@ -752,6 +758,7 @@ private fun SettingsRowRenderer(
         RowType.ZEN_MODE_EXIT_CHECKBOX -> ZenModeExitRow(textPri, textSec, divider)
         RowType.MCP_INDICATOR_CHECKBOX -> McpIndicatorRow(textPri, textSec, divider)
         RowType.FORMAT_ON_SAVE_CHECKBOX -> FormatOnSaveRow(textPri, textSec, divider)
+        RowType.TEXTMATE_HIGHLIGHT_CHECKBOX -> TextMateHighlightRow(textPri, textSec, divider)
         RowType.FORMATTER_DROPDOWN -> FormatterDropdownRow(row, accent, textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
@@ -1063,6 +1070,26 @@ private fun FormatOnSaveRow(textPri: Color, textSec: Color, divider: Color) {
         Switch(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setFormatOnSaveEnabled(it) },
+        )
+    }
+    HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun TextMateHighlightRow(textPri: Color, textSec: Color, divider: Color) {
+    val enabled = ProjectSettingsStore.textMateHighlightingEnabled
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("TextMate Highlighting", color = textPri, fontSize = 13.sp)
+            Text("Use TextMate grammar-based syntax highlighting for richer colors. Falls back to built-in highlighter when no grammar is available.",
+                color = textSec, fontSize = 11.sp)
+        }
+        Switch(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setTextMateHighlightingEnabled(it) },
         )
     }
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))

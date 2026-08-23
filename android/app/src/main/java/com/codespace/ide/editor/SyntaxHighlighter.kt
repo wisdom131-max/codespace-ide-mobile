@@ -7,10 +7,25 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.EditorColors
+import com.codespace.ide.editor.textmate.TextMateEngineHolder
+import com.codespace.ide.editor.textmate.TmIntegration
 
 object SyntaxHighlighter {
 
     fun highlight(text: String, language: Language, colors: EditorColors): AnnotatedString {
+        // Try TextMate grammar-based highlighting first when enabled
+        if (TextMateEngineHolder.isActive()) {
+            val engine = TextMateEngineHolder.getIfInitialized()
+            if (engine != null) {
+                val scopeName = TmIntegration.languageToScope(language)
+                if (scopeName != null && engine.hasGrammar(scopeName)) {
+                    val tmResult = TmIntegration.highlight(engine, scopeName, text, colors)
+                    if (tmResult != null) return tmResult
+                }
+            }
+        }
+
+        // Fallback: built-in regex highlighter
         val spec = LanguageSpecs.forLanguage(language)
         var bracketDepth = 0
         val bracketColors = listOf(

@@ -227,6 +227,9 @@ dependencies {
 
     // Git (on-device)
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
+    implementation("org.jruby.joni:joni:2.2.6")
+    implementation("org.jruby.jcodings:jcodings:1.0.61")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // SSH / SFTP
     implementation("com.hierynomus:sshj:0.38.0")
