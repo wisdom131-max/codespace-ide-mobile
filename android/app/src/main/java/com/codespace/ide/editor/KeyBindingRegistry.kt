@@ -127,7 +127,7 @@ object KeyBindingRegistry {
         bindings[EditorAction.TOGGLE_WORD_WRAP] = KeyCombination(Key.Z, alt = true)
         bindings[EditorAction.ZOOM_IN] = KeyCombination(Key.Equals, ctrl = true)
         bindings[EditorAction.ZOOM_OUT] = KeyCombination(Key.Minus, ctrl = true)
-        bindings[EditorAction.ZOOM_RESET] = KeyCombination(Key.Numpad0, ctrl = true)
+        bindings[EditorAction.ZOOM_RESET] = KeyCombination(Key.Zero, ctrl = true)
         bindings[EditorAction.MOVE_LINE_UP] = KeyCombination(Key.DirectionUp, alt = true)
         bindings[EditorAction.MOVE_LINE_DOWN] = KeyCombination(Key.DirectionDown, alt = true)
     }
