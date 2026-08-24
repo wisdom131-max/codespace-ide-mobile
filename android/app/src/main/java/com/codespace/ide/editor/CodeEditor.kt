@@ -2135,16 +2135,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 (value.selection.start + (newValue.text.length - value.text.length)).coerceIn(0, newValue.text.length)
                             )
                             if (inserted == "\n" || inserted.contains("\n")) {
-                                val cursor = newValue.selection.end
-                                val lineStart = positionMapper.lineStart(positionMapper.offsetToLine(cursor))
+                                val cursor = newValue.selection.end.coerceIn(0, newValue.text.length)
+                                // Build a fresh mapper from newValue — positionMapper is stale (keyed on old value.text)
+                                val newMapper = PositionMapper(newValue.text)
+                                val cursorLine = newMapper.offsetToLine(cursor)
+                                val lineStart = newMapper.lineStart(cursorLine).coerceIn(0, newValue.text.length)
                                 val currentLine = newValue.text.substring(lineStart, cursor)
                                 // Find previous line's indentation
-                                val prevNewline = if (positionMapper.offsetToLine(lineStart) > 0) positionMapper.lineStart(positionMapper.offsetToLine(lineStart) - 1) - 1 else -1
-                                val prevLineStart = if (prevNewline < 0) 0 else prevNewline + 1
-                                val prevLine = newValue.text.substring(prevLineStart, lineStart - 1)
-                                val indent = prevLine.takeWhile { it == ' ' || it == '\t' }
+                                val prevLineText = if (cursorLine > 0) {
+                                    val prevLineStart = newMapper.lineStart(cursorLine - 1).coerceIn(0, newValue.text.length)
+                                    val prevLineEnd = (lineStart - 1).coerceAtLeast(prevLineStart)
+                                    newValue.text.substring(prevLineStart, prevLineEnd)
+                                } else {
+                                    ""
+                                }
+                                val indent = prevLineText.takeWhile { it == ' ' || it == '\t' }
                                 // Smart Enter: auto-indent + auto-close after { [ ( and Python :
-                                val trimmedPrev = prevLine.trimEnd()
+                                val trimmedPrev = prevLineText.trimEnd()
                                 val endsWithBrace = trimmedPrev.endsWith("{")
                                 val endsWithBracket = trimmedPrev.endsWith("[")
                                 val endsWithParen = trimmedPrev.endsWith("(")
