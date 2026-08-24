@@ -1040,12 +1040,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lspHasResponded by remember { mutableStateOf(false) }
     // Smart completion: track whether the current LSP request timed out
     var lspTimedOut by remember { mutableStateOf(false) }
-    // R3-LSP: Track LSP recovery counter to detect when server recovers after timeout
-    var lspRecoveryGen by remember { mutableStateOf(0) }
     // smartCompletion defined here so lspCompletionLoading can reference it
     val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
     // Loading indicator: true while waiting for LSP completion response
     val lspCompletionLoading by remember { derivedStateOf { smartCompletion && !lspHasResponded && !lspTimedOut } }
+    // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
+    var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
 
     // R3-LSP: Recovery watcher — when LspManager reports a server transitioned to READY
     // (after being UNHEALTHY/RESTARTING), reset the completion fallback flags so the
@@ -1069,8 +1069,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
     }
-    // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
-    var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
     // P41-Q: Completion caching — cache LSP results to avoid redundant requests when prefix extends
     var cachedLspPrefix by remember { mutableStateOf("") }
     var cachedLspResults by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
