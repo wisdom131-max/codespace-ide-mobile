@@ -1040,10 +1040,35 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var lspHasResponded by remember { mutableStateOf(false) }
     // Smart completion: track whether the current LSP request timed out
     var lspTimedOut by remember { mutableStateOf(false) }
+    // R3-LSP: Track LSP recovery counter to detect when server recovers after timeout
+    var lspRecoveryGen by remember { mutableStateOf(0) }
     // smartCompletion defined here so lspCompletionLoading can reference it
     val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
     // Loading indicator: true while waiting for LSP completion response
     val lspCompletionLoading by remember { derivedStateOf { smartCompletion && !lspHasResponded && !lspTimedOut } }
+
+    // R3-LSP: Recovery watcher — when LspManager reports a server transitioned to READY
+    // (after being UNHEALTHY/RESTARTING), reset the completion fallback flags so the
+    // next completion request tries LSP first again. The 5-second timeout still applies
+    // as the guard — this just prevents the fallback from being permanent for the session.
+    LaunchedEffect(language) {
+        var lastSeen = 0
+        while (true) {
+            kotlinx.coroutines.delay(2000) // poll every 2s
+            val current = com.codespace.ide.lsp.LspManager.lspRecoveryCounter
+            if (current > lastSeen) {
+                lastSeen = current
+                // LSP server recovered — reset fallback so next request tries LSP first
+                if (lspTimedOut || !lspHasResponded) {
+                    lspTimedOut = false
+                    lspHasResponded = false
+                    lspCompletions = emptyList()
+                    workspaceCompletions = emptyList()
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION recovery_detected — fallback reset, LSP will be retried", "lsp")
+                }
+            }
+        }
+    }
     // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
     var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
     // P41-Q: Completion caching — cache LSP results to avoid redundant requests when prefix extends
@@ -1120,8 +1145,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 } else {
                     // LSP timed out — keep showing local completions as fallback
                     lspTimedOut = true
+                    lspHasResponded = false // R3-LSP: clear stale "responded" state on timeout
                     lspCompletions = emptyList()
                     workspaceCompletions = emptyList()
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION timed_out (5s) — falling back to regex", "lsp")
                 }
             } else {
                 // Legacy behavior: fetch LSP without timeout, show alongside local

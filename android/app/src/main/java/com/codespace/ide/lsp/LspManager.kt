@@ -669,6 +669,13 @@ object LspManager {
     // Phase V-A: Server state per language — authoritative lifecycle
     private val serverStates = ConcurrentHashMap<Language, LspState>()
 
+    // R3-LSP: Recovery counter — incremented each time a server transitions TO READY
+    // from a non-READY state (restart/recovery). CodeEditor observes this to reset
+    // the completion fallback flag so LSP is retried first after recovery.
+    @Volatile
+    var lspRecoveryCounter: Int = 0
+        private set
+
     // Phase V-M: Generation counter per language — incremented on every server start
     private val generationCounters = ConcurrentHashMap<Language, Int>()
 
@@ -703,6 +710,12 @@ object LspManager {
     private fun setServerState(language: Language, newState: LspState, extra: String = "") {
         val oldState = serverStates[language] ?: LspState.STOPPED
         serverStates[language] = newState
+        // R3-LSP: Increment recovery counter when server transitions TO READY from a
+        // non-READY state (e.g., UNHEALTHY → READY after restart). This lets CodeEditor
+        // reset its completion fallback flag so the next request tries LSP first again.
+        if (oldState != LspState.READY && newState == LspState.READY) {
+            lspRecoveryCounter++
+        }
         if (oldState != newState) {
             val server = servers[language]
             val gen = server?.generation ?: 0
