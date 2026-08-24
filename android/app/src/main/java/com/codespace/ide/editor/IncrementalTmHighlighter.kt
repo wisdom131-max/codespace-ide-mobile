@@ -147,22 +147,31 @@ class IncrementalTmHighlighter {
                 val lineStart = lineStarts[i]
 
                 if (cache != null) {
-                    var lastEnd = 0
-                    for (token in cache.tokens) {
-                        // Emit untokenized gap
-                        if (token.start > lastEnd) {
-                            append(lines[i].substring(lastEnd, token.start))
+                    val lineLen = lines[i].length
+                    // Safety: if cached content doesn't match actual line (stale cache from
+                    // different file or race condition), skip tokens and emit raw text.
+                    if (cache.content != lines[i]) {
+                        append(lines[i])
+                    } else {
+                        var lastEnd = 0
+                        for (token in cache.tokens) {
+                            // Clamp token offsets to actual line length
+                            val tStart = token.start.coerceIn(0, lineLen)
+                            val tEnd = token.end.coerceIn(tStart, lineLen)
+                            if (tStart > lastEnd) {
+                                append(lines[i].substring(lastEnd, tStart))
+                            }
+                            val color = resolveColor(token.scopes, theme, colors)
+                            val style = resolveStyle(token.scopes, theme, color)
+                            withStyle(style) {
+                                if (tEnd > tStart) append(lines[i].substring(tStart, tEnd))
+                            }
+                            lastEnd = tEnd
                         }
-                        val color = resolveColor(token.scopes, theme, colors)
-                        val style = resolveStyle(token.scopes, theme, color)
-                        withStyle(style) {
-                            append(lines[i].substring(token.start, token.end))
+                        // Emit remaining text on this line
+                        if (lastEnd < lineLen) {
+                            append(lines[i].substring(lastEnd))
                         }
-                        lastEnd = token.end
-                    }
-                    // Emit remaining text on this line
-                    if (lastEnd < lines[i].length) {
-                        append(lines[i].substring(lastEnd))
                     }
                 } else {
                     append(lines[i])

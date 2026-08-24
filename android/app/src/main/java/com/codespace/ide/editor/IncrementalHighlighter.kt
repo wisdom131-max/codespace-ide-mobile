@@ -9,7 +9,7 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.ui.EditorColors
 import com.codespace.ide.editor.textmate.TextMateEngineHolder
 
-private val tmHighlighter = IncrementalTmHighlighter()
+// tmHighlighter is now per-instance to prevent cache bleeding across editor instances
 
 /**
  * Incremental syntax highlighter that caches per-line highlighting results
@@ -22,6 +22,8 @@ private val tmHighlighter = IncrementalTmHighlighter()
  * bracket-depth changes are re-highlighted.
  */
 class IncrementalHighlighter {
+
+    private val tmHighlighter = IncrementalTmHighlighter()
 
     /** Cached per-line highlight segments: line index -> list of (start, end, color) */
     private data class LineCache(
@@ -97,18 +99,26 @@ class IncrementalHighlighter {
                 val cache = if (i < lineCaches.size) lineCaches[i] else null
                 if (cache != null) {
                     val lineText = lines[i]
-                    var lastEnd = 0
-                    for ((start, end, color) in cache.segments) {
-                        if (start > lastEnd) {
-                            append(lineText.substring(lastEnd, start))
+                    // Safety: if cached content doesn't match actual line, emit raw text
+                    if (cache.content != lineText) {
+                        append(lineText)
+                    } else {
+                        val lineLen = lineText.length
+                        var lastEnd = 0
+                        for ((start, end, color) in cache.segments) {
+                            val sStart = start.coerceIn(0, lineLen)
+                            val sEnd = end.coerceIn(sStart, lineLen)
+                            if (sStart > lastEnd) {
+                                append(lineText.substring(lastEnd, sStart))
+                            }
+                            withStyle(SpanStyle(color = color)) {
+                                if (sEnd > sStart) append(lineText.substring(sStart, sEnd))
+                            }
+                            lastEnd = sEnd
                         }
-                        withStyle(SpanStyle(color = color)) {
-                            append(lineText.substring(start, end))
+                        if (lastEnd < lineLen) {
+                            append(lineText.substring(lastEnd))
                         }
-                        lastEnd = end
-                    }
-                    if (lastEnd < lineText.length) {
-                        append(lineText.substring(lastEnd))
                     }
                 } else {
                     append(lines[i])
