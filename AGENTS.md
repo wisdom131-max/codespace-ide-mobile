@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-23 20:35 WAT
+> Last updated: 2026-08-25 16:00 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 49f632f |
-| CI build | #2515 (green) |
+| Latest commit | a381f0f |
+| CI build | #2528 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,661 |
@@ -548,3 +548,45 @@ BlockLineOverlay.kt (decorations/)
 - Settings architecture: ✅ DONE
 - Crash fixes: ✅ DONE (this commit)
 - No pending items remain — ready for device testing
+
+
+---
+
+### [2026-08-25 16:00 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], [CRASH], [GIT], [EDITOR], [PERF], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+6. NO RE-DO: Never re-do work already marked done.
+7. KOTLIN PITFALLS: See rules block at top.
+8. JVM 64KB LIMIT: Extract new UI to separate files.
+
+**Commits 70331ee -> ffaf94e -> a381f0f | CI #2526 -> #2527 -> #2528 GREEN**
+
+**[BUILD-FIX] Reorder helper functions + LaunchedEffects in CodeEditor.kt**
+
+Three LaunchedEffect blocks (content, formatSelectionTrigger, scrollToLine) called
+`programmaticCursorMove`/`programmaticTextChange` before those local functions were
+declared in the file. Kotlin requires local functions declared before use, even inside
+lambda bodies. Additionally, `programmaticTextChange` references `decorationStore`
+which was initialized after the helper definitions.
+
+**Root cause:** Helper functions were placed between two dependencies they couldn't see
+(called by LaunchedEffects above, referencing decorationStore below).
+
+**Fix:** Reordered to: decorationStore (L811) -> helpers (L823/L829) -> all three
+LaunchedEffects (L843/L849/L865).
+
+**Took 3 attempts:** First pass missed two additional LaunchedEffect blocks that also
+called the helpers (scrollToLine at L700, and the content/formatSelectionTrigger blocks
+needed to be moved together).
+
+**Files touched (1):**
+CodeEditor.kt (editor/)
+
+**Next on roadmap:**
+- Change 4: O(1) snapshot undo (plan pending user approval)
+- Part 2: Switchable line-based text model (approved, not yet started)
