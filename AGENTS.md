@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-25 16:00 WAT
+> Last updated: 2026-08-25 21:45 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | a381f0f |
-| CI build | #2528 (green) |
+| Latest commit | cd5bc54 |
+| CI build | #2530 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,661 |
@@ -590,3 +590,62 @@ CodeEditor.kt (editor/)
 **Next on roadmap:**
 - Change 4: O(1) snapshot undo (plan pending user approval)
 - Part 2: Switchable line-based text model (approved, not yet started)
+
+
+---
+
+### [2026-08-25 21:45 WAT] — AI Agent: Claude Sonnet 4.5
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY.
+2. CHANGE LOG: Entry at BOTTOM with timestamp, SHA, CI build, what changed, files, next roadmap.
+3. TAGS: [BUILD-FIX], [LSP], [UI], [CRASH], [GIT], [EDITOR], [PERF], etc.
+4. CURRENT STATE: Updated above with latest green build + SHA.
+5. UI: Rounded corners (8-12dp) + padding (12dp horiz, 10dp vert) minimum.
+6. NO RE-DO: Never re-do work already marked done.
+7. KOTLIN PITFALLS: See rules block at top.
+8. JVM 64KB LIMIT: Extract new UI to separate files.
+
+**Commit cd5bc54 | CI #2530 GREEN**
+
+**[EDITOR] Change 4: O(1) snapshot undo — replace diff-based undo with snapshot undo**
+
+Replaces the diff-based UndoRedoManager (Insert/Delete/Replace actions + merge logic)
+with SnapshotUndoManager that stores full TextSnapshot entries (text + selection +
+extraCursors). Undo/redo becomes a single assignment instead of string reconstruction.
+
+**New file: SnapshotUndoManager.kt** (92 lines, com.codespace.ide.editor.undo)
+- TextSnapshot data class: text, selection, extraCursors, timestamp
+- push(): coalesced push (500ms window for typing)
+- pushForce(): non-coalesced push (for programmatic edits)
+- undo()/redo(): swap current snapshot, return previous/next
+- Max 200 snapshots (same as old maxStackSize)
+
+**CodeEditor.kt changes** (9 edit sites):
+- Declaration: UndoRedoManager -> SnapshotUndoManager
+- onValueChange: 20-line diff computation -> single push() call
+- Undo handler: snapshot-based (restore exact selection + extraCursors)
+- Redo handler: snapshot-based
+- DUPLICATE_LINE: removed recordInsert, added pushForce
+- COMMENT_TOGGLE: removed recordDelete/recordInsert, added pushForce
+- DELETE_LINE: removed recordDelete, added pushForce
+- MOVE_LINE_UP: removed recordReplace, added pushForce
+- MOVE_LINE_DOWN: removed recordReplace, added pushForce
+
+**UndoRedoManager.kt kept as dead code** (import removed, file not deleted).
+Safe to delete after on-device verification confirms snapshot undo works.
+
+**Files touched (2):**
+SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
+
+**Next on roadmap:**
+- Change 4 (O(1) snapshot undo): DONE (this commit, pending on-device verification)
+- All 4 research synthesis changes now complete:
+  - Change 1 (per-line span storage): DONE e2d5d1b / #2522
+  - Output tab logging: DONE 90b8889
+  - Change 2 (two-level stale rejection): DONE 90b8889
+  - Change 3 (cause-tagged selection events): DONE a381f0f / #2528
+  - Change 4 (O(1) snapshot undo): DONE cd5bc54 / #2530
+- Pending: On-device testing of all 4 changes
+- Pending: Delete UndoRedoManager.kt after snapshot undo confirmed on-device
+- Pending: Part 2 (switchable line-based text model) — approved, not started
