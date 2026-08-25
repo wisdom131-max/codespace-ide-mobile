@@ -1720,7 +1720,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var matchIndex by remember { mutableStateOf(0) }
 
     // R2-1/R2-2: Undo/redo manager — diff-based undo/redo stack
-    val undoRedoManager = remember { com.codespace.ide.editor.undo.UndoRedoManager() }
+    val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
     var undoRedoInProgress by remember { mutableStateOf(false) }
     // Sync external find bar (top white bar) to internal find state — must come AFTER the
     // vars above are declared (Kotlin local properties must be declared before use).
@@ -2070,26 +2070,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val insertedChars = newValue.text.length - value.text.length
                         if (newValue.text != value.text) {
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
-                            // R2-2: Record diff for undo/redo (skip when undo/redo is causing the change)
+                            // Change 4: O(1) snapshot undo - push full snapshot (coalesced)
                             if (!undoRedoInProgress) {
-                                val oStart: Int
-                                val oEnd: Int
-                                val nEnd: Int
-                                var cs = 0
-                                val minLen = minOf(value.text.length, newValue.text.length)
-                                while (cs < minLen && value.text[cs] == newValue.text[cs]) cs++
-                                var eo = value.text.length
-                                var en = newValue.text.length
-                                while (eo > cs && en > cs && value.text[eo - 1] == newValue.text[en - 1]) { eo--; en-- }
-                                val oldDeleted = value.text.substring(cs, eo)
-                                val newInserted = newValue.text.substring(cs, en)
-                                if (oldDeleted.isNotEmpty() && newInserted.isNotEmpty()) {
-                                    undoRedoManager.recordReplace(cs, oldDeleted, newInserted)
-                                } else if (newInserted.isNotEmpty()) {
-                                    undoRedoManager.recordInsert(cs, newInserted)
-                                } else if (oldDeleted.isNotEmpty()) {
-                                    undoRedoManager.recordDelete(cs, oldDeleted)
-                                }
+                                snapshotUndo.push(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                                    newValue.text, newValue.selection, extraCursors
+                                ))
                             }
                         } else if (newValue.selection != value.selection) {
                             editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
@@ -2709,24 +2694,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 )
                                 when (kbAction) {
                                     EditorAction.UNDO -> {
-                                        if (undoRedoManager.canUndo()) {
+                                        if (snapshotUndo.canUndo()) {
                                             undoRedoInProgress = true
-                                            val result = undoRedoManager.undo(value.text)
-                                            if (result != null) {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
-                                                programmaticTextChange(result.first, TextRange(result.second), "format_selected")
+                                            val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                                                value.text, value.selection, extraCursors
+                                            )
+                                            val prev = snapshotUndo.undo(current)
+                                            if (prev != null) {
+                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, prev.text, prev.extraCursors)
+                                                programmaticTextChange(prev.text, prev.selection, "undo")
                                             }
                                             undoRedoInProgress = false
                                         }
                                         true
                                     }
                                     EditorAction.REDO -> {
-                                        if (undoRedoManager.canRedo()) {
+                                        if (snapshotUndo.canRedo()) {
                                             undoRedoInProgress = true
-                                            val result = undoRedoManager.redo(value.text)
-                                            if (result != null) {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
-                                                programmaticTextChange(result.first, TextRange(result.second), "format_selected")
+                                            val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                                                value.text, value.selection, extraCursors
+                                            )
+                                            val next = snapshotUndo.redo(current)
+                                            if (next != null) {
+                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, next.text, next.extraCursors)
+                                                programmaticTextChange(next.text, next.selection, "redo")
                                             }
                                             undoRedoInProgress = false
                                         }
@@ -2741,9 +2732,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val insertText = currentLine + if (lineEnd == -1) "\n" else ""
                                         val newText = value.text.substring(0, endIdx) + insertText + value.text.substring(endIdx)
                                         undoRedoInProgress = true
-                                        undoRedoManager.recordInsert(endIdx, insertText)
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)), "undo_insert")
+                                        programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)), "duplicate_line")
+                                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)), extraCursors))
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2773,14 +2764,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             newCursor = cursor + commentPrefix.length
                                         }
                                         undoRedoInProgress = true
-                                        if (lineText.trimStart().startsWith(commentTrim)) {
-                                            val cidx = lineText.indexOf(commentTrim)
-                                            undoRedoManager.recordDelete(lineStart + cidx, commentTrim)
-                                        } else {
-                                            undoRedoManager.recordInsert(lineStart, commentPrefix)
-                                        }
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        programmaticTextChange(newText, TextRange(newCursor), "undo_delete")
+                                        programmaticTextChange(newText, TextRange(newCursor), "comment_toggle")
+                                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(newCursor), extraCursors))
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2791,9 +2777,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val deletedText = value.text.substring(lineStart, lineEnd)
                                         val newText = value.text.removeRange(lineStart, lineEnd)
                                         undoRedoInProgress = true
-                                        undoRedoManager.recordDelete(lineStart, deletedText)
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        programmaticTextChange(newText, TextRange(lineStart), "undo_line_delete")
+                                        programmaticTextChange(newText, TextRange(lineStart), "delete_line")
+                                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(lineStart), extraCursors))
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2832,10 +2818,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val prevLine = value.text.substring(prevLineStart, prevLineEnd)
                                         val newText = value.text.substring(0, prevLineStart) + currentLine + "\n" + prevLine + value.text.substring(lineEnd)
                                         undoRedoInProgress = true
-                                        undoRedoManager.recordReplace(prevLineStart, prevLine + "\n" + currentLine, currentLine + "\n" + prevLine)
                                         val newCursor = prevLineStart + currentLine.length
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        programmaticTextChange(newText, TextRange(newCursor), "undo_join_lines_up")
+                                        programmaticTextChange(newText, TextRange(newCursor), "move_line_up")
+                                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(newCursor), extraCursors))
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2850,10 +2836,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val nextLine = value.text.substring(nextLineStart, nextLineEnd)
                                         val newText = value.text.substring(0, lineStart) + nextLine + "\n" + currentLine + value.text.substring(nextLineEnd)
                                         undoRedoInProgress = true
-                                        undoRedoManager.recordReplace(lineStart, currentLine + "\n" + nextLine, nextLine + "\n" + currentLine)
                                         val newCursor = lineStart + nextLine.length
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        programmaticTextChange(newText, TextRange(newCursor), "undo_join_lines_down")
+                                        programmaticTextChange(newText, TextRange(newCursor), "move_line_down")
+                                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(newCursor), extraCursors))
                                         undoRedoInProgress = false
                                         true
                                     }
