@@ -4480,7 +4480,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 if (appliedAny) {
                                                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                                     programmaticTextChange(newText, value.selection, "snippet_apply")
-                                                }
                                                     lspSucceeded = true
                                                     renameUsedLsp = true
                                                     // Notify EditorPane's onRenameSymbol callback (for any side effects)
