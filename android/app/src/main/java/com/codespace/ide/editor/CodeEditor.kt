@@ -694,30 +694,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
     }
-    LaunchedEffect(scrollToLine) {
-        if (scrollToLine > 0) {
-            val lineHeightPx = editorMetrics.lineHeightPx
-            val scrollTarget = ((scrollToLine - 1) * lineHeightPx).toInt()
-            vScroll.animateScrollTo(scrollTarget.coerceAtMost(vScroll.maxValue))
-            highlightTargetLine = scrollToLine
-            highlightBlinkStart = System.currentTimeMillis()
-            // Test 33/40 fix: Also move the cursor to the target line so that
-            // clicking an error or outline entry positions the cursor there,
-            // not just scrolling to it.
-            // Phase A: Use positionMapper for O(1) offset lookup (was: manual loop)
-            val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
-            if (targetLineIdx >= 0) {
-                val clampedOffset = positionMapper.lineStart(targetLineIdx)
-                programmaticCursorMove(clampedOffset, "scroll_to_line")
-            }
-            // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
-            coroutineScope.launch {
-                kotlinx.coroutines.delay(6000)
-                highlightTargetLine = 0
-                highlightBlinkStart = 0L
-            }
-        }
-    }
     val hScroll = rememberScrollState()
     // Reactive minimap visibility from FeatureToggleStore — toggling in Settings updates immediately
     // EDITOR-FIX: Clamp scroll positions when font size changes — prevents stuck scroll at stale boundaries
@@ -882,6 +858,31 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             )
             if (result != null) {
                 programmaticTextChange(result.first, TextRange(result.second, result.third), "format_selection")
+            }
+        }
+    }
+
+    LaunchedEffect(scrollToLine) {
+        if (scrollToLine > 0) {
+            val lineHeightPx = editorMetrics.lineHeightPx
+            val scrollTarget = ((scrollToLine - 1) * lineHeightPx).toInt()
+            vScroll.animateScrollTo(scrollTarget.coerceAtMost(vScroll.maxValue))
+            highlightTargetLine = scrollToLine
+            highlightBlinkStart = System.currentTimeMillis()
+            // Test 33/40 fix: Also move the cursor to the target line so that
+            // clicking an error or outline entry positions the cursor there,
+            // not just scrolling to it.
+            // Phase A: Use positionMapper for O(1) offset lookup (was: manual loop)
+            val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
+            if (targetLineIdx >= 0) {
+                val clampedOffset = positionMapper.lineStart(targetLineIdx)
+                programmaticCursorMove(clampedOffset, "scroll_to_line")
+            }
+            // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(6000)
+                highlightTargetLine = 0
+                highlightBlinkStart = 0L
             }
         }
     }
