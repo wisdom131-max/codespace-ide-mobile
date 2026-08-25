@@ -1092,12 +1092,11 @@ fun EditorPane(
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
             LspManager.setDiagnosticsHandler(snap.language) { diagUri, diags ->
-                // Two-level stale check at callback invocation time (handler survives
-                // server restarts — must read CURRENT values, not registration-time values).
-                val currentServerGen = LspManager.getServerGeneration(snap.language)
-                if (currentServerGen == 0) return@setDiagnosticsHandler
-                val currentDocVersion = LspManager.getDocumentVersion(snap.language, uri)
-                if (currentDocVersion == 0) return@setDiagnosticsHandler
+                // Server-gen check at callback invocation time (handler survives server
+                // restarts — must read CURRENT generation, not registration-time value).
+                // Note: doc-version check doesn't apply to push-based diagnostics —
+                // we don't know which document version the server computed these for.
+                if (LspManager.getServerGeneration(snap.language) == 0) return@setDiagnosticsHandler
                 // P33-INTELLISENSE: Normalize both URIs before comparing — server may
                 // return %20 for spaces while our URI has raw spaces (or vice versa).
                 val normDiag = LspManager.normalizeFileUri(diagUri)
@@ -1107,13 +1106,6 @@ fun EditorPane(
                 val diagFile = diagUri.substringAfterLast("/")
                 val ourFile = uri.substringAfterLast("/")
                 if (normDiag == normUri || diagFile == ourFile) {
-                    // Doc version check: if the document was edited after the server
-                    // computed these diagnostics, they're for an older text version.
-                    val latestVersion = LspManager.getDocumentVersion(snap.language, uri)
-                    if (latestVersion != currentDocVersion) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for diagnostics", "lsp")
-                        return@setDiagnosticsHandler
-                    }
                     lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
                 }
             }
@@ -1962,10 +1954,7 @@ fun EditorPane(
                         lspCodeActionProvider = if (LspManager.isServerRunning(active.language)) {
                             { line ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
-                                if (uri != null) {
-                                    // Server-gen check: if server restarted, isServerRunning was
-                                    // checked at lambda creation but may be stale now.
-                                    if (!LspManager.isServerRunning(active.language)) return emptyList<LspCodeAction>()
+                                if (uri != null && LspManager.isServerRunning(active.language)) {
                                     // P39: Pass current diagnostics as context for targeted quick fixes
                                     val diagnostics = try {
                                         com.codespace.ide.lsp.buildDiagnosticsContext(lspSquiggles, line + 1)
