@@ -661,48 +661,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // overlay consumes the gesture (the #1 bug blocking all editing).
     val focusRequester = remember { FocusRequester() }
     // focusRequester is used by the floating LSP button to maintain focus on the editor
-    // FIX(P38): Sync external content changes (e.g. format button, file reload)
-    // to the internal TextFieldValue. Without this, updating the 'content'
-    // parameter from outside (like the format button updating tabs[idx].content)
-    // has no effect — the editor keeps showing the old text because 'remember'
-    // only initializes once.
-    LaunchedEffect(content) {
-        if (value.text != content) {
-            programmaticCursorMove(content.length, "content_reload")
-        }
-    }
-    // Phase R: Format Selection — format the selected text range when triggered
-    LaunchedEffect(formatSelectionTrigger) {
-        if (formatSelectionTrigger > 0 && value.selection.start != value.selection.end) {
-            val result = doFormatSelection(
-                fullText = value.text,
-                selStart = value.selection.start.coerceIn(0, value.text.length),
-                selEnd = value.selection.end.coerceIn(0, value.text.length),
-                language = language,
-                filePath = currentFilePath,
-                context = context,
-            )
-            if (result != null) {
-                programmaticTextChange(result.first, TextRange(result.second, result.third), "format_selection")
-            }
-        }
-    }
-    // R3-C: Cause-tagged selection event helpers — atomically set value + editorEvent + log.
-    // Every programmatic value mutation should go through these instead of raw value = ...
-    fun programmaticCursorMove(offset: Int, reason: String) {
-        val safe = offset.coerceIn(0, value.text.length)
-        value = value.copy(selection = TextRange(safe))
-        editorEvent = EditorEvent.ProgrammaticCursorMove(safe, reason)
-        AppOutputLog.log("PROGRAMMATIC_CURSOR_MOVE: $reason -> offset $safe", "lsp")
-    }
-    fun programmaticTextChange(newText: String, selection: TextRange, reason: String) {
-        decorationStore.shiftOnEdit(value.text, newText)
-        val safeSel = TextRange(selection.start.coerceIn(0, newText.length), selection.end.coerceIn(0, newText.length))
-        value = TextFieldValue(newText, safeSel)
-        editorEvent = EditorEvent.ProgrammaticTextChange(newText, safeSel.end)
-        onContentChange(newText)
-        AppOutputLog.log("PROGRAMMATIC_TEXT_CHANGE: $reason", "lsp")
-    }
 
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes
@@ -884,6 +842,49 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         foldedRanges = foldedRanges,
         lspFoldingRanges = lspFoldingRanges,
     )
+    // R3-C: Cause-tagged selection event helpers — atomically set value + editorEvent + log.
+    // Every programmatic value mutation should go through these instead of raw value = ...
+    fun programmaticCursorMove(offset: Int, reason: String) {
+        val safe = offset.coerceIn(0, value.text.length)
+        value = value.copy(selection = TextRange(safe))
+        editorEvent = EditorEvent.ProgrammaticCursorMove(safe, reason)
+        AppOutputLog.log("PROGRAMMATIC_CURSOR_MOVE: $reason -> offset $safe", "lsp")
+    }
+    fun programmaticTextChange(newText: String, selection: TextRange, reason: String) {
+        decorationStore.shiftOnEdit(value.text, newText)
+        val safeSel = TextRange(selection.start.coerceIn(0, newText.length), selection.end.coerceIn(0, newText.length))
+        value = TextFieldValue(newText, safeSel)
+        editorEvent = EditorEvent.ProgrammaticTextChange(newText, safeSel.end)
+        onContentChange(newText)
+        AppOutputLog.log("PROGRAMMATIC_TEXT_CHANGE: $reason", "lsp")
+    }
+
+    // FIX(P38): Sync external content changes (e.g. format button, file reload)
+    // to the internal TextFieldValue. Without this, updating the 'content'
+    // parameter from outside (like the format button updating tabs[idx].content)
+    // has no effect — the editor keeps showing the old text because 'remember'
+    // only initializes once.
+    LaunchedEffect(content) {
+        if (value.text != content) {
+            programmaticCursorMove(content.length, "content_reload")
+        }
+    }
+    // Phase R: Format Selection — format the selected text range when triggered
+    LaunchedEffect(formatSelectionTrigger) {
+        if (formatSelectionTrigger > 0 && value.selection.start != value.selection.end) {
+            val result = doFormatSelection(
+                fullText = value.text,
+                selStart = value.selection.start.coerceIn(0, value.text.length),
+                selEnd = value.selection.end.coerceIn(0, value.text.length),
+                language = language,
+                filePath = currentFilePath,
+                context = context,
+            )
+            if (result != null) {
+                programmaticTextChange(result.first, TextRange(result.second, result.third), "format_selection")
+            }
+        }
+    }
     val _lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
 
     // C-5 FIX: Cached newline offsets for O(log n) line lookup instead of O(n) take().count()
