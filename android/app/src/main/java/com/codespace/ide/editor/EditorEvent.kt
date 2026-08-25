@@ -82,6 +82,11 @@ sealed class EditorEvent {
 
     /** Log this event to AppOutputLog. */
     fun log() {
-        AppOutputLog.log("[EDITOR] EVENT $logTag", "lsp")
+        val detail = when (this) {
+            is ProgrammaticCursorMove -> ": ${this.reason}"
+            is ProgrammaticTextChange -> ""
+            else -> ""
+        }
+        AppOutputLog.log("[EDITOR] EVENT $logTag$detail", "lsp")
     }
 }

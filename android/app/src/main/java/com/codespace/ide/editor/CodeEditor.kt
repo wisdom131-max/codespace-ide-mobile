@@ -668,8 +668,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // only initializes once.
     LaunchedEffect(content) {
         if (value.text != content) {
-            value = TextFieldValue(content, TextRange(content.length))
-            editorEvent = EditorEvent.ProgrammaticCursorMove(content.length, "content_reload")
+            programmaticCursorMove(content.length, "content_reload")
         }
     }
     // Phase R: Format Selection — format the selected text range when triggered
@@ -684,12 +683,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 context = context,
             )
             if (result != null) {
-                value = TextFieldValue(result.first, TextRange(result.second, result.third))
-                editorEvent = EditorEvent.ProgrammaticTextChange(result.first, result.second)
-                onContentChange(result.first)
+                programmaticTextChange(result.first, TextRange(result.second, result.third), "format_selection")
             }
         }
     }
+    // R3-C: Cause-tagged selection event helpers — atomically set value + editorEvent + log.
+    // Every programmatic value mutation should go through these instead of raw value = ...
+    fun programmaticCursorMove(offset: Int, reason: String) {
+        val safe = offset.coerceIn(0, value.text.length)
+        value = value.copy(selection = TextRange(safe))
+        editorEvent = EditorEvent.ProgrammaticCursorMove(safe, reason)
+        AppOutputLog.log("PROGRAMMATIC_CURSOR_MOVE: $reason -> offset $safe", "lsp")
+    }
+    fun programmaticTextChange(newText: String, selection: TextRange, reason: String) {
+        decorationStore.shiftOnEdit(value.text, newText)
+        val safeSel = TextRange(selection.start.coerceIn(0, newText.length), selection.end.coerceIn(0, newText.length))
+        value = TextFieldValue(newText, safeSel)
+        editorEvent = EditorEvent.ProgrammaticTextChange(newText, safeSel.end)
+        onContentChange(newText)
+        AppOutputLog.log("PROGRAMMATIC_TEXT_CHANGE: $reason", "lsp")
+    }
+
     val vScroll = rememberScrollState()
     // P26-1: Scroll to line when scrollToLine parameter changes
     val scrollDensity = androidx.compose.ui.platform.LocalDensity.current
@@ -736,7 +750,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
             if (targetLineIdx >= 0) {
                 val clampedOffset = positionMapper.lineStart(targetLineIdx)
-                value = value.copy(selection = androidx.compose.ui.text.TextRange(clampedOffset))
+                programmaticCursorMove(clampedOffset, "scroll_to_line")
             }
             // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
             coroutineScope.launch {
@@ -1567,10 +1581,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             showSnippetChoices = next.activeStop()?.choices?.isNotEmpty() == true
                             val stopRange = next.activeStopRange()
                             if (stopRange != null) {
-                                value = value.copy(selection = TextRange(stopRange.first, stopRange.last + 1))
+                                programmaticCursorMove(stopRange.first, "snippet_tab_stop")
                             }
                         } else {
-                            value = value.copy(selection = TextRange(session.finalCursorOffset))
+                            programmaticCursorMove(session.finalCursorOffset, "snippet_final")
                             snippetSession = null
                         }
                     } else if (!showCompletions) {
@@ -1636,29 +1650,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                         }
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, finalText)
-                                        value = TextFieldValue(text = finalText, selection = selRange)
-                                        currentOnContentChange(finalText)
+                                        programmaticTextChange(finalText, selRange, "snippet_multicursor")
                                     } else {
                                         val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, newText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length)))
-                                        currentOnContentChange(newText)
+                                        programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length)), "snippet_expand")
                                     }
                                 } else {
                                     val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
                                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                    decorationStore.shiftOnEdit(value.text, newText)
-                                    value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)))
-                                    currentOnContentChange(newText)
+                                    programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)), "tab_insert_snippet")
                                 }
                             } else {
                                 val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                decorationStore.shiftOnEdit(value.text, newText)
-                                value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)))
-                                currentOnContentChange(newText)
+                                programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)), "tab_insert")
                             }
                         }
                     }
@@ -1677,15 +1683,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val newText = value.text.substring(0, selStart) + text + closing + value.text.substring(selEnd)
                         // Place cursor between the pair (e.g. between ( and ))
                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                        decorationStore.shiftOnEdit(value.text, newText)
-                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(selStart, selStart, 1)))
-                        currentOnContentChange(newText)
+                        programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(selStart, selStart, 1)), "auto_close_pair")
                     } else {
                         val newText = value.text.substring(0, selStart) + text + value.text.substring(selEnd)
                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                        decorationStore.shiftOnEdit(value.text, newText)
-                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(selStart, selStart, text.length)))
-                        currentOnContentChange(newText)
+                        programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(selStart, selStart, text.length)), "toolbar_insert")
                     }
                 }
             }
@@ -2107,9 +2109,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val insertTxt = selectedComp.insertText
                                 val committedText = text.substring(0, start) + insertTxt + typedChar.toString() + text.substring(end)
                                 val committedCursor = start + insertTxt.length + 1
-                                value = TextFieldValue(text = committedText, selection = TextRange(committedCursor))
-                                editorEvent = EditorEvent.ProgrammaticTextChange(committedText, committedCursor)
-                                onContentChange(committedText)
+                                programmaticTextChange(committedText, TextRange(committedCursor), "completion_commit_char")
                                 CompletionHistoryStore.recordAccepted(selectedComp.label, language.name, context)
                                 showCompletions = false
                                 selectedLabel = null
@@ -2477,9 +2477,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val newText = text.substring(0, start) + insertText + text.substring(end)
                                 val newCursor = start + insertText.length
                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                decorationStore.shiftOnEdit(value.text, newText)
-                                value = TextFieldValue(text = newText, selection = TextRange(newCursor))
-                                onContentChange(newText)
+                                programmaticTextChange(newText, TextRange(newCursor), "completion_commit")
                                 CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
                                 showCompletions = false
                                 selectedLabel = null
@@ -2541,19 +2539,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                             }
                                             extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
-                                            decorationStore.shiftOnEdit(value.text, finalText)
-                                            value = TextFieldValue(text = finalText, selection = selRange)
-                                            editorEvent = EditorEvent.ProgrammaticTextChange(finalText, (selRange?.start ?: 0))
-                                            onContentChange(finalText)
+                                            programmaticTextChange(finalText, selRange ?: TextRange(0), "snippet_multicursor_transform")
                                         } else {
                                             // Plain text snippet — place cursor at end of inserted text
                                             extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                            decorationStore.shiftOnEdit(value.text, newText)
-                                            value = TextFieldValue(
-                                                text = newText,
-                                                selection = TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length))
-                                            )
-                                            onContentChange(newText)
+                                            programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length)), "snippet_plain_text")
                                         }
                                         true // consume the Tab key
                                     } else {
@@ -2665,9 +2655,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val newStart = (selStart - firstLineRemoved).coerceAtLeast(positionMapper.lineStart(startLine))
                                         val newEnd = (selEnd - totalRemoved).coerceAtLeast(newStart)
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, finalText)
-                                        value = TextFieldValue(text = finalText, selection = TextRange(newStart, newEnd))
-                                        onContentChange(finalText)
+                                        programmaticTextChange(finalText, TextRange(newStart, newEnd), "delete_lines")
                                         true
                                     } else {
                                         // Indent: add one indent level to each selected line
@@ -2687,9 +2675,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val newStart = selStart + firstLineAdded
                                         val newEnd = selEnd + totalAdded
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, finalText)
-                                        value = TextFieldValue(text = finalText, selection = TextRange(newStart, newEnd))
-                                        onContentChange(finalText)
+                                        programmaticTextChange(finalText, TextRange(newStart, newEnd), "duplicate_lines")
                                         true
                                     }
                                 } else {
@@ -2726,9 +2712,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             val result = undoRedoManager.undo(value.text)
                                             if (result != null) {
                                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
-                                                decorationStore.shiftOnEdit(value.text, result.first)
-                                                value = TextFieldValue(text = result.first, selection = TextRange(result.second))
-                                                onContentChange(result.first)
+                                                programmaticTextChange(result.first, TextRange(result.second), "format_selected")
                                             }
                                             undoRedoInProgress = false
                                         }
@@ -2740,9 +2724,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             val result = undoRedoManager.redo(value.text)
                                             if (result != null) {
                                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
-                                                decorationStore.shiftOnEdit(value.text, result.first)
-                                                value = TextFieldValue(text = result.first, selection = TextRange(result.second))
-                                                onContentChange(result.first)
+                                                programmaticTextChange(result.first, TextRange(result.second), "format_selected")
                                             }
                                             undoRedoInProgress = false
                                         }
@@ -2759,9 +2741,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = true
                                         undoRedoManager.recordInsert(endIdx, insertText)
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, newText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)))
-                                        onContentChange(newText)
+                                        programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)), "undo_insert")
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2798,9 +2778,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             undoRedoManager.recordInsert(lineStart, commentPrefix)
                                         }
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, newText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(newCursor))
-                                        onContentChange(newText)
+                                        programmaticTextChange(newText, TextRange(newCursor), "undo_delete")
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2813,9 +2791,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoInProgress = true
                                         undoRedoManager.recordDelete(lineStart, deletedText)
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, newText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(lineStart))
-                                        onContentChange(newText)
+                                        programmaticTextChange(newText, TextRange(lineStart), "undo_line_delete")
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2857,9 +2833,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoManager.recordReplace(prevLineStart, prevLine + "\n" + currentLine, currentLine + "\n" + prevLine)
                                         val newCursor = prevLineStart + currentLine.length
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, newText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(newCursor))
-                                        onContentChange(newText)
+                                        programmaticTextChange(newText, TextRange(newCursor), "undo_join_lines_up")
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -2877,9 +2851,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         undoRedoManager.recordReplace(lineStart, currentLine + "\n" + nextLine, nextLine + "\n" + currentLine)
                                         val newCursor = lineStart + nextLine.length
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, newText)
-                                        value = TextFieldValue(text = newText, selection = TextRange(newCursor))
-                                        onContentChange(newText)
+                                        programmaticTextChange(newText, TextRange(newCursor), "undo_join_lines_down")
                                         undoRedoInProgress = false
                                         true
                                     }
@@ -3521,9 +3493,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                             )
                                                             if (newText != null && newText != value.text) {
                                                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                                decorationStore.shiftOnEdit(value.text, newText)
-                                                                value = TextFieldValue(newText, TextRange(value.selection.start))
-                                                                onContentChange(newText)
+                                                                programmaticTextChange(newText, TextRange(value.selection.start), "ai_suggestion_apply")
                                                             }
                                                         } catch (_: Exception) {}
                                                     } else if (fix.command != null) {
@@ -3579,7 +3549,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     var endOff = positionMapper.lspToOffset(eLine, eChar)
                                                     startOff = startOff.coerceIn(0, value.text.length)
                                                     endOff = endOff.coerceIn(0, value.text.length)
-                                                    value = value.copy(selection = TextRange(startOff, endOff))
+                                                    programmaticCursorMove(startOff, "lsp_selection_range")
                                                 }
                                             }
                                         } catch (_: Exception) { expandSelectionUsedLsp = false }
@@ -3587,7 +3557,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val pat = Regex("\\b" + Regex.escape(word) + "\\b")
                                         val match = pat.find(value.text, value.selection.start - 1) ?: pat.find(value.text)
                                         if (match != null) {
-                                            value = value.copy(selection = TextRange(match.range.first, match.range.last + 1))
+                                            programmaticCursorMove(match.range.first, "expand_selection_word")
                                         }
                                         expandSelectionUsedLsp = false
                                     }
@@ -3793,7 +3763,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         // Primary cursor goes to first match
                                         val first = matches.first().range.first
                                         val firstEnd = matches.first().range.last + 1
-                                        value = value.copy(selection = TextRange(first, firstEnd))
+                                        programmaticCursorMove(first, "select_all_occurrences")
                                         // Extra cursors at all subsequent matches
                                         extraCursors = matches.drop(1).map { it.range.first }.distinct().sorted()
                                         // Scroll to make the first match visible
@@ -3825,7 +3795,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         if (currentStart !in extraCursors) {
                                             extraCursors = (extraCursors + currentStart).distinct().sorted()
                                         }
-                                        value = value.copy(selection = TextRange(nextMatch.range.first, nextMatch.range.last + 1))
+                                        programmaticCursorMove(nextMatch.range.first, "find_next_occurrence")
                                         // Scroll to make the next occurrence visible
                                         val matchLine = value.text.substring(0, nextMatch.range.first).count { it == '\n' }
                                         coroutineScope.launch {
@@ -4103,10 +4073,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
                                     if (result != null) {
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, result)
-                                        value = TextFieldValue(result, value.selection)
-                                        editorEvent = EditorEvent.ProgrammaticTextChange(result, value.selection.start)
-                                        onContentChange(result)
+                                        programmaticTextChange(result, value.selection, "organize_imports")
                                     }
                                 }
                                 showLspMenu = false
@@ -4127,10 +4094,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedImports(value.text, language)
                                     if (result != null) {
                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
-                                        decorationStore.shiftOnEdit(value.text, result)
-                                        value = TextFieldValue(result, value.selection)
-                                        editorEvent = EditorEvent.ProgrammaticTextChange(result, value.selection.start)
-                                        onContentChange(result)
+                                        programmaticTextChange(result, value.selection, "remove_unused_imports")
                                     }
                                 }
                                 showLspMenu = false
@@ -4148,9 +4112,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedCode(value.text, language)
                                 if (result != null) {
                                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
-                                    decorationStore.shiftOnEdit(value.text, result)
-                                    value = TextFieldValue(result, value.selection)
-                                    onContentChange(result)
+                                    programmaticTextChange(result, value.selection, "external_format")
                                 }
                                 showLspMenu = false
                             }
@@ -4264,7 +4226,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             }
                             if (linesFound < targetLineIdx) lineStart = text.length
-                            value = value.copy(selection = androidx.compose.ui.text.TextRange(lineStart.coerceIn(0, text.length)))
+                            programmaticCursorMove(lineStart.coerceIn(0, text.length), "go_to_line_nav")
                         }
                         coroutineScope.launch {
                             kotlinx.coroutines.delay(2500)
@@ -4306,7 +4268,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             }
                             if (linesFound < targetLineIdx) lineStart = text.length
-                            value = value.copy(selection = androidx.compose.ui.text.TextRange(lineStart.coerceIn(0, text.length)))
+                            programmaticCursorMove(lineStart.coerceIn(0, text.length), "go_to_line_nav")
                         }
                         coroutineScope.launch {
                             kotlinx.coroutines.delay(2500)
@@ -4348,7 +4310,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             }
                             if (linesFound < targetLineIdx) lineStart = text.length
-                            value = value.copy(selection = androidx.compose.ui.text.TextRange(lineStart.coerceIn(0, text.length)))
+                            programmaticCursorMove(lineStart.coerceIn(0, text.length), "go_to_line_nav")
                         }
                         coroutineScope.launch {
                             kotlinx.coroutines.delay(2500)
@@ -4517,12 +4479,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                                                 if (appliedAny) {
                                                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                    decorationStore.shiftOnEdit(value.text, newText)
-                                                    value = TextFieldValue(
-                                                        text = newText,
-                                                        selection = value.selection,
-                                                    )
-                                                    onContentChange(newText)
+                                                    programmaticTextChange(newText, value.selection, "snippet_apply")
+                                                }
                                                     lspSucceeded = true
                                                     renameUsedLsp = true
                                                     // Notify EditorPane's onRenameSymbol callback (for any side effects)
@@ -4538,12 +4496,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
                                     val newText = pattern.replace(value.text, newName)
                                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                    decorationStore.shiftOnEdit(value.text, newText)
-                                    value = TextFieldValue(
-                                        text = newText,
-                                        selection = value.selection,
-                                    )
-                                    onContentChange(newText)
+                                    programmaticTextChange(newText, value.selection, "rename_refactor")
                                     // P18-C: Cross-file rename (regex fallback)
                                     if (renameProjectWide && projectRoot != null) {
                                         renameInProgress = true
@@ -4614,9 +4567,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                         if (appliedAny) {
                             extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                            decorationStore.shiftOnEdit(value.text, newText)
-                            value = TextFieldValue(newText, TextRange(value.selection.start))
-                            onContentChange(newText)
+                            programmaticTextChange(newText, TextRange(value.selection.start), "snippet_applied")
                         }
                         renamePreviewEdit = null; renamePreviewFiles = emptyList(); renameDialogWord = null
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC))) {
@@ -4678,7 +4629,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onJumpToLine = { offset, line ->
                 // DEBUG: Show that onJumpToLine was called
                 debugJumpMsg = "JUMP line=$line offset=$offset"
-                value = value.copy(selection = TextRange(offset))
+                programmaticCursorMove(offset, "jump_to_line")
                 // Phase V-FIX (Test 53): Highlight the target line so the user can
                 // SEE where they jumped — same mechanism as scrollToLine.
                 highlightTargetLine = line
@@ -4751,12 +4702,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             text = value.text,
             onTextChange = { newText, cursor ->
                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                decorationStore.shiftOnEdit(value.text, newText)
-                value = TextFieldValue(text = newText, selection = TextRange(cursor))
-                onContentChange(newText)
+                programmaticTextChange(newText, TextRange(cursor), "external_text_change")
             },
             onSelectRange = { start, end ->
-                value = value.copy(selection = TextRange(start, end))
+                programmaticCursorMove(start, "select_range")
             },
             onFindReplaceClose = {
                 findQuery = ""
@@ -4866,9 +4815,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         )
                                         if (newText != null && newText != value.text) {
                                             extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                            decorationStore.shiftOnEdit(value.text, newText)
-                                            value = TextFieldValue(newText, TextRange(value.selection.start))
-                                            onContentChange(newText)
+                                            programmaticTextChange(newText, TextRange(value.selection.start), "ai_apply")
                                         }
                                     } catch (_: Exception) {}
                                 } else if (fix.command != null) {
@@ -4973,9 +4920,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     val cursor = value.selection.end
                     val newText = value.text.substring(0, cursor) + fullText + value.text.substring(cursor)
                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                    decorationStore.shiftOnEdit(value.text, newText)
-                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(positionMapper.shiftOnInsert(cursor, cursor, fullText.length)))
-                    onContentChange(newText)
+                    programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, fullText.length)), "ghost_text_accept_full")
                     if (!ghostTextIsAi) {
                         val ghostLabel = allCompletions.firstOrNull()?.label
                         if (ghostLabel != null) CompletionHistoryStore.recordAccepted(ghostLabel, language.name, context)
@@ -4986,9 +4931,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     val cursor = value.selection.end
                     val newText = value.text.substring(0, cursor) + word + value.text.substring(cursor)
                     extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                    decorationStore.shiftOnEdit(value.text, newText)
-                    value = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(positionMapper.shiftOnInsert(cursor, cursor, word.length)))
-                    onContentChange(newText)
+                    programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, word.length)), "ghost_text_accept_word")
                     ghostTextLines = remainingLines
                     ghostText = remainingLines.firstOrNull() ?: ""
                 },
@@ -5054,12 +4997,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             snippetSession = session.shiftAfterEdit(activeStop, oldLen, newLen)
                                             // Update editor value
                                             extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                            decorationStore.shiftOnEdit(value.text, newText)
-                                            value = TextFieldValue(
-                                                text = newText,
-                                                selection = TextRange(stopStart, stopStart + newLen),
-                                            )
-                                            onContentChange(newText)
+                                            programmaticTextChange(newText, TextRange(stopStart, stopStart + newLen), "snippet_tab_stop_update")
                                             showSnippetChoices = false
                                         }
                                         .background(if (isSelected) colors.function.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent)
@@ -5347,12 +5285,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 androidx.compose.ui.text.TextRange(result.second)
                                             }
                                             extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
-                                            decorationStore.shiftOnEdit(value.text, result.first)
-                                            value = TextFieldValue(
-                                                text = result.first,
-                                                selection = selRange,
-                                            )
-                                            onContentChange(result.first)
+                                            programmaticTextChange(result.first, selRange, "format_result")
                                         }
                                     } else {
                                         // P41-I: Handle snippet insertTextFormat == 2
@@ -5393,15 +5326,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                             androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                                         }
                                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, patched, extraCursors)
-                                                        decorationStore.shiftOnEdit(value.text, patched)
-                                                        value = TextFieldValue(text = patched, selection = sel)
+                                                        programmaticTextChange(patched, sel, "auto_import_patched")
                                                     } else {
                                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, patched, extraCursors)
-                                                        decorationStore.shiftOnEdit(value.text, patched)
-                                                        value = TextFieldValue(
-                                                            text = patched,
-                                                            selection = androidx.compose.ui.text.TextRange(newCursor + importDelta),
-                                                        )
+                                                        programmaticTextChange(patched, androidx.compose.ui.text.TextRange(newCursor + importDelta), "auto_import_delta")
                                                     }
                                                     onContentChange(patched)
                                                 } else {
@@ -5417,15 +5345,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                             androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                                         }
                                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                        decorationStore.shiftOnEdit(value.text, newText)
-                                                        value = TextFieldValue(text = newText, selection = sel)
+                                                        programmaticTextChange(newText, sel, "ai_fix_applied")
                                                     } else {
                                                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                        decorationStore.shiftOnEdit(value.text, newText)
-                                                        value = TextFieldValue(
-                                                            text = newText,
-                                                            selection = androidx.compose.ui.text.TextRange(newCursor),
-                                                        )
+                                                        programmaticTextChange(newText, androidx.compose.ui.text.TextRange(newCursor), "ai_fix_newcursor")
                                                     }
                                                     onContentChange(newText)
                                                 }
@@ -5459,20 +5382,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                     androidx.compose.ui.text.TextRange(cursorPos)
                                                 }
                                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                decorationStore.shiftOnEdit(value.text, newText)
-                                                value = TextFieldValue(
-                                                    text = newText,
-                                                    selection = selectionRange,
-                                                )
-                                                onContentChange(newText)
+                                                programmaticTextChange(newText, selectionRange, "ai_result")
                                             } else {
                                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                decorationStore.shiftOnEdit(value.text, newText)
-                                                value = TextFieldValue(
-                                                    text = newText,
-                                                    selection = androidx.compose.ui.text.TextRange(newCursor),
-                                                )
-                                                onContentChange(newText)
+                                                programmaticTextChange(newText, androidx.compose.ui.text.TextRange(newCursor), "ai_result_cursor")
                                             }
                                         }
                                     }
