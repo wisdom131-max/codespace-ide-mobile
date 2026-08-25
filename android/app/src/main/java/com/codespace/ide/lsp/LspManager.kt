@@ -819,6 +819,23 @@ object LspManager {
     fun isServerRunning(language: Language): Boolean =
         servers[language]?.let { it.process.isAlive } ?: false
 
+    /**
+     * Phase V-M: Get the current server generation for a language.
+     * Used for two-level stale response rejection — capture before an
+     * async LSP request, compare after the response arrives. If the
+     * server restarted (new generation), the response is stale.
+     */
+    fun getServerGeneration(language: Language): Int = generationCounters[language] ?: 0
+
+    /**
+     * Get the current document version for a URI (tracked via didOpen/didChange).
+     * Used for two-level stale response rejection — capture before an async LSP
+     * request, compare after the response arrives. If the user edited the
+     * document (new didChange with new version), the response is stale.
+     */
+    fun getDocumentVersion(language: Language, uri: String): Int =
+        servers[language]?.trackedDocuments?.get(uri)?.version ?: 0
+
     /** Touch activity timestamp — called on any editor interaction. */
     private fun touchActivity(language: Language) {
         lastActivity[language]?.set(System.currentTimeMillis())

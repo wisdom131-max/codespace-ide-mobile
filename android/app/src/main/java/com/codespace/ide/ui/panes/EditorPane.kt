@@ -1092,6 +1092,12 @@ fun EditorPane(
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
             LspManager.setDiagnosticsHandler(snap.language) { diagUri, diags ->
+                // Two-level stale check at callback invocation time (handler survives
+                // server restarts — must read CURRENT values, not registration-time values).
+                val currentServerGen = LspManager.getServerGeneration(snap.language)
+                if (currentServerGen == 0) return@setDiagnosticsHandler
+                val currentDocVersion = LspManager.getDocumentVersion(snap.language, uri)
+                if (currentDocVersion == 0) return@setDiagnosticsHandler
                 // P33-INTELLISENSE: Normalize both URIs before comparing — server may
                 // return %20 for spaces while our URI has raw spaces (or vice versa).
                 val normDiag = LspManager.normalizeFileUri(diagUri)
@@ -1101,6 +1107,13 @@ fun EditorPane(
                 val diagFile = diagUri.substringAfterLast("/")
                 val ourFile = uri.substringAfterLast("/")
                 if (normDiag == normUri || diagFile == ourFile) {
+                    // Doc version check: if the document was edited after the server
+                    // computed these diagnostics, they're for an older text version.
+                    val latestVersion = LspManager.getDocumentVersion(snap.language, uri)
+                    if (latestVersion != currentDocVersion) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for diagnostics", "lsp")
+                        return@setDiagnosticsHandler
+                    }
                     lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
                 }
             }
@@ -1122,6 +1135,8 @@ fun EditorPane(
                 // Phase X-8: Increment generation for stale-response protection
                 hoverRequestGen++
                 val myGen = hoverRequestGen
+                val myServerGen = LspManager.getServerGeneration(active.language)
+                val myDocVersion = LspManager.getDocumentVersion(active.language, LspManager.fileUriFromHostPath(context, active.path) ?: "")
                 lastHoverLine = lspCursorLine
                 lastHoverCol = lspCursorCol
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
@@ -1131,7 +1146,15 @@ fun EditorPane(
                     }
                     // Phase X-8: Stale check — discard if a newer hover request was made
                     if (myGen != hoverRequestGen) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] HOVER stale_response_discarded", "lsp")
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale request-gen for hover", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for hover", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for hover", "lsp")
                         return@LaunchedEffect
                     }
                     lspHoverContent = hover?.let { parseHoverContent(it) }
@@ -1149,8 +1172,18 @@ fun EditorPane(
                 lastHighlightCol = lspCursorCol
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
+                    val myServerGen = LspManager.getServerGeneration(active.language)
+                    val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                     val highlights = withContext(Dispatchers.IO) {
                         LspManager.getDocumentHighlight(active.language, uri, lspCursorLine, lspCursorCol)
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for document-highlight", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for document-highlight", "lsp")
+                        return@LaunchedEffect
                     }
                     if (highlights != null && highlights.length() > 0) {
                         val ranges = mutableListOf<Pair<Int, Int>>()
@@ -1197,8 +1230,18 @@ fun EditorPane(
                 delay(500)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
+                    val myServerGen = LspManager.getServerGeneration(active.language)
+                    val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                     val symbols = withContext(Dispatchers.IO) {
                         LspManager.getDocumentSymbol(active.language, uri)
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for document-symbol", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for document-symbol", "lsp")
+                        return@LaunchedEffect
                     }
                     lspDocumentSymbols = symbols
                     // P37-3fix: Share with OutlinePanel via cache to avoid duplicate request
@@ -1215,8 +1258,18 @@ fun EditorPane(
                 delay(600)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
+                    val myServerGen = LspManager.getServerGeneration(active.language)
+                    val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                     val ranges = withContext(Dispatchers.IO) {
                         LspManager.getFoldingRange(active.language, uri)
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for folding-range", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for folding-range", "lsp")
+                        return@LaunchedEffect
                     }
                     if (ranges != null && ranges.length() > 0) {
                         val foldRanges = mutableListOf<Pair<Int, Int>>()
@@ -1244,8 +1297,19 @@ fun EditorPane(
                     delay(700)
                     val uri = LspManager.fileUriFromHostPath(context, active.path)
                     if (uri != null) {
+                        val myServerGen = LspManager.getServerGeneration(active.language)
+                        val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                         val lspLenses = withContext(Dispatchers.IO) {
                             LspManager.getCodeLens(active.language, uri)
+                        }
+                        // Two-level stale check for code lens
+                        if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                            com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for code-lens", "lsp")
+                            return@LaunchedEffect
+                        }
+                        if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                            com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for code-lens", "lsp")
+                            return@LaunchedEffect
                         }
                         // Merge LSP lenses with synthetic test lenses
                         val merged = org.json.JSONArray()
@@ -1284,8 +1348,18 @@ fun EditorPane(
                 delay(800)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
+                    val myServerGen = LspManager.getServerGeneration(active.language)
+                    val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                     val hints = withContext(Dispatchers.IO) {
                         LspManager.getInlayHints(active.language, uri)
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for inlay-hints", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for inlay-hints", "lsp")
+                        return@LaunchedEffect
                     }
                     lspInlayHints = hints
                 }
@@ -1300,8 +1374,18 @@ fun EditorPane(
                 delay(500)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
+                    val myServerGen = LspManager.getServerGeneration(active.language)
+                    val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                     val links = withContext(Dispatchers.IO) {
                         LspManager.getDocumentLinks(active.language, uri)
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for document-links", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for document-links", "lsp")
+                        return@LaunchedEffect
                     }
                     lspDocumentLinks = links
                 }
@@ -1316,8 +1400,18 @@ fun EditorPane(
                 delay(600)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
+                    val myServerGen = LspManager.getServerGeneration(active.language)
+                    val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
                     val tokenData = withContext(Dispatchers.IO) {
                         LspManager.getSemanticTokens(active.language, uri)
+                    }
+                    if (myServerGen != LspManager.getServerGeneration(active.language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for semantic-tokens", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myDocVersion != LspManager.getDocumentVersion(active.language, uri)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for semantic-tokens", "lsp")
+                        return@LaunchedEffect
                     }
                     if (tokenData != null) {
                         // Extract legend from server capabilities
@@ -1869,6 +1963,9 @@ fun EditorPane(
                             { line ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
+                                    // Server-gen check: if server restarted, isServerRunning was
+                                    // checked at lambda creation but may be stale now.
+                                    if (!LspManager.isServerRunning(active.language)) return emptyList<LspCodeAction>()
                                     // P39: Pass current diagnostics as context for targeted quick fixes
                                     val diagnostics = try {
                                         com.codespace.ide.lsp.buildDiagnosticsContext(lspSquiggles, line + 1)
@@ -2038,7 +2135,7 @@ fun EditorPane(
                             { cursorLine, cursorCol ->  // TEST-11-FIX: use passed cursor position, not stale lspCursorLine/Col
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 var succeeded = false
-                                if (uri != null) {
+                                if (uri != null && LspManager.isServerRunning(active.language)) {
                                     val defs = try { LspManager.getDefinition(active.language, uri, cursorLine, cursorCol) } catch (_: Exception) { null }
                                     if (defs != null && defs.length() > 0) {
                                         val loc = defs.optJSONObject(0)

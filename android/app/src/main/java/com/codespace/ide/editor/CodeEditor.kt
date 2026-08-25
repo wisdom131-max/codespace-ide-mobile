@@ -1098,6 +1098,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // Phase X-8: Also increment generation counter for stale-response protection
             lspGens.completion++
             val myCompGen = lspGens.completion
+            val myCompServerGen = com.codespace.ide.lsp.LspManager.getServerGeneration(language)
             if (lspRequestId >= 0 && lspCancellationProvider != null) {
                 try { lspCancellationProvider.invoke(lspRequestId) } catch (_: Exception) {}
                 lspRequestId = -1L
@@ -1135,7 +1136,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 if (results != null) {
                     // Phase X-8: Stale check — discard if a newer completion request was made
                     if (myCompGen != lspGens.completion) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION stale_response_discarded", "lsp")
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale request-gen for completion", "lsp")
+                        return@LaunchedEffect
+                    }
+                    if (myCompServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for completion", "lsp")
                         return@LaunchedEffect
                     }
                     lspHasResponded = true
@@ -1164,7 +1169,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
                 // Phase X-8: Stale check for legacy path too
                 if (myCompGen != lspGens.completion) {
-                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION stale_response_discarded", "lsp")
+                    com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale request-gen for completion", "lsp")
+                    return@LaunchedEffect
+                }
+                if (myCompServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
+                    com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for completion", "lsp")
                     return@LaunchedEffect
                 }
                 lspCompletions = results.first
@@ -1455,6 +1464,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // Phase X-8: Stale response protection
         lspGens.signatureHelp++
         val myGen = lspGens.signatureHelp
+        val mySigServerGen = com.codespace.ide.lsp.LspManager.getServerGeneration(language)
         val cOff = value.selection.end
         val cPos = positionMapper.offsetToPosition(cOff)
         val cLine = cPos.line
@@ -1467,7 +1477,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         // Stale check: if generation changed while we were waiting, discard
         if (myGen != lspGens.signatureHelp) {
-            AppOutputLog.log("[LSP] SIGNATURE_HELP stale_response_discarded", "lsp")
+            AppOutputLog.log("LSP result discarded: stale request-gen for signature-help", "lsp")
+            return@LaunchedEffect
+        }
+        if (mySigServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
+            AppOutputLog.log("LSP result discarded: stale generation for signature-help", "lsp")
             return@LaunchedEffect
         }
         activeSignature = result
