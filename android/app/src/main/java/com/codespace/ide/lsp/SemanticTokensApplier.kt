@@ -21,6 +21,14 @@ object SemanticTokensApplier {
         val startOffset: Int,
         val endOffset: Int,
         val color: Color,
+        /**
+         * Per-line coordinates for structural desync prevention.
+         * When line >= 0, spans are column-relative within the owning line.
+         * When line < 0, absolute offsets are used (legacy path).
+         */
+        val line: Int = -1,
+        val startCol: Int = -1,
+        val endCol: Int = -1,
     )
 
     /** LSP standard token types (ordered by index) */
@@ -110,7 +118,10 @@ object SemanticTokensApplier {
                 ?: if (tokenType in standardTokenTypes.indices) tokenTypeColors[standardTokenTypes[tokenType]] else null
 
             if (color != null) {
-                result.add(SemanticRange(absStart, absEnd, color))
+                result.add(SemanticRange(
+                    startOffset = absStart, endOffset = absEnd, color = color,
+                    line = line, startCol = start, endCol = start + length,
+                ))
             }
         }
 

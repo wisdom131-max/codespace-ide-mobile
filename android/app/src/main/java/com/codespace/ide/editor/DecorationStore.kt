@@ -204,12 +204,15 @@ class DecorationStore {
         if (delta == 0) return
 
         if (_diagnostics.data.isNotEmpty()) {
+            // Change 1: Preserve per-line fields through offset shifts.
+            // Line/col fields are kept as-is — the next LSP refresh will provide
+            // exact positions. Absolute offsets are shifted as before.
             _diagnostics = _diagnostics.update(
                 _diagnostics.data.mapNotNull { err ->
                     val ns = if (err.start >= changeStart) err.start + delta else err.start
                     val ne = if (err.end >= changeStart) err.end + delta else err.end
                     if (ns < 0 || ne < 0 || ns > newText.length || ne > newText.length) null
-                    else LintError(ns, ne, err.message, err.code, err.severity)
+                    else LintError(ns, ne, err.message, err.code, err.severity, err.line, err.startCol, err.endCol)
                 }
             )
         }

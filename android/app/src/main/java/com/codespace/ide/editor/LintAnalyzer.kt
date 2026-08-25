@@ -2,7 +2,22 @@ package com.codespace.ide.editor
 
 import com.codespace.ide.domain.Language
 
-data class LintError(val start: Int, val end: Int, val message: String, val code: String? = null, val severity: Int = 1)
+data class LintError(
+    val start: Int,
+    val end: Int,
+    val message: String,
+    val code: String? = null,
+    val severity: Int = 1,
+    /**
+     * Per-line coordinates for structural desync prevention.
+     * When line >= 0, spans are column-relative within the owning line
+     * and can never be invalidated by edits on other lines.
+     * When line < 0, absolute offsets are used (legacy path).
+     */
+    val line: Int = -1,
+    val startCol: Int = -1,
+    val endCol: Int = -1,
+)
 
 /**
  * P2-5 — Lint Analyzer (hardened, low-noise)
@@ -30,7 +45,38 @@ object LintAnalyzer {
             checkUnusedImports(text, errors)
         }
         checkTodoFixme(text, errors)
-        return errors.sortedBy { it.start }.distinctBy { it.start }
+        // Populate per-line fields for all errors
+        val lineStarts = computeLineStarts(text)
+        val withLineInfo = errors.map { err ->
+            val line = findLine(err.start, lineStarts)
+            val lineStart = if (line < lineStarts.size) lineStarts[line] else 0
+            val startCol = err.start - lineStart
+            val endCol = (err.end - lineStart).let { if (it > 0) it else startCol + 1 }
+            err.copy(line = line, startCol = startCol, endCol = endCol)
+        }
+        return withLineInfo.sortedBy { it.start }.distinctBy { it.start }
+    }
+
+    /** Pre-compute line start offsets for offset->line conversion. */
+    private fun computeLineStarts(text: String): IntArray {
+        val starts = mutableListOf(0)
+        for (i in text.indices) {
+            if (text[i] == '\n') starts.add(i + 1)
+        }
+        return starts.toIntArray()
+    }
+
+    /** Binary search to find the line containing an absolute offset. */
+    private fun findLine(offset: Int, lineStarts: IntArray): Int {
+        if (lineStarts.isEmpty()) return 0
+        var lo = 0
+        var hi = lineStarts.size - 1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (lineStarts[mid] <= offset) lo = mid + 1
+            else hi = mid - 1
+        }
+        return hi.coerceAtLeast(0)
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

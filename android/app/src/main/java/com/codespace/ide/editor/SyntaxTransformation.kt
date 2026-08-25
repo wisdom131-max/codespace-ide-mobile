@@ -41,6 +41,67 @@ class SyntaxTransformation(
     private var cachedText: String? = null
     private var cachedResult: TransformedText? = null
 
+
+    // ── Per-line span offset helpers ─────────────────────────────────────
+    // Change 1: When lint/semantic spans carry per-line coordinates (line >= 0),
+    // compute absolute offsets clamped to that line's actual length — not the
+    // global text length. This structurally prevents spans from crossing line
+    // boundaries or referencing stale positions after an edit on another line.
+
+    private fun computeLineStarts(text: String): IntArray {
+        val starts = mutableListOf(0)
+        for (i in text.indices) {
+            if (text[i] == '\n') starts.add(i + 1)
+        }
+        return starts.toIntArray()
+    }
+
+    private fun computeLineLengths(text: String, lineStarts: IntArray): IntArray {
+        return IntArray(lineStarts.size) { idx ->
+            val start = lineStarts[idx]
+            val end = if (idx + 1 < lineStarts.size) lineStarts[idx + 1] - 1 else text.length
+            (end - start).coerceAtLeast(0)
+        }
+    }
+
+    /** Compute safe absolute offsets for a LintError using per-line fields when available. */
+    private fun safeLintOffsets(
+        err: LintError, lineStarts: IntArray, lineLengths: IntArray, textLen: Int,
+    ): Pair<Int, Int> {
+        if (err.line < 0 || err.startCol < 0) {
+            val s = err.start.coerceIn(0, textLen)
+            val e = err.end.coerceIn(s, textLen)
+            return s to e
+        }
+        val ls = if (err.line < lineStarts.size) lineStarts[err.line] else 0
+        val ll = if (err.line < lineLengths.size) lineLengths[err.line] else 0
+        val s = (ls + err.startCol.coerceIn(0, ll)).coerceIn(0, textLen)
+        val e = if (err.endCol >= 0) {
+            (ls + err.endCol.coerceIn(0, ll)).coerceIn(0, textLen)
+        } else {
+            (s + 1).coerceIn(0, textLen)
+        }
+        return s to e
+    }
+
+    /** Compute safe absolute offsets for a SemanticRange using per-line fields when available. */
+    private fun safeSemanticOffsets(
+        tok: com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange,
+        lineStarts: IntArray, lineLengths: IntArray, textLen: Int,
+    ): Pair<Int, Int> {
+        if (tok.line < 0 || tok.startCol < 0) {
+            val s = tok.startOffset.coerceIn(0, textLen)
+            val e = tok.endOffset.coerceIn(s, textLen)
+            return s to e
+        }
+        val ls = if (tok.line < lineStarts.size) lineStarts[tok.line] else 0
+        val ll = if (tok.line < lineLengths.size) lineLengths[tok.line] else 0
+        val s = (ls + tok.startCol.coerceIn(0, ll)).coerceIn(0, textLen)
+        val e = (ls + tok.endCol.coerceIn(0, ll)).coerceIn(0, textLen)
+        return s to e
+    }
+
+
     // SAFETY NET: Two crash modes are guarded here:
     //
     // 1. Length mismatch (OffsetMapping.Identity): If any highlighter produces an
@@ -218,14 +279,16 @@ class SyntaxTransformation(
         val highlighted = SyntaxHighlighter.highlight(displayStr, language, colors)
 
         // P41-W: Overlay semantic tokens (re-mapped to display offsets)
+        // Change 1: Use per-line offsets when available for structural desync prevention
+        val foldLineStarts = computeLineStarts(raw)
+        val foldLineLengths = computeLineLengths(raw, foldLineStarts)
         val withSemantic = if (semanticTokens.isNotEmpty()) {
             buildAnnotatedString {
                 append(highlighted)
                 for (tok in semanticTokens) {
-                    val tStart = origToTransFinal.getOrElse(
-                        tok.startOffset.coerceIn(0, raw.length)) { 0 }
-                    val tEnd   = origToTransFinal.getOrElse(
-                        tok.endOffset.coerceIn(0, raw.length)) { 0 }
+                    val (origS, origE) = safeSemanticOffsets(tok, foldLineStarts, foldLineLengths, raw.length)
+                    val tStart = origToTransFinal.getOrElse(origS.coerceIn(0, raw.length)) { 0 }
+                    val tEnd = origToTransFinal.getOrElse(origE.coerceIn(0, raw.length)) { 0 }
                     if (tStart < tEnd) {
                         addStyle(SpanStyle(color = tok.color), tStart, tEnd)
                     }
@@ -239,10 +302,9 @@ class SyntaxTransformation(
         val withLint = buildAnnotatedString {
             append(withSemantic)
             for (err in lintErrors) {
-                val tStart = origToTransFinal.getOrElse(
-                    err.start.coerceIn(0, raw.length)) { 0 }
-                val tEnd   = origToTransFinal.getOrElse(
-                    err.end.coerceIn(0, raw.length)) { 0 }
+                val (origS, origE) = safeLintOffsets(err, foldLineStarts, foldLineLengths, raw.length)
+                val tStart = origToTransFinal.getOrElse(origS.coerceIn(0, raw.length)) { 0 }
+                val tEnd = origToTransFinal.getOrElse(origE.coerceIn(0, raw.length)) { 0 }
                 if (tStart < tEnd) {
                     addStyle(
                         SpanStyle(
@@ -265,12 +327,15 @@ class SyntaxTransformation(
         textStr: String,
         offsetMapping: OffsetMapping,
     ): TransformedText {
+        // Change 1: Use per-line offsets when available for structural desync prevention
+        val lineStarts = computeLineStarts(textStr)
+        val lineLengths = computeLineLengths(textStr, lineStarts)
+
         val withSemantic = if (semanticTokens.isNotEmpty()) {
             buildAnnotatedString {
                 append(highlight)
                 for (tok in semanticTokens) {
-                    val s = tok.startOffset.coerceIn(0, textStr.length)
-                    val e = tok.endOffset.coerceIn(s, textStr.length)
+                    val (s, e) = safeSemanticOffsets(tok, lineStarts, lineLengths, textStr.length)
                     if (s < e) {
                         addStyle(SpanStyle(color = tok.color), s, e)
                     }
@@ -283,8 +348,7 @@ class SyntaxTransformation(
         val withLint = buildAnnotatedString {
             append(withSemantic)
             for (err in lintErrors) {
-                val start = err.start.coerceIn(0, textStr.length)
-                val end = err.end.coerceIn(start, textStr.length)
+                val (start, end) = safeLintOffsets(err, lineStarts, lineLengths, textStr.length)
                 if (start < end) {
                     addStyle(
                         SpanStyle(
@@ -309,12 +373,15 @@ class SyntaxTransformation(
         val highlighted = SyntaxHighlighter.highlight(text.text, language, colors)
 
         // P41-W: Overlay semantic tokens on top of regex highlighting
+        // Change 1: Use per-line offsets when available for structural desync prevention
+        val lineStarts = computeLineStarts(text.text)
+        val lineLengths = computeLineLengths(text.text, lineStarts)
+
         val withSemantic = if (semanticTokens.isNotEmpty()) {
             buildAnnotatedString {
                 append(highlighted)
                 for (tok in semanticTokens) {
-                    val s = tok.startOffset.coerceIn(0, text.text.length)
-                    val e = tok.endOffset.coerceIn(s, text.text.length)
+                    val (s, e) = safeSemanticOffsets(tok, lineStarts, lineLengths, text.text.length)
                     if (s < e) {
                         addStyle(SpanStyle(color = tok.color), s, e)
                     }
@@ -327,8 +394,7 @@ class SyntaxTransformation(
         val withLint = buildAnnotatedString {
             append(withSemantic)
             for (err in lintErrors) {
-                val start = err.start.coerceIn(0, text.text.length)
-                val end   = err.end.coerceIn(start, text.text.length)
+                val (start, end) = safeLintOffsets(err, lineStarts, lineLengths, text.text.length)
                 if (start < end) {
                     addStyle(
                         SpanStyle(
