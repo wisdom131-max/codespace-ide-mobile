@@ -1064,7 +1064,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     lspHasResponded = false
                     lspCompletions = emptyList()
                     workspaceCompletions = emptyList()
-                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION recovery_detected — fallback reset, LSP will be retried", "lsp")
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] recovery triggered, resetting fallback flags (counter=$current)", "lsp")
                 }
             }
         }
@@ -1121,6 +1121,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
             // Smart completion: LSP first with 5s timeout, then regex fallback
             if (smartCompletion) {
+                val wasInFallback = lspTimedOut || !lspHasResponded
                 lspTimedOut = false
                 val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
                     kotlinx.coroutines.withTimeoutOrNull(5000L) {
@@ -1140,13 +1141,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     lspHasResponded = true
                     lspCompletions = results.first
                     workspaceCompletions = results.second
+                    // R3-LSP: Log restoration when LSP responds after being in fallback
+                    if (wasInFallback) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] completion restored after recovery", "lsp")
+                    }
                 } else {
                     // LSP timed out — keep showing local completions as fallback
                     lspTimedOut = true
                     lspHasResponded = false // R3-LSP: clear stale "responded" state on timeout
                     lspCompletions = emptyList()
                     workspaceCompletions = emptyList()
-                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION timed_out (5s) — falling back to regex", "lsp")
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] completion timed out, using regex fallback", "lsp")
                 }
             } else {
                 // Legacy behavior: fetch LSP without timeout, show alongside local

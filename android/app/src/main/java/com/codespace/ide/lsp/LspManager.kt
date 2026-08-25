@@ -715,6 +715,7 @@ object LspManager {
         // reset its completion fallback flag so the next request tries LSP first again.
         if (oldState != LspState.READY && newState == LspState.READY) {
             lspRecoveryCounter++
+            AppOutputLog.log("$LSP_LOG_TAG ${language.displayName} reconnected, recovery counter: $lspRecoveryCounter", "lsp")
         }
         if (oldState != newState) {
             val server = servers[language]
