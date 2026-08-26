@@ -1536,6 +1536,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P22-L: Peek Definition result — inline code preview (class moved to top-level)
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
 
+    // R2-1/R2-2: Undo/redo manager — snapshot-based O(1) undo/redo stack.
+    // MUST be declared before the keyboard toolbar handler (LaunchedEffect below)
+    // which references snapshotUndo and undoRedoInProgress for toolbar undo/redo.
+    val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
+    var undoRedoInProgress by remember { mutableStateOf(false) }
+
     // ── Keyboard toolbar insert handler ──────────────────────────────────────
     // Registers a function that the coding toolbar (Tab, Esc, {, }, etc.) can call
     // to insert text at the cursor position, as if the user typed it on a real keyboard.
@@ -1752,9 +1758,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var preserveCase by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
 
-    // R2-1/R2-2: Undo/redo manager — diff-based undo/redo stack
-    val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
-    var undoRedoInProgress by remember { mutableStateOf(false) }
     // Sync external find bar (top white bar) to internal find state — must come AFTER the
     // vars above are declared (Kotlin local properties must be declared before use).
     LaunchedEffect(externalFindQuery) {
@@ -2079,10 +2082,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // the text layout result so the editor surface can be wider than the viewport
             // and horizontal scrolling actually works. Without this, BasicTextField
             // fills the available width and long lines are clipped at the right edge.
-            val maxLineWidth = if (!wordWrap && textLayoutResult != null && textLayoutResult.lineCount > 0) {
+            val layout = textLayoutResult
+            val maxLineWidth = if (!wordWrap && layout != null && layout.lineCount > 0) {
                 var maxW = 0f
-                for (i in 0 until textLayoutResult.lineCount) {
-                    val w = textLayoutResult.getLineRight(i) - textLayoutResult.getLineLeft(i)
+                for (i in 0 until layout.lineCount) {
+                    val w = layout.getLineRight(i) - layout.getLineLeft(i)
                     if (w > maxW) maxW = w
                 }
                 maxW
@@ -2128,7 +2132,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // (composing region active). Gboard's glide typing and autocorrect
                         // send intermediate values; pushing each floods the undo stack.
                         // The final committed value (composing cleared) triggers the push.
-                        val isComposing = newValue.composition != null && newValue.composition.start >= 0
+                        val comp = newValue.composition
+                        val isComposing = comp != null && comp.start >= 0
                         if (newValue.text != value.text) {
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
                             // Change 4: O(1) snapshot undo - push full snapshot (coalesced)
