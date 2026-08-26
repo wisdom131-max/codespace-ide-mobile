@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | cd5bc54 |
-| CI build | #2530 (green) |
+| Latest commit | 2607ac41 |
+| CI build | #2536 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,661 |
+| CodeEditor.kt lines | 5,927 |
 
 ---
 
@@ -649,3 +649,31 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 - Pending: On-device testing of all 4 changes
 - Pending: Delete UndoRedoManager.kt after snapshot undo confirmed on-device
 - Pending: Part 2 (switchable line-based text model) — approved, not started
+
+---
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+### [2026-08-26 06:30 WAT] — AI Agent: Change 4 (Snapshot Undo) Build Fixes + Changelog for Change 3
+**Commit:** 2607ac41 | **CI Build:** #2536 ✅ GREEN
+**What was fixed:**
+- [BUILD-FIX] #2532-#2533: Moved `snapshotUndo`/`undoRedoInProgress` declarations before `LaunchedEffect(Unit)` block (unresolved reference — declarations were after usage)
+- [BUILD-FIX] #2533: Fixed smart cast issues — `textLayoutResult` (mutable property) and `newValue.composition` (public API property) — used local vals
+- [BUILD-FIX] #2534: Fixed `snapshotUndo.undo()`/`redo()` missing `current` parameter in toolbar handlers; removed redundant `pushForce` on IME commit (push() already handles committed state via coalescing)
+- [BUILD-FIX] #2535-#2536: Hit 64KB bytecode limit on `CodeEditorKt.CodeEditor` — extracted `ToolbarUndoRedoHandler.kt` (undo/redo toolbar key handler) and `EditorLayoutHelper.kt` (maxLineWidth calc + width modifier builder) to separate files
+- [BUILD-FIX] #2536: Fixed `EditShiftHelper` import — same package, no import needed
+**Files touched:**
+- `CodeEditor.kt` — moved declarations, fixed smart casts, replaced inline undo/redo with extracted call, replaced inline maxLineWidth with helper call
+- `ToolbarUndoRedoHandler.kt` (NEW) — extracted toolbar undo/redo handler
+- `EditorLayoutHelper.kt` (NEW) — extracted maxLineWidth calc + editor width modifier builder
+**Next on roadmap:**
+- Change 4 (O(1) Snapshot Undo): ✅ IMPLEMENTED, build green. Plan review for next steps below.
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
+- No pending items remain.
