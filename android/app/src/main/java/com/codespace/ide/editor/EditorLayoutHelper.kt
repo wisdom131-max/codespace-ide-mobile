@@ -26,10 +26,19 @@ internal object EditorLayoutHelper {
 
     @Composable
     fun buildEditorWidthModifier(wordWrap: Boolean, maxLineWidth: Float, hScroll: ScrollState): Modifier {
-        return if (!wordWrap && maxLineWidth > 0f) {
+        // FIX(paste-render): Always ensure the editor is at least screen-wide.
+        // When a large paste arrives, textLayoutResult is stale for 1+ frames
+        // and maxLineWidth reflects the OLD (short) text. Without a floor,
+        // the editor box shrinks to the old width, clipping the pasted text
+        // to invisible. The viewport width ensures text is always rendered.
+        val screenWidthPx = with(LocalDensity.current) {
+            androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx()
+        }
+        val safeMaxWidth = maxOf(maxLineWidth, screenWidthPx)
+        return if (!wordWrap && safeMaxWidth > 0f) {
             Modifier
                 .horizontalScroll(hScroll)
-                .width(with(LocalDensity.current) { maxLineWidth.toDp() } + 16.dp)
+                .width(with(LocalDensity.current) { safeMaxWidth.toDp() } + 16.dp)
         } else if (!wordWrap) {
             Modifier.horizontalScroll(hScroll)
         } else {

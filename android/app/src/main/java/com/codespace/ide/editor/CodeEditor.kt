@@ -2407,7 +2407,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     },
                     onTextLayout = { result -> textLayoutResult = result },
                     modifier = Modifier
-                        .width(IntrinsicSize.Min)
+                        .fillMaxWidth()
                         .padding(end = 24.dp)
                         .focusRequester(focusRequester)
                         .pointerInput(Unit) {
