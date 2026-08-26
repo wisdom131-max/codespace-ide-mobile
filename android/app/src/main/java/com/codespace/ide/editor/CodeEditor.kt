@@ -841,7 +841,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // has no effect — the editor keeps showing the old text because 'remember'
     // only initializes once.
     LaunchedEffect(content) {
-        if (value.text != content) {
+        // FIX: Only react to external content changes (file reload, format button).
+        // Skip when we just fired UserTyping/ProgrammaticTextChange — the content
+        // param update is our own echo and value.text already matches.
+        if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
             programmaticCursorMove(content.length, "content_reload")
         }
     }
@@ -2102,9 +2105,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
                             // Change 4: O(1) snapshot undo - push full snapshot (coalesced)
                             if (!undoRedoInProgress && !isComposing) {
-                                snapshotUndo.push(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                                // FIX: Large text changes (paste) use pushForce so they're
+                                // always a separate undo step, never coalesced with typing.
+                                val textDelta = kotlin.math.abs(newValue.text.length - value.text.length)
+                                val snapshot = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
                                     newValue.text, newValue.selection, extraCursors
-                                ))
+                                )
+                                if (textDelta > 3) {
+                                    snapshotUndo.pushForce(snapshot)
+                                } else {
+                                    snapshotUndo.push(snapshot)
+                                }
                             }
                         } else if (newValue.selection != value.selection) {
                             editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
@@ -2199,7 +2210,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 value.selection.start.coerceIn(0, newValue.text.length),
                                 (value.selection.start + (newValue.text.length - value.text.length)).coerceIn(0, newValue.text.length)
                             )
-                            if (inserted == "\n" || inserted.contains("\n")) {
+                            // FIX: Only auto-indent on single Enter key press, not paste.
+                            // Paste inserts many chars including \n — skip auto-indent for those.
+                            val isSingleNewline = inserted == "\n" || inserted == "\r\n"
+                            if (isSingleNewline) {
                                 val cursor = newValue.selection.end.coerceIn(0, newValue.text.length)
                                 // Build a fresh mapper from newValue — positionMapper is stale (keyed on old value.text)
                                 val newMapper = PositionMapper(newValue.text)
