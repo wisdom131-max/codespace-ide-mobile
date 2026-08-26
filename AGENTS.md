@@ -755,3 +755,26 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 - On-device testing: 10 test batches (Go to Definition, squiggles, LSP stale, cause-tagged events, snapshot undo, Project Wizard auto-open, explorer expand, empty template) + NEW paste test
 - Part 2 (switchable line-based text model) --- approved, not started
 - All other audit features: COMPLETE (45/45 settings + settings architecture)
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+### [2026-08-26 10:35 WAT] --- AI Agent: Claude, Commit d37aabf, CI Build #2543 GREEN
+**What was fixed:**
+- [EDITOR] Fix paste rendering: stale textLayoutResult clips pasted text to invisible
+  - Root cause confirmed: When a large paste arrives, textLayoutResult holds the OLD layout for 1+ recomposition frames. calcMaxLineWidth() returns the OLD (small) width, and buildEditorWidthModifier sets the editor Box to the old width. The BasicTextField inside had Modifier.width(IntrinsicSize.Min) which further constrained it to the intrinsic minimum of the stale content. Result: pasted text exists in the text model but is clipped to a tiny box = invisible.
+  - Fix 1: EditorLayoutHelper.buildEditorWidthModifier now floors maxLineWidth to screenWidthPx so the editor is always at least screen-wide, even when textLayoutResult is stale.
+  - Fix 2: Changed BasicTextField modifier from IntrinsicSize.Min to fillMaxWidth() so the text field fills the Box instead of constraining itself to intrinsic minimum width.
+**Files touched:**
+- `EditorLayoutHelper.kt` --- Added screenWidthPx floor to buildEditorWidthModifier
+- `CodeEditor.kt` --- Changed IntrinsicSize.Min to fillMaxWidth() on BasicTextField
+**Next on roadmap:**
+- On-device testing: 10 test batches (Go to Definition, squiggles, LSP stale, cause-tagged events, snapshot undo, Project Wizard auto-open, explorer expand, empty template) + NEW paste render test
+- Part 2 (switchable line-based text model) --- approved, not started
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
