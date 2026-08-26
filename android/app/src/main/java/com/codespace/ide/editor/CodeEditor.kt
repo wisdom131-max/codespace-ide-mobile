@@ -1568,37 +1568,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 try { focusRequester.requestFocus() } catch (_: Exception) {}
             }
             when (text) {
-                "\u21A9" -> {
-                    // Undo from toolbar (↩)
-                    if (snapshotUndo.canUndo()) {
-                        undoRedoInProgress = true
-                        val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                            value.text, value.selection, extraCursors
-                        )
-                        val snapshot = snapshotUndo.undo(current)
-                        if (snapshot != null) {
-                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, snapshot.text, snapshot.extraCursors)
-                            programmaticTextChange(snapshot.text, snapshot.selection, "undo_toolbar")
-                        }
-                        undoRedoInProgress = false
-                        AppOutputLog.log("UNDO: toolbar undo applied", "lsp")
-                    }
-                }
-                "\u21AA" -> {
-                    // Redo from toolbar (↪)
-                    if (snapshotUndo.canRedo()) {
-                        undoRedoInProgress = true
-                        val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                            value.text, value.selection, extraCursors
-                        )
-                        val snapshot = snapshotUndo.redo(current)
-                        if (snapshot != null) {
-                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, snapshot.text, snapshot.extraCursors)
-                            programmaticTextChange(snapshot.text, snapshot.selection, "redo_toolbar")
-                        }
-                        undoRedoInProgress = false
-                        AppOutputLog.log("REDO: toolbar redo applied", "lsp")
-                    }
+                "\u21A9", "\u21AA" -> {
+                    handleToolbarUndoRedo(
+                        key = text,
+                        snapshotUndo = snapshotUndo,
+                        value = value,
+                        extraCursors = extraCursors,
+                        onUndoRedoStart = { undoRedoInProgress = true },
+                        onUndoRedoEnd = { undoRedoInProgress = false },
+                        onTextChange = { newText, sel, reason -> programmaticTextChange(newText, sel, reason) },
+                        onExtraCursorsChange = { extraCursors = it }
+                    )
                 }
                 "Esc" -> {
                     snippetSession = null
@@ -2081,26 +2061,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // the text layout result so the editor surface can be wider than the viewport
             // and horizontal scrolling actually works. Without this, BasicTextField
             // fills the available width and long lines are clipped at the right edge.
-            val layout = textLayoutResult
-            val maxLineWidth = if (!wordWrap && layout != null && layout.lineCount > 0) {
-                var maxW = 0f
-                for (i in 0 until layout.lineCount) {
-                    val w = layout.getLineRight(i) - layout.getLineLeft(i)
-                    if (w > maxW) maxW = w
-                }
-                maxW
-            } else {
-                0f
-            }
-            val editorWidthModifier = if (!wordWrap && maxLineWidth > 0f) {
-                Modifier
-                    .horizontalScroll(hScroll)
-                    .width(with(androidx.compose.ui.platform.LocalDensity.current) { maxLineWidth.toDp() } + 16.dp)
-            } else if (!wordWrap) {
-                Modifier.horizontalScroll(hScroll)
-            } else {
-                Modifier
-            }
+            val maxLineWidth = com.codespace.ide.editor.EditorLayoutHelper.calcMaxLineWidth(wordWrap, textLayoutResult)
+            val editorWidthModifier = com.codespace.ide.editor.EditorLayoutHelper.buildEditorWidthModifier(
+                wordWrap, maxLineWidth, hScroll
+            )
             Box(
                 modifier = editorWidthModifier
             ) {

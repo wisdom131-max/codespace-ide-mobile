@@ -1,0 +1,39 @@
+package com.codespace.ide.editor
+
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
+
+/**
+ * Extracted layout helpers for the editor surface.
+ * Lives in a separate file to keep CodeEditor.kt under the JVM 64KB bytecode limit.
+ */
+internal object EditorLayoutHelper {
+    fun calcMaxLineWidth(wordWrap: Boolean, textLayoutResult: TextLayoutResult?): Float {
+        if (wordWrap || textLayoutResult == null || textLayoutResult.lineCount == 0) return 0f
+        var maxW = 0f
+        for (i in 0 until textLayoutResult.lineCount) {
+            val w = textLayoutResult.getLineRight(i) - textLayoutResult.getLineLeft(i)
+            if (w > maxW) maxW = w
+        }
+        return maxW
+    }
+
+    @Composable
+    fun buildEditorWidthModifier(wordWrap: Boolean, maxLineWidth: Float, hScroll: ScrollState): Modifier {
+        return if (!wordWrap && maxLineWidth > 0f) {
+            Modifier
+                .horizontalScroll(hScroll)
+                .width(with(LocalDensity.current) { maxLineWidth.toDp() } + 16.dp)
+        } else if (!wordWrap) {
+            Modifier.horizontalScroll(hScroll)
+        } else {
+            Modifier
+        }
+    }
+}
