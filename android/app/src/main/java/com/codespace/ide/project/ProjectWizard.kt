@@ -79,13 +79,16 @@ fun ProjectWizardDialog(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(4.dp))
-                // Step indicator
+                // Step indicator (EMPTY type skips Location step)
+                val showLocationStep = selectedType != ProjectTemplates.ProjectType.EMPTY
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StepDot(active = step == 1, done = step > 1, label = "Type")
                     HorizontalDivider(Modifier.width(16.dp).padding(horizontal = 2.dp))
                     StepDot(active = step == 2, done = step > 2, label = "Name")
-                    HorizontalDivider(Modifier.width(16.dp).padding(horizontal = 2.dp))
-                    StepDot(active = step == 3, done = false, label = "Location")
+                    if (showLocationStep) {
+                        HorizontalDivider(Modifier.width(16.dp).padding(horizontal = 2.dp))
+                        StepDot(active = step == 3, done = false, label = "Location")
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
 
@@ -172,9 +175,45 @@ fun ProjectWizardDialog(
                                     return@Button
                                 }
                                 createError = ""
-                                step = 3
+                                // EMPTY type: skip location picker, create immediately
+                                if (type == ProjectTemplates.ProjectType.EMPTY) {
+                                    creating = true
+                                    scope.launch {
+                                        val result = ProjectTemplates.scaffold(
+                                            context = ctx,
+                                            projectName = name,
+                                            type = type,
+                                            rootParent = storageRoot,
+                                        )
+                                        creating = false
+                                        if (result.success) {
+                                            val project = Project(
+                                                id = System.currentTimeMillis().toString(),
+                                                name = name,
+                                                kind = ProjectKind.LOCAL,
+                                                pathOrUrl = result.rootDir.absolutePath,
+                                            )
+                                            onProjectCreated(project, result.rootDir)
+                                        } else {
+                                            createError = result.message
+                                        }
+                                    }
+                                } else {
+                                    step = 3
+                                }
                             },
-                        ) { Text("Next") }
+                            enabled = !creating,
+                        ) {
+                            if (creating) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(
+                            if (creating) "Creating\u2026"
+                            else if (selectedType == ProjectTemplates.ProjectType.EMPTY) "Create"
+                            else "Next"
+                        )
+                        }
                     }
                 }
 
