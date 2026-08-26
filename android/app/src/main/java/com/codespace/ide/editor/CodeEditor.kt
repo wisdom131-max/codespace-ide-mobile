@@ -1570,33 +1570,32 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             when (text) {
                 "\u21A9" -> {
                     // Undo from toolbar (↩)
-                    val snapshot = snapshotUndo.undo()
-                    if (snapshot != null) {
+                    if (snapshotUndo.canUndo()) {
                         undoRedoInProgress = true
-                        val oldText = value.text
-                        decorationStore.shiftOnEdit(oldText, snapshot.text)
-                        value = TextFieldValue(snapshot.text, snapshot.selection)
-                        editorEvent = EditorEvent.ProgrammaticTextChange(snapshot.text, snapshot.selection.end)
-                        currentOnContentChange(snapshot.text)
-                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                            snapshot.text, snapshot.selection, snapshot.extraCursors
-                        ))
-                        extraCursors = snapshot.extraCursors
+                        val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                            value.text, value.selection, extraCursors
+                        )
+                        val snapshot = snapshotUndo.undo(current)
+                        if (snapshot != null) {
+                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, snapshot.text, snapshot.extraCursors)
+                            programmaticTextChange(snapshot.text, snapshot.selection, "undo_toolbar")
+                        }
                         undoRedoInProgress = false
                         AppOutputLog.log("UNDO: toolbar undo applied", "lsp")
                     }
                 }
                 "\u21AA" -> {
                     // Redo from toolbar (↪)
-                    val snapshot = snapshotUndo.redo()
-                    if (snapshot != null) {
+                    if (snapshotUndo.canRedo()) {
                         undoRedoInProgress = true
-                        val oldText = value.text
-                        decorationStore.shiftOnEdit(oldText, snapshot.text)
-                        value = TextFieldValue(snapshot.text, snapshot.selection)
-                        editorEvent = EditorEvent.ProgrammaticTextChange(snapshot.text, snapshot.selection.end)
-                        currentOnContentChange(snapshot.text)
-                        extraCursors = snapshot.extraCursors
+                        val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                            value.text, value.selection, extraCursors
+                        )
+                        val snapshot = snapshotUndo.redo(current)
+                        if (snapshot != null) {
+                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, snapshot.text, snapshot.extraCursors)
+                            programmaticTextChange(snapshot.text, snapshot.selection, "redo_toolbar")
+                        }
                         undoRedoInProgress = false
                         AppOutputLog.log("REDO: toolbar redo applied", "lsp")
                     }
@@ -2145,14 +2144,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         } else if (newValue.selection != value.selection) {
                             editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
                         }
-                        // IME-FIX: When IME commits text, force-push a snapshot so the
-                        // committed state is captured (the composing-flagged intermediate
-                        // pushes were skipped above).
-                        if (!isComposing && newValue.text != value.text && !undoRedoInProgress) {
-                            snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                                newValue.text, newValue.selection, extraCursors
-                            ))
-                        }
+                        // IME-FIX: When IME commits text (transition from composing to
+                        // not composing with text change), the push() above already
+                        // captures the committed state since !isComposing is now true.
+                        // No extra pushForce needed — push() handles it via coalescing.
                         // Phase U-5: Check if typed char should commit the selected completion
                         var updatedValue = newValue
                         val commitCharMatch = if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
