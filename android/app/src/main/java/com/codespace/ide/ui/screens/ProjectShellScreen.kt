@@ -395,6 +395,7 @@ private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
     ":", ";", "'", "\"", "|", "&", "!", "?", "@", "#", "$", "%", "^",
     "~", "\\", ",", ".", "_", "`", "Tab", "Esc",
+    "\u21A9", "\u21AA",
 )
 
 private data class MenuBarItem(val label: String, val items: List<MenuAction>)

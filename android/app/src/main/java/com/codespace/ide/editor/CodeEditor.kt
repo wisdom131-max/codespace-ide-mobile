@@ -1562,6 +1562,39 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 try { focusRequester.requestFocus() } catch (_: Exception) {}
             }
             when (text) {
+                "\u21A9" -> {
+                    // Undo from toolbar (↩)
+                    val snapshot = snapshotUndo.undo()
+                    if (snapshot != null) {
+                        undoRedoInProgress = true
+                        val oldText = value.text
+                        decorationStore.shiftOnEdit(oldText, snapshot.text)
+                        value = TextFieldValue(snapshot.text, snapshot.selection)
+                        editorEvent = EditorEvent.ProgrammaticTextChange(snapshot.text, snapshot.selection.end)
+                        currentOnContentChange(snapshot.text)
+                        snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                            snapshot.text, snapshot.selection, snapshot.extraCursors
+                        ))
+                        extraCursors = snapshot.extraCursors
+                        undoRedoInProgress = false
+                        AppOutputLog.log("UNDO: toolbar undo applied", "lsp")
+                    }
+                }
+                "\u21AA" -> {
+                    // Redo from toolbar (↪)
+                    val snapshot = snapshotUndo.redo()
+                    if (snapshot != null) {
+                        undoRedoInProgress = true
+                        val oldText = value.text
+                        decorationStore.shiftOnEdit(oldText, snapshot.text)
+                        value = TextFieldValue(snapshot.text, snapshot.selection)
+                        editorEvent = EditorEvent.ProgrammaticTextChange(snapshot.text, snapshot.selection.end)
+                        currentOnContentChange(snapshot.text)
+                        extraCursors = snapshot.extraCursors
+                        undoRedoInProgress = false
+                        AppOutputLog.log("REDO: toolbar redo applied", "lsp")
+                    }
+                }
                 "Esc" -> {
                     snippetSession = null
                     showSnippetChoices = false
@@ -2042,8 +2075,31 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
             }
             // Editor surface
+            // HSCROLL-FIX: When not word-wrapping, calculate the max line width from
+            // the text layout result so the editor surface can be wider than the viewport
+            // and horizontal scrolling actually works. Without this, BasicTextField
+            // fills the available width and long lines are clipped at the right edge.
+            val maxLineWidth = if (!wordWrap && textLayoutResult != null && textLayoutResult.lineCount > 0) {
+                var maxW = 0f
+                for (i in 0 until textLayoutResult.lineCount) {
+                    val w = textLayoutResult.getLineRight(i) - textLayoutResult.getLineLeft(i)
+                    if (w > maxW) maxW = w
+                }
+                maxW
+            } else {
+                0f
+            }
+            val editorWidthModifier = if (!wordWrap && maxLineWidth > 0f) {
+                Modifier
+                    .horizontalScroll(hScroll)
+                    .width(with(androidx.compose.ui.platform.LocalDensity.current) { maxLineWidth.toDp() } + 16.dp)
+            } else if (!wordWrap) {
+                Modifier.horizontalScroll(hScroll)
+            } else {
+                Modifier
+            }
             Box(
-                modifier = (if (wordWrap) Modifier else Modifier.horizontalScroll(hScroll))
+                modifier = editorWidthModifier
             ) {
                 // R1-1: Pre-compute syntax highlighting on background thread for large files.
                 // Small files (<500 lines) use synchronous path. Staleness protection:
@@ -2068,16 +2124,29 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
                         // Phase X-2: Tag the event source
                         val insertedChars = newValue.text.length - value.text.length
+                        // IME-FIX: Skip undo snapshots while IME is composing text
+                        // (composing region active). Gboard's glide typing and autocorrect
+                        // send intermediate values; pushing each floods the undo stack.
+                        // The final committed value (composing cleared) triggers the push.
+                        val isComposing = newValue.composition != null && newValue.composition.start >= 0
                         if (newValue.text != value.text) {
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
                             // Change 4: O(1) snapshot undo - push full snapshot (coalesced)
-                            if (!undoRedoInProgress) {
+                            if (!undoRedoInProgress && !isComposing) {
                                 snapshotUndo.push(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
                                     newValue.text, newValue.selection, extraCursors
                                 ))
                             }
                         } else if (newValue.selection != value.selection) {
                             editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
+                        }
+                        // IME-FIX: When IME commits text, force-push a snapshot so the
+                        // committed state is captured (the composing-flagged intermediate
+                        // pushes were skipped above).
+                        if (!isComposing && newValue.text != value.text && !undoRedoInProgress) {
+                            snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                                newValue.text, newValue.selection, extraCursors
+                            ))
                         }
                         // Phase U-5: Check if typed char should commit the selected completion
                         var updatedValue = newValue

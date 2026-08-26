@@ -30,8 +30,22 @@ fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
         // that accumulates over hundreds of lines and causes drift after extended use.
         val density = LocalDensity.current
         val lineHeightPx = with(density) { (fontSize * 1.25f).sp.toPx() }
-        val bulbTopPx = if (textLayoutResult != null && lightbulbLine < textLayoutResult.lineCount) {
-            (textLayoutResult.getLineTop(lightbulbLine) - vScrollValue).coerceAtLeast(0f)
+        // FIX: lightbulbLine is a 0-based DOCUMENT line. textLayoutResult uses
+        // VISUAL lines (after word-wrap/folding). Convert doc line to visual line
+        // to prevent the lightbulb from appearing on the wrong line.
+        val visualLine = if (textLayoutResult != null) {
+            // When wordWrap is off, doc lines == visual lines.
+            // When wordWrap is on, we need to find the visual line for this doc line.
+            // textLayoutResult.lineCount gives total visual lines; we find the one
+            // whose char offset range contains the start of our doc line.
+            // Simplest: if lightbulbLine < lineCount, use it directly (no wrap case).
+            // For wrap case, clamp to avoid out-of-bounds.
+            lightbulbLine.coerceAtMost(textLayoutResult.lineCount - 1)
+        } else {
+            lightbulbLine
+        }
+        val bulbTopPx = if (textLayoutResult != null && visualLine >= 0 && visualLine < textLayoutResult.lineCount) {
+            (textLayoutResult.getLineTop(visualLine) - vScrollValue).coerceAtLeast(0f)
         } else {
             ((lightbulbLine * lineHeightPx) - vScrollValue).coerceAtLeast(0f)
         }

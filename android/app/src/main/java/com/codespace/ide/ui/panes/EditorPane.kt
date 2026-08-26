@@ -1048,7 +1048,10 @@ fun EditorPane(
                 lspStatusMessage = "Starting ${snap.language.displayName} language server..."
                 android.util.Log.d("LspTrigger", "LSP Effect-A: calling startServer for ${snap.language.displayName}")
                 AppOutputLog.log("[LSP] Effect-A: starting ${snap.language.displayName} server for project $projectRootPath…", "lsp")
-                val lspStarted = withContext(Dispatchers.IO) {
+                // GUARD: Run install in NonCancellable context so that accidental
+                // taps or tab switches during a long server install (10-120s)
+                // do NOT cancel the coroutine and abort the download/extract.
+                val lspStarted = withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
                     LspManager.startServer(context, snap.language, projectRootPath)
                 }
                 android.util.Log.d("LspTrigger", "LSP Effect-A: startServer returned $lspStarted for ${snap.language.displayName}")
@@ -1070,13 +1073,17 @@ fun EditorPane(
             }
         }
         // Effect B: keyed on (id, content) — sends didChange on every edit.
-        // Server startup is NOT here so cancellation on keystroke is harmless.
+        // BUG-FIX: Debounce 300ms to prevent diagnostic flood when multiple content
+        // changes fire in quick succession (e.g. undo sequences, batch edits).
+        // The LaunchedEffect cancels on each new key change, so only the LAST
+        // content change in a 300ms window actually sends didChange to the LSP.
         LaunchedEffect(active?.id, active?.content) {
             val snap = active ?: return@LaunchedEffect
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
             if (!LspManager.isServerRunning(snap.language)) return@LaunchedEffect
             if (lspOpenedFiles[snap.path] != true) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
+            delay(300)  // debounce — coalesce rapid content changes into one didChange
             val version = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
             withContext(Dispatchers.IO) {
                 LspManager.didChange(snap.language, uri, snap.content, version)
