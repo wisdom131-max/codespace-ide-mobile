@@ -213,6 +213,8 @@ fun ExplorerSidePanel(
     onCloseTab: ((String) -> Unit)? = null,
     // fix/feature 2026-07-08: "Generate Image with AI Here" needs the user's Gemini key.
     tokenStore: com.codespace.ide.data.SecureTokenStore? = null,
+    /** Initial workspace path from the project's pathOrUrl. Used when no saved workspace path exists. */
+    initialWorkspacePath: String? = null,
     /** Breadcrumb navigation: when set, auto-expand and scroll to this directory path. */
     navigateToDir: String? = null,
     /** Reveal a file in the tree: expands all parent dirs and scrolls to it. Used when a tab is closed so the file remains findable. */
@@ -239,7 +241,7 @@ fun ExplorerSidePanel(
     val orientation = LocalConfiguration.current.orientation
 
     var workspacePath by remember(projectId) {
-        mutableStateOf(loadWorkspacePath(context, projectId))
+        mutableStateOf(loadWorkspacePath(context, projectId) ?: initialWorkspacePath)
     }
     val workspaceRoot = remember(workspacePath) {
         workspacePath?.let { File(it) }

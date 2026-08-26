@@ -379,8 +379,8 @@ object ProjectTemplates {
     // ── Empty ─────────────────────────────────────────────────────────────────
 
     private fun scaffoldEmpty(root: File) {
-        write(File(root, "README.md"), "# ${root.name}\n\nEmpty project created by VN Code.\n")
-        write(File(root, ".gitignore"), ".DS_Store\n*.log\n")
+        // Empty = no auto-generation. Directory was already created by scaffold().
+        // User starts from a truly blank workspace.
     }
 
     // ── Util ──────────────────────────────────────────────────────────────────

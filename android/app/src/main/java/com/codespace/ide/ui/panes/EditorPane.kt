@@ -371,7 +371,7 @@ fun EditorPane(
     LaunchedEffect(scrollToLineParam) {
         if (scrollToLineParam > 0) {
             scrollToLine = scrollToLineParam
-            kotlinx.coroutines.delay(50)
+            kotlinx.coroutines.delay(1000)
             scrollToLine = 0
         }
     }
@@ -1772,7 +1772,7 @@ fun EditorPane(
                             if (line > 0) {
                                 scrollToLine = line
                                 kotlinx.coroutines.MainScope().launch {
-                                    kotlinx.coroutines.delay(100)
+                                    kotlinx.coroutines.delay(1000)
                                     scrollToLine = 0
                                 }
                             }

@@ -187,9 +187,10 @@ fun HomeScreen(
                 saveProjectsLocal(context, projects.toList())
                 scope.launch {
                     val ok = pushProjectToCloud(accessToken, project)
-                    syncStatus = if (ok) "Project created \u2713" else "Saved locally (offline)"
+                    syncStatus = if (ok) "Project created ✓" else "Saved locally (offline)"
                 }
                 showAddDialog = false
+                onOpenProject(project.id)
             },
         )
     }

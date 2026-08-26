@@ -682,6 +682,18 @@ fun ProjectShellScreen(
                 ?.getString("name") ?: projectId
         } catch (_: Exception) { projectId }
     }
+    // Wizard auto-select: read the project's pathOrUrl so we can auto-expand
+    // it in the Explorer on first load.
+    val projectPathUrl = remember(projectId) {
+        try {
+            val str = context.getSharedPreferences("projects", android.content.Context.MODE_PRIVATE)
+                .getString("list", null) ?: return@remember null
+            val arr = JSONArray(str)
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+                .firstOrNull { it.getString("id") == projectId }
+                ?.getString("pathOrUrl")
+        } catch (_: Exception) { null }
+    }
     val density = LocalDensity.current
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.
@@ -820,6 +832,12 @@ fun ProjectShellScreen(
     val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var _keyboardInsert by keyboardInsertMs
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
     val breadcrumbNavDirMs = remember { mutableStateOf<String?>(null) }; var breadcrumbNavDir by breadcrumbNavDirMs
+    // Wizard auto-select: on first load, navigate Explorer to the project root
+    LaunchedEffect(projectId, projectPathUrl) {
+        if (projectPathUrl != null && java.io.File(projectPathUrl).exists()) {
+            breadcrumbNavDir = projectPathUrl
+        }
+    }
     /** Test 78: When a file tab is closed, set this to reveal the file in the Explorer tree. Uses a counter to ensure the key changes even if the same file is closed twice. */
     val revealFileMs = remember { mutableStateOf<String?>(null) }; var revealFile by revealFileMs
     var revealFileTrigger by remember { mutableStateOf(0) }
@@ -1476,6 +1494,7 @@ fun ProjectShellScreen(
                                 },
                                 tokenStore = tokenStore,
                             
+                                initialWorkspacePath = projectPathUrl,
                                 navigateToDir = breadcrumbNavDir,
                                 revealFilePath = revealFile,
                                 revealFileTrigger = revealFileTrigger,

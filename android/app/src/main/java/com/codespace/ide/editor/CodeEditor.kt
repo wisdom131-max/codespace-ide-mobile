@@ -876,6 +876,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
             if (targetLineIdx >= 0) {
                 val clampedOffset = positionMapper.lineStart(targetLineIdx)
+                try { focusRequester.requestFocus() } catch (_: Exception) {}
                 programmaticCursorMove(clampedOffset, "scroll_to_line")
             }
             // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
@@ -4204,6 +4205,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     coroutineScope.launch {
                         val localLineHeightPx = editorMetrics.lineHeightPx
                         vScroll.animateScrollTo((line * localLineHeightPx).toInt())
+                        val targetLineIdx = line  // line is 0-based from DefResult
+                        if (targetLineIdx >= 0) {
+                            val clampedOffset = positionMapper.lineStart(targetLineIdx)
+                            programmaticCursorMove(clampedOffset, "goto_def_fallback")
+                        }
                     }
                 },
                 onOpenFileAtLine = { path, line -> onOpenFileAtLine?.invoke(path, line) },
