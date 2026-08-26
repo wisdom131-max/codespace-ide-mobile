@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-25 21:45 WAT
+> Last updated: 2026-08-26 07:22 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 2607ac41 |
-| CI build | #2536 (green) |
+| Latest commit | aa39607 |
+| CI build | #2539 (green) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -677,3 +677,59 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 - Change 4 (O(1) Snapshot Undo): ✅ IMPLEMENTED, build green. Plan review for next steps below.
 - All other audit features: COMPLETE (45/45 settings + settings architecture)
 - No pending items remain.
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+### [2026-08-26 07:22 WAT] — AI Agent: Claude, Commit aa39607, CI Build #2539 GREEN
+**What was fixed:**
+- [LSP] Go to Definition fallback path: scroll-only path now also moves cursor to target offset (programmaticCursorMove + focusRequester.requestFocus). Previously the fallback regex path only scrolled to the line but never placed the cursor, making it look like nothing happened.
+- [LSP] Fixed premature scrollToLine reset: the 50ms/100ms delay before scrollToLine(lines) was cancelling the cursor move before it completed. Increased to 1000ms in both EditorPane.kt call sites.
+- [UI] Project Wizard 3a: Auto-open newly created project. HomeScreen now calls onOpenProject(project.id) immediately after the wizard finishes, instead of just closing the dialog and leaving the user on the home screen.
+- [UI] Project Wizard 3a: Auto-expand project folder in Explorer. ExplorerPane now accepts initialWorkspacePath (from project pathOrUrl) and uses it when no saved workspace path exists. ProjectShellScreen sets breadcrumbNavDir to the project root on first load.
+- [UI] Project Wizard 3b: Empty template creates zero files. scaffoldEmpty() no longer writes README.md or .gitignore. Truly blank workspace as intended.
+**Files touched:**
+- `CodeEditor.kt` — added programmaticCursorMove call in goto_def_fallback path
+- `EditorPane.kt` — fixed scrollToLine delay 50ms/100ms -> 1000ms (2 sites)
+- `HomeScreen.kt` — added onOpenProject(project.id) after wizard creation
+- `ProjectShellScreen.kt` — added projectPathUrl remember, LaunchedEffect to set breadcrumbNavDir, passed initialWorkspacePath to ExplorerSidePanel
+- `ExplorerPane.kt` — added initialWorkspacePath param, fallback to it when workspacePath is null
+- `ProjectTemplates.kt` — scaffoldEmpty() body emptied (no file generation)
+**Next on roadmap:**
+- On-device testing needed: Go to Definition cursor placement, Project Wizard auto-open, Empty template
+- Part 2 (switchable line-based text model) — approved, not started
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+### [2026-08-26 07:22 WAT] --- AI Agent: Claude, Commit aa39607, CI Build #2539 GREEN
+**What was fixed:**
+- [LSP] Go to Definition fallback path: scroll-only path now also moves cursor to target offset (programmaticCursorMove + focusRequester.requestFocus). Previously the fallback regex path only scrolled to the line but never placed the cursor, making it look like nothing happened.
+- [LSP] Fixed premature scrollToLine reset: the 50ms/100ms delay before scrollToLine(lines) was cancelling the cursor move before it completed. Increased to 1000ms in both EditorPane.kt call sites.
+- [UI] Project Wizard 3a: Auto-open newly created project. HomeScreen now calls onOpenProject(project.id) immediately after the wizard finishes, instead of just closing the dialog and leaving the user on the home screen.
+- [UI] Project Wizard 3a: Auto-expand project folder in Explorer. ExplorerPane now accepts initialWorkspacePath (from project pathOrUrl) and uses it when no saved workspace path exists. ProjectShellScreen sets breadcrumbNavDir to the project root on first load.
+- [UI] Project Wizard 3b: Empty template creates zero files. scaffoldEmpty() body emptied (no file generation). Truly blank workspace as intended.
+**Files touched:**
+- CodeEditor.kt --- added programmaticCursorMove call in goto_def_fallback path
+- EditorPane.kt --- fixed scrollToLine delay 50ms/100ms to 1000ms (2 sites)
+- HomeScreen.kt --- added onOpenProject(project.id) after wizard creation
+- ProjectShellScreen.kt --- added projectPathUrl remember, LaunchedEffect to set breadcrumbNavDir, passed initialWorkspacePath to ExplorerSidePanel
+- ExplorerPane.kt --- added initialWorkspacePath param, fallback to it when workspacePath is null
+- ProjectTemplates.kt --- scaffoldEmpty() body emptied (no file generation)
+**Next on roadmap:**
+- On-device testing needed: Go to Definition cursor placement, Project Wizard auto-open, Empty template
+- Part 2 (switchable line-based text model) --- approved, not started
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
