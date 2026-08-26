@@ -733,3 +733,25 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 - On-device testing needed: Go to Definition cursor placement, Project Wizard auto-open, Empty template
 - Part 2 (switchable line-based text model) --- approved, not started
 - All other audit features: COMPLETE (45/45 settings + settings architecture)
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+### [2026-08-26 09:55 WAT] --- AI Agent: Claude, Commit 4ec63d8, CI Build #2541 GREEN
+**What was fixed:**
+- [EDITOR] Fix paste vanishing bug (3 root causes):
+  1. Auto-indent now only fires on single Enter key press (inserted == \n or \r\n), not on multi-line paste. Previously, pasting code containing newlines triggered auto-indent logic which corrupted pasted text by inserting random whitespace at wrong offsets.
+  2. Large text changes (delta > 3 chars) now use pushForce instead of push for snapshot undo. Ensures paste is always a separate undo step, never coalesced with adjacent typing.
+  3. LaunchedEffect(content) now skips when editorEvent is UserTyping or ProgrammaticTextChange. Prevents content-reload effect from racing with paste --- the echo from onContentChange could trigger a cursor move to old content length, causing visual glitches.
+**Files touched:**
+- `CodeEditor.kt` --- 3 fixes: isSingleNewline guard for auto-indent, textDelta > 3 pushForce, editorEvent guard for LaunchedEffect(content)
+**Next on roadmap:**
+- On-device testing: 10 test batches (Go to Definition, squiggles, LSP stale, cause-tagged events, snapshot undo, Project Wizard auto-open, explorer expand, empty template) + NEW paste test
+- Part 2 (switchable line-based text model) --- approved, not started
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
