@@ -3,7 +3,6 @@ package com.codespace.ide.editor
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.codespace.ide.editor.undo.SnapshotUndoManager
-import com.codespace.ide.util.EditShiftHelper
 
 /**
  * Extracted handler for toolbar Undo/Redo key inserts.
