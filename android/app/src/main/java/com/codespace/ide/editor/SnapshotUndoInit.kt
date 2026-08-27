@@ -2,6 +2,7 @@ package com.codespace.ide.editor
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import com.codespace.ide.editor.undo.SnapshotUndoManager
 
@@ -14,10 +15,9 @@ import com.codespace.ide.editor.undo.SnapshotUndoManager
 internal fun SnapshotUndoInit(
     snapshotUndo: SnapshotUndoManager,
     content: String,
-    value: androidx.compose.ui.text.TextFieldValue,
+    value: TextFieldValue,
     editorEvent: EditorEvent?
 ) {
-    // Clear undo stack on file switch AND push initial state for the new file.
     LaunchedEffect(content) {
         if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
             snapshotUndo.clear()
@@ -28,7 +28,6 @@ internal fun SnapshotUndoInit(
             )
         }
     }
-    // Push initial state on first load.
     LaunchedEffect(Unit) {
         if (snapshotUndo.canUndo().not()) {
             snapshotUndo.pushForce(
