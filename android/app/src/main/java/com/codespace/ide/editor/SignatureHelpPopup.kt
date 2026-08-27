@@ -78,7 +78,6 @@ internal fun SignatureHelpPopup(
     val sigScrollState = rememberScrollState()
     Box(
         modifier = Modifier
-            .align(Alignment.TopStart)
             .padding(start = GUTTER_WIDTH.dp, top = popupTopDp.dp)
             .widthIn(max = 320.dp)
             .zIndex(10f)

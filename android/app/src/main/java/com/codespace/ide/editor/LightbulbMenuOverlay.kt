@@ -2,7 +2,6 @@ package com.codespace.ide.editor
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.spacedBy
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -19,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.domain.Language
 import com.codespace.ide.lsp.LspCodeAction
+import com.codespace.ide.lsp.LspManager
 
 @Composable
 internal fun LightbulbMenuOverlay(
