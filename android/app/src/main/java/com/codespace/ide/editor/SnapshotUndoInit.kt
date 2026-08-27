@@ -2,7 +2,7 @@ package com.codespace.ide.editor
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.text.TextFieldValue
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import com.codespace.ide.editor.undo.SnapshotUndoManager
 
