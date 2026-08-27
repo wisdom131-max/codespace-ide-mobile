@@ -39,6 +39,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import com.codespace.ide.lsp.LspManager
+import com.codespace.ide.lsp.applyWorkspaceEditToFilesystem
+import com.codespace.ide.ui.EditorColors
 import org.json.JSONObject
 
 // P-BYTECODE-EXTRACT: Rename dialog + preview extracted from CodeEditor.kt to avoid Method too large
@@ -65,11 +68,11 @@ fun RenameDialogOverlay(
     onRenameSymbol: ((String, String) -> Unit)?,
     coroutineScope: CoroutineScope,
 ) {
-    val renameDialogWord by renameDialogWordState
+    var renameDialogWord by renameDialogWordState
     var renameNewName by renameNewNameState
     val renameCount by renameCountState
     var renameProjectWide by renameProjectWideState
-    val renameCrossFileCount by renameCrossFileCountState
+    var renameCrossFileCount by renameCrossFileCountState
     var renameInProgress by renameInProgressState
     var renameUsedLsp by renameUsedLspState
     var renamePreviewEdit by renamePreviewEditState
@@ -223,7 +226,7 @@ fun RenameDialogOverlay(
                                     if (prep != null) {
                                         val wsEdit = try { LspManager.rename(language, uri, cLine, cCol, newName) } catch (_: Exception) { null }
                                         if (wsEdit != null) {
-                                            val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
+                                            val (newText, appliedAny) = applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                                             if (appliedAny) {
                                                 extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                                 programmaticTextChange(newText, value.selection, "snippet_apply")
@@ -303,7 +306,7 @@ fun RenameDialogOverlay(
             confirmButton = {
                 Button(onClick = {
                     val wsEdit = renamePreviewEdit!!
-                    val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
+                    val (newText, appliedAny) = applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                     if (appliedAny) {
                         extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                         programmaticTextChange(newText, TextRange(value.selection.start), "snippet_applied")
