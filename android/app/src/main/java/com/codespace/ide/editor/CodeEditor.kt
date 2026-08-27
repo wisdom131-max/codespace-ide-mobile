@@ -1570,27 +1570,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // MUST be declared before the keyboard toolbar handler (LaunchedEffect below)
     // which references snapshotUndo and undoRedoInProgress for toolbar undo/redo.
     val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
-    // FIX: Clear undo stack on file switch AND push initial state for the new file.
-    LaunchedEffect(content) {
-        if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
-            snapshotUndo.clear()
-            snapshotUndo.pushForce(
-                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                    content, TextRange(content.length), emptyList()
-                )
-            )
-        }
-    }
-    // FIX: Push initial state on first load.
-    LaunchedEffect(Unit) {
-        if (snapshotUndo.canUndo().not()) {
-            snapshotUndo.pushForce(
-                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                    value.text, value.selection, emptyList()
-                )
-            )
-        }
-    }
+    SnapshotUndoInit(snapshotUndo, content, value, editorEvent)
     var undoRedoInProgress by remember { mutableStateOf(false) }
 
     // ── Keyboard toolbar insert handler ──────────────────────────────────────
