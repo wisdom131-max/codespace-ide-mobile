@@ -4467,7 +4467,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 clipboardManager = clipboardManager,
             )
         }
-        }
 
         // P41-E: Multi-line ghost text overlay (extracted to separate composable to avoid method-too-large)
         if (toggles.showGhostText && ghostText != null && !showCompletions) {
@@ -4530,7 +4529,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 extraCursorsState = extraCursorsState,
                 programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
             )
-        }
         }
 
         // IntelliSense dropdown — rendered in a Popup window so it's never clipped
