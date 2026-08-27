@@ -872,30 +872,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
             programmaticCursorMove(content.length, "content_reload")
         }
-        // FIX: Clear undo stack on file switch AND push initial state for the new file.
-        // The snapshotUndo instance persists across tab switches via remember{}, but
-        // the undo stack should be per-file. When content changes externally (not our
-        // own edit), reset the undo/redo stacks and push the new file's initial state.
-        if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
-            snapshotUndo.clear()
-            // Push the new file's initial state as first undo entry
-            snapshotUndo.pushForce(
-                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                    content, TextRange(content.length), emptyList()
-                )
-            )
-        }
     }
-    // FIX: Push initial state on first load (Unit won't re-fire, so this only runs once).
-    LaunchedEffect(Unit) {
-        if (snapshotUndo.canUndo().not()) {
-            snapshotUndo.pushForce(
-                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                    value.text, value.selection, emptyList()
-                )
-            )
-        }
-    }
+
     // Phase R: Format Selection — format the selected text range when triggered
     LaunchedEffect(formatSelectionTrigger) {
         if (formatSelectionTrigger > 0 && value.selection.start != value.selection.end) {
@@ -1592,6 +1570,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // MUST be declared before the keyboard toolbar handler (LaunchedEffect below)
     // which references snapshotUndo and undoRedoInProgress for toolbar undo/redo.
     val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
+    // FIX: Clear undo stack on file switch AND push initial state for the new file.
+    LaunchedEffect(content) {
+        if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
+            snapshotUndo.clear()
+            snapshotUndo.pushForce(
+                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                    content, TextRange(content.length), emptyList()
+                )
+            )
+        }
+    }
+    // FIX: Push initial state on first load.
+    LaunchedEffect(Unit) {
+        if (snapshotUndo.canUndo().not()) {
+            snapshotUndo.pushForce(
+                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                    value.text, value.selection, emptyList()
+                )
+            )
+        }
+    }
     var undoRedoInProgress by remember { mutableStateOf(false) }
 
     // ── Keyboard toolbar insert handler ──────────────────────────────────────
