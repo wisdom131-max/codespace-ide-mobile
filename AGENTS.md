@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | aa39607 |
-| CI build | #2539 (green) |
+| Latest commit | 5785145 |
+| CI build | pending |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -778,3 +778,31 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 - On-device testing: 10 test batches (Go to Definition, squiggles, LSP stale, cause-tagged events, snapshot undo, Project Wizard auto-open, explorer expand, empty template) + NEW paste render test
 - Part 2 (switchable line-based text model) --- approved, not started
 - All other audit features: COMPLETE (45/45 settings + settings architecture)
+
+### [2026-08-27 04:10 WAT] --- AI Agent: Claude, Commit 5785145, CI Build pending
+**What was fixed:**
+- [UNDO-FIX] Undo was a no-op: onValueChange pushed NEW state (newValue.text) to undo stack instead of OLD state (value.text). When undo() popped the top, it returned the current state = no change. Fix: push OLD state (the state to RESTORE TO) before applying the new value.
+  - Also: Clear undo stack on tab switch (was bleeding across files via remember{})
+  - Also: Push initial file state on load + after tab switch clear
+- [HSCROLL-FIX] Replaced TextLayoutResult-based width measurement with Paint-based LineWidthMeasurer (Sora Editor pattern)
+  - Research: Studied Rosemoe/sora-editor source --- SingleCharacterWidths.java (per-char Paint.measureText with cache), LineBreakLayout.java (BlockIntList widthMaintainer per-line widths, incremental afterInsert/afterDelete), ViewMeasureHelper.java (max lineWidth + gutter = scroll width), EditorScroller.java (OverScroller with layout bounds)
+  - CodeAssist (tyron12233) uses Sora Editor directly --- no separate implementation
+  - New LineWidthMeasurer.kt: Android Paint per-character measurement, per-line width storage, incremental updates on edit (only affected lines re-measured, full rescan only on newline insert/delete)
+  - Removed EditorLayoutHelper.calcMaxLineWidth() dependency on stale TextLayoutResult
+  - measuredScrollWidth state updated via LaunchedEffect(content) for file load + LaunchedEffect(value.text) for edits
+**Files touched:**
+- `CodeEditor.kt` --- Undo push direction fix, initial state push, tab-switch clear, LineWidthMeasurer wiring (replaced EditorLayoutHelper width calc)
+- `LineWidthMeasurer.kt` --- NEW file (Paint-based per-line width measurer)
+**Next on roadmap:**
+- On-device testing: Test batches (undo/redo, horizontal scroll with long lines, paste rendering, Go to Definition, squiggles, LSP stale, cause-tagged events, Project Wizard auto-open, explorer expand, empty template)
+- Part 2 (switchable line-based text model) --- approved, not started
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
