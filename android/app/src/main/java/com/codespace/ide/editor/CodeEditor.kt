@@ -699,9 +699,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Replaces the unreliable TextLayoutResult.getLineRight() approach.
     // Measures each line's pixel width with Android Paint independently of
     // Compose layout, stores per-line widths, and uses the max as scroll width.
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val lineMeasurer = remember(fontSize, density) {
-        val textSizePx = with(density) { fontSize.sp.toPx() }
+    val lineMeasurer = remember(fontSize) {
+        val textSizePx = with(scrollDensity) { fontSize.sp.toPx() }
         LineWidthMeasurer(
             textSizePx = textSizePx,
             tabWidth = editorMetrics.tabSize,
@@ -2110,21 +2109,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
             }
             // Editor surface
-            // HSCROLL-FIX: When not word-wrapping, calculate the max line width from
-            // the text layout result so the editor surface can be wider than the viewport
-            // and horizontal scrolling actually works. Without this, BasicTextField
-            // fills the available width and long lines are clipped at the right edge.
             // HSCROLL-FIX: Use Paint-based measured width (Sora pattern) instead of
             // stale TextLayoutResult. measuredScrollWidth is updated incrementally
             // on every text edit — no dependency on Compose layout timing.
-            val screenWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+            val screenWidthPx = with(scrollDensity) {
                 androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx()
             }
             val safeScrollWidth = maxOf(measuredScrollWidth, screenWidthPx)
             val editorWidthModifier = if (!wordWrap && safeScrollWidth > 0f) {
                 Modifier
                     .horizontalScroll(hScroll)
-                    .width(with(androidx.compose.ui.platform.LocalDensity.current) { safeScrollWidth.toDp() })
+                    .width(with(scrollDensity) { safeScrollWidth.toDp() })
             } else {
                 Modifier.horizontalScroll(hScroll)
             }
