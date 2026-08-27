@@ -695,6 +695,32 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
     val hScroll = rememberScrollState()
+    // HSCROLL-FIX: Paint-based per-line width measurer (Sora Editor pattern).
+    // Replaces the unreliable TextLayoutResult.getLineRight() approach.
+    // Measures each line's pixel width with Android Paint independently of
+    // Compose layout, stores per-line widths, and uses the max as scroll width.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val lineMeasurer = remember(fontSize, density) {
+        val textSizePx = with(density) { fontSize.sp.toPx() }
+        LineWidthMeasurer(
+            textSizePx = textSizePx,
+            tabWidth = editorMetrics.tabSize,
+            gutterWidthPx = editorMetrics.gutterWidthPx,
+        )
+    }
+    var measuredScrollWidth by remember { mutableStateOf(0f) }
+    // Initialize + re-measure when content changes (file load / tab switch)
+    LaunchedEffect(content) {
+        lineMeasurer.measureAll(content)
+        measuredScrollWidth = lineMeasurer.getScrollWidth()
+    }
+    // Incremental update on text edit (only affected lines re-measured)
+    LaunchedEffect(value.text) {
+        if (value.text != content) {
+            lineMeasurer.updateOnEdit(content, value.text)
+            measuredScrollWidth = lineMeasurer.getScrollWidth()
+        }
+    }
     // Reactive minimap visibility from FeatureToggleStore — toggling in Settings updates immediately
     // EDITOR-FIX: Clamp scroll positions when font size changes — prevents stuck scroll at stale boundaries
     LaunchedEffect(fontSize) {
@@ -846,6 +872,29 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // param update is our own echo and value.text already matches.
         if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
             programmaticCursorMove(content.length, "content_reload")
+        }
+        // FIX: Clear undo stack on file switch AND push initial state for the new file.
+        // The snapshotUndo instance persists across tab switches via remember{}, but
+        // the undo stack should be per-file. When content changes externally (not our
+        // own edit), reset the undo/redo stacks and push the new file's initial state.
+        if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
+            snapshotUndo.clear()
+            // Push the new file's initial state as first undo entry
+            snapshotUndo.pushForce(
+                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                    content, TextRange(content.length), emptyList()
+                )
+            )
+        }
+    }
+    // FIX: Push initial state on first load (Unit won't re-fire, so this only runs once).
+    LaunchedEffect(Unit) {
+        if (snapshotUndo.canUndo().not()) {
+            snapshotUndo.pushForce(
+                com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                    value.text, value.selection, emptyList()
+                )
+            )
         }
     }
     // Phase R: Format Selection — format the selected text range when triggered
@@ -2065,10 +2114,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // the text layout result so the editor surface can be wider than the viewport
             // and horizontal scrolling actually works. Without this, BasicTextField
             // fills the available width and long lines are clipped at the right edge.
-            val maxLineWidth = com.codespace.ide.editor.EditorLayoutHelper.calcMaxLineWidth(wordWrap, textLayoutResult)
-            val editorWidthModifier = com.codespace.ide.editor.EditorLayoutHelper.buildEditorWidthModifier(
-                wordWrap, maxLineWidth, hScroll
-            )
+            // HSCROLL-FIX: Use Paint-based measured width (Sora pattern) instead of
+            // stale TextLayoutResult. measuredScrollWidth is updated incrementally
+            // on every text edit — no dependency on Compose layout timing.
+            val screenWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+                androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx()
+            }
+            val safeScrollWidth = maxOf(measuredScrollWidth, screenWidthPx)
+            val editorWidthModifier = if (!wordWrap && safeScrollWidth > 0f) {
+                Modifier
+                    .horizontalScroll(hScroll)
+                    .width(with(androidx.compose.ui.platform.LocalDensity.current) { safeScrollWidth.toDp() })
+            } else {
+                Modifier.horizontalScroll(hScroll)
+            }
             Box(
                 modifier = editorWidthModifier
             ) {
@@ -2103,18 +2162,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         val isComposing = comp != null && comp.start >= 0
                         if (newValue.text != value.text) {
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
-                            // Change 4: O(1) snapshot undo - push full snapshot (coalesced)
+                            // Change 4: O(1) snapshot undo - push OLD state (state to restore TO)
+                            // FIX: The undo stack must hold the state to RESTORE TO, i.e. the
+                            // OLD value before the edit. Pushing the new value makes undo a
+                            // no-op (it pops the current state and returns it).
                             if (!undoRedoInProgress && !isComposing) {
                                 // FIX: Large text changes (paste) use pushForce so they're
                                 // always a separate undo step, never coalesced with typing.
                                 val textDelta = kotlin.math.abs(newValue.text.length - value.text.length)
-                                val snapshot = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                                    newValue.text, newValue.selection, extraCursors
+                                val oldSnapshot = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                                    value.text, value.selection, extraCursors
                                 )
                                 if (textDelta > 3) {
-                                    snapshotUndo.pushForce(snapshot)
+                                    snapshotUndo.pushForce(oldSnapshot)
                                 } else {
-                                    snapshotUndo.push(snapshot)
+                                    snapshotUndo.push(oldSnapshot)
                                 }
                             }
                         } else if (newValue.selection != value.selection) {
