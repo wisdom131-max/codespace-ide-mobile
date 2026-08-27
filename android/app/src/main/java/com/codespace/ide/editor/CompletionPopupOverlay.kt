@@ -1,6 +1,5 @@
 package com.codespace.ide.editor
 
-import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -75,6 +74,9 @@ import com.codespace.ide.lsp.CompletionItemKind
 import com.codespace.ide.lsp.CompletionSource
 import com.codespace.ide.lsp.ImportEdit
 import com.codespace.ide.lsp.RankedCompletionItem
+import com.codespace.ide.lsp.parseSnippet
+import com.codespace.ide.lsp.SnippetContext
+import com.codespace.ide.lsp.fuzzyMatchIndices
 import com.codespace.ide.lsp.SnippetSession
 import com.codespace.ide.lsp.applyImportEdits
 import com.codespace.ide.lsp.applyLspTextEdits
@@ -127,14 +129,19 @@ internal fun CompletionPopupOverlay(
     editorMetrics: EditorMetrics,
     availableHeightDp: Int,
     prefix: String,
-    allCompletions: List<RankedCompletionItem>,
+    allCompletions: List<Completion>,
     coroutineScope: CoroutineScope,
-    clipboardManager: ClipboardManager,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
     onAiFixRequest: ((String) -> Unit)?,
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
-    lspKind: Int = 0,
+    detailDocState: MutableState<String?>,
+    detailLabelState: MutableState<String?>,
+    onContentChange: (String) -> Unit,
+    fontSize: Int,
     programmaticTextChange: (String, TextRange, String) -> Unit,
 ) {
+    var detailDoc by detailDocState
+    var detailLabel by detailLabelState
     var showCompletions by showCompletionsState
     var completionFilter by completionFilterState
     var selectedLabel by selectedLabelState

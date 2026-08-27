@@ -179,7 +179,7 @@ data class EditorFeatureToggles(
     val showWordWrap: Boolean = false,
 )
 
-private data class Completion(
+internal data class Completion(
     val label: String,
     val kind: CompletionKind,
     val insertText: String = label,
@@ -201,7 +201,7 @@ private data class Completion(
     // Phase U-5: LSP commitCharacters — chars that commit the selected completion when typed
     val commitCharacters: List<Char> = emptyList(),
 )
-private enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
+internal enum class CompletionKind { KEYWORD, TYPE, SNIPPET }
 
 // ── Hover docs for common symbols ──────────────────────────────────────────
 private val HOVER_DOCS: Map<String, String> = mapOf(
@@ -1013,9 +1013,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var typeHierarchySupertypes by remember { mutableStateOf<List<TypeHierarchyItem>>(emptyList()) }
     var typeHierarchySubtypes by remember { mutableStateOf<List<TypeHierarchyItem>>(emptyList()) }
     // P41-J: Detail panel — track the highlighted item's full doc
-    var detailDoc by remember { mutableStateOf<String?>(null) }
+    val detailDocState = remember { mutableStateOf<String?>(null) }
+        var detailDoc by detailDocState
     var detailDetail by remember { mutableStateOf<String?>(null) }
-    var detailLabel by remember { mutableStateOf<String?>(null) }
+    val detailLabelState = remember { mutableStateOf<String?>(null) }
+        var detailLabel by detailLabelState
 
     // P39: Lightbulb state — tracks code actions per line for gutter display
     var lightbulbLine by remember { mutableStateOf(-1) }
@@ -4826,7 +4828,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             clipboardManager = clipboardManager,
             onAiFixRequest = onAiFixRequest,
             lspImportProvider = lspImportProvider,
-            lspKind = lspKind,
+            detailDocState = detailDocState,
+            detailLabelState = detailLabelState,
+            onContentChange = onContentChange,
+            fontSize = fontSize,
             programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
         )
     }
@@ -4834,7 +4839,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
 // P41-E: Ghost text overlay composable — extracted from main CodeEditor to avoid method-too-large
 // P41-J: Filter chip composable for completion dropdown
-@Composable
 // P41-H: Full LSP CompletionItemKind (1-25) icon + color mapping.
 // Colors follow VS Code's theme: https://code.visualstudio.com/docs/languages/identifiers
 @Composable
