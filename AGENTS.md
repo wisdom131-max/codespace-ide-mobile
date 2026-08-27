@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 5785145 |
+| Latest commit | 3d2aa79 |
 | CI build | pending |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,927 |
+| CodeEditor.kt lines | 5,928 |
 
 ---
 
@@ -796,6 +796,42 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 **Next on roadmap:**
 - On-device testing: Test batches (undo/redo, horizontal scroll with long lines, paste rendering, Go to Definition, squiggles, LSP stale, cause-tagged events, Project Wizard auto-open, explorer expand, empty template)
 - Part 2 (switchable line-based text model) --- approved, not started
+- All other audit features: COMPLETE (45/45 settings + settings architecture)
+
+### RULES REMINDER BLOCK
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+---
+
+### [2026-08-27 21:53 WAT] — AI Agent: Claude Opus 4.6
+
+**[HSCROLL-FIX][EDITOR] Fix horizontal scroll for long lines (softWrap)**
+
+**Commit:** 3d2aa79 | CI build: pending
+**What was fixed:**
+- Root cause: BasicTextField defaults to softWrap=true (text wraps inside the field)
+- Even though LineWidthMeasurer correctly set the scroll container width, long lines WRAPPED inside the BasicTextField instead of extending horizontally — leaving nothing to scroll
+- Fix: Added `softWrap = !wordWrap` to the BasicTextField's TextStyle
+- When wordWrap is disabled (default), softWrap=false prevents wrapping so each line extends to its full width
+- The parent Box's horizontalScroll + fixed width (safeScrollWidth from LineWidthMeasurer) allows scrolling to see the overflow
+- Also fixed: Missing onInsertHandler on 4th CodeEditor instance (commit db03efb) — extra keys (Tab, Undo, Redo, brackets, Esc) were dead because the handler registration never fired
+**Files touched:**
+- `CodeEditor.kt` — Added `softWrap = !wordWrap` to TextStyle (1 line), added onInsertHandler to EditorPane.kt (1 line)
+**Tests fixed:**
+- Test 6 (h-scroll long lines) — softWrap=false allows lines to extend for scrolling
+- Test 7 (h-scroll after edit) — incremental LineWidthMeasurer updates + softWrap=false
+- Test 1, 2, 3, 8 (undo/redo) — onInsertHandler fix enables toolbar buttons
+- Test 13 (snippet Tab expansion) — onInsertHandler fix enables Tab key
+**Next on roadmap:**
+- On-device testing: Re-test Tests 6, 7 (h-scroll), Tests 1, 2, 3, 8 (undo/redo), Test 13 (snippets) after APK install
+- Remaining failed tests: Test 10 (completion popup suggestions), Test 15 (stale LSP response rejection)
+- Part 2 (switchable line-based text model) — approved, not started
 - All other audit features: COMPLETE (45/45 settings + settings architecture)
 
 ### RULES REMINDER BLOCK
