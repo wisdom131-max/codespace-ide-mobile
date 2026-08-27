@@ -994,7 +994,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var resolveCache by remember { mutableStateOf<Map<String, LspCompletionItem>>(emptyMap()) }
     var lastResolvedLabel by remember { mutableStateOf<String?>(null) }
     // P41-K: Track LSP request ID for cancellation
-    var lspRequestId by remember { mutableStateOf<Long>(-1L) }
+    val lspRequestIdState = remember { mutableStateOf<Long>(-1L) }
+    var lspRequestId by lspRequestIdState
     // P41-M: Call Hierarchy state
     var showCallHierarchy by remember { mutableStateOf(false) }
     var callHierarchyRoot by remember { mutableStateOf<CallHierarchyItem?>(null) }
@@ -1081,17 +1082,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
 
     // P22-H: LSP-backed completion (P41-K: parallel fetch + request cancellation)
-    var lspCompletions by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
+    val lspCompletionsState = remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
+    var lspCompletions by lspCompletionsState
     // Smart completion: track whether LSP has successfully responded for this session
-    var lspHasResponded by remember { mutableStateOf(false) }
+    val lspHasRespondedState = remember { mutableStateOf(false) }
+    var lspHasResponded by lspHasRespondedState
     // Smart completion: track whether the current LSP request timed out
-    var lspTimedOut by remember { mutableStateOf(false) }
+    val lspTimedOutState = remember { mutableStateOf(false) }
+    var lspTimedOut by lspTimedOutState
     // smartCompletion defined here so lspCompletionLoading can reference it
     val smartCompletion = ProjectSettingsStore.smartCompletionEnabled.value
     // Loading indicator: true while waiting for LSP completion response
     val lspCompletionLoading by remember { derivedStateOf { smartCompletion && !lspHasResponded && !lspTimedOut } }
     // P41-F: Workspace symbol completions (fetched in parallel with LSP — see below)
-    var workspaceCompletions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+    val workspaceCompletionsState = remember { mutableStateOf<List<com.codespace.ide.lsp.LspCompletionItem>>(emptyList()) }
+    var workspaceCompletions by workspaceCompletionsState
 
     // R3-LSP: Recovery watcher — when LspManager reports a server transitioned to READY
     // (after being UNHEALTHY/RESTARTING), reset the completion fallback flags so the
@@ -1123,113 +1128,28 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Context detection (prefix, isDotContext, completionContext) still recomputes freely
     // (pure, cheap) — they feed display/filtering. But the LSP request only fires when
     // the user actually typed something, not on file open, cursor move, or selection.
-    LaunchedEffect(prefix, isDotContext, value.selection.end, pathContext, editorEvent) {
-        // P41-G: Skip LSP completions when path context is active
-        if (pathContext != null) { lspCompletions = emptyList(); workspaceCompletions = emptyList(); return@LaunchedEffect }
-
-        // Phase X-3: Block completion on non-user events
-        if (!editorEvent.shouldTriggerCompletion) {
-            AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER blocked=${editorEvent.logTag}", "lsp")
-            return@LaunchedEffect
-        }
-        AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER allowed=true", "lsp")
-        if (isDotContext) { AppOutputLog.log("[EDITOR] DOT_CONTEXT=true", "lsp") }
-        if (dotWasTyped) { AppOutputLog.log("[EDITOR] DOT_TYPED=true", "lsp") }
-
-        if ((prefix.length >= 2 || isDotContext || (completionContext.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT && prefix.length >= 1)) && lspCompletionProvider != null) {  // TEST-14-FIX: also trigger LSP for 1-char import context
-            kotlinx.coroutines.delay(150)  // debounce
-            kotlinx.coroutines.delay(70)   // R3-A: show delay — reduce flicker on rapid typing
-
-            // P41-K: Cancel any previous in-flight completion request before sending new one
-            // Phase X-8: Also increment generation counter for stale-response protection
-            lspGens.completion++
-            val myCompGen = lspGens.completion
-            val myCompServerGen = com.codespace.ide.lsp.LspManager.getServerGeneration(language)
-            if (lspRequestId >= 0 && lspCancellationProvider != null) {
-                try { lspCancellationProvider.invoke(lspRequestId) } catch (_: Exception) {}
-                lspRequestId = -1L
-            }
-
-            val cOff = value.selection.end
-            val cPos = positionMapper.offsetToPosition(cOff)
-            val cLine = cPos.line
-            val cCol = cPos.column
-
-            // P41-K: Track request ID for cancellation
-            if (lspRequestIdProvider != null) {
-                try { lspRequestId = lspRequestIdProvider.invoke() } catch (_: Exception) {}
-            }
-            // Phase X-4/X-13: Log triggerKind for dot-triggered completion
-            if (dotWasTyped) {
-                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION triggerKind=2 triggerCharacter=.", "lsp")
-            } else {
-                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] COMPLETION triggerKind=1 (Invoked)", "lsp")
-            }
-
-            // Smart completion: LSP first with 5s timeout, then regex fallback
-            if (smartCompletion) {
-                val wasInFallback = lspTimedOut || !lspHasResponded
-                lspTimedOut = false
-                val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    kotlinx.coroutines.withTimeoutOrNull(5000L) {
-                        val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
-                        val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
-                            try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
-                        } else emptyList()
-                        Pair(lsp, ws)
-                    }
-                }
-                if (results != null) {
-                    // Phase X-8: Stale check — discard if a newer completion request was made
-                    if (myCompGen != lspGens.completion) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale request-gen for completion", "lsp")
-                        return@LaunchedEffect
-                    }
-                    if (myCompServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for completion", "lsp")
-                        return@LaunchedEffect
-                    }
-                    lspHasResponded = true
-                    lspCompletions = results.first
-                    workspaceCompletions = results.second
-                    // R3-LSP: Log restoration when LSP responds after being in fallback
-                    if (wasInFallback) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] completion restored after recovery", "lsp")
-                    }
-                } else {
-                    // LSP timed out — keep showing local completions as fallback
-                    lspTimedOut = true
-                    lspHasResponded = false // R3-LSP: clear stale "responded" state on timeout
-                    lspCompletions = emptyList()
-                    workspaceCompletions = emptyList()
-                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] completion timed out, using regex fallback", "lsp")
-                }
-            } else {
-                // Legacy behavior: fetch LSP without timeout, show alongside local
-                val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
-                    val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
-                        try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
-                    } else emptyList()
-                    Pair(lsp, ws)
-                }
-                // Phase X-8: Stale check for legacy path too
-                if (myCompGen != lspGens.completion) {
-                    com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale request-gen for completion", "lsp")
-                    return@LaunchedEffect
-                }
-                if (myCompServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
-                    com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for completion", "lsp")
-                    return@LaunchedEffect
-                }
-                lspCompletions = results.first
-                workspaceCompletions = results.second
-            }
-        } else {
-            lspCompletions = emptyList()
-            workspaceCompletions = emptyList()
-        }
-    }
+    CompletionFetchEffect(
+        prefix = prefix,
+        isDotContext = isDotContext,
+        selectionEnd = value.selection.end,
+        pathContext = pathContext,
+        editorEvent = editorEvent,
+        dotWasTyped = dotWasTyped,
+        completionContextValue = completionContext,
+        lspCompletionProvider = lspCompletionProvider,
+        lspWorkspaceSymbolProvider = lspWorkspaceSymbolProvider,
+        lspCancellationProvider = lspCancellationProvider,
+        lspRequestIdProvider = lspRequestIdProvider,
+        language = language,
+        smartCompletion = smartCompletion,
+        positionMapper = positionMapper,
+        lspGens = lspGens,
+        lspCompletionsState = lspCompletionsState,
+        workspaceCompletionsState = workspaceCompletionsState,
+        lspTimedOutState = lspTimedOutState,
+        lspHasRespondedState = lspHasRespondedState,
+        lspRequestIdState = lspRequestIdState,
+    )
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
     val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext, smartCompletion, lspHasResponded, lspTimedOut) {
         // P41-V: Context-aware filtering
@@ -1384,9 +1304,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P41-E: Multi-line ghost text — shows top completion OR AI suggestion as dimmed text
     // Source 1: IntelliSense (fuzzy-matched top completion, single line from insertText)
     // Source 2: AI ghost text (multi-line code continuation, 600ms debounce)
-    var ghostText by remember { mutableStateOf<String?>(null) }
-    var ghostTextLines by remember { mutableStateOf<List<String>>(emptyList()) }
-    var ghostTextIsAi by remember { mutableStateOf(false) }
+    val ghostTextState = remember { mutableStateOf<String?>(null) }
+    var ghostText by ghostTextState
+    val ghostTextLinesState = remember { mutableStateOf<List<String>>(emptyList()) }
+    var ghostTextLines by ghostTextLinesState
+    val ghostTextIsAiState = remember { mutableStateOf(false) }
+    var ghostTextIsAi by ghostTextIsAiState
 
     // IntelliSense ghost text (existing behavior, 800ms debounce)
     LaunchedEffect(prefix, isDotContext, allCompletions, completionContext) {
@@ -1413,63 +1336,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P41-E/P41-L: AI ghost text — debounced 600ms idle after typing stops
     // Only fires when there's NO IntelliSense ghost text already showing
     // P41-L: Context-aware prompt framing — detects cursor context and appends a hint
-    LaunchedEffect(value.text, value.selection.end) {
-        if (toggles.showGhostText && onAiGhostTextRequest != null && ghostText == null) {
-            kotlinx.coroutines.delay(600L)
-            val cursor = value.selection.end
-            if (cursor == value.selection.start && cursor > 0) {
-                val text = value.text
-                val contextBefore = text.substring(0, cursor)
-                val contextAfter = text.substring(cursor)
-
-                // P41-L: Detect cursor context for prompt framing
-                val currentLine = text.substring(0, cursor).substringAfterLast('\n')
-                val lastNonWhitespaceBefore = contextBefore.trimEnd().lastOrNull()
-                val contextHint = when {
-                    // File scope: cursor is at a top-level position (no indentation, after blank line or at start)
-                    currentLine.isBlank() && (contextBefore.isBlank() || contextBefore.trimEnd().endsWith('\n')) -> {
-                        "FILE_SCOPE"
-                    }
-                    // After a closing brace — likely starting a new block/function
-                    lastNonWhitespaceBefore == '}' || lastNonWhitespaceBefore == ')' -> {
-                        "AFTER_BLOCK_CLOSE"
-                    }
-                    // Mid-statement: there's content on the line before the cursor
-                    currentLine.isNotBlank() -> {
-                        "MID_STATEMENT"
-                    }
-                    // Default: inside a block but on a new line
-                    else -> "NEW_LINE_IN_BLOCK"
-                }
-
-                val aiResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    try {
-                        // P41-L: Pass context hint as 4th parameter via a wrapper
-                        // The existing onAiGhostTextRequest signature takes (contextBefore, contextAfter, language)
-                        // We embed the context hint in contextBefore as a trailing comment line
-                        val hintPrefix = when (contextHint) {
-                            "FILE_SCOPE" -> "// [AI_CONTEXT: FILE_SCOPE — predict next top-level declaration]"
-                            "AFTER_BLOCK_CLOSE" -> "// [AI_CONTEXT: AFTER_BLOCK_CLOSE — predict next statement/block]"
-                            "MID_STATEMENT" -> "// [AI_CONTEXT: MID_STATEMENT — complete the current statement]"
-                            else -> "// [AI_CONTEXT: NEW_LINE_IN_BLOCK — predict next statement inside block]"
-                        }
-                        onAiGhostTextRequest.invoke(contextBefore + "\n" + hintPrefix, contextAfter, language.name)
-                    }
-                    catch (_: Exception) { null }
-                }
-                if (aiResult != null && aiResult.isNotBlank()) {
-                    // P41-L: Strip any context hint comment that the AI might echo back
-                    val cleanedResult = aiResult.lines().filterNot {
-                        it.contains("[AI_CONTEXT:")
-                    }.joinToString("\n")
-                    val finalResult = cleanedResult.ifBlank { aiResult }
-                    ghostText = finalResult.lines().firstOrNull() ?: ""
-                    ghostTextLines = finalResult.lines()
-                    ghostTextIsAi = true
-                }
-            }
-        }
-    }
+    GhostTextEffect(
+        text = value.text,
+        selectionEnd = value.selection.end,
+        selectionStart = value.selection.start,
+        showGhostText = toggles.showGhostText,
+        onAiGhostTextRequest = onAiGhostTextRequest,
+        language = language,
+        ghostTextState = ghostTextState,
+        ghostTextLinesState = ghostTextLinesState,
+        ghostTextIsAiState = ghostTextIsAiState,
+    )
 
     // ── P2-12 / P25-LSP Parameter hints / signature help ────────────────────
     // Prefer LSP signature help when available (knows ALL functions in the codebase),
@@ -1493,45 +1370,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         inside
     }
-    var activeSignature by remember { mutableStateOf<SignatureInfo?>(null) }
+    val activeSignatureState = remember { mutableStateOf<SignatureInfo?>(null) }
+    var activeSignature by activeSignatureState
     // Phase X-6: Async LSP request — only on user events with trigger authority.
-    LaunchedEffect(isInsideCall, value.selection.end, language, editorEvent) {
-        if (!isInsideCall) {
-            activeSignature = null
-            return@LaunchedEffect
-        }
-        // Block on non-user events (file open, switch, programmatic)
-        if (!editorEvent.shouldTriggerSignatureHelp) {
-            // Still compute local signature analysis (pure, no LSP)
-            activeSignature = SignatureHelpAnalyzer.findActiveCall(value.text, value.selection.end, language)
-            return@LaunchedEffect
-        }
-        kotlinx.coroutines.delay(200) // debounce
-        // Phase X-8: Stale response protection
-        lspGens.signatureHelp++
-        val myGen = lspGens.signatureHelp
-        val mySigServerGen = com.codespace.ide.lsp.LspManager.getServerGeneration(language)
-        val cOff = value.selection.end
-        val cPos = positionMapper.offsetToPosition(cOff)
-        val cLine = cPos.line
-        val cCol = cPos.column
-        val result = if (lspSignatureHelpProvider != null) {
-            try { lspSignatureHelpProvider.invoke(cLine, cCol) } catch (_: Exception) { null }
-                ?: SignatureHelpAnalyzer.findActiveCall(value.text, cOff, language)
-        } else {
-            SignatureHelpAnalyzer.findActiveCall(value.text, cOff, language)
-        }
-        // Stale check: if generation changed while we were waiting, discard
-        if (myGen != lspGens.signatureHelp) {
-            AppOutputLog.log("LSP result discarded: stale request-gen for signature-help", "lsp")
-            return@LaunchedEffect
-        }
-        if (mySigServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
-            AppOutputLog.log("LSP result discarded: stale generation for signature-help", "lsp")
-            return@LaunchedEffect
-        }
-        activeSignature = result
-    }
+    SignatureHelpEffect(
+        isInsideCall = isInsideCall,
+        selectionEnd = value.selection.end,
+        text = value.text,
+        language = language,
+        editorEvent = editorEvent,
+        lspSignatureHelpProvider = lspSignatureHelpProvider,
+        positionMapper = positionMapper,
+        lspGens = lspGens,
+        activeSignatureState = activeSignatureState,
+    )
 
     // P41-R: Overload navigation — track which signature overload is selected
     var overloadIndex by remember { mutableStateOf(0) }
