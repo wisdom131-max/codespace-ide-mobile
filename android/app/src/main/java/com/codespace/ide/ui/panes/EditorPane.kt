@@ -1738,6 +1738,7 @@ fun EditorPane(
                             // Phase P: Publish lint diagnostics to central store (debounced)
                             DiagnosticPublisher.publishLintDiagnostics(active.path, newText)
                         },
+                        onInsertHandler = onInsertRequest,
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,
                         showInlayHints = showInlayHints,
