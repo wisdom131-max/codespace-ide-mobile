@@ -643,8 +643,7 @@ internal fun FilterChip(
 // P41-H: Full LSP CompletionItemKind (1-25) icon + color mapping.
 // Colors follow VS Code's theme: https://code.visualstudio.com/docs/languages/identifiers
 private fun lspCompletionIcon(kind: Int): Pair<androidx.compose.ui.graphics.vector.ImageVector, androidx.compose.ui.graphics.Color> {
-
-
+    return when (kind) {
         1   -> Pair(Icons.Default.TextFields, Color(0xFFCCCCCC))    // Text — gray
         2   -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))    // Method — yellow
         3   -> Pair(Icons.Default.Functions, Color(0xFFDCDCAA))    // Function — yellow
