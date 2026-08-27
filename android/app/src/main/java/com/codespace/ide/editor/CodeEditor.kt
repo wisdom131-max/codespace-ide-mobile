@@ -162,7 +162,7 @@ import com.codespace.ide.editor.decorations.BlockLineOverlay
 /** Standard gutter width in dp — ALL overlays must use this constant to stay aligned with the text.
  *  Previously: hardcoded values of 64f, 66.dp, 72.dp, 74f, 74.dp, 80f were used inconsistently,
  *  causing overlays (highlights, cursors, squiggles, popups) to be misaligned with the text by 2-8dp. */
-private const val GUTTER_WIDTH = EditorMetrics.GUTTER_WIDTH_DP  // Phase E: single source of truth
+internal const val GUTTER_WIDTH = EditorMetrics.GUTTER_WIDTH_DP  // Phase E: single source of truth
 
 /** Feature toggles for editor overlays — pass from EditorPane to enable/disable individual features. */
 data class EditorFeatureToggles(
@@ -1021,8 +1021,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     // P39: Lightbulb state — tracks code actions per line for gutter display
     var lightbulbLine by remember { mutableStateOf(-1) }
-    var lightbulbActions by remember { mutableStateOf<List<com.codespace.ide.lsp.LspCodeAction>>(emptyList()) }
-    var showLightbulbMenu by remember { mutableStateOf(false) }
+    val lightbulbActionsState = remember { mutableStateOf<List<com.codespace.ide.lsp.LspCodeAction>>(emptyList()) }
+    var lightbulbActions by lightbulbActionsState
+    val showLightbulbMenuState = remember { mutableStateOf(false) }
+    var showLightbulbMenu by showLightbulbMenuState
     // P39/X-9: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
     // Phase X-9: Gate on editorEvent — do not trigger on file open/switch/programmatic.
     LaunchedEffect(value.selection.start, editorEvent) {
@@ -4438,182 +4440,33 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             textLayoutResult = textLayoutResult,
         )
         // P39: Lightbulb menu categorized action menu triggered by tapping the bulb
-        DropdownMenu(
-            expanded = showLightbulbMenu,
-            onDismissRequest = { showLightbulbMenu = false },
-        ) {
-            if (lightbulbActions.isNotEmpty()) {
-                val categorized = com.codespace.ide.lsp.categorizeCodeActions(lightbulbActions)
-                categorized.forEach { (groupLabel, actions) ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                groupLabel.uppercase(),
-                                color = Color(0xFF858585),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        },
-                        onClick = {},
-                        enabled = false,
-                    )
-                    actions.forEach { fix ->
-                        val icon = com.codespace.ide.lsp.CodeActionKind.icon(fix.kind)
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(icon, fontSize = 12.sp)
-                                    Text(
-                                        fix.title,
-                                        color = if (fix.disabled != null) Color(0xFF666666)
-                                               else if (fix.isPreferred) Color(0xFFFFD700)
-                                               else Color(0xFFD4D4D4),
-                                        fontSize = 13.sp,
-                                        fontWeight = if (fix.isPreferred) FontWeight.Bold else FontWeight.Normal,
-                                    )
-                                }
-                            },
-                            enabled = fix.disabled == null,
-                            onClick = {
-                                // P39: Handle AI actions via onAiFixRequest
-                                if (fix.kind != null && fix.kind.startsWith("ai.") && onAiFixRequest != null) {
-                                    // P41-O: Use full selection if available, else current line
-                                    val hasSelection2 = value.selection.start != value.selection.end
-                                    val selText2 = if (hasSelection2) {
-                                        value.text.substring(
-                                            value.selection.start.coerceIn(0, value.text.length),
-                                            value.selection.end.coerceIn(0, value.text.length)
-                                        )
-                                    } else {
-                                        val lineStart2 = positionMapper.lineStart(positionMapper.offsetToLine(value.selection.start))
-                                        val lineEnd2 = value.text.indexOf('\n', value.selection.start)
-                                        value.text.substring(lineStart2, if (lineEnd2 < 0) value.text.length else lineEnd2)
-                                    }
-                                    // P41-O: Project-aware context
-                                    val fileName2 = filePath?.substringAfterLast('/') ?: "untitled"
-                                    val langName2 = language.displayName
-                                    val imports2 = value.text.lines().take(30).filter {
-                                        it.trim().startsWith("import ") || it.trim().startsWith("from ") || it.trim().startsWith("package ") || it.trim().startsWith("#include")
-                                    }.joinToString("\n")
-                                    val contextHeader2 = "File: $fileName2 ($langName2)\n" +
-                                        (if (imports2.isNotEmpty()) "Imports:\n$imports2\n" else "") +
-                                        "Selection (${if (hasSelection2) "selected text" else "current line"}):\n"
-                                    val diagAtCursor2 = if (fix.kind == com.codespace.ide.lsp.CodeActionKind.AIExplainError) {
-                                        val cursorOff2 = value.selection.start.coerceIn(0, value.text.length)
-                                        val matchingErr2 = lintErrors.firstOrNull { err ->
-                                            err.start <= cursorOff2 && err.end >= cursorOff2
-                                        }
-                                        if (matchingErr2 != null) "Error: ${matchingErr2.message}${if (matchingErr2.code != null) " [${matchingErr2.code}]" else ""}\n" else ""
-                                    } else ""
-                                    val prompt = when (fix.kind) {
-                                        com.codespace.ide.lsp.CodeActionKind.AIExplain -> contextHeader2 + "Explain this code:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateDoc -> contextHeader2 + "Generate documentation for this code:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIGenerateTests -> contextHeader2 + "Generate unit tests for this code:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIOptimize -> contextHeader2 + "Optimize this code for better performance:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIRewrite -> contextHeader2 + "Rewrite this code for better clarity:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AISimplify -> contextHeader2 + "Simplify this code:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIRefactor -> contextHeader2 + "Refactor this code for better structure and readability:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIAddComments -> contextHeader2 + "Add inline comments to this code:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIExplainError -> contextHeader2 + diagAtCursor2 + "Explain the error in this code:\n" + selText2
-                                        com.codespace.ide.lsp.CodeActionKind.AIImprovePerf -> contextHeader2 + "Suggest performance improvements for:\n" + selText2
-                                        else -> contextHeader2 + fix.title + ":\n" + selText2
-                                    }
-                                    onAiFixRequest!!.invoke(prompt)
-                                } else if (fix.edit != null) {
-                                    try {
-                                        val newText = com.codespace.ide.lsp.applyWorkspaceEdit(
-                                            fix.edit, value.text, null
-                                        )
-                                        if (newText != null && newText != value.text) {
-                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                            programmaticTextChange(newText, TextRange(value.selection.start), "ai_apply")
-                                        }
-                                    } catch (_: Exception) {}
-                                } else if (fix.command != null) {
-                                    // P39-FULL: Handle code actions that return a command (not edit)
-                                    try {
-                                        val cmdJson = org.json.JSONObject(fix.command)
-                                        val cmdName = cmdJson.optString("command", "")
-                                        val cmdArgs = cmdJson.optJSONArray("arguments")
-                                        if (cmdName.isNotEmpty()) {
-                                            LspManager.executeCommand(language, cmdName, cmdArgs)
-                                        }
-                                    } catch (_: Exception) {}
-                                }
-                                showLightbulbMenu = false
-                            }
-                        )
-                    }
-                }
-            } else {
-                DropdownMenuItem(
-                    text = { Text("No actions available", color = Color(0xFF666666), fontSize = 13.sp) },
-                    onClick = { showLightbulbMenu = false },
-                )
-            }
-        }
+        LightbulbMenuOverlay(
+            showLightbulbMenuState = showLightbulbMenuState,
+            lightbulbActions = lightbulbActions,
+            onAiFixRequest = onAiFixRequest,
+            value = value,
+            positionMapper = positionMapper,
+            filePath = filePath,
+            language = language,
+            lintErrors = lintErrors,
+            extraCursorsState = extraCursorsState,
+            programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
+        )
 
         // P2-12 Signature help popup — shown above the current line, one line up so it
         // doesn't cover what's being typed. Hidden while the autocomplete dropdown is open
         // to avoid stacking two popups on the same spot.
         if (!showCompletions && activeSignature != null) {
-            val sig = activeSignature!!
-            val cursorLineIdx = positionMapper.offsetToLine(value.selection.end)
-            val popupLineIdx = (cursorLineIdx - 1).coerceAtLeast(0)
-            // BUG-2 FIX: subtract scroll offset so the popup appears at the visible cursor position
-            val popupTopDp = ((popupLineIdx * lineHeightDp.value) - vScrollDp).coerceAtLeast(0f)
-            val annotated = remember(sig) {
-                buildAnnotatedString {
-                    append(sig.name)
-                    append("(")
-                    sig.params.forEachIndexed { idx, param ->
-                        if (idx > 0) append(", ")
-                        if (idx == sig.activeParam) {
-                            withStyle(SpanStyle(color = Color(0xFF4EC9B0), fontWeight = FontWeight.Bold)) {
-                                append(param)
-                            }
-                        } else {
-                            append(param)
-                        }
-                    }
-                    append(")")
-                    if (sig.returnType != null) {
-                        withStyle(SpanStyle(color = Color(0xFF808080))) { append(": ${sig.returnType}") }
-                    }
-                }
-            }
-            var sigExpanded by remember { mutableStateOf(false) }
-            val sigScrollState = rememberScrollState()
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = GUTTER_WIDTH.dp, top = popupTopDp.dp)
-                    .widthIn(max = 320.dp)
-                    .zIndex(10f)
-                    .background(colors.background, RoundedCornerShape(6.dp))
-                    .border(1.dp, colors.function.copy(alpha = 0.6f), RoundedCornerShape(6.dp)),
-            ) {
-                Column(modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        Box(modifier = Modifier.size(20.dp).clickable { sigExpanded = !sigExpanded },
-                            contentAlignment = Alignment.Center) {
-                            Text(text = if (sigExpanded) "▾" else "▸", color = Color(0xFF888888), fontSize = 11.sp)
-                        }
-                        Spacer(Modifier.width(2.dp))
-                        Box(modifier = Modifier.size(20.dp).clickable {
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(sig.name))
-                            }, contentAlignment = Alignment.Center) {
-                            Text(text = "⏉", color = Color(0xFF888888), fontSize = 11.sp)
-                        }
-                    }
-                    Box(modifier = Modifier.padding(horizontal = 4.dp)
-                        .then(if (sigExpanded) Modifier.heightIn(max = 180.dp).verticalScroll(sigScrollState) else Modifier)
-                    ) {
-                        Text(text = annotated, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFD4D4D4))
-                    }
-                }
-            }
+            SignatureHelpPopup(
+                activeSignature = activeSignature!!, 
+                positionMapper = positionMapper,
+                value = value,
+                lineHeightDp = lineHeightDp,
+                vScrollDp = vScrollDp,
+                colors = colors,
+                clipboardManager = clipboardManager,
+            )
+        }
         }
 
         // P41-E: Multi-line ghost text overlay (extracted to separate composable to avoid method-too-large)
@@ -4663,73 +4516,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             textLayoutResult = textLayoutResult,
         )
 
-        // P41-I: Snippet choice dropdown — appears when active tab-stop has choices (${1|a,b,c|})
         if (snippetSession != null && showSnippetChoices) {
-            val session = snippetSession!!
-            val activeStop = session.activeStop()
-            if (activeStop != null && activeStop.choices.isNotEmpty()) {
-                val cursorLine = positionMapper.offsetToLine(activeStop.startOffset)
-                val lineHeightPxPopup = editorMetrics.lineHeightPx
-                val visualLineSP = visualLineMapper.docToVisualLine(cursorLine)
-                val layoutSP = textLayoutResult
-                val popupOffsetY = if (layoutSP != null && visualLineSP < layoutSP.lineCount) {
-                    (layoutSP.getLineBottom(visualLineSP) - vScroll.value).roundToInt().coerceAtLeast(0)
-                } else {
-                    ((cursorLine + 1) * lineHeightPxPopup - vScroll.value).roundToInt().coerceAtLeast(0)
-                }
-                val popupOffsetX = with(androidx.compose.ui.platform.LocalDensity.current) { GUTTER_WIDTH.dp.toPx() }.roundToInt()
-                Popup(
-                    alignment = Alignment.TopStart,
-                    offset = androidx.compose.ui.unit.IntOffset(popupOffsetX, popupOffsetY + editorMetrics.lineHeightPx.roundToInt()),
-                ) {
-                    androidx.compose.material3.Surface(
-                        modifier = Modifier.width(180.dp),
-                        shape = RoundedCornerShape(6.dp),
-                        color = colors.background,
-                        shadowElevation = 4.dp,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.function.copy(alpha = 0.6f)),
-                    ) {
-                        Column(
-                            modifier = Modifier.verticalScroll(rememberScrollState()).padding(vertical = 2.dp),
-                        ) {
-                            activeStop.choices.forEachIndexed { idx, choice ->
-                                val isSelected = idx == 0 // First choice is highlighted as default
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            // Replace the active tab-stop text with the chosen value
-                                            val text = value.text
-                                            val stopStart = activeStop.startOffset
-                                            val stopEnd = activeStop.endOffset
-                                            val newText = text.substring(0, stopStart) + choice + text.substring(stopEnd)
-                                            val newLen = choice.length
-                                            val oldLen = stopEnd - stopStart
-                                            // Update session offsets
-                                            snippetSession = session.shiftAfterEdit(activeStop, oldLen, newLen)
-                                            // Update editor value
-                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                            programmaticTextChange(newText, TextRange(stopStart, stopStart + newLen), "snippet_tab_stop_update")
-                                            showSnippetChoices = false
-                                        }
-                                        .background(if (isSelected) colors.function.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent)
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = choice,
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = if (isSelected) colors.function else colors.text,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            SnippetChoicesPopup(
+                snippetSessionState = snippetSessionState,
+                showSnippetChoicesState = showSnippetChoicesState,
+                positionMapper = positionMapper,
+                value = value,
+                editorMetrics = editorMetrics,
+                visualLineMapper = visualLineMapper,
+                textLayoutResult = textLayoutResult,
+                vScroll = vScroll,
+                colors = colors,
+                extraCursorsState = extraCursorsState,
+                programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
+            )
+        }
         }
 
         // IntelliSense dropdown — rendered in a Popup window so it's never clipped
