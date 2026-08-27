@@ -101,7 +101,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.foundation.ScrollState
 import com.codespace.ide.editor.VisualLineMapper
-import androidx.compose.foundation.gestures.pointerInput
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 
 
@@ -618,6 +618,7 @@ internal fun CompletionPopupOverlay(
     }
 }
 
+@Composable
 internal fun FilterChip(
     label: String,
     isActive: Boolean,
