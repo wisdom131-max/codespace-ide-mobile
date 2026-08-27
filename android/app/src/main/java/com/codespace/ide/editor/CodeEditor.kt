@@ -1399,17 +1399,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var findRefLoading by remember { mutableStateOf(false) }
 
     // ── Rename Symbol state ────────────────────────────────────────────────
-    var renameDialogWord by remember { mutableStateOf<String?>(null) }  // null = closed
-    var renameNewName by remember { mutableStateOf("") }
-    var renameCount by remember { mutableStateOf(0) }
+    val renameDialogWordState = remember { mutableStateOf<String?>(null) }
+    var renameDialogWord by renameDialogWordState  // null = closed
+    val renameNewNameState = remember { mutableStateOf("") }
+    var renameNewName by renameNewNameState
+    val renameCountState = remember { mutableStateOf(0) }
+    var renameCount by renameCountState
     // P18-C — Cross-file rename
-    var renameProjectWide by remember { mutableStateOf(false) }
-    var renameCrossFileCount by remember { mutableStateOf(0) }
-    var renameInProgress by remember { mutableStateOf(false) }
-    var renameUsedLsp by remember { mutableStateOf(false) }
+    val renameProjectWideState = remember { mutableStateOf(false) }
+    var renameProjectWide by renameProjectWideState
+    val renameCrossFileCountState = remember { mutableStateOf(0) }
+    var renameCrossFileCount by renameCrossFileCountState
+    val renameInProgressState = remember { mutableStateOf(false) }
+    var renameInProgress by renameInProgressState
+    val renameUsedLspState = remember { mutableStateOf(false) }
+    var renameUsedLsp by renameUsedLspState
     // P39-FULL: Rename preview state
-    var renamePreviewEdit by remember { mutableStateOf<org.json.JSONObject?>(null) }
-    var renamePreviewFiles by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    val renamePreviewEditState = remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var renamePreviewEdit by renamePreviewEditState
+    val renamePreviewFilesState = remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    var renamePreviewFiles by renamePreviewFilesState
 
     // ── P2-4 Go to Definition state ──────────────────────────────────────────────────────
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -1437,7 +1446,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val currentOnInsertHandler by rememberUpdatedState(onInsertHandler)
     // ── Multi-cursor state ───────────────────────────────────────────────
     // Moved here (before LaunchedEffect) so the Esc key handler can reference it.
-    var extraCursors by remember { mutableStateOf<List<Int>>(emptyList()) }
+    val extraCursorsState = remember { mutableStateOf<List<Int>>(emptyList()) }
+    var extraCursors by extraCursorsState
     // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
     androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
         extraCursors = emptyList()
@@ -4253,262 +4263,28 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             )
         }
 
-        if (renameDialogWord != null) {
-            val wordToRename = renameDialogWord!!
-            AlertDialog(
-                onDismissRequest = { renameDialogWord = null },
-                containerColor = colors.background,
-                title = {
-                    Text(
-                        "Rename Symbol",
-                        color = Color(0xFFD4D4D4),
-                        fontSize = 14.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "$renameCount occurrence${if (renameCount != 1) "s" else ""} of '$wordToRename'" +
-                            (if (renameProjectWide && renameCrossFileCount > 0) " + $renameCrossFileCount in other files" else "") +
-                            (if (renameUsedLsp) " [LSP]" else " [regex]"),
-                            color = Color(0xFF888888),
-                            fontSize = 11.sp,
-                        )
-                        // P37-3fix: Badge reflects ACTUAL outcome (renameUsedLsp), not pre-flight check
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(
-                                Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                    .background(if (renameUsedLsp) Color(0xFF4EC9B0) else Color(0xFFCC7832))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    if (renameUsedLsp) "LSP" else "Fallback",
-                                    color = colors.background,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            Text(
-                                if (renameUsedLsp) "Renamed via LSP (workspace-aware)" else "Regex replace in current file only",
-                                color = Color(0xFF888888),
-                                fontSize = 10.sp,
-                            )
-                        }
-                        OutlinedTextField(
-                            value = renameNewName,
-                            onValueChange = { renameNewName = it },
-                            singleLine = true,
-                            label = { Text("New name", color = Color(0xFF888888), fontSize = 11.sp) },
-                            textStyle = TextStyle(
-                                color = Color(0xFFD4D4D4),
-                                fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace,
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF007ACC),
-                                unfocusedBorderColor = colors.gutter.copy(alpha = 0.3f),
-                                cursorColor = Color(0xFF007ACC),
-                            ),
-                        )
-                        if (projectRoot != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { renameProjectWide = !renameProjectWide },
-                            ) {
-                                Checkbox(
-                                    checked = renameProjectWide,
-                                    onCheckedChange = { renameProjectWide = it },
-                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007ACC)),
-                                )
-                                Text(
-                                    "Rename in all project files",
-                                    color = Color(0xFFD4D4D4),
-                                    fontSize = 12.sp,
-                                )
-                            }
-                        }
-                        if (renameInProgress) {
-                            LinearProgressIndicator(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = Color(0xFF007ACC),
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // P39-FULL: Preview button
-                        if (LspManager.isServerRunning(language) && filePath.startsWith("/")) {
-                            TextButton(onClick = {
-                                val newName = renameNewName.trim()
-                                if (newName.isNotEmpty() && newName != wordToRename) {
-                                    val ctx = context
-                                    val uri = LspManager.fileUriFromHostPath(ctx, filePath)
-                                    if (uri != null) {
-                                        val cOff = value.selection.end
-                                        val cPos = positionMapper.offsetToPosition(cOff)
-                                        val cLine = cPos.line
-                                        val cCol = cPos.column
-                                        try {
-                                            val wsEdit = LspManager.rename(language, uri, cLine, cCol, newName)
-                                            if (wsEdit != null) {
-                                                val files = mutableListOf<Pair<String, Int>>()
-                                                val docChanges = wsEdit.optJSONArray("documentChanges")
-                                                val changes = wsEdit.optJSONObject("changes")
-                                                if (docChanges != null) {
-                                                    for (j in 0 until docChanges.length()) {
-                                                        val dc = docChanges.optJSONObject(j) ?: continue
-                                                        val editUri = dc.optString("uri", "")
-                                                        val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
-                                                        val decoded = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
-                                                        val editCount = dc.optJSONArray("edits")?.length() ?: 0
-                                                        files.add(decoded.substringAfterLast("/") to editCount)
-                                                    }
-                                                } else if (changes != null) {
-                                                    val keys = changes.keys()
-                                                    while (keys.hasNext()) {
-                                                        val editUri = keys.next()
-                                                        val editPath = if (editUri.startsWith("file://")) editUri.removePrefix("file://") else editUri
-                                                        val decoded = try { java.net.URLDecoder.decode(editPath, "UTF-8") } catch (_: Exception) { editPath }
-                                                        val editCount = changes.optJSONArray(editUri)?.length() ?: 0
-                                                        files.add(decoded.substringAfterLast("/") to editCount)
-                                                    }
-                                                }
-                                                renamePreviewEdit = wsEdit
-                                                renamePreviewFiles = files
-                                            }
-                                        } catch (_: Exception) {}
-                                    }
-                                }
-                            }) {
-                                Text("Preview", color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                            }
-                        }
-                        Button(
-                        onClick = {
-                            val newName = renameNewName.trim()
-                            if (newName.isNotEmpty() && newName != wordToRename) {
-                                // P37-1: Try LSP rename first, fall back to regex only if LSP unavailable
-                                var lspSucceeded = false
-                                if (LspManager.isServerRunning(language) && filePath.startsWith("/")) {
-                                    val ctx = context
-                                    val uri = LspManager.fileUriFromHostPath(ctx, filePath)
-                                    if (uri != null) {
-                                        val cOff = value.selection.end
-                                        val cPos = positionMapper.offsetToPosition(cOff)
-                                        val cLine = cPos.line
-                                        val cCol = cPos.column
-                                        // Try prepareRename first (some servers require it)
-                                        val prep = try { LspManager.prepareRename(language, uri, cLine, cCol) } catch (_: Exception) { null }
-                                        if (prep != null) {
-                                            // Server confirmed this position is renameable
-                                            val wsEdit = try { LspManager.rename(language, uri, cLine, cCol, newName) } catch (_: Exception) { null }
-                                            if (wsEdit != null) {
-                                                val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
-                                                if (appliedAny) {
-                                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                                    programmaticTextChange(newText, value.selection, "snippet_apply")
-                                                    lspSucceeded = true
-                                                    renameUsedLsp = true
-                                                    // Notify EditorPane's onRenameSymbol callback (for any side effects)
-                                                    onRenameSymbol?.invoke(wordToRename, newName)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                // FALLBACK: regex find-replace only if LSP didn't succeed
-                                if (!lspSucceeded) {
-                                    renameUsedLsp = false
-                                    val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
-                                    val newText = pattern.replace(value.text, newName)
-                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                                    programmaticTextChange(newText, value.selection, "rename_refactor")
-                                    // P18-C: Cross-file rename (regex fallback)
-                                    if (renameProjectWide && projectRoot != null) {
-                                        renameInProgress = true
-                                        coroutineScope.launch(Dispatchers.IO) {
-                                            val root = File(projectRoot)
-                                            var totalCrossFile = 0
-                                            root.walkTopDown()
-                                                .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
-                                                .forEach { file ->
-                                                    try {
-                                                        val text = file.readText()
-                                                        if (pattern.containsMatchIn(text)) {
-                                                            val updated = pattern.replace(text, newName)
-                                                            file.writeText(updated)
-                                                            totalCrossFile += pattern.findAll(text).count()
-                                                        }
-                                                    } catch (_: Exception) {}
-                                                }
-                                            renameCrossFileCount = totalCrossFile
-                                            renameInProgress = false
-                                        }
-                                    }
-                                }
-                            }
-                            renameDialogWord = null
-                        },
-                        enabled = renameNewName.trim().isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC)),
-                    ) {
-                        Text("Rename", color = colors.text, fontSize = 12.sp)
-                    }
-                    }  // close Row
-                },
-                dismissButton = {
-                    TextButton(onClick = { renameDialogWord = null }) {
-                        Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
-                    }
-                },
-            )
-        }
-
-        // P39-FULL: Rename Preview dialog — shows affected files before applying
-        if (renamePreviewEdit != null) {
-            AlertDialog(
-                onDismissRequest = { renamePreviewEdit = null; renamePreviewFiles = emptyList() },
-                containerColor = colors.background,
-                title = { Text("Rename Preview", color = Color(0xFFD4D4D4), fontSize = 14.sp, fontFamily = FontFamily.Monospace) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${renamePreviewFiles.size} file${if (renamePreviewFiles.size != 1) "s" else ""} affected",
-                            color = Color(0xFF4EC9B0), fontSize = 12.sp)
-                        HorizontalDivider(color = colors.gutter.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
-                        renamePreviewFiles.forEach { (fileName, editCount) ->
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("📄", fontSize = 10.sp)
-                                Text(fileName, color = Color(0xFFD4D4D4), fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace, maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                Text("$editCount edit${if (editCount != 1) "s" else ""}", color = Color(0xFF888888), fontSize = 10.sp)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        // Apply the previewed rename edit directly
-                        val wsEdit = renamePreviewEdit!!
-                        val (newText, appliedAny) = com.codespace.ide.lsp.applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
-                        if (appliedAny) {
-                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
-                            programmaticTextChange(newText, TextRange(value.selection.start), "snippet_applied")
-                        }
-                        renamePreviewEdit = null; renamePreviewFiles = emptyList(); renameDialogWord = null
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007ACC))) {
-                        Text("Apply", color = Color.White, fontSize = 12.sp)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { renamePreviewEdit = null; renamePreviewFiles = emptyList() }) {
-                        Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp)
-                    }
-                },
-            )
-        }
+        RenameDialogOverlay(
+            renameDialogWordState = renameDialogWordState,
+            renameNewNameState = renameNewNameState,
+            renameCountState = renameCountState,
+            renameProjectWideState = renameProjectWideState,
+            renameCrossFileCountState = renameCrossFileCountState,
+            renameInProgressState = renameInProgressState,
+            renameUsedLspState = renameUsedLspState,
+            renamePreviewEditState = renamePreviewEditState,
+            renamePreviewFilesState = renamePreviewFilesState,
+            extraCursorsState = extraCursorsState,
+            value = value,
+            colors = colors,
+            context = context,
+            language = language,
+            filePath = filePath,
+            projectRoot = projectRoot,
+            positionMapper = positionMapper,
+            programmaticTextChange = ::programmaticTextChange,
+            onRenameSymbol = onRenameSymbol,
+            coroutineScope = coroutineScope,
+        )
 
         // ── P24-3: Bottom Panels (Find References + Call/Type Hierarchy) ────────────────────────────
         BottomPanels(
