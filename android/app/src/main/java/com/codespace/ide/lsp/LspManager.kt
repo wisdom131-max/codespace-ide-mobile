@@ -1467,6 +1467,11 @@ object LspManager {
         restartBackoffs[language]?.reset()?.let { restartBackoffs[language] = it }
         lifecycleLog("READY lang=${language.displayName} gen=${server.generation} pid=${getProcessPid(process)}")
         notifyLspEvent(language, "ready", NotificationStore.Severity.SUCCESS, "Server started successfully.")
+        // DIAG: Log completionProvider capability specifically
+        val compProvider = caps?.optJSONObject("completionProvider") ?: caps?.opt("completionProvider")
+        AppOutputLog.log("[LSP-DIAG] Server capabilities - completionProvider: ${compProvider?.toString()?.take(300) ?: "NOT ADVERTISED"}", "lsp")
+        val tdSync = caps?.opt("textDocumentSync")
+        AppOutputLog.log("[LSP-DIAG] Server capabilities - textDocumentSync: ${tdSync?.toString() ?: "null"}", "lsp")
         AppOutputLog.log("[LSP] Server capabilities: ${caps.toString().take(300)}", "lsp")
 
         client.notify("initialized")
@@ -2106,11 +2111,22 @@ object LspManager {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
+        // DIAG: Log server capability for completion
+        val hasComp = hasCapability(language, "completionProvider")
+        val compCaps = server.capabilities?.optJSONObject("completionProvider")
+        AppOutputLog.log("[LSP-DIAG] getCompletion: uri=$uri line=$line char=$character triggerChar=$triggerCharacter hasCompletionProvider=$hasComp", "lsp")
+        AppOutputLog.log("[LSP-DIAG] completionProvider caps: ${compCaps?.toString()?.take(300) ?: "null"}", "lsp")
+
         // R3-A: Delegate param building to LspCompletionHandler
         val triggerKind = if (triggerCharacter != null) 2 else 1
         val params = LspCompletionHandler.buildCompletionParams(uri, line, character, triggerCharacter, triggerKind)
+        AppOutputLog.log("[LSP-DIAG] completion params: ${params.toString().take(500)}", "lsp")
         val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
+        // DIAG: Log raw response
+        val rawType = response?.javaClass?.simpleName ?: "null"
+        val rawStr = response?.toString()?.take(500) ?: "null"
+        AppOutputLog.log("[LSP-DIAG] completion RAW response: type=$rawType len=${response?.toString()?.length ?: 0} body=$rawStr", "lsp")
         return when (response) {
             null -> null
             is JSONArray -> response

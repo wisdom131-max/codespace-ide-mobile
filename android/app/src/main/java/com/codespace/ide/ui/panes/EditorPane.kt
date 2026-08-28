@@ -1819,6 +1819,7 @@ fun EditorPane(
                                         if (col > 0 && col <= ln.length) ln[col - 1].toString() else null
                                     }?.takeIf { it == "." }
                                     val items = LspManager.getCompletion(active.language, uri, line, col, triggerChar)
+                                    AppOutputLog.log("[LSP-DIAG] Provider: getCompletion returned ${'$'}{items?.length() ?: "null"} items for line=${'$'}{line} col=${'$'}{col} trigger=${'$'}{triggerChar}", "lsp")
                                     // P26-1: Resolve first item for richer docs
                                     items?.let { arr ->
                                         if (arr.length() > 0) {
@@ -1841,7 +1842,9 @@ fun EditorPane(
                                             }
                                         }
                                     }
-                                    items?.let { parseLspCompletions(it) } ?: emptyList()
+                                    val parsed = items?.let { parseLspCompletions(it) } ?: emptyList()
+                                    AppOutputLog.log("[LSP-DIAG] Provider: parseLspCompletions returned ${'$'}{parsed.size} items (from ${'$'}{items?.length() ?: 0} raw)", "lsp")
+                                    parsed
                                 } else emptyList()
                             }
                         } else null,
