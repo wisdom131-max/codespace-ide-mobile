@@ -1,6 +1,7 @@
 package com.codespace.ide.editor
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -27,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
  *
  * No fling in this version -- scrolling stops immediately on finger lift.
  */
+@Composable
 fun Modifier.horizontalDragInterceptor(
     hScroll: ScrollState,
 ): Modifier = this.pointerInput(Unit) {
