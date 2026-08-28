@@ -15,7 +15,7 @@ import androidx.compose.ui.input.pointer.pointerInput
  * classification automatically.
  *
  * When a horizontal drag is detected:
- *   - The drag delta is applied to hScroll.scrollBy(-dragAmount)
+ *   - The drag delta is applied to hScroll.dispatchRawDelta(-dragAmount)
  *   - The pointer change is consumed so BasicTextField doesn't start text selection
  *
  * No fling in this version -- scrolling stops immediately on finger lift.
@@ -33,6 +33,6 @@ fun Modifier.horizontalDragInterceptor(
         // doesn't also process it (which would select text while scrolling)
         change.consume()
         // Negate: drag right = scroll left = see content to the right
-        hScroll.scrollBy(-dragAmount)
+        hScroll.dispatchRawDelta(-dragAmount)
     }
 }
