@@ -44,6 +44,12 @@ fun CompletionFetchEffect(
     lspHasRespondedState: MutableState<Boolean>,
     lspRequestIdState: MutableState<Long>,
 ) {
+    // TEMP: LSP timing counters (remove after diagnostic session)
+    var __lspSuccessCount by remember { mutableStateOf(0) }
+    var __lspTimeoutCount by remember { mutableStateOf(0) }
+    var __lspTotalMs by remember { mutableStateOf(0L) }
+    var __lspSlowCount by remember { mutableStateOf(0) } // >2s
+
     LaunchedEffect(prefix, isDotContext, selectionEnd, pathContext, editorEvent) {
         // P41-G: Skip LSP completions when path context is active
         if (pathContext != null) {
@@ -90,6 +96,7 @@ fun CompletionFetchEffect(
             if (smartCompletion) {
                 val wasInFallback = lspTimedOutState.value || !lspHasRespondedState.value
                 lspTimedOutState.value = false
+                val __t0 = System.currentTimeMillis()
                 val results = withContext(Dispatchers.IO) {
                     withTimeoutOrNull(5000L) {
                         val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
@@ -99,18 +106,25 @@ fun CompletionFetchEffect(
                         Pair(lsp, ws)
                     }
                 }
+                val __elapsed = System.currentTimeMillis() - __t0
                 if (results != null) {
                     if (myCompGen != lspGens.completion) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale request-gen for completion", "lsp")
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] STALE gen discarded, elapsed=${__elapsed}ms items=${results.first.size}", "lsp")
                         return@LaunchedEffect
                     }
                     if (myCompServerGen != com.codespace.ide.lsp.LspManager.getServerGeneration(language)) {
-                        com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale generation for completion", "lsp")
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] STALE servergen discarded, elapsed=${__elapsed}ms items=${results.first.size}", "lsp")
                         return@LaunchedEffect
                     }
                     lspHasRespondedState.value = true
                     lspCompletionsState.value = results.first
                     workspaceCompletionsState.value = results.second
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] SUCCESS elapsed=${__elapsed}ms lspItems=${results.first.size} wsItems=${results.second.size} prefix='${prefix}'", "lsp")
+                    __lspSuccessCount++
+                    __lspTotalMs += __elapsed
+                    if (__elapsed > 2000) __lspSlowCount++
+                    val __avg = if (__lspSuccessCount > 0) __lspTotalMs / __lspSuccessCount else 0L
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] STATS success=$__lspSuccessCount timeout=$__lspTimeoutCount slow(>2s)=$__lspSlowCount avgMs=$__avg", "lsp")
                     if (wasInFallback) {
                         com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] completion restored after recovery", "lsp")
                     }
@@ -119,6 +133,9 @@ fun CompletionFetchEffect(
                     lspHasRespondedState.value = false
                     lspCompletionsState.value = emptyList()
                     workspaceCompletionsState.value = emptyList()
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] TIMEOUT >5000ms prefix='${prefix}'", "lsp")
+                    __lspTimeoutCount++
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] STATS success=$__lspSuccessCount timeout=$__lspTimeoutCount slow(>2s)=$__lspSlowCount avgMs=$__lspTotalMs", "lsp")
                     com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] completion timed out, using regex fallback", "lsp")
                 }
             } else {
