@@ -69,7 +69,7 @@ fun Modifier.horizontalDragInterceptor(
                     }
 
                     // Finger lifted -- let detectTapGestures fire onTap
-                    if (event.changes.all { it.changedToUp }) {
+                    if (event.changes.all { it.changedToUp() }) {
                         state = InterceptorState.IDLE
                         continue
                     }
@@ -107,7 +107,7 @@ fun Modifier.horizontalDragInterceptor(
                     }
 
                     // Finger lifted -- stop scrolling (no fling)
-                    if (event.changes.all { it.changedToUp }) {
+                    if (event.changes.all { it.changedToUp() }) {
                         state = InterceptorState.IDLE
                         continue
                     }
@@ -128,7 +128,7 @@ fun Modifier.horizontalDragInterceptor(
                 InterceptorState.PASSTHROUGH -> {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     // Never consume -- child handlers own this gesture
-                    if (event.changes.all { it.changedToUp } || event.changes.isEmpty()) {
+                    if (event.changes.all { it.changedToUp() } || event.changes.isEmpty()) {
                         state = InterceptorState.IDLE
                     }
                 }
