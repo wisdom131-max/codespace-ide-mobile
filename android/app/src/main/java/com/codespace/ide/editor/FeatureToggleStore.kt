@@ -33,6 +33,7 @@ object FeatureToggleStore {
         Toggle("ghost_text", true, "Ghost text", "AI suggestion preview as dimmed text"),
         Toggle("merge_conflicts", true, "Merge conflicts", "Highlight merge conflict markers with resolve buttons"),
         Toggle("lsp_highlights", true, "LSP highlights", "Highlight occurrences of symbol under cursor"),
+        Toggle("disable_builtin_completion", false, "Disable built-in completion (non-LSP)", "Suppress local keyword/snippet completions so only LSP completions appear -- useful for testing LSP and Tab-triggered snippet expansion without the built-in popup interfering"),
     )
 
     private val states = mutableMapOf<String, MutableState<Boolean>>()

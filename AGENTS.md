@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 6cc646c |
-| CI build | #2566 GREEN |
+| Latest commit | (pending) |
+| CI build | pending |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -894,3 +894,39 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 5. NEVER re-do work already marked done
 6. ROADMAP CONTINUITY: List ALL pending items
 7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horiz, 10dp vert)
+
+---
+## [2026-08-28 20:15 WAT] — AI Agent: Claude Sonnet 4
+
+**RULES REMINDER BLOCK:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**Commit:** (pending push) | **CI Build:** pending
+
+[UNDO] Fix: Undo coalescing now keeps the FIRST snapshot in a coalescing group instead of replacing it with the latest. This means undo restores to the state at the START of a typing burst (e.g. typing "hello" → one undo removes all of "hello", not just "o"). Also: pushForce() now resets lastPushTime to 0L so force-pushed entries (initial state, paste, programmatic edits) always start a fresh coalescing group — eliminates timing-dependent inconsistency.
+
+[UI] Fix: Horizontal scroll drag interceptor added. Uses PointerEventPass.Initial on the parent Box to intercept horizontal drag gestures BEFORE BasicTextField's internal text-selection handler can consume them. State machine: IDLE→PENDING→(H_DRAG|PASSTHROUGH) classifies by dominant axis past touchSlop. Horizontal drags scroll hScroll; vertical drags and taps pass through to child handlers. No fling in this version.
+
+[INTELLIGENSE] Feature: New settings toggle "Disable built-in completion (non-LSP)" in Editor Features. When ON, suppresses local keyword/snippet completions so only LSP completions appear. Also prevents the built-in popup from blocking Tab-triggered snippet expansion — with toggle ON, typing "fun" + Tab in a .kt file expands the snippet directly without a completion popup in the way.
+
+**Files touched:**
+- android/app/src/main/java/com/codespace/ide/editor/undo/SnapshotUndoManager.kt (push coalescing fix, pushForce lastPushTime fix)
+- android/app/src/main/java/com/codespace/ide/editor/HorizontalDragInterceptor.kt (NEW — initial-pass drag interceptor)
+- android/app/src/main/java/com/codespace/ide/editor/CodeEditor.kt (import + modifier chain wiring + disableBuiltinCompletion toggle state + completions suppression)
+- android/app/src/main/java/com/codespace/ide/editor/FeatureToggleStore.kt (new toggle entry)
+- AGENTS.md (changelog)
+
+**Next on roadmap (ALL pending items):**
+1. Dot-triggered completion popup (Test 10) — still not fixed, needs investigation
+2. Stale LSP response rejection (Test 15) — still not fixed, needs investigation
+3. Snippet Tab expansion (Test 13) — code is in place, needs on-device verification with disable_builtin_completion toggle ON
+4. Horizontal scroll drag — needs on-device verification (risk: BasicTextField may ignore initial-pass consumption in edge cases)
+5. Undo coalescing fix — needs on-device verification (typing "hello" → one undo should remove all)
+6. Continue extracting large composable blocks from CodeEditor.kt (R3-I pattern)
+7. Confirm UI padding/rounding consistency across all panels

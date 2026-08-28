@@ -10,8 +10,9 @@ import androidx.compose.ui.text.TextRange
  * diff computation, no merge logic.
  *
  * Coalescing: push() calls within [coalesceMs] of the last push are merged
- * into a single undo step (the latest snapshot wins). This gives natural
- * undo granularity for typing without per-character undo steps.
+ * into a single undo step — the FIRST snapshot in the group is kept (not
+ * replaced), so undo restores to the state at the start of the typing burst.
+ * pushForce() always starts a fresh group (lastPushTime reset to 0L).
  *
  * Max depth: [maxStackSize] snapshots (default 200).
  */
@@ -33,14 +34,19 @@ class SnapshotUndoManager(
     /**
      * Push a snapshot onto the undo stack.
      *
-     * If called within [coalesceMs] of the previous push, replaces the previous
-     * entry instead of creating a new one (keystroke coalescing).
+     * If called within [coalesceMs] of the previous push, coalesces into the
+     * existing entry (keeps the first snapshot, discards subsequent ones).
+     * This means undo restores to the state at the START of the typing burst.
      */
     fun push(snapshot: TextSnapshot) {
         val now = System.currentTimeMillis()
         if (undoStack.isNotEmpty() && now - lastPushTime < coalesceMs) {
-            // Coalesce: replace the last snapshot with the new one
-            undoStack.removeLast()
+            // Coalesce: keep the FIRST entry in this group (state to restore TO at
+            // the start of typing). Do NOT replace it — the first push in a
+            // coalescing group is the correct undo target, not the latest.
+            lastPushTime = now
+            redoStack.clear()
+            return
         }
         if (undoStack.size >= maxStackSize) undoStack.removeFirst()
         undoStack.addLast(snapshot)
@@ -56,7 +62,10 @@ class SnapshotUndoManager(
         if (undoStack.size >= maxStackSize) undoStack.removeFirst()
         undoStack.addLast(snapshot)
         redoStack.clear()
-        lastPushTime = System.currentTimeMillis()
+        // Reset to 0L so the next push() call can NEVER coalesce with this
+        // force-pushed entry. Force-pushed entries (initial state, paste,
+        // programmatic edits) must always start a fresh coalescing group.
+        lastPushTime = 0L
     }
 
     /**

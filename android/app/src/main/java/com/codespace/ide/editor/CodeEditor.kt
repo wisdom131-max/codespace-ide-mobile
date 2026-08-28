@@ -133,6 +133,7 @@ import com.codespace.ide.lsp.fuzzyMatchIndices
 import com.codespace.ide.lsp.CompletionItemKind
 import com.codespace.ide.lsp.CompletionHistoryStore
 import com.codespace.ide.editor.SignatureInfo
+import com.codespace.ide.editor.horizontalDragInterceptor
 import com.codespace.ide.lsp.LspManager
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -733,6 +734,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
     var showMinimapState by FeatureToggleStore.state("minimap")
+    // DEBUG: When ON, suppress local keyword/snippet completions so only LSP completions show.
+    // This also prevents the built-in popup from blocking Tab-triggered snippet expansion.
+    var disableBuiltinCompletion by FeatureToggleStore.state("disable_builtin_completion")
 
     // 2. Code folding state
     var foldedRanges by remember { mutableStateOf(setOf<Int>()) } // start line index (0-based)
@@ -978,7 +982,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // inserted character was a dot. Distinguishes from isDotContext which is true
     // whenever the cursor happens to be after a dot (file open, cursor move, etc.).
     val dotWasTyped = editorEvent is EditorEvent.UserTyping && isDotContext
-    val completions = remember(prefix, language) { completionsFor(prefix, language) }
+    val completions = remember(prefix, language, disableBuiltinCompletion) { if (disableBuiltinCompletion) emptyList() else completionsFor(prefix, language) }
     val showCompletionsState = remember { mutableStateOf(false) }
     var showCompletions by showCompletionsState
     // NEW (2026-08-10): Resizable completion popup — drag bottom edge to grow/shrink, like VS Code.
@@ -1164,10 +1168,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext, smartCompletion, lspHasResponded, lspTimedOut) {
         // P41-V: Context-aware filtering
         // In member-access or after-keyword context, suppress keyword/buffer completions
-        val suppressKeywords = completionContext.lspOnly
+        val suppressKeywords = completionContext.lspOnly || disableBuiltinCompletion
         // Smart completion: when LSP has responded, suppress local/regex completions
         // But if LSP timed out or hasn't responded yet, show local as fallback
-        val suppressLocalSmart = smartCompletion && lspHasResponded && lspCompletions.isNotEmpty()
+        val suppressLocalSmart = smartCompletion && lspHasResponded && lspCompletions.isNotEmpty() || disableBuiltinCompletion
         // Convert local completions to RankedCompletionItem (filtered by context)
         val localRanked = (if (suppressKeywords || suppressLocalSmart) emptyList() else completions).map { c ->
             val kind = when (c.kind) {
@@ -1969,10 +1973,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val safeScrollWidth = maxOf(measuredScrollWidth, screenWidthPx)
             val editorWidthModifier = if (!wordWrap && safeScrollWidth > 0f) {
                 Modifier
+                    .horizontalDragInterceptor(hScroll)
                     .horizontalScroll(hScroll)
                     .width(with(scrollDensity) { safeScrollWidth.toDp() })
             } else {
-                Modifier.horizontalScroll(hScroll)
+                Modifier
+                    .horizontalDragInterceptor(hScroll)
+                    .horizontalScroll(hScroll)
             }
             Box(
                 modifier = editorWidthModifier
