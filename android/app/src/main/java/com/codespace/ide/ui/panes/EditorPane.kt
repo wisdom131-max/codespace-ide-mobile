@@ -1811,6 +1811,14 @@ fun EditorPane(
                                     // unrelated/stale suggestions instead of member completions for what was
                                     // just typed. Sending didChange synchronously here guarantees freshness.
                                     val syncVersion = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                                    // DIAG: Log didOpen status and content snippet around cursor
+                                    val didOpenSent = lspOpenedFiles[active.path] == true
+                                    val contentLines = active.content.split("\n")
+                                    val cursorLine = contentLines.getOrNull(line) ?: ""
+                                    val beforeCursor = if (col > 0 && col <= cursorLine.length) cursorLine.substring(0, col) else ""
+                                    val afterCursor = if (col < cursorLine.length) cursorLine.substring(col) else ""
+                                    AppOutputLog.log("[LSP-DIAG] completion-context: didOpenSent=" + didOpenSent + " path=" + active.path + " totalLines=" + contentLines.size + " totalChars=" + active.content.length, "lsp")
+                                    AppOutputLog.log("[LSP-DIAG] cursor-line-" + line + ": before=[" + beforeCursor + "] after=[" + afterCursor + "] (col=" + col + ")", "lsp")
                                     LspManager.didChange(active.language, uri, active.content, syncVersion)
                                     // Determine trigger character (e.g. "." for member completion) from the
                                     // actual buffer content so the server gets correct LSP completion context.

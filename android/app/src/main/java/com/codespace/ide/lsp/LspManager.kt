@@ -2071,7 +2071,9 @@ object LspManager {
         server.client.notify("textDocument/didOpen", params)
         trackDocument(language, uri, languageId, text, version)
         touchActivity(language)
-        AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId)", "lsp")
+        val contentPreview = if (text.length > 80) text.take(40) + "..." + text.takeLast(40) else text
+        AppOutputLog.log("[LSP] didOpen sent: $uri (lang=$languageId, version=$version, textLen=${text.length})", "lsp")
+        AppOutputLog.log("[LSP-DIAG] didOpen content preview: " + contentPreview.replace("\n", "\\n"), "lsp")
         return true
     }
 
@@ -2087,6 +2089,8 @@ object LspManager {
         server.client.notify("textDocument/didChange", params)
         updateTrackedDocument(language, uri, text, version)
         touchActivity(language)
+        val contentPreview = if (text.length > 80) text.take(40) + "..." + text.takeLast(40) else text
+        AppOutputLog.log("[LSP-DIAG] didChange: uri=" + uri + " version=" + version + " textLen=" + text.length + " content=" + contentPreview.replace("\n", "\\n"), "lsp")
         return true
     }
 
