@@ -2294,7 +2294,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             fontSize = fontSize.sp,
                             lineHeight = (fontSize * 1.25f).sp,
                             fontFamily = FontFamily.Monospace,
-                            softWrap = !wordWrap,
                         )
                     ),
                     // P-CURSOR: Animated cursor brush based on In-Project Settings > Text Editor > Cursor Blinking
