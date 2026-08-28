@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | (pending) |
-| CI build | pending |
+| Latest commit | e279175 |
+| CI build | GREEN (e279175) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -930,3 +930,47 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 5. Undo coalescing fix — needs on-device verification (typing "hello" → one undo should remove all)
 6. Continue extracting large composable blocks from CodeEditor.kt (R3-I pattern)
 7. Confirm UI padding/rounding consistency across all panels
+
+
+### [2026-08-28 22:00 WAT] — AI Agent: Claude, Commit e279175, CI Build GREEN
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build #+pass/fail, what fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**Commit:** e279175 | **CI Build:** GREEN
+
+[HSCROLL-FIX] Root cause found and fixed: `awaitPointerEvent` is a member of `AwaitPointerEventScope`, NOT `PointerInputScope`. The original Initial-pass interception design was correct all along — the "Unresolved reference: awaitPointerEvent" error was caused by calling it on the wrong receiver type. Fix: wrap the pointer event loop in `awaitPointerEventScope { }` which is a member of `PointerInputScope` and provides an `AwaitPointerEventScope` receiver. Also added missing import for `changedToUp` extension function (not property — needs parentheses in Compose 1.6.8).
+
+**Investigation findings:**
+- `awaitPointerEvent` IS available in Compose BOM 2024.06.00 (Compose UI 1.6.8) — the "unresolved" error was NOT a missing API, it was a wrong-receiver-type error. `awaitPointerEvent` lives on `AwaitPointerEventScope`, not `PointerInputScope`. Use `awaitPointerEventScope { }` wrapper to get the correct receiver.
+- `changedToUp` is an extension FUNCTION (not property) in this Compose version — needs `()` parentheses.
+- The Initial-pass interception design (PointerEventPass.Initial) is now active and should fire BEFORE BasicTextField's internal text-selection handler.
+
+**Completion toggle investigation:**
+- `disableBuiltinCompletion` toggle correctly suppresses ONLY local/keyword completions (line 985, 1171, 1174). LSP completions flow through `lspRanked` (line 1200-1207) with no gate from the toggle. The "no popup at all" symptom with toggle ON is caused by the separate dot-trigger bug (Test 10), not by the toggle over-gating.
+
+**Completion source markers investigation:**
+- Source badges ALREADY EXIST in CompletionPopupOverlay.kt (lines 514-523): "LSP" (green), "Buf" (gray), "Snip" (yellow), "Wksp" (blue), "AI" (purple), "Path" (light blue). Filter chips also exist (lines 225-242) for filtering by source. These are functional but use small 8sp text — may be hard to see on-device.
+
+**LSP fallback system investigation:**
+- EXISTS and is wired correctly. See CompletionFetchEffect.kt: `smartCompletion` flag gates a 5-second timeout (`withTimeoutOrNull(5000L)`). If LSP responds within 5s → `lspHasResponded = true`, LSP completions used. If timeout → `lspTimedOut = true`, LSP completions cleared, local completions shown as fallback. Recovery: a 2s-poll LaunchedEffect (lines 1119-1133) watches `LspManager.lspRecoveryCounter` — when LSP transitions to READY after being unhealthy, both flags reset and next request tries LSP first again.
+
+**Files touched:**
+- android/app/src/main/java/com/codespace/ide/editor/HorizontalDragInterceptor.kt (awaitPointerEventScope wrapper + changedToUp import + parentheses fix)
+- AGENTS.md (changelog + current state update)
+
+**Next on roadmap (ALL pending items):**
+1. Dot-triggered completion popup (Test 10) — still not fixed, needs investigation
+2. Stale LSP response rejection (Test 15) — still not fixed, needs investigation
+3. Snippet Tab expansion (Test 13) — code in place, needs on-device verification with disable_builtin_completion toggle ON
+4. Horizontal scroll drag — needs on-device verification (Initial-pass interception now active, build e279175)
+5. Undo coalescing fix — needs on-device verification (typing "hello" -> one undo removes all)
+6. Completion source badges — already exist, may need visibility improvements (8sp -> 10sp, or add background pill)
+7. Continue extracting large composable blocks from CodeEditor.kt (R3-I pattern)
+8. Confirm UI padding/rounding consistency across all panels
