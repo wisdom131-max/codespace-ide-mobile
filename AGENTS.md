@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | PENDING |
-| CI build | pending |
+| Latest commit | 6cc646c |
+| CI build | #2566 GREEN |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -855,7 +855,7 @@ SnapshotUndoManager.kt (new, undo/), CodeEditor.kt (editor/)
 7. KOTLIN PITFALLS: See rules block at top.
 8. JVM 64KB LIMIT: Extract new UI to separate files.
 
-**Commit:** (pending push) | **CI Build:** pending
+**Commit:** 6cc646c | **CI Build:** #2566 ✅ GREEN
 
 **[BUILD-FIX] Remove invalid softWrap property from TextStyle in CodeEditor.kt**
 
