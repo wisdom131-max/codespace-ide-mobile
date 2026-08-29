@@ -809,6 +809,15 @@ object LspManager {
         @Volatile var initialized = false
         @Volatile var capabilities: JSONObject? = null
         val diagnostics = ConcurrentHashMap<String, JSONArray>()
+        // KLS COMPLETION FIX: Track when publishDiagnostics was last received per URI.
+        // KLS uses Recompile.NEVER for completions, meaning it uses the stale
+        // BindingContext from the last debounced compile. If a variable was typed
+        // after the last compile, its type is unknown and KLS falls back to
+        // returning all scope members (75 annotation-target items) instead of
+        // actual member completions. By tracking diagnostics timestamps, the
+        // client can wait for the compile to finish (signaled by publishDiagnostics)
+        // before requesting completion, ensuring the BindingContext is fresh.
+        val lastDiagnosticsTime = ConcurrentHashMap<String, Long>()
 
         // Phase V-A: Authoritative lifecycle state
         @Volatile var state: LspState = LspState.STARTING
@@ -1507,6 +1516,9 @@ object LspManager {
             val uri = params.optString("uri", "")
             val diags = params.optJSONArray("diagnostics") ?: JSONArray()
             server.diagnostics[uri] = diags
+            // KLS COMPLETION FIX: Record when diagnostics arrived so the client
+            // can wait for fresh compilation before requesting completions.
+            server.lastDiagnosticsTime[uri] = System.currentTimeMillis()
             diagnosticsHandlers[language]?.invoke(uri, diags)
             // Phase P: Feed into central DiagnosticManager
             val filePath = uri.removePrefix("file://")
@@ -2362,6 +2374,48 @@ object LspManager {
             }
             else -> Pair(null, false)
         }
+    }
+
+    /**
+     * KLS COMPLETION FIX: Wait for publishDiagnostics to arrive after a didChange,
+     * indicating the server's debounced compile finished and the BindingContext
+     * is fresh. KLS uses Recompile.NEVER for completions, so it relies on the
+     * last compiled BindingContext for type resolution. If we request completion
+     * before the compile finishes, KLS doesn't know about newly-typed variables
+     * and returns generic scope members (75 annotation-target items) instead of
+     * actual member completions.
+     *
+     * This is a WORKAROUND for a KLS server-side limitation (Recompile.NEVER is
+     * hardcoded in KotlinTextDocumentService.completion()). The real fix would be
+     * for KLS to use Recompile.AFTER_DOT for dot-triggered completions, which would
+     * recompile on demand. Since we can't patch KLS, we wait for the signal that
+     * the compile is done (publishDiagnostics notification) before requesting completion.
+     *
+     * @param language The language server to check
+     * @param uri The file URI
+     * @param afterTimestamp The timestamp of the didChange we need diagnostics for
+     * @param timeoutMs Maximum wait time (default 700ms — KLS debounce is ~500ms)
+     * @return true if diagnostics arrived within timeout, false if timed out
+     */
+    fun awaitDiagnostics(
+        language: Language,
+        uri: String,
+        afterTimestamp: Long,
+        timeoutMs: Long = 700L,
+    ): Boolean {
+        val server = servers[language] ?: return false
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val diagTime = server.lastDiagnosticsTime[uri] ?: 0L
+            if (diagTime >= afterTimestamp) {
+                val waited = timeoutMs - (deadline - System.currentTimeMillis())
+                AppOutputLog.log("[LSP-COMP-WAIT] diagnostics received for $uri after didChange (waited ${waited}ms)", "lsp")
+                return true
+            }
+            Thread.sleep(20)
+        }
+        AppOutputLog.log("[LSP-COMP-WAIT] TIMEOUT waiting for diagnostics on $uri (waited ${timeoutMs}ms) -- proceeding with stale BindingContext", "lsp")
+        return false
     }
 
     fun getHover(

@@ -137,16 +137,19 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
                     defaultValue = ""
                 })
             ) { backStackEntry ->
-                var projectId = backStackEntry.arguments?.getString("projectId").orEmpty()
-                // ROOT CAUSE FIX: After process death, Navigation restores the back stack
-                // from SavedStateHandle but the path argument Bundle may be null/empty
-                // (known issue when startDestination has path args without explicit
-                // navArgument + defaultValue). Fall back to lastProjectId() which persists
-                // in SharedPreferences and is the same source startDest was computed from.
-                if (projectId.isBlank()) {
-                    val fallback = sessionStateStore.lastProjectId().orEmpty()
-                    AppOutputLog.log("[NAV] projectId blank from backStackEntry.arguments (Navigation saved-state restoration bug) -- falling back to lastProjectId()='" + fallback + "'", "lsp")
-                    projectId = fallback
+                // remember(backStackEntry) ensures this only runs on actual navigation
+                // events (new backStackEntry instance), NOT on every recomposition frame.
+                // Previously the blank-argument fallback + AppOutputLog.log fired on every
+                // recomposition (theme toggle, keyboard show/hide, child state changes),
+                // flooding the Output tab with dozens of identical [NAV] lines per second.
+                val projectId = remember(backStackEntry) {
+                    var pid = backStackEntry.arguments?.getString("projectId").orEmpty()
+                    if (pid.isBlank()) {
+                        val fallback = sessionStateStore.lastProjectId().orEmpty()
+                        AppOutputLog.log("[NAV] projectId blank from backStackEntry.arguments -- falling back to lastProjectId()='" + fallback + "'", "lsp")
+                        pid = fallback
+                    }
+                    pid
                 }
                 ProjectShellScreen(
                     projectId         = projectId,

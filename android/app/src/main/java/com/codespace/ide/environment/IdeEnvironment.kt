@@ -49,8 +49,22 @@ object IdeEnvironment {
         val (proot, args, envVars) = ProotInstaller.launchArgs(context)
         val workspacePath = resolveWorkspacePath(context, projectId, workDir)
 
+        // DIAGNOSTIC: Log every step of workspace path resolution to identify
+        // exactly where the chain breaks when WORKSPACE_PATH ends up empty.
+        Log.d(TAG, "forTerminal DIAG: projectId=$projectId workDir=$workDir")
+        Log.d(TAG, "forTerminal DIAG: workspacePath resolved=$workspacePath")
+        Log.d(TAG, "forTerminal DIAG: enrichedArgs will ${if (workspacePath != null) "INSERT" else "SKIP"} env vars into proot args")
+        Log.d(TAG, "forTerminal DIAG: enrichedEnvVars will ${if (workspacePath != null) "ADD" else "SKIP"} WORKSPACE_PATH/PROJECT_FILES")
+
         val enrichedEnv = enrichEnvVars(envVars, workspacePath)
         val enrichedArgs = enrichArgs(args, workspacePath)
+
+        // DIAGNOSTIC: Verify the env vars actually made it into the args
+        if (workspacePath != null) {
+            val hasWsPath = enrichedArgs.any { it.startsWith("WORKSPACE_PATH=") }
+            val hasProjFiles = enrichedArgs.any { it.startsWith("PROJECT_FILES=") }
+            Log.d(TAG, "forTerminal DIAG: args contain WORKSPACE_PATH=$hasWsPath PROJECT_FILES=$hasProjFiles")
+        }
 
         return ProotEnv(
             proot = proot,
@@ -108,14 +122,30 @@ object IdeEnvironment {
         workDir: String? = null,
     ): String? {
         val rawPath = workDir ?: ProjectPathResolver.resolveProjectRoot(context, projectId)
-        return rawPath?.let {
+        // DIAGNOSTIC: Log the raw path and which branch we take
+        Log.d(TAG, "resolveWorkspacePath DIAG: projectId=$projectId workDir=$workDir rawPath=$rawPath")
+        val result = rawPath?.let {
             when {
-                it.startsWith("/storage/emulated/0") -> it.replace("/storage/emulated/0", "/sdcard")
-                it.startsWith("/sdcard") -> it
-                it.startsWith("/root") -> it
-                else -> null
+                it.startsWith("/storage/emulated/0") -> {
+                    Log.d(TAG, "resolveWorkspacePath DIAG: translating /storage/emulated/0 -> /sdcard")
+                    it.replace("/storage/emulated/0", "/sdcard")
+                }
+                it.startsWith("/sdcard") -> {
+                    Log.d(TAG, "resolveWorkspacePath DIAG: already /sdcard prefix, keeping as-is")
+                    it
+                }
+                it.startsWith("/root") -> {
+                    Log.d(TAG, "resolveWorkspacePath DIAG: /root prefix, keeping as-is")
+                    it
+                }
+                else -> {
+                    Log.d(TAG, "resolveWorkspacePath DIAG: UNRECOGNIZED PREFIX '$it' -> returning null (not accessible inside proot)")
+                    null
+                }
             }
         }
+        Log.d(TAG, "resolveWorkspacePath DIAG: final result=$result")
+        return result
     }
 
     /**
