@@ -126,6 +126,11 @@ fun CompletionFetchEffect(
             if (smartCompletion) {
                 val wasInFallback = lspTimedOutState.value || !lspHasRespondedState.value
                 lspTimedOutState.value = false
+                // FIX: Explicitly mark "loading" so lspCompletionLoading derivedState
+                // becomes true the moment a new request starts — not only on timeout
+                // or recovery. This narrows the race window where the old popup stays
+                // visible while a new fetch is in-flight without any loading indicator.
+                lspHasRespondedState.value = false
                 val __t0 = System.currentTimeMillis()
                 val results = withContext(Dispatchers.IO) {
                     withTimeoutOrNull(5000L) {

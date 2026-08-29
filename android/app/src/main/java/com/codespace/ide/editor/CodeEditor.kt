@@ -4480,6 +4480,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             lintErrors = lintErrors,
             extraCursorsState = extraCursorsState,
             programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
+            lspLoading = lspCompletionLoading,
         )
 
         // P2-12 Signature help popup — shown above the current line, one line up so it
@@ -4567,7 +4568,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val imeHeightDpVal = with(androidx.compose.ui.platform.LocalDensity.current) { imeHeightPx.toDp() }.value.toInt().toInt()
         val availableHeightDp = LocalConfiguration.current.screenHeightDp - imeHeightDpVal
         // Completion loading indicator — shows when LSP is still fetching
-        if (lspCompletionLoading && !showCompletions && prefix.isNotEmpty()) {
+        if (lspCompletionLoading && !showCompletions && prefix.isNotEmpty() && allCompletions.isEmpty()) {
             val cursorLine = positionMapper.offsetToLine(value.selection.end)
             val lineHeightPx = with(scrollDensity) { lineHeightDp.toPx() }
             val cursorCol = positionMapper.offsetToPosition(value.selection.end).column

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -139,6 +140,7 @@ internal fun CompletionPopupOverlay(
     onContentChange: (String) -> Unit,
     fontSize: Int,
     programmaticTextChange: (String, TextRange, String) -> Unit,
+    lspLoading: Boolean = false,
 ) {
     var detailDoc by detailDocState
     var detailLabel by detailLabelState
@@ -249,6 +251,33 @@ internal fun CompletionPopupOverlay(
                             onClick = { completionFilter = if (completionFilter == src) null else src; selectedLabel = null }
                         )
                     }
+                }
+            }
+            
+            // INLINE-LOADING: When a new LSP request is in-flight while the popup
+            // is still showing previous results, render a compact loading row at
+            // the TOP of the completion list instead of a separate overlapping
+            // Popup window. Eliminates the z-order race where the standalone
+            // loading popup would render on top of the completion popup.
+            if (lspLoading) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.function.copy(alpha = 0.08f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(10.dp),
+                        strokeWidth = 1.5.dp,
+                        color = colors.function,
+                    )
+                    Text(
+                        text = "Loading...",
+                        fontSize = 10.sp,
+                        color = colors.text.copy(alpha = 0.6f),
+                    )
                 }
             }
             
