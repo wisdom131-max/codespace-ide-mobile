@@ -1510,6 +1510,27 @@ object LspManager {
             AppOutputLog.log("[LSP] publishDiagnostics for ${language.displayName}: ${diags.length()} diagnostic(s) in ${uri.substringAfterLast('/')}", "lsp")
         }
 
+        // R3-KLSP-LOG: Capture window/logMessage notifications from the
+        // kotlin-language-server. KLS uses a CUSTOM Logger (org.javacs.kt.LOG)
+        // that routes ALL application logs (classpath resolution, symbol
+        // indexing, workspace management) through window/logMessage JSON-RPC
+        // notifications — NOT stderr. SLF4J only captures Exposed (database)
+        // and LSP4J framework logs. Without this handler, the critical
+        // "Adding N files to class path" and "Updated symbol index" messages
+        // are silently dropped.
+        client.onNotification("window/logMessage") { params ->
+            val type = params.optString("type", "")
+            val msg = params.optString("message", "")
+            val typeLabel = when (type) {
+                "1" -> "ERROR"
+                "2" -> "WARN"
+                "3" -> "INFO"
+                "4" -> "LOG"
+                else -> type
+            }
+            AppOutputLog.log("[LSP][${language.displayName}][logMsg] [$typeLabel] $msg", "lsp")
+        }
+
         client.start()
 
         // P38-FIX: When the reader thread exits (server crashed, EOF, etc.),
