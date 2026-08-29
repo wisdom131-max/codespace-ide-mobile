@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.terminal.BusyboxInstaller
+import com.codespace.ide.environment.IdeEnvironment
 import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
 import com.termux.terminal.TerminalSession
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -321,42 +322,22 @@ class TerminalService : Service() {
             // ("unable to make backup link of '...' before installing new version").
             // Calling it here means every terminal session guarantees the shim is present.
             ProotInstaller.ensureShimInstalled(this)
-            val (proot, args, envVars) = ProotInstaller.launchArgs(this)
-            val session = TerminalSession(proot, "/", args, envVars, 4000, client)
+            // Gap 1+3: Use IdeEnvironment as single source of truth for env vars.
+            // WORKSPACE_PATH and PROJECT_FILES are now baked into the env map directly
+            // (via /usr/bin/env -i args) instead of post-hoc session.write() injection.
+            val prootEnv = IdeEnvironment.forTerminal(this, projectId, workDir)
+            val session = TerminalSession(prootEnv.proot, "/", prootEnv.args, prootEnv.envVars, 4000, client)
             liveSessions.add(TrackedSession(session, projectId))
             // Give ANY AI launched inside the terminal (Claude Code, Ollama CLI, llama.cpp,
             // etc.) the same 32 AgentTools the chat panel uses, via localhost:8765 — was built
             // (AgentApiServer.kt) but never actually started anywhere. Safe to call repeatedly;
             // start() no-ops if already running.
             com.codespace.ide.agent.AgentApiServer.start(applicationContext)
-            // Auto-cd into this project's own directory (fix #12, 2026-07-08) — only for
-            // real in-container paths (/root/...). Shared-storage paths (/storage/...) are
-            // bind-mounted at /sdcard inside proot, not at their host path, so guessing a
-            // "translated" path here would risk cd-ing somewhere wrong; leave those at the
-            // default /root instead (unchanged prior behavior for non-/root workspaces).
-            // Inject WORKSPACE_PATH so any AI in the terminal knows where the project files are.
-            // /storage/emulated/0 is bind-mounted at /sdcard inside proot, so translate the path.
-            val prootWorkspace: String? = workDir?.let {
-                when {
-                    it.startsWith("/storage/emulated/0") -> it.replace("/storage/emulated/0", "/sdcard")
-                    it.startsWith("/sdcard") -> it
-                    it.startsWith("/root") -> it
-                    else -> null
-                }
-            }
-            if (prootWorkspace != null) {
-                session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
-                session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
-                // Fix Test 16/17: cd into the project workspace so files created via
-                // terminal (echo > file.txt) land in the project dir the explorer shows.
-                // /sdcard is bind-mounted in proot, so /sdcard/... paths work fine.
-                session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
-                // Fix Test 20: Flush bash history after each command so the shell
-                // history search overlay shows commands typed in the terminal.
-                session.write("export PROMPT_COMMAND='history -a'\n")
-                session.write("export HISTFILE=~/.bash_history\n")
-                session.write("export HISTSIZE=500\n")
-                session.write("export HISTFILESIZE=500\n")
+            // Fallback: session.write() commands as belt-and-suspenders. The env vars are
+            // already baked into the /usr/bin/env -i args, but if the shell sources a profile
+            // that unsets them, these re-apply. Also cd + history config for interactive use.
+            IdeEnvironment.workspacePathFallbackCommands(prootEnv.workspacePath).forEach { cmd ->
+                session.write(cmd)
             }
             return Pair(session, client)
         }

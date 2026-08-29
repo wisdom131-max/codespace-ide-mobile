@@ -11,6 +11,7 @@ import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.TypeScriptVersion
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.environment.IdeEnvironment
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -1407,14 +1408,11 @@ object LspManager {
         // and other environment variables set by profile scripts, while preventing
         // ANY banner text from reaching the JSON-RPC pipe. Then exec replaces
         // bash with the LSP server, giving it a clean stdout.
-        val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
-        // Strip fd/0, fd/1, and fd/2 bind mounts (see previous comment — cosmetic warnings).
-        val filteredArgs = baseArgs.filter {
-            it != "--bind=/proc/self/fd/0:/dev/stdin" &&
-            it != "--bind=/proc/self/fd/1:/dev/stdout" &&
-            it != "--bind=/proc/self/fd/2:/dev/stderr"
-        }
-        val headArgs = filteredArgs.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
+        // Gap 1: Use IdeEnvironment.forSubprocess — central env config with stdio binds stripped.
+        val prootEnv = IdeEnvironment.forSubprocess(context)
+        val proot = prootEnv.proot
+        val envVars = prootEnv.envVars
+        val headArgs = prootEnv.args.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
         // P-PYRIGHT: Inject Node.js arguments from In-Project Settings when using Pyright
         val effectiveCmd = if (language == Language.PYTHON && ProjectSettingsStore.diagnosticsSource.value == DiagnosticsSource.PYRIGHT) {
             val nodeArgs = ProjectSettingsStore.pyrightNodeArgs.value.trim()
@@ -1447,11 +1445,8 @@ object LspManager {
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)
-        val envMap = pb.environment()
-        envVars.forEach { kv ->
-            val idx = kv.indexOf('=')
-            if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
-        }
+        // Gap 1: Apply env via IdeEnvironment helper — no manual parsing here.
+        IdeEnvironment.applyToProcessBuilder(pb, envVars)
         // JVM-based LSP servers (kotlin-language-server, jdtls) need a heap limit
         // on this 2.8GB device — without -Xmx, the JVM grabs too much memory and gets
         // OOM-killed by the Android low-memory killer before initialization completes.
@@ -3010,24 +3005,18 @@ object LspManager {
         try {
             AppOutputLog.log("[LSP] Starting ctags-lsp secondary server...", "lsp")
 
-            val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
-            val filteredArgs = baseArgs.filter {
-                it != "--bind=/proc/self/fd/0:/dev/stdin" &&
-                it != "--bind=/proc/self/fd/1:/dev/stdout" &&
-                it != "--bind=/proc/self/fd/2:/dev/stderr"
-            }
-            val headArgs = filteredArgs.dropLast(2).toTypedArray()
+            // Gap 1: Use IdeEnvironment.forSubprocess — central env config with stdio binds stripped.
+            val prootEnv = IdeEnvironment.forSubprocess(context)
+            val proot = prootEnv.proot
+            val envVars = prootEnv.envVars
+            val headArgs = prootEnv.args.dropLast(2).toTypedArray()
             // Source profiles (same pattern as startServer), then exec ctags-lsp
             val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec ctags-lsp"
             val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
 
             val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
             pb.redirectErrorStream(false)
-            val envMap = pb.environment()
-            envVars.forEach { kv ->
-                val idx = kv.indexOf('=')
-                if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
-            }
+            IdeEnvironment.applyToProcessBuilder(pb, envVars)
 
             val process = pb.start()
 

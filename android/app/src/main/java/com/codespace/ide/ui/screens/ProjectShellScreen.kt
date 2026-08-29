@@ -3228,6 +3228,20 @@ private fun PssBottomPanelContent(
     val collapseThresholdPx = with(density) { 48.dp.toPx() }
     val minUsableHeightPx = with(density) { 120.dp.toPx() }
 
+    // FIX: rememberUpdatedState for all three values read inside pointerInput(Unit).
+    // pointerInput(Unit) captures parameter values at composition time and never
+    // re-registers the lambda. Without these wrappers, bottomPanelHeight is frozen
+    // at its initial value (e.g. 300f) — each drag frame computes nh from the SAME
+    // stale base instead of accumulating, causing the panel to snap back.
+    // The Explorer panel doesn't have this bug because sidePanelWidth is a var by
+    // mutableFloatStateOf read via property delegate (always current). Here the
+    // values arrive as plain Float/Boolean parameters — rememberUpdatedState wraps
+    // them in a State<T> whose .value is always updated on recomposition, so the
+    // drag lambda (registered once with key Unit) reads the latest value each frame.
+    val currentBottomPanelHeight by rememberUpdatedState(bottomPanelHeight)
+    val currentBottomPanelMaximized by rememberUpdatedState(bottomPanelMaximized)
+    val currentBottomPanelPrevHeight by rememberUpdatedState(bottomPanelPrevHeight)
+
     // P-DIVIDER: Subtle draggable separator — same treatment as the Explorer/Chat
     // dividers. Wide invisible hit area (12dp) keeps the drag touch-target generous;
     // thin low-alpha visible line (1dp) centered in it reads as a gap, not a seam,
@@ -3240,20 +3254,20 @@ private fun PssBottomPanelContent(
                     onDragStart = { onDraggingChange(true) },
                     onDragEnd = {
                         onDraggingChange(false)
-                        if (bottomPanelHeight < collapseThresholdPx) {
+                        if (currentBottomPanelHeight < collapseThresholdPx) {
                             onHideBottomPanel()
-                            onBottomPanelHeightChange(bottomPanelPrevHeight.coerceAtLeast(200f))
+                            onBottomPanelHeightChange(currentBottomPanelPrevHeight.coerceAtLeast(200f))
                         }
                     },
                     onDragCancel = { onDraggingChange(false) },
                 ) { _, dragAmount ->
-                    val nh = bottomPanelHeight - dragAmount.y
-                    if (bottomPanelMaximized) onBottomPanelMaximizedChange(false)
+                    val nh = currentBottomPanelHeight - dragAmount.y
+                    if (currentBottomPanelMaximized) onBottomPanelMaximizedChange(false)
                     if (nh < collapseThresholdPx) {
                         // Live collapse — same instant behavior as the side panel's
                         // "if (nw < 80f) activePanel = null" check, not deferred to release.
                         onHideBottomPanel()
-                        onBottomPanelHeightChange(bottomPanelPrevHeight.coerceAtLeast(200f))
+                        onBottomPanelHeightChange(currentBottomPanelPrevHeight.coerceAtLeast(200f))
                     } else {
                         val clamped = nh.coerceIn(0f, manualDragMaxHeight)
                         onBottomPanelHeightChange(clamped)

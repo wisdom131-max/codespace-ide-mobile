@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.codespace.ide.domain.Language
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.environment.IdeEnvironment
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.json.JSONArray
@@ -146,8 +147,11 @@ class PythonDAPAdapter : DebugAdapter {
             }
 
         // 3. Spawn: python3 -m debugpy.adapter (DAP adapter over stdin/stdout)
-        val (proot, baseArgs, envVars) = ProotInstaller.launchArgs(context)
-        val headArgs = baseArgs.dropLast(2).toTypedArray()
+        // Gap 1: Use IdeEnvironment.forSubprocess — central env config.
+        val prootEnv = IdeEnvironment.forSubprocess(context)
+        val proot = prootEnv.proot
+        val envVars = prootEnv.envVars
+        val headArgs = prootEnv.args.dropLast(2).toTypedArray()
         // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
         // Same fix as LSP startServer — prevents [Agent] banner text from corrupting
         // the DAP JSON-RPC stream on stdout.
@@ -156,11 +160,7 @@ class PythonDAPAdapter : DebugAdapter {
 
         val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
         pb.redirectErrorStream(false)
-        val envMap = pb.environment()
-        envVars.forEach { kv ->
-            val idx = kv.indexOf('=')
-            if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
-        }
+        IdeEnvironment.applyToProcessBuilder(pb, envVars)
         Log.d(TAG, "Spawning debugpy.adapter (DAP over stdin/stdout), will launch $guestPath via DAP launch request")
 
         val process = try {

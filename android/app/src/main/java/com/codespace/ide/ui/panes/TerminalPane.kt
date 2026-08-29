@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.environment.IdeEnvironment
 import com.codespace.ide.terminal.TerminalSessionStore
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.diagnostics.AppOutputLog
@@ -384,27 +385,12 @@ internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false, 
     client.appContext = context.applicationContext
 
     if (isUbuntu) {
-        val (proot, args, envVars) = ProotInstaller.launchArgs(context)
-        val session = TerminalSession(proot, "/", args, envVars, 4000, client)
-        // Inject WORKSPACE_PATH even for fallback sessions (service not yet bound)
-        val prootWorkspace = workDir?.let {
-            when {
-                it.startsWith("/storage/emulated/0") -> it.replace("/storage/emulated/0", "/sdcard")
-                it.startsWith("/sdcard") || it.startsWith("/root") -> it
-                else -> null
-            }
-        }
-        if (prootWorkspace != null) {
-            session.write("export WORKSPACE_PATH=\"$prootWorkspace\"\n")
-            session.write("export PROJECT_FILES=\"$prootWorkspace\"\n")
-            // Fix Test 16/17: cd into project workspace so terminal-created files
-            // land in the project directory the file explorer shows.
-            session.write("cd \"$prootWorkspace\" 2>/dev/null && clear\n")
-            // Fix Test 20: Flush bash history after each command.
-            session.write("export PROMPT_COMMAND='history -a'\n")
-            session.write("export HISTFILE=~/.bash_history\n")
-            session.write("export HISTSIZE=500\n")
-            session.write("export HISTFILESIZE=500\n")
+        // Gap 1+3: Use IdeEnvironment for central env config + baked WORKSPACE_PATH.
+        val prootEnv = IdeEnvironment.forTerminal(context, "default", workDir)
+        val session = TerminalSession(prootEnv.proot, "/", prootEnv.args, prootEnv.envVars, 4000, client)
+        // Fallback: session.write() commands as belt-and-suspenders (env already baked).
+        IdeEnvironment.workspacePathFallbackCommands(prootEnv.workspacePath).forEach { cmd ->
+            session.write(cmd)
         }
         return Pair(session, client)
     }
