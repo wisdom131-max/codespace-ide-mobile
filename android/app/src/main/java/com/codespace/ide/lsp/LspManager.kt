@@ -368,7 +368,7 @@ object LspManager {
                 "curl -fsSL https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.9.22/kotlin-stdlib-1.9.22.jar -o /opt/kotlin-stdlib/kotlin-stdlib.jar && " +
                 "echo Kotlin-stdlib-installed || echo Kotlin-stdlib-download-failed-non-fatal) ; " +
                 "(curl -fsSL https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.7.25/slf4j-simple-1.7.25.jar -o /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar && " +
-                "sed -i 's|slf4j-api-1.7.25.jar|slf4j-api-1.7.25.jar:$APP_HOME/lib/slf4j-simple-1.7.25.jar|' /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
+                "sed -i 's|slf4j-api-1.7.25.jar|slf4j-api-1.7.25.jar:\$APP_HOME/lib/slf4j-simple-1.7.25.jar|' /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
                 "echo SLF4J-simple-installed || echo SLF4J-simple-failed-non-fatal) ; " +
                 "echo Kotlin-LSP-installed",
             300,
@@ -1161,7 +1161,7 @@ object LspManager {
             "(curl -fsSL --connect-timeout 10 --max-time 30 " +
             "https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.7.25/slf4j-simple-1.7.25.jar " +
             "-o /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar && " +
-            "sed -i 's|slf4j-api-1.7.25.jar|slf4j-api-1.7.25.jar:$APP_HOME/lib/slf4j-simple-1.7.25.jar|' " +
+            "sed -i 's|slf4j-api-1.7.25.jar|slf4j-api-1.7.25.jar:\$APP_HOME/lib/slf4j-simple-1.7.25.jar|' " +
             "/opt/kotlin-language-server/server/bin/kotlin-language-server && " +
             "echo SLF4J_PATCHED || echo SLF4J_PATCH_FAILED)",
             timeoutSeconds = 45)
