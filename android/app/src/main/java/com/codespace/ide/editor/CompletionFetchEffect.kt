@@ -60,7 +60,7 @@ fun CompletionFetchEffect(
 
         // Phase X-3: Block completion on non-user events
         if (!editorEvent.shouldTriggerCompletion) {
-            com.codespace.ide.diagnostics.AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER blocked=${'$'}{editorEvent.logTag}", "lsp")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER blocked=" + editorEvent.logTag, "lsp")
             return@LaunchedEffect
         }
         com.codespace.ide.diagnostics.AppOutputLog.log("[EDITOR] COMPLETION_TRIGGER allowed=true", "lsp")

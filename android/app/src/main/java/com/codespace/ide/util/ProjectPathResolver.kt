@@ -66,17 +66,23 @@ object ProjectPathResolver {
     fun resolveProjectRoot(context: Context, projectId: String?): String? {
         if (projectId.isNullOrBlank()) return null
 
-        // 1. User-overridden workspace path (Explorer pane "Open Folder")
-        val wsPath = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-            .getString("${KEY_WORKSPACE}_$projectId", null)
-        if (wsPath != null && File(wsPath).exists()) return wsPath
+        try {
+            // 1. User-overridden workspace path (Explorer pane "Open Folder")
+            val wsPath = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+                .getString("${KEY_WORKSPACE}_$projectId", null)
+            if (wsPath != null && File(wsPath).exists()) return wsPath
 
-        // 2. pathOrUrl from project metadata
-        val pathOrUrl = readPathOrUrl(context, projectId)
-        if (pathOrUrl != null && File(pathOrUrl).exists()) return pathOrUrl
+            // 2. pathOrUrl from project metadata
+            val pathOrUrl = readPathOrUrl(context, projectId)
+            if (pathOrUrl != null && File(pathOrUrl).exists()) return pathOrUrl
 
-        // 3. Legacy fallback: filesDir/projects/$projectId
-        return File(context.filesDir, "projects/$projectId").absolutePath
+            // 3. Legacy fallback: filesDir/projects/$projectId
+            return File(context.filesDir, "projects/$projectId").absolutePath
+        } catch (e: Exception) {
+            // Should never happen, but guard against filesystem/prefs errors
+            android.util.Log.e("ProjectPathResolver", "resolveProjectRoot threw for projectId=$projectId", e)
+            return null
+        }
     }
 
     /**

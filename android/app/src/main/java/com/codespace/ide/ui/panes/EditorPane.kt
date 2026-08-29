@@ -431,12 +431,21 @@ fun EditorPane(
         if (tabs.isEmpty()) {
             val store = sessionStateStore
             val pid = projectId
+            if (pid.isNullOrBlank()) {
+                com.codespace.ide.diagnostics.AppOutputLog.log("[EDITOR] Session restore skipped — projectId is null/blank, cannot restore project context", "lsp")
+                com.codespace.ide.util.ProjectContextLogger.logContextLost(
+                    context,
+                    "Session restore: projectId is null/blank",
+                    projectId,
+                )
+                return@LaunchedEffect
+            }
             // Try per-project restore first, fall back to legacy migration
             val restoredPaths: List<String>
             val restoredActive: String?
             val restoredPinned: List<String>
             val restoredSplit: String?
-            if (store != null && pid != null) {
+            if (store != null) {
                 val state = store.loadShellState(pid)
                 restoredPaths  = state?.openFilePaths ?: emptyList()
                 restoredActive = state?.activeFilePath
@@ -1032,7 +1041,14 @@ fun EditorPane(
                 return@LaunchedEffect
             }
             if (projectRootPath == null) {
-                AppOutputLog.log("[LSP] Effect-A: projectRootPath is null for ${snap.language.displayName} — file opened outside a project context", "lsp")
+                AppOutputLog.log("[LSP] Effect-A: projectRootPath is null for ${snap.language.displayName} — projectId='$projectId' blank=${projectId.isNullOrBlank()} — file opened outside a project context", "lsp")
+                com.codespace.ide.util.ProjectContextLogger.logContextLost(
+                    context,
+                    "Effect-A: projectRootPath is null for " + snap.language.displayName,
+                    projectId,
+                    filePath = snap.path,
+                    language = snap.language.displayName,
+                )
                 return@LaunchedEffect
             }
             val uri = LspManager.fileUriFromHostPath(context, snap.path)

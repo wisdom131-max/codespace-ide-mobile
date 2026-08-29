@@ -687,6 +687,12 @@ fun ProjectShellScreen(
     val projectPathUrl = remember(projectId) {
         com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     }
+    // One-time log: show crash-context.log path so Wisdom knows where to check
+    LaunchedEffect(Unit) {
+        com.codespace.ide.util.ProjectContextLogger.getLogFilePath(context)?.let { logPath ->
+            com.codespace.ide.diagnostics.AppOutputLog.log("[DIAG] crash-context.log path: $logPath", "lsp")
+        }
+    }
     val density = LocalDensity.current
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.

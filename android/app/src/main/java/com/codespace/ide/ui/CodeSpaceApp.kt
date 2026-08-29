@@ -89,7 +89,7 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
         val startDest = remember {
             when {
                 tokenStore.refreshToken == null               -> Routes.AUTH
-                sessionStateStore.lastProjectId() != null     -> Routes.project(sessionStateStore.lastProjectId()!!)
+                sessionStateStore.lastProjectId()?.isNotBlank() == true -> Routes.project(sessionStateStore.lastProjectId()!!)
                 else                                          -> Routes.HOME
             }
         }
