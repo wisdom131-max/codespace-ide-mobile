@@ -677,6 +677,27 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val vScrollDp = with(scrollDensity) { vScroll.value.toDp() }.value
     // Phase A: Canonical position mapper — single source of truth for offset <-> (line, column)
     val positionMapper = remember(value.text) { PositionMapper(value.text) }
+    // IME-AWARE-SCROLL: Detect keyboard height and auto-scroll editor so the cursor
+    // line stays visible above the keyboard. Without this, typing on a line near the
+    // bottom of the visible area gets hidden behind the keyboard with no way to see
+    // what you're typing. Uses WindowInsets.ime (already imported).
+    val imeInsetsPx = WindowInsets.ime.getBottom(scrollDensity)
+    val imeHeightPx = imeInsetsPx.coerceAtLeast(0)
+    LaunchedEffect(value.selection.end, imeHeightPx) {
+        if (imeHeightPx > 0) {
+            val lhPx = with(scrollDensity) { lineHeightDp.toPx() }
+            val cursorLine = positionMapper.offsetToLine(value.selection.end)
+            val cursorY = (cursorLine + 1) * lhPx - vScroll.value
+            val viewportH = vScroll.viewportSize.toFloat().coerceAtLeast(1f)
+            val visibleH = viewportH - imeHeightPx
+            // If cursor would be hidden behind keyboard, scroll up to reveal it.
+            // Add one line of padding above the cursor for visual breathing room.
+            if (cursorY > visibleH) {
+                val scrollBy = (cursorY - visibleH + lhPx).toInt()
+                vScroll.animateScrollTo((vScroll.value + scrollBy).coerceIn(0, vScroll.maxValue))
+            }
+        }
+    }
     // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
     var highlightTargetLine by remember { mutableStateOf(0) }
@@ -4571,9 +4592,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             } else {
                 ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
             }
-            val screenHeightPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
+            val availableHeightPxLI = with(screenDensity) { availableHeightDp.dp.toPx() }
             val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
-            if (popupOffsetY + popupMaxHeightPx > screenHeightPx) {
+            if (popupOffsetY + popupMaxHeightPx > availableHeightPxLI) {
                 popupOffsetY = if (layoutLI != null && visualLineLI < layoutLI.lineCount) {
                     (layoutLI.getLineTop(visualLineLI) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
                 } else {

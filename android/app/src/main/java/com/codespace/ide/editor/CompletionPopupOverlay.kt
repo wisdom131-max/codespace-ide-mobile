@@ -170,14 +170,17 @@ internal fun CompletionPopupOverlay(
     if (popupOffsetX + popupWidthPx > screenWidthPx) {
         popupOffsetX = (screenWidthPx - popupWidthPx).roundToInt().coerceAtLeast(0)
     }
-    val screenHeightPx = with(screenDensity) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    val availableHeightPx = with(screenDensity) { availableHeightDp.dp.toPx() }
     val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
     var popupOffsetY = if (layoutCP != null && visualLineCP < layoutCP.lineCount) {
         (layoutCP.getLineBottom(visualLineCP) - vScroll.value).roundToInt().coerceAtLeast(0)
     } else {
         ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
     }
-    if (popupOffsetY + popupMaxHeightPx > screenHeightPx) {
+    // KEYBOARD-AWARE: Check against available height (screen minus keyboard),
+    // not full screen height. Without this, the popup renders behind the keyboard
+    // when the cursor is near the bottom of the visible area.
+    if (popupOffsetY + popupMaxHeightPx > availableHeightPx) {
         popupOffsetY = if (layoutCP != null && visualLineCP < layoutCP.lineCount) {
             (layoutCP.getLineTop(visualLineCP) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
         } else {
