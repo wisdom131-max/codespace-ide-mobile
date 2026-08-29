@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | e279175 |
-| CI build | GREEN (e279175) |
+| Latest commit | e662eec |
+| CI build | GREEN (#2585) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -974,3 +974,22 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 6. Completion source badges — already exist, may need visibility improvements (8sp -> 10sp, or add background pill)
 7. Continue extracting large composable blocks from CodeEditor.kt (R3-I pattern)
 8. Confirm UI padding/rounding consistency across all panels
+
+### [2026-08-29 08:14 WAT] — AI Agent: Claude, Commit e662eec, CI Build #2585 GREEN
+**Tag:** [RESTRUCTURE][LSP][GIT][TERMINAL]
+**What:** Centralized ALL project-root resolution into ProjectPathResolver.kt — single source of truth. Previously 21 call sites across 7 files each independently constructed filesDir/projects/$projectId (an app-private dir typically EMPTY for wizard-created projects). This caused LSP to see zero files, git to operate on wrong/empty dir, terminal to open at /root, preview/search/TODO/tests to find nothing.
+**Files:** ProjectPathResolver.kt (NEW), EditorPane.kt, PreviewPane.kt, SourceControlPane.kt, TerminalPane.kt, ExplorerPane.kt, ProjectShellScreen.kt
+**Details:**
+- Created ProjectPathResolver.resolveProjectRoot() — resolution order: workspace_prefs -> pathOrUrl -> filesDir fallback
+- 21 call sites updated across 6 files (14 in ProjectShellScreen alone)
+- TerminalPane loadWorkspacePath() now delegates to resolver (was falling back to /root)
+- Removed dead loadWorkspacePath() + PREFS_WORKSPACE constants from SourceControlPane
+- Replaced inline pathOrUrl SharedPreferences read in ProjectShellScreen auto-expand with resolver
+- Legitimate filesDir/projects usage untouched: autosave, CloudBackup, trash, New Project Window, HomeScreen delete
+- Confirmed via re-grep: ProjectPathResolver is the ONLY path-resolution logic in the app
+**Next on roadmap:**
+- [PENDING] End-to-end completion test on real project (LSP workspace root verification)
+- [PENDING] Git status/history test on real project (first real test since centralization)
+- [PENDING] Terminal working directory test on real project
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
