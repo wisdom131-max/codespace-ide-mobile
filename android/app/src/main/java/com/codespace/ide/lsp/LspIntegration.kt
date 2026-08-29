@@ -148,36 +148,37 @@ data class CompletionResponse(
 fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
     val result = mutableListOf<LspCompletionItem>()
     for (i in 0 until items.length()) {
-        val item = items.optJSONObject(i) ?: continue
-        val label = item.optString("label", "")
-        if (label.isBlank()) continue
-        var insertText = item.optString("insertText", label)
-        val insertTextFormat = item.optInt("insertTextFormat", 1)
-        // P41-I: Only strip snippet placeholders for plain-text items.
-        // When insertTextFormat == 2 (Snippet), keep $1/$0 syntax for SnippetEngine to parse on accept.
-        if (insertTextFormat != 2) {
-            insertText = insertText.replace(Regex("\\$\\{\\d+:?[^}]*}"), "").replace(Regex("\\$\\d+"), "")
-        }
-        val detail = item.optString("detail", "")
-        val kind = item.optInt("kind", 1)
-        // P41-D: Capture additionalTextEdits (auto-import) and textEdit (range replace)
-        val additionalTextEditsJson = item.optJSONArray("additionalTextEdits")?.toString()
-        val textEditJson = item.optJSONObject("textEdit")?.toString()
-        // Phase U-2: Parse sortText (optional, server-provided sort priority)
-        val sortText = item.optString("sortText", "").ifBlank { null }
-        // Phase U-3: Parse filterText (optional, used for matching instead of label)
-        val filterText = item.optString("filterText", "").ifBlank { null }
-        // Phase U-4: Parse command (optional, executed after applying completion)
-        val command = item.optJSONObject("command")?.toString()
-        // Phase U-5: Parse commitCharacters (optional, JSON array of single-char strings)
-        val commitChars = item.optJSONArray("commitCharacters")?.let { arr ->
-            (0 until arr.length()).mapNotNull { idx ->
-                arr.optString(idx, "").takeIf { it.isNotEmpty() }?.firstOrNull()
+        try {
+            val item = items.optJSONObject(i) ?: continue
+            val label = item.optString("label", "")
+            if (label.isBlank()) continue
+            var insertText = item.optString("insertText", label)
+            val insertTextFormat = item.optInt("insertTextFormat", 1)
+            if (insertTextFormat != 2) {
+                insertText = insertText.replace(Regex("\\$\\{\\d+:?[^}]*}"), "").replace(Regex("\\$\\d+"), "")
             }
-        } ?: emptyList()
-        result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind,
-            additionalTextEditsJson, textEditJson, insertTextFormat, null,
-            sortText, filterText, command, commitChars))
+            val detail = item.optString("detail", "")
+            val kind = item.optInt("kind", 1)
+            val additionalTextEditsJson = item.optJSONArray("additionalTextEdits")?.toString()
+            val textEditJson = item.optJSONObject("textEdit")?.toString()
+            val sortText = item.optString("sortText", "").ifBlank { null }
+            val filterText = item.optString("filterText", "").ifBlank { null }
+            val command = item.optJSONObject("command")?.toString()
+            val commitChars = item.optJSONArray("commitCharacters")?.let { arr ->
+                (0 until arr.length()).mapNotNull { idx ->
+                    arr.optString(idx, "").takeIf { it.isNotEmpty() }?.firstOrNull()
+                }
+            } ?: emptyList()
+            result.add(LspCompletionItem(label, detail.ifBlank { null }, insertText, kind,
+                additionalTextEditsJson, textEditJson, insertTextFormat, null,
+                sortText, filterText, command, commitChars))
+        } catch (e: Exception) {
+            val rawItem = try { items.optJSONObject(i)?.toString()?.take(500) ?: "null" } catch (_: Exception) { "unavailable" }
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[LSP-DIAG] parseLspCompletions item#" + i + " FAILED: " + e.javaClass.simpleName + ": " + e.message + " rawItem=" + rawItem + "\n" + e.stackTraceToString().take(1500),
+                "lsp"
+            )
+        }
     }
     return result
 }

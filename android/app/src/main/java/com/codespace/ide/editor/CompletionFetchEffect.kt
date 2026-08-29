@@ -99,7 +99,14 @@ fun CompletionFetchEffect(
                 val __t0 = System.currentTimeMillis()
                 val results = withContext(Dispatchers.IO) {
                     withTimeoutOrNull(5000L) {
-                        val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                        val lsp = try { lspCompletionProvider.invoke(cLine, cCol) }
+                        catch (e: Exception) {
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[LSP-DIAG] CRASH in lspCompletionProvider: " + e.javaClass.simpleName + ": " + e.message + "\n" + e.stackTraceToString().take(2000),
+                                "lsp"
+                            )
+                            emptyList<LspCompletionItem>()
+                        }
                         val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
                             try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
                         } else emptyList()
