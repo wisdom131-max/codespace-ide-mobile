@@ -849,12 +849,12 @@ internal fun remotionRelaunchScript(): String =
     "else\n" +
     "  cd ~/remotion-project && npx remotion studio\n" +
     "fi\n"
-// Scoped by projectId to match ExplorerPane's / SourceControlPane's per-project workspace
-// isolation — reads the SAME saved path so a freshly created Ubuntu session for this
-// project can auto-cd into it (fix #12, 2026-07-08).
+// Delegates to ProjectPathResolver for consistent project-root resolution across
+// all components (editor, LSP, git, preview, terminal). Resolution order:
+// 1. workspace_prefs (user override), 2. pathOrUrl from project metadata,
+// 3. filesDir/projects/$projectId (legacy fallback).
 private fun loadWorkspacePath(context: android.content.Context, projectId: String): String? =
-    context.getSharedPreferences("workspace_prefs", android.content.Context.MODE_PRIVATE)
-        .getString("workspace_path_$projectId", null)
+    com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
 
 @Composable
 internal fun TerminalPane(

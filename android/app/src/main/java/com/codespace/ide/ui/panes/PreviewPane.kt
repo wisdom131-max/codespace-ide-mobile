@@ -106,7 +106,7 @@ fun PreviewPane(
     val context = LocalContext.current
 
     // PhaseX: Start LivePreviewServer when a project is active
-    val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }
+    val projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     LaunchedEffect(projectId) {
         if (projectRootPath != null && java.io.File(projectRootPath).exists()) {
             com.codespace.ide.preview.LivePreviewServer.start(projectRootPath)

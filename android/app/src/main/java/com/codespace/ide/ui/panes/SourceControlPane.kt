@@ -53,15 +53,8 @@ private val AddedColor    = Color(0xFF73C991)
 private val ConflictColor = Color(0xFFE51400)
 private val StagedBg      = Color(0xFF2D2D30)
 
-private const val PREFS_WORKSPACE = "workspace_prefs"
-private const val KEY_WORKSPACE = "workspace_path"
-
-private fun loadWorkspacePath(context: Context, projectId: String): String? =
-    context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .getString("${KEY_WORKSPACE}_$projectId", null)
-
 private fun resolveHostPath(context: Context, projectId: String): String {
-    return loadWorkspacePath(context, projectId)
+    return com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
         ?: java.io.File(context.filesDir, "projects/$projectId").absolutePath
 }
 

@@ -184,7 +184,7 @@ fun EditorPane(
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
     // P18-C: project root for cross-file rename
-    val projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath }
+    val projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeId by remember { mutableStateOf<String?>(null) }
     // External reload trigger — re-reads the active file from disk (used by external replace)

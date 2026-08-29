@@ -682,17 +682,10 @@ fun ProjectShellScreen(
                 ?.getString("name") ?: projectId
         } catch (_: Exception) { projectId }
     }
-    // Wizard auto-select: read the project's pathOrUrl so we can auto-expand
-    // it in the Explorer on first load.
+    // Wizard auto-select: resolve the real project root via ProjectPathResolver
+    // so the Explorer auto-expands the same directory used by LSP/git/preview/terminal.
     val projectPathUrl = remember(projectId) {
-        try {
-            val str = context.getSharedPreferences("projects", android.content.Context.MODE_PRIVATE)
-                .getString("list", null) ?: return@remember null
-            val arr = JSONArray(str)
-            (0 until arr.length()).map { arr.getJSONObject(it) }
-                .firstOrNull { it.getString("id") == projectId }
-                ?.getString("pathOrUrl")
-        } catch (_: Exception) { null }
+        com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     }
     val density = LocalDensity.current
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
@@ -862,7 +855,7 @@ fun ProjectShellScreen(
     // P9-1: Start background file indexer when project opens
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank()) {
-            val wsPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath
+            val wsPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
             if (wsPath != null) {
                 FileIndexer.startIndexing(wsPath, indexerScope)
             }
@@ -926,7 +919,7 @@ fun ProjectShellScreen(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
                 // Copy file into project dir
-                val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                val projectDir = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId) ?: java.io.File(context.filesDir, "projects/$projectId")
                 val fileName = uri.lastPathSegment?.substringAfterLast("/") ?: "imported_file"
                 val destFile = java.io.File(projectDir, fileName)
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -1077,7 +1070,7 @@ fun ProjectShellScreen(
             "Create Snapshot" -> {
                 scope.launch {
                     try {
-                        val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                        val projectDir = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId) ?: java.io.File(context.filesDir, "projects/$projectId")
                         val outFile = WorkspaceManager.createSnapshot(context, projectDir)
                         snapshotMessage = "Saved to Downloads/CodespaceIDE/${outFile.name}"
                         showNotification("Snapshot created!", "success")
@@ -1300,7 +1293,7 @@ fun ProjectShellScreen(
                         // Create Untitled-N file (VS Code style)
                         val untitledCount = editorTabs.count { it.contains("Untitled-") }
                         val untitledName = "Untitled-${untitledCount + 1}"
-                        val projectDir = java.io.File(context.filesDir, "projects/$projectId")
+                        val projectDir = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId) ?: java.io.File(context.filesDir, "projects/$projectId")
                         val newFile = java.io.File(projectDir, untitledName)
                         if (!newFile.exists()) newFile.createNewFile()
                         val path = newFile.absolutePath
@@ -1672,7 +1665,7 @@ fun ProjectShellScreen(
                 debugMessages = debugMessages,
                 scope = scope,
                 context = context,
-                projectRootPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
+                projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
                 onShowBottomPanel = { showBottomPanel = true },
                 onSetActiveTab = { activeBottomTab = it },
                 onShowSplitTerminal = { showSplitTerminal = true },
@@ -1694,7 +1687,7 @@ fun ProjectShellScreen(
                 onOpenInTerminal = {
                     showBottomPanel = true
                     activeBottomTab = BottomTab.TERMINAL
-                    val p = java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                    val p = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: context.filesDir.absolutePath
                     terminalCommandToRun = "cd \"$p\""
                 },
                 onDismiss = { showExplorerMore = false },
@@ -1717,7 +1710,7 @@ fun ProjectShellScreen(
     // P15-E: File search overlay (shown over full screen)
     if (showFileSearch) {
         ProjectFileSearchPanel(
-            projectRoot = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
+            projectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
             onOpenFile = { path ->
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
@@ -1745,7 +1738,7 @@ fun ProjectShellScreen(
                 activeEditorTab = activeEditorTab,
                 cursorLine = cursorLine,
                 cursorCol = cursorCol,
-                projectRootPath = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
+                projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
                 onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
             ) }
     } // end Editor Column
@@ -1827,7 +1820,7 @@ fun ProjectShellScreen(
             editorFontSize = editorFontSize,
             onEditorFontSizeChange = { editorFontSize = it },
             activeFilePath = activeEditorTab,
-            projectRoot = java.io.File(context.filesDir, "projects/$projectId").absolutePath,
+            projectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
             recentFiles = editorTabs,
             onOpenRecentFile = { path -> activeEditorTab = path; showCommandPalette = false; commandQuery = "" },
             onSymbolNavigate = { line ->
@@ -2972,7 +2965,7 @@ private fun PssActivityBar(
                 try {
                     val repoDir = java.io.File(
                         if (activeEditorTab != null) java.io.File(activeEditorTab!!).parent ?: context.filesDir.absolutePath
-                        else java.io.File(context.filesDir, "projects/$projectId").absolutePath
+                        else com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: context.filesDir.absolutePath
                     )
                     if (java.io.File(repoDir, ".git").exists()) {
                         val guestPath = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, repoDir.absolutePath)
@@ -3484,7 +3477,7 @@ private fun PssBottomPanelContent(
             )
             // P41-P: TODO Explorer
             BottomTab.TODO -> {
-                val projectRoot = projectId?.let { java.io.File(context.filesDir, "projects/$it") }
+                val projectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId)
                 var todoItems by remember { mutableStateOf<List<com.codespace.ide.editor.PowerUserAnalyzer.TodoItem>>(emptyList()) }
                 var scanning by remember { mutableStateOf(true) }
                 LaunchedEffect(projectId) {
@@ -3511,7 +3504,7 @@ private fun PssBottomPanelContent(
             }
             // P41-P: Test Explorer
             BottomTab.TESTS -> {
-                val projectRoot = projectId?.let { java.io.File(context.filesDir, "projects/$it") }
+                val projectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId)
                 var testFiles by remember { mutableStateOf<List<com.codespace.ide.ui.panes.TestFileInfo>>(emptyList()) }
                 var scanning by remember { mutableStateOf(true) }
                 LaunchedEffect(projectId) {
@@ -4830,7 +4823,7 @@ private fun PssEditorColumn(
                     // activeEditorTab drives PreviewPane.activeFilePath — already set in onOpenFile
                 },
                 // P41-X: Workspace-aware AI context
-                projectRootPath = projectId?.let { java.io.File(context.filesDir, "projects/$it").absolutePath },
+                projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
                 currentFilePath = activeEditorTab,
                 openFilePaths = editorTabs.toList(),
             )
