@@ -27,9 +27,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.ui.screens.AuthScreen
@@ -87,11 +90,16 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
         // NavHost treats a changed startDestination as a brand-new graph and destroys
         // all remember() state (open editor tabs, scroll positions, terminal state, etc).
         val startDest = remember {
-            when {
+            val lastId = sessionStateStore.lastProjectId()
+            val dest = when {
                 tokenStore.refreshToken == null               -> Routes.AUTH
-                sessionStateStore.lastProjectId()?.isNotBlank() == true -> Routes.project(sessionStateStore.lastProjectId()!!)
+                lastId?.isNotBlank() == true                  -> Routes.project(lastId)
                 else                                          -> Routes.HOME
             }
+            // Diagnostic: log the start destination route so we can verify the
+            // projectId was correctly embedded when the NavHost was first created
+            AppOutputLog.log("[NAV] startDest computed: '" + dest + "' (lastProjectId='" + lastId + "')", "lsp")
+            dest
         }
 
         val nav = rememberNavController()
@@ -122,8 +130,24 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
                     },
                 )
             }
-            composable(Routes.PROJECT) { backStackEntry ->
-                val projectId = backStackEntry.arguments?.getString("projectId").orEmpty()
+            composable(
+                route = Routes.PROJECT,
+                arguments = listOf(navArgument("projectId") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                })
+            ) { backStackEntry ->
+                var projectId = backStackEntry.arguments?.getString("projectId").orEmpty()
+                // ROOT CAUSE FIX: After process death, Navigation restores the back stack
+                // from SavedStateHandle but the path argument Bundle may be null/empty
+                // (known issue when startDestination has path args without explicit
+                // navArgument + defaultValue). Fall back to lastProjectId() which persists
+                // in SharedPreferences and is the same source startDest was computed from.
+                if (projectId.isBlank()) {
+                    val fallback = sessionStateStore.lastProjectId().orEmpty()
+                    AppOutputLog.log("[NAV] projectId blank from backStackEntry.arguments (Navigation saved-state restoration bug) -- falling back to lastProjectId()='" + fallback + "'", "lsp")
+                    projectId = fallback
+                }
                 ProjectShellScreen(
                     projectId         = projectId,
                     isDark            = !themeName.contains("Light"),
