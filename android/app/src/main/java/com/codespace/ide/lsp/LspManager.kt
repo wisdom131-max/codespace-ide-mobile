@@ -351,13 +351,23 @@ object LspManager {
             "kotlin-language-server",
             emptyList(),
             "which kotlin-language-server && echo OK",
+            // R3-KLSP-STDLIB: Install command now also downloads kotlin-stdlib-1.9.22.jar
+            // from Maven Central to /opt/kotlin-stdlib/ so loose .kt files (no build.gradle)
+            // get basic stdlib completions (listOf, println, map, etc.) via the global
+            // kls-classpath mechanism. The stdlib download is best-effort — if it fails
+            // (no network), the LSP server still installs and works for Gradle projects.
+            // ensureKotlinStdlib() also re-downloads this jar if it goes missing later.
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless unzip curl; " +
                 "curl -fsSL https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip -o /tmp/kls.zip && " +
                 "unzip -o /tmp/kls.zip -d /opt/kotlin-language-server >/dev/null 2>&1 && " +
                 "test -f /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
                 "chmod +x /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
                 "ln -sf /opt/kotlin-language-server/server/bin/kotlin-language-server /usr/local/bin/kotlin-language-server && " +
-                "rm -f /tmp/kls.zip && echo Kotlin-LSP-installed",
+                "rm -f /tmp/kls.zip && " +
+                "(mkdir -p /opt/kotlin-stdlib && " +
+                "curl -fsSL https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.9.22/kotlin-stdlib-1.9.22.jar -o /opt/kotlin-stdlib/kotlin-stdlib.jar && " +
+                "echo Kotlin-stdlib-installed || echo Kotlin-stdlib-download-failed-non-fatal) ; " +
+                "echo Kotlin-LSP-installed",
             300,
         ),
         // ── Go ─────────────────────────────────────────────────────────────
@@ -1090,6 +1100,87 @@ object LspManager {
         300,
     )
 
+    /**
+     * R3-KLSP-STDLIB: Ensures the Kotlin stdlib JAR and global classpath script exist
+     * before starting the Kotlin LSP server.
+     *
+     * This is called automatically from startServer() for Kotlin, right before the
+     * server process is spawned — not just during initial install. This handles:
+     * - Fresh install (stdlib downloaded during installServer)
+     * - Re-download if the JAR was deleted or storage was cleared
+     * - Creating the conditional classpath.sh script if missing or stale
+     *
+     * The classpath script outputs the stdlib JAR path ONLY when no build.gradle
+     * exists in the workspace — otherwise it outputs nothing, letting the LSP server's
+     * built-in Gradle/Maven resolver handle per-project classpath normally.
+     *
+     * All operations are non-fatal: if the download fails (no network), the LSP server
+     * still starts — it just won't have stdlib completions for loose files until the
+     * next successful download.
+     */
+    private fun ensureKotlinStdlib(context: Context): Boolean {
+        val stdlibJarPath = "/opt/kotlin-stdlib/kotlin-stdlib.jar"
+        val classpathScriptPath = "~/.config/kotlin-language-server/classpath.sh"
+
+        // Check if stdlib JAR exists in the proot rootfs
+        val stdlibCheck = ProotInstaller.execOnce(context,
+            "test -f $stdlibJarPath && echo EXISTS || echo MISSING",
+            timeoutSeconds = 10)
+        val stdlibPresent = stdlibCheck.trimEnd().lines().lastOrNull().orEmpty().trim() == "EXISTS"
+
+        if (!stdlibPresent) {
+            AppOutputLog.log("[LSP-DIAG] Kotlin stdlib JAR missing at $stdlibJarPath — attempting re-download", "lsp")
+            // Re-download from Maven Central (best-effort, non-fatal)
+            val downloadResult = ProotInstaller.execOnce(context,
+                "mkdir -p /opt/kotlin-stdlib && " +
+                "curl -fsSL --connect-timeout 10 --max-time 30 " +
+                "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.9.22/kotlin-stdlib-1.9.22.jar " +
+                "-o /opt/kotlin-stdlib/kotlin-stdlib.jar && echo DOWNLOADED || echo DOWNLOAD_FAILED",
+                timeoutSeconds = 45)
+            val downloadOk = downloadResult.trimEnd().lines().lastOrNull().orEmpty().trim() == "DOWNLOADED"
+            if (downloadOk) {
+                AppOutputLog.log("[LSP-DIAG] Kotlin stdlib JAR re-downloaded successfully", "lsp")
+            } else {
+                AppOutputLog.log("[LSP-DIAG] Kotlin stdlib JAR re-download FAILED (non-fatal) — loose .kt files won't get stdlib completions until next successful download", "lsp")
+            }
+        } else {
+            AppOutputLog.log("[LSP-DIAG] Kotlin stdlib JAR present at $stdlibJarPath", "lsp")
+        }
+
+        // Ensure the global classpath.sh script exists and is up-to-date.
+        // The script is idempotent — we overwrite it every time to ensure it's current.
+        // Using printf (not heredoc) to avoid raw newline issues in the patch pipeline.
+        // Write the script via proot — using printf to avoid heredoc/newline issues
+        val writeScriptCmd = "mkdir -p ~/.config/kotlin-language-server && " +
+            "printf '%s\\n' '#!/bin/bash' " +
+            "'# R3-KLSP-STDLIB: Global classpath for kotlin-language-server' " +
+            "'# Outputs stdlib JAR ONLY for projects without build files.' " +
+            "'if [ -f build.gradle ] || [ -f build.gradle.kts ] || [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then' " +
+            "'  exit 0' " +
+            "'fi' " +
+            "'if [ -f /opt/kotlin-stdlib/kotlin-stdlib.jar ]; then' " +
+            "'  echo /opt/kotlin-stdlib/kotlin-stdlib.jar' " +
+            "'fi' > ~/.config/kotlin-language-server/classpath.sh && " +
+            "chmod +x ~/.config/kotlin-language-server/classpath.sh && " +
+            "echo CLASSPATH_SCRIPT_OK || echo CLASSPATH_SCRIPT_FAILED"
+
+        val scriptResult = ProotInstaller.execOnce(context, writeScriptCmd, timeoutSeconds = 10)
+        val scriptOk = scriptResult.trimEnd().lines().lastOrNull().orEmpty().trim() == "CLASSPATH_SCRIPT_OK"
+        if (scriptOk) {
+            AppOutputLog.log("[LSP-DIAG] Kotlin classpath.sh created/updated at $classpathScriptPath", "lsp")
+        } else {
+            AppOutputLog.log("[LSP-DIAG] Failed to create classpath.sh (non-fatal): $scriptResult", "lsp")
+        }
+
+        // Final verification
+        val finalCheck = ProotInstaller.execOnce(context,
+            "test -f $stdlibJarPath && echo STDLIB_OK || echo STDLIB_MISSING",
+            timeoutSeconds = 10)
+        val stdlibReady = finalCheck.trimEnd().lines().lastOrNull().orEmpty().trim() == "STDLIB_OK"
+        AppOutputLog.log("[LSP-DIAG] ensureKotlinStdlib result: stdlibReady=$stdlibReady, scriptReady=$scriptOk", "lsp")
+        return stdlibReady && scriptOk
+    }
+
     fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
         // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
         if (!ProjectSettingsStore.lspEnabled.value) {
@@ -1223,6 +1314,13 @@ object LspManager {
         } else {
             Log.d(TAG, "startServer: already installed for ${language.displayName}")
             AppOutputLog.log("[LSP] ${language.displayName} server already installed — skipping install", "lsp")
+        }
+
+        // R3-KLSP-STDLIB: Ensure Kotlin stdlib JAR + classpath script exist before
+        // starting the server. This handles re-download if the JAR was deleted and
+        // creates the conditional classpath.sh that provides stdlib for loose .kt files.
+        if (language == Language.KOTLIN) {
+            ensureKotlinStdlib(context)
         }
 
         // Build proot command — wrap server in bash -c (NON-login shell).
