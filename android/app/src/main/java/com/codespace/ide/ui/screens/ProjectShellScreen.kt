@@ -687,10 +687,11 @@ fun ProjectShellScreen(
     val projectPathUrl = remember(projectId) {
         com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     }
-    // One-time log: show crash-context.log path so Wisdom knows where to check
+    // One-time log: show all crash-context.log paths so Wisdom knows where to check
     LaunchedEffect(Unit) {
-        com.codespace.ide.util.ProjectContextLogger.getLogFilePath(context)?.let { logPath ->
-            com.codespace.ide.diagnostics.AppOutputLog.log("[DIAG] crash-context.log path: $logPath", "lsp")
+        com.codespace.ide.util.ProjectContextLogger.getAllLogPaths(context).forEachIndexed { idx, logPath ->
+            val label = when (idx) { 0 -> "[PUBLIC]"; 1 -> "[APP-EXT]"; else -> "[APP-INT]" }
+            com.codespace.ide.diagnostics.AppOutputLog.log("[DIAG] crash-context.log $label path: $logPath", "lsp")
         }
     }
     val density = LocalDensity.current
