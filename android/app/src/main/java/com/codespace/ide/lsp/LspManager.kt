@@ -1219,10 +1219,12 @@ object LspManager {
             "echo WORKDIR_BUILD_GRADLE_ROOT=\$([ -f build.gradle ] && echo YES || echo NO); " +
             "echo WORKDIR_BUILD_GRADLE_KTS_ROOT=\$([ -f build.gradle.kts ] && echo YES || echo NO); " +
             "echo WORKDIR_GUEST_PATH=$workspaceGuestPath; " +
-            "echo WORKDIR_BUILD_GRADLE_GUEST=\$([ -f $workspaceGuestPath/build.gradle ] && echo YES || echo NO); " +
-            "echo WORKDIR_BUILD_GRADLE_KTS_GUEST=\$([ -f $workspaceGuestPath/build.gradle.kts ] && echo YES || echo NO); " +
-            "echo CLASSPATH_SCRIPT_OUTPUT_ROOT=\$(cd /root && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED); " +
-            "echo CLASSPATH_SCRIPT_OUTPUT_GUEST=\$(cd $workspaceGuestPath && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED); " +
+            "echo WORKDIR_BUILD_GRADLE_GUEST=\$([ -f "$workspaceGuestPath/build.gradle" ] && echo YES || echo NO); " +
+            "echo WORKDIR_BUILD_GRADLE_KTS_GUEST=\$([ -f "$workspaceGuestPath/build.gradle.kts" ] && echo YES || echo NO); " +
+            "echo CLASSPATH_SCRIPT_OUTPUT_ROOT=\$(cd /root && ~/.config/kotlin-language-server/classpath.sh 2>&1 || echo SCRIPT_FAILED_EXIT=\$?); " +
+            "echo CLASSPATH_SCRIPT_OUTPUT_GUEST=\$(cd "$workspaceGuestPath" 2>&1 && ~/.config/kotlin-language-server/classpath.sh 2>&1 || echo SCRIPT_FAILED_EXIT=\$?); " +
+            "echo CLASSPATH_GUEST_CD_OK=\$(cd "$workspaceGuestPath" 2>/dev/null && echo YES || echo NO); " +
+            "echo CLASSPATH_GUEST_DIR_EXISTS=\$([ -d "$workspaceGuestPath" ] && echo YES || echo NO); " +
             "echo STDLIB_JAR_VALID=\$(unzip -t /opt/kotlin-stdlib/kotlin-stdlib.jar 2>&1 | tail -1); " +
             "echo STDLIB_JAR_ENTRIES=\$(unzip -l /opt/kotlin-stdlib/kotlin-stdlib.jar 2>/dev/null | tail -1); " +
             "echo SLF4J_SIMPLE_EXISTS=\$([ -f /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar ] && echo YES || echo NO); " +
