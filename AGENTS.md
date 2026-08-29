@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | e662eec |
-| CI build | GREEN (#2585) |
+| Latest commit | 5893593 |
+| CI build | GREEN (#2587) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -993,3 +993,26 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Terminal working directory test on real project
 - [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
 - [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+
+### [2026-08-29 09:10 WAT] — AI Agent: Claude, Commit 5893593, CI Build #2587 GREEN
+**[LSP][INTELLISENSE] Fix empty completions: remove eager resolve call that blocked popup and crashed KLS server**
+
+**Root cause:** lspCompletionProvider lambda called completionItem/resolve on item[0] immediately after getCompletion() returned, BEFORE parseLspCompletions() ran. The resolve call was:
+- NOT gated behind resolveProvider capability (KLS advertises false)
+- Synchronous with 5s timeout, inside withTimeoutOrNull(5000L)
+- Causing KLS to throw NotImplementedError (extends Error, crashes server)
+- Eating into the 5s completion timeout budget, discarding all 75 items
+
+**Fix (4 items):**
+1. Added supportsCompletionResolve() to LspManager — checks completionProvider.resolveProvider
+2. Removed eager resolve call entirely (EditorPane.kt:1836) — lazy resolver covers detail/docs
+3. Gated lazy resolve (lspCompletionResolver) behind supportsCompletionResolve()
+4. Net: getCompletion() -> parseLspCompletions() -> return items. No blocking call between.
+
+**Files:** LspManager.kt, EditorPane.kt
+**Next on roadmap:** ALL pending items:
+- C1: On-device test — type "list" in real project, confirm popup shows real completions
+- kls-classpath script with build-file detection (item 1 from earlier investigation)
+- Kotlin stdlib JAR in proot rootfs (rename to kotlin-stdlib-1.9.22.jar)
+- Workspace root mismatch investigation (item 2 — /host-files/projects vs /sdcard path)
+- Research: AIDE/CodeAssist/Termux folder mapping (item 3)
