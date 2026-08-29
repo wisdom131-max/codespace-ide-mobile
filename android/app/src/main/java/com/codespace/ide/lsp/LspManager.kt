@@ -1118,7 +1118,7 @@ object LspManager {
      * still starts — it just won't have stdlib completions for loose files until the
      * next successful download.
      */
-    private fun ensureKotlinStdlib(context: Context): Boolean {
+    private fun ensureKotlinStdlib(context: Context, workspaceGuestPath: String = "/root"): Boolean {
         val stdlibJarPath = "/opt/kotlin-stdlib/kotlin-stdlib.jar"
         val classpathScriptPath = "~/.config/kotlin-language-server/classpath.sh"
 
@@ -1170,6 +1170,31 @@ object LspManager {
             AppOutputLog.log("[LSP-DIAG] Kotlin classpath.sh created/updated at $classpathScriptPath", "lsp")
         } else {
             AppOutputLog.log("[LSP-DIAG] Failed to create classpath.sh (non-fatal): $scriptResult", "lsp")
+        }
+
+        // R3-KLSP-DIAG: Comprehensive environment diagnostics — log exactly what the
+        // Kotlin LSP server process will see when it starts. This runs in the same
+        // proot environment with the same profile sourcing as the server.
+        val diagCmd = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; " +
+            "echo HOME=\${HOME}; " +
+            "echo XDG_CONFIG_HOME=\${XDG_CONFIG_HOME}; " +
+            "echo USER_HOME_JAVA=\$(java -XshowSettings:properties -version 2>&1 | grep user.home || echo java-not-found); " +
+            "echo CLASSPATH_SCRIPT_EXISTS=\$([ -f ~/.config/kotlin-language-server/classpath.sh ] && echo YES || echo NO); " +
+            "echo CLASSPATH_SCRIPT_PATH=\$(realpath ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo N/A); " +
+            "echo STDLIB_JAR_EXISTS=\$([ -f /opt/kotlin-stdlib/kotlin-stdlib.jar ] && echo YES || echo NO); " +
+            "echo STDLIB_JAR_SIZE=\$(stat -c%s /opt/kotlin-stdlib/kotlin-stdlib.jar 2>/dev/null || echo N/A); " +
+            "echo WORKDIR_BUILD_GRADLE_ROOT=\$([ -f build.gradle ] && echo YES || echo NO); " +
+            "echo WORKDIR_BUILD_GRADLE_KTS_ROOT=\$([ -f build.gradle.kts ] && echo YES || echo NO); " +
+            "echo WORKDIR_GUEST_PATH=$workspaceGuestPath; " +
+            "echo WORKDIR_BUILD_GRADLE_GUEST=\$([ -f $workspaceGuestPath/build.gradle ] && echo YES || echo NO); " +
+            "echo WORKDIR_BUILD_GRADLE_KTS_GUEST=\$([ -f $workspaceGuestPath/build.gradle.kts ] && echo YES || echo NO); " +
+            "echo CLASSPATH_SCRIPT_OUTPUT_ROOT=\$(cd /root && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED); " +
+            "echo CLASSPATH_SCRIPT_OUTPUT_GUEST=\$(cd $workspaceGuestPath && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED)"
+        val diagResult = ProotInstaller.execOnce(context, diagCmd, timeoutSeconds = 15)
+        for (line in diagResult.trimEnd().lines()) {
+            if (line.isNotBlank()) {
+                AppOutputLog.log("[LSP-DIAG] $line", "lsp")
+            }
         }
 
         // Final verification
@@ -1320,7 +1345,8 @@ object LspManager {
         // starting the server. This handles re-download if the JAR was deleted and
         // creates the conditional classpath.sh that provides stdlib for loose .kt files.
         if (language == Language.KOTLIN) {
-            ensureKotlinStdlib(context)
+            val guestPath = workspaceGuestPath(context, workspacePath) ?: "/root"
+            ensureKotlinStdlib(context, guestPath)
         }
 
         // Build proot command — wrap server in bash -c (NON-login shell).
