@@ -1452,7 +1452,7 @@ object LspManager {
         // OOM-killed by the Android low-memory killer before initialization completes.
         // 384m is enough for indexing small projects while leaving room for the IDE.
         if (config.command == "kotlin-language-server" || config.command == "/opt/jdtls/bin/jdtls") {
-            envMap["JAVA_TOOL_OPTIONS"] = "-Xmx384m -Dorg.slf4j.simpleLogger.defaultLogLevel=info -Dorg.slf4j.simpleLogger.showDateTime=true"
+            pb.environment()["JAVA_TOOL_OPTIONS"] = "-Xmx384m -Dorg.slf4j.simpleLogger.defaultLogLevel=info -Dorg.slf4j.simpleLogger.showDateTime=true"
             AppOutputLog.log("[LSP] Setting JAVA_TOOL_OPTIONS=-Xmx384m + slf4j logging for ${language.displayName}", "lsp")
         }
 
