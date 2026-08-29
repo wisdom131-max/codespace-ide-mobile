@@ -1118,3 +1118,33 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
 - [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
 - [PENDING] Clean up diagnostic logging after session restoration is stable
+
+---
+
+### [2026-08-29 15:35 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** 6756368 | CI Build #2602 (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [UI] Bug 1: Non-empty templates (Android, Flutter, React Native, Web, Node.js, Python) — Explorer showed only project root with no parent context. Fix: pass PARENT of projectPathUrl as initialWorkspacePath to ExplorerSidePanel. Explorer now shows parent folder as root with project as visible child. LSP/git/terminal unaffected (still use project root via ProjectPathResolver).
+- [UI] Bug 2: Empty Project — auto-created a folder and opened Explorer at it. Fix: don't call scaffold() for EMPTY type. Create Project with pathOrUrl="". ProjectPathResolver returns null for blank pathOrUrl (no legacy fallback). Explorer shows "No folder opened" state with existing "Open Folder" button. User picks any real folder manually.
+
+**Files:** ProjectShellScreen.kt, ProjectWizard.kt, ProjectPathResolver.kt
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 — create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 — create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
