@@ -74,7 +74,11 @@ object ProjectPathResolver {
 
             // 2. pathOrUrl from project metadata
             val pathOrUrl = readPathOrUrl(context, projectId)
-            if (pathOrUrl != null && File(pathOrUrl).exists()) return pathOrUrl
+            if (pathOrUrl != null && pathOrUrl.isNotBlank() && File(pathOrUrl).exists()) return pathOrUrl
+            // If pathOrUrl is explicitly blank (e.g. Empty Project), return null —
+            // do NOT fall back to legacy filesDir/projects/$projectId.
+            // null pathOrUrl (key missing) = old project → legacy fallback below.
+            if (pathOrUrl != null && pathOrUrl.isBlank()) return null
 
             // 3. Legacy fallback: filesDir/projects/$projectId
             return File(context.filesDir, "projects/$projectId").absolutePath

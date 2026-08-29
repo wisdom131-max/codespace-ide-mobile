@@ -175,29 +175,17 @@ fun ProjectWizardDialog(
                                     return@Button
                                 }
                                 createError = ""
-                                // EMPTY type: skip location picker, create immediately
+                                // EMPTY type: skip location picker, register project only.
+                                // Do NOT create any folder — the user will use the Explorer's
+                                // "Open Folder" button to pick any real folder on their phone.
                                 if (type == ProjectTemplates.ProjectType.EMPTY) {
-                                    creating = true
-                                    scope.launch {
-                                        val result = ProjectTemplates.scaffold(
-                                            context = ctx,
-                                            projectName = name,
-                                            type = type,
-                                            rootParent = storageRoot,
-                                        )
-                                        creating = false
-                                        if (result.success) {
-                                            val project = Project(
-                                                id = System.currentTimeMillis().toString(),
-                                                name = name,
-                                                kind = ProjectKind.LOCAL,
-                                                pathOrUrl = result.rootDir.absolutePath,
-                                            )
-                                            onProjectCreated(project, result.rootDir)
-                                        } else {
-                                            createError = result.message
-                                        }
-                                    }
+                                    val project = Project(
+                                        id = System.currentTimeMillis().toString(),
+                                        name = name,
+                                        kind = ProjectKind.LOCAL,
+                                        pathOrUrl = "",  // empty = no folder, Explorer shows "Open Folder"
+                                    )
+                                    onProjectCreated(project, java.io.File(""))
                                 } else {
                                     step = 3
                                 }

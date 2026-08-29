@@ -1494,7 +1494,11 @@ fun ProjectShellScreen(
                                 },
                                 tokenStore = tokenStore,
                             
-                                initialWorkspacePath = projectPathUrl,
+                                // Bug fix: show the PARENT folder as Explorer root so the user sees
+                                // their project in the context of where they chose to create it.
+                                // LSP/git/terminal still use ProjectPathResolver which returns the
+                                // project root itself — only the Explorer root changes.
+                                initialWorkspacePath = projectPathUrl?.let { java.io.File(it).parent },
                                 navigateToDir = breadcrumbNavDir,
                                 revealFilePath = revealFile,
                                 revealFileTrigger = revealFileTrigger,
