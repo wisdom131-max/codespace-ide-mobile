@@ -1054,3 +1054,35 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Fix session restoration to resolve project context on startup
 - [PENDING] Verify persistence of ProjectPathResolver bindings across app restarts
 - [PENDING] Clean up diagnostic logging after session restoration is stable
+
+---
+
+### [2026-08-29 14:30 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** 8922d0c | CI Build #2598 (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [CRASH] Fixed ProjectContextLogger: was not writing crash-context.log at all. Root cause: write failures swallowed by catch block that only logged to Log.e (logcat), never to AppOutputLog (Output tab). Also: if getExternalFilesDir(null) returned null, fallback path was never communicated.
+- [CRASH] Added public-storage copy: crash-context.log now written to /sdcard/CodespaceIDE/logs/crash-context.log (visible in any file manager). Uses Environment.getExternalStorageDirectory() — same pattern as BackupManager which already writes to /sdcard/CodespaceIDE/. App has MANAGE_EXTERNAL_STORAGE + targetSdk=28 (legacy storage).
+- [CRASH] Three independent write targets: [PUBLIC] /sdcard/CodespaceIDE/logs/, [APP-EXT] getExternalFilesDir, [APP-INT] filesDir/diagnostics. Each logs to Output tab before/after with success/failure. One failing does not skip others.
+- [CRASH] ProjectShellScreen now shows all 3 paths on startup via getAllLogPaths()
+- [DOCS] Terminal question answered: ProjectPathResolver only changed loadWorkspacePath (TerminalPane starting dir), NOT file I/O capability. Terminal can read/write any path in proot. Wisdom's successful `cat` of absolute path confirms this.
+
+**Files:** ProjectContextLogger.kt, ProjectShellScreen.kt
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Fix session restoration to resolve project context on startup
+- [PENDING] Verify persistence of ProjectPathResolver bindings across app restarts
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [PENDING] On-device test: reproduce blank-projectId, verify crash-context.log writes to all 3 paths
