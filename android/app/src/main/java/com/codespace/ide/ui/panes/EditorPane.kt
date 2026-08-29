@@ -1842,12 +1842,12 @@ fun EditorPane(
                                     val triggerChar = linesForTrigger.getOrNull(line)?.let { ln ->
                                         if (col > 0 && col <= ln.length) ln[col - 1].toString() else null
                                     }?.takeIf { it == "." }
-                                    val items = LspManager.getCompletion(active.language, uri, line, col, triggerChar)
-                                    AppOutputLog.log("[LSP-DIAG] Provider: getCompletion returned " + (items?.length()?.toString() ?: "null") + " items for line=" + line + " col=" + col + " trigger=" + triggerChar, "lsp")
+                                    val (items, isIncomplete) = LspManager.getCompletionWithMeta(active.language, uri, line, col, triggerChar)
+                                    AppOutputLog.log("[LSP-DIAG] Provider: getCompletionWithMeta returned " + (items?.length()?.toString() ?: "null") + " items isIncomplete=" + isIncomplete + " for line=" + line + " col=" + col + " trigger=" + triggerChar, "lsp")
                                     val parsed = items?.let { parseLspCompletions(it) } ?: emptyList()
-                                    AppOutputLog.log("[LSP-DIAG] Provider: parseLspCompletions returned " + parsed.size + " items (from " + (items?.length() ?: 0) + " raw)", "lsp")
-                                    parsed
-                                } else emptyList()
+                                    AppOutputLog.log("[LSP-DIAG] Provider: parseLspCompletions returned " + parsed.size + " items (from " + (items?.length() ?: 0) + " raw) isIncomplete=" + isIncomplete, "lsp")
+                                    Pair(parsed, isIncomplete)
+                                } else Pair(emptyList(), false)
                             }
                         } else null,
                         lspCommandExecutor = if (LspManager.isServerRunning(active.language)) {

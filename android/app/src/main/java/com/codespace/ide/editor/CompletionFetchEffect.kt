@@ -30,7 +30,7 @@ fun CompletionFetchEffect(
     editorEvent: EditorEvent,
     dotWasTyped: Boolean,
     completionContextValue: com.codespace.ide.lsp.CompletionContextDetector.ContextInfo,
-    lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)?,
+    lspCompletionProvider: ((line: Int, col: Int) -> Pair<List<LspCompletionItem>, Boolean>)?,
     lspWorkspaceSymbolProvider: ((query: String) -> List<LspCompletionItem>)?,
     lspCancellationProvider: ((Long) -> Unit)?,
     lspRequestIdProvider: (() -> Long)?,
@@ -43,6 +43,8 @@ fun CompletionFetchEffect(
     lspTimedOutState: MutableState<Boolean>,
     lspHasRespondedState: MutableState<Boolean>,
     lspRequestIdState: MutableState<Long>,
+    lspIsIncompleteState: MutableState<Boolean>,
+    lspLastPrefixState: MutableState<String>,
 ) {
     // TEMP: LSP timing counters (remove after diagnostic session)
     var __lspSuccessCount by remember { mutableStateOf(0) }
@@ -67,7 +69,35 @@ fun CompletionFetchEffect(
         if (isDotContext) { com.codespace.ide.diagnostics.AppOutputLog.log("[EDITOR] DOT_CONTEXT=true", "lsp") }
         if (dotWasTyped) { com.codespace.ide.diagnostics.AppOutputLog.log("[EDITOR] DOT_TYPED=true", "lsp") }
 
-        if ((prefix.length >= 2 || isDotContext || (completionContextValue.context == com.codespace.ide.lsp.CompletionContextDetector.CompletionContext.IMPORT_CONTEXT && prefix.length >= 1)) && lspCompletionProvider != null) {
+        if (lspCompletionProvider != null) {
+            // ─── FREEZE/REFILTER MODEL (VS Code pattern) ───
+            // When the previous LSP response had isIncomplete=false, the server returned
+            // ALL completions for that trigger position. Subsequent keystrokes that EXTEND
+            // the prefix (forward typing) can be served from cache — just refilter locally.
+            // The allCompletions block in CodeEditor.kt (keyed on prefix) already re-runs
+            // rank()/fuzzyScore() against lspCompletionsState on every prefix change.
+            //
+            // Re-query the server when:
+            //   1. No previous response yet (first query)
+            //   2. Previous response was isIncomplete=true (server may have more items)
+            //   3. Dot trigger (triggerKind=TriggerCharacter — always re-query)
+            //   4. Prefix doesn't extend the cached prefix (backspace, new word, etc.)
+            val canFreeze = !dotWasTyped &&
+                !isDotContext &&
+                !lspIsIncompleteState.value &&
+                lspLastPrefixState.value.isNotEmpty() &&
+                lspCompletionsState.value.isNotEmpty() &&
+                prefix.startsWith(lspLastPrefixState.value) &&
+                prefix.length > lspLastPrefixState.value.length
+
+            if (canFreeze) {
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[LSP-FREEZE] refiltering cached results prefix='$prefix' cachedPrefix='${lspLastPrefixState.value}' items=${lspCompletionsState.value.size} — NO server request",
+                    "lsp"
+                )
+                return@LaunchedEffect
+            }
+
             delay(150)  // debounce
             delay(70)   // R3-A: show delay
 
@@ -99,14 +129,16 @@ fun CompletionFetchEffect(
                 val __t0 = System.currentTimeMillis()
                 val results = withContext(Dispatchers.IO) {
                     withTimeoutOrNull(5000L) {
-                        val lsp = try { lspCompletionProvider.invoke(cLine, cCol) }
+                        val lspResult = try { lspCompletionProvider.invoke(cLine, cCol) }
                         catch (e: Exception) {
                             com.codespace.ide.diagnostics.AppOutputLog.log(
                                 "[LSP-DIAG] CRASH in lspCompletionProvider: " + e.javaClass.simpleName + ": " + e.message + "\n" + e.stackTraceToString().take(2000),
                                 "lsp"
                             )
-                            emptyList<LspCompletionItem>()
+                            Pair(emptyList<LspCompletionItem>(), false)
                         }
+                        val lsp = lspResult.first
+                        lspIsIncompleteState.value = lspResult.second
                         val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
                             try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
                         } else emptyList()
@@ -126,7 +158,9 @@ fun CompletionFetchEffect(
                     lspHasRespondedState.value = true
                     lspCompletionsState.value = results.first
                     workspaceCompletionsState.value = results.second
-                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] SUCCESS elapsed=${__elapsed}ms lspItems=${results.first.size} wsItems=${results.second.size} prefix='${prefix}'", "lsp")
+                    // Update freeze state: store isIncomplete flag + prefix that produced this response
+                    lspLastPrefixState.value = prefix
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] SUCCESS elapsed=${__elapsed}ms lspItems=${results.first.size} wsItems=${results.second.size} prefix='${prefix}' isIncomplete=${lspIsIncompleteState.value}", "lsp")
                     __lspSuccessCount++
                     __lspTotalMs += __elapsed
                     if (__elapsed > 2000) __lspSlowCount++
@@ -140,6 +174,8 @@ fun CompletionFetchEffect(
                     lspHasRespondedState.value = false
                     lspCompletionsState.value = emptyList()
                     workspaceCompletionsState.value = emptyList()
+                    lspIsIncompleteState.value = false
+                    lspLastPrefixState.value = ""
                     com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] TIMEOUT >5000ms prefix='${prefix}'", "lsp")
                     __lspTimeoutCount++
                     com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] STATS success=$__lspSuccessCount timeout=$__lspTimeoutCount slow(>2s)=$__lspSlowCount avgMs=$__lspTotalMs", "lsp")
@@ -147,7 +183,9 @@ fun CompletionFetchEffect(
                 }
             } else {
                 val results = withContext(Dispatchers.IO) {
-                    val lsp = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList<LspCompletionItem>() }
+                    val lspResult = try { lspCompletionProvider.invoke(cLine, cCol) } catch (_: Exception) { Pair(emptyList<LspCompletionItem>(), false) }
+                    val lsp = lspResult.first
+                    lspIsIncompleteState.value = lspResult.second
                     val ws = if (lspWorkspaceSymbolProvider != null && prefix.length >= 3) {
                         try { lspWorkspaceSymbolProvider.invoke(prefix).take(50) } catch (_: Exception) { emptyList<LspCompletionItem>() }
                     } else emptyList()
@@ -163,10 +201,12 @@ fun CompletionFetchEffect(
                 }
                 lspCompletionsState.value = results.first
                 workspaceCompletionsState.value = results.second
+                lspLastPrefixState.value = prefix
             }
         } else {
             lspCompletionsState.value = emptyList()
             workspaceCompletionsState.value = emptyList()
+            lspLastPrefixState.value = ""
         }
     }
 }

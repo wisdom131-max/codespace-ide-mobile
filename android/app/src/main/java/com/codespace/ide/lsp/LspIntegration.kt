@@ -133,14 +133,6 @@ data class LspCompletionItem(
 )
 
 /**
- * Phase U-1: Completion response wrapper carrying isIncomplete flag.
- * When isIncomplete=true, the server signals more items may be available on re-request.
- */
-data class CompletionResponse(
-    val items: List<LspCompletionItem>,
-    val isIncomplete: Boolean = false,
-)
-
 /**
  * Converts LSP CompletionItem array to LspCompletionItem list.
  * Strips snippet placeholders ($1, $2, ${1:default}) from insertText.

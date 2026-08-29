@@ -2338,15 +2338,33 @@ object LspManager {
         val server = servers[language] ?: return Pair(null, false)
         if (!server.initialized) return Pair(null, false)
 
+        // DIAG: Log server capability for completion
+        val hasComp = hasCapability(language, "completionProvider")
+        val compCaps = server.capabilities?.optJSONObject("completionProvider")
+        AppOutputLog.log("[LSP-DIAG] getCompletionWithMeta: uri=$uri line=$line char=$character triggerChar=$triggerCharacter hasCompletionProvider=$hasComp", "lsp")
+        AppOutputLog.log("[LSP-DIAG] completionProvider caps: ${compCaps?.toString()?.take(300) ?: "null"}", "lsp")
+
         // R3-A: Delegate param building to LspCompletionHandler
         val triggerKind = if (triggerCharacter != null) 2 else 1
         val params = LspCompletionHandler.buildCompletionParams(uri, line, character, triggerCharacter, triggerKind)
+        AppOutputLog.log("[LSP-DIAG] completion params: ${params.toString().take(500)}", "lsp")
         val compTimeout = if (line > 5000) 20L else if (line > 1000) 15L else 10L
         val response = server.client.request("textDocument/completion", params, timeoutSeconds = compTimeout)
+        // DIAG: Log raw response
+        val rawType = response?.javaClass?.simpleName ?: "null"
+        val rawStr = response?.toString()?.take(500) ?: "null"
+        AppOutputLog.log("[LSP-DIAG] completion RAW response: type=$rawType len=${response?.toString()?.length ?: 0} body=$rawStr", "lsp")
         return when (response) {
             null -> Pair(null, false)
-            is JSONArray -> Pair(response, false)
-            is JSONObject -> Pair(response.optJSONArray("items"), response.optBoolean("isIncomplete", false))
+            is JSONArray -> {
+                AppOutputLog.log("[LSP-DIAG] response is JSONArray (array form) isIncomplete=false", "lsp")
+                Pair(response, false)
+            }
+            is JSONObject -> {
+                val isIncomplete = response.optBoolean("isIncomplete", false)
+                AppOutputLog.log("[LSP-DIAG] response is JSONObject isIncomplete=$isIncomplete items=${response.optJSONArray("items")?.length() ?: 0}", "lsp")
+                Pair(response.optJSONArray("items"), isIncomplete)
+            }
             else -> Pair(null, false)
         }
     }

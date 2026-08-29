@@ -588,7 +588,7 @@ fun CodeEditor(
     /** P22-G: Reports cursor position (0-based line, 0-based column) for LSP hover */
     onCursorChange: ((Int, Int) -> Unit)? = null,
     /** P22-H: LSP-backed completion provider — returns LSP completion items for a position */
-    lspCompletionProvider: ((line: Int, col: Int) -> List<LspCompletionItem>)? = null,
+    lspCompletionProvider: ((line: Int, col: Int) -> Pair<List<LspCompletionItem>, Boolean>)? = null,
     /** P22-J: LSP-backed auto-import provider — returns ImportEdits for current cursor position */
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
     // Phase U-4: Executor for LSP workspace/executeCommand (called after completion accept)
@@ -1134,10 +1134,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
     }
-    // P41-Q: Completion caching — cache LSP results to avoid redundant requests when prefix extends
-    var cachedLspPrefix by remember { mutableStateOf("") }
-    var cachedLspResults by remember { mutableStateOf<List<LspCompletionItem>>(emptyList()) }
-    var cachedLspCursorLine by remember { mutableStateOf(-1) }
+    // Freeze/refilter model: isIncomplete state + last prefix that produced a server response
+    val lspIsIncompleteState = remember { mutableStateOf(false) }
+    val lspLastPrefixState = remember { mutableStateOf("") }
     // Phase X-3: Completion trigger gated by editorEvent — only UserTyping can trigger.
     // Context detection (prefix, isDotContext, completionContext) still recomputes freely
     // (pure, cheap) — they feed display/filtering. But the LSP request only fires when
@@ -1163,6 +1162,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         lspTimedOutState = lspTimedOutState,
         lspHasRespondedState = lspHasRespondedState,
         lspRequestIdState = lspRequestIdState,
+        lspIsIncompleteState = lspIsIncompleteState,
+        lspLastPrefixState = lspLastPrefixState,
     )
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
     val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext, smartCompletion, lspHasResponded, lspTimedOut) {
@@ -1332,7 +1333,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         ghostTextIsAi = false
         // P41-V: Suppress ghost text in string/comment context
         if (!completionContext.shouldShowCompletions) return@LaunchedEffect
-        if ((prefix.length >= 2 || isDotContext) && allCompletions.isNotEmpty()) {
+        if ((prefix.length >= 1 || isDotContext) && allCompletions.isNotEmpty()) {
             kotlinx.coroutines.delay(800L)
             val top = allCompletions.firstOrNull()
             if (top != null) {
