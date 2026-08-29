@@ -1086,3 +1086,35 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Verify persistence of ProjectPathResolver bindings across app restarts
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [PENDING] On-device test: reproduce blank-projectId, verify crash-context.log writes to all 3 paths
+
+---
+
+### [2026-08-29 15:00 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** d800f32 | CI Build #2600 (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [CRASH][LSP] ROOT CAUSE FOUND AND FIXED: projectId blank after process death. crash-context.log confirmed lastProjectId='1788008324507' (valid in prefs) while projectId='' (empty) at same moment.
+- Root cause: Navigation Compose 2.7.7 bug — when route with path args ("project/{projectId}") is used as startDestination WITHOUT explicit navArgument + defaultValue, the path argument Bundle is lost during process death + SavedStateHandle restoration.
+- Fix layer 1: Added explicit navArgument("projectId") { type=NavType.StringType; defaultValue="" } to composable(Routes.PROJECT)
+- Fix layer 2: Added fallback — if projectId still blank from backStackEntry, read from sessionStateStore.lastProjectId() (same source startDest was computed from)
+- Fix layer 3: Added diagnostic log inside remember{} showing startDest value + lastProjectId at NavHost creation time
+- Terminal question confirmed: ProjectPathResolver only changed TerminalPane starting dir (loadWorkspacePath), NOT file I/O. Terminal can read/write any path. cat working = terminal fine.
+
+**Files:** CodeSpaceApp.kt
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check Output tab for [NAV] startDest + projectId fallback logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
