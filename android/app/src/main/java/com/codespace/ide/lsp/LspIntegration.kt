@@ -133,7 +133,6 @@ data class LspCompletionItem(
 )
 
 /**
-/**
  * Converts LSP CompletionItem array to LspCompletionItem list.
  * Strips snippet placeholders ($1, $2, ${1:default}) from insertText.
  */
