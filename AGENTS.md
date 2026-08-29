@@ -1016,3 +1016,41 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - Kotlin stdlib JAR in proot rootfs (rename to kotlin-stdlib-1.9.22.jar)
 - Workspace root mismatch investigation (item 2 — /host-files/projects vs /sdcard path)
 - Research: AIDE/CodeAssist/Termux folder mapping (item 3)
+
+### [2026-08-29 12:44 WAT] — AI Agent: Claude, Commit 57f674f, CI Build #2588 (pending)
+**[LSP][INTELLISENSE] Implement isIncomplete freeze/refilter model — VS Code pattern**
+
+**RULES REMINDER BLOCK:**
+1. TWO-REPO: Main IDE → codespace-ide-mobile | Proot/Ubuntu/rootfs → ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items)
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was implemented:**
+- Switched from getCompletion() to getCompletionWithMeta() — now carries isIncomplete flag from server
+- Added freeze/refilter logic in CompletionFetchEffect: when previous response had isIncomplete=false and user types forward (prefix extends cached prefix), server request is SKIPPED entirely — allCompletions block re-filters locally via rank()/fuzzyScore()
+- Removed 2-char minimum prefix gate — completions now fire from the FIRST character typed
+- Lowered ghost text gate from 2 to 1 char to match
+- Dot triggers ALWAYS bypass freeze (triggerKind=TriggerCharacter always re-queries)
+- isIncomplete=true responses re-query on next keystroke (server signals more items available)
+- Cleaned up 3 dead-code artifacts from prior abandoned attempt at this same feature:
+  - cachedLspPrefix/cachedLspResults/cachedLspCursorLine in CodeEditor.kt (declared, never used)
+  - CompletionResponse data class in LspIntegration.kt (defined, never used)
+  - getCompletionWithMeta() in LspManager.kt (defined, never called — now activated)
+- Added diagnostic logging to getCompletionWithMeta for request count verification
+- [LSP-FREEZE] log entries show when server requests are skipped and cached results are refiltered
+
+**Prior attempt analysis:** The dead-code artifacts were a prior half-built attempt at this same feature. The prior approach used a CompletionResponse data class and cache variables in CodeEditor, but never wired the actual freeze logic or changed the provider signature. My approach changes the provider to return Pair<List, Boolean> directly and puts freeze state inside CompletionFetchEffect where the request decision is made.
+
+**Files:** CompletionFetchEffect.kt, CodeEditor.kt, EditorPane.kt, LspManager.kt, LspIntegration.kt
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects (analogous to Kotlin classpath issue)
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Fix session restoration to resolve project context on startup
+- [PENDING] Verify persistence of ProjectPathResolver bindings across app restarts
+- [PENDING] Clean up diagnostic logging after session restoration is stable
