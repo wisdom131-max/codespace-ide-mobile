@@ -269,6 +269,10 @@ fun EditorPane(
     }
     // P22-G: LSP diagnostics + hover
     val lspOpenedFiles = remember { mutableStateMapOf<String, Boolean>() }
+    // VERSION-DIAG: Track last version sent by Effect B per URI to detect
+    // version ordering issues vs the force-sync didChange in the completion provider.
+    val lspLastEffectBVersion = remember { mutableStateMapOf<String, Int>() }
+    val lspLastEffectBContentLen = remember { mutableStateMapOf<String, Int>() }
 
     // P24-2: LSP server teardown — stop all servers when EditorPane leaves composition
     DisposableEffect(Unit) {
@@ -1103,6 +1107,9 @@ fun EditorPane(
             val version = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
             withContext(Dispatchers.IO) {
                 LspManager.didChange(snap.language, uri, snap.content, version)
+                lspLastEffectBVersion[uri] = version
+                lspLastEffectBContentLen[uri] = snap.content.length
+                AppOutputLog.log("[LSP-VERSION-DIAG] Effect-B sent: uri=" + uri + " version=" + version + " contentLen=" + snap.content.length, "lsp")
             }
         }
         // GAP-9 FIX: Diagnostics subscription belongs in its own stable effect, NOT in the
@@ -1827,6 +1834,12 @@ fun EditorPane(
                                     // unrelated/stale suggestions instead of member completions for what was
                                     // just typed. Sending didChange synchronously here guarantees freshness.
                                     val syncVersion = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                                    // VERSION-DIAG: Compare force-sync version against Effect B's last version
+                                    val lastBVersion = lspLastEffectBVersion[uri] ?: -1
+                                    val lastBContentLen = lspLastEffectBContentLen[uri] ?: -1
+                                    val outOfOrder = syncVersion < lastBVersion
+                                    val contentDelta = active.content.length - lastBContentLen
+                                    AppOutputLog.log("[LSP-VERSION-DIAG] force-sync: uri=" + uri + " syncVersion=" + syncVersion + " lastEffectBVersion=" + lastBVersion + " outOfOrder=" + outOfOrder + " contentLen=" + active.content.length + " lastBContentLen=" + lastBContentLen + " contentDelta=" + contentDelta, "lsp")
                                     // DIAG: Log didOpen status and content snippet around cursor
                                     val didOpenSent = lspOpenedFiles[active.path] == true
                                     val contentLines = active.content.split("\n")
@@ -1836,6 +1849,9 @@ fun EditorPane(
                                     AppOutputLog.log("[LSP-DIAG] completion-context: didOpenSent=" + didOpenSent + " path=" + active.path + " totalLines=" + contentLines.size + " totalChars=" + active.content.length, "lsp")
                                     AppOutputLog.log("[LSP-DIAG] cursor-line-" + line + ": before=[" + beforeCursor + "] after=[" + afterCursor + "] (col=" + col + ")", "lsp")
                                     LspManager.didChange(active.language, uri, active.content, syncVersion)
+                                    lspLastEffectBVersion[uri] = syncVersion
+                                    lspLastEffectBContentLen[uri] = active.content.length
+                                    AppOutputLog.log("[LSP-VERSION-DIAG] force-sync sent: version=" + syncVersion + " contentLen=" + active.content.length, "lsp")
                                     // Determine trigger character (e.g. "." for member completion) from the
                                     // actual buffer content so the server gets correct LSP completion context.
                                     val linesForTrigger = active.content.split("\n")
