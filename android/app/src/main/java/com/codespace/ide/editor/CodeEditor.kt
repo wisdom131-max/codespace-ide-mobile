@@ -4480,7 +4480,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             lintErrors = lintErrors,
             extraCursorsState = extraCursorsState,
             programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
-            lspLoading = lspCompletionLoading,
         )
 
         // P2-12 Signature help popup — shown above the current line, one line up so it
@@ -4662,6 +4661,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onContentChange = onContentChange,
             fontSize = fontSize,
             programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
+            lspLoading = lspCompletionLoading,
         )
     }
 }
