@@ -921,6 +921,18 @@ object LspManager {
         hasCapability(language, "workspaceSymbolProvider")
 
     /**
+     * Check if the server advertises completionItem/resolve support.
+     * Servers with resolveProvider=false (or no resolveProvider field) will
+     * throw NotImplementedError if we send completionItem/resolve — which
+     * can crash the server and eat the completion timeout budget.
+     */
+    fun supportsCompletionResolve(language: Language): Boolean {
+        val server = servers[language] ?: return false
+        val compCaps = server.capabilities?.optJSONObject("completionProvider") ?: return false
+        return compCaps.optBoolean("resolveProvider", false)
+    }
+
+    /**
      * Check if the LSP server binary is installed in the proot rootfs.
      */
     fun isServerInstalled(context: Context, language: Language, resolvedConfig: ServerConfig? = null): Boolean {

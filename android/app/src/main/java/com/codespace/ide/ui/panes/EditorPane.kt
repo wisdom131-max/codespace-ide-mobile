@@ -1828,28 +1828,6 @@ fun EditorPane(
                                     }?.takeIf { it == "." }
                                     val items = LspManager.getCompletion(active.language, uri, line, col, triggerChar)
                                     AppOutputLog.log("[LSP-DIAG] Provider: getCompletion returned " + (items?.length()?.toString() ?: "null") + " items for line=" + line + " col=" + col + " trigger=" + triggerChar, "lsp")
-                                    // P26-1: Resolve first item for richer docs
-                                    items?.let { arr ->
-                                        if (arr.length() > 0) {
-                                            val first = arr.optJSONObject(0)
-                                            if (first != null) {
-                                                val resolved = try { LspManager.resolveCompletion(active.language, first) } catch (_: Exception) { null }
-                                                if (resolved != null) {
-                                                    val detail = resolved.optString("detail", "")
-                                                    val docs = resolved.opt("documentation")
-                                                    val docText = when (docs) {
-                                                        is org.json.JSONObject -> docs.optString("value", "")
-                                                        is String -> docs
-                                                        else -> ""
-                                                    }
-                                                    if (detail.isNotBlank() || docText.isNotBlank()) {
-                                                        lspResolvedDetail = (if (detail.isNotBlank()) detail else "") +
-                                                            (if (docText.isNotBlank()) "\n$docText" else "")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
                                     val parsed = items?.let { parseLspCompletions(it) } ?: emptyList()
                                     AppOutputLog.log("[LSP-DIAG] Provider: parseLspCompletions returned " + parsed.size + " items (from " + (items?.length() ?: 0) + " raw)", "lsp")
                                     parsed
@@ -1880,7 +1858,9 @@ fun EditorPane(
                             }
                         } else null,
                         // P41-K: Lazy resolve — resolves documentation/detail for highlighted completion items
-                        lspCompletionResolver = if (LspManager.isServerRunning(active.language)) {
+                        // Gated behind resolveProvider capability — servers that don't advertise
+                        // resolveProvider will throw NotImplementedError, crashing the server.
+                        lspCompletionResolver = if (LspManager.isServerRunning(active.language) && LspManager.supportsCompletionResolve(active.language)) {
                             { item ->
                                 com.codespace.ide.lsp.resolveCompletionItem(active.language, item)
                             }
