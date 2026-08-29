@@ -367,6 +367,9 @@ object LspManager {
                 "(mkdir -p /opt/kotlin-stdlib && " +
                 "curl -fsSL https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.9.22/kotlin-stdlib-1.9.22.jar -o /opt/kotlin-stdlib/kotlin-stdlib.jar && " +
                 "echo Kotlin-stdlib-installed || echo Kotlin-stdlib-download-failed-non-fatal) ; " +
+                "(curl -fsSL https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.7.25/slf4j-simple-1.7.25.jar -o /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar && " +
+                "sed -i 's|slf4j-api-1.7.25.jar|slf4j-api-1.7.25.jar:$APP_HOME/lib/slf4j-simple-1.7.25.jar|' /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
+                "echo SLF4J-simple-installed || echo SLF4J-simple-failed-non-fatal) ; " +
                 "echo Kotlin-LSP-installed",
             300,
         ),
@@ -1147,6 +1150,24 @@ object LspManager {
             AppOutputLog.log("[LSP-DIAG] Kotlin stdlib JAR present at $stdlibJarPath", "lsp")
         }
 
+        // R3-KLSP-SLF4J: Ensure slf4j-simple is installed and patched into the
+        // launch script. Without this, the server SLF4J defaults to NOP and ALL
+        // internal LOG.info() calls are silently dropped — we cannot see
+        // "Adding N files to class path", symbol index counts, or exceptions.
+        val slf4jResult = ProotInstaller.execOnce(context,
+            "[ -f /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar ] && " +
+            "grep -q slf4j-simple /opt/kotlin-language-server/server/bin/kotlin-language-server && " +
+            "echo SLF4J_OK || " +
+            "(curl -fsSL --connect-timeout 10 --max-time 30 " +
+            "https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.7.25/slf4j-simple-1.7.25.jar " +
+            "-o /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar && " +
+            "sed -i 's|slf4j-api-1.7.25.jar|slf4j-api-1.7.25.jar:$APP_HOME/lib/slf4j-simple-1.7.25.jar|' " +
+            "/opt/kotlin-language-server/server/bin/kotlin-language-server && " +
+            "echo SLF4J_PATCHED || echo SLF4J_PATCH_FAILED)",
+            timeoutSeconds = 45)
+        val slf4jStatus = slf4jResult.trimEnd().lines().lastOrNull().orEmpty().trim()
+        AppOutputLog.log("[LSP-DIAG] SLF4J binding: $slf4jStatus", "lsp")
+
         // Ensure the global classpath.sh script exists and is up-to-date.
         // The script is idempotent — we overwrite it every time to ensure it's current.
         // Using printf (not heredoc) to avoid raw newline issues in the patch pipeline.
@@ -1189,7 +1210,11 @@ object LspManager {
             "echo WORKDIR_BUILD_GRADLE_GUEST=\$([ -f $workspaceGuestPath/build.gradle ] && echo YES || echo NO); " +
             "echo WORKDIR_BUILD_GRADLE_KTS_GUEST=\$([ -f $workspaceGuestPath/build.gradle.kts ] && echo YES || echo NO); " +
             "echo CLASSPATH_SCRIPT_OUTPUT_ROOT=\$(cd /root && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED); " +
-            "echo CLASSPATH_SCRIPT_OUTPUT_GUEST=\$(cd $workspaceGuestPath && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED)"
+            "echo CLASSPATH_SCRIPT_OUTPUT_GUEST=\$(cd $workspaceGuestPath && ~/.config/kotlin-language-server/classpath.sh 2>/dev/null || echo SCRIPT_FAILED); " +
+            "echo STDLIB_JAR_VALID=\$(unzip -t /opt/kotlin-stdlib/kotlin-stdlib.jar 2>&1 | tail -1); " +
+            "echo STDLIB_JAR_ENTRIES=\$(unzip -l /opt/kotlin-stdlib/kotlin-stdlib.jar 2>/dev/null | tail -1); " +
+            "echo SLF4J_SIMPLE_EXISTS=\$([ -f /opt/kotlin-language-server/server/lib/slf4j-simple-1.7.25.jar ] && echo YES || echo NO); " +
+            "echo SLF4J_IN_CLASSPATH=\$(grep -c slf4j-simple /opt/kotlin-language-server/server/bin/kotlin-language-server 2>/dev/null || echo 0)"
         val diagResult = ProotInstaller.execOnce(context, diagCmd, timeoutSeconds = 15)
         for (line in diagResult.trimEnd().lines()) {
             if (line.isNotBlank()) {
@@ -1418,8 +1443,8 @@ object LspManager {
         // OOM-killed by the Android low-memory killer before initialization completes.
         // 384m is enough for indexing small projects while leaving room for the IDE.
         if (config.command == "kotlin-language-server" || config.command == "/opt/jdtls/bin/jdtls") {
-            envMap["JAVA_TOOL_OPTIONS"] = "-Xmx384m"
-            AppOutputLog.log("[LSP] Setting JAVA_TOOL_OPTIONS=-Xmx384m for ${language.displayName} (JVM heap limit)", "lsp")
+            envMap["JAVA_TOOL_OPTIONS"] = "-Xmx384m -Dorg.slf4j.simpleLogger.defaultLogLevel=info -Dorg.slf4j.simpleLogger.showDateTime=true"
+            AppOutputLog.log("[LSP] Setting JAVA_TOOL_OPTIONS=-Xmx384m + slf4j logging for ${language.displayName}", "lsp")
         }
 
         val process = try {
