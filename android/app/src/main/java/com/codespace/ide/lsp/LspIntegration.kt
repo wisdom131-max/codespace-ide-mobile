@@ -155,7 +155,7 @@ fun parseLspCompletions(items: JSONArray): List<LspCompletionItem> {
             var insertText = item.optString("insertText", label)
             val insertTextFormat = item.optInt("insertTextFormat", 1)
             if (insertTextFormat != 2) {
-                insertText = insertText.replace(Regex("\\$\\{\\d+:?[^}]*}"), "").replace(Regex("\\$\\d+"), "")
+                insertText = insertText.replace(Regex("\\$\\{\\d+:?[^}]*\\}"), "").replace(Regex("\\$\\d+"), "")
             }
             val detail = item.optString("detail", "")
             val kind = item.optInt("kind", 1)
