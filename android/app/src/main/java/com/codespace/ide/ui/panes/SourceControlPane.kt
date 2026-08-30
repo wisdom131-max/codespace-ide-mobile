@@ -284,9 +284,9 @@ fun SourceControlPane(projectId: String) {
 
         if (isRepo == false) {
             // Check if the project folder is missing (deleted/moved externally).
-            // If so, ProjectShellScreen shows a banner explaining the situation.
-            // Suppress the misleading "Not a git repository" message here to avoid
-            // conflicting explanations — the folder was a repo, it's just gone.
+            // Suppress the misleading "Not a git repository" message — the repo
+            // WAS a repo, the folder is just gone. Shows "Project folder not found"
+            // instead, with early return to prevent rest of git panel from rendering.
             val folderMissing = com.codespace.ide.util.ProjectPathResolver.isProjectFolderMissing(context, projectId)
             if (folderMissing) {
                 Box(
@@ -371,6 +371,7 @@ fun SourceControlPane(projectId: String) {
                 }
             }
             return@Column
+        }
         }
 
         // ── Commit message input ──
