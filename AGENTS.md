@@ -1229,3 +1229,35 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [PENDING] Investigation: deleted/replaced project folder — component behavior analysis
 - [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
+
+### [2026-08-30 08:15 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** (pending) | CI Build: (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [UI] [CRASH-PREVENT] ProjectPathResolver: When pathOrUrl is non-blank but folder doesn't exist (deleted/moved externally), now returns null instead of silently falling through to legacy filesDir/projects/$projectId path. Prevents all components from operating on wrong directory.
+- [UI] Added ProjectPathResolver.isProjectFolderMissing() to distinguish "folder was set but deleted" from "project has no folder configured" (blank pathOrUrl).
+- [UI] Created FolderMissingBanner.kt composable — shows "This project's folder can't be found - was it moved or deleted?" with Open Folder button. Inserted in ProjectShellScreen between top bar and main body, takes priority over individual component errors.
+- [GIT] SourceControlPane: When isProjectFolderMissing() is true, suppresses misleading "Not a git repository" message (the repo WAS a repo, the folder is just gone). Shows "Project folder not found" instead. return@Column prevents rest of git panel from rendering.
+
+**Files:** ProjectPathResolver.kt (resolveProjectRoot fix + isProjectFolderMissing added), FolderMissingBanner.kt (new), ProjectShellScreen.kt (banner insertion + isFolderMissing state), SourceControlPane.kt (folder-missing check in isRepo==false block)
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: verify forTerminal/resolveWorkspacePath DIAG lines now appear in Terminal channel
+- [PENDING] On-device test: deleted-folder scenario — create project, rm -rf folder, reopen, verify banner
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [PENDING] Multi-root Explorer investigation: how multiple workspace roots interact with ProjectPathResolver, LSP, Git, Terminal
+- [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted

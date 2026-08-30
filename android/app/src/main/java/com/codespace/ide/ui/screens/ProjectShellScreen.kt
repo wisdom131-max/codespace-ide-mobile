@@ -687,6 +687,9 @@ fun ProjectShellScreen(
     val projectPathUrl = remember(projectId) {
         com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     }
+    val isFolderMissing = remember(projectId) {
+        com.codespace.ide.util.ProjectPathResolver.isProjectFolderMissing(context, projectId)
+    }
     // One-time log: show all crash-context.log paths so Wisdom knows where to check
     LaunchedEffect(Unit) {
         com.codespace.ide.util.ProjectContextLogger.getAllLogPaths(context).forEachIndexed { idx, logPath ->
@@ -1276,6 +1279,17 @@ fun ProjectShellScreen(
                 isBottomPanelActive = showBottomPanel,
                 isSecondarySidebarActive = showChatPanel,
             ) }
+
+            // ── Folder-missing banner (takes priority over individual component errors)
+            if (isFolderMissing) {
+                FolderMissingBanner(
+                    bgColor = PanelBg,
+                    textColor = TabText,
+                    mutedColor = TabTextInactive,
+                    accentColor = TabActiveIndicator,
+                    onOpenFolder = { folderPickerLauncher.launch(null) },
+                )
+            }
 
             // ── Main body
             Row(Modifier.weight(1f).fillMaxWidth()
