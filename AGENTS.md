@@ -29,11 +29,32 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 5893593 |
-| CI build | GREEN (#2587) |
+| Latest commit | (pending) |
+| CI build | (pending) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
+
+---
+
+
+## KNOWN LIMITATIONS
+
+### Kotlin Completions — Stale BindingContext for Just-Typed Variables
+**Date:** 2026-08-30
+**Status:** Upstream limitation, not fixable client-side
+
+Kotlin completions for a variable declared in the CURRENT typing session may return generic keyword/scope suggestions (75 annotation-target items) instead of real type members (e.g. List methods after `mylist.`), until the user pauses typing briefly and KLS's debounced recompile catches up.
+
+**Root cause:** fwcd/kotlin-language-server hardcodes `Recompile.NEVER` for completions (confirmed in `KotlinTextDocumentService.kt` source). The completion handler uses `sp.latestCompiledVersion(uri)` — the last compiled BindingContext — not the current file content. Even after `didChange` is fully processed (content updated), the semantic analysis snapshot is stale until the debounced full-file recompile finishes (~500ms after typing stops).
+
+**What was tried and confirmed NOT working:**
+- Client-side `awaitDiagnostics` wait (build #2610): waited for `publishDiagnostics` before requesting completion (532-653ms on-device). Diagnostics arrived, but completion still returned the same 75 generic items — the completion handler uses a different code path (`latestCompiledVersion`) that doesn't see the freshly compiled BindingContext. Removed as pointless delay.
+- LSP spec analysis: The spec does NOT guarantee that `publishDiagnostics` means the server's completion handler will use the fresh snapshot. KLS is technically spec-compliant — it processes `didChange` before `completion`, just uses a stale semantic snapshot by design.
+
+**Reference:** CodeAssist (tyron12233/CodeAssist, GPL-3.0) solves this by using the Kotlin compiler as a parser only and building a custom symbol table + type inference subset on top of the PSI tree (updated incrementally on every keystroke). This is the only known mobile-feasible fix but requires a substantial custom engine (`lang-kotlin` module). Noted as a future option, not scoped for now.
+
+**User workaround:** Type the variable, pause ~1 second (let KLS's debounce recompile run), then trigger completion after `.`. Variables from previous compile cycles resolve correctly.
 
 ---
 
@@ -1148,3 +1169,32 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
 - [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
 - [PENDING] Clean up diagnostic logging after session restoration is stable
+
+### [2026-08-30 05:25 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** (pending) | CI Build: (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [LSP] Reverted awaitDiagnostics mitigation from build #2610. Confirmed on-device that diagnostics arrive (532-653ms) but completion still returns the same 75 generic items — KLS uses `Recompile.NEVER` and `sp.latestCompiledVersion(uri)` (stale snapshot), not the freshly compiled one. The wait only added up to 700ms of pointless delay with no benefit. Removed cleanly: `awaitDiagnostics()` function, `lastDiagnosticsTime` field, publishDiagnostics tracking, and the call site in EditorPane.kt.
+- [DOCS] Added Known Limitations section to AGENTS.md documenting the stale BindingContext issue, root cause (KLS hardcoded Recompile.NEVER), what was tried (awaitDiagnostics, LSP spec analysis), the user workaround (pause ~1s then trigger), and the only known mobile-feasible fix (CodeAssist's custom parser-only engine, noted as future option).
+
+**Files:** LspManager.kt (-40), EditorPane.kt (-13), AGENTS.md (+known limitations + changelog)
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 — create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 — create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted

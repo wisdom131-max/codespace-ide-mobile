@@ -1858,18 +1858,6 @@ fun EditorPane(
                                     val triggerChar = linesForTrigger.getOrNull(line)?.let { ln ->
                                         if (col > 0 && col <= ln.length) ln[col - 1].toString() else null
                                     }?.takeIf { it == "." }
-                                    // KLS COMPLETION FIX: Wait for the server's debounced compile to finish
-                                    // before requesting completion. KLS uses Recompile.NEVER for completions,
-                                    // so it relies on the stale BindingContext. If we request completion
-                                    // before the compile finishes, newly-typed variables are unknown and KLS
-                                    // returns generic scope members instead of actual member completions.
-                                    // We wait for publishDiagnostics (the signal that compile is done) with a
-                                    // 700ms timeout (KLS debounce is ~500ms). This is a workaround for a
-                                    // KLS server-side limitation -- see LspManager.awaitDiagnostics for details.
-                                    if (triggerChar != null) {
-                                        val didChangeTime = System.currentTimeMillis()
-                                        LspManager.awaitDiagnostics(active.language, uri, didChangeTime, 700L)
-                                    }
                                     val (items, isIncomplete) = LspManager.getCompletionWithMeta(active.language, uri, line, col, triggerChar)
                                     AppOutputLog.log("[LSP-DIAG] Provider: getCompletionWithMeta returned " + (items?.length()?.toString() ?: "null") + " items isIncomplete=" + isIncomplete + " for line=" + line + " col=" + col + " trigger=" + triggerChar, "lsp")
                                     val parsed = items?.let { parseLspCompletions(it) } ?: emptyList()
