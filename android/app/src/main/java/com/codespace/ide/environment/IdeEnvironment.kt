@@ -1,9 +1,9 @@
 package com.codespace.ide.environment
 
 import android.content.Context
-import android.util.Log
 import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.util.ProjectPathResolver
+import com.codespace.ide.diagnostics.AppOutputLog
 import java.io.File
 
 /**
@@ -51,10 +51,10 @@ object IdeEnvironment {
 
         // DIAGNOSTIC: Log every step of workspace path resolution to identify
         // exactly where the chain breaks when WORKSPACE_PATH ends up empty.
-        Log.d(TAG, "forTerminal DIAG: projectId=$projectId workDir=$workDir")
-        Log.d(TAG, "forTerminal DIAG: workspacePath resolved=$workspacePath")
-        Log.d(TAG, "forTerminal DIAG: enrichedArgs will ${if (workspacePath != null) "INSERT" else "SKIP"} env vars into proot args")
-        Log.d(TAG, "forTerminal DIAG: enrichedEnvVars will ${if (workspacePath != null) "ADD" else "SKIP"} WORKSPACE_PATH/PROJECT_FILES")
+        AppOutputLog.log("forTerminal DIAG: projectId=$projectId workDir=$workDir", "terminal")
+        AppOutputLog.log("forTerminal DIAG: workspacePath resolved=$workspacePath", "terminal")
+        AppOutputLog.log("forTerminal DIAG: enrichedArgs will ${if (workspacePath != null) "INSERT" else "SKIP"} env vars into proot args", "terminal")
+        AppOutputLog.log("forTerminal DIAG: enrichedEnvVars will ${if (workspacePath != null) "ADD" else "SKIP"} WORKSPACE_PATH/PROJECT_FILES", "terminal")
 
         val enrichedEnv = enrichEnvVars(envVars, workspacePath)
         val enrichedArgs = enrichArgs(args, workspacePath)
@@ -63,7 +63,7 @@ object IdeEnvironment {
         if (workspacePath != null) {
             val hasWsPath = enrichedArgs.any { it.startsWith("WORKSPACE_PATH=") }
             val hasProjFiles = enrichedArgs.any { it.startsWith("PROJECT_FILES=") }
-            Log.d(TAG, "forTerminal DIAG: args contain WORKSPACE_PATH=$hasWsPath PROJECT_FILES=$hasProjFiles")
+            AppOutputLog.log("forTerminal DIAG: args contain WORKSPACE_PATH=$hasWsPath PROJECT_FILES=$hasProjFiles", "terminal")
         }
 
         return ProotEnv(
@@ -123,28 +123,28 @@ object IdeEnvironment {
     ): String? {
         val rawPath = workDir ?: ProjectPathResolver.resolveProjectRoot(context, projectId)
         // DIAGNOSTIC: Log the raw path and which branch we take
-        Log.d(TAG, "resolveWorkspacePath DIAG: projectId=$projectId workDir=$workDir rawPath=$rawPath")
+        AppOutputLog.log("resolveWorkspacePath DIAG: projectId=$projectId workDir=$workDir rawPath=$rawPath", "terminal")
         val result = rawPath?.let {
             when {
                 it.startsWith("/storage/emulated/0") -> {
-                    Log.d(TAG, "resolveWorkspacePath DIAG: translating /storage/emulated/0 -> /sdcard")
+                    AppOutputLog.log("resolveWorkspacePath DIAG: translating /storage/emulated/0 -> /sdcard", "terminal")
                     it.replace("/storage/emulated/0", "/sdcard")
                 }
                 it.startsWith("/sdcard") -> {
-                    Log.d(TAG, "resolveWorkspacePath DIAG: already /sdcard prefix, keeping as-is")
+                    AppOutputLog.log("resolveWorkspacePath DIAG: already /sdcard prefix, keeping as-is", "terminal")
                     it
                 }
                 it.startsWith("/root") -> {
-                    Log.d(TAG, "resolveWorkspacePath DIAG: /root prefix, keeping as-is")
+                    AppOutputLog.log("resolveWorkspacePath DIAG: /root prefix, keeping as-is", "terminal")
                     it
                 }
                 else -> {
-                    Log.d(TAG, "resolveWorkspacePath DIAG: UNRECOGNIZED PREFIX '$it' -> returning null (not accessible inside proot)")
+                    AppOutputLog.log("resolveWorkspacePath DIAG: UNRECOGNIZED PREFIX '$it' -> returning null (not accessible inside proot)", "terminal")
                     null
                 }
             }
         }
-        Log.d(TAG, "resolveWorkspacePath DIAG: final result=$result")
+        AppOutputLog.log("resolveWorkspacePath DIAG: final result=$result", "terminal")
         return result
     }
 

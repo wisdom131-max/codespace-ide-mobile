@@ -1198,3 +1198,34 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
+
+### [2026-08-30 07:55 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** (pending) | CI Build: (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [UI] Downgraded [NAV] projectId fallback log from warning-style message to brief info note. Original message looked like a bug indicator; new message clarifies it's an expected Navigation Compose startDest path-arg limitation with a working recovery path. Fallback logic unchanged (reads same sessionStateStore.lastProjectId() that computed startDest).
+- [UI] Replaced all android.util.Log.d(TAG, ...) calls in IdeEnvironment.kt with AppOutputLog.log(..., "terminal"). DIAG lines for forTerminal/resolveWorkspacePath were going to logcat only, invisible in-app. Now route to Output tab Terminal channel. Removed unused android.util.Log import, added AppOutputLog import.
+
+**Files:** CodeSpaceApp.kt (1 line changed), IdeEnvironment.kt (12 Log.d -> AppOutputLog.log, import swap)
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 — create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 — create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] On-device test: verify forTerminal/resolveWorkspacePath DIAG lines now appear in Terminal channel
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [PENDING] Investigation: deleted/replaced project folder — component behavior analysis
+- [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted

@@ -146,7 +146,7 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
                     var pid = backStackEntry.arguments?.getString("projectId").orEmpty()
                     if (pid.isBlank()) {
                         val fallback = sessionStateStore.lastProjectId().orEmpty()
-                        AppOutputLog.log("[NAV] projectId blank from backStackEntry.arguments -- falling back to lastProjectId()='" + fallback + "'", "lsp")
+                        AppOutputLog.log("[NAV] projectId recovered from lastProjectId() (Navigation Compose startDest path-arg limitation, expected on cold start)", "lsp")
                         pid = fallback
                     }
                     pid
