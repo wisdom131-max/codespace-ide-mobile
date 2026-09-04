@@ -1263,7 +1263,7 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
 
 ### [2026-09-04 07:40 WAT] — AI Agent: Claude Sonnet 4.5
-**Commit:** (pending) | CI Build: (pending)
+**Commit:** 47f1ced | CI Build: #2616 FAILED (compile errors in EditorTabClose.kt — fixed by 0a5fdcc/#2617)
 
 **RULES REMINDER:**
 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
@@ -1299,7 +1299,7 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [ACCEPTED] Multi-root investigation COMPLETE — LSP/Git/Terminal root binding analysis finished 2026-08-30; fix implemented this commit
 
 ### [2026-09-04 07:20 WAT] — AI Agent: Claude Sonnet 4.5
-**Commit:** (pending) | CI Build: (pending, fixes #2616)
+**Commit:** 0a5fdcc | CI Build: #2617 GREEN (fixes #2616)
 
 **RULES REMINDER:**
 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
