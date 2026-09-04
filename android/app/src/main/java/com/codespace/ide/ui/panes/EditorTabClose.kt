@@ -2,6 +2,10 @@ package com.codespace.ide.ui.panes
 
 import android.content.Context
 import androidx.compose.runtime.MutableState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import com.codespace.ide.domain.EditorTab
@@ -60,8 +64,8 @@ internal fun closeEditorTabInternal(
     // P24-2: Stop server if no more files open for this language (30s grace)
     val remainingForLang = tabs.count { it.language == closedLang }
     if (remainingForLang == 0 && LspManager.isServerRunning(closedLang)) {
-        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            kotlinx.coroutines.delay(30_000) // 30s idle grace period
+        GlobalScope.launch(Dispatchers.IO) {
+            delay(30_000) // 30s idle grace period
             val stillZero = tabs.count { it.language == closedLang } == 0
             if (stillZero) {
                 try { LspManager.stopServer(closedLang) } catch (_: Exception) {}

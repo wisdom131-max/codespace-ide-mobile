@@ -1297,3 +1297,34 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
 - [ACCEPTED] Multi-root investigation COMPLETE — LSP/Git/Terminal root binding analysis finished 2026-08-30; fix implemented this commit
+
+### [2026-09-04 07:20 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** (pending) | CI Build: (pending, fixes #2616)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [BUILD-FIX] #2616 failed with 2 compile errors, both in the NEW EditorTabClose.kt: (1) "Unresolved reference: launch" at 63:40 — kotlinx.coroutines.launch is an EXTENSION function; it cannot be resolved via fully-qualified name without an import. The original inline code worked in EditorPane.kt only because that file already imports launch/delay. (2) "Suspend function 'delay' should be called only from a coroutine" at 64:32 — cascade of (1): with launch unresolved, the trailing lambda was not recognized as a coroutine body. Fixed by adding the 4 kotlinx.coroutines imports (GlobalScope, Dispatchers, delay, launch) and switching the block to imported short names. No logic changed.
+
+**Files:** EditorTabClose.kt (imports + launch block short names)
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: MULTI-ROOT A+B — full test plan delivered to user (two roots, cross-root completions, add/remove while server running, tab auto-close on remove)
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 — create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 — create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] On-device test: verify forTerminal/resolveWorkspacePath DIAG lines now appear in Terminal channel
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
+- [ACCEPTED] Multi-root investigation COMPLETE — LSP/Git/Terminal root binding analysis finished 2026-08-30; fix implemented in 47f1ced
