@@ -1261,3 +1261,39 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [PENDING] Multi-root Explorer investigation: how multiple workspace roots interact with ProjectPathResolver, LSP, Git, Terminal
 - [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
+
+### [2026-09-04 07:40 WAT] — AI Agent: Claude Sonnet 4.5
+**Commit:** (pending) | CI Build: (pending)
+
+**RULES REMINDER:**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md
+3. TAGS: [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [GIT], [ICONS], [RESTRUCTURE]
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA
+5. NEVER re-do work already marked done
+6. ROADMAP CONTINUITY: List ALL pending items
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum)
+
+**What was fixed:**
+- [LSP] MULTI-ROOT PART A: startServer now sends ALL project roots in the initialize request's workspaceFolders array (active root first, per VS Code convention), not just the active root. Read via new ProjectPathResolver.getAllWorkspaceRoots() (pipe-delimited workspace_roots_$projectId list, existing folders only). Fixes "outside project context"/broken completions for non-active roots — CLIENT-SIDE bug, since both bundled servers are natively multi-root-aware (verified from source: pylsp creates Workspace+Config per folder; fwcd KLS calls sourceFiles.addWorkspaceRoot()/classPath.addWorkspaceRoot() per folder).
+- [LSP] MULTI-ROOT PART B: new LspManager.notifyWorkspaceFoldersChanged() sends workspace/didChangeWorkspaceFolders added/removed events to running servers when roots are added/removed via the Explorer multi-root UI. Both servers' handlers verified from source to be REAL (not stubs): pylsp m_workspace__did_change_workspace_folders pops/creates Workspace objects and migrates open docs; fwcd KLS KotlinWorkspaceService.didChangeWorkspaceFolders calls removeWorkspaceRoot/addWorkspaceRoot + sourcePath.refresh().
+- [LSP] MULTI-ROOT PART B DEDUP: LspServer.knownRootUris tracks roots sent at initialize; "added" notifications skip roots the server already knows (no redundant notify after Part A startup population).
+- [LSP] MULTI-ROOT PART B RESTART: handleAutoRestart now restarts with the same projectId (lastProjectId tracker) so auto-restarted servers re-send the full multi-root set at initialize.
+- [RESTRUCTURE] MULTI-ROOT PART B TAB CLOSE: extracted the tab-strip X-button close logic verbatim into shared EditorTabClose.kt closeEditorTabInternal() — ONE close path for the X button AND root removal. Removing a root now closes all its open tabs through that shared path (per-file didClose first), THEN the shell notifies servers of the removal. Tab X-button behavior identical (plus one flagged fix: didClose URI now uses fileUriFromHostPath guest+percent-encoded conversion matching didOpen — the old raw host URI could never match the doc the server opened, making server-side close a silent no-op).
+- [RESTRUCTURE] EditorPane gains closeRootRequest/onCloseRootHandled params; ExplorerSidePanel gains onWorkspaceRootAdded/onWorkspaceRootRemoved callbacks; ProjectShellScreen wires both (removed-root flow: EditorPane closes tabs + didClose, shell then notifies servers; add flow: notify immediately, deduped by LspManager).
+
+**Files:** ProjectPathResolver.kt (+getAllWorkspaceRoots), LspManager.kt (startServer projectId param + multi-root folders + knownRootUris + lastProjectId + notifyWorkspaceFoldersChanged), EditorTabClose.kt (NEW — shared close path), EditorPane.kt (params + close-root effect + projectId at 2 startServer sites + X-button extraction), ExplorerPane.kt (2 callbacks + 4 add sites + 1 remove site), ProjectShellScreen.kt (state + callback wiring + PssEditorColumn threading)
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: MULTI-ROOT A+B — full test plan delivered to user (two roots, cross-root completions, add/remove while server running, tab auto-close on remove)
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 — create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 — create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] On-device test: verify forTerminal/resolveWorkspacePath DIAG lines now appear in Terminal channel
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
+- [ACCEPTED] Multi-root investigation COMPLETE — LSP/Git/Terminal root binding analysis finished 2026-08-30; fix implemented this commit

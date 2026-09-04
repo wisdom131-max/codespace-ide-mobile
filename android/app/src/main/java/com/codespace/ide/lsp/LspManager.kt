@@ -674,6 +674,11 @@ object LspManager {
     // Running servers: language -> LspServer
     private val servers = ConcurrentHashMap<Language, LspServer>()
 
+    // MULTI-ROOT: projectId of the most recent startServer() call. Used by
+    // handleAutoRestart so restarted servers get the SAME multi-root set as the
+    // original instance (all roots re-sent at initialize).
+    @Volatile private var lastProjectId: String? = null
+
     // Auto-close: track last activity per server, shut down after 10s idle
     private val lastActivity = ConcurrentHashMap<Language, AtomicLong>()
     private val autoCloseExecutor = Executors.newSingleThreadScheduledExecutor()
@@ -814,6 +819,12 @@ object LspManager {
 
         // Phase V-D: Tracked open documents for workspace recovery
         val trackedDocuments = ConcurrentHashMap<String, TrackedDocument>()
+
+        // MULTI-ROOT (Part B): root URIs this server instance already knows about
+        // (sent at initialize or via later didChangeWorkspaceFolders "added" events).
+        // Used to dedup — never send an "added" notification for a root the server
+        // already received at startup.
+        val knownRootUris: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
         // Phase V-E: Last memory snapshot
         @Volatile var memorySnapshot: MemorySnapshot? = null
@@ -1245,7 +1256,8 @@ object LspManager {
         return stdlibReady && scriptOk
     }
 
-    fun startServer(context: Context, language: Language, workspacePath: String): Boolean {
+    fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean {
+        lastProjectId = projectId
         // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
         if (!ProjectSettingsStore.lspEnabled.value) {
             AppOutputLog.log("[LSP] LSP servers disabled in In-Project Settings — skipping startServer for ${language.displayName}", "lsp")
@@ -1574,11 +1586,51 @@ object LspManager {
         // BUG-FIX: Send full client capabilities so servers know what we support.
         // Empty {} causes many servers to skip diagnostics, completions, and hover.
         // BUG-FIX: Include workspaceFolders so Kotlin/Python/Java LSPs can index project.
-        val workspaceFolder = JSONObject().apply {
+        // MULTI-ROOT FIX (Part A): send ALL configured roots for this project, not
+        // just the active one. Both bundled servers are multi-root-aware (verified
+        // from source): pylsp creates a Workspace+Config per folder; fwcd KLS calls
+        // sourceFiles.addWorkspaceRoot() + classPath.addWorkspaceRoot() for every
+        // folder in the array. Previously only the active root was sent, so files in
+        // other roots resolved as "outside project context".
+        // VS Code convention: rootUri + FIRST folder = active root, then the rest.
+        val workspaceFoldersArray = JSONArray()
+        workspaceFoldersArray.put(JSONObject().apply {
             put("uri", rootUri)
             put("name", workspacePath.substringAfterLast('/'))
+        })
+        if (projectId != null) {
+            try {
+                val otherRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, projectId)
+                    .filter { it != workspacePath }
+                otherRoots.forEach { hostRoot ->
+                    try {
+                        val guestRoot = workspaceGuestPath(context, hostRoot) ?: return@forEach
+                        val guestRootEncoded = guestRoot.split("/").joinToString("/") { segment ->
+                            java.net.URLEncoder.encode(segment, "UTF-8")
+                                .replace("+", "%20").replace("%2F", "/")
+                        }
+                        workspaceFoldersArray.put(JSONObject().apply {
+                            put("uri", "file://$guestRootEncoded")
+                            put("name", hostRoot.substringAfterLast('/'))
+                        })
+                    } catch (_: Exception) {}
+                }
+                if (workspaceFoldersArray.length() > 1) {
+                    AppOutputLog.log("[LSP] MULTI-ROOT: initialize sending ${workspaceFoldersArray.length()} workspace folders to ${language.displayName} server (active root first)", "lsp")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "MULTI-ROOT: failed to add extra roots for projectId=$projectId", e)
+            }
         }
-        val workspaceFoldersArray = JSONArray().apply { put(workspaceFolder) }
+
+        // MULTI-ROOT (Part B): record the root URIs this server instance was told
+        // about at initialize — didChangeWorkspaceFolders uses this set to skip
+        // redundant "added" notifications for roots the server already has.
+        for (i in 0 until workspaceFoldersArray.length()) {
+            workspaceFoldersArray.optJSONObject(i)?.optString("uri")?.let { rootUriKnown ->
+                server.knownRootUris.add(rootUriKnown)
+            }
+        }
 
         // Kotlin LSP (fwcd/kotlin-language-server 1.3.13) uses an older LSP4J that
         // cannot deserialize many newer capability fields (callHierarchy, typeHierarchy,
@@ -2002,7 +2054,7 @@ object LspManager {
                 }
                 lifecycleLog("REINITIALIZE lang=${language.displayName}")
                 // Restart the server
-                val restarted = startServer(context, language, workspacePath)
+                val restarted = startServer(context, language, workspacePath, lastProjectId)
                 if (restarted) {
                     // Phase V-D: Restore workspace — re-open all tracked documents
                     if (savedDocs.isNotEmpty()) {
@@ -2270,6 +2322,98 @@ object LspManager {
         val contentPreview = if (text.length > 80) text.take(40) + "..." + text.takeLast(40) else text
         AppOutputLog.log("[LSP-DIAG] didChange: uri=" + uri + " version=" + version + " textLen=" + text.length + " content=" + contentPreview.replace("\n", "\\n"), "lsp")
         return true
+    }
+
+    /**
+     * MULTI-ROOT (Part B): Notify all running, multi-root-capable servers that
+     * workspace roots were added or removed while the server was already running.
+     *
+     * Sends LSP "workspace/didChangeWorkspaceFolders":
+     *   params = { "event": { "added": [{"uri":..., "name":...}], "removed": [...] } }
+     *
+     * Both bundled servers verified from source (real handlers, not stubs):
+     *  - pylsp (python_lsp.py m_workspace__did_change_workspace_folders): pops/creates
+     *    a Workspace+Config per removed/added URI and migrates open documents.
+     *  - fwcd KLS (KotlinWorkspaceService.didChangeWorkspaceFolders): calls
+     *    removeWorkspaceRoot/addWorkspaceRoot + sourcePath.refresh() per folder —
+     *    the same code path as initialize.
+     *
+     * Dedup: roots the server already received at initialize (knownRootUris) are
+     * NOT re-sent as "added" — a server that got all roots at startup (Part A)
+     * never receives a redundant added notification for them.
+     *
+     * Takes HOST paths (same as stored in workspace prefs); converts to guest
+     * file:// URIs exactly like initialize does.
+     */
+    fun notifyWorkspaceFoldersChanged(
+        context: Context,
+        addedHostRoots: List<String> = emptyList(),
+        removedHostRoots: List<String> = emptyList(),
+    ) {
+        if (addedHostRoots.isEmpty() && removedHostRoots.isEmpty()) return
+        if (servers.isEmpty()) {
+            AppOutputLog.log("[LSP] MULTI-ROOT: root change but no servers running — next startServer will send all roots at initialize", "lsp")
+            return
+        }
+        servers.values.forEach { server ->
+            // Spec behavior: only servers advertising workspaceFolders support receive
+            // the notification. Both bundled servers advertise it (verified from source).
+            val supportsFolders = try {
+                server.capabilities?.optJSONObject("workspace")
+                    ?.optJSONObject("workspaceFolders")?.optBoolean("supported", false) ?: false
+            } catch (_: Exception) { false }
+            if (!supportsFolders) {
+                AppOutputLog.log("[LSP] MULTI-ROOT: " + server.language.displayName + " does not advertise workspaceFolders — skipping didChangeWorkspaceFolders", "lsp")
+                return@forEach
+            }
+            try {
+                val addedJson = JSONArray()
+                val removedJson = JSONArray()
+                addedHostRoots.forEach { hostRoot ->
+                    val guestRoot = workspaceGuestPath(context, hostRoot) ?: return@forEach
+                    val encoded = guestRoot.split("/").joinToString("/") { segment ->
+                        java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20").replace("%2F", "/")
+                    }
+                    val uri = "file://" + encoded
+                    if (server.knownRootUris.contains(uri)) {
+                        // Dedup (Part B item 3): server already got this root at initialize
+                        AppOutputLog.log("[LSP] MULTI-ROOT: " + server.language.displayName + " already knows root " + hostRoot + " — skipping redundant added notification", "lsp")
+                    } else {
+                        server.knownRootUris.add(uri)
+                        addedJson.put(JSONObject().apply {
+                            put("uri", uri)
+                            put("name", hostRoot.substringAfterLast('/'))
+                        })
+                    }
+                }
+                removedHostRoots.forEach { hostRoot ->
+                    val guestRoot = workspaceGuestPath(context, hostRoot) ?: return@forEach
+                    val encoded = guestRoot.split("/").joinToString("/") { segment ->
+                        java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20").replace("%2F", "/")
+                    }
+                    val uri = "file://" + encoded
+                    server.knownRootUris.remove(uri)
+                    removedJson.put(JSONObject().apply {
+                        put("uri", uri)
+                        put("name", hostRoot.substringAfterLast('/'))
+                    })
+                }
+                if (addedJson.length() == 0 && removedJson.length() == 0) {
+                    AppOutputLog.log("[LSP] MULTI-ROOT: " + server.language.displayName + " — no new roots to add (deduped), nothing sent", "lsp")
+                    return@forEach
+                }
+                val params = JSONObject().apply {
+                    put("event", JSONObject().apply {
+                        put("added", addedJson)
+                        put("removed", removedJson)
+                    })
+                }
+                server.client.notify("workspace/didChangeWorkspaceFolders", params)
+                AppOutputLog.log("[LSP] MULTI-ROOT: sent didChangeWorkspaceFolders to " + server.language.displayName + " (added=" + addedJson.length() + ", removed=" + removedJson.length() + ")", "lsp")
+            } catch (e: Exception) {
+                Log.e(TAG, "MULTI-ROOT: didChangeWorkspaceFolders failed for " + server.language.displayName, e)
+            }
+        }
     }
 
     fun didClose(language: Language, uri: String): Boolean {

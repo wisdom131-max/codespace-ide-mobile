@@ -42,6 +42,7 @@ object ProjectPathResolver {
     private const val TAG = "ProjectPathResolver"
     private const val PREFS_WORKSPACE = "workspace_prefs"
     private const val KEY_WORKSPACE = "workspace_path"
+    private const val KEY_WORKSPACE_ROOTS = "workspace_roots"
     private const val PREFS_PROJECTS = "projects"
 
     /**
@@ -94,6 +95,34 @@ object ProjectPathResolver {
         } catch (e: Exception) {
             android.util.Log.e(TAG, "resolveProjectRoot threw for projectId=$projectId", e)
             return null
+        }
+    }
+
+    /**
+     * MULTI-ROOT: Returns ALL workspace roots configured for a project
+     * (the pipe-delimited `workspace_roots_$projectId` list written by the
+     * Explorer's multi-root UI), as host paths, in stored order.
+     *
+     * Only folders that currently exist on disk are returned. The active
+     * root (workspace_path_$projectId) is NOT forced first — callers that
+     * need VS Code convention (active root = first folder = rootUri) should
+     * order it themselves.
+     *
+     * Returns an empty list when no multi-root list is stored (classic
+     * single-root project) — callers fall back to the single active root.
+     */
+    fun getAllWorkspaceRoots(context: Context, projectId: String?): List<String> {
+        if (projectId.isNullOrBlank()) return emptyList()
+        return try {
+            val raw = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+                .getString(KEY_WORKSPACE_ROOTS + "_" + projectId, null) ?: return emptyList()
+            raw.split("|||")
+                .map { it.trim() }
+                .filter { it.isNotBlank() && File(it).exists() }
+                .distinct()
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "getAllWorkspaceRoots threw for projectId=$projectId", e)
+            emptyList()
         }
     }
 

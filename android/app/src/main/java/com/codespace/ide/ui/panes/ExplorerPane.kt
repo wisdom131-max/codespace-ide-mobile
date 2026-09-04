@@ -208,6 +208,15 @@ fun ExplorerSidePanel(
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     onMoreMenu: () -> Unit,
     onOpenInTerminal: (String) -> Unit = {},
+    /** MULTI-ROOT (Part B): fired when a NEW workspace root is added (folder picker,
+     * device-folders quick picks). Shell uses it to notify running LSP servers via
+     * workspace/didChangeWorkspaceFolders "added" (deduped against roots already
+     * sent at initialize). */
+    onWorkspaceRootAdded: ((String) -> Unit)? = null,
+    /** MULTI-ROOT (Part B): fired when a workspace root is removed via the root
+     * switcher's close icon. Shell closes open tabs from that root and notifies LSP
+     * servers via "removed" AFTER EditorPane has sent per-file didClose. */
+    onWorkspaceRootRemoved: ((String) -> Unit)? = null,
     openTabs: List<String> = emptyList(),
     activeFilePath: String? = null,
     onCloseTab: ((String) -> Unit)? = null,
@@ -469,6 +478,7 @@ fun ExplorerSidePanel(
                 if (it !in workspaceRoots) {
                     workspaceRoots = workspaceRoots + it
                     saveWorkspaceRoots(context, projectId, workspaceRoots)
+                    onWorkspaceRootAdded?.invoke(it)
                 }
                 expanded.clear()
                 refresh++
@@ -941,6 +951,7 @@ fun ExplorerSidePanel(
                                 if (path !in workspaceRoots) {
                                     workspaceRoots = workspaceRoots + path
                                     saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                    onWorkspaceRootAdded?.invoke(path)
                                 }
                                 showDeviceFolders = false
                                 expanded.clear()
@@ -999,6 +1010,7 @@ fun ExplorerSidePanel(
                             if ("/storage/emulated/0" !in workspaceRoots) {
                                 workspaceRoots = workspaceRoots + "/storage/emulated/0"
                                 saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                onWorkspaceRootAdded?.invoke("/storage/emulated/0")
                             }
                             refresh++
                         },
@@ -1018,6 +1030,7 @@ fun ExplorerSidePanel(
                                     if (path !in workspaceRoots) {
                                         workspaceRoots = workspaceRoots + path
                                         saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                        onWorkspaceRootAdded?.invoke(path)
                                     }
                                     refresh++
                                 }
@@ -1096,6 +1109,7 @@ fun ExplorerSidePanel(
                                 modifier = Modifier.size(12.dp).clickable {
                                     workspaceRoots = workspaceRoots - rootPath
                                     saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                    onWorkspaceRootRemoved?.invoke(rootPath)
                                 })
                         }
                     }

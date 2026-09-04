@@ -180,13 +180,22 @@ fun EditorPane(
      * ACTUAL working find bar rendered inside CodeEditor. Without this, closing via X
      * would leave outer state stuck "open", breaking the next Edit>Find tap. */
     onFindBarOpenChanged: ((Boolean) -> Unit)? = null,
+    /** MULTI-ROOT (Part B): set to a root path by ProjectShellScreen when the user
+     * removes that root from the workspace — EditorPane closes every open tab
+     * under that root via the SHARED closeEditorTabInternal path (same code as the
+     * tab X button: didClose first, then tab removal and activeId/splitId fixup). */
+    closeRootRequest: String? = null,
+    /** MULTI-ROOT (Part B): invoked after closeRootRequest has been handled so the
+     * shell can clear its request state. */
+    onCloseRootHandled: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
     // P18-C: project root for cross-file rename
     val projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     val tabs = remember { mutableStateListOf<EditorTab>() }
-    var activeId by remember { mutableStateOf<String?>(null) }
+    val activeIdState = remember { mutableStateOf<String?>(null) }
+    var activeId by activeIdState
     // External reload trigger — re-reads the active file from disk (used by external replace)
     LaunchedEffect(reloadTrigger) {
         if (reloadTrigger > 0) {
@@ -359,7 +368,31 @@ fun EditorPane(
             }
         }
     }
-    var splitId by remember { mutableStateOf<String?>(null) }
+    val splitIdState = remember { mutableStateOf<String?>(null) }
+    var splitId by splitIdState
+
+    // MULTI-ROOT (Part B): when the user removes a workspace root in the Explorer,
+    // ProjectShellScreen sets closeRootRequest. Close every open tab under that root
+    // by REUSING the shared closeEditorTabInternal path (the same one the tab X
+    // button calls) — didClose is sent per file BEFORE the shell notifies servers
+    // via didChangeWorkspaceFolders "removed". Content is never lost: CodeEditor
+    // writes to disk on every keystroke.
+    LaunchedEffect(closeRootRequest) {
+        val root = closeRootRequest
+        if (root != null) {
+            val prefix = root.trimEnd('/')
+            val toClose = tabs.toList().filter { tab ->
+                tab.path == prefix || tab.path.startsWith(prefix + "/")
+            }
+            if (toClose.isNotEmpty()) {
+                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] MULTI-ROOT: closing " + toClose.size + " tab(s) under removed root " + root + " (shared close path, didClose first)", "lsp")
+            }
+            toClose.forEach { tab ->
+                closeEditorTabInternal(context, tab, tabs, activeIdState, splitIdState, lspOpenedFiles)
+            }
+            onCloseRootHandled?.invoke()
+        }
+    }
     // P45-4: Markdown preview — shows rendered .md next to editor
     var showMdPreview by remember { mutableStateOf(false) }
     var mdPreviewWeight by remember { mutableFloatStateOf(0.4f) }  // bottom panel ratio (0.2..0.8)
@@ -753,31 +786,9 @@ fun EditorPane(
                                 modifier = Modifier
                                     .size(14.dp)
                                     .clickable {
-                                        val idx = tabs.indexOfFirst { it.id == tab.id }
-                                        // P24-2: LSP didClose before removing tab
-                                        val closedPath = tab.path
-                                        val closedLang = tab.language
-                                        val closedUri = "file://$closedPath"
-                                        if (lspOpenedFiles[closedPath] == true && LspManager.isServerRunning(closedLang)) {
-                                            try { LspManager.didClose(closedLang, closedUri) } catch (_: Exception) {}
-                                            lspOpenedFiles.remove(closedPath)
-                                        }
-                                        tabs.remove(tab)
-                                        if (activeId == tab.id) {
-                                            activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.firstOrNull()?.id
-                                        }
-                                        if (splitId == tab.id) splitId = null
-                                        // P24-2: Stop server if no more files open for this language (30s grace)
-                                        val remainingForLang = tabs.count { it.language == closedLang }
-                                        if (remainingForLang == 0 && LspManager.isServerRunning(closedLang)) {
-                                            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                kotlinx.coroutines.delay(30_000) // 30s idle grace period
-                                                val stillZero = tabs.count { it.language == closedLang } == 0
-                                                if (stillZero) {
-                                                    try { LspManager.stopServer(closedLang) } catch (_: Exception) {}
-                                                }
-                                            }
-                                        }
+                                        // MULTI-ROOT (Part B): extracted to EditorTabClose.kt —
+                                        // ONE shared close path for the X button and root removal.
+                                        closeEditorTabInternal(context, tab, tabs, activeIdState, splitIdState, lspOpenedFiles)
                                     },
                             )
                         }
@@ -1020,7 +1031,7 @@ fun EditorPane(
                         AppOutputLog.log("[LSP] Master toggle re-enabled — restarting ${snap.language.displayName} server", "lsp")
                         val uri = LspManager.fileUriFromHostPath(context, snap.path)
                         val started = withContext(Dispatchers.IO) {
-                            LspManager.startServer(context, snap.language, projectRootPath)
+                            LspManager.startServer(context, snap.language, projectRootPath, projectId)
                         }
                         if (started && uri != null) {
                             delay(300)
@@ -1072,7 +1083,7 @@ fun EditorPane(
                 // taps or tab switches during a long server install (10-120s)
                 // do NOT cancel the coroutine and abort the download/extract.
                 val lspStarted = withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
-                    LspManager.startServer(context, snap.language, projectRootPath)
+                    LspManager.startServer(context, snap.language, projectRootPath, projectId)
                 }
                 android.util.Log.d("LspTrigger", "LSP Effect-A: startServer returned $lspStarted for ${snap.language.displayName}")
                 AppOutputLog.log("[LSP] Effect-A: startServer returned $lspStarted for ${snap.language.displayName}", "lsp")

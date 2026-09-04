@@ -828,6 +828,13 @@ fun ProjectShellScreen(
     }
     val editorFontSizeMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }; var editorFontSize by editorFontSizeMs
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
+    // MULTI-ROOT (Part B): pending root-removal handoff to EditorPane.
+    // closeRootRequest = root path EditorPane should close tabs for (it reuses the
+    // shared closeEditorTabInternal path: didClose first). pendingRemovedRoot = the
+    // root whose removal EditorPane has confirmed handled — the shell then notifies
+    // LSP servers via didChangeWorkspaceFolders "removed" (AFTER didClose).
+    var closeRootRequest by remember(projectId) { mutableStateOf<String?>(null) }
+    var pendingRemovedRoot by remember(projectId) { mutableStateOf<String?>(null) }
     val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
     val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var _keyboardInsert by keyboardInsertMs
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
@@ -1484,6 +1491,33 @@ fun ProjectShellScreen(
                                     terminalCommandToRun = "cd \"$path\"\r"
                                     showNotification("Opened terminal at workspace path", "success")
                                 },
+                                // MULTI-ROOT (Part B): root added while servers may be running
+                                onWorkspaceRootAdded = { rootPath ->
+                                    LspManager.notifyWorkspaceFoldersChanged(
+                                        context,
+                                        addedHostRoots = listOf(rootPath),
+                                    )
+                                    showNotification("Workspace root added: ${rootPath.substringAfterLast('/')}", "success")
+                                },
+                                // MULTI-ROOT (Part B): root removed — close its open tabs
+                                // (EditorPane sends per-file didClose via the shared close
+                                // path first), then notify servers AFTER didClose.
+                                onWorkspaceRootRemoved = { rootPath ->
+                                    val prefix = rootPath.trimEnd('/')
+                                    val affected = editorTabs.filter { it == prefix || it.startsWith(prefix + "/") }
+                                    if (affected.isEmpty()) {
+                                        // No open tabs under the removed root — nothing to
+                                        // didClose, notify servers immediately.
+                                        LspManager.notifyWorkspaceFoldersChanged(
+                                            context,
+                                            removedHostRoots = listOf(rootPath),
+                                        )
+                                    } else {
+                                        pendingRemovedRoot = rootPath
+                                        closeRootRequest = rootPath
+                                    }
+                                    showNotification("Workspace root removed: ${rootPath.substringAfterLast('/')}", "success")
+                                },
                                 openTabs = editorTabs.toList(),
                                 activeFilePath = activeEditorTab,
                                 onCloseTab = { tabPath ->
@@ -1595,6 +1629,20 @@ fun ProjectShellScreen(
                     context = context,
                     tokenStore = tokenStore,
                     editorTabs = editorTabs,
+                    closeRootRequest = closeRootRequest,
+                    onCloseRootHandled = {
+                        // MULTI-ROOT (Part B): EditorPane closed all tabs under the removed
+                        // root (per-file didClose already sent via the shared close path) —
+                        // NOW tell running servers the root itself is gone.
+                        pendingRemovedRoot?.let { removedRoot ->
+                            LspManager.notifyWorkspaceFoldersChanged(
+                                context,
+                                removedHostRoots = listOf(removedRoot),
+                            )
+                        }
+                        pendingRemovedRoot = null
+                        closeRootRequest = null
+                    },
                     heavyPanesReady = heavyPanesReady,
                     wordWrapMs = wordWrapMs,
                     showInlayHintsMs = showInlayHintsMs,
@@ -4276,6 +4324,8 @@ private fun PssEditorColumn(
     modifier: Modifier = Modifier,
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     editorTabs: SnapshotStateList<String>,
+    closeRootRequest: String? = null,
+    onCloseRootHandled: (() -> Unit)? = null,
     heavyPanesReady: Boolean,
     wordWrapMs: MutableState<Boolean>,
     showInlayHintsMs: MutableState<Boolean>,
@@ -4633,6 +4683,8 @@ private fun PssEditorColumn(
                     externalFindMatchIndex = if (showFindBar) findMatchIndex else -1,
                     reloadTrigger = editorReloadTrigger,
                     onFindBarOpenChanged = { open -> showFindBar = open },
+                    closeRootRequest = closeRootRequest,
+                    onCloseRootHandled = onCloseRootHandled,
                 )
             } else {
                 Box(
