@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | a082b9f |
-| CI build | #2621 GREEN (2026-09-05) |
+| Latest commit | c3dcce3 |
+| CI build | #2623 GREEN (2026-09-05) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1387,3 +1387,53 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
 - [ACCEPTED] Multi-root investigation COMPLETE — LSP/Git/Terminal root binding analysis finished 2026-08-30; fix implemented in 47f1ced
+
+---
+
+**RULES REMINDER BLOCK**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY.
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE], [TERMINAL] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done.
+6. ROADMAP CONTINUITY: List ALL pending items.
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+**[2026-09-05 14:10 WAT] - AI Agent: Base44 Superagent (Claude)**
+
+**[LSP] [INTELLIGENSE] - Fixed long-standing dot-completion "same single item" bug (NOT the KLS stale-BindingContext limitation)**
+
+**Commit:** c3dcce3 | **CI:** #2623 GREEN
+
+**Symptom (reported by Wisdom, predates the KLS BindingContext work):** pasting different Kotlin code into different .kt files, each ending in a dot where a content-specific completion should appear - instead the EXACT SAME ONE completion appeared every time regardless of file content.
+
+**Investigation (code audit, no guessing):** Client-side pipeline audited CLEAN: JSON-RPC routes responses by exact request ID (monotonic AtomicLong - no cross-request leakage possible), parseLspCompletions is 1:1 with per-item try/catch (no collapsing), the popup list rebuilds from current state on every keystroke, the timeout path CLEARS results (cannot show stale), and the freeze/refilter cache physically cannot fire on dot triggers (dotWasTyped/isDotContext force a fresh server query). Conclusion: the server was answering about the WRONG document state.
+
+**Root cause (three compounding gaps):**
+1. lspOpenedFiles marked a file "open forever" after one didOpen. When a server restarted IN PLACE (generation bump: idle-grace stop + restart, OOM kill auto-restart, multi-root re-init), the new process had NO documents open, Effect A never re-fired (its keys did not change), so every didChange silently went to a document the server never received. Server fell back to analyzing stale/empty ON-DISK content -> same generic completion for every file (pasted-unsaved content never reached it).
+2. didChange versions were derived from System.currentTimeMillis in 3 places (Effect B + completion force-sync + signature-help force-sync) - interleavings could send versions BACKWARDS, and out-of-order versions can be silently dropped (LSP requires monotonic).
+3. The 2s cleanup poll only cleared lspOpenedFiles on UNHEALTHY - servers passing through STOPPED (30s idle-grace stop, OOM kill) left stale entries blocking didOpen on the replacement server.
+
+**Fixes (all in c3dcce3, one push):**
+- FIX-A: the poll now watches server GENERATIONS while running; on a generation bump it re-sends didOpen for every open tab of that language (log: [LSP] GEN-WATCH).
+- FIX-B: new LspManager.nextDocumentVersion(uri) - per-URI ConcurrentHashMap counter that only increases. Replaced all 3 clock-based didChange version sites; both didOpen sites now pass it too so ordering stays strict across re-opens.
+- FIX-C: STOPPED now clears lspOpenedFiles the same way UNHEALTHY always did (log: [LSP] POLL-CLEANUP).
+
+**Files:** LspManager.kt (nextDocumentVersion counter), EditorPane.kt (lspSeenServerGen map, extended poll effect, 3 version sites, 2 didOpen sites).
+
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: DOT-COMPLETION CAPTURE (fold into the large combined test batch with Gap 2+4): paste different code into 3 different .kt files, trigger dot each time - completions must now be CONTENT-SPECIFIC per file; copy [LSP] GEN-WATCH / POLL-CLEANUP lines if seen; regression-check normal completions + go-to-def still work
+- [PENDING] On-device test: MULTI-ROOT A+B - full test plan delivered to user
+- [PENDING] On-device test: TERMINAL OSC/tap/root-lock batch (Gap 2+4): ide CLI, plain-text file:line tap, padlock lock + restart persistence + live menu update, exit-code-9 SESSION FINISHED diag lines
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix - close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 - create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 - create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] On-device test: verify forTerminal/resolveWorkspacePath DIAG lines now appear in Terminal channel
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Gutter/lightbulb positioning fixes (still to come - part of the combined batch)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [ACCEPTED] Kotlin completion stale BindingContext - upstream KLS limitation, documented, workaround noted (NOTE: this was NOT the cause of the same-single-item bug - that was the lspOpenedFiles staleness fixed in c3dcce3)
