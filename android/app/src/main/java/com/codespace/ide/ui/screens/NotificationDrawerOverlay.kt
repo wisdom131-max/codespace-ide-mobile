@@ -7,7 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -298,12 +297,12 @@ internal fun NotificationDrawerOverlay(
                 // (The header itself already reads "No New Notifications".)
                 if (allItems.isNotEmpty()) {
                     HorizontalDivider(color = colors.border, thickness = 0.5.dp)
-                    NotifFilterBar(
+                    NotifFilterDropdowns(
                         filterSeverity = filterSeverity,
                         filterSource = filterSource,
                         colors = colors,
-                        onFilterSeverity = { filterSeverity = if (filterSeverity == it) null else it },
-                        onFilterSource = { filterSource = if (filterSource == it) null else it },
+                        onFilterSeverity = { filterSeverity = it },
+                        onFilterSource = { filterSource = it },
                     )
                     HorizontalDivider(color = colors.border, thickness = 0.5.dp)
 
@@ -437,13 +436,17 @@ private fun DrawerHeader(
 }
 
 @Composable
-private fun NotifFilterBar(
+private fun NotifFilterDropdowns(
     filterSeverity: NotificationStore.Severity?,
     filterSource: NotificationStore.Source?,
     colors: NotifColors,
-    onFilterSeverity: (NotificationStore.Severity) -> Unit,
-    onFilterSource: (NotificationStore.Source) -> Unit,
+    onFilterSeverity: (NotificationStore.Severity?) -> Unit,
+    onFilterSource: (NotificationStore.Source?) -> Unit,
 ) {
+    // FIX-1: VS Code consolidation — one dropdown per filter dimension instead of a
+    // chip row spanning the panel (VS Code renders notification actions via
+    // DropdownMenuActionViewItem, notificationsViewer.ts). Filtering semantics
+    // are unchanged: null = show all; re-selecting the active item clears it.
     val sources = remember {
         listOf(
             NotificationStore.Source.LSP, NotificationStore.Source.GIT,
@@ -452,45 +455,95 @@ private fun NotifFilterBar(
             NotificationStore.Source.SYSTEM,
         )
     }
-    LazyRow(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        items(NotificationStore.Severity.values().toList()) { sev ->
-            val (_, dotColor) = severityIcon(sev)
-            NotifChip(
-                label = sev.name.lowercase().replaceFirstChar { it.uppercase() },
-                dotColor = dotColor,
-                active = filterSeverity == sev,
+        // Severity dropdown
+        var sevMenu by remember { mutableStateOf(false) }
+        Box {
+            FilterMenuButton(
+                label = if (filterSeverity == null) "All Severities"
+                        else filterSeverity.name.lowercase().replaceFirstChar { it.uppercase() },
+                active = filterSeverity != null,
                 colors = colors,
-                onClick = { onFilterSeverity(sev) },
+                onClick = { sevMenu = true },
             )
+            DropdownMenu(expanded = sevMenu, onDismissRequest = { sevMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("All Severities", fontSize = 12.sp) },
+                    onClick = { onFilterSeverity(null); sevMenu = false },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                NotificationStore.Severity.values().forEach { sev ->
+                    val (_, dotColor) = severityIcon(sev)
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                                Box(Modifier.size(6.dp).background(dotColor, CircleShape))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    sev.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (filterSeverity == sev) {
+                                    Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp), tint = colors.accent)
+                                }
+                            }
+                        },
+                        onClick = {
+                            onFilterSeverity(if (filterSeverity == sev) null else sev)
+                            sevMenu = false
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
+            }
         }
-        item {
-            Box(
-                Modifier
-                    .padding(horizontal = 2.dp)
-                    .width(1.dp)
-                    .height(16.dp)
-                    .background(colors.border),
-            )
-        }
-        items(sources) { src ->
-            NotifChip(
-                label = src.name.lowercase(),
-                dotColor = sourceColor(src),
-                active = filterSource == src,
+        // Source dropdown
+        var srcMenu by remember { mutableStateOf(false) }
+        Box {
+            FilterMenuButton(
+                label = if (filterSource == null) "All Sources" else filterSource.name.lowercase(),
+                active = filterSource != null,
                 colors = colors,
-                onClick = { onFilterSource(src) },
+                onClick = { srcMenu = true },
             )
+            DropdownMenu(expanded = srcMenu, onDismissRequest = { srcMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("All Sources", fontSize = 12.sp) },
+                    onClick = { onFilterSource(null); srcMenu = false },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                sources.forEach { src ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                                Box(Modifier.size(6.dp).background(sourceColor(src), CircleShape))
+                                Spacer(Modifier.width(8.dp))
+                                Text(src.name.lowercase(), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                if (filterSource == src) {
+                                    Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp), tint = colors.accent)
+                                }
+                            }
+                        },
+                        onClick = {
+                            onFilterSource(if (filterSource == src) null else src)
+                            srcMenu = false
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun NotifChip(
+private fun FilterMenuButton(
     label: String,
-    dotColor: Color,
     active: Boolean,
     colors: NotifColors,
     onClick: () -> Unit,
@@ -498,158 +551,28 @@ private fun NotifChip(
     Row(
         Modifier
             .background(
-                if (active) colors.accent.copy(alpha = 0.16f) else Color.Transparent,
-                RoundedCornerShape(10.dp),
+                if (active) colors.accent.copy(alpha = 0.16f) else colors.chipBg,
+                RoundedCornerShape(8.dp),
             )
             .border(
                 1.dp,
                 if (active) colors.accent.copy(alpha = 0.7f) else colors.border,
-                RoundedCornerShape(10.dp),
+                RoundedCornerShape(8.dp),
             )
             .clickable { onClick() }
-            .padding(horizontal = 7.dp, vertical = 3.dp),
+            .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(5.dp).background(dotColor, CircleShape))
-        Spacer(Modifier.width(4.dp))
+        Icon(Icons.Default.FilterList, null, tint = if (active) colors.accent else colors.textSecondary, modifier = Modifier.size(13.dp))
+        Spacer(Modifier.width(5.dp))
         Text(
             label,
-            fontSize = 9.sp,
+            fontSize = 10.sp,
             color = if (active) colors.accent else colors.textSecondary,
             fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
         )
-    }
-}
-
-@Composable
-private fun NotificationRow(item: NotificationStore.Item, colors: NotifColors, onErrorTap: () -> Unit) {
-    var expanded by remember(item.id) { mutableStateOf(false) }
-    val (iconVec, iconColor) = severityIcon(item.severity)
-    // BUG-3 FIX (VS Code notificationsViewer.ts): a collapsed notification is ONE
-    // compact single-line row; details render only when expanded.
-    // SIZING NOTE (proportional, not pixel-copied): VS Code's compact row is 34px on
-    // a ~390px vscode.dev mobile viewport (~8.7% of width). This device's dp width
-    // (~390dp) matches that viewport, so 34dp is the PROPORTIONAL equivalent in OUR
-    // sizing system — the reference screenshots already reflect narrow-width VS Code,
-    // and these values track our own 320dp panel / 11sp row-font scale.
-    val singleLine = if (item.body.isNotBlank() && item.body != item.title)
-        "${item.title} - ${item.body}" else item.title
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 34.dp)
-            .background(if (!item.read) colors.accent.copy(alpha = 0.06f) else Color.Transparent)
-            .clickable {
-                NotificationStore.markRead(item.id)
-                if (item.severity == NotificationStore.Severity.ERROR) onErrorTap()
-                else expanded = !expanded
-            }
-            .semantics {
-                var desc = "${item.severity.name.lowercase()}: ${item.title}. ${item.body}"
-                if (item.dedupCount > 1) desc = "$desc ${item.dedupCount} occurrences."
-                if (item.actions.isNotEmpty()) desc = "$desc Actions: ${item.actions.joinToString { it.label }}."
-                contentDescription = desc
-            }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp)) {
-            if (!item.read) {
-                Box(Modifier.fillMaxSize().background(colors.accent, CircleShape))
-            }
-        }
-        Spacer(Modifier.width(6.dp))
-        Icon(iconVec, null, tint = iconColor, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            if (!expanded) {
-                Text(
-                    singleLine,
-                    fontSize = 11.sp,
-                    fontWeight = if (!item.read) FontWeight.Medium else FontWeight.Normal,
-                    color = colors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (expanded) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(
-                    item.title,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (item.dedupCount > 1) {
-                    Text("(${item.dedupCount})", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFAB387))
-                }
-                Box(
-                    Modifier.background(sourceColor(item.source).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                ) {
-                    Text(item.source.name.lowercase(), fontSize = 8.sp, color = sourceColor(item.source))
-                }
-            }
-            if (item.body.isNotBlank() && item.body != item.title) {
-                Text(
-                    item.body,
-                    fontSize = 10.sp,
-                    color = colors.textSecondary,
-                    maxLines = if (expanded) Int.MAX_VALUE else 2,
-                    overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-                )
-            }
-            if (expanded && item.errorDetails != null) {
-                Spacer(Modifier.height(4.dp))
-                item.errorDetails.technicalDetails?.let { tech ->
-                    Surface(
-                        color = colors.panelBg,
-                        shape = RoundedCornerShape(4.dp),
-                        border = BorderStroke(1.dp, colors.border),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(tech, fontSize = 9.sp, color = colors.textSecondary, maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip, modifier = Modifier.padding(6.dp))
-                    }
-                }
-            }
-            if (item.severity == NotificationStore.Severity.PROGRESS && item.progress != null) {
-                Spacer(Modifier.height(4.dp))
-                if (item.progress.indeterminate) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = colors.accent)
-                } else {
-                    val progress = if (item.progress.max > 0) item.progress.current.toFloat() / item.progress.max.toFloat() else 0f
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp), color = colors.accent)
-                }
-                item.progress.statusMessage?.let { Text(it, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1) }
-            }
-            if (item.actions.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    item.actions.forEach { action ->
-                        Text(
-                            action.label,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (action.destructive) Color(0xFFF38BA8) else colors.accent,
-                            modifier = Modifier
-                                .background(
-                                    if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f) else colors.accent.copy(alpha = 0.15f),
-                                    RoundedCornerShape(4.dp),
-                                )
-                                .clickable { NotificationStore.executeAction(item.id, action.id) }
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                        )
-                    }
-                }
-            }
-            Text(relativeTime(item.timestamp), fontSize = 9.sp, color = colors.textSecondary)
-            }
-        }
-        Spacer(Modifier.width(4.dp))
-        Icon(Icons.Default.Close, null, tint = colors.textSecondary, modifier = Modifier.size(13.dp).clickable { NotificationStore.dismiss(item.id) })
+        Spacer(Modifier.width(2.dp))
+        Icon(Icons.Default.KeyboardArrowDown, null, tint = if (active) colors.accent else colors.textSecondary, modifier = Modifier.size(14.dp))
     }
 }
 

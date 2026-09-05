@@ -530,8 +530,9 @@ private fun PssTopBar(
         // Customize Layout icon is a stateless menu trigger and never highlights.
         // ── Customize Layout (VS Code leftmost of the 4 — never highlighted) ──
         Box {
+            // VS Code configureLayoutIcon = Codicon.layout (exact replica)
             Icon(
-                Icons.Default.DashboardCustomize, null,
+                painter = painterResource(id = com.codespace.ide.R.drawable.ic_layout_customize), null,
                 tint = tabTextInactive,
                 modifier = Modifier.size(20.dp).clickable { showCustomizeLayout = !showCustomizeLayout },
             )
@@ -603,54 +604,52 @@ private fun PssTopBar(
             }
         }
         Spacer(Modifier.width(10.dp))
-        // Toggle Primary Side Bar (Explorer/Search/Git/Run/Extensions host) — highlighted when open
+        // Toggle Primary Side Bar — VS Code glyph-swap (layoutActions.ts:
+        // icon: panelLeftOffIcon, toggled: { condition: SideBarVisibleContext,
+        // icon: panelLeftIcon }). Exact codicon layout-sidebar-left/-off replicas.
         Box(
-            Modifier.size(24.dp)
-                .background(
-                    if (isSidebarActive) tabTextInactive.copy(alpha = 0.15f) else Color.Transparent,
-                    RoundedCornerShape(4.dp),
-                )
-                .clickable { onToggleSidebar() },
+            Modifier.size(24.dp).clickable { onToggleSidebar() },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_side_bar),
+                painter = painterResource(
+                    if (isSidebarActive) com.codespace.ide.R.drawable.ic_layout_sidebar_left
+                    else com.codespace.ide.R.drawable.ic_layout_sidebar_left_off
+                ),
                 contentDescription = null,
                 tint = tabTextInactive,
                 modifier = Modifier.size(20.dp),
             )
         }
         Spacer(Modifier.width(6.dp))
-        // Toggle Bottom Panel (terminal/build/output) — highlighted when open
+        // Toggle Bottom Panel — VS Code glyph-swap (layout-panel/-off codicon replicas);
+        // ON glyph shows the filled bottom strip when the panel is open.
         Box(
-            Modifier.size(24.dp)
-                .background(
-                    if (isBottomPanelActive) tabTextInactive.copy(alpha = 0.15f) else Color.Transparent,
-                    RoundedCornerShape(4.dp),
-                )
-                .clickable { onToggleBottomPanel() },
+            Modifier.size(24.dp).clickable { onToggleBottomPanel() },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_bar_bottom),
+                painter = painterResource(
+                    if (isBottomPanelActive) com.codespace.ide.R.drawable.ic_layout_panel
+                    else com.codespace.ide.R.drawable.ic_layout_panel_off
+                ),
                 contentDescription = null,
                 tint = tabTextInactive,
                 modifier = Modifier.size(20.dp),
             )
         }
         Spacer(Modifier.width(6.dp))
-        // Toggle Secondary Side Bar (AI chat — right panel) — highlighted when open
+        // Toggle Secondary Side Bar — VS Code glyph-swap (AuxiliaryBar uses
+        // layout-sidebar-right/-off); ON glyph shows the filled right strip.
         Box(
-            Modifier.size(24.dp)
-                .background(
-                    if (isSecondarySidebarActive) tabTextInactive.copy(alpha = 0.15f) else Color.Transparent,
-                    RoundedCornerShape(4.dp),
-                )
-                .clickable { onToggleSecondarySidebar() },
+            Modifier.size(24.dp).clickable { onToggleSecondarySidebar() },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_thumbnail_bar),
+                painter = painterResource(
+                    if (isSecondarySidebarActive) com.codespace.ide.R.drawable.ic_layout_sidebar_right
+                    else com.codespace.ide.R.drawable.ic_layout_sidebar_right_off
+                ),
                 contentDescription = null,
                 tint = tabTextInactive,
                 modifier = Modifier.size(20.dp),
