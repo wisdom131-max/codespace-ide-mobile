@@ -115,12 +115,8 @@ private fun loadLastSearchQuery(context: Context, projectId: String): String =
         .getString("${KEY_LAST_SEARCH}_$projectId", "") ?: ""
 
 // ── Multi-root workspace support ──
-private fun saveWorkspaceRoots(context: Context, projectId: String, roots: List<String>) {
-    WorkspaceRootsStore.saveRoots(context, projectId, roots)
-}
-
-private fun loadWorkspaceRoots(context: Context, projectId: String): List<String> =
-    WorkspaceRootsStore.loadRoots(context, projectId)
+// All root persistence/mutation goes through WorkspaceRootsStore (reactive,
+// VS Code parity — see store header comment). No local save/load here.
 
 // ── Device quick-access folders ──
 private val DEVICE_FOLDERS = listOf(
@@ -229,11 +225,6 @@ fun ExplorerSidePanel(
     revealFileTrigger: Int = 0,
     /** Notification callback for file operations (errors, success). */
     onShowNotification: ((String, String) -> Unit)? = null,
-    /** [REPO-OPEN] Part 2 item 4: bumped by the shell when a repo cloned from
-     *  the Source Control pane was appended to the persisted workspace roots
-     *  from outside this composable — triggers a reload of the saved roots so
-     *  the new repo appears in the tree without a manual refresh. */
-    rootsRefreshKey: Int = 0,
     /** External trigger: when set to a non-null value, opens the New File dialog. */
     triggerNewFile: Any? = null,
     /** External trigger: when set to a non-null value, opens the New Folder dialog. */
@@ -259,16 +250,13 @@ fun ExplorerSidePanel(
     }
 
     // ── Multi-root workspace ──
-    var workspaceRoots by remember {
-        mutableStateOf(loadWorkspaceRoots(context, projectId))
-    }
-    // [REPO-OPEN] Part 2 item 4: external append (GitHub clone from SCM pane).
-    LaunchedEffect(rootsRefreshKey) {
-        if (rootsRefreshKey > 0) {
-            val reloaded = loadWorkspaceRoots(context, projectId)
-            if (reloaded != workspaceRoots) workspaceRoots = reloaded
-        }
-    }
+    // [REPO-OPEN] REACTIVE (VS Code parity, explorerModel.ts:43): the roots are
+    // DERIVED from the shared WorkspaceRootsStore — the same reactive binding
+    // VS Code's ExplorerModel has to contextService.getWorkspace().folders. Any
+    // mutation (this pane's own add/remove UI or an external GitHub-clone
+    // append from the Source Control pane) recomposes this composable
+    // automatically. No manual refresh key needed.
+    val workspaceRoots = WorkspaceRootsStore.observeRoots(context, projectId)
     var showDeviceFolders by remember { mutableStateOf(false) }
 
     // ── Image preview state ──
@@ -484,9 +472,7 @@ fun ExplorerSidePanel(
                 workspacePath = it
                 saveWorkspacePath(context, projectId, it)
                 // Add to multi-root list (avoid duplicates)
-                if (it !in workspaceRoots) {
-                    workspaceRoots = workspaceRoots + it
-                    saveWorkspaceRoots(context, projectId, workspaceRoots)
+                if (WorkspaceRootsStore.addRoot(context, projectId, it)) {
                     onWorkspaceRootAdded?.invoke(it)
                 }
                 expanded.clear()
@@ -957,9 +943,7 @@ fun ExplorerSidePanel(
                             .clickable(enabled = exists) {
                                 workspacePath = path
                                 saveWorkspacePath(context, projectId, path)
-                                if (path !in workspaceRoots) {
-                                    workspaceRoots = workspaceRoots + path
-                                    saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                if (WorkspaceRootsStore.addRoot(context, projectId, path)) {
                                     onWorkspaceRootAdded?.invoke(path)
                                 }
                                 showDeviceFolders = false
@@ -1016,9 +1000,7 @@ fun ExplorerSidePanel(
                             // Quick pick: use /storage/emulated/0
                             workspacePath = "/storage/emulated/0"
                             saveWorkspacePath(context, projectId, "/storage/emulated/0")
-                            if ("/storage/emulated/0" !in workspaceRoots) {
-                                workspaceRoots = workspaceRoots + "/storage/emulated/0"
-                                saveWorkspaceRoots(context, projectId, workspaceRoots)
+                            if (WorkspaceRootsStore.addRoot(context, projectId, "/storage/emulated/0")) {
                                 onWorkspaceRootAdded?.invoke("/storage/emulated/0")
                             }
                             refresh++
@@ -1036,9 +1018,7 @@ fun ExplorerSidePanel(
                                 .clickable(enabled = exists) {
                                     workspacePath = path
                                     saveWorkspacePath(context, projectId, path)
-                                    if (path !in workspaceRoots) {
-                                        workspaceRoots = workspaceRoots + path
-                                        saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                    if (WorkspaceRootsStore.addRoot(context, projectId, path)) {
                                         onWorkspaceRootAdded?.invoke(path)
                                     }
                                     refresh++
@@ -1116,8 +1096,7 @@ fun ExplorerSidePanel(
                                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Icon(Icons.Default.Close, null, tint = MutedColor,
                                 modifier = Modifier.size(12.dp).clickable {
-                                    workspaceRoots = workspaceRoots - rootPath
-                                    saveWorkspaceRoots(context, projectId, workspaceRoots)
+                                    WorkspaceRootsStore.removeRoot(context, projectId, rootPath)
                                     onWorkspaceRootRemoved?.invoke(rootPath)
                                 })
                         }

@@ -13,13 +13,14 @@ import com.codespace.ide.util.WorkspaceRootsStore
  * decision approved 2026-09-05) and announced to running LSP servers via the
  * existing workspace/didChangeWorkspaceFolders path.
  *
- * The caller (ProjectShellScreen) bumps the Explorer's rootsRefreshKey and
- * shows a notification based on the returned value.
+ * WorkspaceRootsStore is reactive — the Explorer recomposes automatically on
+ * the addRoot write (VS Code parity). The caller shows a notification based
+ * on the returned value.
  *
  * Returns true when the root was newly added, false when it already existed.
  */
 fun handleRepoClonedAddRoot(context: Context, projectId: String, project: Project): Boolean {
-    val added = WorkspaceRootsStore.appendRoot(context, projectId, project.pathOrUrl)
+    val added = WorkspaceRootsStore.addRoot(context, projectId, project.pathOrUrl)
     if (added) {
         LspManager.notifyWorkspaceFoldersChanged(
             context,
