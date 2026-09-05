@@ -38,7 +38,7 @@ object PortsScanner {
         }.awaitAll().filterNotNull().sortedBy { it.port }
     }
 
-    private fun isOpen(port: Int, timeoutMs: Int = 200): Boolean = try {
+    internal fun isOpen(port: Int, timeoutMs: Int = 200): Boolean = try {
         Socket().use { s ->
             s.connect(InetSocketAddress("127.0.0.1", port), timeoutMs)
             true

@@ -63,7 +63,8 @@ import androidx.compose.ui.unit.dp
 import com.codespace.ide.data.GitHubAuth
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
-import com.codespace.ide.domain.AiProviderId
+import com.codespace.ide.chat.ChatProvider
+import com.codespace.ide.chat.ChatProviderRegistry
 import com.codespace.ide.terminal.BackupManager
 import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Job
@@ -106,23 +107,26 @@ fun SettingsScreen(
     var githubJob by remember { mutableStateOf<Job?>(null) }
 
     // ── AI provider key state ────────────────────────────────────────────────
+    // Registry-driven: every registered ChatProvider (cloud or local) shows up here
+    // automatically. Keys stay in SecureTokenStore under "ai_" + provider.id.uppercase()
+    // — identical to the old AiProviderId.name keys, so existing saved keys survive.
     val keyMap = remember {
-        mutableStateMapOf<AiProviderId, String>().apply {
-            AiProviderId.entries.forEach { provider ->
-                put(provider, tokenStore.aiKey(provider.name) ?: "")
+        mutableStateMapOf<ChatProvider, String>().apply {
+            ChatProviderRegistry.all().forEach { provider ->
+                put(provider, tokenStore.aiKey(provider.id.uppercase()) ?: "")
             }
         }
     }
     val visibleMap = remember {
-        mutableStateMapOf<AiProviderId, Boolean>().apply {
-            AiProviderId.entries.forEach { put(it, false) }
+        mutableStateMapOf<ChatProvider, Boolean>().apply {
+            ChatProviderRegistry.all().forEach { put(it, false) }
         }
     }
     var activeProvider by remember {
         mutableStateOf(
-            AiProviderId.entries.firstOrNull {
-                tokenStore.aiKey(it.name) != null
-            } ?: AiProviderId.CLAUDE
+            ChatProviderRegistry.all().firstOrNull {
+                tokenStore.aiKey(it.id.uppercase()) != null
+            } ?: ChatProviderRegistry.all().first { it.id == "claude" }
         )
     }
     var savedMsg by remember { mutableStateOf("") }
@@ -365,7 +369,7 @@ fun SettingsScreen(
 
             // ── AI Providers ─────────────────────────────────────────────────
             Text("AI Providers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
-            AiProviderId.entries.forEach { provider ->
+            ChatProviderRegistry.all().forEach { provider ->
                 val key     = keyMap[provider] ?: ""
                 val visible = visibleMap[provider] ?: false
                 val isActive = activeProvider == provider
@@ -401,11 +405,11 @@ fun SettingsScreen(
 
             Button(
                 onClick = {
-                    AiProviderId.entries.forEach { provider ->
+                    ChatProviderRegistry.all().forEach { provider ->
                         val key = keyMap[provider] ?: ""
-                        tokenStore.setAiKey(provider.name, key.ifBlank { null })
+                        tokenStore.setAiKey(provider.id.uppercase(), key.ifBlank { null })
                     }
-                    tokenStore.setAiKey("active", activeProvider.name)
+                    tokenStore.setAiKey("active", activeProvider.id.uppercase())
                     savedMsg = "✓ Saved!"
                 },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),

@@ -57,14 +57,6 @@ data class GitStatus(
     val untracked: List<String>,
 )
 
-enum class AiProviderId(val displayName: String) {
-    OPENAI("OpenAI"),
-    CLAUDE("Claude"),
-    GEMINI("Gemini"),
-    DEEPSEEK("DeepSeek"),
-    OPENROUTER("OpenRouter"),
-}
-
 enum class AiAction { EXPLAIN, GENERATE, REFACTOR, FIX, DOCUMENT, TEST }
 
 data class ChatMessage(val role: String, val content: String)
