@@ -29,4 +29,13 @@ public abstract class TerminalOutput {
 
     public abstract void onColorsChanged();
 
+    /**
+     * Notify the terminal client that an IDE open-file escape sequence (OSC 7777,
+     * Acode-compatible) was received from the shell. No-op by default;
+     * {@link TerminalSession} overrides this to fan out to registered listeners.
+     */
+    public void onOscIdeOpen(String type, String path, int line) {
+        // Default no-op.
+    }
+
 }
