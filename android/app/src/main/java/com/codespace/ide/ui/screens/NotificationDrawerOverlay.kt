@@ -76,6 +76,10 @@ private fun cornerLabel(pos: String): String = when (pos) {
 @Composable
 internal fun NotificationBell(
     iconSize: Int = 22,
+    // ITEM-5 FIX: host padding controls the clickable host's total size. The host
+    // must match the bar band it sits in (28dp top bar / 22dp status bar) or the
+    // bell straddles the bar's edge and looks detached from the shell.
+    hostPad: Int = 10,
     onClick: () -> Unit,
 ) {
     val unread = remember { derivedStateOf { NotificationStore.unreadCount } }.value
@@ -87,7 +91,7 @@ internal fun NotificationBell(
     }
 
     Box(
-        Modifier.size((iconSize + 10).dp).clickable { onClick() },
+        Modifier.size((iconSize + hostPad).dp).clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

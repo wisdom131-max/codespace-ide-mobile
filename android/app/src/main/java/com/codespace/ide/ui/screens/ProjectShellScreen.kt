@@ -534,7 +534,7 @@ private fun PssTopBar(
             Icon(
                 painter = painterResource(id = com.codespace.ide.R.drawable.ic_layout_customize), null,
                 tint = tabTextInactive,
-                modifier = Modifier.size(20.dp).clickable { showCustomizeLayout = !showCustomizeLayout },
+                modifier = Modifier.size(17.dp).clickable { showCustomizeLayout = !showCustomizeLayout },
             )
             androidx.compose.material3.DropdownMenu(
                 expanded = showCustomizeLayout,
@@ -618,7 +618,7 @@ private fun PssTopBar(
                 ),
                 contentDescription = null,
                 tint = tabTextInactive,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(17.dp),
             )
         }
         Spacer(Modifier.width(6.dp))
@@ -635,7 +635,7 @@ private fun PssTopBar(
                 ),
                 contentDescription = null,
                 tint = tabTextInactive,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(17.dp),
             )
         }
         Spacer(Modifier.width(6.dp))
@@ -652,7 +652,7 @@ private fun PssTopBar(
                 ),
                 contentDescription = null,
                 tint = tabTextInactive,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(17.dp),
             )
         }
         Spacer(Modifier.width(10.dp))
@@ -1998,14 +1998,23 @@ private fun PssOverlays(
         val notifPos = NotificationStore.settings.bellPosition
         val isNotifTop = notifPos == NotificationStore.POS_TOP_RIGHT
         val isNotifLeft = notifPos == NotificationStore.POS_BOTTOM_LEFT
+        // ITEM-5 FIX (VS Code statusbarPart containment): the bell now sits fully
+        // INSIDE the bar band of whichever corner it occupies, vertically centered
+        // exactly like a native bar item:
+        //   TOP_RIGHT   -> host 28dp == the 28dp top bar, offset 0 (was 8dp, which
+        //                  made the bell straddle the bar's bottom edge)
+        //   BOTTOM_*    -> host 22dp == the 22dp status bar (was 28dp + 6dp offset,
+        //                  which overhung the bar's top edge)
+        // Horizontal offsets center the host inside the 32dp slot each bar already
+        // reserves for the bell, so bar content still reflows instead of being overlaid.
+        val notifHostSize = if (isNotifTop) 28 else 22
+        val notifIconSize = if (isNotifTop) 18 else 16
         Box(
             Modifier
                 .fillMaxSize()
                 .padding(
-                    top = if (isNotifTop) 8.dp else 0.dp,
-                    bottom = if (isNotifTop) 0.dp else 6.dp,
-                    start = if (isNotifLeft) 8.dp else 0.dp,
-                    end = if (isNotifLeft) 0.dp else 8.dp,
+                    start = if (isNotifLeft) ((32 - notifHostSize) / 2).dp else 0.dp,
+                    end = if (isNotifLeft) 0.dp else ((32 - notifHostSize) / 2).dp,
                 )
                 .zIndex(90f),
             contentAlignment = when (notifPos) {
@@ -2015,7 +2024,8 @@ private fun PssOverlays(
             },
         ) {
             NotificationBell(
-                iconSize = 18,
+                iconSize = notifIconSize,
+                hostPad = notifHostSize - notifIconSize,
                 onClick = { onShowNotifDrawerChange(true); NotificationStore.markAllRead() },
             )
         }

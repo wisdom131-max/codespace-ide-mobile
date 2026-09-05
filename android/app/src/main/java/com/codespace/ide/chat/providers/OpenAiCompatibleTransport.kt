@@ -40,8 +40,38 @@ internal object OpenAiCompatibleTransport {
                     .post(body.toRequestBody(jsonMedia))
                     .build()
             ).execute()
-            if (!resp.isSuccessful) throw Exception("API error (${resp.code}). Check your key in Settings.")
+            if (!resp.isSuccessful) throw Exception(transportError("API error", resp))
             val json = JSONObject(resp.body?.string() ?: "")
             json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+        }
+
+    /**
+     * FIX (404 regression): the old message said "Check your key" for EVERY error code,
+     * which sent the user down the wrong path - the actual on-device failures were 404
+     * model-not-found (retired default model IDs), not auth. The vendor's error body is
+     * now included so the panel shows the real reason.
+     */
+    internal fun transportError(prefix: String, resp: okhttp3.Response): String {
+        val body = try { resp.body?.string() } catch (_: Exception) { null }
+        val snippet = if (body.isNullOrBlank()) "" else " " + body.take(160).replace("\n", " ")
+        return prefix + " (" + resp.code + ")." + snippet
+    }
+
+    /** Shared OpenAI-compatible GET /models lister (OpenAI, DeepSeek, OpenRouter). */
+    internal suspend fun fetchModelList(url: String, apiKey: String, bearer: Boolean = true): List<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val builder = Request.Builder().url(url)
+                if (bearer) builder.header("Authorization", "Bearer $apiKey")
+                val resp = http.newCall(builder.get().build()).execute()
+                if (!resp.isSuccessful) return@withContext emptyList()
+                val arr = JSONObject(resp.body?.string() ?: "").getJSONArray("data")
+                val out = ArrayList<String>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val id = arr.getJSONObject(i).optString("id")
+                    if (id.isNotEmpty()) out.add(id)
+                }
+                out
+            } catch (_: Exception) { emptyList() }
         }
 }

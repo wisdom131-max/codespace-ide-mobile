@@ -261,7 +261,7 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         val linkToken = word.trim()
                         if (linkToken.isNotEmpty() && (linkToken.contains('/') || linkToken.contains('.'))) {
                             val resolved = com.codespace.ide.terminal.IdeTerminalBridge
-                                .resolveTappedFileLink(v.context, v.mTermSession, linkToken)
+                                .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId)
                             if (resolved != null) {
                                 onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
                                 return
@@ -291,6 +291,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     // Callbacks wired from TerminalPane so shortcuts can act on tab state
     // A3: plain-text file-link tap ("path/File.kt:42") -> open in editor.
     var onFileLinkTap: ((String, Int) -> Unit)? = null
+    // Project context for the tap resolver's workspace-root fallback (set at
+    // view creation from the composable's projectId param).
+    var projectId: String? = null
     var onNewTab:      (() -> Unit)? = null
     var onCloseTab:    (() -> Unit)? = null
     var onPrevTab:     (() -> Unit)? = null
@@ -486,6 +489,9 @@ internal class TerminalState(
 ) {
     var activeId by androidx.compose.runtime.mutableStateOf(initialActiveId)
     var pinnedId by androidx.compose.runtime.mutableStateOf<String?>(null)  // pinned mirror session
+    // Project context shared with split panels for the A3 tap-to-open resolver
+    // (workspace-root fallback). Set by every TerminalPane composition.
+    var projectId by androidx.compose.runtime.mutableStateOf<String?>(null)
     // Guards the one-time Ubuntu bootstrap so it only runs once even if this state is
     // shared across multiple TerminalPane composables (split panels).
     var ubuntuBootstrapStarted by androidx.compose.runtime.mutableStateOf(false)
@@ -715,6 +721,8 @@ internal fun TerminalPane(
     var activeId by remember { androidx.compose.runtime.mutableStateOf(sharedState.activeId) }
     // Keep sharedState.activeId in sync with local activeId
     LaunchedEffect(activeId) { sharedState.activeId = activeId }
+    // A3: share project context with split panels for tap-to-open resolution
+    LaunchedEffect(projectId) { sharedState.projectId = projectId }
     // Also sync from external state changes (split panel switching tabs)
     LaunchedEffect(sharedState.activeId) { if (sharedState.activeId != activeId) activeId = sharedState.activeId }
 
@@ -1140,11 +1148,17 @@ internal fun TerminalPane(
             IconButton(onClick = { addTab() }) { Icon(Icons.Default.Add, null, tint = Color(0xFF969696)) }
             Box {
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696)) }
+                // CRASH-FIX: Material3's DropdownMenu ALREADY wraps [content] in its own
+                // internal scrollable Column (confirmed from AndroidX source doc: "the content
+                // is placed inside a scrollable Column"). Adding our own .verticalScroll() on
+                // top of that (previous fix for "menu unreachable past one screen") nested two
+                // vertical scrollables and threw: "Vertically scrollable component was measured
+                // with an infinity maximum height". heightIn(max=...) alone is enough — it just
+                // caps the popup's height; the framework's own internal scroll handles overflow.
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
                     offset = DpOffset(0.dp, 4.dp), modifier = Modifier
                         .background(Color(0xFF2D2D2D))
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState())) {
+                        .heightIn(max = 420.dp)) {
                     // ── TERMINALS ──────────────────────────────────────────
                     DropdownMenuItem(
                         leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
@@ -1900,6 +1914,8 @@ internal fun TerminalPane(
                             val viewClient = SimpleTerminalViewClient()
                             viewClient.terminalView  = this
                             viewClient.currentTextSize = terminalFontSize
+                            // A3: project context for tap-to-open resolution
+                            viewClient.projectId = projectId
                             // Propagate pinch-zoom font changes back to Compose state + SharedPrefs
                             viewClient.onFontSizeChanged = { newSize ->
                                 prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
@@ -2096,6 +2112,9 @@ internal fun SplitTerminalPanel(sharedState: TerminalState, onFileSystemChanged:
                             val viewClient = SimpleTerminalViewClient()
                             viewClient.terminalView  = this
                             viewClient.currentTextSize = terminalFontSize
+                            // A3: project context for tap-to-open resolution
+                            // A3: split panel reads project context from the shared state
+                            viewClient.projectId = sharedState.projectId
                             viewClient.onFontSizeChanged = { newSize ->
                                 prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
                             }

@@ -198,6 +198,21 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
     ChatProviderRegistry.available(tokenStore)
         .map { "${it.id}:${it.defaultModel}" }
 
+/**
+ * FIX (404 regression): the picker previously offered ONLY the hardcoded default
+ * models, all of which have since been retired at the vendors (404 model-not-found
+ * on every provider). This fetches each available provider's LIVE model list from
+ * its own /models endpoint and merges it with the defaults, so the picker always
+ * shows models that actually exist right now. Entries stay "providerId:model".
+ */
+private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): List<String> =
+    ChatProviderRegistry.available(tokenStore).flatMap { provider ->
+        val key = try { tokenStore?.aiKey(provider.id.uppercase()) } catch (_: Exception) { null }
+        val live = try { provider.fetchModels(key) } catch (_: Exception) { emptyList() }
+        val models = (listOf(provider.defaultModel) + live).distinct()
+        models.map { "${provider.id}:${it}" }
+    }.distinct()
+
 private suspend fun chat(
     model: String,
     messages: List<ChatMsg>,
@@ -371,6 +386,22 @@ internal fun CopilotChatPanelOverlay(
     var showModelMenu by remember { mutableStateOf(false) }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(registeredModelEntries(tokenStore).firstOrNull() ?: "") }
+    // 404-fix: fetch the LIVE model lists once when the panel first composes,
+    // so the picker only ever offers models that exist right now. Falls back to
+    // defaults if the network call fails.
+    var liveModelsFetched by remember { mutableStateOf(false) }
+    LaunchedEffect(liveModelsFetched) {
+        if (!liveModelsFetched) {
+            liveModelsFetched = true
+            val live = fetchLiveModelEntries(tokenStore)
+            if (live.isNotEmpty()) {
+                availModels = live
+                // keep current selection valid; if it vanished (retired model),
+                // snap to the first available current model
+                if (selectedModel !in live) selectedModel = live.firstOrNull() ?: selectedModel
+            }
+        }
+    }
 
     val messages = remember {
         mutableStateListOf<ChatMsg>().apply { addAll(loadHistory(context)) }
@@ -737,6 +768,22 @@ internal fun CopilotChatPanelInline(
     var showModelMenu by remember { mutableStateOf(false) }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(registeredModelEntries(tokenStore).firstOrNull() ?: "") }
+    // 404-fix: fetch the LIVE model lists once when the panel first composes,
+    // so the picker only ever offers models that exist right now. Falls back to
+    // defaults if the network call fails.
+    var liveModelsFetched by remember { mutableStateOf(false) }
+    LaunchedEffect(liveModelsFetched) {
+        if (!liveModelsFetched) {
+            liveModelsFetched = true
+            val live = fetchLiveModelEntries(tokenStore)
+            if (live.isNotEmpty()) {
+                availModels = live
+                // keep current selection valid; if it vanished (retired model),
+                // snap to the first available current model
+                if (selectedModel !in live) selectedModel = live.firstOrNull() ?: selectedModel
+            }
+        }
+    }
 
     // ── Sessions (UI bucket #5) ─────────────────────────────────────────
     val sessions = remember {

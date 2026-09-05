@@ -124,6 +124,7 @@ object IdeTerminalBridge {
         context: Context,
         session: com.termux.terminal.TerminalSession?,
         token: String,
+        projectId: String? = null,
     ): Pair<File, Int>? {
         if (token.isBlank()) return null
         val clean = token.trim().trimEnd(':', ',', ';')
@@ -140,15 +141,49 @@ object IdeTerminalBridge {
             }
         }
         val appCtx = context.applicationContext
+        // TAP-DIAG: every step logs to the Output tab (terminal channel) so the next
+        // on-device test pinpoints exactly WHERE resolution fails instead of failing
+        // silently. token=what was extracted from the tap, pathPart/lineNum=what each
+        // branch tried.
+        AppOutputLog.log("[TAP] file-link tap: token='" + token + "' pathPart='" + pathPart + "' line=" + lineNum, CHANNEL)
         // 1. absolute host path
-        File(pathPart).takeIf { it.isAbsolute && it.exists() }?.let { return Pair(it, lineNum - 1) }
+        File(pathPart).takeIf { it.isAbsolute && it.exists() }?.let {
+            AppOutputLog.log("[TAP] resolved via absolute host path: " + it.absolutePath, CHANNEL)
+            return Pair(it, lineNum - 1)
+        }
         // 2. guest -> host translation
-        guestPathToHostFile(appCtx, pathPart)?.let { return Pair(it, lineNum - 1) }
-        // 3. relative to the shell's real cwd
+        guestPathToHostFile(appCtx, pathPart)?.let {
+            AppOutputLog.log("[TAP] resolved via guest->host map: " + it.absolutePath, CHANNEL)
+            return Pair(it, lineNum - 1)
+        }
+        // 3. relative to the shell's real cwd (host-side view of the guest cwd)
         val cwd = try { session?.cwd } catch (_: Exception) { null }
         if (cwd != null) {
-            File(cwd, pathPart).takeIf { it.exists() }?.let { return Pair(it, lineNum - 1) }
+            AppOutputLog.log("[TAP] trying session cwd=" + cwd, CHANNEL)
+            File(cwd, pathPart).takeIf { it.exists() }?.let {
+                AppOutputLog.log("[TAP] resolved via session cwd: " + it.absolutePath, CHANNEL)
+                return Pair(it, lineNum - 1)
+            }
+        } else {
+            AppOutputLog.log("[TAP] session cwd unavailable (null or /proc read failed)", CHANNEL)
         }
+        // 4. FIX: relative to every workspace root of the project. Build tools print
+        // paths relative to the project root ("src/Main.kt:42") regardless of where
+        // the shell happens to sit; branch 3 missed those whenever the shell cwd was
+        // "/" (the initial proot cwd) or a different folder.
+        if (projectId != null) {
+            val roots = try {
+                com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(appCtx, projectId)
+            } catch (_: Exception) { emptyList() }
+            AppOutputLog.log("[TAP] workspace-root fallback: " + roots.size + " root(s) for project " + projectId, CHANNEL)
+            for (root in roots) {
+                File(root, pathPart).takeIf { it.exists() }?.let {
+                    AppOutputLog.log("[TAP] resolved via workspace root " + root + ": " + it.absolutePath, CHANNEL)
+                    return Pair(it, lineNum - 1)
+                }
+            }
+        }
+        AppOutputLog.log("[TAP] unresolved: no branch matched '" + pathPart + "'", CHANNEL)
         return null
     }
 
@@ -169,6 +204,11 @@ object IdeTerminalBridge {
             script.setReadable(true, false)
             script.setWritable(true, false)
             script.setExecutable(true, false)
+            // On-device verification: 'ide: 'open' does not exist' errors proved the
+            // script WAS installed (that message comes from this script itself), but the
+            // user could not tell. Log install state so the Output tab (terminal channel)
+            // settles "is the CLI actually there?" on every session start.
+            AppOutputLog.log("ide CLI: " + script.absolutePath + " exists=" + script.exists() + " exec=" + script.canExecute(), CHANNEL)
         } catch (e: Exception) {
             AppOutputLog.log("ide CLI install failed: " + e.message, CHANNEL)
         }
@@ -181,9 +221,21 @@ object IdeTerminalBridge {
         "# Sends OSC 7777 (Acode-compatible file-open protocol):",
         "#   ESC]7777;open;TYPE;PATH[;LINE]BEL",
         "# The IDE terminal consumes the sequence and opens the file in the editor.",
-        "# Usage: ide <path>[:line]   |   ide .   (opens current folder)",
+        "# Usage:",
+        "#   ide <path>[:line]      (VS Code `code <path>` style)",
+        "#   ide open <path>[:line] (explicit subcommand style)",
+        "#   ide .                  (opens current folder)",
         "if [ \"\$#\" -eq 0 ]; then",
         "    set -- \".\"",
+        "fi",
+        "# FIX: the `open` subcommand was reported on-device as \"ide: 'open' does not exist\" -",
+        "# the script treated the WORD 'open' as the file path. Accept and strip it",
+        "# (both bare-path and subcommand forms work identically now).",
+        "if [ \"\$1\" = \"open\" ] || [ \"\$1\" = \"edit\" ]; then",
+        "    shift",
+        "    if [ \"\$#\" -eq 0 ] || [ -z \"\$1\" ]; then",
+        "        set -- \".\"",
+        "    fi",
         "fi",
         "target=\"\$1\"",
         "line=\"\"",

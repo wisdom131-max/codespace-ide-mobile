@@ -45,7 +45,7 @@ interface ChatProvider {
     fun unavailableMessage(): String
 
     /** Optional: live model list from the provider's own endpoint. Empty = only defaultModel is offered. */
-    suspend fun fetchModels(): List<String> = emptyList()
+    suspend fun fetchModels(apiKey: String?): List<String> = emptyList()
 
     /** The ONE entry point the chat panel calls. All HTTP shape logic lives inside the provider. */
     suspend fun complete(request: ChatRequest): String
