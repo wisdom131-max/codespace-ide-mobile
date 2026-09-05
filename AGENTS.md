@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 28d3d41 |
-| CI build | #2639 GREEN (2026-09-05) |
+| Latest commit | 69f30f3 |
+| CI build | #2642 GREEN (2026-09-05) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1530,3 +1530,27 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 3. GitHub remote repo browsing fix: implement VS Code openReadme() algorithm (exact readme.md else startsWith readme, case-insensitive; markdown preview; only when no active tab) as auto-open on repo select. WAITING ON APPROVAL.
 4. On-device verification: combined test batch (re-test ide CLI, tap-to-open, 3-dot menu, 5 AI providers, bell 3 corners, shrunk icons + NEW bell-dot glyph).
 5. MCP/Tool integration research (VS Code AgentTools parity).
+
+### [2026-09-05 23:45 WAT] — AI Agent: GLM (Superagent)
+
+**Commits 5243c87 | CI #2641 GREEN, then 69f30f3 | CI #2642 GREEN**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[REPO-OPEN] Part 2 item 4: GitHub clone opens in Explorer (A + B, C=add-as-root)**
+- ROOT CAUSE (user report "selected a repo does not open in the Explorer at all"): SourceControlPane's RepoBrowserSheet callback DISCARDED the created Project (onProjectCreated = { _ -> ... }) — the clone landed in /root/repos inside the rootfs but nothing ever told the Explorer; HomeScreen only added a project card without navigating into it.
+- FIX A (SCM pane): onRepoCloned callback threads the created Project from SourceControlPane -> GitSidePanel -> ProjectShellScreen -> handleRepoClonedAddRoot (NEW RepoClonedActions.kt, extracted per 64KB rule): appends the cloned repo to the CURRENT project's workspace roots (multi-root ADD, NOT a project switch — approved), notifies running LSP servers via the existing didChangeWorkspaceFolders path, shows success notification.
+- FIX B (HomeScreen): onProjectCreated now auto-navigates into the project after clone completes (vscode.dev parity — same navigation as tapping the project card).
+- MECHANISM VERIFIED FROM REAL SOURCE (hard requirement, microsoft/vscode main + shipped remotehub bundle): explorerModel.ts:43-47 — ExplorerModel derives _roots from contextService.getWorkspace().folders and rebuilds them on the GENERIC onDidChangeWorkspaceFolders event (same path for ANY folder open; nothing GitHub-specific); explorerService.ts:132 — model.onDidChangeRoots -> view.setTreeInput(); remotehub dist/bundles contain ONLY openWorkspace + vscode.open, ZERO Explorer refresh/reveal commands. Conclusion: VS Code has NO manual refresh mechanism — the Explorer is REACTIVELY BOUND to the workspace folder list; adding the folder to the workspace model is the ONLY thing needed.
+- PLAN ADJUSTMENT (source-driven, second commit): the first implementation used an imperative rootsRefreshKey bump — a mechanism VS Code does not use. Refactored to the SAME PRINCIPLE: WorkspaceRootsStore (NEW util file) is a single REACTIVE state holder — Compose mutableStateOf cache keyed by projectId + byte-identical prefs (workspace_prefs / "workspace_roots_<id>" / "|||" — existing saved roots survive). ExplorerPane now OBSERVES via observeRoots(); all 5 of its own mutation sites (4 adds: folder picker, device-folder rows, /storage pick; 1 remove: root-switcher close icon) plus the external SCM-clone append go through addRoot()/removeRoot() — every write recomposes the Explorer automatically. Refresh key param, LaunchedEffect reload, and shell version state all DELETED (less code than the imperative version). LSP didChangeWorkspaceFolders notify kept (protocol parity, orthogonal to rendering).
+- README auto-open: DROPPED from this fix per user revision (openReadme() algorithm documented as optional OFF-by-default toggle for later).
+
+**Files:** util/WorkspaceRootsStore.kt (NEW, reactive store), ui/screens/RepoClonedActions.kt (NEW, extracted handler), SourceControlPane.kt (onRepoCloned param + non-discard), ExplorerPane.kt (GitSidePanel passthrough + reactive observeRoots + store-routed mutations), ProjectShellScreen.kt (GitSidePanel wiring + notification), HomeScreen.kt (auto-open after clone), AGENTS.md (changelog).
+
+**Next on roadmap (ALL pending items):**
+1. On-device test batch: (1) GUTTER-ALIGN (eaf67ec), (2) DOT-COMPLETION in second root, (3) MULTI-ROOT A+B, (4) TERMINAL ide CLI + [TAP] diag + OSC 7777/tap/root-lock + exit-code-9, (5) 3-dot menu scroll, (6) per-provider chat regression (5 cloud providers), (7) notification 7-fix, (8) filter dropdown + layout glyph states, (9) bell containment 3 corners, (10) 17dp icons, (11) bell-dot glyph swap, (12) NEW T8 — GitHub browse & open: from HomeScreen browse -> select repo -> "Cloning..." indicator -> project opens + Explorer shows real tree; repeat from inside a project's SCM pane -> repo appears as new Explorer root + success toast.
+2. Multi-root DOT-triggered completions investigation (after typing a dot, second/non-primary root) — queued until test batch passes.
+3. VS Code Copilot credential/LM-API research report -> design approval (BYOK single-key UX, server-side model manifest, LanguageModelError-style coded errors). WAITING ON APPROVAL.
+4. README auto-open openReadme() toggle — optional, OFF by default, deferred.
+5. MCP/Tool integration research (VS Code AgentTools parity).
+6. Freeze/refilter model (4 cases), projectId [NAV] logs, crash-context.log, Bug 1/2 explorer fixes, kls-classpath script, Kotlin stdlib JAR in proot rootfs, diagnostic-logging cleanup, Ollama re-add as ChatProvider in extensions repo.
