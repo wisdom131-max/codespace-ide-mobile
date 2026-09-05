@@ -8,6 +8,9 @@ import org.json.JSONObject
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -197,8 +200,11 @@ object NotificationStore {
 
     val items = mutableStateListOf<Item>()
 
-    /** Current settings — persisted to SharedPreferences on every change. */
-    @Volatile var settings = Settings()
+    /** Current settings — persisted to SharedPreferences on every change.
+     * BUG-5 FIX: snapshot-backed so every composition reading bellPosition (bell
+     * host, drawer, toast) recomposes INSTANTLY when the position changes —
+     * VS Code-style: the container class flips, no reopen needed. */
+    var settings by mutableStateOf(Settings())
         private set
 
     private var appContext: Context? = null
@@ -801,6 +807,15 @@ object NotificationStore {
         undoStack.addAll(0, items.take(MAX_UNDO))
         if (undoStack.size > MAX_UNDO) undoStack.subList(MAX_UNDO, undoStack.size).clear()
         items.clear()
+        _toastListeners.forEach { it() }
+    }
+
+    /** BUG-4 FIX: PERMANENTLY delete every notification at once. Unlike clearAll(),
+     * this cannot be undone by any mechanism — items are removed from the store AND
+     * the undo stack is wiped, so nothing can ever be brought back. */
+    fun permanentlyDeleteAll() = post {
+        items.clear()
+        undoStack.clear()
         _toastListeners.forEach { it() }
     }
 

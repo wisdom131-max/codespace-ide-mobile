@@ -484,9 +484,14 @@ private fun PssTopBar(
     var showCustomizeLayout by remember { mutableStateOf(false) }
 
     // ── Top Bar (VS Code style) — single row, no separate menu bar
+    // BUG-1 FIX (VS Code statusbarPart pattern): when the bell occupies this bar's
+    // corner, its 28dp footprint is RESERVED here — other items reflow around it
+    // instead of being overlaid. Background stays full-width; only children shift.
+    val notifReserveTop = if (NotificationStore.settings.bellPosition == NotificationStore.POS_TOP_RIGHT) 32.dp else 0.dp
     Row(
         Modifier.fillMaxWidth().height(28.dp).background(bgColor)
-            .border(1.dp, dividerColor, RoundedCornerShape(0.dp)),
+            .border(1.dp, dividerColor, RoundedCornerShape(0.dp))
+            .padding(end = notifReserveTop),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // P-CENTER-V2: Back button + command field are SEPARATE elements, near
@@ -1987,10 +1992,22 @@ private fun PssOverlays(
         // bellPosition (same corner as the toast/drawer), NOT hardcoded in the
         // status bar. This way when the user repositions to bottom-left or
         // top-right, the bell moves with the panel.
+        // BUG-5 FIX: settings is snapshot state — the bell moves the instant the
+        // position is changed, drawer open or not.
+        // BUG-7 FIX: inset from the true corner so the bell (and its dot) sit inside
+        // the app's title/status bar band, never the Android status-bar strip.
         val notifPos = NotificationStore.settings.bellPosition
+        val isNotifTop = notifPos == NotificationStore.POS_TOP_RIGHT
+        val isNotifLeft = notifPos == NotificationStore.POS_BOTTOM_LEFT
         Box(
             Modifier
                 .fillMaxSize()
+                .padding(
+                    top = if (isNotifTop) 8.dp else 0.dp,
+                    bottom = if (isNotifTop) 0.dp else 6.dp,
+                    start = if (isNotifLeft) 8.dp else 0.dp,
+                    end = if (isNotifLeft) 0.dp else 8.dp,
+                )
                 .zIndex(90f),
             contentAlignment = when (notifPos) {
                 NotificationStore.POS_TOP_RIGHT   -> Alignment.TopEnd
@@ -4192,8 +4209,13 @@ private fun StatusBarContent(
     projectRootPath: String,
     onToggleNotif: () -> Unit = {},  // P34-NOTIF: bell in status bar
 ) {
+    // BUG-1 FIX (VS Code statusbarPart pattern): reserve the bell's slot so the
+    // branch name (left) / RAM readout + MCP (right) shift inward — never overlaid.
+    val notifReserveStart = if (NotificationStore.settings.bellPosition == NotificationStore.POS_BOTTOM_LEFT) 32.dp else 0.dp
+    val notifReserveEnd = if (NotificationStore.settings.bellPosition == NotificationStore.POS_BOTTOM_RIGHT) 32.dp else 0.dp
     Row(
-        Modifier.fillMaxWidth().height(22.dp).background(statusBarBg).padding(horizontal = 8.dp),
+        Modifier.fillMaxWidth().height(22.dp).background(statusBarBg)
+            .padding(start = 8.dp + notifReserveStart, end = 8.dp + notifReserveEnd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // P-STATUS-BRANCH: Dynamic Git branch detection — reads .git/HEAD instead

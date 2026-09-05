@@ -80,7 +80,6 @@ internal fun NotificationBell(
     onClick: () -> Unit,
 ) {
     val unread = remember { derivedStateOf { NotificationStore.unreadCount } }.value
-    val bellState = remember { derivedStateOf { NotificationStore.bellState } }.value
     val dnd = remember { derivedStateOf { NotificationStore.settings.doNotDisturb } }.value
 
     val bellColor = when {
@@ -101,20 +100,15 @@ internal fun NotificationBell(
             tint = bellColor,
             modifier = Modifier.size(iconSize.dp),
         )
+        // BUG-6 FIX: the indicator dot is ALWAYS a single fixed color — white,
+        // matching the bell icon's own color. Severity filtering stays inside the
+        // panel; the dot never changes color by severity again.
         if (unread > 0) {
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
                     .size(7.dp)
-                    .background(
-                        when (bellState) {
-                            "error"   -> Color(0xFFF38BA8)
-                            "warning" -> Color(0xFFFAB387)
-                            "success" -> Color(0xFFA6E3A1)
-                            else      -> Color(0xFF89B4FA)
-                        },
-                        CircleShape,
-                    ),
+                    .background(bellColor, CircleShape),
             )
         }
     }
@@ -284,7 +278,7 @@ internal fun NotificationDrawerOverlay(
                     end = if (isLeft) 0.dp else 4.dp,
                 )
                 .width(320.dp)
-                .heightIn(max = 460.dp)
+                .then(if (allItems.isNotEmpty()) Modifier.heightIn(max = 460.dp) else Modifier)
                 .clickable(enabled = false) {},
             colors = CardDefaults.cardColors(containerColor = colors.panelBg),
             elevation = CardDefaults.cardElevation(8.dp),
@@ -295,10 +289,13 @@ internal fun NotificationDrawerOverlay(
                 DrawerHeader(
                     unread = unread,
                     colors = colors,
-                    onClearAll = { NotificationStore.clearAll(); onClear() },
+                    onClearAll = { NotificationStore.permanentlyDeleteAll(); onClear() },
                     onCollapse = onDismiss,
                 )
 
+                // BUG-2 FIX: VS Code's center hides the list entirely when empty —
+                // a zero-notification panel is just the compact header bar above.
+                // (The header itself already reads "No New Notifications".)
                 if (allItems.isNotEmpty()) {
                     HorizontalDivider(color = colors.border, thickness = 0.5.dp)
                     NotifFilterBar(
@@ -308,17 +305,16 @@ internal fun NotificationDrawerOverlay(
                         onFilterSeverity = { filterSeverity = if (filterSeverity == it) null else it },
                         onFilterSource = { filterSource = if (filterSource == it) null else it },
                     )
-                }
-                HorizontalDivider(color = colors.border, thickness = 0.5.dp)
+                    HorizontalDivider(color = colors.border, thickness = 0.5.dp)
 
-                if (displayItems.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 20.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            if (allItems.isEmpty()) "No New Notifications" else "No matching notifications",
-                            color = colors.textSecondary, fontSize = 12.sp,
-                        )
-                    }
-                } else {
+                    if (displayItems.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                "No matching notifications",
+                                color = colors.textSecondary, fontSize = 11.sp,
+                            )
+                        }
+                    } else {
                     LazyColumn(Modifier.fillMaxWidth()) {
                         items(displayItems, key = { it.id }) { item ->
                             NotificationRow(
@@ -332,6 +328,7 @@ internal fun NotificationDrawerOverlay(
                             )
                             HorizontalDivider(color = colors.border, thickness = 0.5.dp)
                         }
+                    }
                     }
                 }
             }
@@ -367,15 +364,9 @@ private fun DrawerHeader(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Default.ClearAll,
-                contentDescription = "Clear all notifications",
+                contentDescription = "Permanently delete all notifications",
                 tint = colors.textSecondary,
                 modifier = Modifier.size(16.dp).clickable { onClearAll() },
-            )
-            Icon(
-                Icons.Default.Refresh,
-                contentDescription = "Undo last dismissed notification",
-                tint = colors.textSecondary,
-                modifier = Modifier.size(16.dp).clickable { NotificationStore.undoDismiss() },
             )
             Box {
                 Icon(
@@ -534,9 +525,19 @@ private fun NotifChip(
 private fun NotificationRow(item: NotificationStore.Item, colors: NotifColors, onErrorTap: () -> Unit) {
     var expanded by remember(item.id) { mutableStateOf(false) }
     val (iconVec, iconColor) = severityIcon(item.severity)
+    // BUG-3 FIX (VS Code notificationsViewer.ts): a collapsed notification is ONE
+    // compact single-line row; details render only when expanded.
+    // SIZING NOTE (proportional, not pixel-copied): VS Code's compact row is 34px on
+    // a ~390px vscode.dev mobile viewport (~8.7% of width). This device's dp width
+    // (~390dp) matches that viewport, so 34dp is the PROPORTIONAL equivalent in OUR
+    // sizing system — the reference screenshots already reflect narrow-width VS Code,
+    // and these values track our own 320dp panel / 11sp row-font scale.
+    val singleLine = if (item.body.isNotBlank() && item.body != item.title)
+        "${item.title} - ${item.body}" else item.title
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = 34.dp)
             .background(if (!item.read) colors.accent.copy(alpha = 0.06f) else Color.Transparent)
             .clickable {
                 NotificationStore.markRead(item.id)
@@ -549,18 +550,29 @@ private fun NotificationRow(item: NotificationStore.Item, colors: NotifColors, o
                 if (item.actions.isNotEmpty()) desc = "$desc Actions: ${item.actions.joinToString { it.label }}."
                 contentDescription = desc
             }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Top,
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(6.dp).padding(top = 4.dp)) {
+        Box(Modifier.size(6.dp)) {
             if (!item.read) {
                 Box(Modifier.fillMaxSize().background(colors.accent, CircleShape))
             }
         }
         Spacer(Modifier.width(6.dp))
-        Icon(iconVec, null, tint = iconColor, modifier = Modifier.size(14.dp).padding(top = 1.dp))
+        Icon(iconVec, null, tint = iconColor, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
+            if (!expanded) {
+                Text(
+                    singleLine,
+                    fontSize = 11.sp,
+                    fontWeight = if (!item.read) FontWeight.Medium else FontWeight.Normal,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (expanded) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     item.title,
@@ -634,6 +646,7 @@ private fun NotificationRow(item: NotificationStore.Item, colors: NotifColors, o
                 }
             }
             Text(relativeTime(item.timestamp), fontSize = 9.sp, color = colors.textSecondary)
+            }
         }
         Spacer(Modifier.width(4.dp))
         Icon(Icons.Default.Close, null, tint = colors.textSecondary, modifier = Modifier.size(13.dp).clickable { NotificationStore.dismiss(item.id) })
