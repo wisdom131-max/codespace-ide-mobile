@@ -576,6 +576,138 @@ private fun FilterMenuButton(
     }
 }
 
+@Composable
+private fun NotificationRow(item: NotificationStore.Item, colors: NotifColors, onErrorTap: () -> Unit) {
+    var expanded by remember(item.id) { mutableStateOf(false) }
+    val (iconVec, iconColor) = severityIcon(item.severity)
+    // BUG-3 FIX (VS Code notificationsViewer.ts): a collapsed notification is ONE
+    // compact single-line row; details render only when expanded.
+    // SIZING NOTE (proportional, not pixel-copied): VS Code's compact row is 34px on
+    // a ~390px vscode.dev mobile viewport (~8.7% of width). This device's dp width
+    // (~390dp) matches that viewport, so 34dp is the PROPORTIONAL equivalent in OUR
+    // sizing system — the reference screenshots already reflect narrow-width VS Code,
+    // and these values track our own 320dp panel / 11sp row-font scale.
+    val singleLine = if (item.body.isNotBlank() && item.body != item.title)
+        "${item.title} - ${item.body}" else item.title
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 34.dp)
+            .background(if (!item.read) colors.accent.copy(alpha = 0.06f) else Color.Transparent)
+            .clickable {
+                NotificationStore.markRead(item.id)
+                if (item.severity == NotificationStore.Severity.ERROR) onErrorTap()
+                else expanded = !expanded
+            }
+            .semantics {
+                var desc = "${item.severity.name.lowercase()}: ${item.title}. ${item.body}"
+                if (item.dedupCount > 1) desc = "$desc ${item.dedupCount} occurrences."
+                if (item.actions.isNotEmpty()) desc = "$desc Actions: ${item.actions.joinToString { it.label }}."
+                contentDescription = desc
+            }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp)) {
+            if (!item.read) {
+                Box(Modifier.fillMaxSize().background(colors.accent, CircleShape))
+            }
+        }
+        Spacer(Modifier.width(6.dp))
+        Icon(iconVec, null, tint = iconColor, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            if (!expanded) {
+                Text(
+                    singleLine,
+                    fontSize = 11.sp,
+                    fontWeight = if (!item.read) FontWeight.Medium else FontWeight.Normal,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (expanded) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    item.title,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (item.dedupCount > 1) {
+                    Text("(${item.dedupCount})", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFAB387))
+                }
+                Box(
+                    Modifier.background(sourceColor(item.source).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                ) {
+                    Text(item.source.name.lowercase(), fontSize = 8.sp, color = sourceColor(item.source))
+                }
+            }
+            if (item.body.isNotBlank() && item.body != item.title) {
+                Text(
+                    item.body,
+                    fontSize = 10.sp,
+                    color = colors.textSecondary,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
+                    overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+                )
+            }
+            if (expanded && item.errorDetails != null) {
+                Spacer(Modifier.height(4.dp))
+                item.errorDetails.technicalDetails?.let { tech ->
+                    Surface(
+                        color = colors.panelBg,
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, colors.border),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(tech, fontSize = 9.sp, color = colors.textSecondary, maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip, modifier = Modifier.padding(6.dp))
+                    }
+                }
+            }
+            if (item.severity == NotificationStore.Severity.PROGRESS && item.progress != null) {
+                Spacer(Modifier.height(4.dp))
+                if (item.progress.indeterminate) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = colors.accent)
+                } else {
+                    val progress = if (item.progress.max > 0) item.progress.current.toFloat() / item.progress.max.toFloat() else 0f
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp), color = colors.accent)
+                }
+                item.progress.statusMessage?.let { Text(it, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1) }
+            }
+            if (item.actions.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item.actions.forEach { action ->
+                        Text(
+                            action.label,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (action.destructive) Color(0xFFF38BA8) else colors.accent,
+                            modifier = Modifier
+                                .background(
+                                    if (action.destructive) Color(0xFFF38BA8).copy(alpha = 0.15f) else colors.accent.copy(alpha = 0.15f),
+                                    RoundedCornerShape(4.dp),
+                                )
+                                .clickable { NotificationStore.executeAction(item.id, action.id) }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
+            Text(relativeTime(item.timestamp), fontSize = 9.sp, color = colors.textSecondary)
+            }
+        }
+        Spacer(Modifier.width(4.dp))
+        Icon(Icons.Default.Close, null, tint = colors.textSecondary, modifier = Modifier.size(13.dp).clickable { NotificationStore.dismiss(item.id) })
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 private fun severityIcon(severity: NotificationStore.Severity): Pair<ImageVector, Color> = when (severity) {
