@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-08-26 07:22 WAT
+> Last updated: 2026-09-05 13:55 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | (pending) |
-| CI build | (pending) |
+| Latest commit | a082b9f |
+| CI build | #2621 GREEN (2026-09-05) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1316,6 +1316,65 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 **Files:** EditorTabClose.kt (imports + launch block short names)
 **Next on roadmap:** ALL pending items:
 - [PENDING] On-device test: MULTI-ROOT A+B — full test plan delivered to user (two roots, cross-root completions, add/remove while server running, tab auto-close on remove)
+- [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
+- [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
+- [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
+- [PENDING] On-device test: Bug 1 — create non-empty project, verify Explorer shows parent folder
+- [PENDING] On-device test: Bug 2 — create Empty Project, verify no folder created, Explorer shows "Open Folder"
+- [PENDING] On-device test: verify forTerminal/resolveWorkspacePath DIAG lines now appear in Terminal channel
+- [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
+- [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
+- [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
+- [PENDING] Clean up diagnostic logging after session restoration is stable
+- [ACCEPTED] Kotlin completion stale BindingContext — upstream KLS limitation, documented, workaround noted
+- [ACCEPTED] Multi-root investigation COMPLETE — LSP/Git/Terminal root binding analysis finished 2026-08-30; fix implemented in 47f1ced
+
+---
+
+**RULES REMINDER BLOCK**
+1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY.
+2. CHANGE LOG: After every commit, add entry at BOTTOM of AGENTS.md with timestamp, commit SHA, CI build number+pass/fail, what was fixed, files touched, next on roadmap (ALL pending items).
+3. TAGS: Use [BUILD-FIX], [LSP], [INTELLIGENSE], [DOCS], [UI], [CRASH], [DAP], [GIT], [ICONS], [RESTRUCTURE], [TERMINAL] etc.
+4. CURRENT STATE: Update Current State table at top with latest green build + commit SHA.
+5. NEVER re-do work already marked done.
+6. ROADMAP CONTINUITY: List ALL pending items.
+7. UI RULE: ALL menus/popups use rounded corners (8-12dp) AND padding (12dp horizontal, 10dp vertical minimum).
+
+**[2026-09-05 13:55 WAT] — AI Agent: Base44 Superagent (Claude)**
+
+**[TERMINAL] [UI] [BUILD-FIX]**
+
+**Commits:** 384c0fb (feature) → 62abbc8 ([BUILD-FIX] #2619) → a082b9f ([BUILD-FIX] #2620) | **CI:** #2619 FAIL, #2620 FAIL, #2621 GREEN
+
+**What was implemented:**
+
+*Part A — Open file from terminal (Acode-compatible OSC 7777):*
+- A1: TerminalEmulator `case 7777` OSC handler ("open;file;path;line") → TerminalSession listener → IdeTerminalBridge (guest→host path translation + main-thread hop) → editor opens file at line. 0-based line convention end-to-end.
+- A2: `ide` CLI helper script auto-installed to rootfs /usr/local/bin/ide (idempotent, every session create).
+- A3: plain-text file-link tap detection — tap "src/Main.kt:42" in build output → resolves (absolute host / proot-guest / session-cwd-relative) → opens editor.
+- Wired via new `onOpenFileAtLine` param into both ProjectShellScreen call sites (bottom panel delegates to existing onJumpToSourceWithPath; split-pane uses the editor-tabs lambda).
+
+*Part B — Per-terminal workspace-root locking (VS Code model):*
+- TabSession.lockedRootPath: lock a terminal to a specific workspace root; feeds workDir/$WORKSPACE_PATH at every session (re)creation. No live-cd of running shells.
+- Persisted in TerminalSessionStore.SavedTab.lockedRoot; validated against active roots on restore + re-creation (dead locks silently dropped).
+- 3-dot menu: new WORKSPACE ROOTS section → second-level ROOT LOCK menu with animated padlocks; reads SHARED tabs SnapshotStateList directly (live update while open). New file TerminalRootMenu.kt (JVM-limit extraction rule).
+
+*Exit-code diagnostics (DIAGNOSTICS ONLY — no behavior change, per instruction after the reverted blind-fix incident):*
+- onSessionFinished now logs exit code + last meaningful transcript line + 1.2KB transcript tail to Output tab (terminal channel).
+- Crash notification body now includes the last transcript line.
+- Both terminal client classes route logError/logWarn to the Output tab too.
+- JNI safety: no com.termux JNI class names or native spawn paths changed.
+
+**Build failures + fixes:**
+- #2619 FAIL: TerminalRootMenu.kt imported androidx.compose.material.* (M2) — this project is Material3. Fix (62abbc8): all five imports → androidx.compose.material3.
+- #2620 FAIL: TerminalEmulator.mSession is typed TerminalOutput (abstract class), so the new onOscIdeOpen(String,String,int) call couldn't resolve — method only existed on TerminalSession. Fix (a082b9f): default no-op onOscIdeOpen added to TerminalOutput; TerminalSession's implementation now validly overrides it.
+- #2621 GREEN: full compile clean.
+
+**Files:** IdeTerminalBridge.kt (NEW), TerminalRootMenu.kt (NEW), TerminalEmulator.java (OSC 7777 case), TerminalSession.java (listener + override), TerminalOutput.java (no-op base method), TerminalSessionStore.kt (lockedRoot persist), TerminalPane.kt (TabSession.lockedRootPath, addUbuntuTab lock param, restore validation, menu section + second menu, onFileLinkTap wiring, diagnostics), ProjectShellScreen.kt (onOpenFileAtLine x2 call sites), AGENTS.md (this entry).
+
+**Next on roadmap:** ALL pending items:
+- [PENDING] On-device test: MULTI-ROOT A+B — full test plan delivered to user (two roots, cross-root completions, add/remove while server running, tab auto-close on remove)
+- [PENDING] On-device test: TERMINAL OSC/tap/root-lock batch (new this commit): 1) install+open Ubuntu terminal, 2) run `ide open /home/root/README.md` (or any file) — editor should open it, 3) tap a "path:line" plain-text link in build output — editor opens at line, 4) 3-dot menu → WORKSPACE ROOTS → pick a root → lock a terminal → new shell's cwd/`$WORKSPACE_PATH` = locked root, 5) kill app, reopen — lock persists, 6) Output tab terminal channel shows SESSION FINISHED diag lines when a session ends
 - [PENDING] On-device test: freeze/refilter model (4 test cases with request count logs)
 - [PENDING] On-device test: verify projectId fix — close app, reopen, check [NAV] logs
 - [PENDING] On-device test: verify crash-context.log writes to /sdcard/CodespaceIDE/logs/
