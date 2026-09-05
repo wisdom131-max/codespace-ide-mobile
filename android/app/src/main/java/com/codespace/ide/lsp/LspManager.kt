@@ -851,6 +851,20 @@ object LspManager {
      */
     fun getServerGeneration(language: Language): Int = generationCounters[language] ?: 0
 
+    // ── FIX-B (dot-completion bug, 2026-09-05): Monotonic per-URI document version counter ──
+    // Replaces clock-based (System.currentTimeMillis) didChange versions. Two senders
+    // (Effect-B didChange and the force-sync didChange before completion/signature-help)
+    // both derived versions from the wall clock, so interleavings could send a version
+    // BACKWARDS. LSP requires document versions to increase monotonically; an
+    // out-of-order version can make the server silently drop the update and keep
+    // analyzing stale content. This counter only ever increases per URI, and it is
+    // also used by didOpen so version ordering stays strict across re-opens.
+    private val docVersionCounters = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    fun nextDocumentVersion(uri: String): Int {
+        return docVersionCounters.compute(uri) { _, v -> (v ?: 0) + 1 } ?: 1
+    }
+
     /**
      * Get the current document version for a URI (tracked via didOpen/didChange).
      * Used for two-level stale response rejection — capture before an async LSP

@@ -282,6 +282,10 @@ fun EditorPane(
     // version ordering issues vs the force-sync didChange in the completion provider.
     val lspLastEffectBVersion = remember { mutableStateMapOf<String, Int>() }
     val lspLastEffectBContentLen = remember { mutableStateMapOf<String, Int>() }
+    // FIX-A (dot-completion bug): last-seen server generation per language. The poll
+    // below compares this against LspManager.getServerGeneration() to detect
+    // in-place server restarts and re-send didOpen for open files of that language.
+    val lspSeenServerGen = remember { mutableStateMapOf<com.codespace.ide.domain.Language, Int>() }
 
     // P24-2: LSP server teardown — stop all servers when EditorPane leaves composition
     DisposableEffect(Unit) {
@@ -297,12 +301,44 @@ fun EditorPane(
     // Without this, the stale lspOpenedFiles entries block didOpen on the new server
     // after an auto-restart (the code thinks the file is already open on the server).
     // This effect polls running servers and clears lspOpenedFiles for dead languages.
+    //
+    // FIX-A (dot-completion bug, 2026-09-05): while a server IS running, also watch its
+    // GENERATION. When a server restarts in place (idle-grace stop + restart, OOM kill
+    // auto-restart, multi-root re-init), the new process has NO documents open even
+    // though lspOpenedFiles still claims they are — Effect A never re-fires (its keys
+    // did not change), so every didChange silently goes to a document the server never
+    // received, and the server serves completions from stale/empty disk state. On a
+    // generation bump we re-send didOpen for every open tab of that language.
+    //
+    // FIX-C (dot-completion bug): the cleanup branch previously cleared entries ONLY
+    // for UNHEALTHY. Servers that pass through STOPPED (30s idle-grace stop, OOM kill,
+    // any restart cycle) left stale entries behind, which blocked didOpen on the
+    // replacement server. STOPPED now clears the same way UNHEALTHY always did.
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(2000)
             for (lang in com.codespace.ide.domain.Language.entries) {
                 if (!LspManager.isSupported(lang)) continue
-                if (!LspManager.isServerRunning(lang) && lspOpenedFiles.values.any { it }) {
+                if (LspManager.isServerRunning(lang)) {
+                    // FIX-A: generation watch while the server is running
+                    val gen = LspManager.getServerGeneration(lang)
+                    val lastGen = lspSeenServerGen[lang]
+                    if (lastGen != null && lastGen != gen) {
+                        val langTabs = tabs.filter { it.language == lang }
+                        if (langTabs.isNotEmpty()) {
+                            com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] GEN-WATCH: " + lang.displayName + " generation " + lastGen + " -> " + gen + " — re-sending didOpen for " + langTabs.size + " open file(s)", "lsp")
+                            for (tab in langTabs) {
+                                val openUri = LspManager.fileUriFromHostPath(context, tab.path) ?: continue
+                                val openVersion = LspManager.nextDocumentVersion(openUri)
+                                withContext(Dispatchers.IO) {
+                                    try { LspManager.didOpen(lang, openUri, LspManager.languageId(lang), tab.content, openVersion) } catch (_: Exception) {}
+                                }
+                                lspOpenedFiles[tab.path] = true
+                            }
+                        }
+                    }
+                    lspSeenServerGen[lang] = gen
+                } else if (lspOpenedFiles.values.any { it }) {
                     // Server died — clear stale opened files state
                     // Only clear if the server is truly gone (not just starting)
                     val state = LspManager.getServerState(lang)
@@ -310,11 +346,13 @@ fun EditorPane(
                         // Check if any tab still has this language — if so, the server
                         // will be restarted by Effect-A, and we need to re-open files
                         val hasTabsForLang = tabs.any { it.language == lang }
-                        if (hasTabsForLang && state == com.codespace.ide.lsp.LspState.UNHEALTHY) {
-                            // Server crashed — clear opened files so Effect-A can re-open them
+                        if (hasTabsForLang) {
+                            // FIX-C: STOPPED (idle-grace stop, OOM kill, restart cycle)
+                            // now clears the same way UNHEALTHY always did.
                             lspOpenedFiles.entries.removeAll { e ->
                                 tabs.any { it.language == lang && it.path == e.key }
                             }
+                            com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] POLL-CLEANUP: cleared stale lspOpenedFiles for " + lang.displayName + " (state=" + state + ") — didOpen will be re-sent when the server returns", "lsp")
                         }
                     }
                 }
@@ -1035,7 +1073,7 @@ fun EditorPane(
                         }
                         if (started && uri != null) {
                             delay(300)
-                            LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content)
+                            LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
                             lspOpenedFiles[snap.path] = true
                         }
                     }
@@ -1097,7 +1135,7 @@ fun EditorPane(
                 if (lspOpenedFiles[snap.path] != true) {
                     android.util.Log.d("LspTrigger", "LSP Effect-A: sending didOpen for ${snap.path}")
                     AppOutputLog.log("[LSP] Effect-A: sending didOpen for ${snap.path.substringAfterLast('/')}", "lsp")
-                    LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content)
+                    LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
                     lspOpenedFiles[snap.path] = true
                     AppOutputLog.log("[LSP] Effect-A: didOpen complete for ${snap.path.substringAfterLast('/')}", "lsp")
                 }
@@ -1115,7 +1153,9 @@ fun EditorPane(
             if (lspOpenedFiles[snap.path] != true) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
             delay(300)  // debounce — coalesce rapid content changes into one didChange
-            val version = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+            // FIX-B (dot-completion bug): monotonic per-URI version — never goes backwards,
+            // unlike the old clock-derived value which could interleave out-of-order.
+            val version = LspManager.nextDocumentVersion(uri)
             withContext(Dispatchers.IO) {
                 LspManager.didChange(snap.language, uri, snap.content, version)
                 lspLastEffectBVersion[uri] = version
@@ -1844,7 +1884,7 @@ fun EditorPane(
                                     // against the PREVIOUS content when completion is requested, producing
                                     // unrelated/stale suggestions instead of member completions for what was
                                     // just typed. Sending didChange synchronously here guarantees freshness.
-                                    val syncVersion = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                                    val syncVersion = LspManager.nextDocumentVersion(uri)  // FIX-B: monotonic version
                                     // VERSION-DIAG: Compare force-sync version against Effect B's last version
                                     val lastBVersion = lspLastEffectBVersion[uri] ?: -1
                                     val lastBContentLen = lspLastEffectBContentLen[uri] ?: -1
@@ -2096,7 +2136,7 @@ fun EditorPane(
                                     // C-5 FIX: Force-sync document state before signature help.
                                     // Without this, the server may have a stale version of the document
                                     // and reject the line parameter as "not in valid range" for large files.
-                                    val syncVersion = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
+                                    val syncVersion = LspManager.nextDocumentVersion(uri)  // FIX-B: monotonic version
                                     LspManager.didChange(active.language, uri, active.content, syncVersion)
                                     val sigHelp = try {
                                         LspManager.getSignatureHelp(active.language, uri, line, col)
