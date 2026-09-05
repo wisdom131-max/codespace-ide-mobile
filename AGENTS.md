@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-05 13:55 WAT
+> Last updated: 2026-09-05 14:50 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | c3dcce3 |
-| CI build | #2623 GREEN (2026-09-05) |
+| Latest commit | eaf67ec |
+| CI build | #2625 GREEN (2026-09-05) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1434,6 +1434,15 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 - [PENDING] TS/JS completion investigation: no tsconfig.json scaffolding for loose/empty projects
 - [PENDING] kls-classpath global script with build-file detection (for loose-file stdlib completions)
 - [PENDING] Kotlin stdlib JAR in proot rootfs (baseline completions for loose files)
-- [PENDING] Gutter/lightbulb positioning fixes (still to come - part of the combined batch)
+- [PENDING] On-device test: GUTTER-ALIGN batch (eaf67ec) - lightbulb on cursor row; line numbers aligned with text (top of file / mid-file / with folds / sticky header visible / hidden); inlay hints on correct row with sticky visible; NO top gap when sticky toggle off
 - [PENDING] Clean up diagnostic logging after session restoration is stable
 - [ACCEPTED] Kotlin completion stale BindingContext - upstream KLS limitation, documented, workaround noted (NOTE: this was NOT the cause of the same-single-item bug - that was the lspOpenedFiles staleness fixed in c3dcce3)
+
+### [2026-09-05 14:50 WAT] — AI Agent: Claude, Commit eaf67ec, CI Build #2625 GREEN
+**RULES REMINDER:** TWO-REPO | CHANGE LOG | TAGS | CURRENT STATE | NO RE-DO | KOTLIN PITFALLS | JVM 64KB LIMIT | UI ROUNDED CORNERS + PADDING
+**[UI] Fixed gutter/text misalignment + lightbulb/inlay drift - one shared coordinate source (VS Code/Sora pattern)**
+**Symptoms:** (1) lightbulb icon ~3 lines ABOVE the cursor line; (2) line text visually sitting BETWEEN gutter line numbers.
+**Research (verified in real source):** VS Code text-lines view part and margin overlays BOTH use the same VisibleLinesCollection (viewLayer.ts); each margin row positioned by the IDENTICAL layoutLine(lineNumber, deltaTop, lineHeight) used for the text DOM node (deltaTop from ViewLayout.getVerticalOffsetForLineNumber, per-line height from getLineHeightForLineNumber). Gutter-matches-text is a structural given; widgets layer on top. Sora: drawLineNumber uses getRowTop/getRowBottom from the same ContentLayout.
+**Root cause (ours):** text rendering is authoritative (folds applied in SyntaxTransformation VisualTransformation; cursor/tap already correct). The GUTTER was a fixed fontSize*1.25f grid drifting from actual Compose line geometry. Lightbulb used raw DOC line as VISUAL index and ignored the sticky pad. Inlays missed the sticky pad. BONUS BUG: Row sticky-pad condition (stickyLine != null) disagreed with sticky header render condition (showStickyScroll && stickyLine != null && !wordWrap) - padding applied with NO header rendered (toggle off / wrap on).
+**Files:** EditorLinePositioning.kt (NEW - visualLineTopPx/visualLineHeightPx from textLayoutResult, grid fallback first frame), LightbulbIndicator.kt (positioning rewrite: docToVisualLine -> layout top -> -vScroll + stickyPad; hides on folded lines), CodeEditor.kt (stickyPadActive/Px/Dp single source from EditorMetrics.STICKY_LINE_HEIGHT_MULTIPLIER; Row padding; gutter Column-of-rows replaced with Box + layout-driven absolute offsets, spacers removed, virtualized window + folds/diff/chevron/bookmark/breakpoint content preserved; inlay yOffset + stickyPad; bulb call site passes mapper + pad).
+**Next:** On-device GUTTER-ALIGN test batch (see pending list above), then the large combined batch items: DOT-COMPLETION capture, MULTI-ROOT A+B, TERMINAL OSC/tap/root-lock + exit-code-9 diag lines, freeze/refilter model (4 cases), projectId [NAV] logs, crash-context.log to /sdcard, Bug 1/2 explorer fixes verification, forTerminal/resolveWorkspacePath DIAG lines, TS/JS tsconfig scaffolding investigation, kls-classpath script, Kotlin stdlib JAR in proot rootfs, diagnostic-logging cleanup after session restoration stable.
