@@ -1784,6 +1784,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
+        // GUTTER-ALIGN FIX: single sticky-pad source of truth (VS Code/Sora principle).
+        // The scrolled Row's top padding AND every viewport-space overlay (lightbulb,
+        // inlay hints) must use the same value. Previously the Row applied
+        // (fontSize * 1.4f).sp inline while overlays ignored it entirely - overlays
+        // landed ~1.1 line-heights ABOVE their target rows. Additionally the old Row
+        // condition (stickyLine != null) disagreed with the sticky header's render
+        // condition (showStickyScroll && stickyLine != null && !wordWrap): padding was
+        // applied even when no header was rendered (toggle off or word wrap on),
+        // pushing the editor content down for no visible reason. Now one condition.
+        val stickyPadActive = toggles.showStickyScroll && stickyLine != null && !wordWrap
+        val stickyPadPx = with(scrollDensity) { (fontSize * EditorMetrics.STICKY_LINE_HEIGHT_MULTIPLIER).sp.toPx() }
+        val stickyPadDp = with(scrollDensity) { (fontSize * EditorMetrics.STICKY_LINE_HEIGHT_MULTIPLIER).sp.toDp() }
+
     Box(modifier = modifier.fillMaxSize()) {
 
         // P15-C: Sticky scroll header — shows current scope line pinned at top
@@ -1813,7 +1826,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .padding(end = if (showMinimapState) 62.dp else 4.dp, top = if (stickyLine != null) with(scrollDensity) { (fontSize * 1.4f).sp.toDp() } else 0.dp)
+                .padding(end = if (showMinimapState) 62.dp else 4.dp, top = if (stickyPadActive) stickyPadDp else 0.dp)
                 .verticalScroll(vScroll)
         ) {
             // Gutter
@@ -1834,17 +1847,36 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val topSpacerLines = topVisibleIdx.coerceAtLeast(0)
             val bottomSpacerLines = (visualLineMapper.visualLineCount - bottomVisibleIdx).coerceAtLeast(0)
 
-            Column(modifier = Modifier.padding(horizontal = 4.dp).width(72.dp)) {
-                // P50-VIRT: Spacer for lines above viewport — avoids composing off-screen rows
-                if (topSpacerLines > 0) {
-                    Spacer(Modifier.height((topSpacerLines * lineHeightDp.value).dp))
-                }
-                displayLines.subList(topVisibleIdx.coerceAtMost(visualLineMapper.visualLineCount), bottomVisibleIdx).forEachIndexed { vi, (lineNum, _) ->
+            // GUTTER-ALIGN FIX (VS Code viewOverlays / Sora getRowTop pattern): each gutter
+            // row is positioned and sized from the SAME text layout that renders the code
+            // (textLayoutResult) - exactly like VS Code's VisibleLinesCollection.layoutLine()
+            // positions both the text-line DOM node and the margin line-number DOM node with
+            // the identical deltaTop/lineHeight pair. The old fixed fontSize*1.25f grid
+            // drifted from the text's actual line geometry (font natural height vs specified
+            // lineHeight, first-line font padding, leading distribution), making text appear
+            // to sit BETWEEN line numbers. Rows are offset absolutely in content space, so
+            // the old top/bottom spacers are gone; the virtualized window
+            // (topVisibleIdx..bottomVisibleIdx) still limits how many rows are composed.
+            // Falls back to the old grid when the layout is not yet available (first
+            // frame) so there is no regression at startup.
+            val gutterLayout = textLayoutResult
+            val gutterLhPx = editorMetrics.lineHeightPx
+            val gutterVisibleTop = topVisibleIdx.coerceAtMost(displayLines.size)
+            val gutterVisibleBottom = bottomVisibleIdx.coerceAtMost(displayLines.size)
+            Box(modifier = Modifier.padding(horizontal = 4.dp).width(72.dp)) {
+                displayLines.subList(gutterVisibleTop, gutterVisibleBottom).forEachIndexed { vi, (lineNum, _) ->
+                    val gutterRowIdx = gutterVisibleTop + vi
+                    val gutterRowTopPx = EditorLinePositioning.visualLineTopPx(gutterLayout, gutterRowIdx, gutterLhPx)
+                    val gutterRowHeightPx = EditorLinePositioning.visualLineHeightPx(gutterLayout, gutterRowIdx, gutterLhPx)
                     if (lineNum == -1) {
                         // Visual placeholder row in gutter
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(lineHeightDp)
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .offset(y = with(scrollDensity) { gutterRowTopPx.toDp() })
+                                .height(with(scrollDensity) { gutterRowHeightPx.toDp() })
+                                .fillMaxWidth()
                         ) {
                             Spacer(Modifier.width(20.dp))
                             Text(
@@ -1863,7 +1895,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(lineHeightDp)
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .offset(y = with(scrollDensity) { gutterRowTopPx.toDp() })
+                                .height(with(scrollDensity) { gutterRowHeightPx.toDp() })
+                                .fillMaxWidth()
                         ) {
                             // P2-6 diff gutter bar + deletion triangle
                             Column(modifier = Modifier.width(3.dp)) {
@@ -1979,10 +2015,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         }
                     }
-                }
-                // P50-VIRT: Spacer for lines below viewport
-                if (bottomSpacerLines > 0) {
-                    Spacer(Modifier.height((bottomSpacerLines * lineHeightDp.value).dp))
                 }
             }
             // Editor surface
@@ -2881,10 +2913,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             inlayHints.forEach { hint ->
                 val displayIdx = visualLineMapper.docToVisualLine(hint.line)
                 if (displayIdx < 0) return@forEach
+                // GUTTER-ALIGN FIX: add the sticky pad the scrolled Row applies so
+                // inlay hints follow the shifted text (the doc-to-visual mapping via
+                // visualLineMapper was already correct here).
                 val yOffset = if (layoutInlay != null && displayIdx < layoutInlay.lineCount) {
-                    ((layoutInlay.getLineTop(displayIdx) - vScroll.value) / density.density).dp
+                    ((layoutInlay.getLineTop(displayIdx) - vScroll.value + if (stickyPadActive) stickyPadPx else 0f) / density.density).dp
                 } else {
-                    lineHeightDpInlay * displayIdx - vScrollDp.dp
+                    lineHeightDpInlay * displayIdx - vScrollDp.dp + (if (stickyPadActive) stickyPadDp else 0.dp)
                 }
                 val hintColor = when (hint.kind) {
                     InlayHint.Kind.TYPE   -> androidx.compose.ui.graphics.Color(0xFF888888)
@@ -4467,6 +4502,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             showLightbulbMenu = showLightbulbMenu,
             onShowLightbulbMenu = { showLightbulbMenu = it },
             textLayoutResult = textLayoutResult,
+            visualLineMapper = visualLineMapper,
+            stickyPadPx = if (stickyPadActive) stickyPadPx else 0f,
         )
         // P39: Lightbulb menu categorized action menu triggered by tapping the bulb
         LightbulbMenuOverlay(
