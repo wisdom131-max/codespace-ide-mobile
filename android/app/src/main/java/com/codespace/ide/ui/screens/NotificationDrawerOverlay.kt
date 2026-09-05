@@ -94,26 +94,25 @@ internal fun NotificationBell(
         Modifier.size((iconSize + hostPad).dp).clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
+        // BELL-DOT GLYPH SWAP (VS Code pattern): the unread dot is baked into the
+        // codicon glyph itself (bell U+EAE8 <-> bell-dot U+EB9A, slash variants for
+        // DND) and the whole icon is swapped on state — exactly like VS Code's
+        // statusbarPart icon-toggle pairs. The old 7dp overlay Box looked detached
+        // because VS Code never positions the dot as a separate element.
+        // The dot keeps the bell's own tint color (no severity coloring — the
+        // panel handles severity; parity with VS Code where the dot is plain).
+        val bellRes = when {
+            dnd && unread > 0 -> R.drawable.ic_notification_bell_slash_dot
+            dnd -> R.drawable.ic_notification_bell_slash
+            unread > 0 -> R.drawable.ic_notification_bell_dot
+            else -> R.drawable.ic_notification_bell
+        }
         Icon(
-            painter = painterResource(
-                if (dnd) R.drawable.ic_notification_bell_slash
-                else R.drawable.ic_notification_bell
-            ),
+            painter = painterResource(bellRes),
             null,
             tint = bellColor,
             modifier = Modifier.size(iconSize.dp),
         )
-        // BUG-6 FIX: the indicator dot is ALWAYS a single fixed color — white,
-        // matching the bell icon's own color. Severity filtering stays inside the
-        // panel; the dot never changes color by severity again.
-        if (unread > 0) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(7.dp)
-                    .background(bellColor, CircleShape),
-            )
-        }
     }
 }
 
