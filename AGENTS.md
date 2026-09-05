@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-05 21:55 WAT
+> Last updated: 2026-09-05 22:30 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 65c814b |
-| CI build | #2636 GREEN (2026-09-05) |
+| Latest commit | 28d3d41 |
+| CI build | #2639 GREEN (2026-09-05) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1507,3 +1507,26 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 **CORRECTION (Part 2 item 1):** multi-root completion bug scope is DOT-triggered completions (`variable.`) failing in the second/non-primary root — NOT pre-dot identifier completions. Investigation must target dot-trigger flow in the non-active root.
 **Files:** IdeTerminalBridge.kt, TerminalPane.kt, ChatProvider.kt, providers/ (5 + transport), CopilotChatPanelOverlay.kt, NotificationDrawerOverlay.kt, ProjectShellScreen.kt.
 **Next on roadmap (ALL pending):** Combined on-device batch: (1) GUTTER-ALIGN tests (eaf67ec), (2) DOT-COMPLETION capture — dot-triggered in SECOND root, (3) MULTI-ROOT A+B, (4) TERMINAL: ide CLI `open` syntax + [TAP] diag + OSC 7777/tap/root-lock + exit-code-9, (5) 3-dot menu scroll (f66f7bc), (6) per-provider chat regression (5 cloud providers — live model list should render in picker, defaults now valid), (7) notification 7-fix verification, (8) filter dropdown verification + layout glyph states, (9) NEW: bell containment check at all 3 positions (bell fully inside bar, dot inside bar band), (10) NEW: top-bar icon size check (17dp), (11) bell-dot glyph swap (pending approval), forTerminal/resolveWorkspacePath DIAG lines, freeze/refilter model (4 cases), projectId [NAV] logs, crash-context.log, Bug 1/2 explorer fixes, kls-classpath script, Kotlin stdlib JAR in proot rootfs, diagnostic-logging cleanup, Ollama re-add as ChatProvider in extensions repo.
+
+---
+
+### [2026-09-05 22:30 WAT] — AI Agent: GLM (Superagent)
+
+**Commit 28d3d41 | CI #2639 GREEN**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[UI] Bell-dot glyph swap (VS Code pattern)**
+- What: the unread dot is now BAKED INTO the codicon glyph and the whole icon swaps on state, exactly like VS Code. All 4 bell drawables rewritten with VERBATIM pathData from microsoft/vscode-codicons: bell (U+EAE8), bell-dot (U+EB9A), bell-slash (U+EAE9), bell-slash-dot (U+EABA). NotificationBell composable: dnd+unread -> slash-dot, dnd -> slash, unread -> dot, else bell. The old 7dp overlay dot Box DELETED (VS Code never positions the dot as a separate element — that is why ours looked detached). Dot inherits bell tint, no severity coloring.
+- Files: res/drawable/ic_notification_bell.xml, _dot, _slash, _slash_dot; NotificationDrawerOverlay.kt (NotificationBell).
+- Verified: real source (vscode-codicons raw SVGs) + shipped VSIX check + CI #2639 GREEN.
+
+**[RESEARCH] Model IDs verified vs vendor sources (2026-09-05)**
+- All 5 chat defaults verified against vendor-own docs or live API: gpt-5.5 (OpenAI models index), claude-sonnet-5 (platform.claude.com + Bedrock + OpenRouter), gemini-2.5-flash (ai.google.dev, still served; newest stable flash is 3.8), deepseek-v4-flash (api-docs.deepseek.com), anthropic/claude-sonnet-5 (LIVE OpenRouter /models call). No defaults changed.
+
+**Next on roadmap:**
+1. Multi-root DOT-triggered completions investigation (after typing a dot, second/non-primary root) — queued until current test batch passes on-device.
+2. VS Code Copilot credential/LM-API research report -> design approval: provider-key UX redesign (VS Code BYOK pattern: single-key entry, reconfigure/delete/cancel semantics) + server-side model manifest idea + LanguageModelError-style coded errors. WAITING ON APPROVAL.
+3. GitHub remote repo browsing fix: implement VS Code openReadme() algorithm (exact readme.md else startsWith readme, case-insensitive; markdown preview; only when no active tab) as auto-open on repo select. WAITING ON APPROVAL.
+4. On-device verification: combined test batch (re-test ide CLI, tap-to-open, 3-dot menu, 5 AI providers, bell 3 corners, shrunk icons + NEW bell-dot glyph).
+5. MCP/Tool integration research (VS Code AgentTools parity).
