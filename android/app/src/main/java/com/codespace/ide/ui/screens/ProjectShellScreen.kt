@@ -742,7 +742,7 @@ fun ProjectShellScreen(
     // Bumped when terminal produces output, so the Explorer re-scans the file tree.
     var terminalActivityCounter by remember { mutableStateOf(0) }
     // Lifted up here (not inside PreviewPane) so switching to Terminal/Problems/etc. and back
-    // to Preview doesn't reset the active sub-tab or the connected Browser/Remotion URL.
+    // to Preview doesn't reset the active sub-tab or the connected Browser URL.
     val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()
 
     val activeBottomTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }; var activeBottomTab by activeBottomTabMs
@@ -4107,7 +4107,7 @@ private fun DebugToolbarBtn(
         HorizontalDivider(color = Color(0xFFE0E0E0))
         if (ports.isEmpty() && !scanning) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("No forwarded ports detected. Start a dev server (e.g. Remotion on :3000) then tap ⟳, or tap + to check a specific port.", fontSize = 13.sp, color = Color(0xFF717171))
+                Text("No forwarded ports detected. Start a dev server (e.g. a dev server on :3000) then tap ⟳, or tap + to check a specific port.", fontSize = 13.sp, color = Color(0xFF717171))
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {

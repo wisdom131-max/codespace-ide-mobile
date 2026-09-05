@@ -23,8 +23,7 @@ object PortsScanner {
 
     // Common dev-server ports used by this project + typical web frameworks.
     val WELL_KNOWN = linkedMapOf(
-        3000 to "Remotion Studio / Node dev server",
-        11434 to "Ollama",
+        3000 to "Node dev server",
         8080 to "HTTP alt",
         5000 to "Flask / dev server",
         5173 to "Vite",

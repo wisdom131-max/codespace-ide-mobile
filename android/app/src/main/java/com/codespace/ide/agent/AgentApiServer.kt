@@ -13,14 +13,14 @@ import java.util.concurrent.Executors
 
 /**
  * AgentApiServer — lightweight local HTTP server that exposes ALL AgentTools
- * to ANY AI running in the terminal (Claude Code, Ollama CLI, llama.cpp, etc.)
+ * to ANY AI running in the terminal (Claude Code, llama.cpp, etc.)
  *
  * Runs on port 8765 inside the app process. Terminal AI calls it via:
  *   curl -s -X POST http://localhost:8765/tool/run_command -d '{"command":"ls -la"}'
  *   curl -s http://localhost:8765/tools
  *
- * This gives terminal-launched AI the SAME 32 tools as the chat panel:
- *   Shell, Git, Remotion, Secrets, Web, Memory, Connectors, Entities, Scheduler, Media, Packages
+ * This gives terminal-launched AI the SAME 30 tools as the chat panel:
+ *   Shell, Git, Secrets, Web, Memory, Connectors, Entities, Scheduler, Media, Packages
  *
  * The server starts when the terminal/proot session begins and stops when it ends.
  */
@@ -144,12 +144,12 @@ object AgentApiServer {
                     val tools = listOf(
                         "run_command","read_file","write_file","list_files","search_files",
                         "git_commit_push","git_pull_rebase","git_branch","git_status","git_diff",
-                        "render_remotion","save_secret","get_secret","detect_secrets",
+                        "save_secret","get_secret","detect_secrets",
                         "web_fetch","web_search","save_memory","read_memory","delete_memory",
                         "list_connectors","connect_service","use_connector",
                         "create_entity","read_entities","update_entity","delete_entity",
                         "schedule_task","list_tasks","cancel_task",
-                        "generate_image","upload_file","install_package"
+                        "upload_file","install_package"
                     )
                     val toolsJson = tools.joinToString(",") { """"$it"""" }
                     httpJson(200, """{"tools":[$toolsJson],"count":${tools.size}}""")

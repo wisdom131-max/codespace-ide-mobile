@@ -328,7 +328,7 @@ class TerminalService : Service() {
             val prootEnv = IdeEnvironment.forTerminal(this, projectId, workDir)
             val session = TerminalSession(prootEnv.proot, "/", prootEnv.args, prootEnv.envVars, 4000, client)
             liveSessions.add(TrackedSession(session, projectId))
-            // Give ANY AI launched inside the terminal (Claude Code, Ollama CLI, llama.cpp,
+            // Give ANY AI launched inside the terminal (Claude Code, llama.cpp,
             // etc.) the same 32 AgentTools the chat panel uses, via localhost:8765 — was built
             // (AgentApiServer.kt) but never actually started anywhere. Safe to call repeatedly;
             // start() no-ops if already running.

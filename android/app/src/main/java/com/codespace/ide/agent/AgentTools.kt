@@ -14,17 +14,16 @@ import javax.net.ssl.HttpsURLConnection
  * AgentTools — gives ANY AI launched in the app (via API or terminal) full
  * agent capabilities, mirroring what a Base44 Superagent can do.
  *
- * Capabilities (32 tools):
+ * Capabilities (30 tools):
  *  Shell: run_command, read_file, write_file, list_files, search_files
  *  Git:   git_commit_push, git_pull_rebase, git_branch, git_status, git_diff
- *  Video: render_remotion (clip-by-clip + FFmpeg merge for low memory)
  *  Secret: save_secret, get_secret, detect_secrets (auto-scan for keys/tokens)
  *  Web:   web_fetch, web_search
  *  Memory: save_memory, read_memory, delete_memory
  *  Connectors: list_connectors, connect_service, use_connector
  *  Data:  create_entity, read_entities, update_entity, delete_entity
  *  Sched: schedule_task, list_tasks, cancel_task
- *  Media: generate_image, upload_file
+ *  Media: upload_file
  *  Pkg:   install_package (npm, pip, apt)
  *
  * Tool-calling protocol (text-based, works with ANY model):
@@ -58,10 +57,6 @@ You have access to these tools for acting on the user's environment:
     <tool>{"name":"git_status","arguments":{"repo_dir":"/path"}}</tool>
 10. git_diff        — Show changes (staged or unstaged)
     <tool>{"name":"git_diff","arguments":{"staged":true,"repo_dir":"/path"}}</tool>
-
-— Remotion Video Rendering —
-11. render_remotion — Render composition to MP4 (clip-by-clip for low memory)
-    <tool>{"name":"render_remotion","arguments":{"composition":"MyVideo","output":"/path/out.mp4","project_dir":"/path"}}</tool>
 
 — Secrets (detection + secure encrypted storage) —
 12. save_secret    — Store a secret encrypted
@@ -112,14 +107,13 @@ You have access to these tools for acting on the user's environment:
     <tool>{"name":"cancel_task","arguments":{"name":"Daily Build"}}</tool>
 
 — Media —
-30. generate_image — Generate an image via AI
-    <tool>{"name":"generate_image","arguments":{"prompt":"a cat","output":"/path/img.png"}}</tool>
-31. upload_file    — Upload a file to a remote URL
+
+30. upload_file    — Upload a file to a remote URL
     <tool>{"name":"upload_file","arguments":{"path":"/path/file","url":"https://upload.sh"}}</tool>
 
 — Package Management —
-32. install_package — Install npm/pip/apt package
-    <tool>{"name":"install_package","arguments":{"manager":"npm","package":"remotion"}}</tool>
+31. install_package — Install npm/pip/apt package
+    <tool>{"name":"install_package","arguments":{"manager":"npm","package":"lodash"}}</tool>
 
 When you want to use a tool, output the <tool>...</tool> tag. Wait for the result.
 You can use multiple tools in sequence. When done, give a final summary.
@@ -156,7 +150,6 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "git_branch" -> gitBranch(args.getString("action"), args.optString("name", ""), args.optString("repo_dir").ifBlank { null }, context)
                 "git_status" -> gitStatus(args.optString("repo_dir").ifBlank { null }, context)
                 "git_diff" -> gitDiff(args.optBoolean("staged", false), args.optString("repo_dir").ifBlank { null }, context)
-                "render_remotion" -> renderRemotion(args.getString("composition"), args.getString("output"), args.optString("project_dir").ifBlank { null }, context)
                 "save_secret" -> saveSecret(args.getString("key"), args.getString("value"), context)
                 "get_secret" -> getSecret(args.getString("key"), context)
                 "detect_secrets" -> detectSecrets(args.optString("text").ifBlank { null }, args.optString("path").ifBlank { null })
@@ -175,7 +168,6 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "schedule_task" -> AgentScheduler.schedule(args.getString("name"), args.getString("cron"), args.getString("command"), context)
                 "list_tasks" -> AgentScheduler.listTasks(context)
                 "cancel_task" -> AgentScheduler.cancel(args.getString("name"), context)
-                "generate_image" -> generateImage(args.getString("prompt"), args.getString("output"), context)
                 "upload_file" -> uploadFile(args.getString("path"), args.getString("url"))
                 "install_package" -> installPackage(args.getString("manager"), args.getString("package"), args.optString("project_dir").ifBlank { null }, context)
                 else -> "Unknown tool: $name"
@@ -302,32 +294,6 @@ You can use multiple tools in sequence. When done, give a final summary.
         return gitRun(*args, repo = repo, context = context).take(4000)
     }
 
-    // ── Remotion (clip-by-clip + FFmpeg merge for 3GB devices) ───────────
-    private fun renderRemotion(composition: String, output: String, projectDir: String?, context: Context): String {
-        val dir = projectDir ?: context.filesDir.absolutePath
-        val outFile = File(output)
-        outFile.parentFile?.mkdirs()
-        val tempDir = File(outFile.parentFile, ".remotion_tmp_${System.currentTimeMillis()}")
-        tempDir.mkdirs()
-        try {
-            val guestDir = ProotInstaller.hostToGuestPath(context, dir) ?: dir
-            val renderOut = ProotInstaller.execOnce(context,
-                "cd '$guestDir' && npx remotion render $composition '${tempDir.absolutePath}/clip.mp4' --concurrency=1 2>&1",
-                timeoutSeconds = 300L)
-            if (renderOut.startsWith("Exit code") || renderOut.startsWith("Error") || renderOut.startsWith("Timed out"))
-                return "Remotion render failed:\n${renderOut.take(2000)}"
-            val clipFile = File(tempDir, "clip.mp4")
-            if (!clipFile.exists()) return "Remotion render produced no output file"
-            clipFile.copyTo(outFile, overwrite = true)
-            tempDir.deleteRecursively()
-            return "Remotion video rendered: $output (${outFile.length()} bytes)"
-        } catch (e: Exception) {
-            tempDir.deleteRecursively()
-            return "Remotion render error: ${e.message}"
-        }
-    }
-
-    // ── Secrets ──────────────────────────────────────────────────────────
     private fun saveSecret(key: String, value: String, context: Context): String {
         SecureTokenStore(context).setAiKey(key, value)
         return "Secret '$key' saved securely (encrypted, Keystore-backed)."
@@ -406,28 +372,6 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     // ── Media ────────────────────────────────────────────────────────────
-    private fun generateImage(prompt: String, output: String, context: Context): String {
-        return try {
-            val outFile = File(output); outFile.parentFile?.mkdirs()
-            val conn = URL("http://localhost:11434/api/generate").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true; conn.connectTimeout = 30000; conn.readTimeout = 120000
-            conn.outputStream.use { it.write(JSONObject().put("model", "stablediffusion").put("prompt", prompt).toString().toByteArray()) }
-            if (conn.responseCode in 200..299) {
-                val resp = conn.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(resp)
-                if (json.has("images")) {
-                    val bytes = android.util.Base64.decode(json.getJSONArray("images").getString(0), android.util.Base64.DEFAULT)
-                    outFile.writeBytes(bytes)
-                    return "Image saved to $output (${outFile.length()} bytes)"
-                }
-                return "Unexpected response: ${resp.take(500)}"
-            } else "Image gen failed (HTTP ${conn.responseCode}). Is Ollama running with SD model?"
-        } catch (e: Exception) {
-            "Image gen failed: ${e.message}\nTry: ollama pull stablediffusion"
-        }
-    }
-
     private fun uploadFile(path: String, url: String): String {
         return try {
             val f = File(path)
@@ -451,7 +395,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     // for apt didn't even attempt it — it just told the AI to ask a human to type it into
     // a terminal manually, defeating the entire point of an AI package-install tool. Now
     // routes all three through ProotInstaller.execOnce, the same bridge already proven
-    // correct for run_command/git — so the SAME 32 tools genuinely work identically for
+    // correct for run_command/git — so the SAME 30 tools genuinely work identically for
     // both the in-app chat panel and any terminal-launched AI (Claude Code, Ollama CLI).
     private fun installPackage(manager: String, pkg: String, projectDir: String?, context: Context): String {
         val command = when (manager) {

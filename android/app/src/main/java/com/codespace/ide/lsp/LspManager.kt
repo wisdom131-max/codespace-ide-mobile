@@ -1419,11 +1419,11 @@ object LspManager {
         // CRITICAL FIX (P32): Previously used bash -lc (login shell), which sources
         // /etc/profile → /etc/profile.d/*.sh → ~/.bashrc → ~/.agent-profile.sh.
         // The agent profile (McpShellProfile.kt) prints banner text to stdout:
-        //   echo '[Agent] 32 tools ready. Type agent_tools to list...'
+        //   echo '[Agent] 30 tools ready. Type agent_tools to list...'
         //   echo "[Agent] Project files: $WORKSPACE_PATH"
         //   echo '[Agent] Shorthands: agent_read, agent_write...'
         // This banner text corrupts the JSON-RPC pipe BEFORE the LSP server starts.
-        // The JsonRpcClient reader sees "[Agent] 32 tools ready..." instead of
+        // The JsonRpcClient reader sees "[Agent] 30 tools ready..." instead of
         // "Content-Length: N\r\n\r\n", fails to parse Content-Length
         // (defaults to 0), and the initialize handshake fails with
         // "contentLength=0 (invalid)".

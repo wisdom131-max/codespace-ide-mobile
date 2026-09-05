@@ -115,7 +115,6 @@ object BusyboxInstaller {
         // Keep .bashrc as a no-op stub so scripts that source it don't error
         File(home, ".bashrc").writeText("# stub — ash uses .ashrc instead\n")
 
-        OllamaSetup(context).installProfile()
         return shellPath(context)
     }
 

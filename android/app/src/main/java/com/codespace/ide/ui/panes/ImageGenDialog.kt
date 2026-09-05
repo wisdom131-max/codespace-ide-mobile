@@ -20,7 +20,7 @@ import java.io.File
 // same reasoning as ConnectorsHubSheet.kt being split out, avoids pushing that file
 // closer to the 64KB Kotlin bytecode method-size limit.
 //
-// Deliberately does NOT route through a local model (Nemotron/Ollama) first — Gemini
+// Deliberately does NOT route through a local model (Nemotron) first — Gemini
 // alone handles a single labeled prompt ("an avatar", "a thumbnail") reliably; a small
 // local LLM relaying/labeling requests would just be an extra unreliable hop.
 // ─────────────────────────────────────────────────────────────────────────────

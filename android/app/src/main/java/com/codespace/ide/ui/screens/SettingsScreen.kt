@@ -381,10 +381,7 @@ fun SettingsScreen(
                         value = key,
                         onValueChange = { keyMap[provider] = it },
                         label = {
-                            Text(
-                                if (provider == AiProviderId.OLLAMA) "Base URL e.g. http://192.168.1.x:11434"
-                                else "${provider.displayName} API Key"
-                            )
+                            Text("${provider.displayName} API Key")
                         },
                         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -432,7 +429,7 @@ fun SettingsScreen(
             var showRestoreConfirm by remember { mutableStateOf(false) }
 
             ListItem(
-                headlineContent = { Text("Ubuntu container (Node, ffmpeg, Remotion, Ollama, projects, etc.)") },
+                headlineContent = { Text("Ubuntu container (Node, ffmpeg, projects, etc.)") },
                 supportingContent = {
                     Text(
                         backupStatus.ifEmpty {

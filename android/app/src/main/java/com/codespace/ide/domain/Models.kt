@@ -62,7 +62,6 @@ enum class AiProviderId(val displayName: String) {
     CLAUDE("Claude"),
     GEMINI("Gemini"),
     DEEPSEEK("DeepSeek"),
-    OLLAMA("Ollama (local)"),
     OPENROUTER("OpenRouter"),
 }
 

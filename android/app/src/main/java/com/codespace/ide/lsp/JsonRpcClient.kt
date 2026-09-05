@@ -246,7 +246,7 @@ class JsonRpcClient(private val process: Process) {
                 }
             }
             // P32-DIAG: On the first read, log the raw header lines to detect profile
-            // banner text corruption (e.g., "[Agent] 32 tools ready..." instead of
+            // banner text corruption (e.g., "[Agent] 30 tools ready..." instead of
             // "Content-Length: N"). This is the definitive evidence for the theory.
             if (firstRead) {
                 firstRead = false

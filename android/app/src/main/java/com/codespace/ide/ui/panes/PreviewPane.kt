@@ -59,13 +59,12 @@ enum class PreviewMode(val label: String) {
     MARKDOWN("Markdown"),
     SVG("SVG"),
     BROWSER("Browser"),
-    REMOTION("Remotion"),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared preview state — lifted up to ProjectShellScreen so switching to a
 // different bottom tab (Terminal, Problems, etc.) and back doesn't reset the
-// active sub-tab or the connected URL. Also fixes Browser and Remotion sharing
+// active sub-tab or the connected URL.
 // one address bar (typing a port in one used to "mirror" into the other because
 // they were literally the same two variables) — each mode now gets its own.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,8 +72,6 @@ class PreviewState(initialMode: PreviewMode) {
     var activeMode by androidx.compose.runtime.mutableStateOf(initialMode)
     var browserUrl by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
     var browserInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
-    var remotionUrl by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
-    var remotionInput by androidx.compose.runtime.mutableStateOf("http://localhost:3000")
     // P32-BROWSER: track back/forward nav state so the back button can be enabled/disabled
     var canGoBack by androidx.compose.runtime.mutableStateOf(false)
 }
@@ -187,7 +184,7 @@ fun PreviewPane(
     var pageTitle by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
-    // P48: Shared WebView instance for Browser/Remotion modes — survives fullscreen
+    // P48: Shared WebView instance for Browser mode — survives fullscreen
     // toggle without reloading the page. The same WebView is reused in both inline
     // and fullscreen, so scroll position, login state, and video playback are preserved.
     val sharedWebView = remember { mutableStateOf<WebView?>(null) }
@@ -310,9 +307,6 @@ fun PreviewPane(
                                 if (sharedState.activeMode == PreviewMode.BROWSER) {
                                     sharedState.browserUrl = actualUrl
                                     sharedState.browserInput = actualUrl
-                                } else if (sharedState.activeMode == PreviewMode.REMOTION) {
-                                    sharedState.remotionUrl = actualUrl
-                                    sharedState.remotionInput = actualUrl
                                 }
                             }
                         }
@@ -322,22 +316,19 @@ fun PreviewPane(
             }
         }
 
-        // ── Browser address bar (BROWSER + REMOTION modes) ─────────────────
+        // ── Browser address bar (BROWSER mode) ──────────────────────────────
         // Compact pill design 2026-07-06 — the default Material3 OutlinedTextField reserves a
         // lot of built-in vertical padding (meant for floating labels), which made this bar look
         // oversized and left dead empty space in the toolbar row. Swapped for a tight, fixed-height
         // pill (matches the STT/Root/Zsh quick-actions row styling elsewhere in the app) that fills
         // the space it actually needs instead of leaving a gap.
-        if (sharedState.activeMode == PreviewMode.BROWSER || sharedState.activeMode == PreviewMode.REMOTION) {
-            // Browser and Remotion each read/write their OWN url+input pair on sharedState.
-            val isRemotion = sharedState.activeMode == PreviewMode.REMOTION
-            val currentInput = if (isRemotion) sharedState.remotionInput else sharedState.browserInput
+        if (sharedState.activeMode == PreviewMode.BROWSER) {
+            val currentInput = sharedState.browserInput
             fun applyInput(v: String) {
-                if (isRemotion) sharedState.remotionInput = v else sharedState.browserInput = v
+                sharedState.browserInput = v
             }
             fun connect() {
-                if (isRemotion) sharedState.remotionUrl = sharedState.remotionInput
-                else sharedState.browserUrl = sharedState.browserInput
+                sharedState.browserUrl = sharedState.browserInput
                 webViewRef?.loadUrl(currentInput)
             }
             // P32-BROWSER: Compact address bar — reduced height, back button, desktop-mode lock icon.
@@ -360,9 +351,9 @@ fun PreviewPane(
                         .size(18.dp)
                         .clickable(enabled = sharedState.canGoBack) { webViewRef?.goBack() }
                 )
-                // Lock / movie icon
+                // Lock icon
                 Icon(
-                    if (isRemotion) Icons.Default.Movie else Icons.Default.Lock,
+                    Icons.Default.Lock,
                     null, tint = TextMuted, modifier = Modifier.size(11.dp)
                 )
                 // URL input pill
@@ -435,8 +426,6 @@ fun PreviewPane(
                             "Open any .svg file. Rendered centered on a dark background. No JS.")
                         PreviewGuideRow("Browser", Color(0xFFFF79C6),
                             "Type any URL in the address bar and tap Go. Default is localhost:3000 — start your dev server in the terminal first, then switch here to see it live.")
-                                                PreviewGuideRow("Remotion", Color(0xFFCE9178),
-                            "Connects to Remotion Studio running in Ubuntu proot. Start it with 'npx remotion studio' in the terminal, then tap Go to preview video compositions, render clips, and see live previews.")
                         HorizontalDivider(color = Color(0xFF3C3C3C))
                         Row(
                             modifier = Modifier
@@ -472,7 +461,6 @@ fun PreviewPane(
                     language = language,
                     activeFilePath = activeFilePath,
                     browserUrl = sharedState.browserUrl,
-                    remotionUrl = sharedState.remotionUrl,
                     projectRootPath = projectRootPath,
                     onWebView = { webViewRef = it },
                     onTitle = { pageTitle = it },
@@ -487,7 +475,7 @@ fun PreviewPane(
     // ── Fullscreen overlay ───────────────────────────────────────────────────
     // Tapping the fullscreen icon opens the SAME preview content in a window-filling Dialog —
     // centered, with its own back/X so there's always a clear way out. Works identically for
-    // every sub-tab (HTML, Markdown, SVG, Browser, Remotion) since it just re-renders
+    // every sub-tab (HTML, Markdown, SVG, Browser) since it just re-renders
     // the shared PreviewBody at fillMaxSize.
     if (isFullscreen) {
         key(orientation) {
@@ -524,10 +512,9 @@ fun PreviewPane(
                             .clickable(enabled = sharedState.canGoBack) { webViewRef?.goBack() },
                     )
                     Spacer(Modifier.width(4.dp))
-                    // P48: Address bar in fullscreen for Browser/Remotion modes
-                    if (sharedState.activeMode == PreviewMode.BROWSER || sharedState.activeMode == PreviewMode.REMOTION) {
-                        val isRemotion = sharedState.activeMode == PreviewMode.REMOTION
-                        val currentInput = if (isRemotion) sharedState.remotionInput else sharedState.browserInput
+                    // P48: Address bar in fullscreen for Browser mode
+                    if (sharedState.activeMode == PreviewMode.BROWSER) {
+                        val currentInput = sharedState.browserInput
                         Box(
                             Modifier
                                 .weight(1f)
@@ -578,9 +565,6 @@ fun PreviewPane(
                                         if (sharedState.activeMode == PreviewMode.BROWSER) {
                                             sharedState.browserUrl = actualUrl
                                             sharedState.browserInput = actualUrl
-                                        } else if (sharedState.activeMode == PreviewMode.REMOTION) {
-                                            sharedState.remotionUrl = actualUrl
-                                            sharedState.remotionInput = actualUrl
                                         }
                                     }
                                 }
@@ -595,8 +579,7 @@ fun PreviewPane(
                         language = language,
                         activeFilePath = activeFilePath,
                         browserUrl = sharedState.browserUrl,
-                        remotionUrl = sharedState.remotionUrl,
-                        projectRootPath = projectRootPath,
+                            projectRootPath = projectRootPath,
                         onWebView = { wv -> webViewRef = wv },
                         onTitle = { pageTitle = it },
                         onLoading = { isLoading = it },
@@ -621,7 +604,6 @@ private fun PreviewBody(
     language: Language,
     activeFilePath: String,
     browserUrl: String,
-    remotionUrl: String,
     projectRootPath: String?,
     onWebView: (WebView) -> Unit,
     onTitle: (String) -> Unit,
@@ -650,9 +632,6 @@ private fun PreviewBody(
         PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
-                // Independent from Browser's URL now — each mode has its own connection (this is the
-        // fix for the "Browser and Remotion port mirroring" bug).
-        PreviewMode.REMOTION  -> RemotionPreview(remotionUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
     }
 }
 
@@ -661,7 +640,7 @@ private fun PreviewBody(
 // WebView never implements onShowFileChooser out of the box, so any
 // <input type="file"> anywhere — a user-built upload form in HtmlPreview,
 // a real site with an upload form in BrowserPreview
-// with a CSV import, Remotion Studio's asset import — silently does nothing
+// with a CSV import — silently does nothing
 // when tapped. This bridges WebView's chooser callback to a real Android
 // document picker and feeds the result back into the page's JS callback.
 // Supports both single-file and native multi-file (<input multiple>) inputs.
@@ -1102,7 +1081,7 @@ html { min-width: 1024px !important; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P48: Configure a WebView with full browser security, desktop view, and video fixes
-// Used by both BrowserPreview and RemotionPreview to share configuration
+// Used by BrowserPreview to share configuration
 // ─────────────────────────────────────────────────────────────────────────────
 private fun configureSecureWebView(webView: WebView) {
     webView.settings.apply {
@@ -1344,99 +1323,6 @@ private fun BrowserPreview(
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Remotion Preview — connects to Remotion dev server running in Ubuntu proot
-// Shows the Remotion Studio UI where users can preview video compositions
-// ─────────────────────────────────────────────────────────────────────────────
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun RemotionPreview(
-    url: String,
-    onWebView: (WebView) -> Unit,
-    onTitle: (String) -> Unit,
-    onLoading: (Boolean) -> Unit,
-    onCanGoBack: (Boolean) -> Unit = {},
-    sharedWebView: MutableState<WebView?>? = null,
-) {
-    val fileChooserHandler = rememberOnShowFileChooser()
-    val remotionUrl = if (url.isBlank()) "http://localhost:3000" else url
-
-    AndroidView(
-        factory = { ctx ->
-            val wv = sharedWebView?.value ?: WebView(ctx)
-            // CRASH-FIX 2026-08-17: When a shared WebView is reused across two
-            // AndroidView composables (e.g. normal preview + fullscreen mirror),
-            // Compose can call this factory for the NEW parent before onRelease
-            // detaches the OLD parent, throwing "specified child already has a
-            // parent". Force-detach here so re-attachment always succeeds.
-            (wv.parent as? android.view.ViewGroup)?.removeView(wv)
-            if (sharedWebView?.value == null) {
-                configureSecureWebView(wv)
-                wv.webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        onLoading(true)
-                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
-                    }
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        onLoading(false)
-                        onTitle(view?.title ?: "Remotion Studio")
-                        onCanGoBack(view?.canGoBack() == true)
-                        CookieManager.getInstance().flush()
-                    }
-                    override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                        onLoading(false)
-                        onCanGoBack(view?.canGoBack() == true)
-                        val errHtml = """<html><body style="background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
-                            <div>
-                            <div style="font-size:48px;margin-bottom:16px;">🎬</div>
-                            <h2 style="color:#f48771;">Remotion Studio not running</h2>
-                            <p style="color:#9cdcfe;">Start it in the terminal:</p>
-                            <pre style="background:#252526;padding:12px;border-radius:6px;color:#4ec9b0;display:inline-block;text-align:left;">npx remotion studio</pre>
-                            <p style="color:#717171;font-size:13px;margin-top:12px;">Then tap Go to connect.</p>
-                            </div></body></html>"""
-                        view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
-                    }
-                    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
-                        handler?.proceed()
-                    }
-                }
-                wv.webChromeClient = object : WebChromeClient() {
-                    override fun onReceivedTitle(view: WebView?, title: String?) { onTitle(title ?: "") }
-
-                    override fun onShowFileChooser(
-                        view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
-                        fileChooserParams: WebChromeClient.FileChooserParams?,
-                    ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
-                    override fun onCreateWindow(
-                        view: WebView?, isDialog: Boolean, isUserGesture: Boolean,
-                        resultMsg: android.os.Message?,
-                    ): Boolean {
-                        if (view == null || resultMsg == null) return false
-                        val newWebView = WebView(view.context)
-                        configureSecureWebView(newWebView)
-                        val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
-                        transport?.webView = newWebView
-                        resultMsg.sendToTarget()
-                        return true
-                    }
-                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
-                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean { result?.confirm(); return true }
-                }
-                sharedWebView?.value = wv
-            }
-            onWebView(wv)
-            wv
-        },
-        update = { wv ->
-            val isRealUrl = remotionUrl.isNotBlank() && remotionUrl != "http://localhost:0"
-            if (wv.url != remotionUrl && isRealUrl) wv.loadUrl(remotionUrl)
-            onCanGoBack(wv.canGoBack())
-            onWebView(wv)
-        },
-        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
-        modifier = Modifier.fillMaxSize().clipToBounds(),
-    )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PreviewGuideRow — used inside the how-to-use dialog

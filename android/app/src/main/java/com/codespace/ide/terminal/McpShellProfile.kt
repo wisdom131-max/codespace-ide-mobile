@@ -6,12 +6,12 @@ import java.io.File
 
 /**
  * McpShellProfile — sets up the terminal environment so ANY AI launched
- * in the terminal (Claude Code, Ollama CLI, llama.cpp, etc.) has full
+ * in the terminal (Claude Code, llama.cpp, etc.) has full
  * agent capabilities via the local AgentApiServer.
  *
  * What gets injected into ~/.bashrc:
  *   AGENT_API_URL  — http://localhost:8765 (local AgentApiServer)
- *   agent()        — call any of the 32 tools from the terminal
+ *   agent()        — call any of the 30 tools from the terminal
  *   agent_tools    — list all available tools
  *   agent_prompt   — get the system prompt for CLI AI tools
  *   Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, etc.
@@ -20,7 +20,7 @@ import java.io.File
  *   agent_read src/main.kt
  *   agent_run "git status"
  *   agent_git commit_push "fix: update UI"
- *   agent_tools  # list all 32 tools
+ *   agent_tools  # list all 30 tools
  *   agent_prompt  # get system prompt for CLI AI
  *
  * Also starts AgentApiServer if not already running.
@@ -169,17 +169,13 @@ object McpShellProfile {
         appendLine("agent_connectors() { agent list_connectors '{}'; }")
         appendLine("agent_connect()    { agent connect_service '{\"service\":\"'\$1'\"}'; }")
         appendLine("")
-        appendLine("# ── Media shorthands ──────────────────────────────────────────────")
-        appendLine("agent_image()      { agent generate_image '{\"prompt\":\"'\$1'\",\"output\":\"'\$2'\"}'; }")
+        appendLine("# ── Package shorthands ─────────────────────────────────────────────")
         appendLine("agent_install()    { agent install_package '{\"manager\":\"'\$1'\",\"package\":\"'\$2'\"}'; }")
-        appendLine("")
-        appendLine("# ── Remotion ──────────────────────────────────────────────────────")
-        appendLine("agent_render()     { agent render_remotion '{\"composition\":\"'\$1'\",\"output\":\"'\$2'\"}'; }")
         appendLine("")
         appendLine("# ── Health check ──────────────────────────────────────────────────")
         appendLine("agent_health() { curl -s \"\$AGENT_API_URL/health\" 2>/dev/null || echo '[agent] API not running'; }")
         appendLine("")
-        appendLine("echo '[Agent] 32 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
+        appendLine("echo '[Agent] 30 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
         appendLine("[ -n \"${'\$'}{WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: ${'\$'}{WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
         appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
     }
@@ -190,12 +186,12 @@ object McpShellProfile {
   "tools": [
     "run_command","read_file","write_file","list_files","search_files",
     "git_commit_push","git_pull_rebase","git_branch","git_status","git_diff",
-    "render_remotion","save_secret","get_secret","detect_secrets",
+    "save_secret","get_secret","detect_secrets",
     "web_fetch","web_search","save_memory","read_memory","delete_memory",
     "list_connectors","connect_service","use_connector",
     "create_entity","read_entities","update_entity","delete_entity",
     "schedule_task","list_tasks","cancel_task",
-    "generate_image","upload_file","install_package"
+    "upload_file","install_package"
   ],
   "usage": "POST /tool/{name} with JSON body containing tool arguments"
 }"""
@@ -239,14 +235,13 @@ Or use shorthands:
 
 Shell: run_command, read_file, write_file, list_files, search_files
 Git: git_commit_push, git_pull_rebase, git_branch, git_status, git_diff
-Video: render_remotion
 Secrets: save_secret, get_secret, detect_secrets
 Web: web_fetch, web_search
 Memory: save_memory, read_memory, delete_memory
 Connectors: list_connectors, connect_service, use_connector
 Data: create_entity, read_entities, update_entity, delete_entity
 Scheduler: schedule_task, list_tasks, cancel_task
-Media: generate_image, upload_file
+Media: upload_file
 Packages: install_package
 
 ## Example Session
@@ -256,7 +251,7 @@ $ agent_read src/main.kt
 $ agent_git status
 $ agent_git push "fix: update UI"
 $ agent_search "TODO" src/
-$ agent_mem_save "decision" "Use clip rendering for Remotion"
+$ agent_mem_save "decision" "Prefer clip rendering for long videos"
 
 ## API Endpoints
 

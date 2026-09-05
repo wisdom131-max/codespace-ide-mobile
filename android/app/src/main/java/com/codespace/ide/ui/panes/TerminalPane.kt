@@ -512,48 +512,7 @@ internal fun rememberTerminalState(context: android.content.Context): TerminalSt
 
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Ollama/Claude launch flow — rebuilt 2026-07-07 for persistence (item #12).
-// Old behavior: every tap did a full re-install/re-pull/re-tab. New behavior:
-// one-time setup (tracked via SharedPreferences "ollama_prefs"), then a single
-// lightweight "Launch Coding Agent" that reuses the server + tab.
-// ─────────────────────────────────────────────────────────────────────────────
-internal data class OllamaModelOption(
-    val id: String,
-    val label: String,
-    val ramNote: String,
-    val isCloud: Boolean,
-    val warn: Boolean,
-)
 
-internal val OLLAMA_MODELS = listOf(
-    OllamaModelOption("qwen2.5-coder:1.5b", "Qwen 2.5 Coder 1.5B", "~1GB RAM — best for coding, recommended", isCloud = false, warn = false),
-    OllamaModelOption("llama3.2:1b", "Llama 3.2 1B", "~0.8GB RAM — general chat", isCloud = false, warn = false),
-    OllamaModelOption("tinyllama", "TinyLlama", "~0.6GB RAM — lightest fallback", isCloud = false, warn = false),
-    OllamaModelOption("nemotron-3-super:cloud", "Nemotron 3 Super (Cloud)", "Cloud inference — needs free ollama.com sign-in", isCloud = true, warn = false),
-    OllamaModelOption("qwen2.5-coder:7b", "Qwen 2.5 Coder 7B", "~5GB RAM — needs 8GB+ phone", isCloud = false, warn = true),
-)
-
-// Tries every install method in turn, stops at the first that works. Each command is kept
-// on a single line (no backslash continuations) to avoid the quote-corruption bug documented
-// in item #13 (a stray "&& \"" landing at a line-continuation boundary).
-internal fun ollamaInstallScript(): String =
-    "echo -e \"\\033[1;34m[Install]\\033[0m Installing Ollama (trying every known method)...\"\n" +
-    "if ollama --version &>/dev/null 2>&1; then\n" +
-    "  echo -e \"\\033[1;32m  Already installed: \$(ollama --version 2>/dev/null | head -1)\\033[0m\"\n" +
-    "else\n" +
-    "  command -v curl &>/dev/null || { echo -e \"\\033[1;33m  curl missing \u2014 installing...\\033[0m\"; apt install -y curl 2>&1 | tail -3; }\n" +
-    "  command -v wget &>/dev/null || { echo -e \"\\033[1;33m  wget missing \u2014 installing...\\033[0m\"; apt install -y wget 2>&1 | tail -3; }\n" +
-    "  command -v tar &>/dev/null  || { echo -e \"\\033[1;33m  tar missing \u2014 installing...\\033[0m\";  apt install -y tar 2>&1 | tail -3; }\n" +
-    "  echo -e \"\\033[1;36m  Method 1/5: official install script...\\033[0m\"\n" +
-    "  curl -fsSL --retry 5 --retry-delay 3 https://ollama.com/install.sh 2>/dev/null | sh 2>&1 | tail -8\n" +
-    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 2/5: direct arm64 binary via curl...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 3/5: direct arm64 binary via wget...\\033[0m\"; wget -q -c --tries=5 --waitretry=3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -O /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 4/5: raw binary asset (no tarball)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64 -o /usr/local/bin/ollama 2>&1 | tail -5 && chmod +x /usr/local/bin/ollama; fi\n" +
-    "  if ! ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;33m  Method 5/5: mirror proxy (for restricted networks)...\\033[0m\"; curl -L -C - --retry 5 --retry-delay 3 https://ghproxy.com/https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tgz -o /tmp/ollama.tgz 2>&1 | tail -5 && tar -xzf /tmp/ollama.tgz -C /usr/local/bin/ ollama 2>/dev/null && chmod +x /usr/local/bin/ollama && rm -f /tmp/ollama.tgz; fi\n" +
-    "  if ollama --version &>/dev/null 2>&1; then echo -e \"\\033[1;32m  Ollama installed!\\033[0m\"; else echo -e \"\\033[1;31m  All 5 methods failed — check your connection and try again.\\033[0m\"; fi\n" +
-    "  rm -f /tmp/ollama.tgz /tmp/ollama.tar /tmp/ollama.tar.zst 2>/dev/null\n" +
-    "fi\n"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Voice / TTS models — added 2026-07-08 in response to the debug doc's TTS section.
@@ -613,290 +572,10 @@ internal fun voiceInstallScript(m: VoiceModelOption): String = when (m.engine) {
     else -> "echo 'Unknown voice model'\n"
 }
 
-// Hard guard: never start a second `ollama serve` on this device.
-internal fun ollamaServerGuardScript(): String =
-    "echo -e \"\\033[1;34m[Server]\\033[0m Checking Ollama server...\"\n" +
-    "if pgrep -f \"ollama serve\" >/dev/null 2>&1; then\n" +
-    "  echo -e \"\\033[1;32m  Already running on :11434 — reusing.\\033[0m\"\n" +
-    "else\n" +
-    "  nohup ollama serve >/tmp/ollama.log 2>&1 &\n" +
-    "  sleep 2\n" +
-    "  echo -e \"\\033[1;32m  Server started on :11434\\033[0m\"\n" +
-    "fi\n"
-
-internal fun ollamaClaudeGuardScript(): String =
-    "if ! command -v claude &>/dev/null; then\n" +
-    "  echo -e \"\\033[1;34m[Claude]\\033[0m Installing Claude Code...\"\n" +
-    "  npm install -g @anthropic-ai/claude-code 2>&1 | tail -3\n" +
-    // 2026-07-08 debug session found the npm install alone is not enough: the native binary's
-    // postinstall doesn't always run (--ignore-scripts, some npm/pnpm configs), leaving `claude`
-    // installed but non-functional with no error at install time. Fix: always run the postinstall
-    // manually, then verify with `claude --version` instead of trusting npm's exit code.
-    "  node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs 2>&1 | tail -5\n" +
-    "  if command -v claude &>/dev/null && claude --version &>/dev/null 2>&1; then\n" +
-    "    echo -e \"\\033[1;32m  Claude Code installed: \$(claude --version 2>/dev/null | head -1)\\033[0m\"\n" +
-    "  else\n" +
-    "    echo -e \"\\033[1;31m  Claude Code install may be incomplete — try running 'claude --version' manually.\\033[0m\"\n" +
-    "  fi\n" +
-    "else\n" +
-    "  echo -e \"\\033[1;32m  Claude Code already installed: \$(claude --version 2>/dev/null | head -1)\\033[0m\"\n" +
-    "fi\n"
-
-internal fun ollamaEnvScript(model: String): String =
-    "grep -q ANTHROPIC_BASE_URL ~/.bashrc 2>/dev/null || {\n" +
-    "  echo \"export ANTHROPIC_BASE_URL=http://localhost:11434\" >> ~/.bashrc\n" +
-    "  echo \"export ANTHROPIC_AUTH_TOKEN=ollama\" >> ~/.bashrc\n" +
-    "  echo \"export ANTHROPIC_MODEL=$model\" >> ~/.bashrc\n" +
-    "  source ~/.bashrc\n" +
-    "}\n"
-
-// Guarded pull — only pulls if not already present (no more unconditional re-pull every run).
-internal fun ollamaPullGuardScript(model: String): String =
-    "echo -e \"\\033[1;34m[Model]\\033[0m Checking $model...\"\n" +
-    "if ollama list 2>/dev/null | grep -q \"$model\"; then\n" +
-    "  echo -e \"\\033[1;32m  Already pulled\\033[0m\"\n" +
-    "else\n" +
-    "  ollama pull $model\n" +
-    "fi\n"
-
-// First-ever run: full setup, then launches straight into Claude Code.
-internal fun ollamaFullSetupScript(model: OllamaModelOption): String =
-    ollamaInstallScript() +
-    ollamaServerGuardScript() +
-    (if (model.isCloud)
-        "echo -e \"\\033[1;34m[Sign-in]\\033[0m Cloud model needs a free ollama.com account...\"\n" +
-        "ollama signin\n"
-    else "") +
-    ollamaPullGuardScript(model.id) +
-    ollamaClaudeGuardScript() +
-    ollamaEnvScript(model.id) +
-    "clear\n" +
-    "echo -e \"\\033[1;32mSetup complete! Launching Claude Code...\\033[0m\"\n" +
-    "claude --model ${model.id}\n"
-
-// Every run after: no install, no pull, no new tab (reused by caller) — just make sure the
-// server is up and jump straight to Claude Code.
-internal fun ollamaLaunchScript(model: String): String =
-    ollamaServerGuardScript() +
-    "clear\n" +
-    "echo -e \"\\033[1;32mLaunching Claude Code ($model)...\\033[0m\"\n" +
-    "claude --model $model\n"
 
 
-// Guarded Node.js + ffmpeg + @remotion/cli install, idempotent project scaffold (no
-// interactive create-video prompts — hand-written minimal project instead), and a
-// chunked-render helper script for long videos. Mirrors the Ollama install pattern:
-// safe to re-run — every step checks "already have this?" before doing anything.
-// Wisdom's chunked-render requirement (item raised 2026-07-07): rendering a full
-// 30min+ video in one process risks OOM on this device, so render_chunked.sh renders
-// in small --frames=start-end segments and stitches them with `ffmpeg -c copy` (no
-// re-encode) — resumable, and keeps peak RAM bounded regardless of total video length.
-internal fun remotionSetupScript(): String = """
-echo -e "\033[1;34m[1/5]\033[0m Checking Node.js (need 18+)..."
-NODE_OK=0
-if command -v node &>/dev/null; then
-  NODE_MAJOR=${'$'}(node -v | sed 's/v//' | cut -d. -f1)
-  if [ "${'$'}NODE_MAJOR" -ge 18 ] 2>/dev/null; then NODE_OK=1; fi
-fi
-if [ "${'$'}NODE_OK" -eq 0 ]; then
-  echo -e "\033[1;36m  Installing Node.js via apt...\033[0m"
-  apt install -y nodejs npm 2>&1 | tail -5
-  NODE_MAJOR=${'$'}(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
-  if [ -z "${'$'}NODE_MAJOR" ] || [ "${'$'}NODE_MAJOR" -lt 18 ] 2>/dev/null; then
-    echo -e "\033[1;33m  apt Node too old/missing — trying NodeSource (Node 20)...\033[0m"
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>&1 | tail -10
-    apt install -y nodejs 2>&1 | tail -5
-  fi
-  echo -e "\033[1;32m  Node: ${'$'}(node -v 2>/dev/null)\033[0m"
-else
-  echo -e "\033[1;32m  Already have Node ${'$'}(node -v)\033[0m"
-fi
 
-echo -e "\033[1;34m[2/5]\033[0m Checking ffmpeg + Chrome headless-shell deps..."
-if ! command -v ffmpeg &>/dev/null; then
-  apt install -y ffmpeg 2>&1 | tail -5
-else
-  echo -e "\033[1;32m  ffmpeg already installed\033[0m"
-fi
-# 2026-07-08 debug session found ffmpeg alone is not enough: Remotion's bundled headless
-# Chrome fails to launch at render time with "libnspr4.so: cannot open shared object file"
-# even though ffmpeg itself works fine — these libs aren't pulled in by ffmpeg's own deps.
-if ! dpkg -s libnspr4 &>/dev/null 2>&1 || ! dpkg -s libnss3 &>/dev/null 2>&1; then
-  echo -e "\033[1;36m  Installing Chrome headless-shell runtime libs (needed for rendering)...\033[0m"
-  apt install -y libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
-    libcups2t64 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 libasound2t64 2>&1 | tail -8
-else
-  echo -e "\033[1;32m  Chrome headless-shell libs already installed\033[0m"
-fi
 
-echo -e "\033[1;34m[3/5]\033[0m Checking @remotion/cli..."
-if ! npm list -g @remotion/cli &>/dev/null; then
-  npm install -g @remotion/cli 2>&1 | tail -5
-else
-  echo -e "\033[1;32m  Already installed\033[0m"
-fi
-
-echo -e "\033[1;34m[4/5]\033[0m Checking Remotion project (~/remotion-project)..."
-if [ ! -d ~/remotion-project ]; then
-  echo -e "\033[1;36m  Scaffolding a minimal project (no interactive prompts)...\033[0m"
-  mkdir -p ~/remotion-project/src ~/remotion-project/out/chunks
-  cat > ~/remotion-project/package.json <<'PKGEOF'
-{
-  "name": "remotion-project",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "start": "remotion studio",
-    "render": "remotion render"
-  },
-  "dependencies": {
-    "@remotion/cli": "4.0.0",
-    "remotion": "4.0.0",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
-  },
-  "devDependencies": {
-    "typescript": "5.4.0"
-  }
-}
-PKGEOF
-  cat > ~/remotion-project/tsconfig.json <<'TSCEOF'
-{
-  "compilerOptions": {
-    "target": "ES2018",
-    "module": "commonjs",
-    "jsx": "react",
-    "esModuleInterop": true,
-    "strict": false,
-    "skipLibCheck": true
-  }
-}
-TSCEOF
-  cat > ~/remotion-project/src/Root.tsx <<'ROOTEOF'
-import { Composition } from 'remotion';
-import { MyVideo } from './MyVideo';
-
-export const RemotionRoot = () => {
-  return (
-    <Composition
-      id="MyVideo"
-      component={MyVideo}
-      durationInFrames={150}
-      fps={30}
-      width={1280}
-      height={720}
-    />
-  );
-};
-ROOTEOF
-  cat > ~/remotion-project/src/MyVideo.tsx <<'VIDEOEOF'
-import { AbsoluteFill, useCurrentFrame, interpolate } from 'remotion';
-
-export const MyVideo = () => {
-  const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: 'clamp' });
-  return (
-    <AbsoluteFill style={{ backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
-      <div style={{ fontSize: 80, opacity }}>Hello Remotion — edit src/MyVideo.tsx</div>
-    </AbsoluteFill>
-  );
-};
-VIDEOEOF
-  cat > ~/remotion-project/src/index.ts <<'IDXEOF'
-import { registerRoot } from 'remotion';
-import { RemotionRoot } from './Root';
-
-registerRoot(RemotionRoot);
-IDXEOF
-  cat > ~/remotion-project/remotion.config.ts <<'CFGEOF'
-import { Config } from '@remotion/cli/config';
-
-Config.setVideoImageFormat('jpeg');
-Config.setOverwriteOutput(true);
-CFGEOF
-  cat > ~/remotion-project/render_chunked.sh <<'RCEOF'
-#!/bin/bash
-# Chunked Remotion render — avoids OOM crashes on long (e.g. 30min+) videos by
-# rendering in small frame-range segments, then stitching with ffmpeg concat
-# (stream copy, no re-encode, so the merge itself is fast and near-zero RAM).
-# Resumable: re-running skips chunks that already have an output file, same
-# philosophy as the rootfs chunked-extraction fix (crash mid-way loses only
-# the current chunk, not the whole render).
-#
-# Usage: ./render_chunked.sh <compositionId> <totalFrames> [chunkFrames] [fps]
-# Example (30 min @ 30fps = 54000 frames, 5s chunks = 150 frames):
-#   ./render_chunked.sh MyVideo 54000 150 30
-
-COMP=${'$'}{1:?Usage: render_chunked.sh <compositionId> <totalFrames> [chunkFrames] [fps]}
-TOTAL=${'$'}{2:?total frame count required}
-CHUNK=${'$'}{3:-150}
-FPS=${'$'}{4:-30}
-
-mkdir -p out/chunks
-START=0
-INDEX=0
-
-echo "=== Chunked render: ${'$'}COMP, ${'$'}TOTAL frames, ${'$'}CHUNK frames/chunk, ${'$'}{FPS}fps ==="
-
-while [ ${'$'}START -lt ${'$'}TOTAL ]; do
-  END=${'$'}((START + CHUNK - 1))
-  if [ ${'$'}END -ge ${'$'}TOTAL ]; then END=${'$'}((TOTAL - 1)); fi
-  OUTFILE=${'$'}(printf "out/chunks/chunk_%04d.mp4" ${'$'}INDEX)
-
-  if [ -f "${'$'}OUTFILE" ]; then
-    echo "[chunk ${'$'}INDEX] already rendered — skipping (resume)"
-  else
-    echo "[chunk ${'$'}INDEX] frames ${'$'}START-${'$'}END -> ${'$'}OUTFILE"
-    npx remotion render "${'$'}COMP" --frames=${'$'}START-${'$'}END "${'$'}OUTFILE"
-    # Brief pause between chunks lets the device settle (same GC-breathing-room
-    # pattern used during rootfs extraction) before starting the next render.
-    sleep 2
-  fi
-
-  START=${'$'}((END + 1))
-  INDEX=${'$'}((INDEX + 1))
-done
-
-echo "=== Merging ${'$'}INDEX chunks (stream copy, keeps continuous flow/audio in sync) ==="
-rm -f out/filelist.txt
-for f in out/chunks/chunk_*.mp4; do
-  echo "file '${'$'}f'" >> out/filelist.txt
-done
-ffmpeg -y -f concat -safe 0 -i out/filelist.txt -c copy out/final_output.mp4
-
-if [ -f out/final_output.mp4 ]; then
-  echo "=== Done: out/final_output.mp4 ==="
-else
-  echo "=== Merge failed — check ffmpeg output above ==="
-fi
-RCEOF
-  chmod +x ~/remotion-project/render_chunked.sh
-  cd ~/remotion-project && npm install 2>&1 | tail -10
-  echo -e "\033[1;32m  Project scaffolded at ~/remotion-project\033[0m"
-else
-  echo -e "\033[1;32m  Already scaffolded\033[0m"
-fi
-
-echo -e "\033[1;34m[5/5]\033[0m Launching Remotion Studio..."
-cd ~/remotion-project
-echo -e "\033[1;32mSetup complete!\033[0m"
-echo -e "\033[1;33m  Studio:         npx remotion studio\033[0m"
-echo -e "\033[1;33m  Chunked render: ./render_chunked.sh MyVideo <totalFrames> [chunkFrames] [fps]\033[0m"
-echo -e "\033[1;33m  Example (30min @30fps, 5s chunks): ./render_chunked.sh MyVideo 54000 150 30\033[0m"
-npx remotion studio
-""".trimIndent()
-
-// Every run after first-time setup: no reinstall, no rescaffold — just guard the dev
-// server (checks if Remotion Studio is already up on :3000 before starting another) and
-// jump straight back into the existing project.
-internal fun remotionRelaunchScript(): String =
-    "echo -e \"\\033[1;34m[Remotion]\\033[0m Checking Remotion Studio...\"\n" +
-    "if pgrep -f \"remotion studio\" >/dev/null 2>&1; then\n" +
-    "  echo -e \"\\033[1;32m  Already running on :3000 — reusing.\\033[0m\"\n" +
-    "else\n" +
-    "  cd ~/remotion-project && npx remotion studio\n" +
-    "fi\n"
 // Delegates to ProjectPathResolver for consistent project-root resolution across
 // all components (editor, LSP, git, preview, terminal). Resolution order:
 // 1. workspace_prefs (user override), 2. pathOrUrl from project metadata,
@@ -985,13 +664,7 @@ internal fun TerminalPane(
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
-    // Ollama/Claude persistent state — see item #12 rebuild (2026-07-07)
-    val ollamaPrefs = remember { context.getSharedPreferences("ollama_prefs", android.content.Context.MODE_PRIVATE) }
-    var showOllamaModelPicker by remember { mutableStateOf(false) }
     var showVoiceModelPicker by remember { mutableStateOf(false) }
-    var ollamaMultiInstance by remember { mutableStateOf(ollamaPrefs.getBoolean("multi_instance", false)) }
-    // Remotion persistent state — same one-time-setup pattern as Ollama (2026-07-07)
-    val remotionPrefs = remember { context.getSharedPreferences("remotion_prefs", android.content.Context.MODE_PRIVATE) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1170,7 +843,7 @@ internal fun TerminalPane(
                     // A previous container backup exists in shared storage (survives uninstall) —
                     // restore it instead of downloading a fresh Ubuntu rootfs from scratch. This is
                     // what makes every GitHub Actions rebuild's forced uninstall/reinstall NOT wipe
-                    // Node/ffmpeg/Remotion/Piper/Ollama/Claude Code/projects every single time.
+                    // Node/ffmpeg/Piper/Claude Code/projects every single time.
                     writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
                     BackupManager.restorePrefs(ctx)
                     BackupManager.restoreBackup(ctx) { msg ->
@@ -1468,7 +1141,10 @@ internal fun TerminalPane(
             Box {
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color(0xFF969696)) }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
-                    offset = DpOffset(0.dp, 4.dp), modifier = Modifier.background(Color(0xFF2D2D2D))) {
+                    offset = DpOffset(0.dp, 4.dp), modifier = Modifier
+                        .background(Color(0xFF2D2D2D))
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())) {
                     // ── TERMINALS ──────────────────────────────────────────
                     DropdownMenuItem(
                         leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
@@ -1490,94 +1166,21 @@ internal fun TerminalPane(
                         text = { Text("AI & TOOLS", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                         onClick = {}, enabled = false)
                     DropdownMenuItem(
-                        leadingIcon = { Text("📥", fontSize = 13.sp) },
-                        text = { Text("Install Ollama", color = Color(0xFF89B4FA), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            android.widget.Toast.makeText(context, "Installing Ollama — trying every method until one works…", android.widget.Toast.LENGTH_SHORT).show()
-                            active?.session?.write(ollamaInstallScript())
-                        })
-                    DropdownMenuItem(
                         leadingIcon = { Text("\uD83C\uDF99\uFE0F", fontSize = 13.sp) },
                         text = { Text("Install Voice (TTS)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             showVoiceModelPicker = true
                         })
-                    DropdownMenuItem(
-                        leadingIcon = { Text("🤖", fontSize = 13.sp) },
-                        text = { Text("Launch Coding Agent", color = Color(0xFF89B4FA), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            if (!ollamaPrefs.getBoolean("setup_complete", false)) {
-                                showOllamaModelPicker = true
-                            } else {
-                                val model = ollamaPrefs.getString("chosen_model", "qwen2.5-coder:1.5b") ?: "qwen2.5-coder:1.5b"
-                                val existingId = if (ollamaMultiInstance) null else ollamaPrefs.getString("ollama_tab_id", null)
-                                val existingTab = tabs.firstOrNull { it.id == existingId }
-                                if (existingTab != null) {
-                                    activeId = existingTab.id
-                                    existingTab.session.write(ollamaLaunchScript(model))
-                                } else {
-                                    addUbuntuTab()
-                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                        val newTab = tabs.lastOrNull()
-                                        if (newTab != null) {
-                                            ollamaPrefs.edit().putString("ollama_tab_id", newTab.id).apply()
-                                            newTab.session.write(ollamaLaunchScript(model))
-                                        }
-                                    }, 3000)
-                                }
-                            }
-                        })
-                    DropdownMenuItem(
-                        leadingIcon = { Text("🔑", fontSize = 13.sp) },
-                        text = { Text("Sign in to Ollama", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = { showMenu = false; active?.session?.write("ollama signin\n") })
-                    DropdownMenuItem(
-                        leadingIcon = { Text("🚪", fontSize = 13.sp) },
-                        text = { Text("Sign out of Ollama", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            active?.session?.write("ollama signout\n")
-                            android.widget.Toast.makeText(context, "Signed out of Ollama — agent memory is unaffected", android.widget.Toast.LENGTH_SHORT).show()
-                        })
-                    DropdownMenuItem(
-                        leadingIcon = { Text(if (ollamaMultiInstance) "☑" else "☐", fontSize = 13.sp, color = Color(0xFF969696)) },
-                        text = { Text("Multi-Instance Mode (advanced)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
-                        onClick = {
-                            ollamaMultiInstance = !ollamaMultiInstance
-                            ollamaPrefs.edit().putBoolean("multi_instance", ollamaMultiInstance).apply()
-                            showMenu = false
-                        })
-                    DropdownMenuItem(
-                        leadingIcon = { Text("🎬", fontSize = 13.sp) },
-                        text = { Text("Setup Remotion", color = Color(0xFFA6E3A1), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            android.widget.Toast.makeText(context, "Setting up Remotion (Node + ffmpeg + project scaffold)…", android.widget.Toast.LENGTH_SHORT).show()
-                            active?.session?.write(remotionSetupScript())
-                            remotionPrefs.edit().putBoolean("setup_complete", true).apply()
-                        })
-                    DropdownMenuItem(
-                        leadingIcon = { Text("🎞️", fontSize = 13.sp) },
-                        text = { Text("Launch Remotion Studio", color = Color(0xFFA6E3A1), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            if (!remotionPrefs.getBoolean("setup_complete", false)) {
-                                android.widget.Toast.makeText(context, "Run \"Setup Remotion\" first — it only needs to run once", android.widget.Toast.LENGTH_SHORT).show()
-                            } else {
-                                active?.session?.write(remotionRelaunchScript())
-                            }
-                        })
+
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
-                        text = { Text("Show Agent Tools (32)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
+                        text = { Text("Show Agent Tools (30)", color = Color(0xFFCCCCCC), fontSize = 13.sp) },
                         onClick = {
                             showMenu = false
                             // The real local agent API (AgentApiServer, port 8765) is already auto-started
                             // for this session via McpShellProfile — no separate "start" step needed.
-                            // This just lists the 32 tools any AI in this terminal can call via `agent <tool>`.
+                            // This just lists the 30 tools any AI in this terminal can call via `agent <tool>`.
                             active?.session?.write(". ~/.agent-profile.sh 2>/dev/null; agent_tools\n")
                             android.widget.Toast.makeText(context, "Listing available agent tools…", android.widget.Toast.LENGTH_SHORT).show()
                         })
@@ -1678,48 +1281,6 @@ internal fun TerminalPane(
                 dismissButton = {
                     TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
                 },
-            )
-            }
-        }
-
-        // Ollama model picker — shown only on the very first "Launch Coding Agent" tap.
-        if (showOllamaModelPicker) {
-            // Rotation fix (#8): see color scheme picker above for rationale.
-            key(configuration.orientation) {
-            AlertDialog(
-                onDismissRequest = { showOllamaModelPicker = false },
-                title = { Text("Choose a model") },
-                text = {
-                    Column {
-                        OLLAMA_MODELS.forEach { m ->
-                            Column(
-                                Modifier.fillMaxWidth().clickable {
-                                    showOllamaModelPicker = false
-                                    addUbuntuTab()
-                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                        val newTab = tabs.lastOrNull()
-                                        if (newTab != null) {
-                                            ollamaPrefs.edit()
-                                                .putBoolean("setup_complete", true)
-                                                .putString("chosen_model", m.id)
-                                                .putString("ollama_tab_id", newTab.id)
-                                                .apply()
-                                            newTab.session.write(ollamaFullSetupScript(m))
-                                        }
-                                    }, 3000)
-                                }.padding(vertical = 8.dp)
-                            ) {
-                                Text(
-                                    (if (m.warn) "\u26a0\ufe0f " else "") + m.label + (if (m.isCloud) " (cloud)" else ""),
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(m.ramNote, fontSize = 11.sp, color = Color(0xFF888888))
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = { TextButton(onClick = { showOllamaModelPicker = false }) { Text("Cancel") } },
             )
             }
         }
@@ -1975,12 +1536,6 @@ internal fun TerminalPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) { Text("Clear", color = Color(0xFFCCCCCC), fontSize = 11.sp) }
 
-            // Remotion Studio launcher
-            Box(
-                Modifier.background(Color(0xFF1A2A1A), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                    .clickable { active?.session?.write("bash ~/setup-remotion.sh\n") }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) { Text("▶ Remotion", color = Color(0xFF6DB33F), fontSize = 11.sp) }
 
             // Export terminal output to file
             Box(

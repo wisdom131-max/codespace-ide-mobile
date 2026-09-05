@@ -90,10 +90,6 @@ private data class ChatMsg(val role: String, val text: String)
 private const val PREFS_CHAT = "copilot_chat"
 private const val KEY_MSGS   = "messages_v2"
 
-// Ollama runs locally — same as Termux setup (pkg install ollama; ollama serve)
-// nemotron-3-super:cloud offloads inference to NVIDIA cloud, but server is local
-private const val OLLAMA_LOCAL = "http://localhost:11434"
-
 private val http = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS)
     .readTimeout(120, TimeUnit.SECONDS)
@@ -200,30 +196,20 @@ private fun relativeTime(ts: Long): String {
     }
 }
 
-private suspend fun fetchModels(baseUrl: String): List<String> = withContext(Dispatchers.IO) {
-    try {
-        val resp = http.newCall(Request.Builder().url("$baseUrl/api/tags").get().build()).execute()
-        if (!resp.isSuccessful) return@withContext emptyList()
-        val json = JSONObject(resp.body?.string() ?: "")
-        val arr = json.getJSONArray("models")
-        (0 until arr.length()).map { arr.getJSONObject(it).getString("name") }
-    } catch (_: Exception) { emptyList() }
-}
-
 // ── BYOK (bring-your-own-key) API providers ────────────────────────────────────
 // Real per-vendor calls, using whatever key the user pasted into Settings
 // (SecureTokenStore.aiKey, keyed by AiProviderId.name — same store Settings already
 // writes to). Model strings in the picker look like "openai:gpt-4o" — the prefix
-// picks which of these run; anything else (e.g. "qwen2.5-coder:7b") falls through to
-// the local Ollama call untouched.
+// picks which of these run. (The Ollama local-provider branch was extracted to
+// codespace-ide-extensions, 2026-09-05.)
 private val API_PROVIDER_PREFIXES = setOf("openai", "claude", "deepseek", "gemini", "openrouter")
 
-/** Every AiProviderId (besides Ollama, which is handled separately/locally) whose API key is
- *  already saved in Settings shows up as a "prefix:model" entry in the model picker. */
+/** Every AiProviderId whose API key is already saved in Settings shows up as a
+ *  "prefix:model" entry in the model picker. */
 private fun apiModelEntries(tokenStore: SecureTokenStore?): List<String> {
     if (tokenStore == null) return emptyList()
     return AiProviderId.entries
-        .filter { it != AiProviderId.OLLAMA && !tokenStore.aiKey(it.name).isNullOrBlank() }
+        .filter { !tokenStore.aiKey(it.name).isNullOrBlank() }
         .map { val prefix = it.name.lowercase(); "$prefix:${defaultModelFor(prefix)}" }
 }
 
@@ -322,7 +308,6 @@ private suspend fun callGemini(
 }
 
 private suspend fun chat(
-    baseUrl: String,
     model: String,
     messages: List<ChatMsg>,
     mode: ChatMode,
@@ -414,8 +399,7 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
 
     for (iteration in 0 until maxIterations) {
         // "openai:gpt-4o", "claude:...", "deepseek:...", "gemini:...", "openrouter:..." route
-        // to the matching BYOK API using the key saved in Settings; everything else (plain
-        // Ollama tags like "qwen2.5-coder:7b") goes to the local Ollama server. Same tool loop
+        // to the matching BYOK API using the key saved in Settings. Same tool loop
         // wraps around whichever one answers.
         val content = if (isApiProvider) {
             val apiModel = model.substring(colonIdx + 1)
@@ -430,22 +414,10 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
                 else         -> throw Exception("Unknown provider: $providerPrefix")
             }
         } else {
-            val body = JSONObject()
-                .put("model", model)
-                .put("messages", convMsgs)
-                .put("stream", false)
-                .toString()
-
-            val resp = http.newCall(
-                Request.Builder()
-                    .url("$baseUrl/api/chat")
-                    .header("Content-Type", "application/json")
-                    .post(body.toRequestBody("application/json".toMediaType()))
-                    .build()
-            ).execute()
-            if (!resp.isSuccessful) throw Exception("Ollama error ${resp.code}")
-            val json = JSONObject(resp.body?.string() ?: "")
-            json.getJSONObject("message").getString("content")
+            // Ollama-as-local-provider branch extracted to codespace-ide-extensions
+            // (extensions/ollama). Local model providers will come back as a generic
+            // registered-provider interface instead of a hardcoded branch.
+            throw Exception("'$model' is not a configured API provider (local model support was extracted)")
         }
 
         if (mode == ChatMode.AGENT && AgentTools.hasToolCalls(content)) {
@@ -517,27 +489,11 @@ internal fun CopilotChatPanelOverlay(
     var chatLoading   by remember { mutableStateOf(false) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
-    var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
-    var availModels   by remember {
-        mutableStateOf(
-            listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2") + apiModelEntries(tokenStore)
-        )
-    }
-    var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
+    var availModels   by remember { mutableStateOf(apiModelEntries(tokenStore)) }
+    var selectedModel by remember { mutableStateOf(apiModelEntries(tokenStore).firstOrNull() ?: "") }
 
     val messages = remember {
         mutableStateListOf<ChatMsg>().apply { addAll(loadHistory(context)) }
-    }
-
-    // Auto-detect running Ollama models on open
-    // Ollama runs locally (Termux-style) — server started by "Setup Ollama AI" button
-    LaunchedEffect(Unit) {
-        val local = fetchModels(OLLAMA_LOCAL)
-        if (local.isNotEmpty()) {
-            ollamaUrl = OLLAMA_LOCAL
-            availModels = local + apiModelEntries(tokenStore)
-            selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
-        }
     }
 
     LaunchedEffect(messages.size) {
@@ -553,7 +509,7 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -899,13 +855,8 @@ internal fun CopilotChatPanelInline(
     var chatLoading   by remember { mutableStateOf(false) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
-    var ollamaUrl     by remember { mutableStateOf(OLLAMA_LOCAL) }
-    var availModels   by remember {
-        mutableStateOf(
-            listOf("nemotron-3-super:cloud", "qwen2.5-coder:7b", "llama3.2") + apiModelEntries(tokenStore)
-        )
-    }
-    var selectedModel by remember { mutableStateOf("nemotron-3-super:cloud") }
+    var availModels   by remember { mutableStateOf(apiModelEntries(tokenStore)) }
+    var selectedModel by remember { mutableStateOf(apiModelEntries(tokenStore).firstOrNull() ?: "") }
 
     // ── Sessions (UI bucket #5) ─────────────────────────────────────────
     val sessions = remember {
@@ -964,15 +915,6 @@ internal fun CopilotChatPanelInline(
         if (wasActive) switchSession(sessions.first().id)
     }
 
-    LaunchedEffect(Unit) {
-        val local = fetchModels(OLLAMA_LOCAL)
-        if (local.isNotEmpty()) {
-            ollamaUrl = OLLAMA_LOCAL
-            availModels = local + apiModelEntries(tokenStore)
-            selectedModel = local.firstOrNull { it.contains("nemotron-3-super") } ?: local.firstOrNull { it.contains("nemotron") } ?: local.first()
-        }
-    }
-
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
@@ -986,7 +928,7 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(ollamaUrl, selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
                 messages.add(ChatMsg("assistant", reply))
                 persistSessions()
             } catch (e: Exception) {

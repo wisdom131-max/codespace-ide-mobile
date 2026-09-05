@@ -631,7 +631,7 @@ object ProotInstaller {
                 // env var passed to proot itself, or libproot.so on the host fails to find it.
                 val profileDDir = File(rootfs, "etc/profile.d")
                 profileDDir.mkdirs()
-                // 00-locale: sets UTF-8 locale + stty iutf8 so emoji work in Claude/Ollama
+                // 00-locale: sets UTF-8 locale + stty iutf8 so emoji work in Claude Code
                 File(profileDDir, "00-locale.sh").writeText(
                     "#!/bin/sh\n" +
                     "# Generate en_US.UTF-8 locale if not present\n" +
@@ -742,45 +742,11 @@ object ProotInstaller {
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             NotificationStore.add("Ubuntu ready", "Container started — $filesWritten files extracted", NotificationStore.Type.UBUNTU_STATUS)
-            // ── Write setup-remotion.sh + CODEBASE_MAP.md into Ubuntu home ──────────
+            // ── Write CODEBASE_MAP.md into Ubuntu home ─────────────────────────────
             try {
                 val rootHome = File(rootfs, "root")
                 rootHome.mkdirs()
 
-                val remotionScript = File(rootHome, "setup-remotion.sh")
-                remotionScript.writeText("""#!/bin/bash
-set -e
-echo '[Remotion] Starting setup...'
-
-# 1. Install nvm + Node 20 (system apt gives Node 12 which is too old for Remotion)
-export NVM_DIR="${'$'}HOME/.nvm"
-if [ ! -d "${'$'}NVM_DIR" ]; then
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-fi
-. "${'$'}NVM_DIR/nvm.sh"
-nvm install 20 2>/dev/null || true
-nvm use 20
-nvm alias default 20
-echo "[Remotion] Node: ${'$'}(node -v)"
-
-# 2. Chrome/ffmpeg headless deps
-apt-get install -y --no-install-recommends libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0   libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2   libgbm1 libasound2 ffmpeg 2>/dev/null || true
-
-# 3. Create starter Remotion project if missing
-if [ ! -d "${'$'}HOME/my-video" ]; then
-  mkdir -p "${'$'}HOME/my-video"
-  cd "${'$'}HOME/my-video"
-  npm init -y
-  npm install remotion @remotion/cli
-fi
-
-# 4. Launch Remotion Studio on port 3000
-cd "${'$'}HOME/my-video"
-echo '[Remotion] Launching on http://localhost:3000 ...'
-npx remotion studio --port 3000 &
-echo '[Remotion] Done. Open the Preview tab -> http://localhost:3000'
-""")
-                remotionScript.setExecutable(true, false)
 
                 // ── CODEBASE_MAP.md — injected into Ubuntu so any AI tool knows the layout ──
                 File(rootHome, "CODEBASE_MAP.md").writeText("""# VN Code — Codebase Map
@@ -818,13 +784,12 @@ echo '[Remotion] Done. Open the Preview tab -> http://localhost:3000'
 - terminal/BackupManager.kt — Backup/restore Ubuntu rootfs + SharedPreferences to /sdcard/CodespaceIDE/
 - terminal/McpShellProfile.kt — Writes shell profile: agent() alias, MCP config, session bridge
 - terminal/NativePty.kt — JNI bridge to native PTY
-- terminal/OllamaSetup.kt — Ollama model download and launch helpers
 - terminal/TerminalModeManager.kt — Ubuntu vs Bash tab mode manager
 - terminal/TermuxBootstrapInstaller.kt — ⚠️ DEAD CODE. App is Ubuntu-only.
 - terminal/BusyboxInstaller.kt — ⚠️ DEAD CODE. No longer used.
 
 ## AI / Agent
-- agent/AgentApiServer.kt — HTTP server port 8765 in Ubuntu; /tool/* endpoints for Claude/Ollama
+- agent/AgentApiServer.kt — HTTP server port 8765 in Ubuntu; /tool/* endpoints for terminal AI
 - agent/AgentTools.kt — read_file, write_file, run_command, git_* tool implementations
 - agent/AgentMemory.kt — Reads/writes ~/AGENT_MEMORY.md, injects into AI context
 - agent/AgentConnectorManager.kt — ⚠️ DEAD CODE. Replaced by ConnectorsHubSheet + Railway OAuth.
@@ -848,15 +813,14 @@ echo '[Remotion] Done. Open the Preview tab -> http://localhost:3000'
 ## Ubuntu container key files
 - ~/CODEBASE_MAP.md — This file
 - ~/AGENT_MEMORY.md — Project context (written by AgentMemory.kt, injected into AI sessions)
-- ~/setup-remotion.sh — Run this to install Node 20 + Remotion Studio on port 3000
 - /etc/profile.d/00-locale.sh — UTF-8 locale + emoji fix (stty iutf8)
 - /etc/profile.d/99-dpkg-fix.sh — dpkg/apt shims for Samsung/TECNO kernels
 - /etc/profile.d/mcp-profile.sh — MCP shell aliases (agent(), agent_session_save(), etc.)
 """)
 
-                Log.d(TAG, "setup-remotion.sh and CODEBASE_MAP.md written to rootfs/root/")
+                Log.d(TAG, "CODEBASE_MAP.md written to rootfs/root/")
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to write remotion/codebase map scripts: ${e.message}")
+                Log.w(TAG, "Failed to write codebase map: ${e.message}")
             }
             Log.d(TAG, "Rootfs installed. files=$filesWritten bytes=$totalBytes")
 
@@ -1311,7 +1275,7 @@ exit 0
             // as the LSP initialize corruption. These echo statements print to stdout
             // during profile sourcing. Shouldn't appear now (bash -c with redirected
             // sourcing), but kept as a safety net in case any path still uses -lc.
-            Regex("""^\[Agent\].*"""),                             // "[Agent] 32 tools ready..."
+            Regex("""^\[Agent\].*"""),                             // "[Agent] 30 tools ready..."
             Regex("""^\[setup\].*"""),                             // "[setup] Installing git..."
         )
         val lines = raw.lines()
