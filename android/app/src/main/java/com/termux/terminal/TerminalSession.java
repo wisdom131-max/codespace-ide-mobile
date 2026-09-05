@@ -297,6 +297,27 @@ public final class TerminalSession extends TerminalOutput {
         mClient.onColorsChanged(this);
     }
 
+    /**
+     * OSC 7777 listener — Codespace IDE file-open protocol (Acode-compatible).
+     * Called from the emulator reader thread when the terminal receives
+     * "ESC]7777;open;type;path[;line]BEL". Implementations must hop to the main
+     * thread before touching UI. See TerminalEmulator.doOscIdeOpen for the format.
+     */
+    public interface OscIdeOpenListener {
+        void onOscIdeOpen(String type, String path, int line);
+    }
+
+    private OscIdeOpenListener mOscIdeOpenListener;
+
+    public void setOscIdeOpenListener(OscIdeOpenListener listener) {
+        mOscIdeOpenListener = listener;
+    }
+
+    public void onOscIdeOpen(String type, String path, int line) {
+        OscIdeOpenListener listener = mOscIdeOpenListener;
+        if (listener != null) listener.onOscIdeOpen(type, path, line);
+    }
+
     public int getPid() {
         return mShellPid;
     }

@@ -32,6 +32,7 @@ object TerminalSessionStore {
         val id: String,
         val name: String,
         val workingDir: String,
+        val lockedRoot: String? = null,
         val crashCount: Int = 0,
     )
 
@@ -52,6 +53,7 @@ object TerminalSessionStore {
                     put("id",         t.id)
                     put("name",       t.name)
                     put("workingDir", t.workingDir)
+                    put("lockedRoot", t.lockedRoot ?: JSONObject.NULL)
                     put("crashCount", t.crashCount)
                 })
             }
@@ -80,6 +82,7 @@ object TerminalSessionStore {
                     id         = obj.getString("id"),
                     name       = obj.getString("name"),
                     workingDir = obj.optString("workingDir", "/root"),
+                    lockedRoot = if (obj.isNull("lockedRoot")) null else obj.optString("lockedRoot", null),
                     crashCount = obj.optInt("crashCount", 0),
                 )
                 if (entry.crashCount < MAX_CRASH_COUNT) {

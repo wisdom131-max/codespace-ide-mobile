@@ -3397,6 +3397,11 @@ private fun PssBottomPanelContent(
                 externalState = sharedTerminalState,
                 projectId = projectId,
                 onFileSystemChanged = onFileSystemChanged,
+                // Part A: terminal file-link opens (OSC 7777 + tapped path:line).
+                // 0-based line convention. Delegates to the existing jump-to-source
+                // callback (opens the file in the editor + scrolls), matching the
+                // Problems panel behavior: bottom panel hides, editor takes focus.
+                onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1) },
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
                 onJumpToSource = { filePath, line, col ->
@@ -4831,7 +4836,13 @@ private fun PssEditorColumn(
                         modifier = Modifier.size(14.dp).clickable { showSplitTerminal = false })
                 }
                 HorizontalDivider(color = DividerColor)
-                TerminalPane(externalState = sharedTerminalState, projectId = projectId, onFileSystemChanged = onFileSystemChanged)
+                TerminalPane(externalState = sharedTerminalState, projectId = projectId, onFileSystemChanged = onFileSystemChanged,
+                    onOpenFileAtLine = { path, line ->
+                        if (!editorTabs.contains(path)) editorTabs.add(path)
+                        pushNavEntry(activeEditorTab, scrollTargetLine)
+                        activeEditorTab = path
+                        scrollTargetLine = line + 1  // convert 0-based to 1-based
+                    })
             }
         }
     }

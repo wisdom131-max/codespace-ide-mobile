@@ -86,6 +86,28 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     override fun onSessionFinished(finishedSession: TerminalSession) {
         // Phase N: Notify terminal session ended
         val exitCode = finishedSession.exitStatus
+        // ── EXIT-CODE DIAGNOSTICS (2026-09-05) ──────────────────────────────
+        // HISTORY: an earlier blind fix attempt for the recurring exit-code-9
+        // notification BROKE the terminal entirely and was fully reverted; the
+        // real cause was never identified. Per instruction this adds DIAGNOSTICS
+        // ONLY - capture the transcript at death so the actual reason becomes
+        // visible in the Output tab (terminal channel). NO launch-behavior
+        // change here; the isHarmless gating below is untouched.
+        val deadTitle = try { finishedSession.title } catch (_: Exception) { null }
+        val tailRaw = try {
+            finishedSession.getEmulator()?.screen?.getTranscriptText()
+        } catch (_: Exception) { null }
+        val lastMeaningful = tailRaw?.lines()?.lastOrNull { it.isNotBlank() }?.take(100)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "SESSION FINISHED diag: exit=" + exitCode + " title=" + (deadTitle ?: "?") +
+            " lastLine=" + (lastMeaningful ?: "(blank transcript)"),
+            "terminal")
+        if (tailRaw != null) {
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "SESSION FINISHED transcript tail (exit=" + exitCode + "): " +
+                tailRaw.takeLast(1200).replace('\n', ' '),
+                "terminal")
+        }
         // Exit code 9 = useradd/groupadd wrapper "already exists" (harmless, fires during
         // proot setup when apt-get tries to create a user that's already in /etc/passwd).
         // Don't show a crash notification for it — the terminal itself is still usable.
@@ -94,7 +116,7 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         if (!isHarmless) {
             NotificationStore.notifyTerminalEvent(
                 title = "Terminal session crashed",
-                body = "Exit code: $exitCode",
+                body = "Exit code: $exitCode — " + (lastMeaningful ?: "see Output tab (terminal channel) for the transcript tail"),
                 isError = true,
             )
         }
@@ -159,8 +181,15 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         }
     }
     override fun getTerminalCursorStyle(): Int? = null
-    override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
-    override fun logWarn(tag: String?, message: String?) { Log.w(tag, message ?: "") }
+    override fun logError(tag: String?, message: String?) {
+        Log.e(tag, message ?: "")
+        // EXIT-CODE DIAGNOSTICS: emulator/JNI errors now visible in the Output tab too
+        if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term-err [" + (tag ?: "") + "] " + message, "terminal")
+    }
+    override fun logWarn(tag: String?, message: String?) {
+        Log.w(tag, message ?: "")
+        if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term-warn [" + (tag ?: "") + "] " + message, "terminal")
+    }
     override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
     override fun logDebug(tag: String?, message: String?) { Log.d(tag, message ?: "") }
     override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message ?: "") }
@@ -224,6 +253,21 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         v.context.startActivity(intent)
                         return
                     }
+                    // A3: plain-text file-link detection - build errors print
+                    // "src/Main.kt:42: unresolved reference" as PLAIN TEXT (not OSC-wrapped).
+                    // Same tap position, same extracted word: try to resolve it as a
+                    // project file path (absolute host / proot-guest / session-cwd-relative).
+                    if (onFileLinkTap != null) {
+                        val linkToken = word.trim()
+                        if (linkToken.isNotEmpty() && (linkToken.contains('/') || linkToken.contains('.'))) {
+                            val resolved = com.codespace.ide.terminal.IdeTerminalBridge
+                                .resolveTappedFileLink(v.context, v.mTermSession, linkToken)
+                            if (resolved != null) {
+                                onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
+                                return
+                            }
+                        }
+                    }
                 }
             } catch (_: Exception) {}
         }
@@ -245,6 +289,8 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     private var shiftKeyDown = false
 
     // Callbacks wired from TerminalPane so shortcuts can act on tab state
+    // A3: plain-text file-link tap ("path/File.kt:42") -> open in editor.
+    var onFileLinkTap: ((String, Int) -> Unit)? = null
     var onNewTab:      (() -> Unit)? = null
     var onCloseTab:    (() -> Unit)? = null
     var onPrevTab:     (() -> Unit)? = null
@@ -298,8 +344,15 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     override fun onEmulatorSet() {
         terminalView?.setTerminalCursorBlinkerState(true, true)
     }
-    override fun logError(tag: String?, message: String?) { Log.e(tag, message ?: "") }
-    override fun logWarn(tag: String?, message: String?) { Log.w(tag, message ?: "") }
+    override fun logError(tag: String?, message: String?) {
+        Log.e(tag, message ?: "")
+        // EXIT-CODE DIAGNOSTICS: emulator/JNI errors now visible in the Output tab too
+        if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term-err [" + (tag ?: "") + "] " + message, "terminal")
+    }
+    override fun logWarn(tag: String?, message: String?) {
+        Log.w(tag, message ?: "")
+        if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term-warn [" + (tag ?: "") + "] " + message, "terminal")
+    }
     override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
     override fun logDebug(tag: String?, message: String?) { Log.d(tag, message ?: "") }
     override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message ?: "") }
@@ -307,7 +360,16 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag, "", e) }
 }
 
-internal data class TabSession(val id: String, val name: String, val session: TerminalSession, val client: SimpleTerminalSessionClient)
+internal data class TabSession(
+    val id: String,
+    val name: String,
+    val session: TerminalSession,
+    val client: SimpleTerminalSessionClient,
+    // Part B: non-null = this terminal is locked to a specific workspace root;
+    // its workDir/$WORKSPACE_PATH resolve to this root at every (re)creation.
+    // Null = unlocked (follows the app's active root at session creation).
+    val lockedRootPath: String? = null,
+)
 
 // ── Built-in color schemes — matching Termux's bundled themes ──────────────────
 internal object TerminalSchemes {
@@ -849,6 +911,9 @@ internal fun TerminalPane(
     externalState: TerminalState? = null,          // if provided, uses shared state
     projectId: String = "default",                 // fix #12: scopes session tracking/reattach
     onFileSystemChanged: () -> Unit = {},          // notify explorer of fs changes
+    // Part A: open-file-at-line entry point (0-based line; same lambda convention
+    // as EditorPane/ProjectShellScreen onOpenFileAtLine). Used by OSC 7777 and tap detection.
+    onOpenFileAtLine: ((String, Int) -> Unit)? = null,
 ) {
     val context      = LocalContext.current
     val scope        = androidx.compose.runtime.rememberCoroutineScope()
@@ -900,6 +965,7 @@ internal fun TerminalPane(
     var showTapToStart by remember { mutableStateOf(false) }
     var autoStartCountdownDone by remember { mutableStateOf(false) }
     var showMenu        by remember { mutableStateOf(false) }
+    var lockMenuRoot    by remember { mutableStateOf<String?>(null) }   // Part B: root-lock second menu
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
     var renameValue     by remember { mutableStateOf("") }
     var showSshManager    by remember { mutableStateOf(false) }
@@ -1002,6 +1068,19 @@ internal fun TerminalPane(
         onDispose { tab?.client?.onTextChanged = null; fsNotifyJob?.cancel() }
     }
 
+    // Part B: toggle a terminal's lock to a workspace root. Lock persists in
+    // TerminalSessionStore and feeds workDir/$WORKSPACE_PATH at every session
+    // (re)creation. No live-cd of a running shell (VS Code model, confirmed).
+    fun toggleTabRootLock(tabId: String, root: String) {
+        val idx = tabs.indexOfFirst { it.id == tabId }
+        if (idx < 0) return
+        val cur = tabs[idx].lockedRootPath
+        tabs[idx] = tabs[idx].copy(lockedRootPath = if (cur == root) null else root)
+        scope.launch { TerminalSessionStore.save(context, tabs.map {
+            TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+        }) }
+    }
+
     fun renameTab(id: String, newName: String) {
         val trimmed = newName.trim().ifBlank { "Ubuntu" }
         val idx = tabs.indexOfFirst { it.id == id }
@@ -1021,20 +1100,27 @@ internal fun TerminalPane(
     //    (no progress screen needed).
     //  - replaceTabId != null: upgrade an existing placeholder tab in place (used once,
     //    for the very first tab on app launch, by the bootstrap LaunchedEffect below).
-    fun addUbuntuTab(replaceTabId: String? = null) {
+    fun addUbuntuTab(replaceTabId: String? = null, lockedRoot: String? = null) {
         val ctx = context
 
         // Fast path: already installed, just opening another tab — fork immediately.
         if (replaceTabId == null && ProotInstaller.isInstalled(ctx)) {
             // Ensure agent tools are available in this new terminal tab
             McpShellProfile.install(ctx)
+            // A2: install the `ide` CLI (OSC 7777 helper) into the rootfs — idempotent
+            com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
             val id = System.currentTimeMillis().toString()
-            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true, workDir = loadWorkspacePath(ctx, projectId)))
-            tabs.add(TabSession(id, "Ubuntu", session, client))
+            // Part B: locked root (if any) wins over the app's active root
+            val wd = lockedRoot ?: loadWorkspacePath(ctx, projectId)
+            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd))
+            if (onOpenFileAtLine != null) {
+                com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
+            }
+            tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot))
             activeId = id
             // Phase 4: persist after opening a new tab
             scope.launch { TerminalSessionStore.save(context, tabs.map {
-                TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root")
+                TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
             }) }
             return
         }
@@ -1056,6 +1142,9 @@ internal fun TerminalPane(
         // Slow path: first-time install, or upgrading the initial placeholder tab.
         val id = replaceTabId ?: System.currentTimeMillis().toString()
         val existing = replaceTabId?.let { rid -> tabs.firstOrNull { it.id == rid } }
+        // Part B: lock for this tab - explicit param first (restore path), then the
+        // tab's own existing lock (upgrade-in-place must never silently unlock).
+        val tabLock = lockedRoot ?: existing?.lockedRootPath
         val (progressSession, progressClient) = existing?.let { Pair(it.session, it.client) }
             ?: createTerminalSession(ctx, isUbuntu = false)
         if (existing == null) {
@@ -1133,11 +1222,20 @@ internal fun TerminalPane(
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
                 progressSession.finishIfRunning()
-                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = loadWorkspacePath(ctx, projectId)) ?: createTerminalSession(ctx, isUbuntu = true, workDir = loadWorkspacePath(ctx, projectId)))
+                // Part B: locked root wins; also keep the lock valid only while the
+                // root still exists (validated at every re-creation, per VS Code model).
+                val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(ctx, projectId)
+                val validLock = tabLock?.takeIf { it in activeRoots }
+                val wd = validLock ?: loadWorkspacePath(ctx, projectId)
+                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd))
+                if (onOpenFileAtLine != null) {
+                    com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
+                }
+                com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
                 if (idx >= 0) {
-                    tabs[idx] = TabSession(id, "Ubuntu", session, client)
+                    tabs[idx] = TabSession(id, "Ubuntu", session, client, lockedRootPath = validLock)
                 } else {
-                    tabs.add(TabSession(id, "Ubuntu", session, client))
+                    tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = validLock))
                 }
                 activeId = id
             }
@@ -1254,9 +1352,17 @@ internal fun TerminalPane(
                 TerminalSessionStore.load(context)
             } else emptyList()
             if (restored.isNotEmpty()) {
+                // Part B: only re-apply a saved lock if that root still exists.
+                val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, projectId)
                 // Restore each saved tab as a fresh Ubuntu session
-                tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
-                restored.drop(1).forEach { _ -> addUbuntuTab(replaceTabId = null) }
+                restored.forEachIndexed { i, saved ->
+                    val validLock = saved.lockedRoot?.takeIf { it in activeRoots }
+                    if (i == 0) {
+                        tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id, lockedRoot = validLock) }
+                    } else {
+                        addUbuntuTab(replaceTabId = null, lockedRoot = validLock)
+                    }
+                }
                 // Re-apply saved names
                 restored.forEachIndexed { i, saved ->
                     val tab = tabs.getOrNull(i) ?: return@forEachIndexed
@@ -1284,7 +1390,7 @@ internal fun TerminalPane(
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
         // Phase 4: persist updated tab list
         scope.launch { TerminalSessionStore.save(context, tabs.map {
-            TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root")
+            TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }
     }
 
@@ -1373,6 +1479,11 @@ internal fun TerminalPane(
                         text = { Text("New Ubuntu Terminal", color = Color(0xFF89B4FA), fontSize = 13.sp) },
                         onClick = { showMenu = false; addUbuntuTab() })
                     HorizontalDivider(color = Color(0xFF444444), modifier = Modifier.padding(vertical = 2.dp))
+                    // ── WORKSPACE ROOTS (Part B: per-terminal root locking) ─────
+                    WorkspaceRootsSection(
+                        roots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, projectId),
+                        activeRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId),
+                        onRootSelected = { rootPath -> showMenu = false; lockMenuRoot = rootPath })
                     // ── AI & TOOLS ─────────────────────────────────────────────
                     DropdownMenuItem(
                         leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
@@ -1522,6 +1633,16 @@ internal fun TerminalPane(
                             showMenu = false
                             scope.launch { TerminalSessionStore.wipe(context) }
                         }
+                    )
+                }
+                // Part B: second-level ROOT LOCK menu - reads the SHARED tabs
+                // SnapshotStateList directly, so it live-updates while open.
+                lockMenuRoot?.let { rootPath ->
+                    RootTerminalLockMenu(
+                        rootPath = rootPath,
+                        tabs = tabs,
+                        onDismiss = { lockMenuRoot = null },
+                        onToggleLock = { tabId, root -> toggleTabRootLock(tabId, root) },
                     )
                 }
             }
@@ -2294,6 +2415,7 @@ internal fun TerminalPane(
                             val viewClient2 = view.mClient as? SimpleTerminalViewClient
                             if (viewClient2 != null) {
                                 viewClient2.onNewTab      = { addTab() }
+                                viewClient2.onFileLinkTap = { p, l -> onOpenFileAtLine?.invoke(p, l) }
                                 viewClient2.onCloseTab    = { closeTab(active.id) }
                                 viewClient2.onPrevTab     = { val i = tabs.indexOfFirst { it.id == activeId }; if (i > 0) activeId = tabs[i-1].id else if (tabs.isNotEmpty()) activeId = tabs.last().id }
                                 viewClient2.onNextTab     = { val i = tabs.indexOfFirst { it.id == activeId }; activeId = if (i < tabs.size-1) tabs[i+1].id else tabs.first().id }

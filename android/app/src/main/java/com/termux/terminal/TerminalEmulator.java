@@ -1995,6 +1995,39 @@ public final class TerminalEmulator {
         }
     }
 
+    /**
+     * OSC 7777 payload parser. Payload format: "open;<type>;<path>[;<line>]".
+     * Known limitation (accepted, same as Acode): a path containing ';' cannot be
+     * represented unambiguously — the first three ';' delimit the fields.
+     */
+    private void doOscIdeOpen(String payload) {
+        if (payload == null || payload.isEmpty()) return;
+        int first = payload.indexOf(';');
+        if (first < 0) return;
+        String command = payload.substring(0, first);
+        if (!"open".equals(command)) return;
+        String rest = payload.substring(first + 1);
+        int second = rest.indexOf(';');
+        if (second < 0) return;
+        String type = rest.substring(0, second);
+        String pathAndLine = rest.substring(second + 1);
+        String path;
+        int line = -1;
+        int third = pathAndLine.indexOf(';');
+        if (third >= 0) {
+            path = pathAndLine.substring(0, third);
+            try {
+                line = Integer.parseInt(pathAndLine.substring(third + 1));
+            } catch (NumberFormatException e) {
+                line = -1;
+            }
+        } else {
+            path = pathAndLine;
+        }
+        if (path.isEmpty()) return;
+        mSession.onOscIdeOpen(type, path, line);
+    }
+
     private void doOscEsc(int b) {
         switch (b) {
             case '\\':
@@ -2103,6 +2136,15 @@ public final class TerminalEmulator {
                         }
                     }
                 }
+                break;
+            case 7777:
+                // OSC 7777 — Codespace IDE file-open protocol (Acode-compatible, verified from
+                // Acode-Foundation/Acode src/components/terminal/terminal.js setupOscHandler).
+                // Format: 7777;open;<file|folder>;<path>[;<line>]
+                // The sequence is consumed silently (never rendered to the screen); the app
+                // opens the referenced file in the editor. Line (4th field) is a Codespace
+                // extension to Acode's open;type;path format.
+                doOscIdeOpen(textParameter);
                 break;
             case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
                 int startIndex = textParameter.indexOf(";") + 1;
