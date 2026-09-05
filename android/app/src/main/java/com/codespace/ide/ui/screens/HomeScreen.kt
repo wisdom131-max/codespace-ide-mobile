@@ -405,6 +405,10 @@ fun HomeScreen(
                 projects.add(project)
                 saveProjectsLocal(context, projects.toList())
                 scope.launch { pushProjectToCloud(accessToken, project) }
+                // [REPO-OPEN] Part 2 item 4: vscode.dev parity — selecting a repo
+                // OPENS it, not just adding a card to the list. Same navigation
+                // as tapping the project card.
+                onOpenProject(project.id)
             },
         )
     }

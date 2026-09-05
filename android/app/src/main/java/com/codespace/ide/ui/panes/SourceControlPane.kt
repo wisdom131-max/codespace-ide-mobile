@@ -85,7 +85,10 @@ private fun statusLetter(change: FileChange): String = when (change) {
 
 // ── Main Composable ──────────────────────────────────────────────────────────
 @Composable
-fun SourceControlPane(projectId: String) {
+fun SourceControlPane(
+    projectId: String,
+    onRepoCloned: ((com.codespace.ide.domain.Project) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scmState = remember { ScmState(context) }
@@ -729,9 +732,15 @@ fun SourceControlPane(projectId: String) {
     if (showRepoBrowser) {
         RepoBrowserSheet(
             onDismiss = { showRepoBrowser = false },
-            onProjectCreated = { _ ->
+            // [REPO-OPEN] Part 2 item 4 FIX: the created Project was previously
+            // DISCARDED here (clone landed in /root/repos but nothing ever told
+            // the Explorer). Now it flows up to the shell, which appends it to
+            // the workspace roots (multi-root add, approved 2026-09-05) and
+            // notifies LSP — the Explorer populates with the cloned tree.
+            onProjectCreated = { project ->
                 showRepoBrowser = false
                 refresh()
+                onRepoCloned?.invoke(project)
             },
         )
     }

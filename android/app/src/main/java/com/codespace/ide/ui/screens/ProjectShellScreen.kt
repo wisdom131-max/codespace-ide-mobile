@@ -734,6 +734,10 @@ fun ProjectShellScreen(
     var fullScreen by remember { mutableStateOf(false) }
     var centeredLayout by remember { mutableStateOf(false) }
     val showSplitTerminalMs = remember { mutableStateOf(false) }; var showSplitTerminal by showSplitTerminalMs
+    // [REPO-OPEN] Part 2 item 4: bumped after a GitHub clone (SCM pane) appends
+    // a workspace root — passed to ExplorerSidePanel as rootsRefreshKey so it
+    // reloads the persisted roots.
+    var explorerRootsRefresh by remember(projectId) { mutableStateOf(0) }
     val splitTerminalWidthMs = remember { mutableFloatStateOf(300f) }; var _splitTerminalWidth by splitTerminalWidthMs
     // Shared terminal state — both TerminalPane and SplitTerminalPanel share this.
     // FIX #12 (2026-07-08): this was previously unkeyed, so Compose handed back the SAME
@@ -1378,6 +1382,7 @@ fun ProjectShellScreen(
                             SidePanel.EXPLORER -> ExplorerSidePanel(
                                 projectId = projectId,
                                 externalRefreshTrigger = terminalActivityCounter,
+                                rootsRefreshKey = explorerRootsRefresh,
                                 onOpenFile = { path ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
@@ -1556,7 +1561,20 @@ fun ProjectShellScreen(
                                     showNotification("Opened " + path.substringAfterLast("/") + ":" + line, "success")
                                 },
                             )
-                            SidePanel.GIT        -> GitSidePanel(projectId)
+                            SidePanel.GIT        -> GitSidePanel(
+                                projectId = projectId,
+                                // [REPO-OPEN] Part 2 item 4: cloned repo -> multi-root add
+                                // (NOT a project switch; approved 2026-09-05). Handler
+                                // extracted to RepoClonedActions.kt (64KB bytecode rule).
+                                onRepoCloned = { project ->
+                                    if (handleRepoClonedAddRoot(context, projectId, project)) {
+                                        explorerRootsRefresh++
+                                        showNotification("Repository opened in Explorer: " + project.name, "success")
+                                    } else {
+                                        showNotification("Repository already in workspace: " + project.name, "info")
+                                    }
+                                },
+                            )
                             SidePanel.RUN        -> RunDebugPanel(
                 onMoreMenu = { showRunMenu = true },
                 activeFilePath = activeEditorTab ?: "",

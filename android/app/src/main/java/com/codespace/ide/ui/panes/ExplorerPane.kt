@@ -2,6 +2,7 @@ package com.codespace.ide.ui.panes
 
 import com.codespace.ide.domain.Language
 import com.codespace.ide.util.WorkspaceManager
+import com.codespace.ide.util.WorkspaceRootsStore
 import com.codespace.ide.debug.UniversalDebugManager
 import com.codespace.ide.debug.DebugState
 import com.codespace.ide.debug.DebugVariable
@@ -115,15 +116,11 @@ private fun loadLastSearchQuery(context: Context, projectId: String): String =
 
 // ── Multi-root workspace support ──
 private fun saveWorkspaceRoots(context: Context, projectId: String, roots: List<String>) {
-    context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .edit().putString("${KEY_WORKSPACE_ROOTS}_$projectId", roots.joinToString("|||")).apply()
+    WorkspaceRootsStore.saveRoots(context, projectId, roots)
 }
 
-private fun loadWorkspaceRoots(context: Context, projectId: String): List<String> {
-    val raw = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-        .getString("${KEY_WORKSPACE_ROOTS}_$projectId", null) ?: return emptyList()
-    return raw.split("|||").filter { it.isNotBlank() }
-}
+private fun loadWorkspaceRoots(context: Context, projectId: String): List<String> =
+    WorkspaceRootsStore.loadRoots(context, projectId)
 
 // ── Device quick-access folders ──
 private val DEVICE_FOLDERS = listOf(
@@ -232,6 +229,11 @@ fun ExplorerSidePanel(
     revealFileTrigger: Int = 0,
     /** Notification callback for file operations (errors, success). */
     onShowNotification: ((String, String) -> Unit)? = null,
+    /** [REPO-OPEN] Part 2 item 4: bumped by the shell when a repo cloned from
+     *  the Source Control pane was appended to the persisted workspace roots
+     *  from outside this composable — triggers a reload of the saved roots so
+     *  the new repo appears in the tree without a manual refresh. */
+    rootsRefreshKey: Int = 0,
     /** External trigger: when set to a non-null value, opens the New File dialog. */
     triggerNewFile: Any? = null,
     /** External trigger: when set to a non-null value, opens the New Folder dialog. */
@@ -259,6 +261,13 @@ fun ExplorerSidePanel(
     // ── Multi-root workspace ──
     var workspaceRoots by remember {
         mutableStateOf(loadWorkspaceRoots(context, projectId))
+    }
+    // [REPO-OPEN] Part 2 item 4: external append (GitHub clone from SCM pane).
+    LaunchedEffect(rootsRefreshKey) {
+        if (rootsRefreshKey > 0) {
+            val reloaded = loadWorkspaceRoots(context, projectId)
+            if (reloaded != workspaceRoots) workspaceRoots = reloaded
+        }
     }
     var showDeviceFolders by remember { mutableStateOf(false) }
 
@@ -2971,7 +2980,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     }
 }
 
-@Composable fun GitSidePanel(projectId: String) { SourceControlPane(projectId) }
+@Composable fun GitSidePanel(
+    projectId: String,
+    onRepoCloned: ((com.codespace.ide.domain.Project) -> Unit)? = null,
+) { SourceControlPane(projectId, onRepoCloned) }
 
 @Composable fun RunDebugPanel(
     onMoreMenu: () -> Unit,
