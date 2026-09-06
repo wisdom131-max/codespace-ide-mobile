@@ -3756,7 +3756,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val firstEnd = matches.first().range.last + 1
                                         programmaticCursorMove(first, "select_all_occurrences")
                                         // Extra cursors at all subsequent matches
-                                        extraCursors = matches.drop(1).map { it.range.first }.distinct().sorted()
+                                        extraCursors = MultiCursorEngine.normalize(matches.drop(1).map { TextRange(it.range.first) })
                                         // Scroll to make the first match visible
                                         val matchLine = value.text.substring(0, first).count { it == '\n' }
                                         coroutineScope.launch {
@@ -3783,8 +3783,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     if (nextMatch != null) {
                                         // Add cursor at current selection start before moving
                                         val currentStart = value.selection.start
-                                        if (currentStart !in extraCursors) {
-                                            extraCursors = (extraCursors + currentStart).distinct().sorted()
+                                        if (extraCursors.none { it.min == currentStart }) {
+                                            extraCursors = MultiCursorEngine.normalize(extraCursors + TextRange(currentStart))
                                         }
                                         programmaticCursorMove(nextMatch.range.first, "find_next_occurrence")
                                         // Scroll to make the next occurrence visible
@@ -3960,7 +3960,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val prevLineStart = positionMapper.lineStart(positionMapper.offsetToLine(prevLineEnd) - 1) + 1
                                         val prevLineLen = prevLineEnd - prevLineStart
                                         val prevCursor = (prevLineStart + column).coerceIn(prevLineStart, prevLineStart + prevLineLen)
-                                        extraCursors = (extraCursors + prevCursor).distinct().sorted()
+                                        extraCursors = MultiCursorEngine.normalize(extraCursors + TextRange(prevCursor))
                                     }
                                     showLspMenu = false
                                 }
@@ -3985,7 +3985,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val nextLineEnd = text.indexOf('\n', nextLineStart)
                                         val nextLineLen = if (nextLineEnd >= 0) nextLineEnd - nextLineStart else text.length - nextLineStart
                                         val nextCursor = (nextLineStart + column).coerceIn(nextLineStart, nextLineStart + nextLineLen)
-                                        extraCursors = (extraCursors + nextCursor).distinct().sorted()
+                                        extraCursors = MultiCursorEngine.normalize(extraCursors + TextRange(nextCursor))
                                     }
                                     showLspMenu = false
                                 }
@@ -4004,7 +4004,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val cursorPos = value.selection.end
                                     val currentLineStart = positionMapper.lineStart(positionMapper.offsetToLine(cursorPos))
                                     val column = cursorPos - currentLineStart
-                                    val newCursors = mutableListOf<Int>()
+                                    val newCursors = mutableListOf<TextRange>()
                                     var searchFrom = cursorPos
                                     while (true) {
                                         val nextNewline = text.indexOf('\n', searchFrom)
@@ -4013,10 +4013,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val nextLineEnd = text.indexOf('\n', nextLineStart)
                                         val nextLineLen = if (nextLineEnd >= 0) nextLineEnd - nextLineStart else text.length - nextLineStart
                                         val nextCursor = (nextLineStart + column).coerceIn(nextLineStart, nextLineStart + nextLineLen)
-                                        newCursors.add(nextCursor)
+                                        newCursors.add(TextRange(nextCursor))
                                         searchFrom = nextLineStart
                                     }
-                                    extraCursors = (extraCursors + newCursors).distinct().sorted()
+                                    extraCursors = MultiCursorEngine.normalize(extraCursors + newCursors)
                                     showLspMenu = false
                                 }
                             )
@@ -4034,17 +4034,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     val cursorPos = value.selection.end
                                     val currentLineStart = positionMapper.lineStart(positionMapper.offsetToLine(cursorPos))
                                     val column = cursorPos - currentLineStart
-                                    val newCursors = mutableListOf<Int>()
+                                    val newCursors = mutableListOf<TextRange>()
                                     var lineEnd = currentLineStart - 1
                                     while (lineEnd > 0) {
                                         val prevLineStart = positionMapper.lineStart(positionMapper.offsetToLine(lineEnd) - 1) + 1
                                         val prevLineLen = lineEnd - prevLineStart
                                         val prevCursor = (prevLineStart + column).coerceIn(prevLineStart, prevLineStart + prevLineLen)
-                                        newCursors.add(prevCursor)
+                                        newCursors.add(TextRange(prevCursor))
                                         lineEnd = prevLineStart - 1
                                         if (prevLineStart == 0) break
                                     }
-                                    extraCursors = (extraCursors + newCursors).distinct().sorted()
+                                    extraCursors = MultiCursorEngine.normalize(extraCursors + newCursors)
                                     showLspMenu = false
                                 }
                             )
