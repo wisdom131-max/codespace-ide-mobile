@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-05 22:30 WAT
+> Last updated: 2026-09-06 09:45 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 69f30f3 |
-| CI build | #2642 GREEN (2026-09-05) |
+| Latest commit | 4c32b7d |
+| CI build | #2643 pending (2026-09-06) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1554,3 +1554,32 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. README auto-open openReadme() toggle — optional, OFF by default, deferred.
 5. MCP/Tool integration research (VS Code AgentTools parity).
 6. Freeze/refilter model (4 cases), projectId [NAV] logs, crash-context.log, Bug 1/2 explorer fixes, kls-classpath script, Kotlin stdlib JAR in proot rootfs, diagnostic-logging cleanup, Ollama re-add as ChatProvider in extensions repo.
+---
+
+### [2026-09-06 09:45 WAT] — AI Agent: GLM (Superagent)
+
+**Commit 4c32b7d | CI #2643 pending — verify after build**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[AI-FIX] Provider CROSS-ROUTING (confirmed on-device: openrouter active -> first send hit Gemini 404, gemini active -> first send hit OpenAI 429; retries hit the right provider)**
+- ROOT CAUSE: chat dispatch keys on the model string's provider prefix ("provider:model"), but (a) BOTH chat panels (CopilotChatPanelOverlay + CopilotChatPanelInline) kept their OWN local selectedModel that defaulted to the registry-FIRST provider's model, (b) the live-model snap fell back to live.firstOrNull() (first provider AGAIN) whenever a selection retired, and (c) the Settings screen's provider Switch wrote a tokenStore "active" key that NOTHING ever read for dispatch. Three independent "who is active" answers - the panels' stale one won the first send, the user's retry corrected it.
+- FIX: NEW ChatModelSelection.kt (persisted "provider:model", SharedPreferences) is now the ONE source of truth. Settings Switch + Save write it on provider activation; Settings restores the stored "active" provider on open (was write-only/forgotten); both panels init from it (then "active" key, then registry default), persist on every model-picker pick and on every send; the retired-model snap now stays WITHIN the selected provider's live list and only crosses providers if that provider is gone entirely.
+
+**[TERMINAL-FIX] Tap-to-open + ide open + root-lock: shared root cause (Test 9 FAIL + padlock bug)**
+- ROOT CAUSE 1: getAllWorkspaceRoots returned ONLY Explorer-added/SCM-cloned roots - the PRIMARY root was never in the prefs list. So the [TAP] workspace-root fallback had nothing to check in single-root projects, the terminal roots menu showed "(no roots found)", and a padlock on the primary root was silently dropped at every restore (validation: lock in activeRoots).
+- ROOT CAUSE 2: IdeEnvironment.resolveWorkspacePath rejected every host-style path (filesDir projects, GitHub clones under filesDir/ubuntu-rootfs/root/repos) as "UNRECOGNIZED PREFIX -> null". A locked terminal therefore never actually cd'd into its locked root: pwd/$WORKSPACE_PATH stayed at default, `ide open <relative>` failed with "does not exist", and the [TAP] session-cwd branch resolved against the wrong directory.
+- FIXES: getAllWorkspaceRoots now merges PRIMARY root first (LspManager filters it back out for initialize - LSP behavior unchanged); resolveWorkspacePath translates host->guest via ProotInstaller.hostToGuestPath (same source of truth the LSP uses) instead of returning null. Together these fix: tap-to-open on primary-relative paths, `ide open` in locked terminals, locked-root pwd/$WORKSPACE_PATH, the roots menu in single-root projects, and lock persistence on the primary root.
+
+**[CHAT-FIX] gemini-2.5-flash RETIRED - earlier verification was WRONG for this one**
+- On-device LIVE API error: "models/gemini-2.5-flash is no longer available to new users" - the 2026-09-05 docs-based verification missed this. Correction: defaultModel -> gemini-3.8-flash, confirmed via LIVE OpenRouter catalog call (public /models, no auth): google/gemini-3.8-flash is the current flash, NO 2.5 entries exist. On-device send after this build = the final live check for the vendor-native endpoint.
+- The other 4 IDs are corroborated by the user's own cross-routing screenshots: OpenRouter 402 (insufficient credits) and OpenAI 429 (quota) both occur AFTER model validation - an invalid model ID would 404 first. gpt-5.5, claude-sonnet-5, deepseek-v4-flash, anthropic/claude-sonnet-5 stand.
+
+**Files:** NEW chat/ChatModelSelection.kt; CopilotChatPanelOverlay.kt (helper + 2x init/snap/pick/send); SettingsScreen.kt (restore active, Switch+Save write selection); ProjectPathResolver.kt (primary-first merge); IdeEnvironment.kt (host->guest translation); GeminiProvider.kt (model ID).
+
+**Next on roadmap (ALL pending):**
+1. ON-DEVICE RE-TEST (after #2643 green): tap-to-open repro (echo a real project-relative path, tap), ide open in a LOCKED terminal, padlock test (lock to non-primary root: pwd + $WORKSPACE_PATH + survives tab close + survives app restart), all 5 providers FIRST-send-each after switching active in Settings (cross-routing check), Gemini live send.
+2. PART 2 RESEARCH (report + WAIT FOR APPROVAL): (a) Credential/Settings page redesign - unlimited providers, ONE key input, auto-detect provider from token format, auto-save, malformed-token rejection, saved-keys manager view; (b) AI Tools/agent-tools menu section extraction to codespace-ide-extensions (inventory first); (c) faster underlying engine/runtime research; (d) Problems/Debug badge count stale-refresh FIX + VS Code debugger parity research.
+3. Exit code 9 / SIGKILL investigation: OOM-kill consistency research (locale-gen memory pressure) - report + options, no implementation without approval.
+4. Standing backlog: multi-cursor parity plan (approval pending), Copilot credential UX (approval pending), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
+
