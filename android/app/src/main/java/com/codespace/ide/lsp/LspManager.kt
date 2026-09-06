@@ -318,7 +318,13 @@ object LspManager {
             Language.PYTHON,
             "pylsp",
             emptyList(),
-            "which pylsp && echo OK",
+            // PYLSP-DIAG FIX (2026-09-06): require the LINT PLUGINS too, not just the
+            // binary. Root cause of missing Python squiggles: bare `python-lsp-server`
+            // (the fallback branch below) does NOT include pyflakes/pycodestyle — they
+            // live in the [all] extra. pylsp then starts fine (jedi completions work)
+            // but publishes EMPTY diagnostics forever. Requiring them here makes the
+            // install self-heal on existing devices with a lint-less pylsp.
+            "command -v pylsp >/dev/null 2>&1 && python3 -c 'import pyflakes, pycodestyle' >/dev/null 2>&1 && echo OK || echo MISSING",
             // P31-LSP-FIX: Clear stale dpkg locks + skip apt-get if pip3 already present.
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -328,13 +334,22 @@ object LspManager {
                 "( apt-get update -qq && apt-get install -y --no-install-recommends python3-pip ); " +
                 "pip3 install --break-system-packages 'python-lsp-server[all]' || " +
                 "pip3 install --break-system-packages python-lsp-server; " +
+                // PYLSP-DIAG FIX (2026-09-06): if [all] failed (heavy extras: pylint/rope/
+                // yapf/autopep8 — likely timeout/network inside proot), the fallback above
+                // installs a LINT-LESS pylsp which starts fine but NEVER publishes
+                // diagnostics (verified empirically: bare python-lsp-server 1.15.0 does
+                // not pull pyflakes/pycodestyle; with them the identical LSP conversation
+                // publishes unused-import/undefined-name/E-code diagnostics immediately).
+                // This line guarantees the diagnostic sources non-fatally and idempotently.
+                "pip3 install --break-system-packages pyflakes pycodestyle 2>/dev/null; " +
                 // Auto-install pylsp-inlay-hints (archived but functional). Non-fatal:
                 // if pip/network fails, hasCapability() gate handles it gracefully.
                 "pip3 install --break-system-packages pylsp-inlay-hints 2>/dev/null; " +
                 // P50-3: pylsp-workspace-symbols plugin — adds workspace/symbol support via Jedi.
                 // Auto-advertises workspaceSymbolProvider via pylsp_experimental_capabilities.
                 "pip3 install --break-system-packages pylsp-workspace-symbols 2>/dev/null; " +
-                "command -v pylsp >/dev/null 2>&1 && python3 -c 'import pylsp_workspace_symbols' 2>/dev/null && echo 'pylsp-workspace-symbols OK' || echo 'pylsp-workspace-symbols not found'",
+                "command -v pylsp >/dev/null 2>&1 && python3 -c 'import pylsp_workspace_symbols' 2>/dev/null && echo 'pylsp-workspace-symbols OK' || echo 'pylsp-workspace-symbols not found'; " +
+                "command -v pylsp >/dev/null 2>&1 && python3 -c 'import pyflakes, pycodestyle' 2>/dev/null && echo 'pylsp lint plugins OK' || echo 'pylsp lint plugins MISSING - no diagnostics will publish'",
             240,
         ),
         // ── Kotlin ─────────────────────────────────────────────────────────

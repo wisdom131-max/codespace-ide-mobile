@@ -1706,3 +1706,24 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. IME emoji INPUT (flagged 2026-09-06): phone IME cannot TYPE emoji into terminal input (display path confirmed fine).
 6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-06 21:20 WAT] — AI Agent: GLM (Superagent)
+
+**Commit: (this commit) | CI: pending — fill-in below on green**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[LSP][INTELLIGENSE] PYLSP DIAGNOSTICS ROOT CAUSE FOUND + FIXED (Group B item 2)**
+- INVESTIGATION METHOD: native pylsp 1.15.0 protocol harness in sandbox speaking the app's EXACT conversation (initialize with app client caps + workspaceFolders, initialized, app's exact didChangeConfiguration pylsp settings, didOpen broken .py, didChange adding syntax error). NO rootfs/qemu emulation needed — the native repro reproduced the bug in minutes.
+- ROOT CAUSE (empirically verified): bare `python-lsp-server` does NOT include pyflakes/pycodestyle — they live in the [all] extra. The install script's fallback branch (`pip3 install python-lsp-server` after `[all]` fails — likely timeout/network inside proot with the heavy extras tree) produces a pylsp that STARTS FINE (jedi completions work, capabilities advertise normally) but publishes EMPTY textDocument/publishDiagnostics forever. With pyflakes+pycodestyle present, the IDENTICAL conversation publishes unused-import/undefined-name/E-code diagnostics immediately (5 diags on open, 4 after edit in harness).
+- FIX (3 parts, LspManager.kt ServerConfig): (1) checkCommand now requires binary AND `python3 -c 'import pyflakes, pycodestyle'` — self-heals existing on-device lint-less installs (check fails -> install re-runs); (2) installCommand gains a non-fatal idempotent `pip3 install pyflakes pycodestyle` line after the main installs so diagnostic sources are guaranteed whichever branch runs; (3) final install echo now reports 'pylsp lint plugins OK/MISSING' for on-device verification.
+- Client-side display chain was already confirmed clean + language-agnostic; no display-side changes needed.
+- FILES: lsp/LspManager.kt (pylsp ServerConfig only)
+
+**Next on roadmap (ALL pending):**
+1. GROUP B item 3: IME emoji input into terminal (keyboard-input path investigation, this session).
+2. GROUP C research (await approval before implementing): multi-cursor VS Code implementation research; agent-tools extraction inventory; faster-engine/runtime research; debugger parity plan; MCP/tool integration research.
+3. COMBINED ON-DEVICE REGRESSION BATCH: ErrorLens (#2650) + settings phases 1-3 (#2651) + C.UTF-8 port (#2652) — APK delivered; awaiting Wisdom's one-pass results. NOW ALSO: Phase B throttling + pylsp self-heal install (after these commits build green — new APK will be provided).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. IME emoji INPUT (flagged 2026-09-06): phone IME cannot TYPE emoji into terminal input (display path confirmed fine).
+6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
