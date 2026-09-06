@@ -55,7 +55,8 @@ class JsonRpcClient(private val process: Process) {
         "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls",
         "typeHierarchy/subtypes", "typeHierarchy/supertypes",
         "workspace/symbol"
-    )    private val notificationHandlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
+    )
+    private val notificationHandlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
     private val writeLock = Any()
 
     @Volatile private var running = false
