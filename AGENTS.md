@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 4c32b7d |
-| CI build | #2643 pending (2026-09-06) |
+| Latest commit | 1bec8e3 |
+| CI build | #2646 GREEN (2026-09-06) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,927 |
@@ -1558,7 +1558,9 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 
 ### [2026-09-06 09:45 WAT] — AI Agent: GLM (Superagent)
 
-**Commit 4c32b7d | CI #2643 pending — verify after build**
+**Commit 4c32b7d | CI #2644 RED — fixed by 1bec8e3 | CI #2646 GREEN**
+
+**BUILD-FAIL NOTE:** the cross-routing helper was inserted between `@Composable` and `CopilotChatPanelOverlay(` — the annotation bound to the helper and the panel lost `@Composable`. Fixed by moving the helper above the annotation (1bec8e3). All Part-3 fixes are in the green #2646 APK.
 
 **RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
 
