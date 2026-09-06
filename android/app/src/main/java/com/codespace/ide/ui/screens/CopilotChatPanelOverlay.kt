@@ -368,6 +368,22 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
 
 // ── UI ────────────────────────────────────────────────────────────────────────
 @Composable
+
+// CROSS-ROUTING FIX (2026-09-06): shared initial model selection. Order:
+// 1. the persisted ChatModelSelection value (what Settings' provider switch
+//    and the other chat panel last wrote), 2. the provider the user activated
+//    in Settings (tokenStore "active" key - previously WRITE-ONLY, now honored),
+// 3. registry default. Never just "first provider" blindly.
+private fun chatModelSelectionInitial(context: android.content.Context, tokenStore: com.codespace.ide.data.SecureTokenStore?): String {
+    com.codespace.ide.chat.ChatModelSelection.get(context)?.let { return it }
+    try {
+        val activeId = tokenStore?.aiKey("active")?.lowercase()
+        val provider = activeId?.let { com.codespace.ide.chat.ChatProviderRegistry.byId(it) }
+        if (provider != null) return provider.id + ":" + provider.defaultModel
+    } catch (_: Exception) {}
+    return registeredModelEntries(tokenStore).firstOrNull() ?: ""
+}
+
 internal fun CopilotChatPanelOverlay(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
@@ -385,7 +401,7 @@ internal fun CopilotChatPanelOverlay(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
-    var selectedModel by remember { mutableStateOf(registeredModelEntries(tokenStore).firstOrNull() ?: "") }
+    var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
     // so the picker only ever offers models that exist right now. Falls back to
     // defaults if the network call fails.
@@ -398,7 +414,13 @@ internal fun CopilotChatPanelOverlay(
                 availModels = live
                 // keep current selection valid; if it vanished (retired model),
                 // snap to the first available current model
-                if (selectedModel !in live) selectedModel = live.firstOrNull() ?: selectedModel
+                if (selectedModel !in live) {
+                    val curPrefix = selectedModel.substringBefore(':', "")
+                    val sameProvider = live.filter { it.startsWith(curPrefix + ":") }
+                    val snapped = sameProvider.firstOrNull() ?: live.firstOrNull() ?: selectedModel
+                    selectedModel = snapped
+                    com.codespace.ide.chat.ChatModelSelection.set(context, snapped)
+                }
             }
         }
     }
@@ -420,7 +442,8 @@ internal fun CopilotChatPanelOverlay(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
+                com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
+        val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -467,7 +490,7 @@ internal fun CopilotChatPanelOverlay(
                             availModels.forEach { m ->
                                 DropdownMenuItem(
                                     text = { Text(m, fontSize = 12.sp) },
-                                    onClick = { selectedModel = m; showModelMenu = false },
+                                    onClick = { selectedModel = m; com.codespace.ide.chat.ChatModelSelection.set(context, m); showModelMenu = false },
                                 )
                             }
                         }
@@ -767,7 +790,7 @@ internal fun CopilotChatPanelInline(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
-    var selectedModel by remember { mutableStateOf(registeredModelEntries(tokenStore).firstOrNull() ?: "") }
+    var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
     // so the picker only ever offers models that exist right now. Falls back to
     // defaults if the network call fails.
@@ -780,7 +803,13 @@ internal fun CopilotChatPanelInline(
                 availModels = live
                 // keep current selection valid; if it vanished (retired model),
                 // snap to the first available current model
-                if (selectedModel !in live) selectedModel = live.firstOrNull() ?: selectedModel
+                if (selectedModel !in live) {
+                    val curPrefix = selectedModel.substringBefore(':', "")
+                    val sameProvider = live.filter { it.startsWith(curPrefix + ":") }
+                    val snapped = sameProvider.firstOrNull() ?: live.firstOrNull() ?: selectedModel
+                    selectedModel = snapped
+                    com.codespace.ide.chat.ChatModelSelection.set(context, snapped)
+                }
             }
         }
     }
@@ -855,7 +884,8 @@ internal fun CopilotChatPanelInline(
         chatLoading = true
         scope.launch {
             try {
-                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
+                com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
+        val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
                 messages.add(ChatMsg("assistant", reply))
                 persistSessions()
             } catch (e: Exception) {
@@ -1001,7 +1031,7 @@ internal fun CopilotChatPanelInline(
                         availModels.forEach { m ->
                             DropdownMenuItem(
                                 text = { Text(m, fontSize = 12.sp) },
-                                onClick = { selectedModel = m; showModelMenu = false },
+                                onClick = { selectedModel = m; com.codespace.ide.chat.ChatModelSelection.set(context, m); showModelMenu = false },
                             )
                         }
                     }

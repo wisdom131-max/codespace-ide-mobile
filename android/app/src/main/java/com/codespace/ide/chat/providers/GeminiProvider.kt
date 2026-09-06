@@ -20,11 +20,13 @@ import org.json.JSONObject
 class GeminiProvider : ChatProvider {
     override val id = "gemini"
     override val displayName = "Gemini"
-    // FIX (404 regression): gemini-1.5-flash is shut down (Google retired the 1.5
-    // family) - every call returned 404 model-not-found. gemini-2.5-flash is still
-    // served on v1beta generateContent; 3.x models appear via fetchModels() if the
-    // v1beta endpoint keeps supporting them.
-    override val defaultModel = "gemini-2.5-flash"
+    // FIX (404 regression, corrected 2026-09-06): gemini-1.5-flash shut down, and
+    // gemini-2.5-flash is RETIRED TOO - proven by a LIVE on-device API error
+    // ("models/gemini-2.5-flash is no longer available to new users"), not docs.
+    // The live OpenRouter catalog (checked today, no auth needed) lists
+    // google/gemini-3.8-flash as the current flash and contains NO 2.5 entries.
+    // gemini-3.8-flash is the corrected default; on-device send is the final live check.
+    override val defaultModel = "gemini-3.8-flash"
     override val isLocal = false
     override val requiresApiKey = true
 

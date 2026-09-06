@@ -114,12 +114,24 @@ object ProjectPathResolver {
     fun getAllWorkspaceRoots(context: Context, projectId: String?): List<String> {
         if (projectId.isNullOrBlank()) return emptyList()
         return try {
+            // PRIMARY-FIRST FIX (2026-09-06): the prefs list only ever stores roots ADDED
+            // via the Explorer / SCM-clone flows - the project's PRIMARY root is NOT in it.
+            // Callers use this list for the [TAP] file-link fallback, the terminal
+            // workspace-roots menu, and per-terminal lock validation, so without the
+            // primary: single-root projects showed "(no roots found)", tapping a
+            // primary-relative path never resolved, and a lock on the primary root was
+            // silently dropped at every restore. LspManager filters the primary back out
+            // for the initialize call (it != workspacePath), so LSP behavior is unchanged.
+            val primary = try {
+                resolveProjectRoot(context, projectId)?.takeIf { File(it).exists() }
+            } catch (e: Exception) { null }
             val raw = context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
-                .getString(KEY_WORKSPACE_ROOTS + "_" + projectId, null) ?: return emptyList()
-            raw.split("|||")
-                .map { it.trim() }
-                .filter { it.isNotBlank() && File(it).exists() }
-                .distinct()
+                .getString(KEY_WORKSPACE_ROOTS + "_" + projectId, null)
+            val saved = raw?.split("|||")
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() && File(it).exists() }
+                ?: emptyList()
+            (listOfNotNull(primary) + saved).distinct()
         } catch (e: Exception) {
             android.util.Log.e(TAG, "getAllWorkspaceRoots threw for projectId=$projectId", e)
             emptyList()

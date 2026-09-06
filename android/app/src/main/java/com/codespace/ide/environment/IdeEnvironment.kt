@@ -139,8 +139,22 @@ object IdeEnvironment {
                     it
                 }
                 else -> {
-                    AppOutputLog.log("resolveWorkspacePath DIAG: UNRECOGNIZED PREFIX '$it' -> returning null (not accessible inside proot)", "terminal")
-                    null
+                    // ROOTFS/FILESDIR FIX (2026-09-06): host-style roots (filesDir projects,
+                    // GitHub clones under filesDir/ubuntu-rootfs/root/repos, ...) were
+                    // rejected here -> null -> the shell never cd'd into the project root or
+                    // the per-terminal LOCKED root, so `ide open <relative>` failed with
+                    // "does not exist" and pwd/$WORKSPACE_PATH were wrong. Translate
+                    // host->guest with the SAME single source of truth the LSP uses:
+                    // rootfs-backed paths become /root/..., filesDir -> /host-files/...
+                    // (filesDir is bind-mounted into the guest), /storage -> /sdcard.
+                    val guest = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, it)
+                    if (guest != null) {
+                        AppOutputLog.log("resolveWorkspacePath DIAG: host path '$it' -> guest '$guest'", "terminal")
+                        guest
+                    } else {
+                        AppOutputLog.log("resolveWorkspacePath DIAG: UNRECOGNIZED PREFIX '$it' -> returning null (not accessible inside proot)", "terminal")
+                        null
+                    }
                 }
             }
         }

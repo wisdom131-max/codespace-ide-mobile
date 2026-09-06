@@ -123,10 +123,15 @@ fun SettingsScreen(
         }
     }
     var activeProvider by remember {
+        // CROSS-ROUTING FIX (2026-09-06): restore the provider the user last activated
+        // (the "active" key was previously written here but never read back - the
+        // settings screen forgot the activation on every reopen).
+        val stored = try { tokenStore.aiKey("active")?.lowercase() } catch (_: Exception) { null }
         mutableStateOf(
-            ChatProviderRegistry.all().firstOrNull {
-                tokenStore.aiKey(it.id.uppercase()) != null
-            } ?: ChatProviderRegistry.all().first { it.id == "claude" }
+            stored?.let { a -> ChatProviderRegistry.all().firstOrNull { it.id == a } }
+                ?: ChatProviderRegistry.all().firstOrNull {
+                    tokenStore.aiKey(it.id.uppercase()) != null
+                } ?: ChatProviderRegistry.all().first { it.id == "claude" }
         )
     }
     var savedMsg by remember { mutableStateOf("") }
@@ -378,7 +383,13 @@ fun SettingsScreen(
                         headlineContent = { Text(provider.displayName) },
                         supportingContent = { Text(if (isActive) "✓ Active" else "Tap switch to activate") },
                         trailingContent = {
-                            Switch(checked = isActive, onCheckedChange = { if (it) activeProvider = provider })
+                            Switch(checked = isActive, onCheckedChange = { if (it) {
+                            activeProvider = provider
+                            // CROSS-ROUTING FIX: activating a provider in Settings must switch
+                            // chat dispatch too - write the shared, persisted model selection
+                            // that both chat panels read.
+                            try { com.codespace.ide.chat.ChatModelSelection.set(context, provider.id + ":" + provider.defaultModel) } catch (_: Exception) {}
+                        } })
                         },
                     )
                     OutlinedTextField(
@@ -410,6 +421,9 @@ fun SettingsScreen(
                         tokenStore.setAiKey(provider.id.uppercase(), key.ifBlank { null })
                     }
                     tokenStore.setAiKey("active", activeProvider.id.uppercase())
+                    // CROSS-ROUTING FIX: keep the shared chat model selection in sync with
+                    // the saved active provider (same write the switch performs on flip).
+                    try { com.codespace.ide.chat.ChatModelSelection.set(context, activeProvider.id + ":" + activeProvider.defaultModel) } catch (_: Exception) {}
                     savedMsg = "✓ Saved!"
                 },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
