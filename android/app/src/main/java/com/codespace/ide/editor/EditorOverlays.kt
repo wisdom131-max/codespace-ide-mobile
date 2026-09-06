@@ -72,7 +72,7 @@ internal fun androidx.compose.foundation.layout.BoxScope.BlameLineOverlay(
 
 @Composable
 internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
-    extraCursors: List<Int>,
+    extraCursors: List<androidx.compose.ui.text.TextRange>,
     lineHeightDp: androidx.compose.ui.unit.Dp,
     fontSize: Int,
     GUTTER_WIDTH: Float,
@@ -88,8 +88,10 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
         val charWidthPx  = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
         val gutterDp = GUTTER_WIDTH
         val scrollOffsetPx = vScrollDp
-        extraCursors.forEach { off ->
-            val clamped  = off.coerceIn(0, value.text.length)
+        extraCursors.forEach { range ->
+            // Plan A: cursors are TextRange selections — caret renders at range.min;
+            // a non-collapsed range also paints its selection background.
+            val clamped  = range.min.coerceIn(0, value.text.length)
             val pos = positionMapper.offsetToPosition(clamped)
             val lineIdx  = pos.line
             val col      = pos.column
@@ -107,6 +109,23 @@ internal fun androidx.compose.foundation.layout.BoxScope.ExtraCursorOverlay(
                 gutterDp + col * charWidthPx
             }
 
+            var selEndDp = startDp
+            if (range.min != range.max && textLayoutResult != null) {
+                val density2 = androidx.compose.ui.platform.LocalDensity.current.density
+                val safeEnd = range.max.coerceIn(0, textLayoutResult.layoutInput.text.length)
+                selEndDp = (textLayoutResult.getHorizontalPosition(safeEnd, true) / density2) + gutterDp
+                if (selEndDp > startDp) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = startDp.dp, y = topDp.dp)
+                            .width((selEndDp - startDp).dp)
+                            .height(lineHeightDp)
+                            .background(Color(0xFFE5C07B).copy(alpha = 0.22f))
+                            .zIndex(4f),
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)

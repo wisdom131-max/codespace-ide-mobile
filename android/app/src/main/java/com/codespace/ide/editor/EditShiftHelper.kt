@@ -41,8 +41,8 @@ object EditShiftHelper {
     fun shiftExtraCursors(
         oldText: String,
         newText: String,
-        extraCursors: List<Int>,
-    ): List<Int> {
+        extraCursors: List<androidx.compose.ui.text.TextRange>,
+    ): List<androidx.compose.ui.text.TextRange> {
         if (oldText == newText) return extraCursors
         if (extraCursors.isEmpty()) return extraCursors
 
@@ -51,12 +51,16 @@ object EditShiftHelper {
 
         if (delta == 0) return extraCursors
 
-        return extraCursors.map { pos ->
-            if (pos >= changeStart) {
-                (pos + delta).coerceIn(0, newText.length)
-            } else {
-                pos
-            }
+        // Multi-cursor Plan A: extra cursors are full TextRange selections.
+        // Shift each endpoint past the change start by the delta (insertions
+        // inside a selection extend it, VS Code marker semantics).
+        return extraCursors.map { r ->
+            val start = if (r.start >= changeStart) r.start + delta else r.start
+            val end = if (r.end >= changeStart) r.end + delta else r.end
+            androidx.compose.ui.text.TextRange(
+                start.coerceIn(0, newText.length),
+                end.coerceIn(0, newText.length),
+            )
         }
     }
 

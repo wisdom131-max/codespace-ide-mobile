@@ -114,7 +114,7 @@ internal fun CompletionPopupOverlay(
     snippetSessionState: MutableState<SnippetSession?>,
     showSnippetChoicesState: MutableState<Boolean>,
     completionPopupExtraHeightDpState: MutableState<Float>,
-    extraCursorsState: MutableState<List<Int>>,
+    extraCursorsState: MutableState<List<androidx.compose.ui.text.TextRange>>,
     value: TextFieldValue,
     colors: EditorColors,
     context: Context,

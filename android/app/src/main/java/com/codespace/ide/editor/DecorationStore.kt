@@ -118,7 +118,7 @@ class DecorationStore {
     // Cursor layer (primary + extra cursors)
     private var _cursor = VersionedDecoration(CursorState(0, emptyList()), 0)
     val cursor: VersionedDecoration<CursorState> get() = _cursor
-    fun updateCursor(primaryOffset: Int, extraCursors: List<Int>) {
+    fun updateCursor(primaryOffset: Int, extraCursors: List<androidx.compose.ui.text.TextRange>) {
         _cursor = _cursor.update(CursorState(primaryOffset, extraCursors))
     }
 
@@ -264,7 +264,7 @@ enum class HighlightKind { READ, WRITE, TEXT }
 @Immutable
 data class CursorState(
     val primaryOffset: Int,
-    val extraCursors: List<Int>,
+    val extraCursors: List<androidx.compose.ui.text.TextRange>,
 )
 
 /** A foldable range (from LSP or heuristic). */

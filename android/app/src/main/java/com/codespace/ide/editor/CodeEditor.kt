@@ -1482,11 +1482,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val currentOnInsertHandler by rememberUpdatedState(onInsertHandler)
     // ── Multi-cursor state ───────────────────────────────────────────────
     // Moved here (before LaunchedEffect) so the Esc key handler can reference it.
-    val extraCursorsState = remember { mutableStateOf<List<Int>>(emptyList()) }
+    val extraCursorsState = remember { mutableStateOf<List<androidx.compose.ui.text.TextRange>>(emptyList()) }
     var extraCursors by extraCursorsState
+    // Multi-cursor input mode (MC toolbar key): when ON, double-tap adds/removes
+    // cursors; when OFF, double-tap word-selects (native-style behavior restored).
+    var mcMode by remember { mutableStateOf(false) }
     // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
     androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
         extraCursors = emptyList()
+    }
+    // PERF-PROBE: frame-clock observer for jank/frame-gap counters (measure-first pass)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.withFrameNanos { t -> PerfProbe.onFrame(t) }
+        }
     }
     LaunchedEffect(Unit) {
         currentOnInsertHandler?.invoke { text ->
@@ -1508,6 +1517,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         onTextChange = { newText, sel, reason -> programmaticTextChange(newText, sel, reason) },
                         onExtraCursorsChange = { extraCursors = it }
                     )
+                }
+                "MC" -> {
+                    // Multi-cursor mode toggle — no text inserted.
+                    mcMode = !mcMode
+                    if (!mcMode) extraCursors = emptyList()
                 }
                 "Esc" -> {
                     snippetSession = null
@@ -2066,8 +2080,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // send intermediate values; pushing each floods the undo stack.
                         // The final committed value (composing cleared) triggers the push.
                         val comp = newValue.composition
-                        val isComposing = comp != null && comp.start >= 0
+                        // MC-GUARD (Plan A #5): while multi-cursor is active, force
+                        // discrete commits — composing regions count as committed
+                        // (one undo snapshot per keystroke) and get stripped below.
+                        val isComposing = comp != null && comp.start >= 0 && extraCursors.isEmpty()
                         if (newValue.text != value.text) {
+                            PerfProbe.onEdit()
                             editorEvent = EditorEvent.UserTyping(newValue.text, newValue.selection.end, value.text, value.selection.end)
                             // Change 4: O(1) snapshot undo - push OLD state (state to restore TO)
                             // FIX: The undo stack must hold the state to RESTORE TO, i.e. the
@@ -2095,6 +2113,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // No extra pushForce needed — push() handles it via coalescing.
                         // Phase U-5: Check if typed char should commit the selected completion
                         var updatedValue = newValue
+                        // MC-GUARD (Plan A #5): strip composing regions while multi-cursor
+                        // is active so every keystroke is a discrete, trackable commit
+                        // (our equivalent of VS Code intercepting composition at input level).
+                        if (extraCursors.isNotEmpty() && updatedValue.composition != null) {
+                            updatedValue = updatedValue.copy(composition = null)
+                        }
                         val commitCharMatch = if (showCompletions && selectedLabel != null && newValue.text.length == value.text.length + 1) {
                             val typedChar = newValue.text.getOrNull(newValue.selection.end - 1)
                             val selectedComp = allCompletions.getOrNull(
@@ -2234,77 +2258,25 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             }
                         }
-                        // Multi-cursor fan-out: replay same edit at each extra cursor
-                        // CRASH/BUG-FIX: properly account for primary edit position relative
-                        // to each extra cursor. Old code used ec+shift without adjusting
-                        // for the primary insertion/deletion happening before the cursor,
-                        // causing text to be inserted at wrong positions and cursors to jump.
-                        // BUG-FIX (Test 51): a cursor could end up added at the EXACT same
-                        // offset as the primary/real cursor (e.g. double-tapping right where the
-                        // caret already sits). If left in extraCursors, the fan-out below replays
-                        // the SAME edit a second time at that spot — the primary cursor's own line
-                        // gets the typed text TWICE while every genuinely distinct extra cursor
-                        // works correctly. Strip any such duplicate before fanning out.
-                        if (value.selection.start in extraCursors) {
-                            extraCursors = extraCursors.filter { it != value.selection.start }
-                        }
-                        // Phase V-FIX (Test 51): Also remove any extra cursor that, after the
-                        // primary edit, would land at the SAME position as the new primary
-                        // cursor. Without this, two cursors at adjacent offsets on line 1
-                        // (e.g. offsets 0 and 1) both insert at the same spot after the
-                        // primary edit — doubling every typed character on that line.
-                        val newPrimaryPos = updatedValue.selection.start
-                        extraCursors = extraCursors.filter { ec ->
-                            val adjusted = if (ec < value.selection.start) ec else ec + (updatedValue.text.length - value.text.length)
-                            adjusted != newPrimaryPos
-                        }
+                        // ── MULTI-CURSOR: VS Code transaction shape (Plan A) ──
+                        // The primary edit (already applied by BasicTextField into
+                        // updatedValue) is content-diffed into ONE precise edit triple,
+                        // replayed at every extra cursor, and applied in a SINGLE value
+                        // write with all cursor positions recomputed atomically
+                        // (MultiCursorEngine.kt mirrors cursor.ts executeEdits ->
+                        // pushEditOperations + cursor-state-computer). Replaces the old
+                        // length-delta guessing and manual fanShift/primaryAdjust math.
                         if (extraCursors.isNotEmpty()) {
-                            val delta = updatedValue.text.length - value.text.length
-                            if (delta != 0) {
-                                val primaryAt = value.selection.start
-                                val inserted: String = if (delta > 0) {
-                                    updatedValue.text.substring(primaryAt, (primaryAt + delta).coerceAtMost(updatedValue.text.length))
-                                } else ""
-                                val deletedLen = if (delta < 0) -delta else 0
-                                var composed = updatedValue.text
-                                val newExtras = mutableListOf<Int>()
-                                // The primary cursor's position in composed (after primary edit)
-                                val primaryNewPos = updatedValue.selection.start
-                                var fanShift = 0  // cumulative shift from fan-out edits
-                                var primaryAdjust = 0  // shift to apply to primary cursor
-                                for (ec in extraCursors.sorted()) {
-                                    // Adjust extra cursor for the PRIMARY edit:
-                                    // If primary insertion was before this cursor, it's now at ec+delta
-                                    val primaryShift = if (delta > 0) {
-                                        positionMapper.shiftOnInsert(ec, primaryAt, delta) - ec
-                                    } else {
-                                        val delStart = (primaryAt - deletedLen).coerceAtLeast(0)
-                                        positionMapper.shiftOnDelete(ec, delStart, deletedLen) - ec
-                                    }
-                                    val pos = (ec + primaryShift + fanShift).coerceIn(0, composed.length)
-                                    if (delta > 0) {
-                                        composed = composed.substring(0, pos) + inserted + composed.substring(pos)
-                                        fanShift += inserted.length
-                                        newExtras.add(pos + inserted.length)
-                                        // If this fan-out insertion was before the primary cursor, shift it
-                                        if (pos < primaryNewPos) primaryAdjust += inserted.length
-                                    } else {
-                                        val from = (pos - deletedLen).coerceAtLeast(0)
-                                        val to = pos.coerceAtMost(composed.length)
-                                        if (from < to) {
-                                            composed = composed.substring(0, from) + composed.substring(to)
-                                            fanShift -= (to - from)
-                                            newExtras.add(from)
-                                            if (to <= primaryNewPos) primaryAdjust -= (to - from)
-                                        } else {
-                                            newExtras.add(from)
-                                        }
-                                    }
-                                }
-                                extraCursors = newExtras
-                                val primStart = (updatedValue.selection.start + primaryAdjust).coerceIn(0, composed.length)
-                                val primEnd = (updatedValue.selection.end + primaryAdjust).coerceIn(0, composed.length)
-                                updatedValue = updatedValue.copy(text = composed, selection = TextRange(primStart, primEnd))
+                            val fanOut = MultiCursorEngine.applyFanOut(
+                                oldText = value.text,
+                                newText = updatedValue.text,
+                                primaryOld = value.selection,
+                                primaryNew = updatedValue.selection,
+                                extras = extraCursors,
+                            )
+                            extraCursors = fanOut.extras
+                            if (fanOut.text != updatedValue.text || fanOut.primary != updatedValue.selection) {
+                                updatedValue = updatedValue.copy(text = fanOut.text, selection = fanOut.primary)
                             }
                         }
 
@@ -2374,7 +2346,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             )
                         }
                     },
-                    onTextLayout = { result -> textLayoutResult = result },
+                    onTextLayout = { result -> textLayoutResult = result; PerfProbe.onTextLaidOut() },
+                    // MC-GUARD (Plan A #5): no autocorrect/composition while multi-cursor active
+                    keyboardOptions = KeyboardOptions(autoCorrect = extraCursors.isEmpty()),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(end = 24.dp)
@@ -2382,18 +2356,26 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onDoubleTap = { offset ->
-                                    // DEBUG: Show that onDoubleTap was called
-                                    android.util.Log.d("MultiCursor", "onDoubleTap fired at " + offset.toString())
-                                    debugDoubleTapMsg = "DBLTAP offset=" + offset.toString()
-                                    // Double tap — add/remove extra cursor at this position
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
-                                        extraCursors = if (charOffset == value.selection.start) {
-                                            extraCursors
-                                        } else if (charOffset in extraCursors)
-                                            extraCursors.filter { it != charOffset }
-                                        else
-                                            (extraCursors + charOffset).distinct().sorted()
+                                        if (mcMode) {
+                                            // MC mode: add/remove a cursor at this position
+                                            val atPrimary = charOffset == value.selection.min
+                                            val existing = extraCursors.find { it.min == charOffset }
+                                            extraCursors = when {
+                                                atPrimary -> extraCursors
+                                                existing != null -> extraCursors - existing
+                                                else -> MultiCursorEngine.normalize(extraCursors + TextRange(charOffset))
+                                            }
+                                        } else {
+                                            // MC off: double-tap word-selects (native-style)
+                                            val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(value.text, charOffset)
+                                            value = value.copy(selection = TextRange(wordStart, wordEnd))
+                                            editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
+                                            val cPos2 = positionMapper.offsetToPosition(wordEnd)
+                                            onCursorChange?.invoke(cPos2.line, cPos2.column)
+                                        }
+                                        try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                                     }
                                 },
                                 onTap = { offset ->
@@ -2718,7 +2700,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             )
                                             val prev = snapshotUndo.undo(current)
                                             if (prev != null) {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, prev.text, prev.extraCursors)
+                                                extraCursors = prev.extraCursors // snapshot coords already in prev.text space
                                                 programmaticTextChange(prev.text, prev.selection, "undo")
                                             }
                                             undoRedoInProgress = false
@@ -2733,7 +2715,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             )
                                             val next = snapshotUndo.redo(current)
                                             if (next != null) {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, next.text, next.extraCursors)
+                                                extraCursors = next.extraCursors // snapshot coords already in next.text space
                                                 programmaticTextChange(next.text, next.selection, "redo")
                                             }
                                             undoRedoInProgress = false

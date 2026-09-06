@@ -23,7 +23,7 @@ class SnapshotUndoManager(
     data class TextSnapshot(
         val text: String,
         val selection: TextRange,
-        val extraCursors: List<Int>,
+        val extraCursors: List<androidx.compose.ui.text.TextRange>,
         val timestamp: Long = System.currentTimeMillis(),
     )
 

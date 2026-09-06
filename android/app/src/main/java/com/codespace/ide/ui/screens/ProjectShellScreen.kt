@@ -394,7 +394,7 @@ private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT,
 private val SPECIAL_KEYS = listOf(
     "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
     ":", ";", "'", "\"", "|", "&", "!", "?", "@", "#", "$", "%", "^",
-    "~", "\\", ",", ".", "_", "`", "Tab", "Esc",
+    "~", "\\", ",", ".", "_", "`", "Tab", "Esc", "MC",
     "\u21A9", "\u21AA",
 )
 

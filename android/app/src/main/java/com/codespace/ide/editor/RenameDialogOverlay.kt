@@ -56,7 +56,7 @@ fun RenameDialogOverlay(
     renameUsedLspState: MutableState<Boolean>,
     renamePreviewEditState: MutableState<JSONObject?>,
     renamePreviewFilesState: MutableState<List<Pair<String, Int>>>,
-    extraCursorsState: MutableState<List<Int>>,
+    extraCursorsState: MutableState<List<androidx.compose.ui.text.TextRange>>,
     value: TextFieldValue,
     colors: EditorColors,
     context: android.content.Context,

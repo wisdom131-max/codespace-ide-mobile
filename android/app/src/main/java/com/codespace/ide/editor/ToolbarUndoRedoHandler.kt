@@ -12,11 +12,11 @@ internal fun handleToolbarUndoRedo(
     key: String,
     snapshotUndo: SnapshotUndoManager,
     value: TextFieldValue,
-    extraCursors: List<Int>,
+    extraCursors: List<androidx.compose.ui.text.TextRange>,
     onUndoRedoStart: () -> Unit,
     onUndoRedoEnd: () -> Unit,
     onTextChange: (String, TextRange, String) -> Unit,
-    onExtraCursorsChange: (List<Int>) -> Unit
+    onExtraCursorsChange: (List<androidx.compose.ui.text.TextRange>) -> Unit
 ): Boolean {
     if (key != "\u21A9" && key != "\u21AA") return false
 
@@ -25,8 +25,9 @@ internal fun handleToolbarUndoRedo(
         val current = SnapshotUndoManager.TextSnapshot(value.text, value.selection, extraCursors)
         val snapshot = snapshotUndo.undo(current)
         if (snapshot != null) {
-            val newExtra = EditShiftHelper.shiftExtraCursors(value.text, snapshot.text, snapshot.extraCursors)
-            onExtraCursorsChange(newExtra)
+            // Snapshot extraCursors are already in snapshot.text coordinates —
+            // restore as stored (no shift; shifting double-shifts).
+            onExtraCursorsChange(snapshot.extraCursors)
             onTextChange(snapshot.text, snapshot.selection, "undo_toolbar")
         }
         onUndoRedoEnd()
@@ -39,8 +40,7 @@ internal fun handleToolbarUndoRedo(
         val current = SnapshotUndoManager.TextSnapshot(value.text, value.selection, extraCursors)
         val snapshot = snapshotUndo.redo(current)
         if (snapshot != null) {
-            val newExtra = EditShiftHelper.shiftExtraCursors(value.text, snapshot.text, snapshot.extraCursors)
-            onExtraCursorsChange(newExtra)
+            onExtraCursorsChange(snapshot.extraCursors)
             onTextChange(snapshot.text, snapshot.selection, "redo_toolbar")
         }
         onUndoRedoEnd()

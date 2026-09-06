@@ -46,7 +46,7 @@ internal fun SnippetChoicesPopup(
     textLayoutResult: androidx.compose.ui.text.TextLayoutResult?,
     vScroll: ScrollState,
     colors: EditorColors,
-    extraCursorsState: MutableState<List<Int>>,
+    extraCursorsState: MutableState<List<androidx.compose.ui.text.TextRange>>,
     programmaticTextChange: (String, TextRange, String) -> Unit,
 ) {
     var snippetSession by snippetSessionState

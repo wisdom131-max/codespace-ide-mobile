@@ -30,7 +30,7 @@ internal fun LightbulbMenuOverlay(
     filePath: String?,
     language: Language,
     lintErrors: List<LintError>,
-    extraCursorsState: MutableState<List<Int>>,
+    extraCursorsState: MutableState<List<androidx.compose.ui.text.TextRange>>,
     programmaticTextChange: (String, TextRange, String) -> Unit,
 ) {
     var showLightbulbMenu by showLightbulbMenuState
