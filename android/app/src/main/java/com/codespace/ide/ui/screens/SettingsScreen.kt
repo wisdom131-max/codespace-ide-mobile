@@ -106,34 +106,9 @@ fun SettingsScreen(
     var githubStatus by remember { mutableStateOf("") } // "", "waiting", "error:<msg>"
     var githubJob by remember { mutableStateOf<Job?>(null) }
 
-    // ── AI provider key state ────────────────────────────────────────────────
-    // Registry-driven: every registered ChatProvider (cloud or local) shows up here
-    // automatically. Keys stay in SecureTokenStore under "ai_" + provider.id.uppercase()
-    // — identical to the old AiProviderId.name keys, so existing saved keys survive.
-    val keyMap = remember {
-        mutableStateMapOf<ChatProvider, String>().apply {
-            ChatProviderRegistry.all().forEach { provider ->
-                put(provider, tokenStore.aiKey(provider.id.uppercase()) ?: "")
-            }
-        }
-    }
-    val visibleMap = remember {
-        mutableStateMapOf<ChatProvider, Boolean>().apply {
-            ChatProviderRegistry.all().forEach { put(it, false) }
-        }
-    }
-    var activeProvider by remember {
-        // CROSS-ROUTING FIX (2026-09-06): restore the provider the user last activated
-        // (the "active" key was previously written here but never read back - the
-        // settings screen forgot the activation on every reopen).
-        val stored = try { tokenStore.aiKey("active")?.lowercase() } catch (_: Exception) { null }
-        mutableStateOf(
-            stored?.let { a -> ChatProviderRegistry.all().firstOrNull { it.id == a } }
-                ?: ChatProviderRegistry.all().firstOrNull {
-                    tokenStore.aiKey(it.id.uppercase()) != null
-                } ?: ChatProviderRegistry.all().first { it.id == "claude" }
-        )
-    }
+    // ── AI provider keys: fully extracted to AiKeysSection.kt (credential UX
+    // redesign phases 1-3) — masked key status, per-provider auto-save, malformed-
+    // token rejection, paste-to-route, live model check, no global Save button.
     var savedMsg by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf<String?>(null) }
 
@@ -372,70 +347,8 @@ fun SettingsScreen(
             }
             HorizontalDivider()
 
-            // ── AI Providers ─────────────────────────────────────────────────
-            Text("AI Providers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
-            ChatProviderRegistry.all().forEach { provider ->
-                val key     = keyMap[provider] ?: ""
-                val visible = visibleMap[provider] ?: false
-                val isActive = activeProvider == provider
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    ListItem(
-                        headlineContent = { Text(provider.displayName) },
-                        supportingContent = { Text(if (isActive) "✓ Active" else "Tap switch to activate") },
-                        trailingContent = {
-                            Switch(checked = isActive, onCheckedChange = { if (it) {
-                                activeProvider = provider
-                                // CROSS-ROUTING FIX: activating a provider in Settings must switch
-                                // chat dispatch too - write the shared, persisted model selection
-                                // that both chat panels read.
-                                try { com.codespace.ide.chat.ChatModelSelection.set(context, provider.id + ":" + provider.defaultModel) } catch (_: Exception) {}
-                            } })
-                        },
-                    )
-                    OutlinedTextField(
-                        value = key,
-                        onValueChange = { keyMap[provider] = it },
-                        label = {
-                            Text("${provider.displayName} API Key")
-                        },
-                        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { visibleMap[provider] = !visible }) {
-                                Icon(
-                                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        singleLine = true,
-                    )
-                }
-                HorizontalDivider()
-            }
-
-            Button(
-                onClick = {
-                    ChatProviderRegistry.all().forEach { provider ->
-                        val key = keyMap[provider] ?: ""
-                        tokenStore.setAiKey(provider.id.uppercase(), key.ifBlank { null })
-                    }
-                    tokenStore.setAiKey("active", activeProvider.id.uppercase())
-                    // CROSS-ROUTING FIX: keep the shared chat model selection in sync with
-                    // the saved active provider (same write the switch performs on flip).
-                    try { com.codespace.ide.chat.ChatModelSelection.set(context, activeProvider.id + ":" + activeProvider.defaultModel) } catch (_: Exception) {}
-                    savedMsg = "✓ Saved!"
-                },
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            ) { Text("Save API Keys") }
-
-            if (savedMsg.isNotEmpty()) {
-                Text(
-                    savedMsg,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
+            // ── AI Providers (credential UX redesign phases 1-3) ────────────────
+            AiKeysSection(tokenStore = tokenStore)
 
             HorizontalDivider()
 

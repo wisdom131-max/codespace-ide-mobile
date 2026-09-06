@@ -1634,3 +1634,30 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. Still-pending on-device from #2646: tap-to-open repro (echo + tap), ide open in LOCKED terminal, padlock suite (lock to non-primary root), 5-provider first-send cross-routing check, Gemini live send.
 5. Exit code 9 / SIGKILL OOM investigation (locale-gen memory pressure) — report + options, no implementation without approval.
 6. Standing backlog: multi-cursor parity plan (approval pending), Copilot credential UX (approval pending — folded into item 6 plan), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-06 12:40 WAT] — AI Agent: GLM (Superagent)
+
+**Commit (pending SHA) | CI (pending #) — see below**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[UI][AI] SETTINGS/CREDENTIAL UX REDESIGN — phases 1-3 APPROVED + IMPLEMENTED (decisions confirmed: phases 1-3 now, Phase 4 custom providers deferred, Phase 5 manifest deferred, NO fallback Save button — fully auto-save)**
+- PHASE 1 — masked key status + auto-save: each provider row shows key presence ("✓ Key saved · live: N models" / "No key"); the stored key is NEVER rendered back into a field. ONE input opens only via Add key / Replace key. Empty submit = delete the key. Valid submit = written to SecureTokenStore IMMEDIATELY (global "Save API Keys" button DELETED). Malformed token = inline error, nothing written (loose prefix+length rules so valid-but-unusual keys are never rejected). Dismiss/Cancel = no-op (Copilot handleAPIKeyUpdate pattern).
+- PHASE 2 — paste-to-route: a key pasted into the WRONG provider's field whose format matches another provider triggers "Looks like a X key — Apply to X?" instead of a silent wrong-slot write (sk-ant- → anthropic, sk-or- → openrouter, sk-proj- → openai, AIza → gemini, bare sk- ambiguous → prompt).
+- PHASE 3 — keys manager: per-provider status incl. LIVE fetchModels check after every save ("live: N models" / "key rejected (or unreachable)" — the shared transport returns empty on 401 so rejected-vs-unreachable cannot be distinguished without an interface change, deferred to Phase 4) + inline Remove/Replace actions.
+- STORAGE UNCHANGED: keys still "ai_" + id.uppercase(), "active" key still written on Switch — existing saved keys survive. Activation still writes the shared persisted "provider:model" ChatModelSelection (cross-routing fix intact).
+- NOTE: "fully auto-save" interpreted as per-provider immediate save on valid submit (Copilot confirm pattern) — NOT save-on-every-keystroke (would write partial keys).
+
+**Files:** NEW chat/AiKeyFormats.kt (format rules + detect); NEW ui/screens/AiKeysSection.kt (extracted section — masked status, editor, route prompt, live check, manager actions); SettingsScreen.kt (old flat section + keyMap/visibleMap/activeProvider states REMOVED, one-line AiKeysSection call; savedMsg/showClearDialog kept — used by other sections).
+
+**[BUILD-FIX] ErrorLensOverlay Float/Density division (fac4b82, CI #2650)** — #2648/#2649 failed on ONE error: ErrorLensOverlay.kt:94 divided a Float by LocalDensity.current (a Density OBJECT, not the px-per-dp scale — no div overload). Fixed via density.density. No logic changed.
+
+**[PROOT] ubuntu-proot-test APK pipeline CONFIRMED + first artifact delivered (2c59a98, run #138 GREEN)** — repo has its own GitHub Actions workflow (build.yml, mirrors main app: JDK17 + Android SDK + NDK + patchelf, assembleDebug, artifact "ubuntu-proot-test-debug", 7-day retention). C.UTF-8 locale fix 2c59a98 already built GREEN; APK pulled and delivered to Wisdom as a direct link (zip, ~6.2MB). Future risky-change testing can use this pipeline independently per the two-repo rule.
+
+**Next on roadmap (ALL pending):**
+1. ON-DEVICE regression batch (B-batch build): (a) terminal sessions project-scoped; (b) Problems badge + squiggles on .md (expect 0/false lint gone); (c) ErrorLens message ON its own line (sticky scroll on AND off); (d) remove workspace root -> its tabs close; (e) TerminalBuffer NPE repro (copy/select during rapid output); (f) NEW settings UX: add valid + malformed + wrong-provider key, empty-submit delete, paste-to-route prompt, live-check status line, Switch still switches chat dispatch.
+2. C.UTF-8 locale fix on-device test (ubuntu-proot-test APK from run #138, link delivered): boot Ubuntu container, check locale output + no SIGKILL/OOM during locale phase.
+3. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider first-send cross-routing check, Gemini live send.
+4. Exit code 9 / SIGKILL OOM investigation (report + options, no implementation without approval).
+5. Deferred (explicitly): Phase 4 custom providers (unlimited providers, OpenAI-compatible base URL) — after 1-3 confirmed solid on-device; Phase 5 model-ID validation manifest.
+6. Standing backlog: agent-tools menu extraction inventory, engine/runtime research, VS Code debugger parity research, multi-cursor parity plan (approval pending), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
