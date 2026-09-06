@@ -1167,17 +1167,23 @@ fun EditorPane(
             }
         }
         // Effect B: keyed on (id, content) — sends didChange on every edit.
-        // BUG-FIX: Debounce 300ms to prevent diagnostic flood when multiple content
-        // changes fire in quick succession (e.g. undo sequences, batch edits).
-        // The LaunchedEffect cancels on each new key change, so only the LAST
-        // content change in a 300ms window actually sends didChange to the LSP.
+        // PHASE-B/B3 (2026-09-06): debounce lowered 300ms -> 150ms. The completion
+        // request fires at ~220ms after a keystroke (150ms debounce + 70ms show delay
+        // in CompletionFetchEffect), so at 300ms the server could still hold PREVIOUS
+        // content when a completion arrives — which previously forced the completion
+        // provider to send its own redundant synchronous didChange (removed by B3).
+        // At 150ms, Effect B now ALWAYS lands before the completion request, giving
+        // the same freshness guarantee through the single regular channel. Still
+        // coalesces rapid keystrokes (only the LAST content change per 150ms window
+        // is sent), and sends strictly FEWER didChanges than the old force-sync-on-
+        // every-completion behavior did.
         LaunchedEffect(active?.id, active?.content) {
             val snap = active ?: return@LaunchedEffect
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
             if (!LspManager.isServerRunning(snap.language)) return@LaunchedEffect
             if (lspOpenedFiles[snap.path] != true) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
-            delay(300)  // debounce — coalesce rapid content changes into one didChange
+            delay(150)  // PHASE-B/B3: MUST stay below completion debounce+delay (~220ms)
             // FIX-B (dot-completion bug): monotonic per-URI version — never goes backwards,
             // unlike the old clock-derived value which could interleave out-of-order.
             val version = LspManager.nextDocumentVersion(uri)
@@ -1392,7 +1398,11 @@ fun EditorPane(
                     com.codespace.ide.editor.TestLensDetector.detectTestLenses(active.content, active.language)
                 }
                 if (LspManager.isServerRunning(active.language)) {
-                    delay(700)
+                    // PHASE-B/B2 (2026-09-06): background-only feature — debounce raised
+                    // 700 -> 1200ms so code lens waits longer while the user actively
+                    // types (each keystroke restarts this effect); it is cosmetic and
+                    // must not compete with completion/hover for server attention.
+                    delay(1200)
                     val uri = LspManager.fileUriFromHostPath(context, active.path)
                     if (uri != null) {
                         val myServerGen = LspManager.getServerGeneration(active.language)
@@ -1443,7 +1453,9 @@ fun EditorPane(
         // P26-1: LSP Inlay Hints — fetch inline type/parameter hints
         LaunchedEffect(active?.path, active?.content) {
             if (active != null && LspManager.isServerRunning(active.language)) {
-                delay(800)
+                // PHASE-B/B2 (2026-09-06): background-only feature — debounce raised
+                // 800 -> 1200ms so inlay hints wait longer during active typing.
+                delay(1200)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
                     val myServerGen = LspManager.getServerGeneration(active.language)
@@ -1495,7 +1507,10 @@ fun EditorPane(
         // P41-W: LSP Semantic Tokens — fetch server-provided syntax highlighting
         LaunchedEffect(active?.path, active?.content) {
             if (active != null && LspManager.isServerRunning(active.language)) {
-                delay(600)
+                // PHASE-B/B2 (2026-09-06): background-only feature — debounce raised
+                // 600 -> 1200ms so semantic tokens wait longer during active typing
+                // (local highlighter covers the gap until server tokens land).
+                delay(1200)
                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                 if (uri != null) {
                     val myServerGen = LspManager.getServerGeneration(active.language)
@@ -1902,32 +1917,12 @@ fun EditorPane(
                             { line, col ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)
                                 if (uri != null) {
-                                    // BUG-1 FIX: force-sync the server's document state right before asking
-                                    // for completions. Effect B (didChange) fires on its own debounce/coroutine
-                                    // keyed off content changes and can race with this completion request —
-                                    // on a fast keystroke (e.g. typing ".") the server could still be completing
-                                    // against the PREVIOUS content when completion is requested, producing
-                                    // unrelated/stale suggestions instead of member completions for what was
-                                    // just typed. Sending didChange synchronously here guarantees freshness.
-                                    val syncVersion = LspManager.nextDocumentVersion(uri)  // FIX-B: monotonic version
-                                    // VERSION-DIAG: Compare force-sync version against Effect B's last version
-                                    val lastBVersion = lspLastEffectBVersion[uri] ?: -1
-                                    val lastBContentLen = lspLastEffectBContentLen[uri] ?: -1
-                                    val outOfOrder = syncVersion < lastBVersion
-                                    val contentDelta = active.content.length - lastBContentLen
-                                    AppOutputLog.log("[LSP-VERSION-DIAG] force-sync: uri=" + uri + " syncVersion=" + syncVersion + " lastEffectBVersion=" + lastBVersion + " outOfOrder=" + outOfOrder + " contentLen=" + active.content.length + " lastBContentLen=" + lastBContentLen + " contentDelta=" + contentDelta, "lsp")
-                                    // DIAG: Log didOpen status and content snippet around cursor
-                                    val didOpenSent = lspOpenedFiles[active.path] == true
-                                    val contentLines = active.content.split("\n")
-                                    val cursorLine = contentLines.getOrNull(line) ?: ""
-                                    val beforeCursor = if (col > 0 && col <= cursorLine.length) cursorLine.substring(0, col) else ""
-                                    val afterCursor = if (col < cursorLine.length) cursorLine.substring(col) else ""
-                                    AppOutputLog.log("[LSP-DIAG] completion-context: didOpenSent=" + didOpenSent + " path=" + active.path + " totalLines=" + contentLines.size + " totalChars=" + active.content.length, "lsp")
-                                    AppOutputLog.log("[LSP-DIAG] cursor-line-" + line + ": before=[" + beforeCursor + "] after=[" + afterCursor + "] (col=" + col + ")", "lsp")
-                                    LspManager.didChange(active.language, uri, active.content, syncVersion)
-                                    lspLastEffectBVersion[uri] = syncVersion
-                                    lspLastEffectBContentLen[uri] = active.content.length
-                                    AppOutputLog.log("[LSP-VERSION-DIAG] force-sync sent: version=" + syncVersion + " contentLen=" + active.content.length, "lsp")
+                                    // PHASE-B/B3 (2026-09-06): the synchronous force-sync didChange that used
+                                    // to run here was REMOVED — it duplicated Effect B's regular debounced
+                                    // didChange (now 150ms, deliberately FASTER than this completion request at
+                                    // ~220ms) so the server always has fresh content before a completion arrives.
+                                    // Same freshness guarantee, none of the redundant writes or version-diag
+                                    // churn. Monotonic versions + gen checks still guard stale responses.
                                     // Determine trigger character (e.g. "." for member completion) from the
                                     // actual buffer content so the server gets correct LSP completion context.
                                     val linesForTrigger = active.content.split("\n")

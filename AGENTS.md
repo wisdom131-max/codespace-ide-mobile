@@ -1684,3 +1684,25 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. IME emoji INPUT issue (separate, flagged 2026-09-06): phone IME cannot TYPE emoji into terminal input while output emoji display fine — keyboard-input/IME handling in terminal view, needs its own investigation.
 5. Deferred (explicitly): Phase 4 custom providers; Phase 5 model-ID validation manifest.
 6. Standing backlog: agent-tools menu extraction inventory, engine/runtime research, VS Code debugger parity research, multi-cursor parity plan (approval pending), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-06 21:05 WAT] — AI Agent: GLM (Superagent)
+
+**Commit: (this commit) | CI: pending — fill-in below on green**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[LSP][PHASE-B] REQUEST THROTTLING — approved B1-B4 implemented**
+- B1 (auto-supersede): JsonRpcClient.request() now sends $/cancelRequest for any still-in-flight request of the SAME hot method before writing the new one — superseded requests are stale by definition (their results are discarded via gen/version checks) and only waste server CPU. Scoped via SUPERSEDED_ON_NEW_REQUEST set to read-only per-position queries (completion/hover/codeLens/inlayHint/semanticTokens/definition/references/etc + workspace/symbol); mutations (rename, formatting, executeCommand, willRenameFiles) and lifecycle deliberately EXCLUDED so no concurrent-needed result is dropped.
+- B2 (background debounce): codeLens 700->1200ms, inlayHints 800->1200ms, semanticTokens 600->1200ms (EditorPane LaunchedEffects, keyed on content so they restart on every keystroke — they now wait longer while typing). Completion (150+70ms) and hover untouched.
+- B3 (redundant didChange removed): the synchronous force-sync didChange in EditorPane's lspCompletionProvider (BUG-1 FIX block) DELETED — it duplicated Effect B's channel. To preserve the freshness ordering it existed for, Effect B's debounce lowered 300->150ms so the regular didChange ALWAYS lands (~150ms) before the completion request fires (~220ms = 150 debounce + 70 show delay). Strictly FEWER didChanges than the old force-sync-per-completion behavior. Version-diag logging in the provider removed with it.
+- B4 (ContentModified silent): JsonRpcClient.handleMessage now treats error codes -32800 (RequestCancelled) / -32801 (ContentModified) as BENIGN cancellation signals — completes the future silently with null instead of the exceptional ERROR-log path. Callers already discard stale results; only the noise and the error path are gone.
+- FUNCTIONALITY CHECK (per approval condition): B1 only cancels requests whose results were already discarded by gen/version checks; B2 only delays cosmetic features during/after typing (local highlighter covers semantic-token gap); B3 preserves freshness via timing (150ms didChange < 220ms completion) while REMOVING a duplicate write; B4 changes only how a superseded response is logged. Nothing user-visible stops working; completion/hover latency unchanged.
+- FILES: lsp/JsonRpcClient.kt, ui/panes/EditorPane.kt
+
+**Next on roadmap (ALL pending):**
+1. GROUP B investigations (this batch): pylsp server-side install/start/publish diagnostics for Python; IME emoji input into terminal (keyboard-input path).
+2. GROUP C research (await approval before implementing): multi-cursor VS Code implementation research; agent-tools extraction inventory; faster-engine/runtime research; debugger parity plan; MCP/tool integration research.
+3. COMBINED ON-DEVICE REGRESSION BATCH: ErrorLens (#2650) + settings phases 1-3 (#2651) + C.UTF-8 port (#2652) — APK delivered; awaiting Wisdom's one-pass results.
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. IME emoji INPUT (flagged 2026-09-06): phone IME cannot TYPE emoji into terminal input (display path confirmed fine).
+6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.

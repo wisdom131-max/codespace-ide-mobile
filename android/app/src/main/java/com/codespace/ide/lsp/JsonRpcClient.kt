@@ -32,7 +32,30 @@ class JsonRpcClient(private val process: Process) {
     // Phase X-7: Per-method pending request tracking — prevents cross-method cancellation
     // (e.g. cancelling a completion accidentally cancelling a hover with a higher ID).
     private val pendingRequestsByMethod = ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>()
-    private val notificationHandlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
+
+    /**
+     * PHASE-B/B1: hot, stale-discarded, read-only per-position queries. A NEW request
+     * for one of these methods auto-cancels the still-in-flight previous one. Mutations
+     * and lifecycle methods are excluded - their concurrent results may all be needed.
+     */
+    private val SUPERSEDED_ON_NEW_REQUEST = setOf(
+        "textDocument/completion", "completionItem/resolve",
+        "textDocument/hover", "textDocument/signatureHelp",
+        "textDocument/codeAction", "codeAction/resolve",
+        "textDocument/codeLens", "codeLens/resolve",
+        "textDocument/inlayHint",
+        "textDocument/semanticTokens/full", "textDocument/foldingRange",
+        "textDocument/documentSymbol", "textDocument/documentLink",
+        "textDocument/documentColor", "textDocument/documentHighlight",
+        "textDocument/definition", "textDocument/declaration",
+        "textDocument/implementation", "textDocument/typeDefinition",
+        "textDocument/references", "textDocument/selectionRange",
+        "textDocument/moniker", "textDocument/linkedEditingRange",
+        "textDocument/prepareCallHierarchy", "textDocument/prepareTypeHierarchy",
+        "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls",
+        "typeHierarchy/subtypes", "typeHierarchy/supertypes",
+        "workspace/symbol"
+    )    private val notificationHandlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
     private val writeLock = Any()
 
     @Volatile private var running = false
@@ -112,6 +135,25 @@ class JsonRpcClient(private val process: Process) {
         pendingRequests[id] = future
         // Phase X-7: Track by method for per-method cancellation
         pendingRequestsByMethod.getOrPut(method) { mutableMapOf() }[id] = future
+
+        // PHASE-B/B1 (2026-09-06): supersede in-flight requests for the SAME hot
+        // method before sending the new one. A previous request for the same feature
+        // (older completion/hover/codeLens/etc.) is stale by definition - its result
+        // is discarded by the caller's gen/version checks - so letting it keep running
+        // only wastes server CPU and delays the fresh request behind it. Mirrors VS
+        // Code: a new request for the same feature cancels the in-flight one.
+        // Scoped to read-only per-position queries; mutations (rename, formatting,
+        // executeCommand, willRenameFiles) and lifecycle are deliberately NOT auto-
+        // superseded - every concurrent result there may still be needed.
+        if (method in SUPERSEDED_ON_NEW_REQUEST) {
+            val stale = pendingRequestsByMethod[method]?.keys?.toList().orEmpty()
+            for (oldId in stale) {
+                if (oldId != id) {
+                    notify("$/cancelRequest", JSONObject().put("id", oldId))
+                    log("[LSP][rpc] B1 supersede: $/cancelRequest for method=$method id=$oldId (superseded by id=$id)")
+                }
+            }
+        }
 
         try {
             writeMessage(message)
@@ -212,8 +254,20 @@ class JsonRpcClient(private val process: Process) {
                     val errorObj = message.optJSONObject("error")
                     val errorMsg = errorObj?.optString("message", "LSP error") ?: "LSP error"
                     val errorCode = errorObj?.optInt("code", -1) ?: -1
-                    log("[LSP][rpc] ERROR response for id=$id: code=$errorCode msg=$errorMsg")
-                    future.completeExceptionally(RuntimeException(errorMsg))
+                    // PHASE-B/B4 (2026-09-06): RequestCancelled (-32800) and ContentModified
+                    // (-32801) are the LSP spec's BENIGN cancellation signals — the server
+                    // stopped because a newer request superseded this one (B1 auto-supersede)
+                    // or the document content changed mid-request. These are NOT failures:
+                    // complete silently with null. Callers already discard stale results via
+                    // their gen/version checks, so behavior is unchanged — the requests were
+                    // superseded anyway; we only stop the old ERROR log noise + exceptional path.
+                    if (errorCode == -32800 || errorCode == -32801) {
+                        log("[LSP][rpc] id=$id cancelled by server (code=$errorCode) - silent no-op, result superseded")
+                        future.complete(null)
+                    } else {
+                        log("[LSP][rpc] ERROR response for id=$id: code=$errorCode msg=$errorMsg")
+                        future.completeExceptionally(RuntimeException(errorMsg))
+                    }
                 } else {
                     future.complete(message.opt("result"))
                 }
