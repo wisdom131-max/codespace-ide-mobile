@@ -1588,7 +1588,9 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 
 ### [2026-09-06 12:05 WAT] — AI Agent: GLM (Superagent)
 
-**Commit d832786 | CI #2648 pending**
+**Commit d832786 | CI #2648 RED — fixed by this commit | CI (pending #) — see below**
+
+**BUILD-FAIL NOTE:** #2648/#2649 failed on ONE error — ErrorLensOverlay.kt:94 divided a Float by `LocalDensity.current` (a Density OBJECT, not the px-per-dp scale — no div overload). Fixed by using `density.density` for the px->dp conversion. Single-line fix, no logic changed.
 
 **RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
 

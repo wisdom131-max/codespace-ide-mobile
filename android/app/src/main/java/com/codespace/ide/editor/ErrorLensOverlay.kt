@@ -56,6 +56,11 @@ internal fun BoxScope.ErrorLensOverlay(
     if (!showErrorLens || lintErrors.isEmpty() || hasCompletions) return
 
     val density = LocalDensity.current
+    // BUILD-FIX (#2648): LocalDensity.current is a Density OBJECT, not a number —
+    // the old code divided a Float by it (no div overload, compile error). Use the
+    // px-per-dp scale for the px->dp conversion and keep the Density object for
+    // sp.toPx()/px.toDp() conversions.
+    val pxPerDp = density.density
     // Fallback grid — same formula the lightbulb uses; real geometry comes from
     // the textLayoutResult via EditorLinePositioning.
     val lineHeightPx = with(density) { (fontSize * 1.25f).sp.toPx() }
@@ -91,7 +96,7 @@ internal fun BoxScope.ErrorLensOverlay(
         // available, else the estimated char-width fallback. Kept in dp as before.
         val lineLeftDp = if (textLayoutResult != null && positionMapper != null) {
             val clampedEnd = positionMapper.lineEnd(errorLine).coerceIn(0, textLayoutResult.layoutInput.text.length)
-            (textLayoutResult.getHorizontalPosition(clampedEnd, true) / density) + GUTTER_WIDTH + 8f
+            (textLayoutResult.getHorizontalPosition(clampedEnd, true) / pxPerDp) + GUTTER_WIDTH + 8f
         } else {
             val lineStart = value.text.lastIndexOf('\n', (err.start - 1).coerceAtLeast(0)) + 1
             val lineEnd = value.text.indexOf('\n', err.start)
