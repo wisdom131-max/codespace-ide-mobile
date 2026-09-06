@@ -303,6 +303,32 @@ public final class TerminalView extends View {
         return true;
     }
 
+    // IME-DIAG (2026-09-06): helpers for the emoji-input investigation. Cheap checks
+    // over char sequence; used ONLY for logging non-ASCII IME deliveries.
+    private static boolean containsNonAsciiCodePoint(CharSequence text) {
+        if (text == null) return false;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) > 127) return true;
+        }
+        return false;
+    }
+
+    private static String describeCodePoints(CharSequence text) {
+        if (text == null) return "(null)";
+        StringBuilder sb = new StringBuilder("codepoints=[");
+        int count = 0;
+        for (int i = 0; i < text.length() && count < 6; ) {
+            int cp = Character.codePointAt(text, i);
+            i += Character.charCount(cp);
+            if (count > 0) sb.append(" ");
+            sb.append(String.format("U+%04X", cp));
+            count++;
+        }
+        if (text.length() > 0 && count == 0) sb.append("(empty)");
+        sb.append("]");
+        return sb.toString();
+    }
+
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
         // Ensure that inputType is only set if TerminalView is selected view with the keyboard and
@@ -345,8 +371,24 @@ public final class TerminalView extends View {
         return new BaseInputConnection(this, true) {
 
             @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                // IME-DIAG (2026-09-06): some IMEs insert emoji as COMPOSING text and only
+                // finish later — if emoji never appears, this log shows whether they arrive
+                // stuck in the composing pipeline instead of via commitText.
+                if (containsNonAsciiCodePoint(text)) {
+                    mClient.logInfo(LOG_TAG, "IME: setComposingText NON-ASCII len=" + text.length() + " " + describeCodePoints(text));
+                }
+                return super.setComposingText(text, newCursorPosition);
+            }
+
+            @Override
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
+                // IME-DIAG (2026-09-06): log what a late finish drains — catches emoji
+                // that sat composing and whether the drain path got them.
+                if (containsNonAsciiCodePoint(getEditable())) {
+                    mClient.logInfo(LOG_TAG, "IME: finishComposingText draining NON-ASCII " + describeCodePoints(getEditable()));
+                }
                 super.finishComposingText();
 
                 sendTextToTerminal(getEditable());
@@ -358,6 +400,13 @@ public final class TerminalView extends View {
             public boolean commitText(CharSequence text, int newCursorPosition) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
                     mClient.logInfo(LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
+                }
+                // IME-DIAG (2026-09-06): emoji-input investigation. Unconditional, tiny:
+                // logs ONLY commits containing non-ASCII code points. Decisive on-device
+                // evidence for "tap emoji, nothing appears" — tells us whether the IME
+                // delivers emoji here at all, and as what (commit vs composing vs nothing).
+                if (containsNonAsciiCodePoint(text)) {
+                    mClient.logInfo(LOG_TAG, "IME: commitText NON-ASCII len=" + text.length() + " " + describeCodePoints(text));
                 }
                 super.commitText(text, newCursorPosition);
 

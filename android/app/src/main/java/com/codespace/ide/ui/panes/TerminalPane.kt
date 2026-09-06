@@ -190,7 +190,13 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         Log.w(tag, message ?: "")
         if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term-warn [" + (tag ?: "") + "] " + message, "terminal")
     }
-    override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
+    override fun logInfo(tag: String?, message: String?) {
+        Log.i(tag, message ?: "")
+        // IME-DIAG (2026-09-06): route TerminalView IME/key logs (logInfo) to the Output
+        // tab too — the emoji-input investigation needs these readable on-device without
+        // logcat. Includes the unconditional non-ASCII IME-delivery diagnostics.
+        if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term [" + (tag ?: "") + "] " + message, "terminal")
+    }
     override fun logDebug(tag: String?, message: String?) { Log.d(tag, message ?: "") }
     override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message ?: "") }
     override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) { Log.e(tag, message, e) }
@@ -356,7 +362,13 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
         Log.w(tag, message ?: "")
         if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term-warn [" + (tag ?: "") + "] " + message, "terminal")
     }
-    override fun logInfo(tag: String?, message: String?) { Log.i(tag, message ?: "") }
+    override fun logInfo(tag: String?, message: String?) {
+        Log.i(tag, message ?: "")
+        // IME-DIAG (2026-09-06): route TerminalView IME/key logs (logInfo) to the Output
+        // tab too — the emoji-input investigation needs these readable on-device without
+        // logcat. Includes the unconditional non-ASCII IME-delivery diagnostics.
+        if (message != null) com.codespace.ide.diagnostics.AppOutputLog.log("term [" + (tag ?: "") + "] " + message, "terminal")
+    }
     override fun logDebug(tag: String?, message: String?) { Log.d(tag, message ?: "") }
     override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message ?: "") }
     override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) { Log.e(tag, message, e) }

@@ -1727,3 +1727,23 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. IME emoji INPUT (flagged 2026-09-06): phone IME cannot TYPE emoji into terminal input (display path confirmed fine).
 6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-06 21:35 WAT] — AI Agent: GLM (Superagent)
+
+**Commit: (this commit) | CI: pending — fill-in below on green**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[TERMINAL] IME EMOJI-INPUT INSTRUMENTATION (Group B item 3 — investigation phase 1)**
+- CODE AUDIT of the full input chain (vendored TerminalView + TerminalSession + AOSP BaseInputConnection source, fetched real AOSP main): every plausible emoji arrival path is ALREADY emoji-capable: (1) commitText -> sendTextToTerminal handles surrogate pairs -> writeCodePoint encodes 4-byte UTF-8; (2) BaseInputConnection(this, true) = fullEditor mode so AOSP sendCurrentText() fallback (which would convert to key events + clear the editable) is DISABLED and our editable-drain path handles the text; (3) ACTION_MULTIPLE/KEYCODE_UNKNOWN character events are written via mTermSession.write(event.getCharacters()); (4) setComposingText+finishComposingText drains via sendTextToTerminal. Conclusion: the emoji likely never REACHES the InputConnection (IME-side behavior with our inputType TYPE_CLASS_TEXT|NO_SUGGESTIONS) — needs on-device evidence to disambiguate.
+- INSTRUMENTATION SHIPPED: unconditional (tiny, gated on non-ASCII content) IME-delivery logs at every entry point — commitText / setComposingText (new override) / finishComposingText-drain — including exact code points (e.g. 'U+1F600'), in TerminalView. SimpleTerminalSessionClient + SimpleTerminalViewClient logInfo now ALSO route to AppOutputLog 'terminal' channel so the logs are readable in the app's Output tab WITHOUT logcat. Tapping one emoji after this build lands tells us exactly which pipe (if any) delivered it: commitText / composing / nothing.
+- NOT a fix yet — evidence-gathering build per testing protocol; fix follows the diagnostic result.
+- FILES: termux/view/TerminalView.java, ui/panes/TerminalPane.kt
+
+**Next on roadmap (ALL pending):**
+1. GROUP B item 3 phase 2: read IME-diag logs from on-device emoji tap -> implement the actual fix per evidence.
+2. GROUP C research (await approval before implementing): multi-cursor VS Code implementation research; agent-tools extraction inventory; faster-engine/runtime research; debugger parity plan; MCP/tool integration research.
+3. COMBINED ON-DEVICE REGRESSION BATCH: ErrorLens (#2650) + settings phases 1-3 (#2651) + C.UTF-8 port (#2652) — APK delivered; awaiting Wisdom's one-pass results. NOW ALSO after these commits build green: Phase B throttling + pylsp self-heal install + IME diag (new APK will be provided).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. PYLSP on-device verify: after green APK, open a .py file with errors — install self-heal should fire (check fix re-runs if lint plugins missing); expect 'pylsp lint plugins OK' in Output [LSP] channel + squiggles appear.
+6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
